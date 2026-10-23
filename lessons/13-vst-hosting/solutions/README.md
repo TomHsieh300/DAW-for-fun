@@ -84,16 +84,23 @@ A plugin's code runs inside the host's process; scanning executes the DLL's init
 
 Design:
 
-```
-Main process                                       Scanner child process (the same executable with the argument --scan)
-1. List all .vst3 files (names only, nothing loaded)
-2. Skip those in the blacklist, and those in the KnownPluginList cache whose modification time is unchanged
-3. For each file to scan:
-     send "scan <path>" to the child  ───────────►  load the DLL, findAllTypesForFile
-     wait for the reply, at most T seconds  ◄─────  return the PluginDescription (serialized as XML)
-     - result received: add it to the KnownPluginList
-     - child exited (crashed) or timed out: write the path to the blacklist, restart the child, continue
-4. Save the KnownPluginList and the blacklist; the UI shows "which plugins were disabled" so the user can retry manually
+```mermaid
+sequenceDiagram
+    participant M as Main process
+    participant S as Scanner child process<br/>(the same executable with the argument --scan)
+    Note over M: 1. List all .vst3 files (names only, nothing loaded)
+    Note over M: 2. Skip those in the blacklist, and those in the KnownPluginList cache whose modification time is unchanged
+    loop 3. For each file to scan
+        M->>S: send scan PATH to the child
+        Note over S: load the DLL, findAllTypesForFile
+        alt reply within T seconds
+            S-->>M: PluginDescription (serialized as XML)
+            Note over M: result received, add it to the KnownPluginList
+        else child exited (crashed) or timed out
+            Note over M: write the path to the blacklist, restart the child, continue
+        end
+    end
+    Note over M: 4. Save the KnownPluginList and the blacklist. The UI shows which plugins were disabled so the user can retry manually
 ```
 
 Key points: (1) every time, write to a file "which file is being scanned", so that even if the main process crashes too, the next launch knows who the culprit was; (2) timeout handling (some plugins pop up a licensing dialog and hang); (3) JUCE's `KnownPluginList::CustomScanner` is the interface for hooking into this flow, and `CustomPluginScanner` in `extras/AudioPluginHost` is a complete example. This chapter's `PluginHost::scan()` is in-process: if a plugin crashes during the scan, `l13_scan_plugins` simply exits (ctest counts it as failed), and since the KnownPluginList has not been saved yet, the next run crashes in the same way.

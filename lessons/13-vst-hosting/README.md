@@ -35,17 +35,21 @@ After reading this chapter and doing the exercises, you will be able to:
 
 A plugin is a **dynamic library** (a DLL on Windows, a bundle on macOS, a `.so` on Linux) with an entry point of an agreed-upon name. At run time the host `LoadLibrary`s it, calls the entry point to obtain a "factory", and asks the factory to produce the effect object. After that the host talks to it through a set of **pure virtual interfaces** (abstract classes in C++, or a table of function pointers in C).
 
-```
-            host (DAW)                                 plugin (.vst3 = DLL)
- ┌──────────────────────────────┐   LoadLibrary   ┌────────────────────────────────┐
- │ scan folders, read moduleinfo.json │ ─────────► │ GetPluginFactory()  <- entry point │
- │                              │ ◄─────────────── │   IPluginFactory               │
- │ factory->createInstance(cid) │ ───────────────► │     └► our effect object        │
- │                              │                  │        (IComponent,            │
- │ calls through the interfaces: │ ◄─ interfaces ─► │         IAudioProcessor,       │
- │  setupProcessing / process   │                  │         IEditController ...)   │
- │  getState / setState / ...   │                  │                                │
- └──────────────────────────────┘                  └────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph H["host (DAW)"]
+        H1["scan folders,<br/>read moduleinfo.json"]
+        H2["factory.createInstance(cid)"]
+        H3["call through the interfaces:<br/>setupProcessing / process<br/>getState / setState / ..."]
+    end
+    subgraph P["plugin (.vst3 = DLL)"]
+        P1["GetPluginFactory()<br/>(entry point)"]
+        P3["our effect object<br/>(IComponent, IAudioProcessor,<br/>IEditController ...)"]
+    end
+    H1 -->|"LoadLibrary"| P1
+    P1 -->|"IPluginFactory"| H2
+    H2 -->|"createInstance"| P3
+    H3 <-->|"interfaces"| P3
 ```
 
 This contract has two consequences that recur throughout the chapter:
@@ -72,22 +76,15 @@ The nice thing about JUCE is that the same `juce::AudioProcessor` code can outpu
 
 VST3 splits an effect into two halves:
 
-```
-                  ┌──────────────────────────────────────────────┐
-                  │                 VST3 plugin                  │
-                  │                                              │
- audio + parameter │  ┌──────────────────────┐   IConnectionPoint │
- changes          │  │ component /           │ ◄─── messages ───► │
- ───────────────► │  │ processor             │                   │
-  (audio thread)  │  │  IComponent           │   ┌─────────────────────────┐
-                  │  │  IAudioProcessor      │   │ edit controller          │
-                  │  │  - buses, process()   │   │  IEditController         │
-                  │  │  - getState/setState  │   │  - parameter list (ParameterInfo) │
-                  │  └──────────────────────┘   │  - 0..1 <-> text conversion │
-                  │                              │  - createView() → IPlugView│◄── host UI (message thread)
-                  │                              │  - controller state       │
-                  │                              └─────────────────────────┘
-                  └──────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    IN["audio + parameter changes<br/>(audio thread)"] --> C
+    subgraph V["VST3 plugin"]
+        C["component / processor<br/>IComponent<br/>IAudioProcessor<br/>buses, process()<br/>getState / setState"]
+        E["edit controller<br/>IEditController<br/>parameter list (ParameterInfo)<br/>0..1 to text conversion<br/>createView() returns IPlugView<br/>controller state"]
+        C <-->|"IConnectionPoint<br/>messages"| E
+    end
+    UI["host UI<br/>(message thread)"] <-->|"IPlugView"| E
 ```
 
 - **component / processor** (`IComponent` + `IAudioProcessor`): the half that actually processes audio. It declares which **buses** exist, receives `process(ProcessData&)` calls, and stores the DSP's state. It is called on the audio thread.
@@ -95,11 +92,11 @@ VST3 splits an effect into two halves:
 
 In principle the two can live in different processes, even on different computers (the spec allows it; in practice it is rare), so they **cannot share memory** and can only exchange messages. The path of a parameter change is:
 
-```
-The user turns a knob in the editor
-   → controller: beginEdit / performEdit(id, 0.37) / endEdit   (tells the host: "I changed a parameter")
-   → host: records the automation and, in the next process(), hands the change to the processor in IParameterChanges
-   → processor: reads the new value inside process() and applies it to the DSP
+```mermaid
+flowchart TD
+    A["The user turns a knob in the editor"] --> B["controller:<br/>beginEdit / performEdit(id, 0.37) / endEdit<br/>(tells the host: I changed a parameter)"]
+    B --> C["host: records the automation and, in the next process(),<br/>hands the change to the processor in IParameterChanges"]
+    C --> D["processor: reads the new value inside process()<br/>and applies it to the DSP"]
 ```
 
 A plugin written with JUCE is a "single component": the processor and the controller are implemented by one C++ object (the same `juce::AudioProcessor`), and JUCE's wrapper maps both VST3 interfaces onto it.
@@ -108,11 +105,11 @@ A plugin written with JUCE is a "single component": the processor and the contro
 
 Audio in VST3 is not simply "some number of channels" but a number of **buses**, each with a speaker arrangement (mono, stereo, 5.1, ...):
 
-```
-input bus 0  "Input"      stereo  (main input)
-input bus 1  "Sidechain"  mono    (sidechain, aux; may be disabled by default)
-output bus 0 "Output"     stereo
-```
+| Bus | Name | Arrangement | Note |
+|---|---|---|---|
+| input bus 0 | `"Input"` | stereo | main input |
+| input bus 1 | `"Sidechain"` | mono | sidechain, aux; may be disabled by default |
+| output bus 0 | `"Output"` | stereo | |
 
 The host proposes a configuration with `setBusArrangements()` and the plugin answers whether it accepts it -- this is **bus layout negotiation**. Our `DawLabCompressor` accepts only mono→mono or stereo→stereo (`isBusesLayoutSupported`).
 
@@ -156,14 +153,7 @@ All of these numbers are verified by the parameter table printed by `l13_offline
 
 In VST3's `process(ProcessData& data)`, parameter changes are placed in `data.inputParameterChanges`: every changed parameter has a **queue** holding a number of `(sampleOffset, value)` points, meaning "at sample number sampleOffset of this block, the value becomes value", with linear interpolation between the points:
 
-```
-block (512 samples)
- 0                128               256               384              511
- ├─────────────────┼─────────────────┼─────────────────┼─────────────────┤
- ● (0, 0.60)                        ● (256, 0.40)                       ● (511, 0.45)
-   ╲_______________________________╱ ╲_____________________________________╱
-          linear interpolation                    linear interpolation
-```
+![VST3 parameter queue: points (0, 0.60), (256, 0.40) and (511, 0.45) joined by straight lines](images/vst3-parameter-queue.svg)
 
 A plugin may choose: (a) to interpolate along the queue for every sample (truly sample-accurate); (b) to split the block at the sampleOffsets and use one value per segment; (c) to take only the last value (block-accurate). JUCE's `AudioProcessor` model is (c): the parameters have already been updated at the start of `processBlock` and do not change within the block.
 
@@ -187,13 +177,13 @@ A JUCE plugin's `getStateInformation` is the component state; on the JUCE host s
 
 A VST3 on Windows is a **folder** (a bundle):
 
-```
+```text
 DawLabCompressor.vst3/
-└── Contents/
-    ├── Resources/
-    │   └── moduleinfo.json        <- name, vendor, category, class ID ... (generated automatically by JUCE after the build)
-    └── x86_64-win/
-        └── DawLabCompressor.vst3  <- the real DLL (its extension is also .vst3)
++-- Contents/
+    +-- Resources/
+    |   +-- moduleinfo.json        <- name, vendor, category, class ID ... (generated automatically by JUCE after the build)
+    +-- x86_64-win/
+        +-- DawLabCompressor.vst3  <- the real DLL (its extension is also .vst3)
 ```
 
 `moduleinfo.json` (the ModuleInfo-JSON page of the VST 3 Developer Portal states that it was added in VST SDK 3.7.5; `public.sdk/source/vst/moduleinfo/moduleinfo.h` in the SDK is likewise marked as created in December 2021) lets the host know which plugins are inside **without loading the DLL**, which makes scanning much faster and keeps a broken plugin from crashing it. The price is that information such as the channel counts is only known after instantiation -- this is why the `ins / outs` in the first table of `l13_scan_plugins` are 0 and only become 2 after instantiation.
@@ -208,7 +198,7 @@ sequenceDiagram
     H->>P: load the DLL, factory.createInstance() (constructor)
     H->>P: setBusArrangements (bus layout negotiation)
     H->>P: setState (when opening a project)
-    H->>P: prepareToPlay(sampleRate, maxBlockSize)<br/>VST3: setupProcessing → activateBus → setActive(true)
+    H->>P: prepareToPlay(sampleRate, maxBlockSize)<br/>VST3: setupProcessing, activateBus, setActive(true)
     P-->>H: setLatencySamples(L) (latency report)
     loop every audio callback
         A->>P: processBlock(buffer, midi)<br/>VST3: process(ProcessData)
@@ -228,18 +218,21 @@ Rules:
 
 This course has insisted since chapter 00 that DSP components "do not depend on JUCE and take a `dawlab::AudioBlock`", precisely for this moment. Wrapping needs just one **adapter**:
 
-```
- VST3 host ──► JUCE VST3 wrapper ──► juce::AudioProcessor (CompressorProcessor)
-                                         │
-                                         │  prepareToPlay(sr, n)  → compressor_.prepare(sr, n, ch)
-                                         │  processBlock(juce buffer)
-                                         │     ├─ read the APVTS std::atomic<float> (lock-free) → setters
-                                         │     └─ dawlab::AudioBlock block(buffer.getArrayOfWritePointers(), ch, n)
-                                         │        compressor_.process(block)   ← chapter 04, not one line changed
-                                         │        makeup_.process(block)       ← chapter 01 Gain
-                                         │  get/setStateInformation → APVTS ValueTree ↔ XML
-                                         ▼
-                                   dawlab::dsp::Compressor / Gain
+```mermaid
+flowchart TD
+    HOST["VST3 host"] --> WRAP["JUCE VST3 wrapper"]
+    WRAP --> PROC["juce::AudioProcessor<br/>(CompressorProcessor)"]
+    PROC -->|"prepareToPlay(sr, n)"| PREP["compressor_.prepare(sr, n, ch)"]
+    PROC -->|"processBlock(juce buffer)"| RD["read the APVTS std::atomic values (lock-free),<br/>call the setters"]
+    RD --> BL["dawlab::AudioBlock block(<br/>buffer.getArrayOfWritePointers(), ch, n)"]
+    BL --> CP["compressor_.process(block)<br/>chapter 04, not one line changed"]
+    CP --> MK["makeup_.process(block)<br/>chapter 01 Gain"]
+    PROC -->|"get/setStateInformation"| ST["APVTS ValueTree and XML"]
+    subgraph D["dawlab::dsp::Compressor / Gain"]
+        PREP
+        CP
+        MK
+    end
 ```
 
 `dawlab::AudioBlock` is just a view of "an array of channel pointers + a length" and wraps the JUCE buffer's pointers directly, with **zero copying**. `l13_offline_host` proves with numbers that the wrapper changes nothing: the result through the VST3 plugin and the result of calling `dsp::Compressor` directly have a **maximum difference of 0**.
@@ -262,13 +255,18 @@ Scanning = finding all the `.vst3` files and reading each plugin's `PluginDescri
 
 Scanning executes the plugin's code (the DLL's initialization, the factory, even constructors). If even one plugin has a bug, in-process scanning crashes the whole DAW, and it will crash again every time the user starts it. The solution:
 
-```
-DAW (main process)                       scanner (child process)
-  for each file to scan:
-    start / reuse the child process  ───►   LoadLibrary, read the factory
-    wait for the result (with timeout) ◄─   return the PluginDescription (serialized)
-    child process crashed / timed out?
-      → add this file to the blacklist (never scan it again), restart the child process, go on to the next one
+```mermaid
+sequenceDiagram
+    participant D as DAW (main process)
+    participant S as scanner (child process)
+    loop for each file to scan
+        D->>S: start / reuse the child process, LoadLibrary, read the factory
+        alt result returned before the timeout
+            S-->>D: PluginDescription (serialized)
+        else child process crashed or timed out
+            D->>D: add this file to the blacklist (never scan it again), restart the child process, go on to the next one
+        end
+    end
 ```
 
 JUCE provides the `KnownPluginList::CustomScanner` hook, and `extras/AudioPluginHost` uses it to move scanning into a child process (`CustomPluginScanner` in `MainHostWindow.cpp`). Going further, DAWs such as Bitwig can even **run** plugins in separate processes (plugin sandboxing), at the price of extra latency and CPU for passing audio between processes. To keep things simple for teaching, this chapter's `PluginHost::scan()` is in-process (exercise 2 asks you to design the out-of-process version).
@@ -346,26 +344,26 @@ The differences between JUCE 9 and the older (6/7) tutorials commonly found onli
 
 ### 3.1 File structure
 
-```
+```text
 lessons/13-vst-hosting/
-├── CMakeLists.txt                 # return() if JUCE is not enabled
-├── plugin/
-│   ├── CMakeLists.txt             # juce_add_plugin ×2 (VST3 + Standalone, COPY_PLUGIN_AFTER_BUILD FALSE)
-│   ├── compressor/CompressorProcessor.{h,cpp}   # DawLabCompressor: Compressor + Gain + Mix, APVTS, state
-│   ├── compressor/CompressorEditor.{h,cpp}      # 7 knobs + gain reduction meter
-│   └── limiter/LimiterProcessor.{h,cpp}         # DawLabLimiter: Limiter, reports latency, no editor
-├── host/
-│   ├── CMakeLists.txt             # dawlab_plugin_host_juce (JUCE modules) + dawlab_plugin_host
-│   ├── include/dawlab/host/PluginHost.h         # PluginHost / HostedPlugin / PluginWindow
-│   └── src/{PluginHost,HostedPlugin,PluginWindow}.cpp
-├── examples/
-│   ├── L13Common.h                # small utilities shared by this chapter's examples (paths, normalized conversion, offline render)
-│   ├── scan_plugins.cpp           # l13_scan_plugins
-│   ├── offline_host.cpp           # l13_offline_host
-│   ├── state_roundtrip.cpp        # l13_state_roundtrip
-│   └── gui_host.cpp               # l13_gui_host (GUI)
-├── exercises/README.md, exercises/starter/ex4…ex7_*.cpp
-└── solutions/README.md, solutions/ex4…ex7_*.cpp
++-- CMakeLists.txt                 # return() if JUCE is not enabled
++-- plugin/
+|   +-- CMakeLists.txt             # juce_add_plugin x2 (VST3 + Standalone, COPY_PLUGIN_AFTER_BUILD FALSE)
+|   +-- compressor/CompressorProcessor.{h,cpp}   # DawLabCompressor: Compressor + Gain + Mix, APVTS, state
+|   +-- compressor/CompressorEditor.{h,cpp}      # 7 knobs + gain reduction meter
+|   +-- limiter/LimiterProcessor.{h,cpp}         # DawLabLimiter: Limiter, reports latency, no editor
++-- host/
+|   +-- CMakeLists.txt             # dawlab_plugin_host_juce (JUCE modules) + dawlab_plugin_host
+|   +-- include/dawlab/host/PluginHost.h         # PluginHost / HostedPlugin / PluginWindow
+|   +-- src/{PluginHost,HostedPlugin,PluginWindow}.cpp
++-- examples/
+|   +-- L13Common.h                # small utilities shared by this chapter's examples (paths, normalized conversion, offline render)
+|   +-- scan_plugins.cpp           # l13_scan_plugins
+|   +-- offline_host.cpp           # l13_offline_host
+|   +-- state_roundtrip.cpp        # l13_state_roundtrip
+|   +-- gui_host.cpp               # l13_gui_host (GUI)
++-- exercises/README.md, exercises/starter/ex4..ex7_*.cpp
++-- solutions/README.md, solutions/ex4..ex7_*.cpp
 ```
 
 This chapter adds no `dsp/` header -- the plugins use chapters 01, 04 and 05's `Gain.h`, `Compressor.h` and `Limiter.h` directly.
@@ -570,9 +568,11 @@ Output: `l13_state_A.wav`, `l13_state_B.wav`, `l13_state_restored.wav` (A is par
 
 A mini host with a window: buttons to load any `.vst3` (or directly DawLabCompressor / DawLabLimiter), open and close the editor, Play / Bypass, and Audio Settings (`AudioDeviceSelectorComponent`). The playback architecture:
 
-```
-AudioDeviceManager ──callback──► AudioProcessorPlayer ──processBlock──► LoopPlayer (drum loop)
-                                                                          └─► HostedPlugin::process (zero-copy)
+```mermaid
+flowchart LR
+    ADM["AudioDeviceManager"] -->|"callback"| APP["AudioProcessorPlayer"]
+    APP -->|"processBlock"| LP["LoopPlayer<br/>(drum loop)"]
+    LP --> HP["HostedPlugin::process<br/>(zero-copy)"]
 ```
 
 The steps for switching plugins (message thread) are the thread rules in practice: **close the editor → `player.setProcessor(nullptr)` (the audio thread no longer touches it) → delete the old plugin → create the new plugin → `player.setProcessor(&loop)` (triggers prepare)**.

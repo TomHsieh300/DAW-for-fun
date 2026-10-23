@@ -84,16 +84,23 @@ plugin 的程式碼跑在 host 的 process 裡；掃描會執行 DLL 的初始�
 
 設計：
 
-```
-主 process                                         scanner 子 process（同一個執行檔加參數 --scan）
-1. 列出所有 .vst3（只看檔名，不載入）
-2. 跳過 blacklist 裡的、跳過 KnownPluginList 快取中修改時間沒變的
-3. 對每個待掃描檔案：
-     送「scan <path>」給子 process  ─────────────►  載入 DLL、findAllTypesForFile
-     等回覆，最多 T 秒                ◄─────────────  回傳 PluginDescription（XML 序列化）
-     - 收到結果：加進 KnownPluginList
-     - 子 process 結束（crash）或逾時：把 path 寫進 blacklist、重開子 process、繼續
-4. 把 KnownPluginList 與 blacklist 存檔；UI 顯示「哪些 plugin 被停用」，讓使用者手動重試
+```mermaid
+sequenceDiagram
+    participant M as 主 process
+    participant S as scanner 子 process<br/>（同一個執行檔加參數 --scan）
+    Note over M: 1. 列出所有 .vst3（只看檔名，不載入）
+    Note over M: 2. 跳過 blacklist 裡的，跳過 KnownPluginList 快取中修改時間沒變的
+    loop 3. 對每個待掃描檔案
+        M->>S: 送出 scan PATH 給子 process
+        Note over S: 載入 DLL、findAllTypesForFile
+        alt T 秒內收到回覆
+            S-->>M: PluginDescription（XML 序列化）
+            Note over M: 收到結果，加進 KnownPluginList
+        else 子 process 結束（crash）或逾時
+            Note over M: 把 path 寫進 blacklist、重開子 process、繼續
+        end
+    end
+    Note over M: 4. 把 KnownPluginList 與 blacklist 存檔。UI 顯示哪些 plugin 被停用，讓使用者手動重試
 ```
 
 重點：(1) 每次寫檔「正在掃描哪個檔案」，即使主 process 也 crash，下次啟動也知道是誰；(2) 逾時處理（有些 plugin 會跳出授權對話框卡住）；(3) JUCE 的 `KnownPluginList::CustomScanner` 就是掛這個流程的介面，`extras/AudioPluginHost` 的 `CustomPluginScanner` 是完整範例。本章的 `PluginHost::scan()` 是 in-process 的：某個 plugin 在掃描時 crash，`l13_scan_plugins` 就會直接結束（ctest 判定失敗），而且 KnownPluginList 還沒存檔，下次執行同樣會 crash。

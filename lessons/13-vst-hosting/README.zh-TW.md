@@ -35,17 +35,21 @@
 
 plugin 就是一個 **動態連結函式庫**（Windows 的 DLL、macOS 的 bundle、Linux 的 `.so`），裡面有一個約定好名字的進入點。host 在執行期 `LoadLibrary` 它、呼叫進入點拿到一個「工廠（factory）」，再請工廠生出效果器物件。之後 host 透過一組 **純虛擬介面**（C++ 的 abstract class，或 C 的 function pointer 表）跟它溝通。
 
-```
-            host（DAW）                               plugin（.vst3 = DLL）
- ┌──────────────────────────────┐   LoadLibrary   ┌────────────────────────────────┐
- │ 掃描資料夾、讀 moduleinfo.json │ ───────────────► │ GetPluginFactory()  ← 進入點     │
- │                              │ ◄─────────────── │   IPluginFactory               │
- │ factory->createInstance(cid) │ ───────────────► │     └► 我們的效果器物件           │
- │                              │                  │        (IComponent,            │
- │ 透過介面呼叫：                 │ ◄──── 介面 ────► │         IAudioProcessor,       │
- │  setupProcessing / process   │                  │         IEditController …)     │
- │  getState / setState / ...   │                  │                                │
- └──────────────────────────────┘                  └────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph H["host（DAW）"]
+        H1["掃描資料夾、<br/>讀 moduleinfo.json"]
+        H2["factory.createInstance(cid)"]
+        H3["透過介面呼叫：<br/>setupProcessing / process<br/>getState / setState / ..."]
+    end
+    subgraph P["plugin（.vst3 = DLL）"]
+        P1["GetPluginFactory()<br/>（進入點）"]
+        P3["我們的效果器物件<br/>(IComponent, IAudioProcessor,<br/>IEditController ...)"]
+    end
+    H1 -->|"LoadLibrary"| P1
+    P1 -->|"IPluginFactory"| H2
+    H2 -->|"createInstance"| P3
+    H3 <-->|"介面"| P3
 ```
 
 這個合約有兩個後果，整章都會一再出現：
@@ -72,22 +76,15 @@ JUCE 的好處是：同一份 `juce::AudioProcessor` 程式碼可以同時輸出
 
 VST3 把一個效果器拆成兩半：
 
-```
-                  ┌──────────────────────────────────────────────┐
-                  │                 VST3 plugin                  │
-                  │                                              │
- audio + 參數變化  │  ┌──────────────────────┐   IConnectionPoint │
- ───────────────► │  │ component /           │ ◄──── 訊息 ────►  │
-  (audio thread)  │  │ processor             │                   │
-                  │  │  IComponent           │   ┌─────────────────────────┐
-                  │  │  IAudioProcessor      │   │ edit controller          │
-                  │  │  - bus、process()      │   │  IEditController         │
-                  │  │  - getState/setState  │   │  - 參數清單（ParameterInfo）│
-                  │  └──────────────────────┘   │  - 0..1 ↔ 文字 的換算     │
-                  │                              │  - createView() → IPlugView│◄── host 的 UI（message thread）
-                  │                              │  - controller state       │
-                  │                              └─────────────────────────┘
-                  └──────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    IN["audio + 參數變化<br/>(audio thread)"] --> C
+    subgraph V["VST3 plugin"]
+        C["component / processor<br/>IComponent<br/>IAudioProcessor<br/>bus、process()<br/>getState / setState"]
+        E["edit controller<br/>IEditController<br/>參數清單（ParameterInfo）<br/>0..1 與文字的換算<br/>createView() 回傳 IPlugView<br/>controller state"]
+        C <-->|"IConnectionPoint<br/>訊息"| E
+    end
+    UI["host 的 UI<br/>(message thread)"] <-->|"IPlugView"| E
 ```
 
 - **component / processor**（`IComponent` + `IAudioProcessor`）：真正處理 audio 的那一半。宣告有哪些 **bus**、收 `process(ProcessData&)` 呼叫、保存 DSP 的 state。它在 audio thread 上被呼叫。
@@ -95,11 +92,11 @@ VST3 把一個效果器拆成兩半：
 
 兩者原則上可以活在不同的 process，甚至不同的電腦（規格允許，實務上很少見），所以它們之間 **不能共享記憶體**，只能交換訊息。參數改變的路徑是：
 
-```
-使用者轉 editor 上的旋鈕
-   → controller：beginEdit / performEdit(id, 0.37) / endEdit   （通知 host：「我改了參數」）
-   → host：錄 automation，並在下一個 process() 把變化放進 IParameterChanges 交給 processor
-   → processor：在 process() 裡讀出新值，套用到 DSP
+```mermaid
+flowchart TD
+    A["使用者轉 editor 上的旋鈕"] --> B["controller：<br/>beginEdit / performEdit(id, 0.37) / endEdit<br/>（通知 host：我改了參數）"]
+    B --> C["host：錄 automation，並在下一個 process()<br/>把變化放進 IParameterChanges 交給 processor"]
+    C --> D["processor：在 process() 裡讀出新值，<br/>套用到 DSP"]
 ```
 
 JUCE 寫的 plugin 是「single component」：processor 與 controller 由同一個 C++ 物件實作（同一個 `juce::AudioProcessor`），JUCE 的 wrapper 負責把 VST3 的兩個介面都轉接到它身上。
@@ -108,11 +105,11 @@ JUCE 寫的 plugin 是「single component」：processor 與 controller 由同�
 
 VST3 的音訊不是「幾個 channel」這麼簡單，而是若干個 **bus**，每個 bus 有一個 speaker arrangement（mono、stereo、5.1……）：
 
-```
-input bus 0  "Input"      stereo  （主輸入，main）
-input bus 1  "Sidechain"  mono    （sidechain，aux；預設可能是關閉的）
-output bus 0 "Output"     stereo
-```
+| Bus | 名稱 | Arrangement | 說明 |
+|---|---|---|---|
+| input bus 0 | `"Input"` | stereo | 主輸入（main） |
+| input bus 1 | `"Sidechain"` | mono | sidechain，aux；預設可能是關閉的 |
+| output bus 0 | `"Output"` | stereo | |
 
 host 用 `setBusArrangements()` 提議一組配置，plugin 回答接不接受——這就是 **bus layout 協商**。我們的 `DawLabCompressor` 只接受 mono→mono 或 stereo→stereo（`isBusesLayoutSupported`）。
 
@@ -156,14 +153,7 @@ $$
 
 VST3 的 `process(ProcessData& data)` 裡，參數變化放在 `data.inputParameterChanges`：每個變了的參數有一個 **queue**，裡面是若干個 `(sampleOffset, value)` 的點，代表「在這個 block 的第 sampleOffset 個 sample，值變成 value」，點與點之間線性內插：
 
-```
-block（512 samples）
- 0                128               256               384              511
- ├─────────────────┼─────────────────┼─────────────────┼─────────────────┤
- ● (0, 0.60)                        ● (256, 0.40)                       ● (511, 0.45)
-   ╲_______________________________╱ ╲_____________________________________╱
-            線性內插                                線性內插
-```
+![VST3 參數 queue：(0, 0.60)、(256, 0.40)、(511, 0.45) 三個點與其間的線性內插](images/vst3-parameter-queue.svg)
 
 plugin 可以選擇：(a) 每個 sample 都依 queue 內插（真正的 sample-accurate）；(b) 把 block 依 sampleOffset 切段，每段用一個值；(c) 只取最後一個值（block-accurate）。JUCE 的 `AudioProcessor` 模型屬於 (c)：參數在 `processBlock` 開頭已經更新好，block 內不變。
 
@@ -187,14 +177,17 @@ JUCE plugin 的 `getStateInformation` 就是 component state；JUCE host 端（`
 
 Windows 上的 VST3 是一個 **資料夾**（bundle）：
 
-```
+```text
 DawLabCompressor.vst3/
-└── Contents/
-    ├── Resources/
-    │   └── moduleinfo.json        ← 名稱、廠商、類別、class ID……（JUCE 在 build 後自動產生）
-    └── x86_64-win/
-        └── DawLabCompressor.vst3  ← 真正的 DLL（副檔名也是 .vst3）
++-- Contents/
+    +-- Resources/
+    |   +-- moduleinfo.json
+    +-- x86_64-win/
+        +-- DawLabCompressor.vst3
 ```
+
+- `moduleinfo.json`：名稱、廠商、類別、class ID……（JUCE 在 build 後自動產生）。
+- 內層的 `DawLabCompressor.vst3`：真正的 DLL（副檔名也是 .vst3）。
 
 `moduleinfo.json`（VST 3 Developer Portal 的 ModuleInfo-JSON 頁面寫明它是在 VST SDK 3.7.5 加入的；SDK 裡 `public.sdk/source/vst/moduleinfo/moduleinfo.h` 也標註建立於 2021 年 12 月）讓 host **不必載入 DLL** 就能知道裡面有哪些 plugin，掃描快很多、也不會被壞掉的 plugin 弄當。代價是 channel 數之類的資訊要 instantiate 之後才知道——`l13_scan_plugins` 的第一張表裡 `ins / outs` 是 0，instantiate 之後才變成 2，就是這個原因。
 
@@ -208,7 +201,7 @@ sequenceDiagram
     H->>P: 載入 DLL、factory.createInstance()（建構子）
     H->>P: setBusArrangements（bus layout 協商）
     H->>P: setState（開專案時）
-    H->>P: prepareToPlay(sampleRate, maxBlockSize)<br/>VST3: setupProcessing → activateBus → setActive(true)
+    H->>P: prepareToPlay(sampleRate, maxBlockSize)<br/>VST3: setupProcessing, activateBus, setActive(true)
     P-->>H: setLatencySamples(L)（latency 回報）
     loop 每個 audio callback
         A->>P: processBlock(buffer, midi)<br/>VST3: process(ProcessData)
@@ -228,18 +221,21 @@ sequenceDiagram
 
 這套教材從第 00 章就堅持 DSP 元件「不依賴 JUCE、吃 `dawlab::AudioBlock`」，就是為了這一刻。包裝只需要一個 **adapter**：
 
-```
- VST3 host ──► JUCE VST3 wrapper ──► juce::AudioProcessor（CompressorProcessor）
-                                         │
-                                         │  prepareToPlay(sr, n)  → compressor_.prepare(sr, n, ch)
-                                         │  processBlock(juce buffer)
-                                         │     ├─ 讀 APVTS 的 std::atomic<float>（lock-free）→ setter
-                                         │     └─ dawlab::AudioBlock block(buffer.getArrayOfWritePointers(), ch, n)
-                                         │        compressor_.process(block)   ← 第 04 章，一行都不用改
-                                         │        makeup_.process(block)       ← 第 01 章 Gain
-                                         │  get/setStateInformation → APVTS ValueTree ↔ XML
-                                         ▼
-                                   dawlab::dsp::Compressor / Gain
+```mermaid
+flowchart TD
+    HOST["VST3 host"] --> WRAP["JUCE VST3 wrapper"]
+    WRAP --> PROC["juce::AudioProcessor<br/>(CompressorProcessor)"]
+    PROC -->|"prepareToPlay(sr, n)"| PREP["compressor_.prepare(sr, n, ch)"]
+    PROC -->|"processBlock(juce buffer)"| RD["讀 APVTS 的 std::atomic 值（lock-free），<br/>呼叫 setter"]
+    RD --> BL["dawlab::AudioBlock block(<br/>buffer.getArrayOfWritePointers(), ch, n)"]
+    BL --> CP["compressor_.process(block)<br/>第 04 章，一行都不用改"]
+    CP --> MK["makeup_.process(block)<br/>第 01 章 Gain"]
+    PROC -->|"get/setStateInformation"| ST["APVTS ValueTree 與 XML"]
+    subgraph D["dawlab::dsp::Compressor / Gain"]
+        PREP
+        CP
+        MK
+    end
 ```
 
 `dawlab::AudioBlock` 只是「channel 指標陣列 + 長度」的 view，直接包住 JUCE buffer 的指標，**零複製**。`l13_offline_host` 用數字證明了包裝沒有改變任何東西：經過 VST3 plugin 的結果與直接呼叫 `dsp::Compressor` 的結果 **最大差異為 0**。
@@ -261,13 +257,18 @@ sequenceDiagram
 
 掃描時會執行 plugin 的程式碼（DLL 的初始化、factory、甚至建構子）。只要有一個 plugin 有 bug，in-process 掃描就會把整個 DAW 弄當，而且使用者每次啟動都會再當一次。解法：
 
-```
-DAW（主 process）                       scanner（子 process）
-  for 每個待掃描檔案:
-    啟動 / 重用子 process  ───────────►   LoadLibrary、讀 factory
-    等結果（含 timeout）   ◄───────────   回傳 PluginDescription（序列化）
-    子 process crash / timeout？
-      → 把這個檔案加進 blacklist（下次不再掃）、重開子 process、繼續下一個
+```mermaid
+sequenceDiagram
+    participant D as DAW（主 process）
+    participant S as scanner（子 process）
+    loop 對每個待掃描檔案
+        D->>S: 啟動 / 重用子 process，LoadLibrary、讀 factory
+        alt 在 timeout 內收到結果
+            S-->>D: PluginDescription（序列化）
+        else 子 process crash 或 timeout
+            D->>D: 把這個檔案加進 blacklist（下次不再掃）、重開子 process、繼續下一個
+        end
+    end
 ```
 
 JUCE 提供了 `KnownPluginList::CustomScanner` 這個掛勾，`extras/AudioPluginHost` 就是用它把掃描放到子 process（`MainHostWindow.cpp` 的 `CustomPluginScanner`）。更進一步，Bitwig 等 DAW 連 **執行** 都可以放在獨立 process（plugin sandboxing），代價是 process 之間傳 audio 的額外延遲與 CPU。本章的 `PluginHost::scan()` 為了教學簡潔是 in-process 的（練習 2 請你設計 out-of-process 版本）。
@@ -345,27 +346,37 @@ JUCE 9 跟網路上常見的舊版（6/7）教學的差別，本章碰到的有�
 
 ### 3.1 檔案結構
 
-```
+```text
 lessons/13-vst-hosting/
-├── CMakeLists.txt                 # 沒開 JUCE 就 return()
-├── plugin/
-│   ├── CMakeLists.txt             # juce_add_plugin ×2（VST3 + Standalone，COPY_PLUGIN_AFTER_BUILD FALSE）
-│   ├── compressor/CompressorProcessor.{h,cpp}   # DawLabCompressor：Compressor + Gain + Mix、APVTS、state
-│   ├── compressor/CompressorEditor.{h,cpp}      # 7 個旋鈕 + gain reduction meter
-│   └── limiter/LimiterProcessor.{h,cpp}         # DawLabLimiter：Limiter、回報 latency、沒有 editor
-├── host/
-│   ├── CMakeLists.txt             # dawlab_plugin_host_juce（JUCE modules）+ dawlab_plugin_host
-│   ├── include/dawlab/host/PluginHost.h         # PluginHost / HostedPlugin / PluginWindow
-│   └── src/{PluginHost,HostedPlugin,PluginWindow}.cpp
-├── examples/
-│   ├── L13Common.h                # 本章範例共用的小工具（路徑、normalized 換算、離線 render）
-│   ├── scan_plugins.cpp           # l13_scan_plugins
-│   ├── offline_host.cpp           # l13_offline_host
-│   ├── state_roundtrip.cpp        # l13_state_roundtrip
-│   └── gui_host.cpp               # l13_gui_host（GUI）
-├── exercises/README.md, exercises/starter/ex4…ex7_*.cpp
-└── solutions/README.md, solutions/ex4…ex7_*.cpp
++-- CMakeLists.txt
++-- plugin/
+|   +-- CMakeLists.txt
+|   +-- compressor/CompressorProcessor.{h,cpp}
+|   +-- compressor/CompressorEditor.{h,cpp}
+|   +-- limiter/LimiterProcessor.{h,cpp}
++-- host/
+|   +-- CMakeLists.txt
+|   +-- include/dawlab/host/PluginHost.h
+|   +-- src/{PluginHost,HostedPlugin,PluginWindow}.cpp
++-- examples/
+|   +-- L13Common.h
+|   +-- scan_plugins.cpp
+|   +-- offline_host.cpp
+|   +-- state_roundtrip.cpp
+|   +-- gui_host.cpp
++-- exercises/README.md, exercises/starter/ex4..ex7_*.cpp
++-- solutions/README.md, solutions/ex4..ex7_*.cpp
 ```
+
+- `CMakeLists.txt`：沒開 JUCE 就 `return()`。
+- `plugin/CMakeLists.txt`：`juce_add_plugin` 兩次（VST3 + Standalone，`COPY_PLUGIN_AFTER_BUILD FALSE`）。
+- `plugin/compressor/CompressorProcessor.{h,cpp}`：DawLabCompressor，Compressor + Gain + Mix、APVTS、state。
+- `plugin/compressor/CompressorEditor.{h,cpp}`：7 個旋鈕 + gain reduction meter。
+- `plugin/limiter/LimiterProcessor.{h,cpp}`：DawLabLimiter，Limiter、回報 latency、沒有 editor。
+- `host/CMakeLists.txt`：`dawlab_plugin_host_juce`（JUCE modules）+ `dawlab_plugin_host`。
+- `host/include/dawlab/host/PluginHost.h`：`PluginHost` / `HostedPlugin` / `PluginWindow`。
+- `examples/L13Common.h`：本章範例共用的小工具（路徑、normalized 換算、離線 render）。
+- `examples/scan_plugins.cpp`、`offline_host.cpp`、`state_roundtrip.cpp`、`gui_host.cpp`：依序是 `l13_scan_plugins`、`l13_offline_host`、`l13_state_roundtrip`、`l13_gui_host`（GUI）。
 
 本章沒有新增 `dsp/` header——plugin 直接使用第 01、04、05 章的 `Gain.h`、`Compressor.h`、`Limiter.h`。
 
@@ -483,10 +494,14 @@ cd build
 示範：系統預設 VST3 資料夾（只列檔名，不載入）、掃描本章的 plugin 資料夾、`KnownPluginList` 快取、存成 XML 再讀回、instantiate 後讀出實際 I/O。
 
 ```
-l13_scan_plugins                    掃描本章的 plugin 資料夾
-l13_scan_plugins <資料夾或 .vst3>    掃描指定位置
-l13_scan_plugins --system           真的掃描系統預設資料夾（in-process，注意 crash 風險）
+l13_scan_plugins
+l13_scan_plugins <folder or .vst3>
+l13_scan_plugins --system
 ```
+
+- 不帶參數：掃描本章的 plugin 資料夾。
+- `<資料夾或 .vst3>`：掃描指定位置。
+- `--system`：真的掃描系統預設資料夾（in-process，注意 crash 風險）。
 
 實際輸出（節錄）：
 
@@ -511,9 +526,12 @@ l13_scan_plugins --system           真的掃描系統預設資料夾（in-proce
 示範 plugin 生命週期與 normalized parameter：載入 → `prepare(48000, 512, 2)` → 列出參數 → 用公式算 normalized 值設定 Threshold −30 dB、Ratio 4:1、Attack 5 ms、Release 80 ms → 一塊一塊（512 samples）處理 4 小節 drum loop → 輸出 WAV。
 
 ```
-l13_offline_host                          # 預設 DawLabCompressor
-l13_offline_host <plugin.vst3> [in.wav]   # 任意 VST3（48 kHz WAV）
+l13_offline_host
+l13_offline_host <plugin.vst3> [in.wav]
 ```
+
+- 不帶參數：預設載入 DawLabCompressor。
+- `<plugin.vst3> [in.wav]`：載入任意 VST3，輸入為 48 kHz WAV。
 
 實際輸出（節錄）：
 
@@ -569,9 +587,11 @@ Exercise 1 check: Threshold 0.6 -> -24.0 dB, Ratio 0.60698 -> 8.00, Attack 0.4 -
 
 有視窗的迷你 host：按鈕載入任意 `.vst3`（或直接載入 DawLabCompressor / DawLabLimiter）、開關 editor、Play / Bypass、Audio Settings（`AudioDeviceSelectorComponent`）。播放架構：
 
-```
-AudioDeviceManager ──callback──► AudioProcessorPlayer ──processBlock──► LoopPlayer（drum loop）
-                                                                          └─► HostedPlugin::process（zero-copy）
+```mermaid
+flowchart LR
+    ADM["AudioDeviceManager"] -->|"callback"| APP["AudioProcessorPlayer"]
+    APP -->|"processBlock"| LP["LoopPlayer<br/>(drum loop)"]
+    LP --> HP["HostedPlugin::process<br/>(zero-copy)"]
 ```
 
 換 plugin 的步驟（message thread）就是 thread 規則的實踐：**關 editor → `player.setProcessor(nullptr)`（audio thread 不再碰它）→ 刪舊 plugin → 建新 plugin → `player.setProcessor(&loop)`（觸發 prepare）**。
