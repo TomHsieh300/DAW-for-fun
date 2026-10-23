@@ -1,15 +1,17 @@
-// 練習 4 解答：sidechain —— 用 kick 軌控制 pad 軌（ducking 與 trance gate）
+// Exercise 4 solution: sidechain -- use a kick track to control a pad track (ducking and a trance gate)
 //
-// (a) Ducker：偵測 sidechain（kick）的 envelope，高於 threshold 時把 main（pad）壓低 duckDb，
-//     gain 在 dB 域用 attack / release 平滑（和第 04 章 compressor 的 log-domain 平滑同一個概念）。
-// (b) Trance gate：直接用 Gate::process(main, sidechain)，pad 只在 kick 出現時通過。
+// (a) Ducker: detects the envelope of the sidechain (kick); when it is above the threshold, the main signal (pad)
+//     is pulled down by duckDb, and the gain is smoothed in the dB domain with attack / release (the same idea as
+//     the log-domain smoothing of the Chapter 04 compressor).
+// (b) Trance gate: simply use Gate::process(main, sidechain); the pad only passes when a kick occurs.
 //
-// 自我檢查：
-//   - ducking 期間（kick 後 15–60 ms）pad 的位準比原本低 duckDb ± 1 dB
-//   - kick 之間（kick 後 350–490 ms）pad 回到原本位準 ± 1 dB
-//   - trance gate：kick 後 20–100 ms pad 幾乎原封不動（± 1 dB），kick 後 350–490 ms pad RMS < -60 dBFS
-// 執行：l08_ex4_solution → 輸出 dawlab_output/l08_ex4_pad.wav、l08_ex4_kick.wav、l08_ex4_ducked.wav、
-//      l08_ex4_trance_gate.wav，並印出 PASS / FAIL。
+// Self-check:
+//   - During ducking (15-60 ms after the kick) the pad level is duckDb +/- 1 dB below the original
+//   - Between kicks (350-490 ms after the kick) the pad is back to its original level +/- 1 dB
+//   - Trance gate: 20-100 ms after the kick the pad is practically untouched (+/- 1 dB), and 350-490 ms after the kick
+//     the pad RMS is < -60 dBFS
+// Run: l08_ex4_solution -> writes dawlab_output/l08_ex4_pad.wav, l08_ex4_kick.wav, l08_ex4_ducked.wav,
+//      l08_ex4_trance_gate.wav, and prints PASS / FAIL.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/EnvelopeFollower.h>
@@ -27,7 +29,7 @@ namespace {
 
 constexpr int kBlockSize = 512;
 constexpr double kSampleRate = 48000.0;
-constexpr double kKickPeriodSec = 0.5; // 120 BPM，每拍一個 kick
+constexpr double kKickPeriodSec = 0.5; // 120 BPM, one kick per beat
 
 // ---- (a) Ducker --------------------------------------------------------------
 class Ducker {
@@ -44,7 +46,7 @@ public:
     }
     void reset() noexcept {
         detector_.reset();
-        smoother_.reset(); // gain reduction 從 0 dB 開始
+        smoother_.reset(); // gain reduction starts at 0 dB
     }
     void setThresholdDb(float db) noexcept { thresholdDb_ = db; }
     void setDuckDb(float db) noexcept { duckDb_ = std::abs(db); }
@@ -57,12 +59,14 @@ public:
         smoother_.setReleaseMs(ms);
     }
 
-    // 餵入 sidechain 的偵測 sample，回傳要乘到 main 的線性 gain
+    // Feed in a detection sample from the sidechain; returns the linear gain to multiply onto main
     float nextGain(float sidechainSample) noexcept {
         const float envDb = gainToDb(detector_.processSample(sidechainSample));
-        // 靜態曲線：高於 threshold → 壓 duckDb；否則 0 dB（這是「∞:1 的 gate 式 ducking」，也可以改成比例式）
+        // Static curve: above the threshold -> duck by duckDb; otherwise 0 dB (this is "gate-style ducking at inf:1";
+        // it could also be made proportional)
         const float targetGr = envDb >= thresholdDb_ ? duckDb_ : 0.0f;
-        // 在 dB 域平滑：GR 上升用 attack、下降用 release（AttackReleaseFilter 的 Branching 模式剛好是這個語意）
+        // Smooth in the dB domain: attack when GR rises, release when it falls (the Branching mode of
+        // AttackReleaseFilter has exactly these semantics)
         const float gr = smoother_.process(targetGr);
         return dbToGain(-gr);
     }
@@ -89,8 +93,8 @@ private:
     float detectorReleaseMs_ = 30.0f;
 };
 
-// ---- 測試素材 ---------------------------------------------------------------
-// pad：220 Hz + 330 Hz 兩個正弦（完全五度），持續整段
+// ---- Test material ---------------------------------------------------------------
+// pad: two sine waves at 220 Hz + 330 Hz (a perfect fifth), lasting the whole signal
 AudioBuffer makePad(double seconds) {
     AudioBuffer b(2, secondsToSamples(seconds, kSampleRate));
     for (int i = 0; i < b.getNumSamples(); ++i) {
@@ -102,7 +106,7 @@ AudioBuffer makePad(double seconds) {
     return b;
 }
 
-// kick：每 0.5 秒一個，音高 120 → 45 Hz，振幅 e^(-14 t)，長 0.3 秒
+// kick: one every 0.5 s, pitch sweeping 120 -> 45 Hz, amplitude e^(-14 t), 0.3 s long
 AudioBuffer makeKicks(double seconds) {
     AudioBuffer b(1, secondsToSamples(seconds, kSampleRate));
     const int len = secondsToSamples(0.3, kSampleRate);
@@ -123,7 +127,7 @@ template <typename Fn>
 AudioBuffer runBlocks(const AudioBuffer& main, const AudioBuffer& sidechain, Fn&& processBlock) {
     AudioBuffer out = main;
     AudioBlock whole(out);
-    AudioBlock sc(const_cast<AudioBuffer&>(sidechain)); // 只讀，const_cast 只是為了取得 view
+    AudioBlock sc(const_cast<AudioBuffer&>(sidechain)); // read-only; the const_cast is only used to obtain a view
     const int n = out.getNumSamples();
     for (int start = 0; start < n; start += kBlockSize) {
         const int len = std::min(kBlockSize, n - start);
@@ -132,7 +136,7 @@ AudioBuffer runBlocks(const AudioBuffer& main, const AudioBuffer& sidechain, Fn&
     return out;
 }
 
-// 從 kick 起點算起 [fromMs, toMs) 的 RMS（dB），對第 2..5 個 kick 取平均
+// RMS (dB) over [fromMs, toMs) counted from the start of the kick, averaged over the 2nd..5th kicks
 double windowRmsDb(const AudioBuffer& b, double fromMs, double toMs) {
     double sum = 0.0;
     int count = 0;
@@ -149,7 +153,7 @@ double windowRmsDb(const AudioBuffer& b, double fromMs, double toMs) {
 } // namespace
 
 int main() {
-    std::printf("第 08 章 練習 4：sidechain ducking 與 trance gate\n");
+    std::printf("Chapter 08 Exercise 4: sidechain ducking and trance gate\n");
     const double seconds = 3.0;
     const AudioBuffer pad = makePad(seconds);
     const AudioBuffer kicks = makeKicks(seconds);
@@ -169,8 +173,8 @@ int main() {
     const double padRef = windowRmsDb(pad, 15.0, 60.0);
     const double duckDuring = windowRmsDb(ducked, 15.0, 60.0);
     const double duckBetween = windowRmsDb(ducked, 350.0, 490.0);
-    std::printf("\n[a] ducking：pad 原本 %.2f dBFS；kick 後 15–60 ms %.2f dBFS（應低 12 dB）；"
-                "kick 後 350–490 ms %.2f dBFS（應回到原本）\n",
+    std::printf("\n[a] ducking: pad originally %.2f dBFS; 15-60 ms after the kick %.2f dBFS (should be 12 dB lower); "
+                "350-490 ms after the kick %.2f dBFS (should be back to the original)\n",
                 padRef, duckDuring, duckBetween);
     DAWLAB_CHECK_NEAR(padRef - duckDuring, 12.0, 1.0);
     DAWLAB_CHECK_NEAR(duckBetween, padRef, 1.0);
@@ -189,7 +193,7 @@ int main() {
 
     const double gateOpen = windowRmsDb(gated, 20.0, 100.0);
     const double gateClosed = windowRmsDb(gated, 350.0, 490.0);
-    std::printf("[b] trance gate：kick 後 20–100 ms %.2f dBFS（應 ≈ %.2f）；kick 後 350–490 ms %.2f dBFS（應 < -60）\n",
+    std::printf("[b] trance gate: 20-100 ms after the kick %.2f dBFS (should be ~= %.2f); 350-490 ms after the kick %.2f dBFS (should be < -60)\n",
                 gateOpen, windowRmsDb(pad, 20.0, 100.0), gateClosed);
     DAWLAB_CHECK_NEAR(gateOpen, windowRmsDb(pad, 20.0, 100.0), 1.0);
     DAWLAB_CHECK(gateClosed < -60.0);

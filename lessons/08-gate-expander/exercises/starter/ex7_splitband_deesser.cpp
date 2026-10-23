@@ -1,11 +1,12 @@
-// 練習 7 起始碼：用 Linkwitz-Riley 4 階分頻做 2-band split-band de-esser
+// Exercise 7 starter: a 2-band split-band de-esser built on a Linkwitz-Riley 4th-order crossover
 //
-// 要做的事：
-//   1. 完成 LinkwitzRileyCrossover::setCrossoverHz() 與 processSample()：
-//      LR4 = 兩個相同的 2 階 Butterworth（Q = 1/√2）串聯，LP 與 HP 各一組
-//   2. 完成 SplitBandDeEsser::process()：分頻 → 只用 Compressor 壓高頻段 → 相加
-// self-check 已經寫好（分頻相加平坦、fc 處 -6 dB、母音不動、齒音被壓）；填完 TODO 後 l08_ex7_starter 應印出 PASS。
-// 提示：解答在 solutions/ex7_splitband_deesser.cpp。
+// What to do:
+//   1. Complete LinkwitzRileyCrossover::setCrossoverHz() and processSample():
+//      LR4 = two identical 2nd-order Butterworth filters (Q = 1/sqrt(2)) in cascade, one set for LP and one for HP
+//   2. Complete SplitBandDeEsser::process(): split -> compress only the high band with a Compressor -> sum
+// The self-check is already written (the crossover sums flat, -6 dB at fc, the vowel is untouched, the sibilance is
+// reduced); once the TODOs are filled in, l08_ex7_starter should print PASS.
+// Hint: the solution is in solutions/ex7_splitband_deesser.cpp.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Biquad.h>
@@ -41,11 +42,11 @@ public:
     }
     void setCrossoverHz(float hz) noexcept {
         crossoverHz_ = hz;
-        // TODO：用 BiquadCoefficients::makeLowpass / makeHighpass(sampleRate_, hz, BiquadCoefficients::kButterworthQ)
-        //       設定 lp1_、lp2_、hp1_、hp2_ 的係數
+        // TODO: use BiquadCoefficients::makeLowpass / makeHighpass(sampleRate_, hz, BiquadCoefficients::kButterworthQ)
+        //       to set the coefficients of lp1_, lp2_, hp1_, and hp2_
     }
     void processSample(int ch, float x, float& low, float& high) noexcept {
-        // TODO：low = lp2(lp1(x))、high = hp2(hp1(x))
+        // TODO: low = lp2(lp1(x)), high = hp2(hp1(x))
         (void)ch;
         low = x;
         high = 0.0f;
@@ -80,8 +81,8 @@ public:
     float getGainReductionDb() const noexcept { return compressor_.getGainReductionDb(); }
 
     void process(AudioBlock block) noexcept {
-        // TODO：
-        //   1. 每個 channel 逐 sample 呼叫 crossover_.processSample() 寫進 low_ / high_
+        // TODO:
+        //   1. for each channel, call crossover_.processSample() sample by sample and write into low_ / high_
         //   2. AudioBlock highBlock(high_.getArrayOfWritePointers(), nch, n); compressor_.process(highBlock);
         //   3. block = low_ + high_
         (void)block;
@@ -135,7 +136,7 @@ double levelDb(const AudioBuffer& b, double startSec, double lengthSec, double f
 } // namespace
 
 int main() {
-    std::printf("第 08 章 練習 7（起始碼）：LR4 分頻 + split-band de-esser\n");
+    std::printf("Chapter 08 Exercise 7 (starter): LR4 crossover + split-band de-esser\n");
 
     LinkwitzRileyCrossover xo;
     xo.prepare(kSampleRate, kBlockSize, 1);
@@ -174,7 +175,7 @@ int main() {
     const double vowelOutBurst = levelDb(output, 0.52, 0.08, kVowelHz);
     const double sibIn = levelDb(input, 0.52, 0.08, kSibilanceHz);
     const double sibOut = levelDb(output, 0.52, 0.08, kSibilanceHz);
-    std::printf("    母音@齒音期間 輸入 %.2f / 輸出 %.2f dB；7 kHz 輸入 %.2f / 輸出 %.2f dB\n", vowelInBurst, vowelOutBurst,
+    std::printf("    vowel during sibilance: input %.2f / output %.2f dB; 7 kHz: input %.2f / output %.2f dB\n", vowelInBurst, vowelOutBurst,
                 sibIn, sibOut);
     DAWLAB_CHECK_NEAR(levelDb(output, 1.0, 0.4, kVowelHz), levelDb(input, 1.0, 0.4, kVowelHz), 0.1);
     DAWLAB_CHECK_NEAR(vowelOutBurst, vowelInBurst, 0.3);

@@ -1,9 +1,10 @@
-// 練習 6 起始碼：為 Gate 加上 lookahead
+// Exercise 6 starter: add lookahead to the Gate
 //
-// 要做的事：完成 LookaheadGate::process()——偵測器看「現在」的 sample（gate_.nextGain），
-// 主訊號走一條長 delaySamples_ 的環形緩衝再乘 gain。setLookaheadMs / getLatencySamples 已寫好。
-// self-check 已經寫好；填完 TODO 後執行 l08_ex6_starter 應該印出 PASS。
-// 提示：解答在 solutions/ex6_lookahead_gate.cpp。
+// What to do: complete LookaheadGate::process(). The detector looks at the "current" sample (gate_.nextGain),
+// while the main signal goes through a ring buffer delaySamples_ long and is then multiplied by the gain.
+// setLookaheadMs / getLatencySamples are already written.
+// The self-check is already written; once the TODO is filled in, running l08_ex6_starter should print PASS.
+// Hint: the solution is in solutions/ex6_lookahead_gate.cpp.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Gate.h>
@@ -24,7 +25,8 @@ public:
     void prepare(double sampleRate, int maxBlockSize, int numChannels, float maxLookaheadMs = 20.0f) {
         sampleRate_ = sampleRate;
         gate_.prepare(sampleRate, maxBlockSize, numChannels);
-        // 環形緩衝長度 = 最大延遲 + 1：先寫後讀，延遲 L 的讀取位置不能和寫入位置重疊（L = 長度時會讀到剛寫入的值）
+        // Ring buffer length = max delay + 1: we write first and then read, so the read position for delay L must not
+        // coincide with the write position (with L = length we would read back the value just written)
         maxDelay_ = std::max(0, msToSamples(maxLookaheadMs, sampleRate)) + 1;
         ring_.assign(static_cast<size_t>(numChannels) * static_cast<size_t>(maxDelay_), 0.0f);
         numChannels_ = numChannels;
@@ -47,10 +49,10 @@ public:
         const int n = block.getNumSamples();
         const int nch = std::min(numChannels_, block.getNumChannels());
         for (int i = 0; i < n; ++i) {
-            // TODO：
-            //   1. det = max|x| across channels（現在的 sample）→ g = gate_.nextGain(det)
-            //   2. readPos = (writePos_ − delaySamples_ + maxDelay_) % maxDelay_
-            //   3. 每個 channel：ring[writePos_] = x；輸出 = ring[readPos] * g（delaySamples_ == 0 時輸出 x * g）
+            // TODO:
+            //   1. det = max|x| across channels (the current sample) -> g = gate_.nextGain(det)
+            //   2. readPos = (writePos_ - delaySamples_ + maxDelay_) % maxDelay_
+            //   3. for each channel: ring[writePos_] = x; output = ring[readPos] * g (when delaySamples_ == 0, output x * g)
             //   4. writePos_ = (writePos_ + 1) % maxDelay_
             for (int ch = 0; ch < nch; ++ch)
                 block.getChannelPointer(ch)[i] *= 1.0f;
@@ -68,7 +70,8 @@ private:
     std::vector<float> ring_;
 };
 
-// 997 Hz：週期不整除 L = 480，self-check 才分得出「有延遲」與「沒延遲」（解答檔頭有說明）
+// 997 Hz: the period does not divide L = 480, so the self-check can tell "delayed" from "not delayed"
+// (explained at the top of the solution file)
 constexpr double kBurstHz = 997.0;
 
 AudioBuffer makeBurst() {
@@ -105,7 +108,7 @@ void setupGate(Gate& gate) {
 } // namespace
 
 int main() {
-    std::printf("第 08 章 練習 6（起始碼）：lookahead gate\n");
+    std::printf("Chapter 08 Exercise 6 (starter): lookahead gate\n");
     const AudioBuffer input = makeBurst();
     const int burstStart = secondsToSamples(0.5, kSampleRate);
     const int head = msToSamples(2.0, kSampleRate);
@@ -128,7 +131,7 @@ int main() {
     const double inHead = rmsDb(input, burstStart, head);
     const double noHead = rmsDb(outNo, burstStart, head);
     const double laHead = rmsDb(outLa, burstStart + L, head);
-    std::printf("burst 前 2 ms 的 RMS：輸入 %.2f dB；無 lookahead %.2f dB；lookahead %.2f dB\n", inHead, noHead, laHead);
+    std::printf("RMS of the first 2 ms of the burst: input %.2f dB; no lookahead %.2f dB; lookahead %.2f dB\n", inHead, noHead, laHead);
     DAWLAB_CHECK(inHead - noHead > 10.0);
     DAWLAB_CHECK_NEAR(laHead, inHead, 0.5);
 
@@ -136,7 +139,7 @@ int main() {
     for (int k = 0; k < head; ++k)
         headErr = std::max(headErr, std::abs(outLa.getSample(0, burstStart + L + k) - input.getSample(0, burstStart + k)));
     const double preDb = rmsDb(outLa, burstStart, L);
-    std::printf("頭的逐 sample 最大誤差 %.2e；transient 到達輸出前的 RMS %.1f dB\n", headErr, preDb);
+    std::printf("Maximum per-sample error of the head %.2e; RMS before the transient reaches the output %.1f dB\n", headErr, preDb);
     DAWLAB_CHECK(headErr < 0.01f);
     DAWLAB_CHECK(preDb < -60.0);
 

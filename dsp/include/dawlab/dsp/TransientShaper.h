@@ -1,24 +1,25 @@
 #pragma once
-// TransientShaper.h —— transient shaper（第 08 章）
+// TransientShaper.h -- transient shaper (Chapter 08)
 //
-// 不看絕對音量、只看「音量變化的快慢」的動態處理器：把每個音符拆成 attack（起音）與 sustain（延音），
-// 各自加強或減弱。
+// A dynamics processor that ignores absolute loudness and looks only at "how fast the loudness changes": it splits each
+// note into an attack (the onset) and a sustain, and boosts or cuts each of them independently.
 //
-// 偵測：同一個訊號餵給兩個 EnvelopeFollower
-//   fast：attack 0.5 ms / release 30 ms   → 幾乎貼著訊號的 peak 走
-//   slow：attack 10 ms  / release 150 ms  → 慢半拍的「平均音量」
-//   d = 20·log10(fast / slow)
-//     起音瞬間：fast 已經衝到 peak、slow 還在爬 → d > 0
-//     延音 / 衰減：fast 跟著訊號往下掉、slow 還撐在高處 → d < 0
+// Detection: the same signal is fed to two EnvelopeFollowers
+//   fast: attack 0.5 ms / release 30 ms   -> follows the signal's peak almost exactly
+//   slow: attack 10 ms  / release 150 ms  -> a "average loudness" that lags a beat behind
+//   d = 20*log10(fast / slow)
+//     At the instant of the onset: fast has already shot up to the peak while slow is still climbing -> d > 0
+//     Sustain / decay: fast falls with the signal while slow is still holding up high -> d < 0
 //
-// 增益映射（dB）：
-//   d > 0：gainDb = attackDb  · min(d / 6 dB, 1)
-//   d < 0：gainDb = sustainDb · min(−d / 6 dB, 1)
-//   （d 超過 ±6 dB 就套用完整的 attackDb / sustainDb；slow envelope 低於 −80 dBFS 視為靜音、不處理）
-// 最後把 gainDb 用 0.5 ms 的 one-pole 平滑，避免 envelope 漣漪造成 zipper noise。
+// Gain mapping (dB):
+//   d > 0: gainDb = attackDb  * min(d / 6 dB, 1)
+//   d < 0: gainDb = sustainDb * min(-d / 6 dB, 1)
+//   (once d exceeds +/-6 dB the full attackDb / sustainDb is applied; a slow envelope below -80 dBFS is treated as
+//    silence and is not processed)
+// Finally gainDb is smoothed with a 0.5 ms one-pole to avoid zipper noise caused by envelope ripple.
 //
-// attack +12 dB 讓鼓更「打」、crest factor 變大；attack −12 dB 讓鼓變圓、變遠；
-// sustain −12 dB 縮短尾音（像把房間縮小）、sustain +12 dB 拉長尾音。
+// Attack +12 dB makes drums hit harder and increases the crest factor; attack -12 dB makes drums rounder and more
+// distant; sustain -12 dB shortens the tails (like shrinking the room), and sustain +12 dB lengthens them.
 
 #include <dawlab/AudioBuffer.h>
 #include <dawlab/DspMath.h>
@@ -36,12 +37,13 @@ public:
     static constexpr float kFastReleaseMs = 30.0f;
     static constexpr float kSlowAttackMs = 10.0f;
     static constexpr float kSlowReleaseMs = 150.0f;
-    static constexpr float kFullScaleDb = 6.0f;  // |d| 達到這個值就套用 100% 的 attackDb / sustainDb
-    static constexpr float kFloorDb = -80.0f;    // slow envelope 低於此視為靜音
+    static constexpr float kFullScaleDb = 6.0f;  // once |d| reaches this value, 100% of attackDb / sustainDb is applied
+    static constexpr float kFloorDb = -80.0f;    // a slow envelope below this is treated as silence
     static constexpr float kGainSmoothMs = 0.5f;
 
     TransientShaper() = default;
-    // std::atomic 成員讓 class 預設不能複製；手動定義，才能放進 std::vector（第 14 章的 8 軌 DAW）
+    // A std::atomic member makes the class non-copyable by default; define these by hand so it can be placed in a
+    // std::vector (the 8-track DAW in Chapter 14)
     TransientShaper(const TransientShaper& other) { copyFrom(other); }
     TransientShaper& operator=(const TransientShaper& other) {
         if (this != &other)
@@ -49,7 +51,7 @@ public:
         return *this;
     }
 
-    // ---- 生命週期 -------------------------------------------------------
+    // ---- Lifecycle -------------------------------------------------------
     void prepare(double sampleRate, int /*maxBlockSize*/, int numChannels) {
         sampleRate_ = sampleRate;
         numChannels_ = numChannels;
@@ -73,26 +75,26 @@ public:
         lastGainDb_.store(0.0f, std::memory_order_relaxed);
     }
 
-    // ---- 參數 -----------------------------------------------------------
-    // -24..+24 dB：正值加強 transient、負值減弱
+    // ---- Parameters -----------------------------------------------------------
+    // -24..+24 dB: positive values boost the transient, negative values reduce it
     void setAttackDb(float db) noexcept { attackDb_ = std::clamp(db, -24.0f, 24.0f); }
     void setSustainDb(float db) noexcept { sustainDb_ = std::clamp(db, -24.0f, 24.0f); }
     float getAttackDb() const noexcept { return attackDb_; }
     float getSustainDb() const noexcept { return sustainDb_; }
     int getLatencySamples() const noexcept { return 0; }
 
-    // 目前套用的 gain（dB，可正可負；block 結束時更新；thread-safe）
+    // The gain currently applied (dB, may be positive or negative; updated at the end of each block; thread-safe)
     float getLastGainDb() const noexcept { return lastGainDb_.load(std::memory_order_relaxed); }
 
-    // ---- 處理 -----------------------------------------------------------
-    // 核心：餵入偵測用 sample（max|x| across channels），回傳線性 gain
+    // ---- Processing -----------------------------------------------------------
+    // Core: feed in the detection sample (max|x| across channels) and return the linear gain
     float nextGain(float detectorInput) noexcept {
         const float fast = fast_.processSample(detectorInput);
         const float slow = slow_.processSample(detectorInput);
         const float slowDb = gainToDb(slow);
         float target = 0.0f;
         if (slowDb > kFloorDb) {
-            const float d = gainToDb(fast) - slowDb; // 快慢 envelope 的差（dB）
+            const float d = gainToDb(fast) - slowDb; // difference between the fast and slow envelopes (dB)
             if (d > 0.0f)
                 target = attackDb_ * std::min(d / kFullScaleDb, 1.0f);
             else

@@ -1,17 +1,20 @@
-// 練習 7 解答：用 Linkwitz-Riley 4 階分頻做 2-band split-band de-esser，並驗證分頻相加為平坦
+// Exercise 7 solution: a 2-band split-band de-esser built on a Linkwitz-Riley 4th-order crossover, verifying that the
+// crossover sums flat
 //
-// Linkwitz-Riley 4 階（LR4）= 兩個相同的 2 階 Butterworth（Q = 1/√2）串聯。
-// 在分頻點 fc：每個 Butterworth 是 -3 dB，串聯後 -6 dB；LP 與 HP 在 fc 同相位，
-// 所以 LP + HP 在 fc = 2 × (-6 dB) = 0 dB，而且整個頻帶 |LP + HP| = 1（相加為 allpass：振幅平坦、相位不平）。
+// Linkwitz-Riley 4th order (LR4) = two identical 2nd-order Butterworth filters (Q = 1/sqrt(2)) in cascade.
+// At the crossover frequency fc: each Butterworth is -3 dB, so the cascade is -6 dB; LP and HP are in phase at fc,
+// so LP + HP at fc = 2 x (-6 dB) = 0 dB, and over the whole
+// band |LP + HP| = 1 (the sum is an allpass: flat in magnitude, not flat in phase).
 //
-// de-esser：HP 段丟給第 04 章的 Compressor（threshold -30、ratio 8:1、attack 1 ms、release 40 ms），
-// 偵測用 HP 段本身（齒音能量都在這裡），LP 段原封不動，最後相加。
+// De-esser: the HP band goes to the Chapter 04 Compressor (threshold -30, ratio 8:1, attack 1 ms, release 40 ms),
+// detection uses the HP band itself (the sibilance energy lives there), the LP band is left untouched, and the two
+// are summed at the end.
 //
-// 自我檢查：
-//   - 100 Hz ~ 15 kHz 之間 |LP + HP| 在 0 dB ± 0.1 dB
-//   - fc 處 LP、HP 各 -6.02 dB ± 0.2 dB
-//   - 齒音期間 220 Hz 母音的位準變化 < 0.3 dB；7 kHz 齒音被壓 ≥ 8 dB
-// 執行：l08_ex7_solution → 輸出 dawlab_output/l08_ex7_input.wav、l08_ex7_output.wav。
+// Self-check:
+//   - Between 100 Hz and 15 kHz, |LP + HP| is within 0 dB +/- 0.1 dB
+//   - At fc, LP and HP are each -6.02 dB +/- 0.2 dB
+//   - During the sibilance the level of the 220 Hz vowel changes by < 0.3 dB; the 7 kHz sibilance is reduced by >= 8 dB
+// Run: l08_ex7_solution -> writes dawlab_output/l08_ex7_input.wav, l08_ex7_output.wav.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Biquad.h>
@@ -32,7 +35,7 @@ constexpr double kSampleRate = 48000.0;
 constexpr double kVowelHz = 220.0;
 constexpr double kSibilanceHz = 7000.0;
 
-// ---- LR4 分頻器 --------------------------------------------------------------
+// ---- LR4 crossover --------------------------------------------------------------
 class LinkwitzRileyCrossover {
 public:
     void prepare(double sampleRate, int maxBlockSize, int numChannels) {
@@ -55,7 +58,7 @@ public:
         hp1_.setCoefficients(hp);
         hp2_.setCoefficients(hp);
     }
-    // 一個 sample 進、兩個 band 出
+    // One sample in, two bands out
     void processSample(int ch, float x, float& low, float& high) noexcept {
         low = lp2_.processSample(ch, lp1_.processSample(ch, x));
         high = hp2_.processSample(ch, hp1_.processSample(ch, x));
@@ -93,7 +96,7 @@ public:
     void process(AudioBlock block) noexcept {
         const int n = std::min(block.getNumSamples(), low_.getNumSamples());
         const int nch = std::min(block.getNumChannels(), low_.getNumChannels());
-        // 1. 分頻到暫存 buffer（prepare 時配好，process 內不 allocate）
+        // 1. Split into scratch buffers (allocated in prepare; no allocation inside process)
         for (int ch = 0; ch < nch; ++ch) {
             const float* x = block.getChannelPointer(ch);
             float* lo = low_.getWritePointer(ch);
@@ -101,10 +104,10 @@ public:
             for (int i = 0; i < n; ++i)
                 crossover_.processSample(ch, x[i], lo[i], hi[i]);
         }
-        // 2. 只壓高頻段（偵測也看高頻段自己）
+        // 2. Compress only the high band (detection also looks at the high band itself)
         AudioBlock highBlock(high_.getArrayOfWritePointers(), nch, n);
         compressor_.process(highBlock);
-        // 3. 相加
+        // 3. Sum
         for (int ch = 0; ch < nch; ++ch) {
             float* y = block.getChannelPointer(ch);
             const float* lo = low_.getReadPointer(ch);
@@ -120,7 +123,7 @@ private:
     AudioBuffer low_, high_;
 };
 
-// ---- 測試素材（與範例 3 相同）----------------------------------------------
+// ---- Test material (same as Example 3) ----------------------------------------------
 AudioBuffer makeVowel(double seconds, float amplitude) {
     AudioBuffer b(2, secondsToSamples(seconds, kSampleRate));
     for (int i = 0; i < b.getNumSamples(); ++i) {
@@ -163,13 +166,13 @@ double levelDb(const AudioBuffer& b, double startSec, double lengthSec, double f
 } // namespace
 
 int main() {
-    std::printf("第 08 章 練習 7：LR4 分頻 + split-band de-esser\n");
+    std::printf("Chapter 08 Exercise 7: LR4 crossover + split-band de-esser\n");
 
-    // ---- 1. 分頻相加為平坦 ----
+    // ---- 1. The crossover sums flat ----
     LinkwitzRileyCrossover xo;
     xo.prepare(kSampleRate, kBlockSize, 1);
     xo.setCrossoverHz(5000.0f);
-    std::printf("\n[1] LR4 @ 5 kHz：|LP + HP|、|LP|、|HP|（dB）\n    頻率(Hz)   LP+HP      LP       HP\n");
+    std::printf("\n[1] LR4 @ 5 kHz: |LP + HP|, |LP|, |HP| (dB)\n    freq(Hz)   LP+HP      LP       HP\n");
     for (double f : {100.0, 500.0, 1000.0, 2000.0, 3500.0, 5000.0, 7000.0, 10000.0, 15000.0}) {
         xo.reset();
         const double sum = measureGainDb([&](float x) { float lo, hi; xo.processSample(0, x, lo, hi); return lo + hi; }, f, kSampleRate);
@@ -210,10 +213,10 @@ int main() {
     const double vowelOutBurst = levelDb(output, 0.52, 0.08, kVowelHz);
     const double sibIn = levelDb(input, 0.52, 0.08, kSibilanceHz);
     const double sibOut = levelDb(output, 0.52, 0.08, kSibilanceHz);
-    std::printf("\n[2] de-esser：最大 GR %.2f dB\n", maxGr);
-    std::printf("    220 Hz 母音：純母音段 輸入 %.2f / 輸出 %.2f；齒音期間 輸入 %.2f / 輸出 %.2f dB\n", vowelInQuiet,
+    std::printf("\n[2] de-esser: maximum GR %.2f dB\n", maxGr);
+    std::printf("    220 Hz vowel: vowel-only section input %.2f / output %.2f; during sibilance input %.2f / output %.2f dB\n", vowelInQuiet,
                 vowelOutQuiet, vowelInBurst, vowelOutBurst);
-    std::printf("    7 kHz 齒音：輸入 %.2f / 輸出 %.2f dB（壓了 %.2f dB）\n", sibIn, sibOut, sibIn - sibOut);
+    std::printf("    7 kHz sibilance: input %.2f / output %.2f dB (reduced by %.2f dB)\n", sibIn, sibOut, sibIn - sibOut);
     DAWLAB_CHECK_NEAR(vowelOutQuiet, vowelInQuiet, 0.1);
     DAWLAB_CHECK_NEAR(vowelOutBurst, vowelInBurst, 0.3);
     DAWLAB_CHECK(sibIn - sibOut >= 8.0);

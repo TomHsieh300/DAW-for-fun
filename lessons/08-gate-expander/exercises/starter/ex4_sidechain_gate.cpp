@@ -1,11 +1,13 @@
-// 練習 4 起始碼：sidechain —— 用 kick 軌控制 pad 軌（ducking 與 trance gate）
+// Exercise 4 starter: sidechain -- use a kick track to control a pad track (ducking and a trance gate)
 //
-// 要做的事：
-//   (a) 完成 Ducker::nextGain()：偵測 sidechain 的 envelope，高於 threshold 時把 main 壓低 duckDb，
-//       gain reduction 在 dB 域用 attack / release 平滑（提示：AttackReleaseFilter 的 Branching 模式）。
-//   (b) 完成 main() 裡的 trance gate：用 Gate::process(main, sidechain) 讓 pad 只在 kick 出現時通過。
-// 測試素材與 self-check 已經寫好；填完 TODO 後執行 l08_ex4_starter 應該印出 PASS。
-// 提示：解答在 solutions/ex4_sidechain_gate.cpp。
+// What to do:
+//   (a) Complete Ducker::nextGain(): detect the envelope of the sidechain, and when it is above the threshold
+//       pull the main signal down by duckDb; the gain reduction is smoothed in the dB domain with attack / release
+//       (hint: the Branching mode of AttackReleaseFilter).
+//   (b) Complete the trance gate in main(): use Gate::process(main, sidechain) so the pad only passes when a kick occurs.
+// The test material and the self-check are already written; once the TODOs are filled in, running l08_ex4_starter
+// should print PASS.
+// Hint: the solution is in solutions/ex4_sidechain_gate.cpp.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/EnvelopeFollower.h>
@@ -52,13 +54,13 @@ public:
         smoother_.setReleaseMs(ms);
     }
 
-    // 餵入 sidechain 的偵測 sample，回傳要乘到 main 的線性 gain
+    // Feed in a detection sample from the sidechain; returns the linear gain to multiply onto main
     float nextGain(float sidechainSample) noexcept {
-        // TODO(a)：
+        // TODO(a):
         //   1. envDb = gainToDb(detector_.processSample(sidechainSample))
         //   2. targetGr = envDb >= thresholdDb_ ? duckDb_ : 0
-        //   3. gr = smoother_.process(targetGr)   ← dB 域平滑
-        //   4. 回傳 dbToGain(-gr)
+        //   3. gr = smoother_.process(targetGr)   <- smoothing in the dB domain
+        //   4. return dbToGain(-gr)
         (void)sidechainSample;
         return 1.0f;
     }
@@ -141,7 +143,7 @@ double windowRmsDb(const AudioBuffer& b, double fromMs, double toMs) {
 } // namespace
 
 int main() {
-    std::printf("第 08 章 練習 4（起始碼）：sidechain ducking 與 trance gate\n");
+    std::printf("Chapter 08 Exercise 4 (starter): sidechain ducking and trance gate\n");
     const double seconds = 3.0;
     const AudioBuffer pad = makePad(seconds);
     const AudioBuffer kicks = makeKicks(seconds);
@@ -160,19 +162,19 @@ int main() {
     const double padRef = windowRmsDb(pad, 15.0, 60.0);
     const double duckDuring = windowRmsDb(ducked, 15.0, 60.0);
     const double duckBetween = windowRmsDb(ducked, 350.0, 490.0);
-    std::printf("[a] ducking：pad %.2f dBFS；kick 後 15–60 ms %.2f dBFS（應低 12 dB）；350–490 ms %.2f dBFS\n", padRef,
+    std::printf("[a] ducking: pad %.2f dBFS; 15-60 ms after the kick %.2f dBFS (should be 12 dB lower); 350-490 ms %.2f dBFS\n", padRef,
                 duckDuring, duckBetween);
     DAWLAB_CHECK_NEAR(padRef - duckDuring, 12.0, 1.0);
     DAWLAB_CHECK_NEAR(duckBetween, padRef, 1.0);
 
-    // TODO(b)：建立 Gate（threshold -20、hysteresis 6、range -80、attack 1 ms、hold 50 ms、release 50 ms），
-    //          用 runBlocks(pad, kicks, ...) 呼叫 gate.process(main, sidechain) 得到 gated
-    AudioBuffer gated = pad; // ← 換成 gate 的輸出
+    // TODO(b): create a Gate (threshold -20, hysteresis 6, range -80, attack 1 ms, hold 50 ms, release 50 ms),
+    //          and call gate.process(main, sidechain) through runBlocks(pad, kicks, ...) to get gated
+    AudioBuffer gated = pad; // <- replace with the gate's output
     writeWav(outputPath("l08_ex4_trance_gate.wav"), gated, kSampleRate);
 
     const double gateOpen = windowRmsDb(gated, 20.0, 100.0);
     const double gateClosed = windowRmsDb(gated, 350.0, 490.0);
-    std::printf("[b] trance gate：kick 後 20–100 ms %.2f dBFS；350–490 ms %.2f dBFS（應 < -60）\n", gateOpen, gateClosed);
+    std::printf("[b] trance gate: 20-100 ms after the kick %.2f dBFS; 350-490 ms %.2f dBFS (should be < -60)\n", gateOpen, gateClosed);
     DAWLAB_CHECK_NEAR(gateOpen, windowRmsDb(pad, 20.0, 100.0), 1.0);
     DAWLAB_CHECK(gateClosed < -60.0);
 

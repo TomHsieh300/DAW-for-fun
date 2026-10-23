@@ -1,17 +1,19 @@
-// 練習 8 解答：自己寫 transient shaper，並驗證它「與 level 無關」
+// Exercise 8 solution: write your own transient shaper and verify that it is "independent of level"
 //
-// 示範什麼：
-//   1. mapToGainDb()：README 2.6.2 節的 d → gain 映射（|d| = 6 dB 飽和）
-//   2. nextGain()：fast / slow 兩個 EnvelopeFollower → d → 映射 → 0.5 ms one-pole 平滑
-//   3. 和 dawlab::dsp::TransientShaper 逐 sample 比對（應該一模一樣）
-//   4. level-independent 測試：同一段鼓分別以 -6 dBFS 與 -26 dBFS 的 peak 送進去
-//        attack +6 dB：兩者的 peak 增量相等（± 0.3 dB）
-//        sustain -12 dB：兩者的尾音 RMS 都下降，而且下降量相等
-//      對照組：compressor（threshold -20 dB、4:1）對兩個 level 的 peak 變化差很多 → 它看的是絕對 level
-// 怎麼執行：l08_ex8_solution（不需要參數，用 makeDrumLoop() 產生鼓組 loop）
-// 輸出檔案：dawlab_output/l08_ex8_loud_dry.wav、l08_ex8_loud_attack6.wav、l08_ex8_loud_sustain-12.wav、
-//          l08_ex8_quiet_dry.wav、l08_ex8_quiet_attack6.wav、l08_ex8_quiet_sustain-12.wav
-// 該聽到什麼：quiet 版本整體小 20 dB，但 attack +6 / sustain -12 的「效果」和 loud 版本聽起來一樣。
+// What it shows:
+//   1. mapToGainDb(): the d -> gain mapping from README section 2.6.2 (saturating at |d| = 6 dB)
+//   2. nextGain(): fast / slow EnvelopeFollowers -> d -> mapping -> 0.5 ms one-pole smoothing
+//   3. A sample-by-sample comparison against dawlab::dsp::TransientShaper (should be identical)
+//   4. A level-independence test: the same drums are fed in with peaks of -6 dBFS and -26 dBFS
+//        attack +6 dB: the peak increase is equal for both (+/- 0.3 dB)
+//        sustain -12 dB: the tail RMS drops for both, and the drop is equal
+//      Control: a compressor (threshold -20 dB, 4:1) changes the peak very differently at the two levels -> it
+//      looks at the absolute level
+// How to run: l08_ex8_solution (no arguments needed; it uses makeDrumLoop() to generate the drum loop)
+// Output files: dawlab_output/l08_ex8_loud_dry.wav, l08_ex8_loud_attack6.wav, l08_ex8_loud_sustain-12.wav,
+//          l08_ex8_quiet_dry.wav, l08_ex8_quiet_attack6.wav, l08_ex8_quiet_sustain-12.wav
+// What to listen for: the quiet version is 20 dB quieter overall, but the "effect" of attack +6 / sustain -12 sounds
+//            the same as in the loud version.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Compressor.h>
@@ -42,9 +44,9 @@ public:
     static constexpr float kFloorDb = -80.0f;
     static constexpr float kGainSmoothMs = 0.5f;
 
-    // README 2.6.2：
-    //   d > 0：gainDb = attackDb  · min(d / 6, 1)
-    //   d ≤ 0：gainDb = sustainDb · min(−d / 6, 1)
+    // README 2.6.2:
+    //   d > 0:  gainDb = attackDb  * min(d / 6, 1)
+    //   d <= 0: gainDb = sustainDb * min(-d / 6, 1)
     static float mapToGainDb(float d, float attackDb, float sustainDb) noexcept {
         if (d > 0.0f)
             return attackDb * std::min(d / kFullScaleDb, 1.0f);
@@ -60,7 +62,7 @@ public:
         slow_.setMode(DetectorMode::Peak);
         slow_.setAttackMs(kSlowAttackMs);
         slow_.setReleaseMs(kSlowReleaseMs);
-        // one-pole 平滑係數 α = e^{−1/(τ·fs)}
+        // one-pole smoothing coefficient alpha = e^{-1/(tau*fs)}
         smoothCoef_ = static_cast<float>(std::exp(-1.0 / (kGainSmoothMs * 0.001 * sampleRate)));
         reset();
     }
@@ -78,11 +80,11 @@ public:
         const float slowDb = gainToDb(slow);
         float target = 0.0f;
         if (slowDb > kFloorDb) {
-            // d = 20·log10(fast / slow)：只看「比例」，所以整段訊號放大或縮小 d 都不變
+            // d = 20*log10(fast / slow): it only looks at the ratio, so scaling the whole signal up or down leaves d unchanged
             const float d = gainToDb(fast) - slowDb;
             target = mapToGainDb(d, attackDb_, sustainDb_);
         }
-        gainDb_ = target + smoothCoef_ * (gainDb_ - target); // 平滑 gain（dB 域）
+        gainDb_ = target + smoothCoef_ * (gainDb_ - target); // smooth the gain (in the dB domain)
         return dbToGain(gainDb_);
     }
 
@@ -125,7 +127,7 @@ AudioBuffer runShaper(const AudioBuffer& input, float attackDb, float sustainDb)
     return runBlocks(input, ts);
 }
 
-// 把鼓 loop 正規化成指定的 peak（dBFS）
+// Normalize the drum loop to the given peak (dBFS)
 AudioBuffer scaledTo(const AudioBuffer& b, float peakDb) {
     AudioBuffer out = b;
     const float g = dbToGain(peakDb) / peakAbs(b);
@@ -135,7 +137,7 @@ AudioBuffer scaledTo(const AudioBuffer& b, float peakDb) {
     return out;
 }
 
-// 「尾音」：makeDrumLoop 以八分音符（120 BPM → 250 ms）為一格，每一格的 120–240 ms 是前一下的尾巴
+// "Tail": makeDrumLoop uses eighth notes (120 BPM -> 250 ms) as its grid; 120-240 ms of each cell is the tail of the previous hit
 float tailRmsDb(const AudioBuffer& b) {
     const int step = secondsToSamples(0.25, kSampleRate);
     const int from = msToSamples(120.0, kSampleRate);
@@ -156,25 +158,25 @@ float peakDb(const AudioBuffer& b) { return gainToDb(peakAbs(b)); }
 } // namespace
 
 int main() {
-    std::printf("第 08 章 練習 8（解答）：transient shaper 與 level independence\n");
+    std::printf("Chapter 08 Exercise 8 (solution): transient shaper and level independence\n");
 
-    // ---- 1. 映射函式 ---------------------------------------------------------------
-    std::printf("\n[1] d → gain 映射（attack +12、sustain -12）\n");
+    // ---- 1. Mapping function ---------------------------------------------------------------
+    std::printf("\n[1] d -> gain mapping (attack +12, sustain -12)\n");
     DAWLAB_CHECK_NEAR(MyTransientShaper::mapToGainDb(3.0f, 12.0f, -12.0f), 6.0, 1.0e-5);
     DAWLAB_CHECK_NEAR(MyTransientShaper::mapToGainDb(6.0f, 12.0f, -12.0f), 12.0, 1.0e-5);
-    DAWLAB_CHECK_NEAR(MyTransientShaper::mapToGainDb(20.0f, 12.0f, -12.0f), 12.0, 1.0e-5); // 飽和
+    DAWLAB_CHECK_NEAR(MyTransientShaper::mapToGainDb(20.0f, 12.0f, -12.0f), 12.0, 1.0e-5); // saturation
     DAWLAB_CHECK_NEAR(MyTransientShaper::mapToGainDb(-3.0f, 12.0f, -12.0f), -6.0, 1.0e-5);
     DAWLAB_CHECK_NEAR(MyTransientShaper::mapToGainDb(-20.0f, 12.0f, -12.0f), -12.0, 1.0e-5);
     DAWLAB_CHECK_NEAR(MyTransientShaper::mapToGainDb(0.0f, 12.0f, -12.0f), 0.0, 1.0e-6);
-    DAWLAB_CHECK_NEAR(MyTransientShaper::mapToGainDb(-1.5f, 12.0f, 6.0f), 1.5, 1.0e-5); // sustain + 也可以
+    DAWLAB_CHECK_NEAR(MyTransientShaper::mapToGainDb(-1.5f, 12.0f, 6.0f), 1.5, 1.0e-5); // positive sustain works too
     for (const float d : {-12.0f, -6.0f, -3.0f, 0.0f, 3.0f, 6.0f, 12.0f})
-        std::printf("    d = %+6.1f dB → %+6.2f dB\n", d, MyTransientShaper::mapToGainDb(d, 12.0f, -12.0f));
+        std::printf("    d = %+6.1f dB -> %+6.2f dB\n", d, MyTransientShaper::mapToGainDb(d, 12.0f, -12.0f));
 
     const AudioBuffer drums = makeDrumLoop(kSampleRate);
     const AudioBuffer loud = scaledTo(drums, -6.0f);
     const AudioBuffer quiet = scaledTo(drums, -26.0f);
 
-    // ---- 2. 和 dsp::TransientShaper 比對 -------------------------------------------
+    // ---- 2. Compare against dsp::TransientShaper -------------------------------------------
     {
         dawlab::dsp::TransientShaper ref;
         ref.prepare(kSampleRate, kBlockSize, loud.getNumChannels());
@@ -186,7 +188,7 @@ int main() {
         for (int ch = 0; ch < mine.getNumChannels(); ++ch)
             for (int i = 0; i < mine.getNumSamples(); ++i)
                 maxErr = std::max(maxErr, std::abs(mine.getSample(ch, i) - expected.getSample(ch, i)));
-        std::printf("\n[2] 與 dawlab::dsp::TransientShaper 逐 sample 比對：最大誤差 %.3g\n", maxErr);
+        std::printf("\n[2] Sample-by-sample comparison with dawlab::dsp::TransientShaper: maximum error %.3g\n", maxErr);
         DAWLAB_CHECK(maxErr < 1.0e-5f);
     }
 
@@ -208,17 +210,17 @@ int main() {
     const float loudTailDrop = tailRmsDb(loudSus) - tailRmsDb(loud);
     const float quietTailDrop = tailRmsDb(quietSus) - tailRmsDb(quiet);
 
-    std::printf("\n[3] level independence（同一段鼓，peak -6 dBFS 與 -26 dBFS）\n");
+    std::printf("\n[3] Level independence (the same drums, with peaks at -6 dBFS and -26 dBFS)\n");
     std::printf("                         loud(-6)   quiet(-26)\n");
-    std::printf("    attack +6：peak 增量   %+6.2f     %+6.2f dB\n", loudPeakGain, quietPeakGain);
-    std::printf("    sustain -12：尾音 RMS  %+6.2f     %+6.2f dB\n", loudTailDrop, quietTailDrop);
-    DAWLAB_CHECK(loudPeakGain > 3.0f);                        // attack 真的有把 peak 推上去
-    DAWLAB_CHECK_NEAR(loudPeakGain, quietPeakGain, 0.3);      // 而且與 level 無關
-    DAWLAB_CHECK(loudTailDrop < -3.0f);                       // sustain -12 讓尾音變小
+    std::printf("    attack +6: peak increase   %+6.2f     %+6.2f dB\n", loudPeakGain, quietPeakGain);
+    std::printf("    sustain -12: tail RMS      %+6.2f     %+6.2f dB\n", loudTailDrop, quietTailDrop);
+    DAWLAB_CHECK(loudPeakGain > 3.0f);                        // attack really does push the peak up
+    DAWLAB_CHECK_NEAR(loudPeakGain, quietPeakGain, 0.3);      // and it is independent of level
+    DAWLAB_CHECK(loudTailDrop < -3.0f);                       // sustain -12 makes the tail smaller
     DAWLAB_CHECK(quietTailDrop < -3.0f);
     DAWLAB_CHECK_NEAR(loudTailDrop, quietTailDrop, 0.3);
 
-    // ---- 4. 對照組：compressor 看絕對 level ------------------------------------------
+    // ---- 4. Control: a compressor looks at the absolute level ------------------------------------------
     auto compressPeakChange = [](const AudioBuffer& in) {
         dawlab::dsp::Compressor c;
         c.prepare(kSampleRate, kBlockSize, in.getNumChannels());
@@ -231,11 +233,11 @@ int main() {
     };
     const float loudComp = compressPeakChange(loud);
     const float quietComp = compressPeakChange(quiet);
-    std::printf("\n[4] 對照組：compressor（threshold -20、4:1）的 peak 變化\n");
-    std::printf("    loud %+6.2f dB、quiet %+6.2f dB → 差 %.2f dB：compressor 只壓得到大聲的那一份\n", loudComp,
+    std::printf("\n[4] Control: peak change of a compressor (threshold -20, 4:1)\n");
+    std::printf("    loud %+6.2f dB, quiet %+6.2f dB -> difference %.2f dB: the compressor only affects the loud version\n", loudComp,
                 quietComp, std::abs(loudComp - quietComp));
     DAWLAB_CHECK(std::abs(loudComp - quietComp) > 3.0f);
 
-    std::printf("\n輸出：dawlab_output/l08_ex8_{loud,quiet}_{dry,attack6,sustain-12}.wav\n");
+    std::printf("\nOutput: dawlab_output/l08_ex8_{loud,quiet}_{dry,attack6,sustain-12}.wav\n");
     return dawlab::test::summary("l08_ex8_transient_shaper");
 }

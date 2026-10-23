@@ -1,15 +1,19 @@
-// 範例 2：動態處理家族的 transfer curve 對照表，以及 expander / gate 的實測
+// Example 2: transfer-curve comparison of the dynamics-processor family, plus measured expander / gate behavior
 //
-// 示範什麼：
-//   - 用靜態 gain computer 印出 compressor（4:1）、limiter（∞:1）、expander（1:2）、gate 四條 transfer curve
-//     （輸入 -80..0 dB，每 5 dB 一列），看它們「對 threshold 以上 / 以下做什麼」的差別
-//   - expander 的 soft knee（knee 0 / 6 / 12 dB）在 threshold 附近的差異
-//   - 把一串不同音量的正弦波段落（tone bursts）餵給 Expander 與 Gate，量每一段穩定後的輸出位準，
-//     驗證它們真的落在靜態曲線上（這也是解答常用的驗證手法）
-// 怎麼執行：l08_expander_vs_gate_curve（不吃參數）。
-// 輸出檔案：dawlab_output/l08_bursts_input.wav、l08_bursts_expander.wav、l08_bursts_gate.wav。
-// 該聽到什麼：bursts 由 -20 / -40 / -50 / -60 / -20 dBFS 五段組成。expander 版本安靜的段落更安靜但還聽得到；
-//            gate 版本 -40 dB 以下的段落直接消失，而且每段開頭有 1 ms 的 fade-in、結尾有 release 的 fade-out。
+// What it shows:
+//   - Uses a static gain computer to print the transfer curves of a compressor (4:1), limiter (inf:1),
+//     expander (1:2), and gate (input -80..0 dB, one row every 5 dB), so you can see how each one
+//     treats the region above versus below the threshold
+//   - How the expander's soft knee (knee 0 / 6 / 12 dB) differs around the threshold
+//   - Feeds a series of sine tone bursts at different levels to the Expander and the Gate, and measures the
+//     settled output level of each segment to verify that they really land on the static curve
+//     (the same verification technique the solutions use)
+// How to run: l08_expander_vs_gate_curve (takes no arguments).
+// Output files: dawlab_output/l08_bursts_input.wav, l08_bursts_expander.wav, l08_bursts_gate.wav.
+// What to listen for: the bursts consist of five segments at -20 / -40 / -50 / -60 / -20 dBFS. In the expander
+//            version the quiet segments get quieter but are still audible; in the gate version the segments
+//            below -40 dB disappear entirely, and each segment has a 1 ms fade-in at its start and a
+//            release fade-out at its end.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Compressor.h>
@@ -28,7 +32,8 @@ namespace {
 
 constexpr int kBlockSize = 512;
 
-// gate 的靜態曲線：threshold 以上不動，以下衰減 |range|（實際上還有 hysteresis 與時間行為）
+// Static gate curve: unchanged above the threshold, attenuated by |range| below it (the real gate also has
+// hysteresis and time behavior)
 float gateOutputDb(float inputDb, float thresholdDb, float rangeDb) {
     return inputDb >= thresholdDb ? inputDb : inputDb + rangeDb;
 }
@@ -43,7 +48,7 @@ AudioBuffer runBlocks(const AudioBuffer& input, Processor& p) {
     return out;
 }
 
-// 量某一段落「後半段」（穩定後）的正弦振幅 → dB
+// Measure the sine amplitude of the second half of a segment (after it has settled), in dB
 double segmentLevelDb(const AudioBuffer& b, int segment, int segLen, double freq, double sampleRate) {
     const int start = segment * segLen + segLen / 2;
     const int n = segLen / 2;
@@ -53,12 +58,12 @@ double segmentLevelDb(const AudioBuffer& b, int segment, int segLen, double freq
 } // namespace
 
 int main() {
-    std::printf("第 08 章 範例 2：transfer curve 對照表與 expander / gate 實測\n");
+    std::printf("Chapter 08 Example 2: transfer-curve comparison and measured expander / gate behavior\n");
 
-    // ---- 1. 四種處理器的靜態曲線 ---------------------------------------------
-    std::printf("\n[1] transfer curve（輸出 dB）。compressor 4:1 T=-20；limiter ∞:1 T=-10；"
-                "expander 1:2 T=-40 range -40；gate T=-40 range -80\n");
-    std::printf("    輸入     compressor   limiter   expander      gate\n");
+    // ---- 1. Static curves of the four processors ---------------------------------------------
+    std::printf("\n[1] Transfer curves (output dB). compressor 4:1 T=-20; limiter inf:1 T=-10; "
+                "expander 1:2 T=-40 range -40; gate T=-40 range -80\n");
+    std::printf("    input    compressor   limiter   expander      gate\n");
     for (int in = -80; in <= 0; in += 5) {
         const float x = static_cast<float>(in);
         const float comp = Compressor::computeOutputDb(x, -20.0f, 4.0f, 0.0f);
@@ -69,17 +74,17 @@ int main() {
     }
 
     // ---- 2. expander soft knee ---------------------------------------------
-    std::printf("\n[2] expander 1:2、T = -40 dB 的 soft knee：knee 寬度 0 / 6 / 12 dB（輸出 dB）\n");
-    std::printf("    輸入    knee 0   knee 6   knee 12\n");
+    std::printf("\n[2] Expander 1:2, T = -40 dB soft knee: knee width 0 / 6 / 12 dB (output dB)\n");
+    std::printf("    input   knee 0   knee 6   knee 12\n");
     for (int in = -50; in <= -30; in += 2) {
         const float x = static_cast<float>(in);
         std::printf("    %5d  %7.2f  %7.2f  %7.2f\n", in, Expander::computeOutputDb(x, -40.0f, 2.0f, 0.0f),
                     Expander::computeOutputDb(x, -40.0f, 2.0f, 6.0f), Expander::computeOutputDb(x, -40.0f, 2.0f, 12.0f));
     }
-    std::printf("    knee 邊界（T ± W/2）處三條曲線的值與斜率都連續：knee 12 在 -46 dB = %.2f（硬 knee：%.2f）\n",
+    std::printf("    At the knee boundary (T +/- W/2) both the value and the slope of the curve are continuous: knee 12 at -46 dB = %.2f (hard knee: %.2f)\n",
                 Expander::computeOutputDb(-46.0f, -40.0f, 2.0f, 12.0f), Expander::computeOutputDb(-46.0f, -40.0f, 2.0f, 0.0f));
 
-    // ---- 3. 實測：tone bursts ------------------------------------------------
+    // ---- 3. Measurement: tone bursts ------------------------------------------------
     const double sampleRate = 48000.0;
     const double freq = 1000.0;
     const std::vector<float> levels = {-20.0f, -40.0f, -50.0f, -60.0f, -20.0f};
@@ -111,9 +116,9 @@ int main() {
     writeWav(outputPath("l08_bursts_expander.wav"), outExp, sampleRate);
     writeWav(outputPath("l08_bursts_gate.wav"), outGate, sampleRate);
 
-    std::printf("\n[3] tone bursts 實測（每段後半段的 1 kHz 振幅，dB）。"
-                "正弦波的 peak envelope 比 RMS 高 3 dB，靜態曲線以 peak 計\n");
-    std::printf("    段落  輸入    expander 實測 / 理論    gate 實測 / 理論\n");
+    std::printf("\n[3] Measured tone bursts (1 kHz amplitude of the second half of each segment, dB). "
+                "The peak envelope of a sine wave is 3 dB above its RMS; the static curves are in terms of peak\n");
+    std::printf("    seg   input   expander meas. / theory    gate meas. / theory\n");
     for (size_t s = 0; s < levels.size(); ++s) {
         const double in = segmentLevelDb(input, static_cast<int>(s), segLen, freq, sampleRate);
         const double e = segmentLevelDb(outExp, static_cast<int>(s), segLen, freq, sampleRate);
@@ -123,7 +128,7 @@ int main() {
         std::printf("    %4zu  %6.1f  %8.1f / %6.1f         %8.1f / %6.1f\n", s + 1, in, e, expTheory, g,
                     gateTheory);
     }
-    std::printf("    （gate 的實測值被 gainToDb() 的下限 -100 dB 截住；理論值 -130 / -140 dB 早已低於可聽範圍，只要「遠低於 -60 dB」就算關上了）\n");
-    std::printf("\n輸出：dawlab_output/l08_bursts_input.wav、l08_bursts_expander.wav、l08_bursts_gate.wav\n");
+    std::printf("    (The measured gate values are clamped by the -100 dB floor of gainToDb(); the theoretical -130 / -140 dB is far below audibility, and anything \"well below -60 dB\" counts as closed)\n");
+    std::printf("\nOutput: dawlab_output/l08_bursts_input.wav, l08_bursts_expander.wav, l08_bursts_gate.wav\n");
     return 0;
 }

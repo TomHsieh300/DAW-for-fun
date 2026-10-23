@@ -1,27 +1,34 @@
 #pragma once
-// DeEsser.h —— de-esser（第 08 章）
+// DeEsser.h -- de-esser (Chapter 08)
 //
-// 人聲的齒音（sibilance：s、sh、ch、t）能量集中在 5–10 kHz，聽起來刺耳。
-// de-esser = 「只聽高頻的 compressor」：
+// The energy of vocal sibilance (the sounds s, sh, ch, t) is concentrated at 5-10 kHz and sounds harsh.
+// A de-esser = "a compressor that listens only to the high frequencies":
 //
-//   x ──┬──► bandpass(f, Q=1.5) ──► EnvelopeFollower ──► GR = clamp(level − T, 0, range) ──► g
-//       │                                                                                   │
-//       ├──(wideband)  y = x · g                                                            ◄┘
-//       └──(split-band) 以 Linkwitz-Riley 4 階分頻：y = LP(x) + HP(x) · g（只壓高頻段）
+//   x --+--> bandpass(f, Q=1.5) --> EnvelopeFollower --> GR = clamp(level - T, 0, range) --> g
+//       |                                                                                    |
+//       +--(wideband)   y = x * g                                                          <-+
+//       +--(split-band) split with a 4th-order Linkwitz-Riley crossover: y = LP(x) + HP(x) * g (only the high band is reduced)
 //
-// - 偵測用 bandpass 濾波後的訊號（中心 f、Q = 1.5）。analog prototype 的 −3 dB 頻寬是 0.72 f ~ 1.39 f
-//   （f = 7 kHz 時 5.05–9.71 kHz）；數位 RBJ bandpass 的頻寬會被 bilinear transform 壓窄
-//   （1/Q = 2 sinh(ln2/2 · BW · ω0/sin ω0)），48 kHz 時實際約 5.22–9.17 kHz（見 README 2.5.2）。
-// - wideband：整段訊號一起壓，簡單但齒音出現時母音也會被壓小（可能聽到「吸氣」感）。
-// - split-band：分頻點 = 0.72 f（analog prototype 的下 −3 dB 點），只壓高頻段，母音不受影響。
-//   LR4 的 LP + HP 相加為 allpass（振幅平坦、相位改變），gain = 1 時聲音不變（除了相位）。
-// - listen：輸出偵測訊號（bandpass 後的 x），用來調 frequency / threshold。
-// - range：最大衰減（正值，例如 12 dB）——不要把齒音壓到完全消失，會變「大舌頭」。
+// - Detection uses the signal after the bandpass filter (center f, Q = 1.5). The -3 dB bandwidth of the analog
+//   prototype is 0.72 f to 1.39 f (5.05-9.71 kHz at f = 7 kHz); the bandwidth of the digital RBJ bandpass is narrowed
+//   by the bilinear transform (1/Q = 2 sinh(ln2/2 * BW * w0/sin w0)), and at 48 kHz is actually about
+//   5.22-9.17 kHz (see README 2.5.2).
+// - wideband: the whole signal is reduced together. Simple, but the vowel is also pulled down when sibilance occurs
+//   (you may hear a "breathing" feel).
+// - split-band: the crossover frequency = 0.72 f (the lower -3 dB point of the analog prototype), and only the high
+//   band is reduced, so the vowel is unaffected. The LP + HP sum of an LR4 is an allpass (flat magnitude, changed
+//   phase), so with gain = 1 the sound is unchanged (apart from phase).
+// - listen: outputs the detection signal (x after the bandpass), used for tuning frequency / threshold.
+// - range: the maximum reduction (positive value, for example 12 dB) -- do not reduce the sibilance until it vanishes
+//   completely, or the speaker will sound like they have a lisp.
 //
-// 這裡的 gain computer 用 ∞:1（超過 threshold 幾 dB 就壓幾 dB，上限 range），對 de-esser 來說最直覺。
-// threshold 與 range 直接出現在 GR 公式裡，所以兩者都經過 SmoothedValue（kParameterRampMs）平滑，
-// 在 block 之間改它們不會讓 gain 瞬間跳變；reset() 之後、處理第一個 sample 之前的 setter 直接生效。
-// 輸入的 NaN / Inf 在進入任何 biquad 之前就換成 0：TDF-II 的狀態一旦變成 NaN 就再也回不來。
+// The gain computer here uses inf:1 (however many dB the level exceeds the threshold is how many dB it is reduced,
+// capped at range), which is the most intuitive for a de-esser.
+// Threshold and range appear directly in the GR formula, so both go through a SmoothedValue (kParameterRampMs); changing
+// them between blocks does not make the gain jump instantly; setters called after reset() and before the first sample
+// is processed take effect directly.
+// NaN / Inf in the input are replaced with 0 before entering any biquad: once the TDF-II state becomes NaN it never
+// recovers.
 
 #include <dawlab/AudioBuffer.h>
 #include <dawlab/DspMath.h>
@@ -39,16 +46,18 @@ namespace dawlab::dsp {
 class DeEsser {
 public:
     static constexpr float kDetectorQ = 1.5f;
-    // 分頻點 / 偵測中心頻率 = (sqrt(1 + 4Q²) − 1) / (2Q)，Q = 1.5 → 0.7208（analog prototype bandpass 的下 −3 dB 點；
-    // 數位 bandpass 的實際下緣稍高，48 kHz、f = 7 kHz 時約 0.745 f）
+    // Crossover frequency / detection center frequency = (sqrt(1 + 4Q^2) - 1) / (2Q), Q = 1.5 -> 0.7208 (the lower
+    // -3 dB point of the analog prototype bandpass; the actual lower edge of the digital bandpass is slightly higher,
+    // about 0.745 f at 48 kHz and f = 7 kHz)
     static constexpr float kCrossoverRatio = 0.7208f;
-    // Linkwitz-Riley 4 階 = 兩個串聯的 2 階 Butterworth（Q = 1/√2）
+    // Linkwitz-Riley 4th order = two 2nd-order Butterworth filters in cascade (Q = 1/sqrt(2))
     static constexpr double kButterworthQ = 0.70710678118654752;
-    // threshold / range 改變時的線性 ramp 長度
+    // Length of the linear ramp when threshold / range change
     static constexpr float kParameterRampMs = 20.0f;
 
     DeEsser() = default;
-    // std::atomic 成員讓 class 預設不能複製；手動定義，才能放進 std::vector（第 14 章的 8 軌 DAW）
+    // A std::atomic member makes the class non-copyable by default; define these by hand so it can be placed in a
+    // std::vector (the 8-track DAW in Chapter 14)
     DeEsser(const DeEsser& other) { copyFrom(other); }
     DeEsser& operator=(const DeEsser& other) {
         if (this != &other)
@@ -56,7 +65,7 @@ public:
         return *this;
     }
 
-    // ---- 生命週期 -------------------------------------------------------
+    // ---- Lifecycle -------------------------------------------------------
     void prepare(double sampleRate, int maxBlockSize, int numChannels) {
         sampleRate_ = sampleRate;
         numChannels_ = numChannels;
@@ -91,8 +100,8 @@ public:
         gainReductionDb_.store(0.0f, std::memory_order_relaxed);
     }
 
-    // ---- 參數 -----------------------------------------------------------
-    // 偵測中心頻率（Hz），預設 7000；分頻點會跟著 = 0.72 × f
+    // ---- Parameters -----------------------------------------------------------
+    // Detection center frequency (Hz), default 7000; the crossover frequency follows = 0.72 x f
     void setFrequency(float hz) noexcept {
         frequencyHz_ = std::clamp(hz, 1000.0f, static_cast<float>(sampleRate_ * 0.45));
         updateFilters();
@@ -101,14 +110,14 @@ public:
         thresholdDb_ = db;
         setSmoothedTarget(thresholdSmoothed_, thresholdDb_);
     }
-    // 最大衰減（正值，dB）；正負號一律視為 |db|
+    // Maximum reduction (positive value, dB); either sign is treated as |db|
     void setRangeDb(float db) noexcept {
         rangeDb_ = std::abs(db);
         setSmoothedTarget(rangeSmoothed_, rangeDb_);
     }
     void setSplitBand(bool enabled) noexcept { splitBand_ = enabled; }
     void setListen(bool enabled) noexcept { listen_ = enabled; }
-    // 額外：偵測器 ballistics（預設 attack 1 ms、release 40 ms）
+    // Extra: detector ballistics (default attack 1 ms, release 40 ms)
     void setAttackMs(float ms) noexcept {
         attackMs_ = std::max(0.0f, ms);
         follower_.setAttackMs(attackMs_);
@@ -126,30 +135,31 @@ public:
     bool isListen() const noexcept { return listen_; }
     float getAttackMs() const noexcept { return attackMs_; }
     float getReleaseMs() const noexcept { return releaseMs_; }
-    int getLatencySamples() const noexcept { return 0; } // IIR 分頻：沒有整數 sample 的延遲
+    int getLatencySamples() const noexcept { return 0; } // IIR crossover: no whole-sample delay
 
-    // 正值：目前衰減多少 dB（block 結束時更新；thread-safe）
+    // Positive value: how many dB are currently being attenuated (updated at the end of each block; thread-safe)
     float getGainReductionDb() const noexcept { return gainReductionDb_.load(std::memory_order_relaxed); }
 
-    // ---- 處理 -----------------------------------------------------------
+    // ---- Processing -----------------------------------------------------------
     void process(AudioBlock block) noexcept {
         const int n = block.getNumSamples();
         const int nch = std::min(block.getNumChannels(), numChannels_);
         for (int i = 0; i < n; ++i) {
-            // 0. NaN / Inf 防護（與 EnvelopeFollower 相同）：先清理再送進 biquad，否則濾波器狀態會永久變成 NaN
+            // 0. NaN / Inf guard (same as EnvelopeFollower): sanitize before feeding the biquads, otherwise the filter state
+            //    becomes NaN permanently
             for (int ch = 0; ch < nch; ++ch) {
                 float& x = block.getChannelPointer(ch)[i];
                 if (!std::isfinite(x))
                     x = 0.0f;
             }
-            // 1. 偵測：每個 channel 各自 bandpass，取 max|·| 做 stereo-link
+            // 1. Detection: bandpass each channel separately, then take max|.| for the stereo link
             float det = 0.0f;
             for (int ch = 0; ch < nch; ++ch) {
                 const float d = detectorFilter_.processSample(ch, block.getChannelPointer(ch)[i]);
                 detectorOut_[static_cast<size_t>(ch)] = d;
                 det = std::max(det, std::abs(d));
             }
-            // 2. gain computer：∞:1，上限 range（threshold / range 用平滑後的值）
+            // 2. Gain computer: inf:1, capped at range (threshold / range use their smoothed values)
             const float levelDb = gainToDb(follower_.processSample(det));
             const float thresholdDb = thresholdSmoothed_.getNextValue();
             const float rangeDb = rangeSmoothed_.getNextValue();
@@ -159,11 +169,12 @@ public:
                 gainReductionDbCurrent_ = gr;
                 gain_ = dbToGain(-gr);
             }
-            // 3. 套用
+            // 3. Apply
             for (int ch = 0; ch < nch; ++ch) {
                 float* d = block.getChannelPointer(ch);
                 const float x = d[i];
-                // 分頻濾波器永遠跑著（即使 wideband 模式），切換模式時才不會因為濾波器狀態是空的而產生 click
+                // The crossover filters always keep running (even in wideband mode), so switching modes does not click because the
+                // filter state is empty
                 const float low = lowpass2_.processSample(ch, lowpass1_.processSample(ch, x));
                 const float high = highpass2_.processSample(ch, highpass1_.processSample(ch, x));
                 if (listen_)
@@ -178,7 +189,7 @@ public:
     }
 
 private:
-    // 還沒處理任何 sample（剛 prepare / reset）→ 直接生效；否則從目前值 ramp 過去
+    // No samples processed yet (just prepared / reset) -> take effect directly; otherwise ramp from the current value
     void setSmoothedTarget(SmoothedValue& s, float value) noexcept {
         if (hasProcessed_)
             s.setTargetValue(value);

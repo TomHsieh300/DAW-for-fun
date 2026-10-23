@@ -1,28 +1,32 @@
 #pragma once
-// Gate.h —— noise gate（第 08 章）
+// Gate.h -- noise gate (Chapter 08)
 //
-// 一個 gate 做的事：偵測訊號的大小（envelope），高於門檻就「開門」（gain = 0 dB），
-// 低於門檻就「關門」（gain = range，例如 -80 dB）。為了不讓門在門檻附近抖動（chattering），
-// 開門與關門用不同門檻（hysteresis），關門前先等一段時間（hold），開關本身是斜坡（attack / release）。
+// What a gate does: it measures the signal level (the envelope); above the threshold it "opens" (gain = 0 dB),
+// and below the threshold it "closes" (gain = range, for example -80 dB). To keep the gate from flickering around
+// the threshold (chattering), opening and closing use different thresholds (hysteresis), the gate waits for a while
+// (hold) before closing, and the opening and closing themselves are ramps (attack / release).
 //
-//   偵測訊號 ──► EnvelopeFollower ──► dB ──► 狀態機 ──► gain(dB) ──► 乘到所有 channel
-//                (peak, 0.1 ms / 20 ms)        Closed / Attack / Open / Hold / Release
+//   detection signal --> EnvelopeFollower --> dB --> state machine --> gain(dB) --> multiplied onto all channels
+//                        (peak, 0.1 ms / 20 ms)      Closed / Attack / Open / Hold / Release
 //
-// 狀態機（每個 sample 走一步）：
-//   Closed  ─ env ≥ T_open ─────────────► Attack
-//   Attack  ─ gainDb 升到 0 ─────────────► Open
-//   Open    ─ env < T_close ────────────► Hold（hold = 0 時直接 Release）
-//   Hold    ─ env ≥ T_open ─────────────► Open
-//           ─ 計數器歸零 ────────────────► Release
-//   Release ─ env ≥ T_open ─────────────► Attack（從目前的 gain 往上爬，不會跳）
-//           ─ gainDb 降到 range ────────► Closed
-//   Closed 狀態下若 range 被改變（例如自動化），gain 以斜坡滑到新的 range，不會產生 step。
+// State machine (one step per sample):
+//   Closed  - env >= T_open ------------> Attack
+//   Attack  - gainDb reaches 0 ---------> Open
+//   Open    - env < T_close ------------> Hold (goes straight to Release when hold = 0)
+//   Hold    - env >= T_open ------------> Open
+//           - counter reaches zero -----> Release
+//   Release - env >= T_open ------------> Attack (climbs from the current gain, no jump)
+//           - gainDb falls to range ----> Closed
+//   If the range is changed while in the Closed state (for example by automation), the gain glides to the new range
+//   along a ramp, so no step is produced.
 //
-// gain 在 dB 域做「等速」斜坡：attack 時間 = 從 range 爬到 0 dB 的時間；release 時間 = 從 0 dB 降到 range 的時間。
-// dB 域等速 = 線性域指數變化，聽起來是自然的 fade。
+// The gain ramps at a "constant rate" in the dB domain: the attack time = the time to climb from range to 0 dB;
+// the release time = the time to fall from 0 dB to range. A constant rate in dB is an exponential change in the
+// linear domain, which sounds like a natural fade.
 //
-// 多 channel 一律 stereo-link：偵測用所有 channel 的 max|x|，同一個 gain 乘到每個 channel，
-// 否則左右聲道會各自開關、聲像亂跳。
+// Multiple channels are always stereo-linked: detection uses max|x| over all channels and the same gain is applied to
+// every channel; otherwise the left and right channels would open and close independently and the stereo image
+// would jump around.
 
 #include <dawlab/AudioBuffer.h>
 #include <dawlab/DspMath.h>
@@ -49,13 +53,14 @@ inline const char* gateStateName(GateState s) noexcept {
 
 class Gate {
 public:
-    // 偵測器（peak）的 attack：0.1 ms，要能抓到 transient 的第一個波峰
+    // Attack of the (peak) detector: 0.1 ms, so that it catches the first peak of a transient
     static constexpr float kDetectorAttackMs = 0.1f;
-    // Closed 狀態下 range 改變時的最小滑動速度（dB/sample）：0.01 dB/sample = 480 dB/s @ 48 kHz
+    // Minimum glide rate (dB/sample) when the range changes in the Closed state: 0.01 dB/sample = 480 dB/s @ 48 kHz
     static constexpr float kMinRangeGlideDbPerSample = 0.01f;
 
     Gate() = default;
-    // std::atomic 成員讓 class 預設不能複製；手動定義，才能放進 std::vector（第 14 章的 8 軌 DAW）
+    // A std::atomic member makes the class non-copyable by default; define these by hand so it can be placed in a
+    // std::vector (the 8-track DAW in Chapter 14)
     Gate(const Gate& other) { copyFrom(other); }
     Gate& operator=(const Gate& other) {
         if (this != &other)
@@ -63,7 +68,7 @@ public:
         return *this;
     }
 
-    // ---- 生命週期 -------------------------------------------------------
+    // ---- Lifecycle -------------------------------------------------------
     void prepare(double sampleRate, int /*maxBlockSize*/, int numChannels) {
         sampleRate_ = sampleRate;
         numChannels_ = numChannels;
@@ -84,20 +89,22 @@ public:
         gainReductionDb_.store(-rangeDb_, std::memory_order_relaxed);
     }
 
-    // ---- 參數（可在 block 之間呼叫）----------------------------------------
-    // 開門門檻（dBFS，以 peak envelope 比較）
+    // ---- Parameters (may be called between blocks) ----------------------------------------
+    // Opening threshold (dBFS, compared against the peak envelope)
     void setThresholdDb(float db) noexcept {
         thresholdDb_ = db;
         closeDb_ = thresholdDb_ - hysteresisDb_;
     }
-    // 關門門檻 = threshold − hysteresis（hysteresis ≥ 0）
+    // Closing threshold = threshold - hysteresis (hysteresis >= 0)
     void setHysteresisDb(float db) noexcept {
         hysteresisDb_ = std::max(0.0f, db);
         closeDb_ = thresholdDb_ - hysteresisDb_;
     }
-    // 關門時的衰減量。合約規定負值（例如 -80）；為了防呆，正負號一律視為「衰減 |db| dB」。
-    // 低於 kMinusInfinityDb（-100 dB）時 dbToGain 會直接回傳 0，等於完全靜音。
-    // 門關著時改 range 不會瞬間跳變：nextGain() 的 Closed 狀態會用斜坡把 gain 滑到新的 range。
+    // Attenuation applied while closed. The contract specifies a negative value (for example -80); as a safeguard,
+    // either sign is treated as "attenuate by |db| dB".
+    // Below kMinusInfinityDb (-100 dB) dbToGain returns 0 directly, which means complete silence.
+    // Changing the range while the gate is closed does not jump instantly: the Closed state of nextGain() ramps
+    // the gain to the new range.
     void setRangeDb(float db) noexcept {
         rangeDb_ = -std::abs(db);
         rangeGain_ = dbToGain(rangeDb_);
@@ -115,7 +122,8 @@ public:
         releaseMs_ = std::max(0.0f, ms);
         updateTimes();
     }
-    // 額外：偵測器的 release（預設 20 ms）。越短越靈敏、但低頻訊號的 envelope 漣漪越大（見 README 5.3）。
+    // Extra: the detector's release (default 20 ms). The shorter it is, the more sensitive the gate, but the larger the
+    // envelope ripple on low-frequency signals (see README 5.3).
     void setDetectorReleaseMs(float ms) noexcept {
         detectorReleaseMs_ = std::max(0.1f, ms);
         detector_.setReleaseMs(detectorReleaseMs_);
@@ -129,28 +137,31 @@ public:
     float getHoldMs() const noexcept { return holdMs_; }
     float getReleaseMs() const noexcept { return releaseMs_; }
     float getDetectorReleaseMs() const noexcept { return detectorReleaseMs_; }
-    int getLatencySamples() const noexcept { return 0; } // 沒有 lookahead → 零延遲（練習 6 會加上）
+    int getLatencySamples() const noexcept { return 0; } // no lookahead -> zero latency (Exercise 6 adds it)
 
-    // ---- 量測（thread-safe，給 UI）---------------------------------------
-    // 正值：目前衰減多少 dB（block 結束時更新一次）
+    // ---- Metering (thread-safe, for the UI) ---------------------------------------
+    // Positive value: how many dB are currently being attenuated (updated once at the end of each block)
     float getGainReductionDb() const noexcept { return gainReductionDb_.load(std::memory_order_relaxed); }
-    // 門目前是否「開著或正在開」（Attack / Open / Hold）。Release 期間視為關門中。
-    // state 存在 std::atomic（relaxed），UI thread 可以隨時讀（讀到的是「最近某個 sample」的狀態）。
+    // Whether the gate is currently "open or opening" (Attack / Open / Hold). The Release period counts as closing.
+    // The state is stored in a std::atomic (relaxed), so the UI thread can read it at any time (what it reads is the
+    // state at "some recent sample").
     bool isOpen() const noexcept {
         const GateState s = state_.load(std::memory_order_relaxed);
         return s == GateState::Attack || s == GateState::Open || s == GateState::Hold;
     }
     GateState getState() const noexcept { return state_.load(std::memory_order_relaxed); }
 
-    // ---- 處理 -----------------------------------------------------------
-    // 核心：餵入一個「偵測用」sample（通常是 max|x| across channels），狀態機走一步，回傳要乘上的線性 gain。
-    // process() 就是對每個 sample 呼叫它；練習（lookahead、sidechain）也可以直接用它。
+    // ---- Processing -----------------------------------------------------------
+    // Core: feed in one "detection" sample (usually max|x| across channels), advance the state machine one step, and
+    // return the linear gain to multiply by. process() simply calls it for every sample; the exercises (lookahead,
+    // sidechain) can also use it directly.
     float nextGain(float detectorInput) noexcept {
         const float env = detector_.processSample(detectorInput);
         const float envDb = gainToDb(env);
         const bool aboveOpen = envDb >= thresholdDb_;
         const bool belowClose = envDb < closeDb_;
-        // 狀態先讀進區域變數，最後只寫回一次 atomic（relaxed 的 load / store 在 x86 上就是普通的 mov）
+        // Read the state into a local variable first and write the atomic back only once at the end (a relaxed load / store
+        // is just a plain mov on x86)
         GateState state = state_.load(std::memory_order_relaxed);
 
         switch (state) {
@@ -158,7 +169,8 @@ public:
             if (gainDb_ == rangeDb_) {
                 gain_ = rangeGain_;
             } else {
-                // range 在門關著時被改了：往上用 attack 斜率、往下用 release 斜率滑過去（至少 0.01 dB/sample）
+                // The range was changed while the gate was closed: glide there using the attack slope going up and the release
+                // slope going down (at least 0.01 dB/sample)
                 if (gainDb_ < rangeDb_)
                     gainDb_ = std::min(rangeDb_, gainDb_ + std::max(attackStepDb_, kMinRangeGlideDbPerSample));
                 else
@@ -170,7 +182,8 @@ public:
             break;
 
         case GateState::Attack:
-            // 一旦觸發就一路開到底（確保 transient 完整通過），開到 0 dB 才看門檻
+            // Once triggered, open all the way (so the transient passes completely); the threshold is only looked at again
+            // after reaching 0 dB
             gainDb_ += attackStepDb_;
             if (gainDb_ >= 0.0f) {
                 gainDb_ = 0.0f;
@@ -195,7 +208,7 @@ public:
             break;
 
         case GateState::Hold:
-            // hold 期間 gain 維持 0 dB；訊號若回到門檻以上就回到 Open（計數器作廢）
+            // During hold the gain stays at 0 dB; if the signal returns above the threshold, go back to Open (the counter is voided)
             if (aboveOpen)
                 state = GateState::Open;
             else if (--holdCounter_ <= 0)
@@ -204,9 +217,10 @@ public:
 
         case GateState::Release:
             if (aboveOpen) {
-                state = GateState::Attack; // 從目前的 gain 往上爬，不跳
+                state = GateState::Attack; // climb from the current gain, no jump
             } else if (gainDb_ <= rangeDb_) {
-                // 只會在 release 途中 range 被調高（衰減變少）時發生：交給 Closed 狀態慢慢滑上去，不跳
+                // This only happens when the range is raised (less attenuation) in the middle of a release: hand over to the
+                // Closed state to glide up slowly, with no jump
                 state = GateState::Closed;
             } else {
                 gainDb_ = std::max(rangeDb_, gainDb_ - releaseStepDb_);
@@ -223,11 +237,11 @@ public:
         return gain_;
     }
 
-    // 以自己的訊號偵測（stereo-link：max|x| across channels）
+    // Detect from the signal itself (stereo-link: max|x| across channels)
     void process(AudioBlock block) noexcept { process(block, block); }
 
-    // 以 sidechain 偵測（例如 kick 軌觸發 pad 軌）。sidechain 的 channel 數可以與 main 不同，
-    // sample 數以兩者較小者為準。
+    // Detect from a sidechain (for example a kick track triggering a pad track). The sidechain may have a different
+    // number of channels from main; the number of samples is the smaller of the two.
     void process(AudioBlock main, const AudioBlock& sidechain) noexcept {
         const int n = std::min(main.getNumSamples(), sidechain.getNumSamples());
         const int nMain = main.getNumChannels();
@@ -271,8 +285,9 @@ private:
         const double attackSamples = attackMs_ * 0.001 * sampleRate_;
         const double releaseSamples = releaseMs_ * 0.001 * sampleRate_;
         holdSamples_ = msToSamples(holdMs_, sampleRate_);
-        // 斜率（dB / sample）：attack 要在 attackMs 內從 range 爬到 0 dB。
-        // 斜率的參考量至少取 1 dB：range = 0（等於關掉 gate）時斜率若是 0，正在 Attack 的 gain 會永遠爬不到 0 dB。
+        // Slope (dB / sample): the attack must climb from range to 0 dB within attackMs.
+        // The reference span is at least 1 dB: with range = 0 (which means the gate is switched off), a slope of 0 would
+        // leave a gain that is in Attack forever unable to reach 0 dB.
         const double spanDb = std::max(1.0, static_cast<double>(-rangeDb_));
         attackStepDb_ = attackSamples >= 1.0 ? static_cast<float>(spanDb / attackSamples) : 1.0e9f;
         releaseStepDb_ = releaseSamples >= 1.0 ? static_cast<float>(spanDb / releaseSamples) : 1.0e9f;

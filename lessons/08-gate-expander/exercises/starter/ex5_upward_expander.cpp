@@ -1,10 +1,10 @@
-// 練習 5 起始碼：upward expander —— 把 threshold「以上」的訊號推得更大
+// Exercise 5 starter: upward expander -- push the signal ABOVE the threshold even louder
 //
-// 要做的事：
-//   1. 完成 UpwardExpander::computeOutputDb()（含 soft knee，公式見 exercises/README.md）
-//   2. 完成 nextGain()：envelope → dB → 靜態曲線 → boost（上限 range）→ 線性 gain
-// self-check 已經寫好；填完 TODO 後執行 l08_ex5_starter 應該印出 PASS。
-// 提示：解答在 solutions/ex5_upward_expander.cpp。
+// What to do:
+//   1. Complete UpwardExpander::computeOutputDb() (with soft knee; see exercises/README.md for the formula)
+//   2. Complete nextGain(): envelope -> dB -> static curve -> boost (capped at range) -> linear gain
+// The self-check is already written; once the TODOs are filled in, running l08_ex5_starter should print PASS.
+// Hint: the solution is in solutions/ex5_upward_expander.cpp.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/EnvelopeFollower.h>
@@ -24,12 +24,12 @@ constexpr double kSampleRate = 48000.0;
 
 class UpwardExpander {
 public:
-    // 回傳輸出位準（dB）。ratio ≥ 1；kneeDb ≤ 0 視為 hard knee。
+    // Returns the output level (dB). ratio >= 1; kneeDb <= 0 is treated as a hard knee.
     static float computeOutputDb(float inputDb, float thresholdDb, float ratio, float kneeDb) noexcept {
-        // TODO：
-        //   x ≤ T − W/2            → y = x
-        //   T − W/2 < x < T + W/2  → y = x + (R − 1)(x − T + W/2)² / (2W)
-        //   x ≥ T + W/2            → y = T + R (x − T)
+        // TODO:
+        //   x <= T - W/2            -> y = x
+        //   T - W/2 < x < T + W/2   -> y = x + (R - 1)(x - T + W/2)^2 / (2W)
+        //   x >= T + W/2            -> y = T + R (x - T)
         (void)thresholdDb;
         (void)ratio;
         (void)kneeDb;
@@ -39,8 +39,9 @@ public:
     void prepare(double sampleRate, int /*maxBlockSize*/, int /*numChannels*/) {
         detector_.prepare(sampleRate);
         detector_.setMode(DetectorMode::Peak);
-        // Decoupled（peak-hold + attack 平滑）：對正弦波不會因 release 期間的漣漪而低估 peak，
-        // 穩態 level 才會等於真正的 peak（Branching 在 1 kHz、attack 5 ms 時約低估 1 dB）
+        // Decoupled (peak-hold + attack smoothing): for a sine wave it does not underestimate the peak because of
+        // ripple during the release, so the steady-state level equals the true peak (Branching underestimates by
+        // about 1 dB at 1 kHz with a 5 ms attack)
         detector_.setSmoothingMode(SmoothingMode::Decoupled);
         detector_.setAttackMs(attackMs_);
         detector_.setReleaseMs(releaseMs_);
@@ -54,7 +55,7 @@ public:
     void setThresholdDb(float db) noexcept { thresholdDb_ = db; }
     void setRatio(float r) noexcept { ratio_ = std::max(1.0f, r); }
     void setKneeDb(float db) noexcept { kneeDb_ = std::max(0.0f, db); }
-    void setRangeDb(float db) noexcept { rangeDb_ = std::abs(db); } // 最大 boost（正值）
+    void setRangeDb(float db) noexcept { rangeDb_ = std::abs(db); } // maximum boost (positive value)
     void setAttackMs(float ms) noexcept {
         attackMs_ = ms;
         detector_.setAttackMs(ms);
@@ -65,10 +66,10 @@ public:
     }
 
     float nextGain(float detectorInput) noexcept {
-        // TODO：
+        // TODO:
         //   levelDb = gainToDb(detector_.processSample(detectorInput))
-        //   boost   = min(rangeDb_, computeOutputDb(levelDb, ...) − levelDb)
-        //   gain_   = dbToGain(boost)（只有 boost 改變時才算 pow）
+        //   boost   = min(rangeDb_, computeOutputDb(levelDb, ...) - levelDb)
+        //   gain_   = dbToGain(boost) (only compute pow when the boost changes)
         (void)detectorInput;
         return gain_;
     }
@@ -106,7 +107,7 @@ double segmentLevelDb(const AudioBuffer& b, int segment, int segLen, double freq
 } // namespace
 
 int main() {
-    std::printf("第 08 章 練習 5（起始碼）：upward expander\n");
+    std::printf("Chapter 08 Exercise 5 (starter): upward expander\n");
 
     const float T = -30.0f, R = 1.5f, W = 10.0f;
     const float lo = T - W / 2, hi = T + W / 2;
@@ -139,11 +140,11 @@ int main() {
     }
     writeWav(outputPath("l08_ex5_output.wav"), output, kSampleRate, 32);
 
-    std::printf("    段落  輸入    輸出實測  理論\n");
+    std::printf("    seg   input   output(meas.)  theory\n");
     for (size_t s = 0; s < levels.size(); ++s) {
         const float theory = levels[s] + std::min(12.0f, UpwardExpander::computeOutputDb(levels[s], T, R, 0.0f) - levels[s]);
         const double measured = segmentLevelDb(output, static_cast<int>(s), segLen, 1000.0);
-        std::printf("    %4zu  %6.1f  %8.2f  %6.1f\n", s + 1, levels[s], measured, theory);
+        std::printf("    %4zu  %6.1f  %13.2f  %6.1f\n", s + 1, levels[s], measured, theory);
         DAWLAB_CHECK_NEAR(measured, theory, 0.5);
     }
     return dawlab::test::summary("l08_ex5_starter");
