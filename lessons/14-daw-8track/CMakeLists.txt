@@ -52,12 +52,14 @@ add_subdirectory(steps)
 dawlab_add_starter(l14_ex3_starter          exercises/starter/ex3_automation.cpp)
 dawlab_add_starter(l14_ex4_starter          exercises/starter/ex4_project_json.cpp)
 dawlab_add_starter(l14_ex5_starter          exercises/starter/ex5_clip_crossfade.cpp)
+dawlab_add_starter(l14_ex14_starter         exercises/starter/ex14_track_format.cpp)
 dawlab_add_solution(l14_ex2_solution        solutions/ex2_timing_and_pdc.cpp)
 dawlab_add_solution(l14_ex3_solution        solutions/ex3_automation.cpp)
 dawlab_add_solution(l14_ex4_solution        solutions/ex4_project_json.cpp)
 dawlab_add_solution(l14_ex5_solution        solutions/ex5_clip_crossfade.cpp)
-foreach(t l14_ex3_starter l14_ex4_starter l14_ex5_starter
-          l14_ex2_solution l14_ex3_solution l14_ex4_solution l14_ex5_solution)
+dawlab_add_solution(l14_ex14_solution       solutions/ex14_track_format.cpp)
+foreach(t l14_ex3_starter l14_ex4_starter l14_ex5_starter l14_ex14_starter
+          l14_ex2_solution l14_ex3_solution l14_ex4_solution l14_ex5_solution l14_ex14_solution)
     target_link_libraries(${t} PRIVATE dawlab::engine)
 endforeach()
 

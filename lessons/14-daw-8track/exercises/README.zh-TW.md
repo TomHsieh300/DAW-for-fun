@@ -6,7 +6,7 @@
 
 難度：★☆☆ 簡單、★★☆ 中等、★★★ 困難。實作型練習在 `exercises/starter/` 中附有一個可編譯、可執行的 starter 檔；在你完成它之前，它的 self-check 會印出 `FAIL`（這是預期的）。Build target 名稱寫在方括號內。
 
-本章的**練習題組是 Exercise 1-7**（概念、計算、設計，以及三個實作練習），內容關於 engine（stage 1，不用 JUCE）。**Exercise 8-13 是選修專案**，關於應用程式 DawLab 8（stage 2）：更大、更開放的延伸，給想在本章之後繼續打造這個 DAW 的讀者。它們需要 JUCE build（`.\scripts\build.ps1 -Only 14-daw-8track -Juce`）。JUCE 練習是 console 程式，連結 app 函式庫 `l14_daw_app`，並在 offline 模式下建出真正的 `MainComponent`，所以檢查它們既不需要 audio device，也不需要點擊。
+本章的**練習題組是 Exercise 1-7**（概念、計算、設計，以及三個實作練習），內容關於 engine（stage 1，不用 JUCE）。**Exercise 8-13 是選修專案**，關於應用程式 DawLab 8（stage 2）：更大、更開放的延伸，給想在本章之後繼續打造這個 DAW 的讀者。它們需要 JUCE build（`.\scripts\build.ps1 -Only 14-daw-8track -Juce`）。JUCE 練習是 console 程式，連結 app 函式庫 `l14_daw_app`，並在 offline 模式下建出真正的 `MainComponent`，所以檢查它們既不需要 audio device，也不需要點擊。**Exercise 14** 是隨 mono / stereo track format 加入的：一個像 3-5 那樣的 engine 實作練習（不用 JUCE），放在最後。
 
 ---
 
@@ -50,8 +50,8 @@ Self-check 讓一個 DC clip 經過一個從 0 dB（0.5 s）到 -24 dB（1.5 s�
 
 Starter 給你一個最小的 JSON parser（`parseJson`、`Json`）與 writer helper（`jsonString`、`num`、`boolean`）。請寫出：
 
-- `saveProject(engine, pool)`：transport（tempo、拍號、loop）、PDC flag，以及全部 11 個 strip 的：名稱、fader、pan、pan law、pan mode、mute、solo、send（level、pre/post）、insert（類型名稱、bypass、**以名稱**表示的每個參數），以及 track 的 clip（media id、start、length、offset、gain、fade、shape、muted）。Audio 不存進檔案：clip 引用 `MediaPool` 的 id。
-- `loadProject(engine, text, pool, &error)`：反向操作，使用 `createEffect(name)`、`setParameterByName()`、`Engine::addInsert()` 與 `Engine::setTrackClips()`。未知的參數名稱會被跳過；未知的 effect 類型或缺少的 media 是帶有訊息的錯誤。
+- `saveProject(engine, pool)`：transport（tempo、拍號、loop）、PDC flag，以及全部 11 個 strip 的：名稱、fader、pan、pan law、pan mode、mute、solo、send（level、pre/post）、insert（類型名稱、bypass、**以名稱**表示的每個參數），以及 track 的 format（Mono / Stereo，Step 4）與 clip（media id、start、length、offset、gain、fade、shape、muted）。Audio 不存進檔案：clip 引用 `MediaPool` 的 id。
+- `loadProject(engine, text, pool, &error)`：反向操作，使用 `createEffect(name)`、`setParameterByName()`、`Engine::addInsert()` 與 `Engine::setTrackClips()`。track 的 format 要在 pan mode *之前*還原：`Track::setFormat()` 也會設定 pan mode。未知的參數名稱會被跳過；未知的 effect 類型或缺少的 media 是帶有訊息的錯誤。
 
 Self-check 儲存一個 project，把它載入一個全新的 engine，再儲存一次，並要求**完全相同的 JSON 文字**以及**逐 bit 相同的重新 render**——所以想想一個 `float` 需要多少位數。
 
@@ -132,7 +132,7 @@ Event loop（PlayHead segment 內 sample 精度的 note 起點、loop 跳躍時�
 
 Exercise 4 把 *engine* 存成 JSON。現在要儲存*應用程式*的 project，並讓它成為真正的 menu command：
 
-- `ProjectFile::stripToTree()` / `stripFromTree()`：每個 strip 一個 `juce::ValueTree`（名稱、fader、pan、pan law 與 mode、mute、solo、send、帶有所有以名稱表示的參數的 insert，或一個 VST3 檔案 + base64 state、clip）。Media 的寫出（每個不同的 buffer 一個 32-bit float WAV）與檔案的 framing 已提供。
+- `ProjectFile::stripToTree()` / `stripFromTree()`：每個 strip 一個 `juce::ValueTree`（名稱、fader、pan、pan law、track format 與 pan mode、mute、solo、send、帶有所有以名稱表示的參數的 insert，或一個 VST3 檔案 + base64 state、clip）。Media 的寫出（每個不同的 buffer 一個 32-bit float WAV）與檔案的 framing 已提供。
 - `ProjectCommands`：作為額外的 `ApplicationCommandTarget`（`MainComponent::setExtraCommandTarget`）的 command 的 "Save project..."（Ctrl+S）與 "Open project..."（Ctrl+Shift+O），透過 `MainComponent::onExtendMenu` 加進 File menu——不修改 app。
 
 Self-check 在 File menu 中找到這兩個項目，並在 key mapping 中找到 Ctrl+S，儲存一個修改過的 demo song，在全新的 `MainComponent` 中開啟它，要求 4 bar 的 render **逐 bit 相同**，且再次儲存必須得到**完全相同的 XML 文字**。為什麼用 32-bit float WAV，以及為什麼 float 用 9 位有效數字？
@@ -157,3 +157,14 @@ Self-check 計算 12 個 strip 與每個 track 3 個 send 旋鈕，移動 C 旋�
 - `saveShortcuts()` / `loadShortcuts()`：只儲存使用者的變更（`KeyPressMappingSet::createXml(true)`）並還原它們。
 
 Self-check 要求 28 個 command 之間沒有衝突、偵測到一個刻意製造的衝突、按下新的按鍵、將 Play/Stop 從 Space 重新對應到 P、儲存、把檔案還原到一個全新的 app 中，並檢查 P 會播放而 Space 什麼都不做。它也會把同一組 mapping set 的 JUCE `KeyMappingEditorComponent` render 到 `dawlab_output/l14_ex13_editor.png`。問題：為什麼 DawLab 8 的旋鈕與按鈕拒絕鍵盤 focus？
+
+## Exercise 14 - 手寫 mono 與 stereo track ★★☆（實作）
+
+[`l14_ex14_starter`，檔案 `exercises/starter/ex14_track_format.cpp`；只用 engine，不用 JUCE]
+
+把 track 中與 format 有關的部分（Step 4 的「Mono 與 stereo track」；Step 5 的「Mono track 上的 insert」）寫成兩個獨立函式，不需要外圍的 engine：
+
+- `trackPanGains(format, pan, left, right)`：Mono -> constant-power pan law，$`p_L = \cos\theta`$、$`p_R = \sin\theta`$，其中 $`\theta = \frac{\pi}{4}(p+1)`$；Stereo -> balance，$`p_L = \min(1, 1-p)`$、$`p_R = \min(1, 1+p)`$。
+- `processTrackBlock(block, format, insert, gainDb, pan)`，就地處理一個 stereo block：Mono -> fold 成 $`(L+R)/2`$，只在 `block.getChannelSubset(0, 1)` 上執行 `insert`（可能為 null），再把 channel 0 複製到 channel 1；Stereo -> 在兩個 channel 上執行 `insert`。接著把每一側乘上 $`10^{\text{dB}/20}`$ 再乘上它的 pan gain。
+
+Self-check 會把你的 gain 與 `ChannelStrip::computeStripGains()` 比較；把一個 mono 檔案（L = R = 0.5）放到兩種 format 上，要求中央相差 **3.01 dB**；要求 stereo source（0.6 | 0.2）在 balance 下保留 L != R（+0.5 時為 0.3 | 0.2），在 mono track 上 fold 成 0.4 x 0.7071；以 Stereo Spread 開到最大的 chorus 執行，要求 mono track 上 L = R，而 stereo track 上輸出是寬廣的；最後把你的結果與真正的 engine 對兩種 format render 出的結果比較。執行之前先預測：同一個 mono 檔案在哪一種 format 上中央比較大聲，大聲多少？為什麼？

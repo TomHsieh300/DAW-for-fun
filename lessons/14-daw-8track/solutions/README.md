@@ -4,7 +4,7 @@
 [Back to the chapter](../README.md) | [Exercises](../exercises/README.md)
 
 Run all solution programs with `.\scripts\build.ps1 -Only 14-daw-8track -TestLabel solution`
-(add `-Juce` for exercises 8-13).
+(add `-Juce` for exercises 8-13; exercise 14 is engine-only).
 Every one ends with `[PASS] l14_exN (... checks passed)`.
 
 ---
@@ -56,11 +56,11 @@ $`N_{\text{bar}} = 3 \cdot 27\,562.5 = 82\,687.5`$ samples.
 Bar 5, beat 2: $`(5-1)\cdot 3 + (2-1) = 13`$ beats $`= 13 \cdot 27\,562.5 = 358\,312.5`$ samples, which
 rounds to **358 313** (round half away from zero, as `std::llround`), i.e. $`13 \cdot 0.625 = 8.125`$ s.
 Sample 1 000 000: $`1\,000\,000 / 27\,562.5 = 36.2812`$ beats; 36 whole beats = 12 full bars, so bar
-**13**, beat $36 \bmod 3 + 1 = $ **1**, tick $\lfloor 0.2812 \cdot 960 \rfloor = $ **269**.
+**13**, beat $`36 \bmod 3 + 1 =`$ **1**, tick $`\lfloor 0.2812 \cdot 960 \rfloor =`$ **269**.
 
 **(b)** A quarter note lasts $`60\,000 / 96 = 625`$ ms; a dotted eighth is $`0.75`$ of it:
-**468.75 ms** = $0.46875 \cdot 44100 = $ **20 671.875 samples** (a fractional delay - chapter 09's
-`FractionalDelayLine` handles the .875). One cycle per quarter note: $96 / 60 = $ **1.6 Hz**.
+**468.75 ms** = $`0.46875 \cdot 44100 =`$ **20 671.875 samples** (a fractional delay - chapter 09's
+`FractionalDelayLine` handles the .875). One cycle per quarter note: $`96 / 60 =`$ **1.6 Hz**.
 
 **(c)** $`\max_t L_t = 1024`$, $`\max_b L_b = 512`$:
 
@@ -75,16 +75,16 @@ Sample 1 000 000: $`1\,000\,000 / 27\,562.5 = 36.2812`$ beats; 36 whole beats = 
 | bus B | 512 | **0** |
 | track sum | - | $`\max_b L_b`$ = **512** |
 
-Total latency $= 1024 + 512 + 240 = $ **1776 samples** $= 1776 / 48 = $ **37.0 ms**.
+Total latency $`= 1024 + 512 + 240 =`$ **1776 samples** $`= 1776 / 48 =`$ **37.0 ms**.
 
 **(d)** Constant power: $`\theta = \frac{\pi}{4}(p+1) = \frac{3\pi}{8} = 67.5°`$;
 $`\cos 67.5° = 0.38268`$, $`\sin 67.5° = 0.92388`$; fader $`10^{-6/20} = 0.50119`$.
-$g_L = 0.50119 \cdot 0.38268 = $ **0.19180** $= -6 + 20\log_{10} 0.38268 = -6 - 8.34 = $ **-14.34 dB**;
-$g_R = 0.50119 \cdot 0.92388 = $ **0.46304** $= -6 - 0.69 = $ **-6.69 dB**.
-Balance mode: $g_L = 0.50119 \cdot \min(1, 1 - 0.5) = $ **0.25059 (-12.02 dB)**,
-$g_R = 0.50119 \cdot 1 = $ **0.50119 (-6.00 dB)**.
+$`g_L = 0.50119 \cdot 0.38268 =`$ **0.19180** $`= -6 + 20\log_{10} 0.38268 = -6 - 8.34 =`$ **-14.34 dB**;
+$`g_R = 0.50119 \cdot 0.92388 =`$ **0.46304** $`= -6 - 0.69 =`$ **-6.69 dB**.
+Balance mode: $`g_L = 0.50119 \cdot \min(1, 1 - 0.5) =`$ **0.25059 (-12.02 dB)**,
+$`g_R = 0.50119 \cdot 1 =`$ **0.50119 (-6.00 dB)**.
 
-**(e)** Per delay line $(16384 + 1) \cdot 2 \text{ channels} \cdot 4 \text{ bytes} = $
+**(e)** Per delay line $`(16384 + 1) \cdot 2 \text{ channels} \cdot 4 \text{ bytes} =`$
 **131 080 bytes**; 12 lines (8 tracks + 2 buses + master + track sum): **1 572 960 bytes = 1.50 MiB**.
 Small enough that a fixed, generous maximum is the right trade-off against resizing at run time.
 
@@ -186,7 +186,7 @@ Key points:
 Verified output (excerpt):
 
 ```
-Exercise 4: project saved (5717 bytes) to dawlab_output/l14_ex4_project.json
+Exercise 4: project saved (5861 bytes) to dawlab_output/l14_ex4_project.json
 {
   "format": "dawlab-project", "version": 1,
   "sampleRate": 48000,
@@ -505,3 +505,43 @@ only when it gets a parent (`parentHierarchyChanged()`), so it is put into a hol
 a `TreeView` lays out its rows asynchronously through the message loop, which does not run here -
 `setRootItem(nullptr)` followed by `setRootItem(root)` makes it lay them out at once. The check
 `rows == 32` (4 categories + 28 commands) guards against an empty picture.
+
+## Exercise 14 - Mono and stereo tracks by hand
+
+Solution: [`solutions/ex14_track_format.cpp`](ex14_track_format.cpp) (`l14_ex14_solution`).
+
+- **Gains**: pan law $`\theta = \frac{\pi}{4}(p+1)`$, $`p_L = \cos\theta`$, $`p_R = \sin\theta`$; balance
+  $`p_L = \min(1, 1-p)`$, $`p_R = \min(1, 1+p)`$; both multiplied by $`10^{\text{dB}/20}`$. This is
+  `ChannelStrip::computeStripGains()` with `PanLaw::ConstantPower`; the difference is float rounding.
+- **Mono**: `l[i] = 0.5f * (l[i] + r[i])`, `insert->process(block.getChannelSubset(0, 1))`,
+  `std::copy_n(l, n, r)` - the same three steps as `Mixer::process()`. The fold is exact for a mono
+  file (the loader stores it as L = R); for a stereo file it keeps what both channels have in
+  common and averages the rest.
+- **Stereo**: `insert->process(block)`, nothing else.
+
+Verified output:
+
+```
+Exercise 14
+  pan gains vs ChannelStrip::computeStripGains: max |difference| = 8.94e-08
+  mono file at the centre: mono track 0.3536, stereo track 0.5000 -> 3.01 dB
+  stereo source 0.6 | 0.2: stereo track 0.600 | 0.200, balance +0.5 0.300 | 0.200, mono track 0.283 | 0.283
+  chorus (spread 1): max |L - R| mono track 0.000000, stereo track 0.3174
+  engine vs processTrackBlock, Mono   track, -6 dB, pan -0.4: |difference| 0 | 0
+  engine vs processTrackBlock, Stereo track, -6 dB, pan -0.4: |difference| 0 | 0
+[PASS] l14_ex14 (18 checks passed)
+```
+
+- **The 3.01 dB**: a mono track *positions* a mono source with the pan law, $`\cos(\pi/4) = 0.7071`$
+  per side at the centre; a stereo track *balances* an existing image, x1 at the centre. Same file,
+  $`20\log_{10}(1/0.7071) = 3.01`$ dB louder on the stereo track. Switching a track's format without
+  touching its fader therefore changes the mix - which is why the demo song's Pad, Wind and Hits
+  faders went 3 dB down when they became stereo tracks (Step 9). The theory behind pan law vs
+  balance is in [chapter 01](../../01-gain/README.md).
+- **The chorus**: with spread, the chorus writes a differently modulated voice into the second
+  channel. On a mono track there is no second channel - the insert only sees channel 0 - and the
+  copy to the right side makes L = R exactly (0.000000). On the stereo track the two sides differ
+  by up to 0.32. To keep a stereo effect on a mono source, put the source on a stereo track (the
+  demo song's Hits and its convolution reverb).
+- **Engine vs your function**: identical for a constant input once the fader has settled - the
+  engine only adds smoothing, PDC, sends and meters around the same arithmetic.

@@ -13,7 +13,8 @@ projects** about the application DawLab 8 (stage 2): larger, open-ended extensio
 want to keep building the DAW after the chapter. They need a JUCE
 build (`.\scripts\build.ps1 -Only 14-daw-8track -Juce`). The JUCE exercises are console programs
 that link the app library `l14_daw_app` and build the real `MainComponent` in its offline mode, so
-no audio device and no clicking is needed to check them.
+no audio device and no clicking is needed to check them. **Exercise 14** came with the mono /
+stereo track formats: an engine implementation exercise like 3-5 (no JUCE), placed at the end.
 
 ---
 
@@ -79,11 +80,12 @@ The starter gives you a minimal JSON parser (`parseJson`, `Json`) and writer hel
 
 - `saveProject(engine, pool)`: transport (tempo, time signature, loop), the PDC flag, and for all 11
   strips: name, fader, pan, pan law, pan mode, mute, solo, sends (level, pre/post), inserts (type
-  name, bypass, every parameter **by name**), and for tracks the clips (media id, start, length,
-  offset, gain, fades, shape, muted). Audio is not stored in the file: clips refer to a `MediaPool`
+  name, bypass, every parameter **by name**), and for tracks the format (Mono / Stereo, Step 4) and
+  the clips (media id, start, length, offset, gain, fades, shape, muted). Audio is not stored in the file: clips refer to a `MediaPool`
   id.
 - `loadProject(engine, text, pool, &error)`: the reverse, using `createEffect(name)`,
-  `setParameterByName()`, `Engine::addInsert()` and `Engine::setTrackClips()`. Unknown parameter
+  `setParameterByName()`, `Engine::addInsert()` and `Engine::setTrackClips()`. Restore a track's
+  format *before* its pan mode: `Track::setFormat()` also sets the pan mode. Unknown parameter
   names are skipped; an unknown effect type or missing media is an error with a message.
 
 The self-check saves a project, loads it into a fresh engine, saves again and requires **identical
@@ -208,7 +210,7 @@ Exercise 4 saved the *engine* as JSON. Now save the *application's* project, and
 menu command:
 
 - `ProjectFile::stripToTree()` / `stripFromTree()`: one `juce::ValueTree` per strip (name, fader,
-  pan, pan law and mode, mute, solo, sends, inserts with all parameters by name or a VST3 file +
+  pan, pan law, track format and pan mode, mute, solo, sends, inserts with all parameters by name or a VST3 file +
   base64 state, clips). The media writing (one 32-bit float WAV per distinct buffer) and the file
   framing are given.
 - `ProjectCommands`: "Save project..." (Ctrl+S) and "Open project..." (Ctrl+Shift+O) as commands of
@@ -253,3 +255,26 @@ presses the new keys, remaps Play/Stop from Space to P, saves, restores the file
 and checks that P plays and Space does nothing. It also renders JUCE's `KeyMappingEditorComponent`
 for the same mapping set to `dawlab_output/l14_ex13_editor.png`. Question: why do the knobs and
 buttons of DawLab 8 refuse the keyboard focus?
+
+## Exercise 14 - Mono and stereo tracks by hand ★★☆ (implementation)
+
+[`l14_ex14_starter`, file `exercises/starter/ex14_track_format.cpp`; engine only, no JUCE]
+
+Write the format-dependent part of a track (Step 4, "Mono and stereo tracks"; Step 5, "Inserts on
+a mono track") as two free functions, without the engine around them:
+
+- `trackPanGains(format, pan, left, right)`: Mono -> the constant-power pan law
+  $`p_L = \cos\theta`$, $`p_R = \sin\theta`$ with $`\theta = \frac{\pi}{4}(p+1)`$; Stereo -> balance
+  $`p_L = \min(1, 1-p)`$, $`p_R = \min(1, 1+p)`$.
+- `processTrackBlock(block, format, insert, gainDb, pan)`, in place on a stereo block:
+  Mono -> fold to $`(L+R)/2`$, run `insert` (may be null) on `block.getChannelSubset(0, 1)` only,
+  copy channel 0 to channel 1; Stereo -> run `insert` on both channels. Then multiply each side by
+  $`10^{\text{dB}/20}`$ times its pan gain.
+
+The self-check compares your gains with `ChannelStrip::computeStripGains()`, puts a mono file
+(L = R = 0.5) on both formats and requires the **3.01 dB** centre difference, requires a stereo
+source (0.6 | 0.2) to keep L != R under balance (0.3 | 0.2 at +0.5) and to fold to 0.4 x 0.7071 on a
+mono track, runs a chorus with full Stereo Spread and requires L = R on the mono track but a wide
+output on the stereo track, and finally compares your result with what the real engine renders for
+both formats. Before running it, predict: on which of the two formats is the same mono file louder
+at the centre, and by how much? Why?

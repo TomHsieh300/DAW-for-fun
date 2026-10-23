@@ -4,7 +4,7 @@
 
 [回到本章](../README.zh-TW.md) | [練習題](../exercises/README.zh-TW.md)
 
-用 `.\scripts\build.ps1 -Only 14-daw-8track -TestLabel solution` 執行所有解答程式（exercise 8-13 要加上 `-Juce`）。每一個都以 `[PASS] l14_exN (... checks passed)` 結束。
+用 `.\scripts\build.ps1 -Only 14-daw-8track -TestLabel solution` 執行所有解答程式（exercise 8-13 要加上 `-Juce`；exercise 14 只用 engine）。每一個都以 `[PASS] l14_exN (... checks passed)` 結束。
 
 ---
 
@@ -25,9 +25,9 @@
 **(a)** $`N_{\text{beat}} = 60 f_s / B = 60 \cdot 44100 / 96 = 27\,562.5`$ 個 sample；
 $`N_{\text{bar}} = 3 \cdot 27\,562.5 = 82\,687.5`$ 個 sample。
 Bar 5、beat 2：$`(5-1)\cdot 3 + (2-1) = 13`$ 個 beat $`= 13 \cdot 27\,562.5 = 358\,312.5`$ 個 sample，四捨五入（half away from zero，如 `std::llround`）得 **358 313**，即 $`13 \cdot 0.625 = 8.125`$ s。
-Sample 1 000 000：$`1\,000\,000 / 27\,562.5 = 36.2812`$ 個 beat；36 個整 beat = 12 個完整的 bar，所以是 bar **13**，beat $36 \bmod 3 + 1 = $ **1**，tick $\lfloor 0.2812 \cdot 960 \rfloor = $ **269**。
+Sample 1 000 000：$`1\,000\,000 / 27\,562.5 = 36.2812`$ 個 beat；36 個整 beat = 12 個完整的 bar，所以是 bar **13**，beat $`36 \bmod 3 + 1 =`$ **1**，tick $`\lfloor 0.2812 \cdot 960 \rfloor =`$ **269**。
 
-**(b)** 四分音符持續 $`60\,000 / 96 = 625`$ ms；附點八分音符是它的 $`0.75`$：**468.75 ms** = $0.46875 \cdot 44100 = $ **20 671.875 個 sample**（一個小數 delay——chapter 09 的 `FractionalDelayLine` 處理 .875）。每四分音符一個週期：$96 / 60 = $ **1.6 Hz**。
+**(b)** 四分音符持續 $`60\,000 / 96 = 625`$ ms；附點八分音符是它的 $`0.75`$：**468.75 ms** = $`0.46875 \cdot 44100 =`$ **20 671.875 個 sample**（一個小數 delay——chapter 09 的 `FractionalDelayLine` 處理 .875）。每四分音符一個週期：$`96 / 60 =`$ **1.6 Hz**。
 
 **(c)** $`\max_t L_t = 1024`$，$`\max_b L_b = 512`$：
 
@@ -42,16 +42,16 @@ Sample 1 000 000：$`1\,000\,000 / 27\,562.5 = 36.2812`$ 個 beat；36 個整 be
 | bus B | 512 | **0** |
 | track sum | - | $`\max_b L_b`$ = **512** |
 
-總 latency $= 1024 + 512 + 240 = $ **1776 個 sample** $= 1776 / 48 = $ **37.0 ms**。
+總 latency $`= 1024 + 512 + 240 =`$ **1776 個 sample** $`= 1776 / 48 =`$ **37.0 ms**。
 
 **(d)** Constant power：$`\theta = \frac{\pi}{4}(p+1) = \frac{3\pi}{8} = 67.5°`$；
 $`\cos 67.5° = 0.38268`$，$`\sin 67.5° = 0.92388`$；fader $`10^{-6/20} = 0.50119`$。
-$g_L = 0.50119 \cdot 0.38268 = $ **0.19180** $= -6 + 20\log_{10} 0.38268 = -6 - 8.34 = $ **-14.34 dB**；
-$g_R = 0.50119 \cdot 0.92388 = $ **0.46304** $= -6 - 0.69 = $ **-6.69 dB**。
-Balance 模式：$g_L = 0.50119 \cdot \min(1, 1 - 0.5) = $ **0.25059 (-12.02 dB)**，
-$g_R = 0.50119 \cdot 1 = $ **0.50119 (-6.00 dB)**。
+$`g_L = 0.50119 \cdot 0.38268 =`$ **0.19180** $`= -6 + 20\log_{10} 0.38268 = -6 - 8.34 =`$ **-14.34 dB**；
+$`g_R = 0.50119 \cdot 0.92388 =`$ **0.46304** $`= -6 - 0.69 =`$ **-6.69 dB**。
+Balance 模式：$`g_L = 0.50119 \cdot \min(1, 1 - 0.5) =`$ **0.25059 (-12.02 dB)**，
+$`g_R = 0.50119 \cdot 1 =`$ **0.50119 (-6.00 dB)**。
 
-**(e)** 每條 delay line $(16384 + 1) \cdot 2 \text{ channels} \cdot 4 \text{ bytes} = $ **131 080 bytes**；12 條 line（8 個 track + 2 個 bus + master + track sum）：**1 572 960 bytes = 1.50 MiB**。小到足以讓固定、寬裕的上限，成為相對於 run time 調整大小的正確取捨。
+**(e)** 每條 delay line $`(16384 + 1) \cdot 2 \text{ channels} \cdot 4 \text{ bytes} =`$ **131 080 bytes**；12 條 line（8 個 track + 2 個 bus + master + track sum）：**1 572 960 bytes = 1.50 MiB**。小到足以讓固定、寬裕的上限，成為相對於 run time 調整大小的正確取捨。
 
 `solutions/ex2_timing_and_pdc.cpp` [`l14_ex2_solution`] 針對 `Transport`、`DelayEffect::noteToMs`、帶有 `PureDelayEffect` 的真正 `Engine`，以及 `ChannelStrip::computeStripGains` 檢查以上全部。驗證過的輸出：
 
@@ -115,7 +115,7 @@ Exercise 3: volume automation 0 dB @0.5 s -> -24 dB @1.5 s
 驗證過的輸出（節錄）：
 
 ```
-Exercise 4: project saved (5717 bytes) to dawlab_output/l14_ex4_project.json
+Exercise 4: project saved (5861 bytes) to dawlab_output/l14_ex4_project.json
 {
   "format": "dawlab-project", "version": 1,
   "sampleRate": 48000,
@@ -297,3 +297,28 @@ saved the user's shortcuts to ...\dawlab_output\l14_ex13_shortcuts.xml:
 ```
 
 `dawlab_output/l14_ex13_editor.png` 是同一組 mapping set 的 JUCE `KeyMappingEditorComponent`，P 位於 Play / Stop。有兩個細節讓它能在 console 程式中 render：editor 只有在取得 parent 時（`parentHierarchyChanged()`）才填入它的 tree，所以把它放進一個 holder component；而 `TreeView` 透過 message loop 非同步地排版它的 row，這裡 message loop 並未執行——`setRootItem(nullptr)` 接著 `setRootItem(root)` 讓它立即排版。`rows == 32`（4 個類別 + 28 個 command）這項檢查防止產生空白的圖片。
+
+## Exercise 14 - 手寫 mono 與 stereo track
+
+解答：[`solutions/ex14_track_format.cpp`](ex14_track_format.cpp)（`l14_ex14_solution`）。
+
+- **Gain**：pan law $`\theta = \frac{\pi}{4}(p+1)`$，$`p_L = \cos\theta`$，$`p_R = \sin\theta`$；balance $`p_L = \min(1, 1-p)`$，$`p_R = \min(1, 1+p)`$；兩者都乘上 $`10^{\text{dB}/20}`$。這就是使用 `PanLaw::ConstantPower` 的 `ChannelStrip::computeStripGains()`；差異只是 float 的捨入誤差。
+- **Mono**：`l[i] = 0.5f * (l[i] + r[i])`、`insert->process(block.getChannelSubset(0, 1))`、`std::copy_n(l, n, r)`——與 `Mixer::process()` 相同的三個步驟。對 mono 檔案來說 fold 是精確的（loader 把它存成 L = R）；對 stereo 檔案則保留兩個 channel 的共同部分，其餘取平均。
+- **Stereo**：`insert->process(block)`，沒有別的。
+
+已驗證的輸出：
+
+```
+Exercise 14
+  pan gains vs ChannelStrip::computeStripGains: max |difference| = 8.94e-08
+  mono file at the centre: mono track 0.3536, stereo track 0.5000 -> 3.01 dB
+  stereo source 0.6 | 0.2: stereo track 0.600 | 0.200, balance +0.5 0.300 | 0.200, mono track 0.283 | 0.283
+  chorus (spread 1): max |L - R| mono track 0.000000, stereo track 0.3174
+  engine vs processTrackBlock, Mono   track, -6 dB, pan -0.4: |difference| 0 | 0
+  engine vs processTrackBlock, Stereo track, -6 dB, pan -0.4: |difference| 0 | 0
+[PASS] l14_ex14 (18 checks passed)
+```
+
+- **3.01 dB**：mono track 用 pan law *定位* mono source，中央每側 $`\cos(\pi/4) = 0.7071`$；stereo track 則是 *balance* 一個既有的聲像，中央為 x1。同一個檔案，在 stereo track 上大聲 $`20\log_{10}(1/0.7071) = 3.01`$ dB。因此不動 fader 而切換 track 的 format 會改變 mix——這就是為什麼 demo song 的 Pad、Wind 與 Hits 變成 stereo track 時，它們的 fader 都降了 3 dB（Step 9）。pan law 與 balance 背後的理論在 [第 01 章](../../01-gain/README.zh-TW.md)。
+- **Chorus**：有 spread 時，chorus 會在第二個 channel 寫入一個調變方式不同的 voice。mono track 上沒有第二個 channel——insert 只看得到 channel 0——而複製到右側使得 L = R 完全相同（0.000000）。在 stereo track 上兩側最多相差 0.32。若要在 mono source 上保留 stereo effect，就把 source 放在 stereo track 上（demo song 的 Hits 與它的 convolution reverb）。
+- **Engine 與你的函式**：對常數輸入、fader 穩定之後兩者完全相同——engine 只是在同樣的運算外圍加上 smoothing、PDC、send 與 meter。
