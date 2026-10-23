@@ -1,124 +1,126 @@
-# 第 07 章 練習題：Distortion
+# Chapter 07 Exercises: Distortion
 
-難度：★☆☆ 基礎 / ★★☆ 中等 / ★★★ 進階。
-實作題（3、4、5）都有起始碼 `exercises/starter/exN_xxx.cpp`（可編譯、留 `// TODO`，執行會印出 FAIL——這是預期的）與完整解答 `solutions/exN_xxx.cpp`。
-解答與解說（含觀念題、計算題、設計題）在 [`../solutions/README.md`](../solutions/README.md)，建議先自己做完再看。
+**English** | [繁體中文](README.zh-TW.md)
 
-建置與執行（Windows，在專案根目錄）：
+Difficulty: ★☆☆ basic / ★★☆ intermediate / ★★★ advanced.
+The implementation problems (3, 4, 5) all come with starter code `exercises/starter/exN_xxx.cpp` (it compiles, leaves `// TODO`s, and prints FAIL when run -- that is expected) and a complete solution `solutions/exN_xxx.cpp`.
+Solutions and explanations (including the conceptual, calculation, and design problems) are in [`../solutions/README.md`](../solutions/README.md); we recommend finishing them on your own before looking.
+
+Build and run (Windows, from the project root):
 
 ```powershell
 .\scripts\build.ps1 -Only 07-distortion -NoTest
 cd build
-.\bin\Debug\l07_ex3_starter.exe      # 你的版本（改 exercises/starter/ex3_wavefolder.cpp）
-.\bin\Debug\l07_ex3_solution.exe     # 參考解答
+.\bin\Debug\l07_ex3_starter.exe      # your version (edit exercises/starter/ex3_wavefolder.cpp)
+.\bin\Debug\l07_ex3_solution.exe     # reference solution
 ```
 
-改完 starter 之後回到專案根目錄重新執行 `build.ps1`（或在 build 目錄裡執行 `cmake --build . --config Debug --target l07_ex3_starter`）即可。
-每支 starter 的 self-check 全部通過、印出 `[PASS]` 就算完成。輸出的 WAV 在你執行時所在目錄的 `dawlab_output/` 底下。
+After editing a starter, go back to the project root and run `build.ps1` again (or, inside the build directory, run `cmake --build . --config Debug --target l07_ex3_starter`).
+A starter is done when all of its self-checks pass and it prints `[PASS]`. The WAV files are written under `dawlab_output/` in the directory you run from.
 
-| 題號 | 類型 | 難度 | 主題 | 檔案 |
+| # | Type | Difficulty | Topic | File |
 |---|---|---|---|---|
-| 1 | 計算 | ★☆☆ | N bits 的 quantization step 與 SNR | — |
-| 2 | 觀念 | ★☆☆ | full-wave rectify 為什麼高八度 | — |
-| 3 | 實作 | ★★☆ | wavefolder（三角 folder、sine folder、oversampling） | `starter/ex3_wavefolder.cpp` |
-| 4 | 實作 | ★★☆ | 用 biquad 做簡易 cabinet simulator | `starter/ex4_cab_sim.cpp` |
-| 5 | 實作 | ★★☆ | auto gain compensation（輸出 RMS = 輸入 RMS） | `starter/ex5_auto_gain.cpp` |
-| 6 | 計算 | ★★☆ | hard clip 與 sample & hold 的 alias 落在哪裡 | — |
-| 7 | 設計 | ★★★ | amp chain 各級的順序為什麼重要 | — |
+| 1 | Calculation | ★☆☆ | Quantization step and SNR for N bits | — |
+| 2 | Conceptual | ★☆☆ | Why full-wave rectify goes up an octave | — |
+| 3 | Implementation | ★★☆ | Wavefolder (triangle folder, sine folder, oversampling) | `starter/ex3_wavefolder.cpp` |
+| 4 | Implementation | ★★☆ | A simple cabinet simulator built from biquads | `starter/ex4_cab_sim.cpp` |
+| 5 | Implementation | ★★☆ | Auto gain compensation (output RMS = input RMS) | `starter/ex5_auto_gain.cpp` |
+| 6 | Calculation | ★★☆ | Where the aliases of hard clip and sample & hold land | — |
+| 7 | Design | ★★★ | Why the order of the amp chain stages matters | — |
 
 ---
 
-## 練習 1 ★☆☆（計算）Quantization step 與 SNR
+## Exercise 1 ★☆☆ (Calculation) Quantization step and SNR
 
-使用 README 2.6.1 節的 $\Delta = 2/2^N$ 與 $\text{SNR} \approx 6.02N + 1.76 + 20\log_{10}A$ dB。
+Use $\Delta = 2/2^N$ and $\text{SNR} \approx 6.02N + 1.76 + 20\log_{10}A$ dB from README Section 2.6.1.
 
-1. 算出 $N = 4, 8, 12, 16, 24$ 時的 step $\Delta$ 與滿幅正弦（$A = 1$）的理論 SNR。
-2. 8 bit 量化一個 −20 dBFS 的正弦，理論 SNR 是多少？跟範例 3 印出的數字比較。
-3. 一段素材的 peak 大約在 −12 dBFS。要讓它的量化 SNR 至少 60 dB，最少要幾 bit？
-4. 4 bit mid-tread 量化器的最大正輸出是多少？把 0 dBFS 的正弦送進去，正峰會發生什麼事？這對範例 3 中 4 bit 的「量測比理論低 2.6 dB」有什麼影響？
-5. `Distortion::setBitDepth()` 接受小數。`bits = 5.5` 時 step 是多少？理論 SNR 是多少？這在聲音上代表什麼（為什麼 plugin 要允許小數 bit）？
-6. 從 $\sigma_e^2 = \Delta^2/12$ 出發，自己推一次 6.02 與 1.76 這兩個數字是怎麼來的。
+1. Compute the step $\Delta$ and the theoretical SNR of a full-scale sine ($A = 1$) for $N = 4, 8, 12, 16, 24$.
+2. What is the theoretical SNR when an 8-bit quantizer quantizes a −20 dBFS sine? Compare it with the numbers printed by Example 3.
+3. A piece of material peaks at about −12 dBFS. What is the minimum number of bits needed for its quantization SNR to be at least 60 dB?
+4. What is the maximum positive output of a 4-bit mid-tread quantizer? What happens to the positive peak when a 0 dBFS sine is fed in? What does this mean for the "measured 2.6 dB lower than theory" at 4 bit in Example 3?
+5. `Distortion::setBitDepth()` accepts fractional values. What is the step when `bits = 5.5`? What is the theoretical SNR? What does this mean audibly (why should a plugin allow fractional bits)?
+6. Starting from $\sigma_e^2 = \Delta^2/12$, derive for yourself where the numbers 6.02 and 1.76 come from.
 
-## 練習 2 ★☆☆（觀念）為什麼 full-wave rectify 會讓音高高八度？
+## Exercise 2 ★☆☆ (Conceptual) Why does full-wave rectify raise the pitch an octave?
 
-1. 用「週期」的角度解釋：$|\sin\omega t|$ 的週期是多少？
-2. 用 Fourier 級數的角度解釋：$|\sin\omega t|$ 有哪些頻率成分？基頻（$\omega$）的係數是多少？
-3. half-wave rectify（$\max(\sin\omega t, 0)$）為什麼**不會**高八度？它比原本的正弦多了哪些成分？
-4. 如果輸入在 rectify 之前帶有 DC offset（例如 $0.3 + \sin\omega t$），full-wave rectify 之後音高還是完全高八度嗎？為什麼？
-5. 為什麼 octave fuzz 在單音 solo 很好聽、彈和弦卻常常很難聽？
+1. Explain it from the viewpoint of the period: what is the period of $|\sin\omega t|$?
+2. Explain it from the viewpoint of the Fourier series: which frequency components does $|\sin\omega t|$ have? What is the coefficient of the fundamental ($\omega$)?
+3. Why does half-wave rectify ($\max(\sin\omega t, 0)$) **not** go up an octave? Which components does it have beyond the original sine?
+4. If the input carries a DC offset before the rectifier (for example $0.3 + \sin\omega t$), is the pitch after full-wave rectify still exactly an octave up? Why?
+5. Why does an octave fuzz sound good on single-note solos but often terrible on chords?
 
-## 練習 3 ★★☆（實作）Wavefolder
+## Exercise 3 ★★☆ (Implementation) Wavefolder
 
-打開 `exercises/starter/ex3_wavefolder.cpp`，完成：
+Open `exercises/starter/ex3_wavefolder.cpp` and complete:
 
-- (a) `float foldTriangle(float u, float threshold)`：超過 ±threshold 的部分折回來，可以折任意多次（週期 $4T$ 的三角波，$|u| \le T$ 時 $y = u$）。`threshold = 1` 時必須與 `Distortion::foldback()` 完全一致（self-check 會在 $u \in [-10, 10]$ 比對）。
-- (b) `float foldSine(float u)`：$y = \sin(\pi u / 2)$。
-- (c) `class Wavefolder`：標準介面 + `setDriveDb` + `setThreshold`，用第 06 章的 `Oversampler`（4x）在高取樣率做 `foldTriangle`。
+- (a) `float foldTriangle(float u, float threshold)`: fold back the part beyond ±threshold, as many times as needed (a triangle wave of period $4T$, with $y = u$ for $|u| \le T$). With `threshold = 1` it must match `Distortion::foldback()` exactly (the self-check compares over $u \in [-10, 10]$).
+- (b) `float foldSine(float u)`: $y = \sin(\pi u / 2)$.
+- (c) `class Wavefolder`: the standard interface + `setDriveDb` + `setThreshold`, using the Chapter 06 `Oversampler` (4x) to run `foldTriangle` at the high sample rate.
 
-self-check：(a)(b) 的數值點；drive 0 dB、振幅 0.25 時 THD < 0.1%（$|u| < T$ 完全透明）；drive 18 dB 時 THD > 20%、peak < 1.1、沒有 NaN；latency > 0。
+Self-check: the numeric points of (a) and (b); THD < 0.1% at drive 0 dB and amplitude 0.25 ($|u| < T$ is perfectly transparent); THD > 20%, peak < 1.1, and no NaN at drive 18 dB; latency > 0.
 
-提示：
+Hints:
 
-- `std::fmod` 對負數回傳負的餘數，記得補回 $[0, 4T)$。
-- 想一想 (b) 的 sine folder 在折點的**導數**是否連續，對諧波衰減速度有什麼影響（解答會印出兩者的諧波表）。
+- `std::fmod` returns a negative remainder for negative numbers; remember to bring it back into $[0, 4T)$.
+- Think about whether the **derivative** of the sine folder in (b) is continuous at the fold points, and what that means for how fast the harmonics decay (the solution prints a harmonic table for both).
 
-## 練習 4 ★★☆（實作）用 biquad 做簡易 cabinet simulator
+## Exercise 4 ★★☆ (Implementation) A simple cabinet simulator from biquads
 
-打開 `exercises/starter/ex4_cab_sim.cpp`，完成 `CabSim`：
+Open `exercises/starter/ex4_cab_sim.cpp` and complete `CabSim`:
 
 $$
 H_\text{cab} = H_\text{HPF}(70\text{ Hz}, Q = \tfrac{1}{\sqrt 2}) \cdot H_\text{peak}(100\text{ Hz}, Q = 1.5, +4\text{ dB}) \cdot H_\text{LPF}(4.5\text{ kHz}, Q = \tfrac{1}{\sqrt 2})^2
 $$
 
-四顆都是第 02 章的 `Biquad`（`BiquadCoefficients::makeHighpass` / `makePeak` / `makeLowpass`）。還要寫 `double magnitudeDb(double freq) const`，把各級的 `magnitudeDb()` 相加。
+All four are the `Biquad` from Chapter 02 (`BiquadCoefficients::makeHighpass` / `makePeak` / `makeLowpass`). You also need to write `double magnitudeDb(double freq) const`, which adds up the `magnitudeDb()` of the stages.
 
-self-check：
+Self-check:
 
-- 實際處理（`measureGainDb`）與分析式（`magnitudeDb`）在 9 個頻率上差 < 0.2 dB。
-- 4.5 kHz 處 −6.02 ± 0.3 dB（LR4 的特徵）。
-- 9 kHz 處要符合 **bilinear transform 的 frequency warping** 修正後的值（不是類比 LR4 的 −24.6 dB）。
-- 1 kHz 在 ±0.5 dB 內、100 Hz 在 +2.5~+4.5 dB、30 Hz < −12 dB、15 kHz < −40 dB。
+- The actual processing (`measureGainDb`) and the analytic form (`magnitudeDb`) differ by < 0.2 dB at 9 frequencies.
+- −6.02 ± 0.3 dB at 4.5 kHz (the signature of an LR4).
+- At 9 kHz the value must match the one corrected for the **frequency warping of the bilinear transform** (not the analog LR4's −24.6 dB).
+- 1 kHz within ±0.5 dB, 100 Hz between +2.5 and +4.5 dB, 30 Hz < −12 dB, 15 kHz < −40 dB.
 
-延伸思考：為什麼 9 kHz 處數位 filter 比類比原型掉得多？（提示：$\tan(\pi f / f_s)$。）
+Food for thought: why does the digital filter fall further than the analog prototype at 9 kHz? (Hint: $\tan(\pi f / f_s)$.)
 
-## 練習 5 ★★☆（實作）Auto gain compensation
+## Exercise 5 ★★☆ (Implementation) Auto gain compensation
 
-打開 `exercises/starter/ex5_auto_gain.cpp`，完成 `AutoGain::process(const AudioBlock& dry, AudioBlock wet)`：
+Open `exercises/starter/ex5_auto_gain.cpp` and complete `AutoGain::process(const AudioBlock& dry, AudioBlock wet)`:
 
 $$
 \overline{x^2}[n] = a\,\overline{x^2}[n-1] + (1-a)\,x^2[n], \qquad a = e^{-1/(\tau f_s)}
 $$
 
-對 dry 與 wet 各算一個 mean square（$\tau$ = 100 ms），然後
+Compute a mean square for each of dry and wet ($\tau$ = 100 ms), and then
 
 $$
 g[n] = \operatorname{clamp}\left(\sqrt{\frac{\overline{x_\text{dry}^2}[n]}{\max(\overline{x_\text{wet}^2}[n], 10^{-12})}},\; 0.01,\; 100\right), \qquad y[n] = g[n] \cdot x_\text{wet}[n]
 $$
 
-self-check：
+Self-check:
 
-1. −20 dBFS 正弦、HardClip 30 dB：穩態後輸出 RMS 與輸入 RMS 差 < 0.2 dB，增益約 −22.4 ± 0.5 dB（請先自己估算這個數字：被 clip 的正弦，RMS 比純方波的 1 小一點）。
-2. pluck sequence、Fuzz 30 dB：沒補償時 RMS 至少大 6 dB；有補償時與輸入差 < 1 dB。
-3. 全靜音輸入：輸出必須全是 0、沒有 NaN。
+1. −20 dBFS sine, HardClip 30 dB: after reaching steady state the output RMS is within 0.2 dB of the input RMS, and the gain is about −22.4 ± 0.5 dB (estimate this number on your own first: for a clipped sine, the RMS is a bit smaller than the 1 of a pure square wave).
+2. Pluck sequence, Fuzz 30 dB: at least 6 dB louder without compensation; within 1 dB of the input with compensation.
+3. Completely silent input: the output must be all 0 with no NaN.
 
-延伸思考：時間常數 $\tau$ 太短（例如 1 ms）會發生什麼事？太長（例如 2 s）呢？
+Food for thought: what happens if the time constant $\tau$ is too short (for example 1 ms)? Too long (for example 2 s)?
 
-## 練習 6 ★★☆（計算）Alias 會落在哪裡？
+## Exercise 6 ★★☆ (Calculation) Where do the aliases land?
 
-取樣率 48 kHz。
+Sample rate 48 kHz.
 
-1. 一個 7 kHz 的正弦經過 hard clip（只有奇次諧波）。列出第 3、5、7、9、11、13、15 次諧波的頻率，以及它們在 48 kHz 下實際出現的頻率（$f_\text{alias} = |f - k f_s|$，$k = \operatorname{round}(f/f_s)$）。哪些是「真的諧波」、哪些是 alias？
-2. 同一個訊號改在 4x oversampling（192 kHz）下做 hard clip。第 27 次諧波會折到哪裡？假設 hard clip 已經接近方波，它相對於基頻大約幾 dB？
-3. 一個 3 kHz 正弦經過 bitcrusher 的 sample & hold，downsample factor = 4。等效取樣率 $f_s'$ 是多少？3 kHz 本身會 alias 嗎？輸出在 3 kHz 與 9 kHz 的成分相對於原本的 3 kHz 各是幾 dB？（用 ZOH 的 sinc：$|\sin(\pi f/f_s') / (\pi f/f_s')|$。）
-4. 為什麼第 3 小題的情況「不需要也不應該」用 oversampling 來處理？
+1. A 7 kHz sine goes through a hard clip (odd harmonics only). List the frequencies of the 3rd, 5th, 7th, 9th, 11th, 13th, and 15th harmonics, and the frequencies at which they actually appear at 48 kHz ($f_\text{alias} = |f - k f_s|$, $k = \operatorname{round}(f/f_s)$). Which are "true harmonics" and which are aliases?
+2. The same signal, with the hard clip done at 4x oversampling (192 kHz) instead. Where does the 27th harmonic fold to? Assuming the hard clip is already close to a square wave, roughly how many dB below the fundamental is it?
+3. A 3 kHz sine goes through the bitcrusher's sample & hold with downsample factor = 4. What is the effective sample rate $f_s'$? Does the 3 kHz itself alias? How many dB are the output components at 3 kHz and 9 kHz relative to the original 3 kHz? (Use the sinc of the ZOH: $|\sin(\pi f/f_s') / (\pi f/f_s')|$.)
+4. Why does the situation in part 3 neither "need" nor "deserve" oversampling?
 
-## 練習 7 ★★★（設計）Amp chain 裡各級的順序為什麼重要？
+## Exercise 7 ★★★ (Design) Why does the order of the amp chain stages matter?
 
-`AmpChain` 的順序是：input HPF → pre-EQ → preamp（tanh）→ tone stack → power amp（hard clip）→ cabinet → output gain。
+The order of `AmpChain` is: input HPF → pre-EQ → preamp (tanh) → tone stack → power amp (hard clip) → cabinet → output gain.
 
-1. 用一句數學說明：為什麼「兩個線性 filter」可以交換順序，但「filter 與 waveshaper」不行？
-2. 如果把 input HPF 移到 preamp **之後**，彈低音弦的和弦會聽到什麼差別？為什麼？（關鍵字：intermodulation。）
-3. tone stack 放在 preamp 與 power amp **之間**，跟放在整條鏈的**最後面**，bass 旋鈕的作用有什麼不同？
-4. 如果把 cabinet 移到 power amp **前面**，會發生什麼事？
-5. noise gate（第 08 章）應該放在哪裡？為什麼不放在 cabinet 後面？
-6. 設計題：你要做一個「bass guitar 用」的 distortion，希望低頻保持乾淨飽滿、只讓中高頻失真。請畫出訊號流程（可以用平行路徑），並說明每一級的參數大概怎麼設。
+1. State in one line of math why "two linear filters" can be swapped but a "filter and a waveshaper" cannot.
+2. If the input HPF is moved **after** the preamp, what difference would you hear on a chord played on the low strings? Why? (Keyword: intermodulation.)
+3. How does the role of the bass knob differ between putting the tone stack **between** the preamp and the power amp and putting it at the very **end** of the chain?
+4. What happens if the cabinet is moved **before** the power amp?
+5. Where should the noise gate (Chapter 08) go? Why not after the cabinet?
+6. Design problem: you are building a distortion for **bass guitar** and want the low end to stay clean and full while only the mids and highs distort. Draw the signal flow (parallel paths are allowed) and explain roughly how to set the parameters of each stage.

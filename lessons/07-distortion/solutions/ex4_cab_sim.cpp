@@ -1,19 +1,19 @@
-// 練習 4 解答：用 biquad 做簡易 cabinet simulator
+// Exercise 4 solution: a simple cabinet simulator built from biquads
 //
-// 真正的吉他喇叭（12 吋單體 + 密閉 / 開放式箱體）的頻率響應大致是：
-//   - 70~100 Hz 以下快速掉（箱體擋不住、單體推不動）
-//   - 100 Hz 附近有一個箱體 / 單體共振峰
-//   - 中頻大致平坦（有很多小起伏，這裡省略）
-//   - 4~5 kHz 以上急遽下滑（紙盆的質量讓它跟不上高頻），斜率常超過 24 dB/oct
-// 我們用四顆 biquad 近似：highpass（70 Hz）× peak（100 Hz，+4 dB，Q 1.5）× lowpass × lowpass（4.5 kHz，Q = 1/√2）。
+// The frequency response of a real guitar speaker (12-inch driver + closed / open cabinet) is roughly:
+//   - Falls quickly below 70-100 Hz (the cabinet cannot hold the bass, the driver cannot move enough air)
+//   - A cabinet / driver resonance peak near 100 Hz
+//   - Roughly flat mids (with many small ripples, omitted here)
+//   - Falls steeply above 4-5 kHz (the mass of the cone cannot follow high frequencies), often steeper than 24 dB/oct
+// We approximate it with four biquads: highpass (70 Hz) × peak (100 Hz, +4 dB, Q 1.5) × lowpass × lowpass (4.5 kHz, Q = 1/√2).
 //
-// 為什麼兩顆 Q = 1/√2 的 lowpass 串接叫 Linkwitz-Riley 4 階（LR4）？
-//   一顆 2 階 Butterworth 在 cutoff 處是 -3.01 dB；兩顆串接就是 -6.02 dB，遠離 cutoff 後斜率 24 dB/oct。
-//   這個結構在第 03 章的 crossover 也用過（LR 的 lowpass + highpass 在 cutoff 處各 -6 dB，相加剛好 0 dB）。
+// Why are two Q = 1/√2 lowpass filters in cascade called a 4th-order Linkwitz-Riley (LR4)?
+//   One 2nd-order Butterworth is -3.01 dB at the cutoff; two in cascade give -6.02 dB, and away from the cutoff the slope is 24 dB/oct.
+//   The same structure was used for the crossover in Chapter 03 (the LR lowpass and highpass are each -6 dB at the cutoff, and they sum to exactly 0 dB).
 //
-// 線性級串接的總響應 = 各級響應相乘 = 各級 dB 相加，所以 magnitudeDb() 直接把四個 magnitudeDb 加起來即可。
+// The total response of cascaded linear stages = the product of the stage responses = the sum of the stage dB values, so magnitudeDb() simply adds the four magnitudeDb values.
 //
-// 執行：l07_ex4_solution
+// Run: l07_ex4_solution
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Biquad.h>
@@ -25,7 +25,7 @@ namespace {
 
 constexpr double kSampleRate = 48000.0;
 constexpr int kBlockSize = 512;
-constexpr double kButterworthQ = 0.70710678118654752; // 1/√2：二階 Butterworth 的 Q
+constexpr double kButterworthQ = 0.70710678118654752; // 1/√2: the Q of a 2nd-order Butterworth
 
 class CabSim {
 public:
@@ -102,12 +102,12 @@ int main() {
     }
     DAWLAB_CHECK(consistent);
     DAWLAB_CHECK_NEAR(cab.magnitudeDb(4500.0), -6.02, 0.3);
-    // 一個 octave 上去：類比 LR4 應為 -24.6 dB，但 bilinear transform 的 frequency warping 讓數位 filter
-    // 在高頻掉得更快：等效的類比頻率比 = tan(π f/fs) / tan(π fc/fs)（9 kHz / 4.5 kHz @ 48 kHz → 2.20 而不是 2）
+    // One octave up: the analog LR4 would be -24.6 dB, but the frequency warping of the bilinear transform makes the digital filter
+    // fall faster at high frequencies: the equivalent analog frequency ratio = tan(π f/fs) / tan(π fc/fs) (9 kHz / 4.5 kHz @ 48 kHz → 2.20 rather than 2)
     {
         const double r = std::tan(dawlab::kPi * 9000.0 / kSampleRate) / std::tan(dawlab::kPi * 4500.0 / kSampleRate);
-        const double expectedDb = -2.0 * 10.0 * std::log10(1.0 + r * r * r * r); // 兩顆 2 階 Butterworth
-        std::printf("9 kHz：warped ratio %.3f → 預期 %.2f dB（未 warp 的類比值 -24.6 dB）\n", r, expectedDb);
+        const double expectedDb = -2.0 * 10.0 * std::log10(1.0 + r * r * r * r); // two 2nd-order Butterworth sections
+        std::printf("9 kHz: warped ratio %.3f → expected %.2f dB (unwarped analog value -24.6 dB)\n", r, expectedDb);
         DAWLAB_CHECK_NEAR(cab.magnitudeDb(9000.0), expectedDb, 0.5);
     }
     DAWLAB_CHECK(cab.magnitudeDb(1000.0) > -0.5 && cab.magnitudeDb(1000.0) < 0.5);
@@ -115,7 +115,7 @@ int main() {
     DAWLAB_CHECK(cab.magnitudeDb(30.0) < -12.0);
     DAWLAB_CHECK(cab.magnitudeDb(15000.0) < -40.0);
 
-    // 聽感用：白雜訊（white noise）經過 cab sim（聽起來像「對著音箱錄的雜訊」）
+    // For listening: white noise through the cab sim (sounds like "noise recorded in front of a speaker cabinet")
     {
         dawlab::AudioBuffer noise = dawlab::makeWhiteNoise(kSampleRate, 2.0, 0.25f, 2);
         CabSim cab2;
@@ -124,7 +124,7 @@ int main() {
         for (int start = 0; start < noise.getNumSamples(); start += kBlockSize)
             cab2.process(whole.getSubBlock(start, std::min(kBlockSize, noise.getNumSamples() - start)));
         dawlab::writeWav(dawlab::outputPath("l07_ex4_cab_noise.wav"), noise, kSampleRate);
-        std::printf("已輸出 dawlab_output/l07_ex4_cab_noise.wav\n");
+        std::printf("Wrote dawlab_output/l07_ex4_cab_noise.wav\n");
     }
 
     return dawlab::test::summary("l07_ex4");

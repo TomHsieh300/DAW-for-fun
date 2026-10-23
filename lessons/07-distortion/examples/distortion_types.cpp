@@ -1,31 +1,31 @@
-// 範例 1：五種 DistortionType 的 transfer curve、諧波結構與聽感
+// Example 1: transfer curves, harmonic structure, and sound of the five DistortionTypes
 //
-// 示範什麼：
-//   (1) 印出每種曲線的 transfer curve（輸入 u 從 -3 到 +3），看「波形被怎麼折」。
-//   (2) 把 220 Hz 正弦（-6 dBFS）送進每一種 Distortion，印出第 1~8 次諧波的 dBFS 與 THD。
-//       重點對照：
-//         - HardClip 只有奇次諧波，drive 很大時 THD 逼近方波的 48.3%；
-//         - Fuzz 不對稱 → 偶次諧波出現；
-//         - Rectify（full-wave）基頻消失、能量跑到 2 倍頻 → 高八度；
-//         - Bitcrush 的「諧波」其實是量化雜訊，分布在整個頻帶（THD 看起來不大但聽起來很髒）。
-//       接著用 self-check 對照理論值：方波的 H1 = 4/π、H3/H1 = 1/3、|sin| 的 H2 = 4/(3π)、H4 = 4/(15π)。
-//   (2b) Fuzz 的 gating 門檻：drive 30 dB 時，輸入峰值低於 20·log10(0.1) - 30 = -50 dBFS 就完全沒有輸出。
-//   (3) 把 pluck sequence 經過每種 type 輸出 WAV（輸出都用 RMS 對齊到與輸入相同，方便公平比較）。
-//   (4) 用 cross-correlation 實際量每種 type 的延遲，確認 oversampled 路徑與 bitcrush 路徑（+ FixedDelay）
-//       都等於 getLatencySamples()（4x 時 36），而且 mix 50% 時 dry / wet 對齊、沒有 comb filtering。
+// What it demonstrates:
+//   (1) Prints the transfer curve of each type (input u from -3 to +3) so you can see how the waveform gets folded.
+//   (2) Feeds a 220 Hz sine (-6 dBFS) through every Distortion and prints harmonics 1..8 in dBFS plus THD.
+//       Key comparisons:
+//         - HardClip has only odd harmonics; at very high drive its THD approaches the square wave's 48.3%;
+//         - Fuzz is asymmetric → even harmonics appear;
+//         - Rectify (full-wave) loses the fundamental and moves the energy to 2x the frequency → one octave up;
+//         - Bitcrush's "harmonics" are really quantization noise spread across the whole band (THD looks small but it sounds dirty).
+//       A self-check then compares against theory: square wave H1 = 4/π, H3/H1 = 1/3, |sin| H2 = 4/(3π), H4 = 4/(15π).
+//   (2b) Fuzz gating threshold: at 30 dB drive, an input peak below 20·log10(0.1) - 30 = -50 dBFS produces no output at all.
+//   (3) Runs the pluck sequence through every type and writes WAVs (each output is RMS-matched to the input for a fair comparison).
+//   (4) Measures each type's delay by cross-correlation, confirming that the oversampled path and the bitcrush path (+ FixedDelay)
+//       both equal getLatencySamples() (36 at 4x), and that at mix 50% dry and wet are aligned with no comb filtering.
 //
-// 怎麼執行：l07_distortion_types（不需要參數；可選 argv[1] = 輸入 WAV 路徑）
+// How to run: l07_distortion_types (no arguments needed; optional argv[1] = input WAV path)
 //
-// 輸出檔案（在 dawlab_output/）：
-//   l07_types_dry.wav       原始 pluck sequence
-//   l07_types_hardclip.wav  HardClip  drive 20 dB、tone 6 kHz
+// Output files (in dawlab_output/):
+//   l07_types_dry.wav       original pluck sequence
+//   l07_types_hardclip.wav  HardClip  drive 20 dB, tone 6 kHz
 //   l07_types_foldback.wav  Foldback  drive 12 dB
-//   l07_types_fuzz.wav      Fuzz      drive 30 dB、tone 4 kHz
-//   l07_types_rectify.wav   Rectify   drive 6 dB（full-wave，聽起來高八度、像合成器）
-//   l07_types_bitcrush.wav  Bitcrush  6 bit、downsample ×4
+//   l07_types_fuzz.wav      Fuzz      drive 30 dB, tone 4 kHz
+//   l07_types_rectify.wav   Rectify   drive 6 dB (full-wave; sounds an octave higher, synth-like)
+//   l07_types_bitcrush.wav  Bitcrush  6 bit, downsample x4
 //
-// 該聽到：hard clip 又硬又亮；foldback 像合成器、泛音會隨音量「掃」動；fuzz 粗糙、音尾會突然斷掉（gating）；
-//         rectify 音高高了八度而且少了「底」；bitcrush 有沙沙的量化雜訊與金屬味的 aliasing。
+// What to listen for: hard clip is hard and bright; foldback sounds synth-like and its overtones "sweep" with the level; fuzz is rough and the tail cuts off abruptly (gating);
+//         rectify sounds an octave higher and has lost its "bottom"; bitcrush has hissy quantization noise and metallic aliasing.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Distortion.h>
@@ -49,7 +49,7 @@ void processInBlocks(dawlab::AudioBuffer& buffer, Processor& processor) {
     }
 }
 
-// 每一種 type 在這個範例裡用的設定
+// The settings each type uses in this example
 struct Preset {
     dawlab::dsp::DistortionType type;
     float driveDb;
@@ -77,7 +77,7 @@ void configure(dawlab::dsp::Distortion& d, const Preset& p) {
     d.setOutputGainDb(0.0f);
 }
 
-// 輸出 RMS 對齊到輸入 RMS（gain staging：失真後音量暴增，不補償就沒辦法公平比較音色）
+// Match the output RMS to the input RMS (gain staging: distortion makes the level jump, and without compensation the timbres cannot be compared fairly)
 float rmsMatch(const dawlab::AudioBuffer& in, dawlab::AudioBuffer& out) {
     const float inRms = dawlab::rms(in, 0);
     const float outRms = dawlab::rms(out, 0);
@@ -93,7 +93,7 @@ int main(int argc, char** argv) {
     using dawlab::dsp::DistortionType;
 
     // ---- (1) transfer curves ----
-    std::printf("(1) transfer curve y = shape(type, u)（Bitcrush 用 8 bit 量化）\n");
+    std::printf("(1) transfer curve y = shape(type, u) (Bitcrush uses 8-bit quantization)\n");
     std::printf("%6s", "u");
     for (const Preset& p : kPresets)
         std::printf(" %10s", dawlab::dsp::distortionTypeName(p.type));
@@ -106,16 +106,16 @@ int main(int argc, char** argv) {
         std::printf("\n");
     }
 
-    // ---- (2) 諧波分析：220 Hz 正弦，-6 dBFS ----
+    // ---- (2) Harmonic analysis: 220 Hz sine, -6 dBFS ----
     const double f0 = 220.0;
     constexpr int kNumHarmonics = 8;
-    std::printf("\n(2) 220 Hz 正弦（-6 dBFS）經過各 type 的諧波（dBFS）與 THD（算到第 50 次諧波）\n");
+    std::printf("\n(2) Harmonics (dBFS) and THD (up to the 50th harmonic) of a 220 Hz sine (-6 dBFS) through each type\n");
     std::printf("%10s %7s", "type", "drive");
     for (int h = 1; h <= kNumHarmonics; ++h)
         std::printf("   H%d", h);
     std::printf("     THD\n");
 
-    // 分析用的設定（同一種 type 看不同 drive：hard clip 逼近方波、fuzz 的偶次諧波隨 drive 消長）
+    // Settings for the analysis (several drives of the same type: hard clip approaches a square wave, fuzz's even harmonics rise and fall with drive)
     const Preset analysis[] = {
         {DistortionType::HardClip, 10.0f, 20000.0f, 24.0f, 1, ""},
         {DistortionType::HardClip, 20.0f, 20000.0f, 24.0f, 1, ""},
@@ -128,18 +128,18 @@ int main(int argc, char** argv) {
     };
     bool ok = true;
     constexpr int kNumAnalysis = static_cast<int>(sizeof(analysis) / sizeof(analysis[0]));
-    double levels[kNumAnalysis][kNumHarmonics + 1] = {}; // levels[a][h]：第 a 組設定的第 h 次諧波（dBFS），h = 1..8
+    double levels[kNumAnalysis][kNumHarmonics + 1] = {}; // levels[a][h]: harmonic h (dBFS) of analysis setting a, h = 1..8
     double thd[kNumAnalysis] = {};
     for (int a = 0; a < kNumAnalysis; ++a) {
         const Preset& p = analysis[a];
         dawlab::AudioBuffer sine = dawlab::makeSine(f0, kSampleRate, 1.0, 0.5f, 1);
         Distortion d;
         d.prepare(kSampleRate, kBlockSize, 1);
-        configure(d, p); // tone = 20 kHz（bypass）：分析時關掉 tone，才看得到完整的諧波結構
+        configure(d, p); // tone = 20 kHz (bypass): tone is turned off for the analysis so the full harmonic structure is visible
         processInBlocks(sine, d);
         ok = ok && !dawlab::hasNanOrInf(sine);
 
-        // 跳過前 0.2 秒（oversampler latency 與 DC blocker 的 transient），分析後面 0.5 秒
+        // Skip the first 0.2 s (oversampler latency and the DC blocker transient) and analyze the following 0.5 s
         const int skip = dawlab::secondsToSamples(0.2, kSampleRate);
         const int n = dawlab::secondsToSamples(0.5, kSampleRate);
         const float* x = sine.getReadPointer(0) + skip;
@@ -150,47 +150,47 @@ int main(int argc, char** argv) {
             std::printf(" %5.1f", levels[a][h]);
         }
         if (p.type == DistortionType::Rectify) {
-            std::printf("     n/a（基頻消失，THD 相對於 H1 沒有意義）\n");
+            std::printf("     n/a (fundamental is gone; THD relative to H1 is meaningless)\n");
         } else {
             thd[a] = dawlab::thdPercent(x, n, f0, kSampleRate, 50);
             std::printf(" %6.1f%%\n", thd[a]);
         }
     }
-    std::printf("（方波的理論 THD = sqrt(pi^2/8 - 1) = 48.3%%；只算到第 50 次諧波時約 47.3%%。\n"
-                "  HardClip 的 drive 越大越接近方波；Fuzz 在中等 drive 時有偶次諧波，drive 極大時兩邊都飽和、\n"
-                "  波形變成「DC 偏移的方波」，偶次諧波反而變弱——留下的 DC 由 DC blocker 移除。）\n");
+    std::printf("(The theoretical THD of a square wave = sqrt(pi^2/8 - 1) = 48.3%%; counting only up to the 50th harmonic it is about 47.3%%.\n"
+                "  The higher the HardClip drive, the closer to a square wave; Fuzz has even harmonics at moderate drive, but at extreme drive both sides saturate,\n"
+                "  the waveform becomes a \"DC-offset square wave\" and the even harmonics actually weaken -- the remaining DC is removed by the DC blocker.)\n");
 
-    // ---- self-check：README 2.2～2.5 節的數字 ----
-    // analysis[] 的 index：0/1/2 = HardClip 10/20/40 dB、3 = Foldback 12、4/5 = Fuzz 12/30、6 = Rectify、7 = Bitcrush
+    // ---- self-check: the numbers in README sections 2.2-2.5 ----
+    // Indices into analysis[]: 0/1/2 = HardClip 10/20/40 dB, 3 = Foldback 12, 4/5 = Fuzz 12/30, 6 = Rectify, 7 = Bitcrush
     {
-        const double squareH1 = dawlab::gainToDb(4.0 / dawlab::kPi);         // 方波基頻 4/π → +2.10 dBFS
-        const double rectH2 = dawlab::gainToDb(4.0 / (3.0 * dawlab::kPi));    // 峰值 1 的 |sin|：4/(3π) → -7.44 dBFS
+        const double squareH1 = dawlab::gainToDb(4.0 / dawlab::kPi);         // square-wave fundamental 4/π → +2.10 dBFS
+        const double rectH2 = dawlab::gainToDb(4.0 / (3.0 * dawlab::kPi));    // |sin| with peak 1: 4/(3π) → -7.44 dBFS
         const double rectH4 = dawlab::gainToDb(4.0 / (15.0 * dawlab::kPi));   // 4/(15π) → -21.42 dBFS
-        bool evenFree = true; // HardClip / Foldback 是奇函數 → 偶次諧波必須量不到
+        bool evenFree = true; // HardClip / Foldback are odd functions → no even harmonics may be measurable
         for (int a : {0, 1, 2, 3})
             for (int h = 2; h <= kNumHarmonics; h += 2)
                 evenFree = evenFree && levels[a][h] < -80.0;
-        const bool c1 = thd[2] > 44.0 && thd[2] < 48.3;                              // 40 dB：接近方波的 48.3%
+        const bool c1 = thd[2] > 44.0 && thd[2] < 48.3;                              // 40 dB: close to the square wave's 48.3%
         const bool c2 = std::abs(levels[2][1] - squareH1) < 0.3;                     // H1 → 4/π
-        const bool c3 = std::abs((levels[2][3] - levels[2][1]) + 9.54) < 0.5;        // H3/H1 → 1/3（-9.54 dB）
-        const bool c4 = levels[3][3] > levels[3][1];                                 // Foldback 12 dB：H3 比 H1 大
-        const bool c5 = levels[4][2] > -30.0 && levels[5][2] < levels[4][2] - 10.0;  // Fuzz：偶次諧波在中等 drive 最明顯
+        const bool c3 = std::abs((levels[2][3] - levels[2][1]) + 9.54) < 0.5;        // H3/H1 → 1/3 (-9.54 dB)
+        const bool c4 = levels[3][3] > levels[3][1];                                 // Foldback 12 dB: H3 is larger than H1
+        const bool c5 = levels[4][2] > -30.0 && levels[5][2] < levels[4][2] - 10.0;  // Fuzz: even harmonics are most prominent at moderate drive
         const bool c6 = levels[6][1] < -60.0 && std::abs(levels[6][2] - rectH2) < 0.3 &&
-                        std::abs(levels[6][4] - rectH4) < 0.3;                       // Rectify：基頻消失、H2/H4 照 Fourier 級數
-        std::printf("self-check：HardClip/Foldback 無偶次諧波 %s；HardClip 40 dB：THD %s、H1 = 4/π（%.2f dB）%s、"
-                    "H3 - H1 = -9.54 dB %s；Foldback H3 > H1 %s；Fuzz 偶次諧波 12 dB > 30 dB %s；"
-                    "Rectify H1 消失、H2 = %.2f、H4 = %.2f dBFS %s\n",
+                        std::abs(levels[6][4] - rectH4) < 0.3;                       // Rectify: fundamental gone, H2/H4 follow the Fourier series
+        std::printf("self-check: HardClip/Foldback have no even harmonics %s; HardClip 40 dB: THD %s, H1 = 4/π (%.2f dB) %s, "
+                    "H3 - H1 = -9.54 dB %s; Foldback H3 > H1 %s; Fuzz even harmonics at 12 dB > 30 dB %s; "
+                    "Rectify H1 gone, H2 = %.2f, H4 = %.2f dBFS %s\n",
                     evenFree ? "OK" : "NG", c1 ? "OK" : "NG", squareH1, c2 ? "OK" : "NG", c3 ? "OK" : "NG",
                     c4 ? "OK" : "NG", c5 ? "OK" : "NG", rectH2, rectH4, c6 ? "OK" : "NG");
         ok = ok && evenFree && c1 && c2 && c3 && c4 && c5 && c6;
     }
 
-    // ---- (2b) Fuzz 的 gating 門檻：dead zone d = 0.1、drive G dB → 輸入峰值低於 20 log10(d) - G dBFS 就完全沒聲音 ----
+    // ---- (2b) Fuzz gating threshold: dead zone d = 0.1, drive G dB → an input peak below 20 log10(d) - G dBFS is completely silent ----
     {
         const float driveDb = 30.0f;
         const double thresholdDb = dawlab::gainToDb(static_cast<double>(Distortion::kFuzzDeadZone)) - driveDb; // -50 dBFS
-        std::printf("\n(2b) Fuzz drive %.0f dB 的 gating 門檻（理論 %.1f dBFS）：220 Hz 正弦的輸出 peak\n", driveDb, thresholdDb);
-        std::printf("%12s %14s\n", "輸入(dBFS)", "輸出 peak");
+        std::printf("\n(2b) Fuzz gating threshold at drive %.0f dB (theory %.1f dBFS): output peak of a 220 Hz sine\n", driveDb, thresholdDb);
+        std::printf("%12s %14s\n", "input(dBFS)", "output peak");
         for (float inDb : {-60.0f, -53.0f, -47.0f, -40.0f}) {
             dawlab::AudioBuffer sine = dawlab::makeSine(f0, kSampleRate, 0.5, dawlab::dbToGain(inDb), 1);
             Distortion d;
@@ -198,10 +198,10 @@ int main(int argc, char** argv) {
             d.setType(DistortionType::Fuzz);
             d.setDriveDb(driveDb);
             processInBlocks(sine, d);
-            const int skip = dawlab::secondsToSamples(0.1, kSampleRate); // 跳過 drive 的第一個 ramp block
+            const int skip = dawlab::secondsToSamples(0.1, kSampleRate); // skip the first drive ramp block
             const float peak = dawlab::peakAbs(sine.getReadPointer(0) + skip, sine.getNumSamples() - skip);
-            std::printf("%12.1f %14.6f%s\n", inDb, peak, peak == 0.0f ? "（完全靜音）" : "");
-            // 門檻以下必須完全靜音、門檻以上必須有聲音
+            std::printf("%12.1f %14.6f%s\n", inDb, peak, peak == 0.0f ? " (completely silent)" : "");
+            // Below the threshold the output must be completely silent; above it there must be sound
             if (inDb < thresholdDb)
                 ok = ok && peak == 0.0f;
             else
@@ -215,17 +215,17 @@ int main(int argc, char** argv) {
         dawlab::WavData wav;
         std::string error;
         if (!dawlab::readWav(argv[1], wav, &error)) {
-            std::printf("讀取失敗：%s\n", error.c_str());
+            std::printf("Failed to read: %s\n", error.c_str());
             return 1;
         }
         dry = wav.buffer;
-        std::printf("\n(3) 使用輸入檔 %s（%d ch，%d samples）\n", argv[1], dry.getNumChannels(), dry.getNumSamples());
+        std::printf("\n(3) Using input file %s (%d ch, %d samples)\n", argv[1], dry.getNumChannels(), dry.getNumSamples());
     } else {
         dry = dawlab::makePluckSequence(kSampleRate, 4.0, 0.4f, 2);
-        std::printf("\n(3) pluck sequence（4 秒、2 ch）經過各 type\n");
+        std::printf("\n(3) pluck sequence (4 s, 2 ch) through each type\n");
     }
     dawlab::writeWav(dawlab::outputPath("l07_types_dry.wav"), dry, kSampleRate);
-    std::printf("%10s %10s %10s %12s %10s\n", "type", "peak(dBFS)", "rms(dBFS)", "RMS 補償(dB)", "latency");
+    std::printf("%10s %10s %10s %12s %10s\n", "type", "peak(dBFS)", "rms(dBFS)", "RMS comp(dB)", "latency");
     std::printf("%10s %10.2f %10.2f %12s %10s\n", "dry", dawlab::gainToDb(dawlab::peakAbs(dry)),
                 dawlab::gainToDb(dawlab::rms(dry, 0)), "-", "-");
 
@@ -243,15 +243,15 @@ int main(int argc, char** argv) {
                     dawlab::gainToDb(peakBefore), dawlab::gainToDb(rmsBefore), compDb, d.getLatencySamples());
         dawlab::writeWav(dawlab::outputPath(p.wavName), out, kSampleRate);
     }
-    std::printf("已輸出 dawlab_output/l07_types_*.wav\n");
+    std::printf("Wrote dawlab_output/l07_types_*.wav\n");
 
-    // ---- (4) 實際量 latency：兩條路徑（oversampled shaper / bitcrush + FixedDelay）真的對齊嗎？ ----
-    // getLatencySamples() 只是一個「宣稱」；這裡用 cross-correlation 找出輸出相對輸入真正延遲了幾個 sample。
-    // drive 0 dB 時 HardClip / Foldback / Bitcrush（24 bit）幾乎是透明的；Fuzz 只是把小訊號吃掉一點；
-    // Rectify 改用 half-wave（full-wave 的 |u| 是偶函數，和輸入的相關係數是 0，量不到）。
-    std::printf("\n(4) 量測實際 latency（white noise 0.3、drive 0 dB、4x oversampling）與 mix 50%% 的 comb filtering\n");
-    std::printf("%10s %12s %12s %16s\n", "type", "宣稱(smp)", "實測(smp)", "mix 50%−100%(dB)");
-    constexpr int kExpectedLatency4x = 36; // 2.8 節的公式：(124 + 22) / 4 = 36.5 → 36
+    // ---- (4) Measure the latency: are the two paths (oversampled shaper / bitcrush + FixedDelay) really aligned? ----
+    // getLatencySamples() is only a "claim"; here cross-correlation finds how many samples the output is really delayed relative to the input.
+    // At drive 0 dB, HardClip / Foldback / Bitcrush (24 bit) are nearly transparent; Fuzz only swallows a little of the small signal;
+    // Rectify uses half-wave instead (full-wave |u| is an even function whose correlation with the input is 0, so nothing could be measured).
+    std::printf("\n(4) Measured latency (white noise 0.3, drive 0 dB, 4x oversampling) and comb filtering at mix 50%%\n");
+    std::printf("%10s %12s %12s %16s\n", "type", "claimed(smp)", "measured", "mix50-100% (dB)");
+    constexpr int kExpectedLatency4x = 36; // formula in section 2.8: (124 + 22) / 4 = 36.5 → 36
     const dawlab::AudioBuffer noise = dawlab::makeWhiteNoise(kSampleRate, 0.5, 0.3f, 1);
     for (const Preset& p : kPresets) {
         auto makeDistortion = [&](float mix) {
@@ -267,7 +267,7 @@ int main(int argc, char** argv) {
             return d;
         };
 
-        // cross-correlation：r(lag) = Σ y[n]·x[n − lag]，最大值所在的 lag 就是延遲
+        // cross-correlation: r(lag) = Σ y[n]·x[n − lag]; the lag at the maximum is the delay
         dawlab::AudioBuffer out = noise;
         Distortion d = makeDistortion(1.0f);
         processInBlocks(out, d);
@@ -278,7 +278,7 @@ int main(int argc, char** argv) {
         double bestR = 0.0;
         for (int lag = 0; lag < 200; ++lag) {
             double r = 0.0;
-            for (int i = 4800; i < n; ++i) // 跳過開頭 0.1 秒（DC blocker 的 transient）
+            for (int i = 4800; i < n; ++i) // skip the first 0.1 s (DC blocker transient)
                 r += static_cast<double>(y[i]) * static_cast<double>(x[i - lag]);
             if (r > bestR) {
                 bestR = r;
@@ -286,7 +286,7 @@ int main(int argc, char** argv) {
             }
         }
 
-        // mix 50% vs 100%：wet 與 dry 對齊時兩者在 15 kHz 一樣大；錯位的話會 comb filtering（某些頻率互相抵消）
+        // mix 50% vs 100%: when wet and dry are aligned they are equally large at 15 kHz; if misaligned there is comb filtering (some frequencies cancel)
         auto gainAt15k = [&](float mix) {
             dawlab::AudioBuffer s = dawlab::makeSine(15000.0, kSampleRate, 0.5, 0.1f, 1);
             Distortion dm = makeDistortion(mix);
@@ -300,15 +300,15 @@ int main(int argc, char** argv) {
 
         std::printf("%10s %12d %12d", dawlab::dsp::distortionTypeName(p.type), d.getLatencySamples(), bestLag);
         if (fuzzOrRectify)
-            std::printf(" %16s\n", "-（非線性太強）");
+            std::printf(" %16s\n", "- (too nonlinear)");
         else
             std::printf(" %+16.3f\n", combDb);
         ok = ok && bestLag == d.getLatencySamples() && d.getLatencySamples() == kExpectedLatency4x;
         ok = ok && std::abs(combDb) < 0.1f;
     }
-    std::printf("self-check：每種 type 實測延遲 = getLatencySamples() = %d、mix 50%% 與 100%% 在 15 kHz 差 < 0.1 dB\n",
+    std::printf("self-check: measured delay of every type = getLatencySamples() = %d; mix 50%% and 100%% differ by < 0.1 dB at 15 kHz\n",
                 kExpectedLatency4x);
 
-    std::printf("\n%s\n", ok ? "全部正常。" : "[FAIL] 有項目不符合預期！");
+    std::printf("\n%s\n", ok ? "All OK." : "[FAIL] Some item did not meet expectations!");
     return ok ? 0 : 1;
 }

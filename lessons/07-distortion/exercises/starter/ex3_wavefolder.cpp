@@ -1,12 +1,12 @@
-// 練習 3（起始碼）：實作 wavefolder
+// Exercise 3 (starter): implement a wavefolder
 //
-// 目標：
-//   (a) 寫出 foldTriangle(u, threshold)：超過 ±threshold 的部分「折回來」，可以折很多次（週期 4·threshold 的三角波）。
-//       threshold = 1 時必須與 dawlab::dsp::Distortion::foldback() 完全一致。
-//   (b) 寫出 foldSine(u)：y = sin(π u / 2)。|u| ≤ 1 時像 soft clip，之後平滑地折返（Buchla 風格 folder 的簡化版）。
-//   (c) 把 (a) 包成 Wavefolder class（標準介面 + setDriveDb + setThreshold），在 4x oversampling 下處理 block。
+// Goals:
+//   (a) Write foldTriangle(u, threshold): the part beyond ±threshold is "folded back", possibly many times (a triangle wave of period 4·threshold).
+//       With threshold = 1 it must match dawlab::dsp::Distortion::foldback() exactly.
+//   (b) Write foldSine(u): y = sin(π u / 2). For |u| <= 1 it behaves like a soft clip, then folds back smoothly (a simplified Buchla-style folder).
+//   (c) Wrap (a) in a Wavefolder class (standard interface + setDriveDb + setThreshold) that processes blocks at 4x oversampling.
 //
-// 執行：l07_ex3_starter → 目前會因為 TODO 而 FAIL，寫完後應該全部 PASS。
+// Run: l07_ex3_starter → it currently FAILs because of the TODOs; once you finish, everything should PASS.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Distortion.h>
@@ -21,21 +21,21 @@ namespace {
 constexpr double kSampleRate = 48000.0;
 constexpr int kBlockSize = 512;
 
-// (a) 三角 folder：把 u 映射到週期 4T 的三角波，|u| ≤ T 時 y = u
+// (a) Triangle folder: maps u onto a triangle wave of period 4T, with y = u for |u| <= T
 float foldTriangle(float u, float threshold) {
-    // TODO: 提示——先把 u + T 對 4T 取餘數（std::fmod；負數要補回正），得到 t ∈ [0, 4T)，
-    //       t < 2T 時 y = t - T，否則 y = 3T - t。
+    // TODO: hint -- first take (u + T) modulo 4T (std::fmod; add the period back for negative values) to get t ∈ [0, 4T),
+    //       then y = t - T when t < 2T, otherwise y = 3T - t.
     (void)threshold;
     return u;
 }
 
-// (b) 正弦 folder：y = sin(π u / 2)
+// (b) Sine folder: y = sin(π u / 2)
 float foldSine(float u) {
     // TODO
     return u;
 }
 
-// (c) Wavefolder：drive → oversample → foldTriangle → downsample
+// (c) Wavefolder: drive → oversample → foldTriangle → downsample
 class Wavefolder {
 public:
     void prepare(double sampleRate, int maxBlockSize, int numChannels) {
@@ -48,7 +48,7 @@ public:
     int getLatencySamples() const noexcept { return oversampler_.getLatencySamples(); }
 
     void process(dawlab::AudioBlock block) noexcept {
-        // TODO: 1. upsample  2. 每個 sample y = foldTriangle(x * drive_, threshold_)  3. downsample
+        // TODO: 1. upsample  2. for every sample y = foldTriangle(x * drive_, threshold_)  3. downsample
         (void)block;
     }
 
@@ -73,13 +73,13 @@ void processInBlocks(dawlab::AudioBuffer& buffer, Processor& processor) {
 int main() {
     using dawlab::dsp::Distortion;
 
-    // (a) threshold = 1 時與 Distortion::foldback 一致；幾個手算的點
+    // (a) With threshold = 1 it matches Distortion::foldback; a few hand-computed points
     DAWLAB_CHECK_NEAR(foldTriangle(0.5f, 1.0f), 0.5, 1e-6);
     DAWLAB_CHECK_NEAR(foldTriangle(1.5f, 1.0f), 0.5, 1e-6);
     DAWLAB_CHECK_NEAR(foldTriangle(2.0f, 1.0f), 0.0, 1e-6);
     DAWLAB_CHECK_NEAR(foldTriangle(3.0f, 1.0f), -1.0, 1e-6);
     DAWLAB_CHECK_NEAR(foldTriangle(-2.5f, 1.0f), 0.5, 1e-6);
-    DAWLAB_CHECK_NEAR(foldTriangle(1.0f, 0.5f), 0.0, 1e-6);  // threshold 0.5：u = 1 剛好折到 0
+    DAWLAB_CHECK_NEAR(foldTriangle(1.0f, 0.5f), 0.0, 1e-6);  // threshold 0.5: u = 1 folds exactly to 0
     DAWLAB_CHECK_NEAR(foldTriangle(0.75f, 0.5f), 0.25, 1e-6);
     float maxDiff = 0.0f;
     for (int i = -400; i <= 400; ++i) {
@@ -95,7 +95,7 @@ int main() {
     DAWLAB_CHECK_NEAR(foldSine(3.0f), -1.0, 1e-6);
     DAWLAB_CHECK_NEAR(foldSine(0.1f), std::sin(0.1 * dawlab::kPi / 2.0), 1e-6);
 
-    // (c) Wavefolder：小訊號透明、大訊號折返且輸出不超過 threshold
+    // (c) Wavefolder: small signals are transparent; large signals fold back and the output does not exceed the threshold
     {
         Wavefolder wf;
         wf.prepare(kSampleRate, kBlockSize, 1);
@@ -105,16 +105,16 @@ int main() {
         processInBlocks(small, wf);
         const int skip = dawlab::secondsToSamples(0.2, kSampleRate), n = dawlab::secondsToSamples(0.5, kSampleRate);
         const double thdSmall = dawlab::thdPercent(small.getReadPointer(0) + skip, n, 220.0, kSampleRate, 20);
-        std::printf("drive 0 dB、0.25 振幅：THD = %.4f%%（應接近 0）\n", thdSmall);
+        std::printf("drive 0 dB, 0.25 amplitude: THD = %.4f%% (should be close to 0)\n", thdSmall);
         DAWLAB_CHECK(thdSmall < 0.1);
 
         wf.reset();
-        wf.setDriveDb(18.0f); // 0.25 × 7.94 ≈ 2：會折返一次
+        wf.setDriveDb(18.0f); // 0.25 × 7.94 ≈ 2: folds back once
         dawlab::AudioBuffer big = dawlab::makeSine(220.0, kSampleRate, 1.0, 0.25f, 1);
         processInBlocks(big, wf);
         const double thdBig = dawlab::thdPercent(big.getReadPointer(0) + skip, n, 220.0, kSampleRate, 20);
         const float peak = dawlab::peakAbs(big);
-        std::printf("drive 18 dB：THD = %.1f%%，peak = %.3f（≤ 1 + 一點點 filter overshoot）\n", thdBig, peak);
+        std::printf("drive 18 dB: THD = %.1f%%, peak = %.3f (<= 1 + a little filter overshoot)\n", thdBig, peak);
         DAWLAB_CHECK(thdBig > 20.0);
         DAWLAB_CHECK(peak < 1.1f);
         DAWLAB_CHECK(!dawlab::hasNanOrInf(big));

@@ -1,15 +1,15 @@
-// 練習 3 解答：wavefolder
+// Exercise 3 solution: wavefolder
 //
-// (a) 三角 folder 的核心是「把實數線捲到一個週期 4T 的三角波上」：
+// (a) The core of the triangle folder is "rolling the real line onto a triangle wave of period 4T":
 //       t = (u + T) mod 4T ∈ [0, 4T)
-//       y = t - T        （t < 2T：上升段，u ∈ [-T, T] 時 y = u）
-//       y = 3T - t       （t ≥ 2T：下降段）
-//     這樣不管 u 多大都會自動折很多次；threshold = 1 時就是 Distortion::foldback()。
-// (b) sin(π u / 2)：|u| ≤ 1 時單調（像很軟的 soft clip），之後開始「折」，而且折點是平滑的
-//     （一階導數連續）——所以高次諧波衰減得比三角 folder 快，聲音比較圓。
-// (c) folder 的輸出在折點有「角」（三角 folder）→ 無窮多諧波 → 一定要 oversampling。
+//       y = t - T        (t < 2T: rising segment; y = u for u ∈ [-T, T])
+//       y = 3T - t       (t >= 2T: falling segment)
+//     This folds automatically many times however large u is; with threshold = 1 it is exactly Distortion::foldback().
+// (b) sin(π u / 2): monotonic for |u| <= 1 (like a very soft soft clip), then it starts to "fold", and the fold points are smooth
+//     (the first derivative is continuous) -- so the high harmonics decay faster than with the triangle folder and the sound is rounder.
+// (c) The folder's output has "corners" at the fold points (triangle folder) → infinitely many harmonics → oversampling is a must.
 //
-// 執行：l07_ex3_solution
+// Run: l07_ex3_solution
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Distortion.h>
@@ -94,7 +94,7 @@ int main() {
         const float u = 0.025f * static_cast<float>(i);
         maxDiff = std::max(maxDiff, std::abs(foldTriangle(u, 1.0f) - Distortion::foldback(u)));
     }
-    std::printf("(a) foldTriangle vs Distortion::foldback（u ∈ [-10, 10]）最大差異 = %.2g\n", maxDiff);
+    std::printf("(a) foldTriangle vs Distortion::foldback (u ∈ [-10, 10]): max difference = %.2g\n", maxDiff);
     DAWLAB_CHECK(maxDiff < 1e-5f);
 
     // (b)
@@ -104,9 +104,9 @@ int main() {
     DAWLAB_CHECK_NEAR(foldSine(3.0f), -1.0, 1e-6);
     DAWLAB_CHECK_NEAR(foldSine(0.1f), std::sin(0.1 * dawlab::kPi / 2.0), 1e-6);
 
-    // 補充：兩種 folder 在同樣 drive 下的諧波（static 曲線直接套在正弦上，無 oversampling，只看相對趨勢）
+    // Extra: harmonics of the two folders at the same drive (the static curve applied directly to a sine, no oversampling, only the relative trend matters)
     {
-        std::printf("(b) 220 Hz 正弦 × 2.0 經過兩種 folder 的諧波（相對於 H1，dB）\n");
+        std::printf("(b) Harmonics of a 220 Hz sine x 2.0 through the two folders (relative to H1, dB)\n");
         std::printf("%10s", "folder");
         for (int h = 1; h <= 9; ++h)
             std::printf("   H%d ", h);
@@ -134,7 +134,7 @@ int main() {
         processInBlocks(small, wf);
         const int skip = dawlab::secondsToSamples(0.2, kSampleRate), n = dawlab::secondsToSamples(0.5, kSampleRate);
         const double thdSmall = dawlab::thdPercent(small.getReadPointer(0) + skip, n, 220.0, kSampleRate, 20);
-        std::printf("(c) drive 0 dB、0.25 振幅：THD = %.4f%%（應接近 0）\n", thdSmall);
+        std::printf("(c) drive 0 dB, 0.25 amplitude: THD = %.4f%% (should be close to 0)\n", thdSmall);
         DAWLAB_CHECK(thdSmall < 0.1);
 
         wf.reset();
@@ -143,14 +143,14 @@ int main() {
         processInBlocks(big, wf);
         const double thdBig = dawlab::thdPercent(big.getReadPointer(0) + skip, n, 220.0, kSampleRate, 20);
         const float peak = dawlab::peakAbs(big);
-        std::printf("    drive 18 dB：THD = %.1f%%，peak = %.3f\n", thdBig, peak);
+        std::printf("    drive 18 dB: THD = %.1f%%, peak = %.3f\n", thdBig, peak);
         DAWLAB_CHECK(thdBig > 20.0);
         DAWLAB_CHECK(peak < 1.1f);
         DAWLAB_CHECK(!dawlab::hasNanOrInf(big));
         std::printf("    latency = %d samples\n", wf.getLatencySamples());
         DAWLAB_CHECK(wf.getLatencySamples() > 0);
 
-        // 聽感用：pluck sequence 經過 folder，drive 掃上去
+        // For listening: the pluck sequence through the folder, with the drive swept up
         dawlab::AudioBuffer pluck = dawlab::makePluckSequence(kSampleRate, 4.0, 0.4f, 2);
         Wavefolder wf2;
         wf2.prepare(kSampleRate, kBlockSize, 2);
@@ -158,7 +158,7 @@ int main() {
         wf2.setDriveDb(14.0f);
         processInBlocks(pluck, wf2);
         dawlab::writeWav(dawlab::outputPath("l07_ex3_wavefolder.wav"), pluck, kSampleRate);
-        std::printf("    已輸出 dawlab_output/l07_ex3_wavefolder.wav\n");
+        std::printf("    Wrote dawlab_output/l07_ex3_wavefolder.wav\n");
     }
 
     return dawlab::test::summary("l07_ex3");

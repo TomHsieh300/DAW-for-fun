@@ -1,19 +1,19 @@
-// 練習 5（起始碼）：auto gain compensation —— 讓 distortion 的輸出 RMS 跟輸入 RMS 一樣
+// Exercise 5 (starter): auto gain compensation -- make the distortion's output RMS equal to the input RMS
 //
-// 問題：drive 轉大，音量跟著暴增，你根本分不清「變好聽」還是「變大聲」。
-// 解法：量輸入與輸出的 RMS envelope（one-pole 平滑的 x²，時間常數約 100 ms），
-//       gain = sqrt(inMeanSquare / outMeanSquare)，再把 gain 乘回輸出。
+// Problem: turn the drive up and the level jumps with it, so you can't tell whether it got "better" or just "louder".
+// Fix: measure the RMS envelope of the input and output (one-pole smoothed x², time constant about 100 ms),
+//       gain = sqrt(inMeanSquare / outMeanSquare), then multiply the gain back into the output.
 //
-// 寫一個 AutoGain class：
+// Write an AutoGain class:
 //   prepare(sampleRate, maxBlockSize, numChannels) / reset() / setWindowMs(ms)
-//   void process(const AudioBlock& dry, AudioBlock wet)：用 dry 當參考，就地修正 wet 的音量
-//   float getGainDb() const：目前套用的增益（給 UI 看）
-// 注意：
-//   - dry 與 wet 必須對齊（Distortion 有 latency；這裡用 setOversamplingFactorLog2(0) 讓 latency = 0 即可）
-//   - outMeanSquare 很小時不要除以 0；gain 限制在 ±40 dB
-//   - 不可以在 process() 裡 allocate
+//   void process(const AudioBlock& dry, AudioBlock wet): uses dry as the reference and corrects the level of wet in place
+//   float getGainDb() const: the gain currently applied (for the UI)
+// Notes:
+//   - dry and wet must be aligned (Distortion has latency; here setOversamplingFactorLog2(0) makes latency = 0)
+//   - do not divide by 0 when outMeanSquare is tiny; limit the gain to ±40 dB
+//   - never allocate inside process()
 //
-// 執行：l07_ex5_starter → 目前會 FAIL，寫完後應該全部 PASS。
+// Run: l07_ex5_starter → it currently FAILs; once you finish, everything should PASS.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Distortion.h>
@@ -49,19 +49,19 @@ public:
 
     void process(const dawlab::AudioBlock& dry, dawlab::AudioBlock wet) noexcept {
         // TODO:
-        //   對每個 channel、每個 sample：
+        //   For every channel, every sample:
         //     inMs  = a * inMs  + (1 - a) * dry²
         //     outMs = a * outMs + (1 - a) * wet²
-        //     gain  = sqrt(inMs / max(outMs, 1e-12))，clamp 到 [0.01, 100]
+        //     gain  = sqrt(inMs / max(outMs, 1e-12)), clamped to [0.01, 100]
         //     wet  *= gain
-        //   gain_ 存最後一個算出來的值（給 getGainDb）
+        //   store the last computed value in gain_ (for getGainDb)
         (void)dry;
         (void)wet;
     }
 
 private:
     void updateCoefficient() noexcept {
-        // one-pole 的係數：a = exp(-1 / (τ fs))，τ = window（秒）
+        // One-pole coefficient: a = exp(-1 / (τ fs)), τ = window (seconds)
         a_ = static_cast<float>(std::exp(-1.0 / (windowMs_ * 0.001 * sampleRate_)));
     }
 
@@ -72,14 +72,14 @@ private:
     std::vector<float> inMs_, outMs_;
 };
 
-// Distortion + AutoGain 串起來
+// Distortion + AutoGain chained together
 struct CompensatedDistortion {
     dawlab::dsp::Distortion distortion;
     AutoGain autoGain;
     dawlab::AudioBuffer dryScratch;
 
     void prepare(double sampleRate, int maxBlockSize, int numChannels) {
-        distortion.setOversamplingFactorLog2(0); // latency = 0，dry / wet 才對得齊
+        distortion.setOversamplingFactorLog2(0); // latency = 0, so dry / wet line up
         distortion.prepare(sampleRate, maxBlockSize, numChannels);
         autoGain.prepare(sampleRate, maxBlockSize, numChannels);
         dryScratch.setSize(numChannels, maxBlockSize);
@@ -106,7 +106,7 @@ void processInBlocks(dawlab::AudioBuffer& buffer, Processor& processor) {
 int main() {
     using dawlab::dsp::DistortionType;
 
-    // (1) 穩態正弦：hard clip drive 30 dB 之後 RMS 應該回到輸入的 RMS（±0.2 dB）
+    // (1) Steady-state sine: after hard clip at drive 30 dB the RMS should return to the input RMS (±0.2 dB)
     {
         dawlab::AudioBuffer in = dawlab::makeSine(220.0, kSampleRate, 2.0, 0.1f, 1);
         dawlab::AudioBuffer out = in;
@@ -118,15 +118,15 @@ int main() {
         const int skip = dawlab::secondsToSamples(1.0, kSampleRate), n = in.getNumSamples() - skip;
         const double inDb = dawlab::gainToDb(dawlab::rms(in.getReadPointer(0) + skip, n));
         const double outDb = dawlab::gainToDb(dawlab::rms(out.getReadPointer(0) + skip, n));
-        std::printf("(1) 正弦 -20 dBFS、hard clip 30 dB：輸入 RMS %.2f dBFS，輸出 RMS %.2f dBFS，gain = %.2f dB\n", inDb,
+        std::printf("(1) Sine -20 dBFS, hard clip 30 dB: input RMS %.2f dBFS, output RMS %.2f dBFS, gain = %.2f dB\n", inDb,
                     outDb, cd.autoGain.getGainDb());
         DAWLAB_CHECK_NEAR(outDb, inDb, 0.2);
-        // 先自己估算：0.1 × 10^(30/20) = 3.16 的正弦被 clip 在 ±1 之後 RMS 是多少？補償應該是幾 dB？
-        // （答案與推導在 solutions/README.md 練習 5）
+        // Estimate it yourself first: after a sine of 0.1 × 10^(30/20) = 3.16 is clipped at ±1, what is the RMS? How many dB of compensation is needed?
+        // (The answer and derivation are in solutions/README.md, Exercise 5)
         DAWLAB_CHECK_NEAR(cd.autoGain.getGainDb(), -22.38, 0.5);
     }
 
-    // (2) pluck sequence（動態變化大）：整段 RMS 在 ±1 dB 內，沒有 NaN
+    // (2) Pluck sequence (large dynamics): the RMS of the whole run is within ±1 dB, with no NaN
     {
         dawlab::AudioBuffer in = dawlab::makePluckSequence(kSampleRate, 4.0, 0.4f, 2);
         dawlab::AudioBuffer raw = in, comp = in;
@@ -146,14 +146,14 @@ int main() {
         const double inDb = dawlab::gainToDb(dawlab::rms(in, 0));
         const double rawDb = dawlab::gainToDb(dawlab::rms(raw, 0));
         const double compDb = dawlab::gainToDb(dawlab::rms(comp, 0));
-        std::printf("(2) pluck、fuzz 30 dB：輸入 RMS %.2f，無補償 %.2f，有補償 %.2f dBFS\n", inDb, rawDb, compDb);
-        DAWLAB_CHECK(rawDb - inDb > 6.0);     // 不補償的話會大很多
-        DAWLAB_CHECK_NEAR(compDb, inDb, 1.0); // 補償後接近
+        std::printf("(2) pluck, fuzz 30 dB: input RMS %.2f, uncompensated %.2f, compensated %.2f dBFS\n", inDb, rawDb, compDb);
+        DAWLAB_CHECK(rawDb - inDb > 6.0);     // without compensation it is much louder
+        DAWLAB_CHECK_NEAR(compDb, inDb, 1.0); // close after compensation
         DAWLAB_CHECK(!dawlab::hasNanOrInf(comp));
         dawlab::writeWav(dawlab::outputPath("l07_ex5_autogain.wav"), comp, kSampleRate);
     }
 
-    // (3) 靜音輸入不可以爆掉（除以 0）
+    // (3) A silent input must not blow up (division by 0)
     {
         dawlab::AudioBuffer silence(1, 4096);
         CompensatedDistortion cd;
