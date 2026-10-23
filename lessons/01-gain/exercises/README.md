@@ -123,3 +123,16 @@ Implement:
 The self-check verifies: for the extreme signal with left = sine and right = 0, the left/right peaks at $`w`$ = 0 / 1 / 2 are 0.25/0.25, 0.5/0 and 0.75/0.25 respectively (at $`w = 2`$ an inverted-polarity signal appears in the right channel); **for any $`w`$, $`(L' + R')/2`$ equals the original $`M`$** (mono compatibility); for uncorrelated noise at $`w = 2`$ the side rises by 6.02 dB and the mid is unchanged; at balance +1 the left channel is exactly 0 and not one sample of the right channel has changed; and at balance +0.5 the left is −6.02 dB and the right 0 dB.
 
 Think about it: when $`w > 1`$, the peak of $`L'`$ can exceed the original peak (in the example above, 0.5 → 0.75); what does this mean for headroom? If the left and right channels are exactly identical (true mono), no $`w`$ has any effect -- why?
+
+## Exercise 8 ★☆☆ (calculation + concepts) The same vocal on a mono track and on a stereo track
+
+Read README section 2.10 first. A mono vocal is, for simplicity, a constant 0.5. Use the constant power pan law of section 2.9 for the mono track and the linear balance law $`g_L = \min(1, 1 - p)`$, $`g_R = \min(1, 1 + p)`$ for the stereo track; the faders are at 0 dB and there are no inserts.
+
+1. Give the L and R output values (and dBFS) in each of these four cases:
+   - (a) on a **mono track**, panned to the center;
+   - (b) duplicated to a **stereo track** as $`L = R`$, balance at the center;
+   - (c) on the mono track, panned **hard right**;
+   - (d) on the stereo track, balance at **+0.5**.
+2. How many dB louder is each side in (b) than in (a)? Where does this difference come from?
+3. Compare (c) and (d): both are "to the right", but what is left on the left speaker in each case?
+4. (Concepts) A chorus with stereo spread is inserted on the track. Why does it sound wide in case (b) but not in case (a)? What would you change in (a) to make the chorus wide while keeping the vocal on a mono track?

@@ -180,3 +180,18 @@ balance +0.5：L -6.02 dB、R 0.00 dB；balance +1：L peak = -100.0 dBFS
 - 左 = 正弦波、右 = 0 時 $`M = S = L/2`$。$`w = 2`$：$`L' = M + 2S = 1.5L`$（peak 0.75）、$`R' = M - 2S = -0.5L`$（右邊出現反相的訊號，peak 0.25）。這回答了「想一想」的第一題：$`w > 1`$ 會讓 peak 變大（這裡 +3.5 dB），寬度處理之後要重新檢查 headroom。
 - 真正的 mono（$`L = R`$）時 $`S = 0`$，乘任何 $`w`$ 都還是 0，所以沒有效果——width 只能放大「已經存在」的左右差異，不能無中生有。
 - Balance 是各聲道獨立乘 gain：+1 時左聲道精確為 0、右聲道一個 sample 都沒變，證明它不會把左邊的內容搬到右邊（和範例 2 (C) 的結論一致）。
+
+## 練習 8：同一軌人聲放在 mono track 與 stereo track 上
+
+1. $`x = 0.5`$（$`-6.02`$ dBFS）：
+
+   | 情況 | $`g_L`$ / $`g_R`$ | L | R |
+   |---|---|---|---|
+   | (a) mono track，中央，constant power（$`\theta = 0.5`$） | 0.7071 / 0.7071 | 0.3536（−9.03 dBFS） | 0.3536（−9.03 dBFS） |
+   | (b) stereo track $`L = R`$，balance 中央（$`p = 0`$） | 1 / 1 | 0.5（−6.02 dBFS） | 0.5（−6.02 dBFS） |
+   | (c) mono track，全右（$`\theta = 1`$） | $`\cos(\pi/2) = 0`$ / $`\sin(\pi/2) = 1`$ | 0（無聲） | 0.5（−6.02 dBFS） |
+   | (d) stereo track，balance +0.5 | $`\min(1, 0.5) = 0.5`$ / $`\min(1, 1.5) = 1`$ | 0.25（−12.04 dBFS） | 0.5（−6.02 dBFS） |
+
+2. $`20\log_{10}(0.5 / 0.3536) = 20\log_{10}\sqrt{2} = `$ 每邊 **+3.01 dB**。Mono track 套用了 constant power law 在中央的 −3 dB；stereo track 的 balance 在中央是 unity。從功率來看，(a) 送進房間的是 $`2 \times 0.3536^2 = 0.125 = 0.5^2`$，正好等於音源的功率；(b) 是 $`2 \times 0.5^2 = 0.25`$，兩倍（+3.01 dB）。這正是 pan law 存在的理由（pan 時響度不變），也正是立體聲素材要用 balance 的理由（放在中央的立體聲音源不能變小聲）。
+3. (c) 左喇叭完全無聲，人聲全部在右邊：pan 是把音源搬過去。(d) 左喇叭仍然以 0.25 播放人聲（比右邊小 6.02 dB）：balance 只是衰減左邊，所以聲像偏右（左右差 6 dB），但不是全右。要讓 stereo track 的 L = 0，balance 必須轉到 +1。
+4. 在 (b) 裡 chorus 收到兩個聲道；有 stereo spread 時，它對左右的 delay line 做不同的調變（例如 LFO 相位差 90° 或 180°），所以輸出的 L 與 R 不同、部分去相關，耳朵就聽到寬度。在 (a) 裡 insert 位於 panner 之前，跑在 mono track 唯一的那個聲道上：根本沒有第二邊可以做出差異，效果原本會產生的 spread 也就不見了，之後 panner 只是把同一個訊號乘上兩個 gain 送到 L 與 R（相關係數 1，一個點音源）。要讓人聲維持在 mono track 上、又讓 chorus 變寬，可以把 chorus 放在用 send 送過去的立體聲 FX channel / bus 上（panner 之後全部都是立體聲），或放在這軌所 route 到的立體聲 group 上；把 track 改成 stereo 也可以，但處理量加倍，而且 pan 旋鈕會變成 balance。

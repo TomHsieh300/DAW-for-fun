@@ -182,3 +182,18 @@ Wrote dawlab_output/l01_ex7_width.wav (width 0 -> 1 -> 2, 2 seconds each)
 - With left = sine and right = 0, $`M = S = L/2`$. At $`w = 2`$: $`L' = M + 2S = 1.5L`$ (peak 0.75) and $`R' = M - 2S = -0.5L`$ (an inverted-polarity signal appears on the right, peak 0.25). This answers the first "think about it" question: $`w > 1`$ makes the peak larger (here +3.5 dB), so headroom must be checked again after width processing.
 - For true mono ($`L = R`$), $`S = 0`$, and multiplying by any $`w`$ still gives 0, so there is no effect -- width can only amplify a left/right difference that "already exists", it cannot create one from nothing.
 - Balance multiplies each channel by its own gain: at +1 the left channel is exactly 0 and not one sample of the right channel has changed, which proves it does not move the left content to the right (consistent with the conclusion of example 2 (C)).
+
+## Exercise 8: The same vocal on a mono track and on a stereo track
+
+1. With $`x = 0.5`$ ($`-6.02`$ dBFS):
+
+   | Case | $`g_L`$ / $`g_R`$ | L | R |
+   |---|---|---|---|
+   | (a) mono track, center, constant power ($`\theta = 0.5`$) | 0.7071 / 0.7071 | 0.3536 (−9.03 dBFS) | 0.3536 (−9.03 dBFS) |
+   | (b) stereo track $`L = R`$, balance center ($`p = 0`$) | 1 / 1 | 0.5 (−6.02 dBFS) | 0.5 (−6.02 dBFS) |
+   | (c) mono track, hard right ($`\theta = 1`$) | $`\cos(\pi/2) = 0`$ / $`\sin(\pi/2) = 1`$ | 0 (silent) | 0.5 (−6.02 dBFS) |
+   | (d) stereo track, balance +0.5 | $`\min(1, 0.5) = 0.5`$ / $`\min(1, 1.5) = 1`$ | 0.25 (−12.04 dBFS) | 0.5 (−6.02 dBFS) |
+
+2. $`20\log_{10}(0.5 / 0.3536) = 20\log_{10}\sqrt{2} = `$ **+3.01 dB** per side. The mono track applies the −3 dB center gain of the constant power law; the stereo track's balance is at unity at the center. In terms of power, (a) puts $`2 \times 0.3536^2 = 0.125 = 0.5^2`$ into the room, exactly the power of the source, while (b) puts $`2 \times 0.5^2 = 0.25`$, twice as much (+3.01 dB). That is the whole point of the pan law (constant loudness while panning) and the whole point of balance on stereo material (a stereo source at the center must not drop).
+3. (c) The left speaker is completely silent and all of the vocal is on the right: a pan moves the source. (d) The left speaker still plays the vocal at 0.25 (6.02 dB below the right): balance only attenuates the left side, so the image sits right of center (a 6 dB level difference) but is not hard right. To get L = 0 on the stereo track you would need balance +1.
+4. In (b) the chorus receives two channels; with stereo spread it modulates the left and right delay lines differently (for example with LFO phases 90° or 180° apart), so its L and R outputs differ and are partly decorrelated, and the ear hears width. In (a) the insert sits before the panner and runs on the one channel of the mono track: there is no second side to make different, so whatever spread the effect would produce is lost, and the panner afterwards only sends two scaled copies of the same signal to L and R (correlation 1, a point source). To keep the vocal on a mono track and still get a wide chorus, put the chorus on a stereo FX channel / bus fed by a send (after the panner everything is stereo), or put it on a stereo group the track is routed to; changing the track to stereo also works but costs twice the processing and switches the pan control to balance.

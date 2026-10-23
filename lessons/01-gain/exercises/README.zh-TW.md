@@ -123,3 +123,16 @@ $$
 Self-check 會驗證：左 = 正弦波、右 = 0 的極端訊號在 $`w`$ = 0 / 1 / 2 下左右 peak 分別是 0.25/0.25、0.5/0、0.75/0.25（$`w = 2`$ 時右聲道出現反相訊號）；**任何 $`w`$ 下 $`(L' + R')/2`$ 都等於原本的 $`M`$**（mono 相容）；不相關雜訊 $`w = 2`$ 時 side +6.02 dB、mid 不變；balance +1 時左聲道精確為 0、右聲道一個 sample 都沒變；balance +0.5 時左 −6.02 dB、右 0 dB。
 
 想一想：$`w > 1`$ 時 $`L'`$ 的 peak 可能超過原本的 peak（上面的例子 0.5 → 0.75），這對 headroom 有什麼影響？如果左右聲道完全相同（真正的 mono），任何 $`w`$ 都沒有效果——為什麼？
+
+## 練習 8 ★☆☆（計算 + 觀念）同一軌人聲放在 mono track 與 stereo track 上
+
+先讀 README 2.10 節。為了簡單，假設一軌 mono 人聲是常數 0.5。Mono track 用 2.9 節的 constant power pan law，stereo track 用線性 balance law $`g_L = \min(1, 1 - p)`$、$`g_R = \min(1, 1 + p)`$；fader 都在 0 dB，沒有任何 insert。
+
+1. 寫出下面四種情況的 L 與 R 輸出值（以及 dBFS）：
+   - (a) 放在 **mono track** 上，pan 在中央；
+   - (b) 複製成 $`L = R`$ 放在 **stereo track** 上，balance 在中央；
+   - (c) 放在 mono track 上，pan **全右**；
+   - (d) 放在 stereo track 上，balance 在 **+0.5**。
+2. (b) 的每一邊比 (a) 大幾 dB？這個差異從哪裡來？
+3. 比較 (c) 與 (d)：兩者都是「往右」，但左喇叭分別還剩下什麼？
+4. （觀念）在 track 上插一個有 stereo spread 的 chorus。為什麼在 (b) 聽起來很寬，在 (a) 卻不會？如果要讓 (a) 的人聲維持在 mono track 上、又讓 chorus 變寬，你會怎麼改？

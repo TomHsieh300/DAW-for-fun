@@ -17,6 +17,7 @@ After reading this chapter and doing the exercises, you should be able to:
 - Implement and compare two kinds of parameter smoothing: the linear ramp (`SmoothedValue`) and one-pole exponential smoothing (time constant τ).
 - Use this chapter's `dawlab::dsp::Gain` / `Panner`, and know how to use them safely on the audio thread.
 - Derive the gain and the left/right power sum at the center for the three pan laws (linear / constant power / −4.5 dB), and tell **mono pan** from **stereo balance**.
+- Explain how a DAW separates mono and stereo tracks (pan law vs. balance, where the signal becomes stereo), and predict the level difference of the same file on each.
 - Explain how peak and RMS each grow when N tracks are summed, what headroom and gain staging are, and the resolution rules for mute / solo / solo-safe (the chapter 14 mixer uses the same rules; there only the FX bus and the master are implicitly solo-safe).
 
 ## 2. Theory
@@ -378,6 +379,73 @@ flowchart LR
     end
 ```
 
+### 2.10 Mono and stereo tracks in a DAW (Cubase as the example)
+
+Section 2.9 separated pan from balance mathematically. A DAW turns that distinction into a property of the track itself: when you create an audio track you choose its **channel configuration**, mono or stereo, and that choice decides how many channels flow through the track's inserts and whether its pan control is a pan or a balance. We use Cubase as the example because it makes the choice explicit, but most DAWs work in a very similar way. Details such as menu names and defaults change between versions, so check the manual of the version you use.
+
+**Mono track.** A mono audio track carries **one** channel from the clip, through its input gain and **inserts** (EQ, compressor, ...), up to the **panner**. Every insert on it processes that one channel. The panner is the point where the signal becomes stereo: it places the mono source in the stereo field with a **pan law** (section 2.9). In Cubase the pan law is a per-project setting (in the project setup dialog), with choices such as 0 dB, −3 dB, −4.5 dB and −6 dB; the default is −3 dB equal power, i.e. the constant power law of section 2.9. Everything after the panner is stereo: the sends, the group / FX channels (buses) and the stereo out (the master).
+
+**Stereo track.** A stereo audio track carries **two** channels through its inserts; each insert sees a stereo signal and may treat the two sides differently. Its pan control is not a pan law: in Cubase's default mode, the **Stereo Balance Panner**, it is a **balance**. At the center both sides pass at unity (0 dB), and turning it to the right only attenuates the left side (the right side stays at unity), exactly the balance of section 2.9. Cubase also offers other stereo panner modes, for example the **Stereo Combined Panner**, which positions the left and right channels as a linked pair so you can narrow the stereo image and move it as a whole, instead of only attenuating one side.
+
+**The master / stereo out** is always stereo and its pan is a balance, for the same reason: a finished stereo mix left at "center" must come out unchanged, not 3 dB quieter. A pan law there would turn every mix down by 3 dB just because the knob sits in the middle.
+
+```
+ Mono track: 1 channel until the panner
+
+   clip ─► [input gain] ─► [insert 1] ─► [insert 2] ─► [fader] ─► (panner: pan law) ─┬─► L ─┐
+            (1 ch)          (1 ch)        (1 ch)        (1 ch)                        └─► R ─┤
+                                                                                             │ stereo from here on
+                                                         sends / group / FX bus ◄────────────┘
+                                                                    │
+                                                                    ▼
+                                                         stereo out (balance)
+
+ Stereo track: 2 channels all the way
+
+   clip L ─► [input gain] ─► [insert 1] ─► [insert 2] ─► [fader] ─► (balance) ─► L ─┐
+   clip R ─► [input gain] ─► [insert 1] ─► [insert 2] ─► [fader] ─► (balance) ─► R ─┤
+              (each stereo insert sees both L and R                                 │
+               and may treat them differently)                                      ▼
+                                                         sends / group / FX bus ─► stereo out (balance)
+```
+
+**The numbers.** With the constant power law and the linear balance law used in this course (the chapter 14 mixer uses the same one):
+
+$$
+\text{pan law: } g_L = \cos\!\left(\theta\tfrac{\pi}{2}\right),\ g_R = \sin\!\left(\theta\tfrac{\pi}{2}\right);\qquad
+\text{balance: } g_L = \min(1,\ 1 - p),\ g_R = \min(1,\ 1 + p)
+$$
+
+| Position $`p`$ | Mono track, constant power ($`g_L`$ / $`g_R`$) | Stereo track, balance ($`g_L`$ / $`g_R`$) |
+|---|---|---|
+| −1 (hard left) | 1 / 0 | 1 / 0 |
+| 0 (center) | 0.7071 / 0.7071 (−3.01 dB per side) | 1 / 1 (0 dB per side) |
+| +0.5 | 0.3827 / 0.9239 | 0.5 / 1 (L −6.02 dB, R 0 dB) |
+| +1 (hard right) | 0 / 1 | 0 / 1 |
+
+So **the same mono file at the center is 3.01 dB louder per side on a stereo track (as $`L = R`$) than on a mono track**: $`20\log_{10}(1/0.7071) = 3.01`$ dB. Note also that balance at +0.5 does not "move the source halfway to the right"; it simply turns the left side down by 6 dB.
+
+**Is duplicating a mono file into an $`L = R`$ stereo file the same as using a mono track?** Partly.
+
+- The same:
+  - The fader behaves identically, and if the stereo track used a pan law instead of balance, the levels at every pan position would be identical as well.
+  - **Channel-independent inserts** -- EQ, filters, gain, saturation / distortion, and dynamics with the two sides linked (one detector driving the same gain on both sides) -- receive the same input on L and R and therefore produce identical L and R outputs. The result is the mono-track result, just stored twice.
+- Different:
+  - **Stereo-generating inserts** turn $`L = R`$ into a genuinely wide signal: a chorus with stereo spread, a ping-pong delay, the width of a reverb, the LFO phase offset between the two sides of a phaser or tremolo. On a mono track the same effect runs on one channel, so there is no second side to make different; the panner then sends scaled copies of that single signal to L and R, and the result stays a point source.
+  - The stereo track **balances** instead of panning with a pan law: at the center it is 3.01 dB louder than the mono track (see the table), and turning it attenuates one side rather than moving the image.
+  - It costs **twice the CPU and memory** (every insert processes two channels, the file takes twice the space) for no audible benefit when the inserts are channel-independent.
+  - The meters show two identical channels.
+
+**The other direction: folding a stereo file onto a mono track.** The stereo file has to be downmixed, usually as
+
+$$
+x_{\mathrm{mono}} = \frac{L + R}{2}
+$$
+
+This is exact for $`L = R`$ (you get the original signal back). **Correlated** material (the same content, with the same polarity, on both sides) keeps its level; **uncorrelated** material of equal level (for example the two sides of a wide reverb, or two different microphones) drops by about **3 dB**, because the powers add while the amplitude is halved ($`\sqrt{2}/2 = 0.7071`$); and material with **opposite polarity** on the two sides ($`R = -L`$, a pure side signal) **cancels** completely. This is the same mono-compatibility question as in exercise 7: $`(L + R)/2`$ is exactly the mid signal $`M`$.
+
+**Looking ahead.** The DAW of chapter 14 implements exactly this model: `Track::setFormat(TrackFormat::Mono)` or `Track::setFormat(TrackFormat::Stereo)` chooses the format, a mono track runs its inserts on a one-channel block before the panner, and the format selects the strip's pan mode, `PanMode::PanLaw` for a mono track and `PanMode::Balance` for a stereo track (buses and the master always use balance). See [Step 4 - The 8-track mixer](../14-daw-8track/docs/step-04-mixer.md).
+
 ## 3. From formulas to code
 
 This chapter adds three headers to `dsp/include/dawlab/dsp/`, all header-only and depending only on `common/`. Later, the chapter 13 plugin uses `Gain` and `SmoothedValue` directly, and the chapter 14 DAW uses all three.
@@ -650,7 +718,7 @@ bin\Debug\l01_mixing_headroom.exe
 
 ## 6. Exercises
 
-See [`exercises/README.md`](exercises/README.md). There are 7: 2 conceptual / calculation problems (dB mental math, concepts of smoothing and pan law) and 5 implementation problems (the exponential smoother and time-constant measurement, fader taper, the multiplicative (straight line in dB) ramp, mute / solo resolution, and M/S stereo width and balance). Solutions are in [`solutions/README.md`](solutions/README.md).
+See [`exercises/README.md`](exercises/README.md). There are 8: 3 conceptual / calculation problems (dB mental math, concepts of smoothing and pan law, and exercise 8: the same vocal on a mono track and a stereo track) and 5 implementation problems (the exponential smoother and time-constant measurement, fader taper, the multiplicative (straight line in dB) ramp, mute / solo resolution, and M/S stereo width and balance). Solutions are in [`solutions/README.md`](solutions/README.md).
 
 ## 7. Further reading
 

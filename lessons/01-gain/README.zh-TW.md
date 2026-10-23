@@ -17,6 +17,7 @@
 - 實作並比較兩種參數平滑：linear ramp（`SmoothedValue`）與 one-pole exponential smoothing（時間常數 τ）。
 - 使用本章的 `dawlab::dsp::Gain` / `Panner`，知道它們在 audio thread 上怎麼用才安全。
 - 推導三種 pan law（linear / constant power / −4.5 dB）在中央的增益與左右功率和，並分清楚 **mono pan** 與 **stereo balance**。
+- 解釋 DAW 如何區分 mono track 與 stereo track（pan law vs balance、訊號在哪裡變成立體聲），並算出同一個檔案放在兩種 track 上的音量差。
 - 解釋 N 軌相加時 peak 與 RMS 各自怎麼成長、什麼是 headroom 與 gain staging，以及 mute / solo / solo-safe 的解析規則（第 14 章的 mixer 用同一套規則；那裡只有 FX bus 與 master 是隱含的 solo-safe）。
 
 ## 2. 原理
@@ -378,6 +379,73 @@ flowchart LR
     end
 ```
 
+### 2.10 DAW 裡的 mono track 與 stereo track（以 Cubase 為例）
+
+2.9 節在數學上分清了 pan 與 balance。DAW 把這個區別變成 track 本身的屬性：建立 audio track 時你要選它的**聲道設定**（mono 或 stereo），這個選擇決定了 track 的 insert 裡流過幾個聲道，以及它的 pan 旋鈕是 pan 還是 balance。這裡以 Cubase 為例，因為它把這個選擇做得很明確，但大多數 DAW 的做法都很類似。選單名稱與預設值等細節會隨版本改變，請以你使用的版本的手冊為準。
+
+**Mono track。** Mono audio track 從 clip 開始只帶**一個**聲道，經過 input gain 與 **insert**（EQ、compressor……），一直到 **panner**。它上面的每個 insert 都只處理這一個聲道。Panner 是訊號變成立體聲的地方：它用 **pan law**（2.9 節）把 mono 音源放到立體聲場裡。Cubase 的 pan law 是每個專案各自的設定（在專案設定對話框裡），選項有 0 dB、−3 dB、−4.5 dB、−6 dB 等；預設是 −3 dB equal power，也就是 2.9 節的 constant power law。Panner 之後全部都是立體聲：send、group / FX channel（bus）以及 stereo out（master）。
+
+**Stereo track。** Stereo audio track 讓**兩個**聲道一路流過 insert；每個 insert 看到的是立體聲訊號，可以對左右做不同的處理。它的 pan 旋鈕不套用 pan law：在 Cubase 的預設模式 **Stereo Balance Panner** 下，它是一個 **balance**。中央時左右都以 unity（0 dB）通過，往右轉只會衰減左邊（右邊維持 unity），正是 2.9 節的 balance。Cubase 也提供其他 stereo panner 模式，例如 **Stereo Combined Panner**，它把左右聲道的位置當成連動的一對來擺放，可以把立體聲像收窄並整體移動，而不只是衰減其中一邊。
+
+**Master / stereo out** 一定是立體聲，它的 pan 也是 balance，理由相同：一個完成的立體聲混音放在「中央」時必須原封不動地輸出，而不是小 3 dB。如果那裡用 pan law，每一首混音都會只因為旋鈕停在中間就被調小 3 dB。
+
+```
+ Mono track：到 panner 為止只有 1 個聲道
+
+   clip ─► [input gain] ─► [insert 1] ─► [insert 2] ─► [fader] ─► (panner：pan law) ─┬─► L ─┐
+            (1 ch)          (1 ch)        (1 ch)        (1 ch)                        └─► R ─┤
+                                                                                             │ 從這裡開始是立體聲
+                                                         send / group / FX bus ◄─────────────┘
+                                                                    │
+                                                                    ▼
+                                                         stereo out (balance)
+
+ Stereo track：一路都是 2 個聲道
+
+   clip L ─► [input gain] ─► [insert 1] ─► [insert 2] ─► [fader] ─► (balance) ─► L ─┐
+   clip R ─► [input gain] ─► [insert 1] ─► [insert 2] ─► [fader] ─► (balance) ─► R ─┤
+              (每個 stereo insert 同時看到 L 與 R，                                  │
+               可以對左右做不同的處理)                                               ▼
+                                                         send / group / FX bus ─► stereo out (balance)
+```
+
+**數字。** 使用 constant power law 與本教材的線性 balance law（第 14 章的 mixer 用的是同一條）：
+
+$$
+\text{pan law: } g_L = \cos\!\left(\theta\tfrac{\pi}{2}\right),\ g_R = \sin\!\left(\theta\tfrac{\pi}{2}\right);\qquad
+\text{balance: } g_L = \min(1,\ 1 - p),\ g_R = \min(1,\ 1 + p)
+$$
+
+| 位置 $`p`$ | Mono track，constant power（$`g_L`$ / $`g_R`$） | Stereo track，balance（$`g_L`$ / $`g_R`$） |
+|---|---|---|
+| −1（全左） | 1 / 0 | 1 / 0 |
+| 0（中央） | 0.7071 / 0.7071（每邊 −3.01 dB） | 1 / 1（每邊 0 dB） |
+| +0.5 | 0.3827 / 0.9239 | 0.5 / 1（L −6.02 dB、R 0 dB） |
+| +1（全右） | 0 / 1 | 0 / 1 |
+
+所以**同一個 mono 檔放在中央時，放在 stereo track（$`L = R`$）上每一邊都比放在 mono track 上大 3.01 dB**：$`20\log_{10}(1/0.7071) = 3.01`$ dB。另外注意 balance 在 +0.5 並不是「把音源往右移一半」，它只是把左邊調小 6 dB。
+
+**把 mono 檔複製成 $`L = R`$ 的立體聲檔，跟用 mono track 一樣嗎？** 部分一樣。
+
+- 一樣的地方：
+  - Fader 的行為完全相同；如果 stereo track 改用 pan law 而不是 balance，每個 pan 位置的音量也會完全相同。
+  - **各聲道獨立的 insert**——EQ、filter、gain、saturation / distortion，以及左右 link 的 dynamics（一個 detector 對左右套用同一個 gain）——L 與 R 收到相同的輸入，所以輸出的 L 與 R 也完全相同。結果就是 mono track 的結果，只是存了兩份。
+- 不一樣的地方：
+  - **會產生立體聲的 insert** 會把 $`L = R`$ 變成真正寬的訊號：有 stereo spread 的 chorus、ping-pong delay、reverb 的 width、phaser 或 tremolo 左右兩邊 LFO 的相位差。在 mono track 上同一個效果只在一個聲道上跑，根本沒有第二邊可以做出差異；之後 panner 只是把這一個訊號乘上不同的 gain 送到 L 與 R，結果仍然是一個點音源。
+  - Stereo track 用 **balance** 而不是 pan law：在中央比 mono track 大 3.01 dB（見上表），而且轉動時是衰減一邊，而不是移動聲像。
+  - 它要花**兩倍的 CPU 與記憶體**（每個 insert 都處理兩個聲道，檔案也佔兩倍空間），而在 insert 都是各聲道獨立的情況下，聽起來沒有任何好處。
+  - 表頭顯示兩個一模一樣的聲道。
+
+**反方向：把立體聲檔放到 mono track 上。** 立體聲檔必須先 downmix，通常是
+
+$$
+x_{\mathrm{mono}} = \frac{L + R}{2}
+$$
+
+對 $`L = R`$ 這是精確的（得到原本的訊號）。**相關**的素材（左右是相同內容、相同極性）保持原來的音量；音量相同但**不相關**的素材（例如寬廣 reverb 的左右兩邊，或兩支不同的麥克風）會降低約 **3 dB**，因為功率相加而振幅減半（$`\sqrt{2}/2 = 0.7071`$）；左右**極性相反**的素材（$`R = -L`$，純 side 訊號）則會完全**抵消**。這和練習 7 的 mono 相容問題是同一件事：$`(L + R)/2`$ 正好就是 mid 訊號 $`M`$。
+
+**預告。** 第 14 章的 DAW 正是實作這個模型：`Track::setFormat(TrackFormat::Mono)` 或 `Track::setFormat(TrackFormat::Stereo)` 選擇格式，mono track 在 panner 之前用單聲道的 block 跑它的 insert，格式也決定 strip 的 pan 模式：mono track 用 `PanMode::PanLaw`，stereo track 用 `PanMode::Balance`（bus 與 master 一律用 balance）。見 [Step 4 - 8 軌 mixer](../14-daw-8track/docs/step-04-mixer.zh-TW.md)。
+
 ## 3. 從公式到程式碼
 
 本章在 `dsp/include/dawlab/dsp/` 新增三個 header，全部 header-only、只依賴 `common/`，之後第 13 章的 plugin 會直接使用 `Gain` 與 `SmoothedValue`，第 14 章的 DAW 三個都會用到。
@@ -650,7 +718,7 @@ bin\Debug\l01_mixing_headroom.exe
 
 ## 6. 練習題
 
-見 [`exercises/README.zh-TW.md`](exercises/README.zh-TW.md)。7 題：2 題觀念 / 計算（dB 心算、平滑與 pan law 的觀念）、5 題實作（exponential smoother 與時間常數量測、fader taper、multiplicative（dB 直線）ramp、mute / solo 解析、M/S stereo width 與 balance）。解答在 [`solutions/README.zh-TW.md`](solutions/README.zh-TW.md)。
+見 [`exercises/README.zh-TW.md`](exercises/README.zh-TW.md)。8 題：3 題觀念 / 計算（dB 心算、平滑與 pan law 的觀念、練習 8：同一軌人聲放在 mono track 與 stereo track 上）、5 題實作（exponential smoother 與時間常數量測、fader taper、multiplicative（dB 直線）ramp、mute / solo 解析、M/S stereo width 與 balance）。解答在 [`solutions/README.zh-TW.md`](solutions/README.zh-TW.md)。
 
 ## 7. 延伸閱讀
 
