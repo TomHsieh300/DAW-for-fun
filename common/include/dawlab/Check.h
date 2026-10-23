@@ -1,9 +1,9 @@
 #pragma once
-// 極簡 self-check 工具，給練習解答用：
+// A minimal self-check helper for the exercise solutions:
 //
 //   DAWLAB_CHECK(peak < 1.0f);
 //   DAWLAB_CHECK_NEAR(gainDb, -3.01, 0.05);
-//   return dawlab::test::summary("ex1_gain");   // 全部通過回傳 0，否則回傳 1（ctest 會判定失敗）
+//   return dawlab::test::summary("ex1_gain");   // returns 0 if every check passed, otherwise 1 (ctest then reports a failure)
 
 #include "Console.h"
 

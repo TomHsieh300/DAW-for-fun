@@ -1,6 +1,6 @@
 #pragma once
-// 分析工具：peak、RMS、單一頻率振幅（Goertzel）、頻率響應量測、諧波 / THD。
-// 用來在練習解答裡「用數字驗證」DSP 是否正確，而不只是用耳朵聽。
+// Analysis tools: peak, RMS, single-frequency amplitude (Goertzel), frequency-response measurement, harmonics / THD.
+// They let the exercise solutions verify a DSP result with numbers rather than by ear alone.
 
 #include "Console.h"
 #include "AudioBuffer.h"
@@ -18,7 +18,7 @@ inline float peakAbs(const float* x, int n) noexcept {
     return p;
 }
 
-// 所有 channel 的最大 |sample|
+// Largest |sample| across all channels
 inline float peakAbs(const AudioBuffer& b) noexcept {
     float p = 0.0f;
     for (int ch = 0; ch < b.getNumChannels(); ++ch)
@@ -47,8 +47,8 @@ inline bool hasNanOrInf(const AudioBuffer& b) noexcept {
     return false;
 }
 
-// 用 Goertzel 演算法（加 Hann window）估計訊號中頻率 freq 的正弦振幅。
-// 輸入一個振幅 A 的正弦波，回傳值 ≈ A。適合量測濾波器在某個頻率的增益。
+// Estimates the amplitude of the sine component at frequency freq using the Goertzel algorithm (with a Hann window).
+// For a sine wave of amplitude A the return value is approximately A. Handy for measuring a filter's gain at a given frequency.
 inline double goertzelAmplitude(const float* x, int n, double freq, double sampleRate) noexcept {
     if (n <= 1)
         return 0.0;
@@ -66,9 +66,9 @@ inline double goertzelAmplitude(const float* x, int n, double freq, double sampl
     return 2.0 * std::sqrt(std::max(0.0, power)) / windowSum;
 }
 
-// 量測任意「一次處理一個 sample」的系統在 freq 的增益（dB）。
-// processSample 是 float(float) 的 callable，例如 [&](float x){ return filter.processSample(0, x); }
-// 會先送 skipSeconds 的訊號讓 transient 消失，再量後面那段。
+// Measures the gain (in dB) at freq of any system that processes one sample at a time.
+// processSample is a float(float) callable, for example [&](float x){ return filter.processSample(0, x); }
+// It first feeds skipSeconds of signal so the transient dies away, then measures the remainder.
 template <typename ProcessFn>
 double measureGainDb(ProcessFn&& processSample, double freq, double sampleRate, double seconds = 0.5,
                      double skipSeconds = 0.2, float amplitude = 0.25f) {
@@ -88,8 +88,8 @@ double measureGainDb(ProcessFn&& processSample, double freq, double sampleRate, 
     return gainToDb(b / a);
 }
 
-// 回傳第 1..numHarmonics 次諧波相對於基頻的 dB（index 0 = 基頻 = 0 dB）。
-// 適合分析 saturation / distortion 產生了哪些諧波（奇次 vs 偶次）。
+// Returns the level in dB of harmonics 1..numHarmonics relative to the fundamental (index 0 = fundamental = 0 dB).
+// Useful for analysing which harmonics (odd vs even) saturation / distortion generates.
 inline std::vector<double> harmonicLevelsDb(const float* x, int n, double fundamental, double sampleRate,
                                             int numHarmonics) {
     std::vector<double> levels;
@@ -103,7 +103,7 @@ inline std::vector<double> harmonicLevelsDb(const float* x, int n, double fundam
     return levels;
 }
 
-// 總諧波失真（THD），單位 %：sqrt(H2² + H3² + ... ) / H1
+// Total harmonic distortion (THD), in %: sqrt(H2² + H3² + ... ) / H1
 inline double thdPercent(const float* x, int n, double fundamental, double sampleRate, int numHarmonics = 10) {
     const double h1 = goertzelAmplitude(x, n, fundamental, sampleRate);
     double sum = 0.0;

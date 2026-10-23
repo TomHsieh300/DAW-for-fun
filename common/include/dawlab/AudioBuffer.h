@@ -1,13 +1,13 @@
 #pragma once
-// AudioBuffer / AudioBlock：整套教材共用的音訊資料容器。
+// AudioBuffer / AudioBlock: the audio data containers shared by the whole course.
 //
-// - AudioBuffer 擁有記憶體（owning），用 setSize() 配置。配置會 allocate，
-//   所以只能在 prepare 階段或離線處理時呼叫，絕對不要在 audio callback 裡呼叫。
-// - AudioBlock 是不擁有記憶體的 view（non-owning view），複製它很便宜。
-//   所有 DSP 元件的 process() 都吃 AudioBlock，這樣同一份 DSP 程式碼可以處理
-//   我們自己的 AudioBuffer，也可以直接包住 juce::AudioBuffer 的指標陣列（第 13、14 章）。
+// - AudioBuffer owns its memory and is allocated with setSize(). Allocation allocates,
+//   so call it only in the prepare stage or during offline processing, never inside an audio callback.
+// - AudioBlock is a non-owning view, so copying it is cheap.
+//   The process() of every DSP component takes an AudioBlock, so the same DSP code can handle
+//   our own AudioBuffer and can also wrap the pointer array of a juce::AudioBuffer directly (chapters 13 and 14).
 //
-// 資料排列是 non-interleaved（每個 channel 一段連續記憶體），跟 JUCE / VST3 一樣。
+// The data layout is non-interleaved (each channel is one contiguous block of memory), the same as JUCE / VST3.
 
 #include <algorithm>
 #include <cassert>
@@ -24,7 +24,7 @@ public:
     AudioBlock(float* const* channels, int numChannels, int numSamples, int startSample = 0) noexcept
         : channels_(channels), numChannels_(numChannels), numSamples_(numSamples), start_(startSample) {}
 
-    // 允許 AudioBuffer 隱式轉成 AudioBlock，所以可以直接寫 processor.process(buffer)
+    // Allows an AudioBuffer to convert implicitly to an AudioBlock, so you can simply write processor.process(buffer)
     AudioBlock(AudioBuffer& buffer) noexcept; // NOLINT(google-explicit-constructor)
 
     int getNumChannels() const noexcept { return numChannels_; }
@@ -45,13 +45,13 @@ public:
         getChannelPointer(channel)[index] = value;
     }
 
-    // 取出 [startSample, startSample + length) 的子區塊（例如把大 block 切成小段處理）
+    // Returns the sub-block [startSample, startSample + length) (for example to process a large block in smaller pieces)
     AudioBlock getSubBlock(int startSample, int length) const noexcept {
         assert(startSample >= 0 && length >= 0 && startSample + length <= numSamples_);
         return AudioBlock(channels_, numChannels_, length, start_ + startSample);
     }
 
-    // 只取部分 channel，例如從立體聲 block 取出單一 channel
+    // Takes only some of the channels, e.g. a single channel out of a stereo block
     AudioBlock getChannelSubset(int firstChannel, int count) const noexcept {
         assert(firstChannel >= 0 && count >= 0 && firstChannel + count <= numChannels_);
         return AudioBlock(channels_ + firstChannel, count, numSamples_, start_);
@@ -70,7 +70,7 @@ public:
         }
     }
 
-    // 從 other 複製；只處理兩者共同擁有的 channel 數與 sample 數
+    // Copies from other; only the channel count and sample count that both have in common are processed
     void copyFrom(const AudioBlock& other) const noexcept {
         const int nch = std::min(numChannels_, other.numChannels_);
         const int n = std::min(numSamples_, other.numSamples_);
@@ -78,7 +78,7 @@ public:
             std::copy_n(other.getChannelPointer(ch), n, getChannelPointer(ch));
     }
 
-    // 把 other * gain 疊加進來（mixing 的基本動作）
+    // Adds other * gain on top (the basic mixing operation)
     void addFrom(const AudioBlock& other, float gain = 1.0f) const noexcept {
         const int nch = std::min(numChannels_, other.numChannels_);
         const int n = std::min(numSamples_, other.numSamples_);
@@ -118,11 +118,11 @@ public:
         return *this;
     }
 
-    // vector 的 move 會轉移同一塊 heap 記憶體，所以舊的 channel 指標仍然有效
+    // Moving a vector transfers the same heap block, so the old channel pointers remain valid
     AudioBuffer(AudioBuffer&&) noexcept = default;
     AudioBuffer& operator=(AudioBuffer&&) noexcept = default;
 
-    // 重新配置並清成 0。會 allocate —— 不可以在 audio thread 呼叫。
+    // Reallocates and clears to 0. This allocates, so it must not be called on the audio thread.
     void setSize(int numChannels, int numSamples) {
         assert(numChannels >= 0 && numSamples >= 0);
         numChannels_ = numChannels;

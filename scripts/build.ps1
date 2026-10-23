@@ -1,12 +1,12 @@
 ﻿<#
 .SYNOPSIS
-  設定、建置並測試 DawLab 教材（Windows，使用 Visual Studio 2022 / Build Tools 內附的 CMake）。
+  Configure, build and test the DawLab course (Windows; uses the CMake bundled with Visual Studio 2022 / Build Tools).
 
 .EXAMPLE
-  .\scripts\build.ps1                         # 建置全部純 C++ 章節並跑所有測試
-  .\scripts\build.ps1 -Only 02-filter         # 只建置第 02 章
-  .\scripts\build.ps1 -Juce                   # 連同第 13、14 章的 JUCE 程式一起建置
-  .\scripts\build.ps1 -Only 13-vst-hosting,14-daw-8track -Juce   # 多個章節以逗號分隔
+  .\scripts\build.ps1                         # Build all pure C++ chapters and run every test
+  .\scripts\build.ps1 -Only 02-filter         # Build only chapter 02
+  .\scripts\build.ps1 -Juce                   # Also build the JUCE programs of chapters 13 and 14
+  .\scripts\build.ps1 -Only 13-vst-hosting,14-daw-8track -Juce   # Separate multiple chapters with commas
   .\scripts\build.ps1 -Config Release -NoTest
 #>
 param(
@@ -20,7 +20,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-# 用 powershell -File 呼叫時，'a,b' 會變成單一字串；這裡統一拆成陣列
+# With powershell -File, 'a,b' arrives as a single string; split it into an array here
 $Only = @($Only | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 $root = Split-Path -Parent $PSScriptRoot
 
@@ -35,7 +35,7 @@ function Find-CMake {
             if (Test-Path $c) { return $c }
         }
     }
-    throw "找不到 cmake。請安裝 Visual Studio 2022（含 'Desktop development with C++'）或 CMake。"
+    throw "CMake not found. Install Visual Studio 2022 (with 'Desktop development with C++') or CMake."
 }
 
 $cmake = Find-CMake

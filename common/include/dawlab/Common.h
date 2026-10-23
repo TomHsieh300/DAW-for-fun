@@ -1,5 +1,5 @@
 #pragma once
-// 一次引入所有共用工具：範例與解答通常只要 #include <dawlab/Common.h>
+// Pulls in all the shared utilities at once: examples and solutions usually only need #include <dawlab/Common.h>
 
 #include "Analysis.h"
 #include "AudioBuffer.h"

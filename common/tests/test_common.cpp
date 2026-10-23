@@ -1,4 +1,4 @@
-// 共用工具本身的自我測試：WAV 讀寫來回、Goertzel 量測精準度、dB 轉換。
+// Self-test of the shared utilities: WAV round trip, Goertzel measurement accuracy, dB conversion.
 #include <dawlab/Common.h>
 
 #include <cstdio>
@@ -13,20 +13,20 @@ int main() {
     DAWLAB_CHECK_NEAR(dbToGain(-6), 0.50119, 1e-4);
     DAWLAB_CHECK(dbToGain(-200.0f) == 0.0f);
 
-    // Goertzel：振幅 0.3 的 1 kHz 正弦波
+    // Goertzel: a 1 kHz sine wave with amplitude 0.3
     AudioBuffer sine = makeSine(1000.0, sr, 0.5, 0.3f, 1);
     DAWLAB_CHECK_NEAR(goertzelAmplitude(sine.getReadPointer(0), sine.getNumSamples(), 1000.0, sr), 0.3, 1e-3);
     DAWLAB_CHECK(goertzelAmplitude(sine.getReadPointer(0), sine.getNumSamples(), 3000.0, sr) < 1e-4);
     DAWLAB_CHECK_NEAR(rms(sine, 0), 0.3 / std::sqrt(2.0), 1e-3);
 
-    // measureGainDb：恆等系統 = 0 dB，乘 0.5 = -6.02 dB
+    // measureGainDb: identity system = 0 dB, multiply by 0.5 = -6.02 dB
     DAWLAB_CHECK_NEAR(measureGainDb([](float x) { return x; }, 440.0, sr), 0.0, 1e-3);
     DAWLAB_CHECK_NEAR(measureGainDb([](float x) { return 0.5f * x; }, 440.0, sr), -6.0206, 1e-3);
 
-    // 純正弦波的 THD 應該接近 0
+    // THD of a pure sine wave should be close to 0
     DAWLAB_CHECK(thdPercent(sine.getReadPointer(0), sine.getNumSamples(), 1000.0, sr) < 0.01);
 
-    // WAV 來回：32-bit float 必須完全一致，24-bit 誤差 < 1 LSB
+    // WAV round trip: 32-bit float must match exactly, 24-bit error < 1 LSB
     AudioBuffer noise = makeWhiteNoise(sr, 0.1, 0.5f, 2);
     for (int bits : {16, 24, 32}) {
         const std::string path = outputPath("common_roundtrip_" + std::to_string(bits) + ".wav");
@@ -45,7 +45,7 @@ int main() {
         DAWLAB_CHECK(maxErr <= tol);
     }
 
-    // AudioBlock 子區塊與 mixing
+    // AudioBlock sub-blocks and mixing
     AudioBuffer a(2, 8), b(2, 8);
     for (int i = 0; i < 8; ++i) {
         a.setSample(0, i, 1.0f);
@@ -56,7 +56,7 @@ int main() {
     DAWLAB_CHECK_NEAR(a.getSample(1, 4), 1.0, 0.0);
     DAWLAB_CHECK_NEAR(a.getSample(0, 7), 1.0, 0.0);
 
-    // 測試訊號不可以有 NaN、也不可以 clip
+    // Test signals must contain no NaN and must not clip
     AudioBuffer drums = makeDrumLoop(sr);
     AudioBuffer plucks = makePluckSequence(sr);
     DAWLAB_CHECK(!hasNanOrInf(drums) && !hasNanOrInf(plucks));

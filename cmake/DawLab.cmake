@@ -1,12 +1,12 @@
-# 章節用的 CMake 輔助函式
+# CMake helper functions for the chapters
 #
-#   dawlab_add_example(<target> <sources...>)   範例程式：建置並登記為 ctest（label: example）
-#   dawlab_add_solution(<target> <sources...>)  練習解答：建置並登記為 ctest（label: solution）
-#   dawlab_add_starter(<target> <sources...>)   練習起始碼：只建置、不跑測試（裡面留有 TODO）
-#   dawlab_add_test(<target> <sources...>)      元件回歸測試（lessons/NN-name/tests/*.cpp）：建置並登記為 ctest（label: test）
+#   dawlab_add_example(<target> <sources...>)   Example program: built and registered as a ctest (label: example)
+#   dawlab_add_solution(<target> <sources...>)  Exercise solution: built and registered as a ctest (label: solution)
+#   dawlab_add_starter(<target> <sources...>)   Exercise starter code: built only, not run as a test (it contains TODOs)
+#   dawlab_add_test(<target> <sources...>)      Component regression test (lessons/NN-name/tests/*.cpp): built and registered as a ctest (label: test)
 #
-# 所有 target 都連結 dawlab::dsp（含 dawlab::common），測試的工作目錄是 build 資料夾，
-# 所以程式輸出的 WAV 會在 build/dawlab_output/ 底下。
+# Every target links dawlab::dsp (which includes dawlab::common). Tests run with the build folder as
+# their working directory, so the WAV files a program writes end up under build/dawlab_output/.
 
 function(dawlab_set_warnings target)
     if(MSVC)

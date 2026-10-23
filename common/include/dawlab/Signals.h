@@ -1,6 +1,6 @@
 #pragma once
-// 測試訊號產生器。教材的範例都用這些訊號，不需要另外準備音檔；
-// 每個產生器都是 deterministic（同樣參數 -> 同樣結果），方便寫自動檢查。
+// Test signal generators. The course examples all use these signals, so no audio files are needed;
+// every generator is deterministic (same parameters -> same result), which makes automated checks easy to write.
 
 #include "Console.h"
 #include "AudioBuffer.h"
@@ -16,7 +16,7 @@ inline int secondsToSamples(double seconds, double sampleRate) {
     return static_cast<int>(std::lround(seconds * sampleRate));
 }
 
-// 簡單的 xorshift32 亂數產生器：輸出 [-1, 1)
+// A simple xorshift32 random number generator: outputs [-1, 1)
 class NoiseGenerator {
 public:
     explicit NoiseGenerator(uint32_t seed = 1) noexcept : state_(seed ? seed : 1) {}
@@ -32,7 +32,7 @@ private:
     uint32_t state_;
 };
 
-// 正弦波：x[n] = A * sin(2π f n / fs)
+// Sine wave: x[n] = A * sin(2π f n / fs)
 inline AudioBuffer makeSine(double frequency, double sampleRate, double seconds, float amplitude = 0.5f,
                             int numChannels = 2) {
     AudioBuffer b(numChannels, secondsToSamples(seconds, sampleRate));
@@ -44,7 +44,7 @@ inline AudioBuffer makeSine(double frequency, double sampleRate, double seconds,
     return b;
 }
 
-// 對數掃頻（log sweep / chirp）：頻率從 f0 指數上升到 f1，適合聽濾波器或 EQ 的效果
+// Logarithmic sweep (log sweep / chirp): the frequency rises exponentially from f0 to f1, good for hearing the effect of a filter or EQ
 inline AudioBuffer makeLogSweep(double f0, double f1, double sampleRate, double seconds, float amplitude = 0.5f,
                                 int numChannels = 2) {
     AudioBuffer b(numChannels, secondsToSamples(seconds, sampleRate));
@@ -59,7 +59,7 @@ inline AudioBuffer makeLogSweep(double f0, double f1, double sampleRate, double 
     return b;
 }
 
-// 白雜訊（white noise），每個 channel 用不同 seed，所以左右聲道不相關
+// White noise; each channel uses a different seed, so the left and right channels are uncorrelated
 inline AudioBuffer makeWhiteNoise(double sampleRate, double seconds, float amplitude = 0.25f, int numChannels = 2,
                                   uint32_t seed = 1) {
     AudioBuffer b(numChannels, secondsToSamples(seconds, sampleRate));
@@ -71,7 +71,7 @@ inline AudioBuffer makeWhiteNoise(double sampleRate, double seconds, float ampli
     return b;
 }
 
-// 單一脈衝（impulse）：用來量測 impulse response
+// A single impulse, used to measure an impulse response
 inline AudioBuffer makeImpulse(int numSamples, int numChannels = 1, int position = 0, float amplitude = 1.0f) {
     AudioBuffer b(numChannels, numSamples);
     for (int ch = 0; ch < numChannels; ++ch)
@@ -79,8 +79,8 @@ inline AudioBuffer makeImpulse(int numSamples, int numChannels = 1, int position
     return b;
 }
 
-// 一連串不同音量的正弦波段落，例如 {-30, -10, -30} dBFS 各 0.5 秒。
-// 用來觀察 compressor / limiter 的 attack、release 反應（step response）。
+// A series of sine-wave segments at different levels, e.g. {-30, -10, -30} dBFS for 0.5 s each.
+// Used to observe the attack and release behaviour (step response) of a compressor / limiter.
 inline AudioBuffer makeToneBursts(double frequency, double sampleRate, const std::vector<float>& levelsDb,
                                   double segmentSeconds, int numChannels = 2) {
     const int segLen = secondsToSamples(segmentSeconds, sampleRate);
@@ -94,7 +94,7 @@ inline AudioBuffer makeToneBursts(double frequency, double sampleRate, const std
     return b;
 }
 
-// 合成鼓組 loop（kick / snare / hi-hat），動態很大，適合 compressor、limiter、saturation 示範
+// A synthesized drum loop (kick / snare / hi-hat) with a wide dynamic range, well suited to compressor, limiter and saturation demos
 inline AudioBuffer makeDrumLoop(double sampleRate, int bars = 2, double bpm = 120.0, float amplitude = 0.8f,
                                 int numChannels = 2) {
     const double beat = 60.0 / bpm;
@@ -112,13 +112,13 @@ inline AudioBuffer makeDrumLoop(double sampleRate, int bars = 2, double bpm = 12
         }
     };
 
-    for (int step = 0; step < bars * 8; ++step) { // 8 分音符為一格
+    for (int step = 0; step < bars * 8; ++step) { // one step = one eighth note
         const double t = step * beat * 0.5;
         const int inBar = step % 8;
         if (inBar == 0 || inBar == 3 || inBar == 4) { // kick
             double phase = 0.0;
             addHit(t, [&](double s) {
-                const double f = 45.0 + 75.0 * std::exp(-s * 30.0); // 音高從 120 Hz 掉到 45 Hz
+                const double f = 45.0 + 75.0 * std::exp(-s * 30.0); // pitch drops from 120 Hz to 45 Hz
                 phase += kTwoPi * f / sampleRate;
                 return static_cast<float>(0.9 * std::sin(phase) * std::exp(-s * 8.0));
             }, 0.45);
@@ -130,7 +130,7 @@ inline AudioBuffer makeDrumLoop(double sampleRate, int bars = 2, double bpm = 12
                 return static_cast<float>(0.35 * body + 0.45 * rattle);
             }, 0.25);
         }
-        float prev = 0.0f; // hi-hat：一階差分讓雜訊偏高頻
+        float prev = 0.0f; // hi-hat: a first-order difference tilts the noise toward high frequencies
         addHit(t, [&](double s) {
             const float n = noise.next();
             const float hp = n - prev;
@@ -142,7 +142,7 @@ inline AudioBuffer makeDrumLoop(double sampleRate, int bars = 2, double bpm = 12
     return b;
 }
 
-// Karplus-Strong 撥弦音（類似吉他 / 貝斯），諧波豐富，適合 EQ、saturation、distortion 示範
+// Karplus-Strong plucked string (guitar / bass-like), rich in harmonics, well suited to EQ, saturation and distortion demos
 inline AudioBuffer makePluck(double frequency, double sampleRate, double seconds, float amplitude = 0.5f,
                              int numChannels = 2, uint32_t seed = 99) {
     AudioBuffer b(numChannels, secondsToSamples(seconds, sampleRate));
@@ -155,7 +155,7 @@ inline AudioBuffer makePluck(double frequency, double sampleRate, double seconds
     for (int i = 0; i < b.getNumSamples(); ++i) {
         const size_t next = (idx + 1) % ring.size();
         const float out = ring[idx];
-        ring[idx] = 0.996f * 0.5f * (ring[idx] + ring[next]); // 平均 = 低通，讓高頻先衰減
+        ring[idx] = 0.996f * 0.5f * (ring[idx] + ring[next]); // averaging = low-pass, so high frequencies decay first
         idx = next;
         for (int ch = 0; ch < numChannels; ++ch)
             b.setSample(ch, i, amplitude * out);
@@ -163,7 +163,7 @@ inline AudioBuffer makePluck(double frequency, double sampleRate, double seconds
     return b;
 }
 
-// 一段撥弦琶音（A 小調），作為「像音樂」的測試素材
+// A plucked arpeggio (A minor), used as music-like test material
 inline AudioBuffer makePluckSequence(double sampleRate, double seconds = 4.0, float amplitude = 0.4f,
                                      int numChannels = 2) {
     const double notes[] = {110.0, 164.81, 220.0, 261.63, 329.63, 261.63, 220.0, 164.81};

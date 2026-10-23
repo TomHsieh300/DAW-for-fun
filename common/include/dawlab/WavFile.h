@@ -1,11 +1,11 @@
 #pragma once
-// 極簡 WAV 讀寫（header-only，不依賴任何外部函式庫）。
+// Minimal WAV reading and writing (header-only, no external libraries).
 //
-// 支援讀取：PCM 8/16/24/32-bit 整數、32/64-bit float、WAVE_FORMAT_EXTENSIBLE。
-// 支援寫入：16/24-bit PCM 整數、32-bit float。
-// 整數格式寫出時會把超過 ±1.0 的值截斷（clip）；想保留 overs 請用 32-bit float。
+// Reading supports: PCM 8/16/24/32-bit integer, 32/64-bit float, WAVE_FORMAT_EXTENSIBLE.
+// Writing supports: 16/24-bit PCM integer, 32-bit float.
+// Integer formats clip values beyond ±1.0 when written; use 32-bit float if you want to keep the overs.
 //
-// 用法：
+// Usage:
 //   dawlab::WavData wav;
 //   if (!dawlab::readWav("in.wav", wav)) { ... }
 //   dawlab::writeWav(dawlab::outputPath("out.wav"), wav.buffer, wav.sampleRate);
@@ -28,7 +28,7 @@ namespace dawlab {
 struct WavData {
     AudioBuffer buffer;
     double sampleRate = 48000.0;
-    int bitDepth = 0; // 原始檔案的 bit depth（僅供參考）
+    int bitDepth = 0; // bit depth of the original file (for information only)
 };
 
 namespace detail {
@@ -59,13 +59,13 @@ inline void setError(std::string* error, const std::string& message) {
 inline bool readWav(const std::string& path, WavData& out, std::string* error = nullptr) {
     std::ifstream file(path, std::ios::binary);
     if (!file) {
-        detail::setError(error, "無法開啟檔案: " + path);
+        detail::setError(error, "Cannot open file: " + path);
         return false;
     }
     std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     if (bytes.size() < 12 || std::string(bytes.begin(), bytes.begin() + 4) != "RIFF" ||
         std::string(bytes.begin() + 8, bytes.begin() + 12) != "WAVE") {
-        detail::setError(error, "不是 RIFF/WAVE 檔案: " + path);
+        detail::setError(error, "Not a RIFF/WAVE file: " + path);
         return false;
     }
 
@@ -86,28 +86,28 @@ inline bool readWav(const std::string& path, WavData& out, std::string* error = 
             sampleRate = detail::readU32(&bytes[body + 4]);
             blockAlign = detail::readU16(&bytes[body + 12]);
             bitsPerSample = detail::readU16(&bytes[body + 14]);
-            if (format == 0xFFFE && available >= 26) // WAVE_FORMAT_EXTENSIBLE：真正格式在 SubFormat GUID 前兩個 byte
+            if (format == 0xFFFE && available >= 26) // WAVE_FORMAT_EXTENSIBLE: the real format is in the first two bytes of the SubFormat GUID
                 format = detail::readU16(&bytes[body + 24]);
         } else if (id == "data") {
-            data = bytes.data() + body; // 空的 data chunk 時 body == size()，不能用 bytes[body]
+            data = bytes.data() + body; // for an empty data chunk body == size(), so bytes[body] must not be used
             dataSize = available;
         }
-        pos = body + size + (size & 1); // chunk 會補齊到偶數長度
+        pos = body + size + (size & 1); // chunks are padded to an even length
     }
 
     if (format == 0 || data == nullptr) {
-        detail::setError(error, "找不到 fmt 或 data chunk: " + path);
+        detail::setError(error, "fmt or data chunk not found: " + path);
         return false;
     }
     if (numChannels == 0 || blockAlign == 0 || blockAlign < numChannels * (bitsPerSample / 8)) {
-        detail::setError(error, "fmt chunk 內容不合理: " + path);
+        detail::setError(error, "Invalid fmt chunk contents: " + path);
         return false;
     }
     const bool isFloat = (format == 3);
     if (!(format == 1 || isFloat) || (isFloat && bitsPerSample != 32 && bitsPerSample != 64) ||
         (!isFloat && bitsPerSample != 8 && bitsPerSample != 16 && bitsPerSample != 24 && bitsPerSample != 32)) {
-        detail::setError(error, "不支援的 WAV 格式（format=" + std::to_string(format) +
-                                    ", bits=" + std::to_string(bitsPerSample) + "）");
+        detail::setError(error, "Unsupported WAV format (format=" + std::to_string(format) +
+                                    ", bits=" + std::to_string(bitsPerSample) + ")");
         return false;
     }
 
@@ -132,7 +132,7 @@ inline bool readWav(const std::string& path, WavData& out, std::string* error = 
                 std::memcpy(&d, &u, 8);
                 v = float(d);
             } else if (bitsPerSample == 8) {
-                v = (float(p[0]) - 128.0f) / 128.0f; // 8-bit WAV 是 unsigned
+                v = (float(p[0]) - 128.0f) / 128.0f; // 8-bit WAV is unsigned
             } else if (bitsPerSample == 16) {
                 v = float(int16_t(detail::readU16(p))) / 32768.0f;
             } else if (bitsPerSample == 24) {
@@ -147,11 +147,11 @@ inline bool readWav(const std::string& path, WavData& out, std::string* error = 
     return true;
 }
 
-// bitDepth: 16、24（整數 PCM）或 32（IEEE float）
+// bitDepth: 16, 24 (integer PCM) or 32 (IEEE float)
 inline bool writeWav(const std::string& path, const AudioBuffer& buffer, double sampleRate, int bitDepth = 24,
                      std::string* error = nullptr) {
     if (bitDepth != 16 && bitDepth != 24 && bitDepth != 32) {
-        detail::setError(error, "bitDepth 只能是 16、24 或 32");
+        detail::setError(error, "bitDepth must be 16, 24 or 32");
         return false;
     }
     const auto parent = std::filesystem::path(path).parent_path();
@@ -161,7 +161,7 @@ inline bool writeWav(const std::string& path, const AudioBuffer& buffer, double 
     }
     std::ofstream f(path, std::ios::binary);
     if (!f) {
-        detail::setError(error, "無法寫入檔案: " + path);
+        detail::setError(error, "Cannot write file: " + path);
         return false;
     }
 
@@ -212,8 +212,8 @@ inline bool writeWav(const std::string& path, const AudioBuffer& buffer, double 
     return bool(f);
 }
 
-// 回傳 "dawlab_output/<filename>"（相對於目前工作目錄），並確保資料夾存在。
-// 用 ctest 執行時，工作目錄是 build 資料夾。
+// Returns "dawlab_output/<filename>" (relative to the current working directory) and makes sure the folder exists.
+// When run under ctest, the working directory is the build folder.
 inline std::string outputPath(const std::string& filename) {
     const std::filesystem::path dir = "dawlab_output";
     std::error_code ec;
