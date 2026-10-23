@@ -1,23 +1,26 @@
 #pragma once
-// 第 12 章：Convolution reverb —— uniform partitioned FFT convolution（overlap-save）
+// Chapter 12: Convolution reverb -- uniform partitioned FFT convolution (overlap-save)
 //
-// 直接卷積 y[n] = Σ_k h[k]·x[n-k] 每個 sample 要做 M 次乘加（M = IR 長度，4 秒的 IR 就是 192000 次），
-// 太貴。做法：
+// Direct convolution y[n] = Σ_k h[k]·x[n-k] needs M multiply-adds per sample (M = IR length; a 4-second IR means 192000),
+// which is far too expensive. The approach:
 //
-//   1. 把 IR 切成 K 段、每段 P 個 sample（P = partition size，= 2 的次方、>= maxBlockSize）
-//      h = [h_0 | h_1 | ... | h_{K-1}]，每段補零到 N = 2P 後做 FFT → H_k（N/2+1 個 bin）
-//   2. 輸入每累積 P 個 sample 做一次「frame」：frame = [上一塊 P 個 | 這一塊 P 個]（overlap-save）
-//      FFT(frame) 推進 frequency-delay line（FDL）：X_j、X_{j-1}、X_{j-2}...
-//   3. Y = Σ_k H_k · X_{j-k}   （頻域相乘 = 時域卷積；延遲 k 塊的頻譜乘上第 k 段 IR）
-//   4. IFFT(Y) 的後半 P 個 sample 就是這一塊的正確輸出（前半是 circular wrap，丟掉）
+//   1. Cut the IR into K segments of P samples each (P = partition size, a power of 2, >= maxBlockSize)
+//      h = [h_0 | h_1 | ... | h_{K-1}]; zero-pad each segment to N = 2P and FFT it → H_k (N/2+1 bins)
+//   2. Every time P input samples have accumulated, process one "frame": frame = [previous P | this P] (overlap-save)
+//      The FFT of the frame is pushed into a frequency-delay line (FDL): X_j, X_{j-1}, X_{j-2}...
+//   3. Y = Σ_k H_k · X_{j-k}   (multiplication in the frequency domain = convolution in the time domain;
+//      the spectrum delayed by k blocks is multiplied by the k-th IR segment)
+//   4. The second half (P samples) of IFFT(Y) is the correct output for this block (the first half is circular wrap-around and is discarded)
 //
-// Latency = P：第 n 個輸入要等到這一塊 P 個 sample 都收齊才能算，所以輸出整體晚 P 個 sample。
-// 內建的 dry/wet mix 也把 dry 延遲 P 個 sample（直接取 input FIFO 裡 P 個 sample 前的值），
-// 讓 dry 與 wet 對齊：否則 IR 有直達音時，dry 和晚 P 的直達音疊加會產生間距 fs/P 的 comb filtering。
-// 每個輸出 sample 的成本 ≈ K·(N/2+1)/P 次 complex MAC + 2 次 FFT/P ≈ K 次 complex MAC，
-// 相較直接卷積的 K·P 次實數 MAC，省下約 P/4 倍（P = 512 時約 100 倍以上）。
+// Latency = P: the n-th input sample has to wait until all P samples of its block have arrived before it can be
+// processed, so the whole output is P samples late.
+// The built-in dry/wet mix also delays the dry signal by P samples (by taking the value from P samples ago out of the input FIFO)
+// so dry and wet line up: otherwise, when the IR contains a direct sound, dry summed with the direct sound that is P samples late
+// would produce comb filtering with spacing fs/P.
+// Cost per output sample ≈ K·(N/2+1)/P complex MACs + 2 FFTs/P ≈ K complex MACs,
+// compared with K·P real MACs for direct convolution, a saving of about P/4 times (over 100 times for P = 512).
 //
-// 使用第 11 章的 Fft（forwardReal / inverseReal）。
+// Uses chapter 11's Fft (forwardReal / inverseReal).
 
 #include <dawlab/AudioBuffer.h>
 #include <dawlab/DspMath.h>
@@ -35,8 +38,8 @@ namespace dawlab::dsp {
 
 class ConvolutionReverb {
 public:
-    // ---- 標準介面 ---------------------------------------------------------------
-    // partition size P = 大於等於 maxBlockSize 的最小 2 的次方（最小 64）
+    // ---- Standard interface ------------------------------------------------------
+    // partition size P = the smallest power of 2 that is >= maxBlockSize (minimum 64)
     void prepare(double sampleRate, int maxBlockSize, int numChannels) {
         sampleRate_ = sampleRate;
         numChannels_ = std::max(1, numChannels);
@@ -73,23 +76,23 @@ public:
             c.fifoPos = 0;
             c.fdlPos = 0;
         }
-        currentMix_ = mix_; // 沒有聲音殘留時，mix 直接跳到目標值（不需要平滑）
+        currentMix_ = mix_; // with no sound left over, mix jumps straight to its target (no smoothing needed)
         mixAtBlockStart_ = mix_;
     }
 
-    // 載入 impulse response（會 allocate，不可在 audio thread 呼叫；呼叫時不可同時在 process）。
-    // ir 的 channel 數可以是 1（所有輸出 channel 共用）或 >= numChannels（各用各的）。
-    // 可以在 prepare 之前或之後呼叫。
+    // Loads an impulse response (allocates, so it must not be called on the audio thread, and not while process is running).
+    // The IR may have 1 channel (shared by all output channels) or >= numChannels channels (one per output channel).
+    // May be called before or after prepare.
     void setImpulseResponse(const AudioBuffer& ir) {
         ir_ = ir;
         rebuildPartitions();
         reset();
     }
 
-    // 0 = 全 dry，1 = 全 wet（線性混合，有平滑）。dry 在內部也延遲 P 個 sample，
-    // 所以任何 mix 下整個輸出的 latency 都是 getLatencySamples()（mix = 0 時就是單純延遲 P 的 dry）。
+    // 0 = all dry, 1 = all wet (linear mix, smoothed). The dry signal is also delayed by P samples internally,
+    // so at any mix the latency of the whole output is getLatencySamples() (at mix = 0 it is simply the dry signal delayed by P).
     void setMix(float mix) noexcept {
-        if (std::isnan(mix)) // std::clamp(NaN) 會原樣回傳 NaN → 輸出永久變 NaN；保留上一個有效值
+        if (std::isnan(mix)) // std::clamp(NaN) returns the NaN unchanged → the output would turn permanently into NaN; keep the previous valid value
             return;
         mix_ = std::clamp(mix, 0.0f, 1.0f);
     }
@@ -101,7 +104,7 @@ public:
     int getNumPartitions() const noexcept { return numPartitions_; }
     int getImpulseResponseLength() const noexcept { return ir_.getNumSamples(); }
 
-    // 估計記憶體用量（bytes）：IR 頻譜 + 每個 channel 的 FDL
+    // Estimated memory use (bytes): the IR spectra + the FDL of every channel
     size_t getSpectraMemoryBytes() const noexcept {
         const size_t perSpectrum = static_cast<size_t>(numBins_) * sizeof(std::complex<float>);
         size_t total = 0;
@@ -112,7 +115,7 @@ public:
         return total;
     }
 
-    // in-place；任何 <= maxBlockSize 的 block 長度都可以（內部用 FIFO 湊滿 P 個 sample 才做一次 FFT）
+    // In place; any block length <= maxBlockSize works (internally a FIFO collects P samples before each FFT is done)
     void process(AudioBlock block) noexcept {
         const int nch = std::min(block.getNumChannels(), numChannels_);
         const int n = block.getNumSamples();
@@ -120,17 +123,17 @@ public:
             ChannelState& c = channels_[static_cast<size_t>(ch)];
             const std::vector<std::vector<std::complex<float>>>* spectra = irSpectraFor(ch);
             float* data = block.getChannelPointer(ch);
-            float mix = ch == 0 ? currentMix_ : mixAtBlockStart_; // 每個 channel 從同一個起點平滑
+            float mix = ch == 0 ? currentMix_ : mixAtBlockStart_; // every channel is smoothed from the same starting point
             if (ch == 0)
                 mixAtBlockStart_ = currentMix_;
             for (int i = 0; i < n; ++i) {
                 const size_t pos = static_cast<size_t>(c.fifoPos);
                 const float in = data[i];
-                // dry 也要延遲 P 個 sample，才會和 wet 對齊（整個輸出的 latency 一致 = P）。
-                // inputFifo[pos] 在被覆寫之前，存的正好是 P 個 sample 前同一位置的輸入 x[n-P]，
-                // 所以不需要額外的 delay line。
+                // The dry signal must also be delayed by P samples to line up with wet (the latency of the whole output is then uniformly P).
+                // Before it is overwritten, inputFifo[pos] holds exactly the input at the same position P samples ago, x[n-P],
+                // so no extra delay line is needed.
                 const float dryDelayed = c.inputFifo[pos];
-                const float wet = c.outputFifo[pos]; // 晚 P 個 sample 的 wet
+                const float wet = c.outputFifo[pos]; // the wet signal, P samples late
                 c.inputFifo[pos] = in;
                 ++c.fifoPos;
                 if (c.fifoPos == partitionSize_) {
@@ -145,10 +148,10 @@ public:
         }
     }
 
-    // ---- 合成 IR ----------------------------------------------------------------
-    // 指數衰減的白雜訊（RT60 = rt60Seconds）：每個 channel 用不同 seed（去相關 → stereo 感），
-    // 經過固定 cutoff 的 one-pole lowpass 做一點「空氣吸收」的音色，最後正規化成單位能量（Σ h² = 1）。
-    // 長度 = 1.1 × RT60（最後 10% 再加一段 fade，避免截斷產生 click）。
+    // ---- Synthetic IR ------------------------------------------------------------
+    // Exponentially decaying white noise (RT60 = rt60Seconds): each channel uses a different seed (decorrelated → a stereo feel),
+    // passed through a fixed-cutoff one-pole lowpass to give a little "air absorption" coloration, and finally normalized to unit energy (Σ h² = 1).
+    // Length = 1.1 × RT60 (the last 10% gets an extra fade so that truncation does not cause a click).
     static AudioBuffer makeSyntheticImpulseResponse(double sampleRate, double rt60Seconds, int numChannels,
                                                     uint32_t seed = 1) {
         rt60Seconds = std::max(0.05, rt60Seconds);
@@ -157,7 +160,7 @@ public:
         AudioBuffer ir(std::max(1, numChannels), length);
         // -60 dB = e^(-6.9078) → envelope = exp(-ln(1000)·t / RT60)
         const double decayPerSample = std::exp(-std::log(1000.0) / (rt60Seconds * sampleRate));
-        // 固定 8 kHz 的 lowpass，讓雜訊不要太「白」
+        // A fixed 8 kHz lowpass, so the noise is not too "white"
         const double lpCoef = 1.0 - std::exp(-kTwoPi * 8000.0 / sampleRate);
         for (int ch = 0; ch < ir.getNumChannels(); ++ch) {
             NoiseGenerator noise(seed + 7919u * static_cast<uint32_t>(ch));
@@ -166,7 +169,7 @@ public:
             for (int i = 0; i < length; ++i) {
                 lp += lpCoef * (noise.next() - lp);
                 double v = lp * env;
-                if (i >= fadeStart) // 線性 fade-out
+                if (i >= fadeStart) // linear fade-out
                     v *= 1.0 - static_cast<double>(i - fadeStart) / static_cast<double>(length - fadeStart);
                 h[i] = static_cast<float>(v);
                 energy += v * v;
@@ -181,14 +184,14 @@ public:
 
 private:
     struct ChannelState {
-        std::vector<float> inputFifo;  // 累積到 P 個就做一次 frame
-        std::vector<float> outputFifo; // 上一個 frame 算出來的 P 個輸出
-        std::vector<float> frame;      // [上一塊 | 這一塊]，長 N = 2P
-        std::vector<float> ifftOut;    // IFFT 結果，長 N
-        std::vector<std::vector<std::complex<float>>> fdl; // frequency-delay line：K 個頻譜
+        std::vector<float> inputFifo;  // once P samples have accumulated, one frame is processed
+        std::vector<float> outputFifo; // the P outputs computed from the previous frame
+        std::vector<float> frame;      // [previous block | this block], length N = 2P
+        std::vector<float> ifftOut;    // IFFT result, length N
+        std::vector<std::vector<std::complex<float>>> fdl; // frequency-delay line: K spectra
         std::vector<std::complex<float>> accumulator;      // Y = Σ H_k · X_{j-k}
         int fifoPos = 0;
-        int fdlPos = 0; // 最新的頻譜放在 fdl[fdlPos]
+        int fdlPos = 0; // the newest spectrum is stored in fdl[fdlPos]
     };
 
     const std::vector<std::vector<std::complex<float>>>* irSpectraFor(int ch) const noexcept {
@@ -198,10 +201,10 @@ private:
         return &irSpectra_[idx];
     }
 
-    // 一個 frame：FFT 這一塊、更新 FDL、頻域乘加、IFFT、取後半
+    // One frame: FFT this block, update the FDL, multiply-accumulate in the frequency domain, IFFT, take the second half
     void processPartition(ChannelState& c, const std::vector<std::vector<std::complex<float>>>* spectra) noexcept {
         const size_t P = static_cast<size_t>(partitionSize_);
-        // overlap-save：frame 前半 = 上一塊，後半 = 這一塊
+        // overlap-save: the first half of the frame = the previous block, the second half = this block
         std::copy(c.frame.begin() + static_cast<std::ptrdiff_t>(P), c.frame.end(), c.frame.begin());
         std::copy(c.inputFifo.begin(), c.inputFifo.end(), c.frame.begin() + static_cast<std::ptrdiff_t>(P));
 
@@ -210,7 +213,7 @@ private:
             return;
         }
 
-        // 新頻譜寫進 FDL（覆蓋最舊的那格）
+        // Write the new spectrum into the FDL (overwriting the oldest slot)
         c.fdlPos = (c.fdlPos + 1) % numPartitions_;
         fft_->forwardReal(c.frame.data(), c.fdl[static_cast<size_t>(c.fdlPos)].data());
 
@@ -228,11 +231,11 @@ private:
         }
 
         fft_->inverseReal(c.accumulator.data(), c.ifftOut.data());
-        // 後半 P 個是正確的 linear convolution 輸出
+        // The second half (P samples) is the correct linear-convolution output
         std::copy(c.ifftOut.begin() + static_cast<std::ptrdiff_t>(P), c.ifftOut.end(), c.outputFifo.begin());
     }
 
-    // 把 IR 切段、補零、FFT。prepare 與 setImpulseResponse 都會呼叫（兩者都到齊才真的算）。
+    // Cut the IR into segments, zero-pad and FFT them. Both prepare and setImpulseResponse call this (the work is only done once both have happened).
     void rebuildPartitions() {
         irSpectra_.clear();
         numPartitions_ = 0;
@@ -250,7 +253,7 @@ private:
                 std::fill(padded.begin(), padded.end(), 0.0f);
                 const int start = k * partitionSize_;
                 const int len = std::min(partitionSize_, ir_.getNumSamples() - start);
-                std::copy(h + start, h + start + len, padded.begin()); // 前半 = IR 段，後半 = 0
+                std::copy(h + start, h + start + len, padded.begin()); // first half = IR segment, second half = 0
                 fft_->forwardReal(padded.data(), chSpectra[static_cast<size_t>(k)].data());
             }
         }

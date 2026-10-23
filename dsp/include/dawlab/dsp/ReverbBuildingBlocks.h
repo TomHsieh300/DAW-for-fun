@@ -1,15 +1,16 @@
 #pragma once
-// 第 12 章：殘響的教學用 building blocks。
+// Chapter 12: teaching-oriented building blocks for reverb.
 //
-//   CombFilter      feedback comb（Schroeder / Freeverb 的「lowpass comb」）：產生密度與 decay
-//   AllpassDiffuser Schroeder allpass：magnitude 全平、只打散相位，用來增加 echo 密度（diffusion）
-//   TappedDelay     多 tap 的 delay line：early reflections（早期反射）
-//   measureRt60()   從 impulse response 估 RT60（windowed-RMS envelope + 線性回歸）
+//   CombFilter      feedback comb (the "lowpass comb" of Schroeder / Freeverb): produces density and decay
+//   AllpassDiffuser Schroeder allpass: flat magnitude, only scrambles the phase; used to raise echo density (diffusion)
+//   TappedDelay     multi-tap delay line: early reflections
+//   measureRt60()   estimates RT60 from an impulse response (windowed-RMS envelope + linear regression)
 //
-// 這些元件都是單聲道、逐 sample 處理，刻意寫得很短，方便對照 README 的公式。
-// 它們內部的 ring buffer 與第 05 / 09 章的 DelayLine 是同一個概念（寫入指標 + 取模），
-// 這裡自己放一份是為了讓每個 building block 可以獨立閱讀。
-// Reverb.h（FDN 主實作）則直接使用第 09 章的 FractionalDelayLine 與第 02 章的 OnePole。
+// These components are all mono and process one sample at a time, and are deliberately kept short so they are
+// easy to compare against the formulas in the README.
+// Their internal ring buffers are the same idea as the DelayLine of chapters 05 / 09 (write index + modulo);
+// we keep a private copy here so each building block can be read on its own.
+// Reverb.h (the main FDN implementation) uses chapter 09's FractionalDelayLine and chapter 02's OnePole directly.
 
 #include <dawlab/DspMath.h>
 
@@ -23,7 +24,7 @@ namespace dawlab::dsp {
 
 namespace reverb_detail {
 
-// 最小的單聲道 ring buffer：push 之後 read(0) 就是剛寫進去的值，read(D) 是 D 個 sample 前的值。
+// A minimal mono ring buffer: after push, read(0) is the value just written and read(D) is the value from D samples ago.
 class MonoRing {
 public:
     void prepare(int maxDelaySamples) {
@@ -54,19 +55,20 @@ private:
     int write_ = 0;
 };
 
-// 把極小的值（denormal 範圍）直接變成 0，避免遞迴結構在尾巴消失時 CPU 飆高
+// Turn tiny values (in the denormal range) straight into 0, so recursive structures do not make the CPU spike when the tail dies away
 inline float flushDenormal(float x) noexcept { return std::abs(x) < 1e-20f ? 0.0f : x; }
 
 } // namespace reverb_detail
 
 // ---------------------------------------------------------------------------
-// Feedback comb filter（含 damping）
+// Feedback comb filter (with damping)
 //
-//   y[n] = x[n - D] + g · lp(y[n - D])          lp = one-pole lowpass（damping）
+//   y[n] = x[n - D] + g * lp(y[n - D])          lp = one-pole lowpass (damping)
 //
-// 沒有 damping 時 impulse response 是 δ[n-D] + g δ[n-2D] + g² δ[n-3D] + ...
-// 每繞一圈（D 個 sample）衰減 g 倍，所以衰減到 -60 dB 需要的時間 RT60 滿足
-//   20·log10(g^(RT60·fs/D)) = -60   =>   g = 10^(-3·D / (RT60·fs))
+// Without damping the impulse response is delta[n-D] + g delta[n-2D] + g^2 delta[n-3D] + ...
+// Each trip around the loop (D samples) attenuates by a factor of g, so the time RT60 needed to decay to
+// -60 dB satisfies
+//   20*log10(g^(RT60*fs/D)) = -60   =>   g = 10^(-3*D / (RT60*fs))
 // ---------------------------------------------------------------------------
 class CombFilter {
 public:
@@ -81,34 +83,34 @@ public:
         lowpassState_ = 0.0f;
     }
 
-    // 迴路長度 D（samples）。改變它會讓 impulse response 立刻跳動，不要在播放中連續調整。
+    // Loop length D (in samples). Changing it makes the impulse response jump immediately, so do not adjust it continuously during playback.
     void setDelaySamples(int d) noexcept { delay_ = std::clamp(d, 1, ring_.capacity()); }
     int getDelaySamples() const noexcept { return delay_; }
 
-    // 回授量 g（0..0.9999）
+    // Feedback amount g (0..0.9999)
     void setFeedback(float g) noexcept { feedback_ = std::clamp(g, 0.0f, 0.9999f); }
     float getFeedback() const noexcept { return feedback_; }
 
-    // damping 0..1：0 = 不濾波（純 comb），越大高頻在迴路裡衰減越快。
-    // 等同 Freeverb：filtered = out·(1-damp) + filtered·damp
+    // damping 0..1: 0 = no filtering (a pure comb); the larger it is, the faster high frequencies decay in the loop.
+    // Same as Freeverb: filtered = out*(1-damp) + filtered*damp
     void setDamping(float d) noexcept { damping_ = std::clamp(d, 0.0f, 0.999f); }
 
     float processSample(float x) noexcept {
-        const float delayed = ring_.read(delay_ - 1); // 讀 D 個 sample 前的值（下面 push 之後索引才對齊）
+        const float delayed = ring_.read(delay_ - 1); // read the value from D samples ago (the index only lines up after the push below)
         lowpassState_ = reverb_detail::flushDenormal(delayed * (1.0f - damping_) + lowpassState_ * damping_);
         const float out = delayed;
         ring_.push(x + feedback_ * lowpassState_);
         return out;
     }
 
-    // g = 10^(-3·D / (RT60·fs))
+    // g = 10^(-3*D / (RT60*fs))
     static float feedbackForRt60(int delaySamples, double rt60Seconds, double sampleRate) noexcept {
         if (rt60Seconds <= 0.0)
             return 0.0f;
         return static_cast<float>(std::pow(10.0, -3.0 * delaySamples / (rt60Seconds * sampleRate)));
     }
 
-    // RT60 = -3·D / (fs·log10(g))
+    // RT60 = -3*D / (fs*log10(g))
     static double rt60ForFeedback(int delaySamples, float feedback, double sampleRate) noexcept {
         if (feedback <= 0.0f)
             return 0.0;
@@ -126,13 +128,13 @@ private:
 };
 
 // ---------------------------------------------------------------------------
-// Schroeder allpass（diffuser）
+// Schroeder allpass (diffuser)
 //
-//   v[n] = x[n] + g · v[n - D]
-//   y[n] = -g · v[n] + v[n - D]
+//   v[n] = x[n] + g * v[n - D]
+//   y[n] = -g * v[n] + v[n - D]
 //
-// transfer function H(z) = (-g + z^-D) / (1 - g z^-D)，|H(e^jω)| = 1：振幅全平、只改相位，
-// 所以可以串很多級來「打散」echo 卻不改變音色。
+// Transfer function H(z) = (-g + z^-D) / (1 - g z^-D), |H(e^jw)| = 1: the magnitude is flat and only the
+// phase changes, so many stages can be cascaded to "scramble" the echoes without changing the timbre.
 // ---------------------------------------------------------------------------
 class AllpassDiffuser {
 public:
@@ -162,11 +164,12 @@ private:
 };
 
 // ---------------------------------------------------------------------------
-// Tapped delay（early reflections）
+// Tapped delay (early reflections)
 //
-//   y[n] = Σ_k gain_k · x[n - delay_k]
+//   y[n] = sum_k gain_k * x[n - delay_k]
 //
-// 每個 tap 代表一次早期反射：牆面越遠 delay 越長、吸音越多 gain 越小。
+// Each tap represents one early reflection: the farther the wall, the longer the delay; the more absorptive
+// the wall, the smaller the gain.
 // ---------------------------------------------------------------------------
 class TappedDelay {
 public:
@@ -181,7 +184,7 @@ public:
     }
     void reset() noexcept { ring_.reset(); }
 
-    // 只能在 prepare 階段（非 audio thread）呼叫：會 allocate
+    // May only be called during the prepare phase (not on the audio thread): it allocates
     void setTaps(const std::vector<Tap>& taps) {
         taps_ = taps;
         for (Tap& t : taps_)
@@ -203,20 +206,20 @@ private:
 };
 
 // ---------------------------------------------------------------------------
-// 從 impulse response 估 RT60（簡易版）
+// Estimating RT60 from an impulse response (simple version)
 //
-// 1. 以 windowMs 為單位算 RMS envelope（dB，相對最大值）
-// 2. 取最大值之後、envelope 介於 fitStartDb 與 fitEndDb 之間的區段做線性回歸
-// 3. slope（dB/s）外插：RT60 = -60 / slope
+// 1. Compute an RMS envelope in units of windowMs (in dB, relative to the maximum)
+// 2. Take the part after the maximum where the envelope lies between fitStartDb and fitEndDb and run a linear regression
+// 3. Extrapolate the slope (dB/s): RT60 = -60 / slope
 //
-// 練習 6 會用更標準的 Schroeder backward integration 做同一件事。
+// Exercise 6 does the same thing with the more standard Schroeder backward integration.
 // ---------------------------------------------------------------------------
 struct DecayMeasurement {
-    double rt60Seconds = 0.0;      // 估計的 RT60
-    double slopeDbPerSecond = 0.0; // 回歸得到的斜率（負值）
-    double peakDb = -200.0;        // envelope 最大值（dBFS）
-    int numPoints = 0;             // 參與回歸的視窗數
-    bool valid = false;            // 點數太少或 slope 不是負的 → false
+    double rt60Seconds = 0.0;      // estimated RT60
+    double slopeDbPerSecond = 0.0; // slope obtained from the regression (negative)
+    double peakDb = -200.0;        // maximum of the envelope (dBFS)
+    int numPoints = 0;             // number of windows that took part in the regression
+    bool valid = false;            // false if there are too few points or the slope is not negative
 };
 
 inline DecayMeasurement measureRt60(const float* x, int n, double sampleRate, double windowMs = 10.0,
@@ -242,7 +245,8 @@ inline DecayMeasurement measureRt60(const float* x, int n, double sampleRate, do
     }
     m.peakDb = envDb[static_cast<size_t>(peakIndex)];
 
-    // 收集回歸點：從 peak 之後第一次低於 fitStartDb 開始，到第一次低於 fitEndDb 為止
+    // Collect the regression points: from the first time after the peak that the envelope falls below fitStartDb,
+    // until the first time it falls below fitEndDb
     double sx = 0.0, sy = 0.0, sxx = 0.0, sxy = 0.0;
     int count = 0;
     bool started = false;
@@ -275,7 +279,7 @@ inline DecayMeasurement measureRt60(const float* x, int n, double sampleRate, do
     return m;
 }
 
-// 找 >= n 的最小質數（delay 長度互質用；n < 2 回傳 2）
+// Find the smallest prime >= n (used to make delay lengths mutually coprime; returns 2 for n < 2)
 inline int nextPrime(int n) noexcept {
     auto isPrime = [](int v) {
         if (v < 2)

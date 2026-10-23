@@ -1,17 +1,19 @@
-// 練習 6 解答：Schroeder backward integration 估 RT60
+// Exercise 6 solution: estimating RT60 with Schroeder backward integration
 //
-// Schroeder (1965)：對 impulse response h[n]，定義 energy decay curve（EDC）
+// Schroeder (1965): for an impulse response h[n], define the energy decay curve (EDC)
 //
-//     EDC[n] = Σ_{k=n}^{N-1} h[k]²        （從「現在」到結尾的剩餘能量）
-//     EDC_dB[n] = 10·log10(EDC[n] / EDC[0])
+//     EDC[n] = sum_{k=n}^{N-1} h[k]^2        (the energy remaining from "now" to the end)
+//     EDC_dB[n] = 10*log10(EDC[n] / EDC[0])
 //
-// 這等於把「無限多個不同起點的衰減曲線」平均起來，所以比直接看 h² 的 envelope 平滑得多
-// （一次量測就能得到 ensemble average）。接著在 EDC_dB 的 -5 .. -25 dB 區段做線性回歸
-// （T20），斜率 s（dB/s）外插：RT60 = -60 / s。
-// 也可以用 -5 .. -35 dB（T30）；區段越長越準，但要求 IR 的 SNR 越好。
+// This is equivalent to averaging "infinitely many decay curves with different starting points", so it is
+// much smoother than looking at the envelope of h^2 directly (a single measurement yields the ensemble
+// average). Then run a linear regression over the -5 .. -25 dB part of EDC_dB (T20) and extrapolate the
+// slope s (dB/s): RT60 = -60 / s.
+// You can also use -5 .. -35 dB (T30); the longer the range the more accurate, but the more SNR the IR needs.
 //
-// 注意：真實錄音的 IR 尾巴有 noise floor，EDC 會在尾端「翹起來」變平；
-// 實務上要先估 noise floor、把積分截在雜訊開始的地方（這裡的合成 IR 沒有雜訊，不需要）。
+// Note: the tail of a real recorded IR has a noise floor, and the EDC "turns up" and flattens at the end;
+// in practice you first estimate the noise floor and truncate the integration where the noise begins
+// (the synthetic IR here has no noise, so that is not needed).
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/ConvolutionReverb.h>
@@ -30,11 +32,11 @@ namespace {
 constexpr double kSampleRate = 48000.0;
 constexpr int kBlockSize = 512;
 
-// EDC（dB，相對總能量）
+// EDC (dB, relative to the total energy)
 std::vector<double> schroederDecayDb(const float* h, int n) {
     std::vector<double> edc(static_cast<size_t>(n));
     double acc = 0.0;
-    for (int i = n - 1; i >= 0; --i) { // 從尾巴往回累加：EDC[n] = EDC[n+1] + h[n]²
+    for (int i = n - 1; i >= 0; --i) { // accumulate backwards from the tail: EDC[n] = EDC[n+1] + h[n]^2
         acc += static_cast<double>(h[i]) * h[i];
         edc[static_cast<size_t>(i)] = acc;
     }
@@ -50,7 +52,7 @@ struct Rt60Estimate {
     bool valid = false;
 };
 
-// 在 EDC_dB 介於 startDb 與 endDb 的區段做線性回歸，外插到 -60 dB
+// Run a linear regression over the part of EDC_dB between startDb and endDb, and extrapolate to -60 dB
 Rt60Estimate estimateRt60(const std::vector<double>& edcDb, double sampleRate, double startDb = -5.0,
                           double endDb = -25.0) {
     Rt60Estimate r;
@@ -82,7 +84,7 @@ Rt60Estimate estimateRt60(const std::vector<double>& edcDb, double sampleRate, d
     return r;
 }
 
-// 理想的指數衰減正弦：envelope = exp(-ln(1000)·t / RT60)，正好 RT60 秒掉 60 dB
+// An ideal exponentially decaying sine: envelope = exp(-ln(1000)*t / RT60), dropping exactly 60 dB in RT60 seconds
 AudioBuffer makeDecayingSine(double freq, double rt60, double seconds) {
     AudioBuffer b(1, secondsToSamples(seconds, kSampleRate));
     const double k = std::log(1000.0) / rt60;
@@ -99,7 +101,7 @@ AudioBuffer fdnImpulseResponse(float rt60, double seconds) {
     reverb.setMix(1.0f);
     reverb.setDampingHz(20000.0f);
     reverb.setDecaySeconds(rt60);
-    reverb.reset(); // 讓 mix = 1 立刻生效：否則第 0 個 sample 會漏出 dry impulse，污染 windowed-RMS 的 peak
+    reverb.reset(); // make mix = 1 take effect immediately: otherwise sample 0 leaks the dry impulse and pollutes the peak of the windowed RMS
     AudioBuffer ir = makeImpulse(secondsToSamples(seconds, kSampleRate), 2);
     for (int start = 0; start < ir.getNumSamples(); start += kBlockSize)
         reverb.process(ir.toBlock().getSubBlock(start, std::min(kBlockSize, ir.getNumSamples() - start)));
@@ -109,7 +111,7 @@ AudioBuffer fdnImpulseResponse(float rt60, double seconds) {
 } // namespace
 
 int main() {
-    std::printf("=== 練習 6：Schroeder backward integration 估 RT60 ===\n");
+    std::printf("=== Exercise 6: estimating RT60 with Schroeder backward integration ===\n");
 
     auto report = [](const char* name, const AudioBuffer& ir, double truth) {
         const std::vector<double> edc = schroederDecayDb(ir.getReadPointer(0), ir.getNumSamples());
@@ -120,32 +122,33 @@ int main() {
         return t20;
     };
 
-    // ---- 1. 理想指數衰減：EDC 必須是直線，RT60 幾乎精準 ----------------------------------
+    // ---- 1. Ideal exponential decay: the EDC must be a straight line and the RT60 almost exact ----------------
     {
         AudioBuffer sine = makeDecayingSine(440.0, 1.0, 1.3);
         const std::vector<double> edc = schroederDecayDb(sine.getReadPointer(0), sine.getNumSamples());
-        // 對 e^(-kt) 的 envelope，能量 ∝ e^(-2kt)，EDC_dB(t) = -60·t/RT60：t = 0.5 s 時 -30 dB
+        // For an envelope e^(-kt) the energy is proportional to e^(-2kt), so EDC_dB(t) = -60*t/RT60: -30 dB at t = 0.5 s
         const double at05 = edc[static_cast<size_t>(secondsToSamples(0.5, kSampleRate))];
         const double at025 = edc[static_cast<size_t>(secondsToSamples(0.25, kSampleRate))];
-        std::printf("指數衰減正弦的 EDC：t=0.25 s → %.2f dB（理論 -15），t=0.5 s → %.2f dB（理論 -30）\n", at025, at05);
+        std::printf("EDC of the exponentially decaying sine: t=0.25 s -> %.2f dB (theory -15), t=0.5 s -> %.2f dB (theory -30)\n",
+                    at025, at05);
         DAWLAB_CHECK_NEAR(at025, -15.0, 0.5);
         DAWLAB_CHECK_NEAR(at05, -30.0, 0.5);
-        // 表頭在 EDC 那一行之後才印，讓表格連在一起
-        std::printf("\n%-28s %10s %12s %12s %14s\n", "IR", "真值(s)", "T20(s)", "T30(s)", "windowed-RMS(s)");
+        // The table header is printed after the EDC line so that the table stays contiguous
+        std::printf("\n%-28s %10s %12s %12s %14s\n", "IR", "truth(s)", "T20(s)", "T30(s)", "windowed-RMS(s)");
         const Rt60Estimate e = report("decaying sine (RT60 1.0)", sine, 1.0);
         DAWLAB_CHECK(e.valid);
         DAWLAB_CHECK_NEAR(e.rt60, 1.0, 0.03);
     }
 
-    // ---- 2. 合成雜訊 IR（ConvolutionReverb::makeSyntheticImpulseResponse）-----------------
+    // ---- 2. Synthetic noise IRs (ConvolutionReverb::makeSyntheticImpulseResponse) ---------------
     for (double truth : {0.5, 1.5}) {
         AudioBuffer ir = ConvolutionReverb::makeSyntheticImpulseResponse(kSampleRate, truth, 1, 11);
         const Rt60Estimate e = report("synthetic noise IR", ir, truth);
         DAWLAB_CHECK(e.valid);
-        DAWLAB_CHECK_NEAR(e.rt60 / truth, 1.0, 0.1); // 10% 以內
+        DAWLAB_CHECK_NEAR(e.rt60 / truth, 1.0, 0.1); // within 10%
     }
 
-    // ---- 3. FDN 的 IR：Schroeder 與 windowed-RMS 回歸應該大致一致 -----------------------
+    // ---- 3. IR of the FDN: Schroeder and the windowed-RMS regression should roughly agree -----------------------
     {
         AudioBuffer ir = fdnImpulseResponse(2.0f, 2.8);
         const Rt60Estimate e = report("FDN Reverb (RT60 2.0)", ir, 2.0);
@@ -154,9 +157,9 @@ int main() {
         DAWLAB_CHECK_NEAR(e.rt60 / 2.0, 1.0, 0.15);
         DAWLAB_CHECK_NEAR(e.rt60 / rmsFit.rt60Seconds, 1.0, 0.2);
 
-        // 印 EDC 曲線給人看
+        // Print the EDC curve for people to look at
         const std::vector<double> edc = schroederDecayDb(ir.getReadPointer(0), ir.getNumSamples());
-        std::printf("\nFDN IR 的 EDC（每 0.25 s）：\n");
+        std::printf("\nEDC of the FDN IR (every 0.25 s):\n");
         for (double t = 0.0; t <= 2.0; t += 0.25)
             std::printf("  t = %.2f s : %7.2f dB\n", t, edc[static_cast<size_t>(secondsToSamples(t, kSampleRate))]);
     }

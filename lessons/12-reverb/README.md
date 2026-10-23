@@ -1,60 +1,62 @@
-# 第 12 章：Reverb —— Algorithmic 與 Convolution
+# Chapter 12: Reverb -- Algorithmic and Convolution
 
-> [教材首頁](../../README.md)　｜　上一章：[11 Metering 與 FFT](../11-metering-fft/README.md)　｜　下一章：[13 VST3 hosting](../13-vst-hosting/README.md)
+**English** | [繁體中文](README.zh-TW.md)
 
-在空房間裡拍一下手，你聽到的不只是「啪」一聲：之後還有一段越來越小、越來越糊的聲音尾巴，這就是殘響（reverberation）。混音時幾乎每一軌都會經過 reverb：它讓乾巴巴的錄音「放進一個空間」，決定聽眾覺得樂器離自己多遠、在多大的房間裡演奏。
+> [Course home](../../README.md)　|　Previous: [11 Metering and FFT](../11-metering-fft/README.md)　|　Next: [13 VST3 hosting](../13-vst-hosting/README.md)
 
-這一章做兩種 reverb：
+Clap your hands in an empty room and you hear more than a single "clap": it is followed by a tail of sound that keeps getting quieter and blurrier. That tail is reverberation. In a mix, almost every track goes through a reverb: it takes a dry recording and "places it in a space", and it decides how far away the listener thinks the instrument is and how big the room is that it is being played in.
 
-- **Algorithmic reverb**：用一堆 delay line + feedback「模擬」殘響的統計特性。便宜、參數可以即時調（decay、size、damping、freeze……）。我們實作 8 線 **FDN（Feedback Delay Network）**，並說明另一個經典架構 **Freeverb**。
-- **Convolution reverb**：直接拿一個真實（或合成）空間的 **impulse response** 跟訊號做卷積，聽起來就「是那個空間」。代價是運算量，所以要用 FFT，並把 IR 切段（**uniform partitioned convolution**）才能即時處理。這裡會用到第 11 章的 `Fft`。
+This chapter builds two kinds of reverb:
 
----
-
-## 1. 本章目標
-
-讀完本章、做完練習，你應該能夠：
-
-- 說明殘響的三個部分（直達音、early reflections、late reverb）與 **RT60** 的定義，並用 Sabine 公式估算房間的 RT60。
-- 從「每繞一圈衰減 g 倍」推導 feedback comb 的 **g = 10^(−3·D/(RT60·fs))**，並用量測驗證。
-- 解釋 Schroeder 的 parallel comb + series allpass 架構、Freeverb 的結構（8 comb + 4 allpass、damping、stereo spread 23 samples）。
-- 解釋 FDN 為什麼「矩陣正交 ⇒ 無損」、怎麼用 g_i 讓所有 mode 以同一速率衰減、怎麼在迴路裡加 damping。
-- 說明 delay 長度為什麼要互質、modulation 為什麼能減少 metallic ringing、pre-delay 與 early reflections 在聽感上的作用。
-- 計算直接卷積與 FFT 卷積的成本，實作 overlap-save 的 **uniform partitioned convolution**，並說明它的 latency 與記憶體從哪裡來。
-- 在混音中正確使用 reverb：send/return、pre-fader vs post-fader、bus 上的 reverb 為什麼 mix = 100%。
+- **Algorithmic reverb**: a pile of delay lines plus feedback that "simulates" the statistical properties of reverberation. It is cheap, and its parameters can be changed in real time (decay, size, damping, freeze, ...). We implement an 8-line **FDN (Feedback Delay Network)** and also describe another classic architecture, **Freeverb**.
+- **Convolution reverb**: take the **impulse response** of a real (or synthetic) space and convolve the signal with it, so that it sounds like "that space". The price is computation, so we use the FFT and cut the IR into pieces (**uniform partitioned convolution**) to make real-time processing possible. This uses the `Fft` from chapter 11.
 
 ---
 
-## 2. 原理
+## 1. Chapter goals
 
-### 2.1 殘響的物理：直達音、early reflections、late reverb
+After reading this chapter and doing the exercises, you should be able to:
 
-想像你站在一個房間裡，前方有人拍手。聲音以約 343 m/s 的速度向四面八方擴散：
+- Explain the three parts of reverberation (direct sound, early reflections, late reverb) and the definition of **RT60**, and estimate the RT60 of a room with Sabine's formula.
+- Derive **g = 10^(-3*D/(RT60*fs))** for a feedback comb from "each trip around the loop attenuates by a factor of g", and verify it by measurement.
+- Explain Schroeder's parallel-comb + series-allpass architecture and the structure of Freeverb (8 combs + 4 allpasses, damping, a stereo spread of 23 samples).
+- Explain why "orthogonal matrix => lossless" holds for an FDN, how g_i makes all modes decay at the same rate, and how to add damping inside the loop.
+- Explain why delay lengths should be mutually coprime, why modulation reduces metallic ringing, and what pre-delay and early reflections contribute perceptually.
+- Compute the cost of direct convolution versus FFT convolution, implement overlap-save **uniform partitioned convolution**, and explain where its latency and memory come from.
+- Use reverb correctly in a mix: send/return, pre-fader vs post-fader, and why a reverb on a bus is 100% wet.
+
+---
+
+## 2. Theory
+
+### 2.1 The physics of reverb: direct sound, early reflections, late reverb
+
+Imagine standing in a room with someone clapping in front of you. Sound spreads in all directions at about 343 m/s:
 
 ```
-  振幅
-   │ 直達音
+  amplitude
+   │ direct sound
    │  ┃
-   │  ┃      early reflections（離散、可分辨）
+   │  ┃      early reflections (discrete, distinguishable)
    │  ┃   ┃  ┃ ┃    ┃
-   │  ┃   ┃  ┃ ┃ ┃  ┃ ┃┃ ┃      late reverb / diffuse tail（密集、像雜訊、指數衰減）
+   │  ┃   ┃  ┃ ┃ ┃  ┃ ┃┃ ┃      late reverb / diffuse tail (dense, noise-like, exponential decay)
    │  ┃   ┃  ┃ ┃ ┃┃ ┃┃┃┃┃┃┃▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌
    │  ┃   ┃  ┃ ┃ ┃┃ ┃┃┃┃┃┃┃▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▄▄▄▄▄▄▄▄▂▂▂▂▂▂▂▁▁▁
    └──┸───┸──┸─┸─┸┸─┸┸┸┸┸┸┸┸──────────────────────────────────────────────────────────► t
-      0  ← pre-delay →│← early（約 5–80 ms）→│←────────── late（數百 ms 到數秒）──────────►
+      0  ← pre-delay →│← early (about 5–80 ms) →│←────────── late (hundreds of ms to several seconds) ──────────►
 ```
 
-1. **直達音（direct sound）**：聲源直線傳到耳朵，最早、最大聲。決定「聲音從哪個方向來」。
-2. **Early reflections（早期反射）**：經過一、兩次牆面 / 地板 / 天花板反射才到的聲音。它們很稀疏、彼此可以分辨（但通常不會被聽成「回音」，而是被大腦融合進直達音），提供「房間大小、形狀、自己離牆多遠」的線索。
-3. **Late reverb（diffuse tail）**：反射了很多次的聲音。反射次數一多，到達的時間點越來越密：在一個體積 V 的房間裡，第 t 秒附近每秒到達的反射數大約與 $t^2$ 成正比（$\approx 4\pi c^3 t^2 / V$）。到了某個時間點以後，反射密到聽起來像一團雜訊，而且能量以**指數**衰減。
+1. **Direct sound**: the sound travelling in a straight line from the source to the ear. It is the earliest and the loudest, and it determines "which direction the sound comes from".
+2. **Early reflections**: sound that reaches the ear after one or two bounces off a wall, the floor or the ceiling. They are sparse and can be told apart from one another (but they are usually not heard as "echoes"; the brain fuses them into the direct sound), and they provide cues about "the size and shape of the room and how far you are from the walls".
+3. **Late reverb (diffuse tail)**: sound that has been reflected many times. As the number of reflections grows, the arrival times get denser and denser: in a room of volume V, the number of reflections arriving per second around time t is roughly proportional to $t^2$ ($\approx 4\pi c^3 t^2 / V$). After some point the reflections are so dense that they sound like a clump of noise, and the energy decays **exponentially**.
 
-直達音與第一個反射之間的時間差叫 **pre-delay**。大空間的牆比較遠，pre-delay 比較長，這是大腦判斷「大空間」的重要線索。
+The time gap between the direct sound and the first reflection is called the **pre-delay**. In a large space the walls are farther away, so the pre-delay is longer, which is an important cue the brain uses to judge "a large space".
 
 #### RT60
 
-殘響最重要的參數是 **RT60**（reverberation time）：聲源停止後，聲壓位準衰減 **60 dB** 所需的時間。為什麼是 60 dB？因為 60 dB 大約是「從樂器的大聲到背景雜訊」的範圍，也就是殘響「聽起來消失」的時間；這是 Sabine 在 1900 年左右定下的慣例。
+The most important parameter of reverberation is **RT60** (reverberation time): the time it takes for the sound pressure level to decay by **60 dB** after the source stops. Why 60 dB? Because 60 dB is roughly the range "from a loud instrument down to the background noise", i.e. the time until the reverb "sounds like it has disappeared"; this is a convention set by Sabine around 1900.
 
-因為 late reverb 是指數衰減，「dB 對時間」會是一條直線：
+Because late reverb decays exponentially, "dB against time" is a straight line:
 
 $$
 L(t) = L_0 - 60\cdot\frac{t}{\mathrm{RT60}}\ \ \text{dB}
@@ -62,42 +64,42 @@ L(t) = L_0 - 60\cdot\frac{t}{\mathrm{RT60}}\ \ \text{dB}
 a(t) = a_0\cdot 10^{-3t/\mathrm{RT60}} = a_0\, e^{-\ln(1000)\,t/\mathrm{RT60}}
 $$
 
-（振幅掉 60 dB = 掉到 1/1000，所以 $a(\mathrm{RT60}) = a_0/1000$。）
+(An amplitude drop of 60 dB means dropping to 1/1000, so $a(\mathrm{RT60}) = a_0/1000$.)
 
-實際量測時很少真的等到 −60 dB（背景雜訊會先淹沒它），而是在 −5 到 −25 dB（T20）或 −5 到 −35 dB（T30）的區段量斜率，再外插到 60 dB。本章的 `measureRt60()` 與練習 6 都是這麼做。
+In real measurements you rarely wait until -60 dB (the background noise swamps it first). Instead you measure the slope over the range from -5 to -25 dB (T20) or from -5 to -35 dB (T30) and extrapolate to 60 dB. This chapter's `measureRt60()` and exercise 6 both do this.
 
-**Sabine 公式**：一個房間的 RT60 可以粗略用體積 V（m³）與總吸音量 A（m²，各表面面積 × 吸音係數 α 的總和）估計：
+**Sabine's formula**: the RT60 of a room can be estimated roughly from its volume V (m³) and its total absorption A (m², the sum over all surfaces of area × absorption coefficient α):
 
 $$
 \mathrm{RT60} \approx 0.161\cdot\frac{V}{A},\qquad A = \sum_i S_i\,\alpha_i
 $$
 
-直覺：房間越大（V 大），聲音要走越久才撞牆、才被吸收 → 殘響越長；牆越吸音（α 大）→ 殘響越短。例如 6 × 4 × 3 m 的房間（V = 72 m³、表面積 108 m²），平均 α = 0.3 → A = 32.4 m² → RT60 ≈ 0.36 s（一般客廳）；音樂廳的 RT60 大約 1.8–2.2 s。
+Intuition: the larger the room (large V), the longer the sound travels before it hits a wall and is absorbed -> the longer the reverb; the more absorptive the walls (large α) -> the shorter the reverb. For example, for a 6 × 4 × 3 m room (V = 72 m³, surface area 108 m²) with an average α = 0.3 -> A = 32.4 m² -> RT60 ≈ 0.36 s (an ordinary living room); a concert hall has an RT60 of about 1.8–2.2 s.
 
-吸音係數通常隨頻率上升（地毯、窗簾、空氣本身都更吸高頻），所以**高頻的 RT60 比低頻短**：殘響越到後面越「暗」。這就是 reverb 上 **damping** 參數要模擬的現象。
+Absorption coefficients usually rise with frequency (carpets, curtains and the air itself all absorb the highs more), so **the RT60 of the high frequencies is shorter than that of the low frequencies**: the further into the tail, the "darker" the reverb. This is the phenomenon that the **damping** parameter of a reverb is meant to simulate.
 
-### 2.2 Impulse response 的觀點
+### 2.2 The impulse-response view
 
-如果把房間（聲源位置 → 聽者位置）當成一個 LTI（線性非時變）系統，那它完全由 **impulse response** $h[n]$ 描述：拍手（≈ impulse）錄下來的東西就是 $h$，而任何聲音 $x$ 經過這個房間的結果是卷積：
+If we treat the room (source position -> listener position) as an LTI (linear time-invariant) system, it is completely described by its **impulse response** $h[n]$: what you record after a clap (≈ an impulse) is $h$, and the result of any sound $x$ passing through this room is the convolution:
 
 $$
 y[n] = (h * x)[n] = \sum_{k=0}^{M-1} h[k]\,x[n-k]
 $$
 
-這給了兩條路：
+This gives two routes:
 
 | | Convolution reverb | Algorithmic reverb |
 |---|---|---|
-| 做法 | 直接用量到（或合成）的 $h$ 做卷積 | 用 delay + feedback 做一個「IR 統計上像房間」的遞迴系統 |
-| 真實度 | 就是那個空間（在那個聲源/聽者位置） | 「像」某種空間，取決於設計 |
-| 參數 | 只能事後修 IR（截短、EQ、改包絡） | decay、size、damping、modulation、freeze 都可即時調 |
-| 成本 | 跟 IR 長度成正比（要靠 FFT） | 跟 RT60 無關，幾十條 delay 就夠 |
+| Approach | Convolve directly with a measured (or synthesized) $h$ | Build a recursive system out of delays + feedback whose IR "statistically resembles a room" |
+| Realism | It is that space (at that source/listener position) | It sounds "like" some kind of space, depending on the design |
+| Parameters | The IR can only be fixed afterwards (truncate, EQ, reshape the envelope) | decay, size, damping, modulation and freeze can all be changed in real time |
+| Cost | Proportional to the IR length (needs the FFT) | Independent of the RT60; a few dozen delay lines are enough |
 
-本章兩條都走。我們也會用「量 IR」的角度來驗證 algorithmic reverb：把 impulse 餵進去，看它的 IR 是否以設定的 RT60 衰減、echo 是否夠密。
+This chapter takes both routes. We also use the "measure the IR" viewpoint to verify the algorithmic reverb: feed an impulse into it and check whether its IR decays with the RT60 we set and whether the echoes are dense enough.
 
-### 2.3 Feedback comb filter：衰減的來源
+### 2.3 The feedback comb filter: where the decay comes from
 
-最簡單能產生「一串衰減 echo」的結構是 feedback comb：
+The simplest structure that produces "a train of decaying echoes" is the feedback comb:
 
 ```
  x[n] ──►(+)──────────────► [ z^-D ] ──┬──► y[n]
@@ -111,11 +113,11 @@ y[n] = x[n-D] + g\,y[n-D]
 H(z) = \frac{z^{-D}}{1 - g\,z^{-D}}
 $$
 
-餵一個 impulse，輸出是 $\delta[n-D] + g\,\delta[n-2D] + g^2\,\delta[n-3D] + \dots$：**每繞一圈（D 個 sample）振幅乘 g**。
+Feed in an impulse and the output is $\delta[n-D] + g\,\delta[n-2D] + g^2\,\delta[n-3D] + \dots$: **each trip around the loop (D samples) multiplies the amplitude by g**.
 
-#### 推導：RT60 與 g
+#### Derivation: RT60 and g
 
-經過 t 秒，總共繞了 $t\cdot f_s / D$ 圈，振幅是 $g^{t f_s / D}$。要求 t = RT60 時振幅是 $10^{-60/20} = 10^{-3}$：
+After t seconds the signal has made $t\cdot f_s / D$ trips and the amplitude is $g^{t f_s / D}$. We require the amplitude at t = RT60 to be $10^{-60/20} = 10^{-3}$:
 
 $$
 g^{\mathrm{RT60}\cdot f_s / D} = 10^{-3}
@@ -127,50 +129,50 @@ g^{\mathrm{RT60}\cdot f_s / D} = 10^{-3}
 \boxed{\,\mathrm{RT60} = \frac{-3D}{f_s\log_{10} g}\,}
 $$
 
-例：D = 1557 samples、fs = 48 kHz、RT60 = 2 s → $g = 10^{-3\cdot1557/96000} = 10^{-0.04866} = 0.89401$。範例 `l12_comb_rt60` 會用這個 g 餵 impulse：從第一個 echo（t = D/fs，振幅 1，當作 0 dB 的參考點）起算，衰減到 −60 dB 以下花了 62 圈 = 2.011 s（量化到 D/fs = 32.4 ms 的整數倍，所以略大於 2.000 s）。
+Example: D = 1557 samples, fs = 48 kHz, RT60 = 2 s -> $g = 10^{-3\cdot1557/96000} = 10^{-0.04866} = 0.89401$. The example `l12_comb_rt60` feeds an impulse through the comb with this g: counting from the first echo (at t = D/fs, amplitude 1, taken as the 0 dB reference), the decay to below -60 dB takes 62 trips = 2.011 s (quantized to an integer multiple of D/fs = 32.4 ms, hence slightly above 2.000 s).
 
-注意 g 跟 D 有關：**同樣的 RT60，迴路越長、每圈要衰減越多**（g 越小）。這是 FDN 每條線各自算 g_i 的原因。
+Note that g depends on D: **for the same RT60, the longer the loop, the more each trip has to attenuate** (the smaller g is). This is why every line of an FDN computes its own g_i.
 
-#### 頻率響應：為什麼叫 comb
+#### Frequency response: why it is called a comb
 
-$|H(e^{j\omega})| = 1/|1 - g e^{-j\omega D}|$。當 $\omega D = 2\pi k$（頻率是 $f_s/D$ 的整數倍）時分母最小 → peak $= 1/(1-g)$；半整數倍時分母最大 → notch $= 1/(1+g)$。g = 0.894 時 peak = +19.49 dB、notch = −5.55 dB，相差 25 dB，頻譜像一把梳子：
+$|H(e^{j\omega})| = 1/|1 - g e^{-j\omega D}|$. When $\omega D = 2\pi k$ (the frequency is an integer multiple of $f_s/D$) the denominator is at its smallest -> peak $= 1/(1-g)$; at half-integer multiples the denominator is at its largest -> notch $= 1/(1+g)$. With g = 0.894 the peak is +19.49 dB and the notch is -5.55 dB, a difference of 25 dB, and the spectrum looks like a comb:
 
 ```
  dB
  +19 ┤ ▲     ▲     ▲     ▲     ▲
-     │ █     █     █     █     █         peak 間距 = fs/D = 30.8 Hz
+     │ █     █     █     █     █         peak spacing = fs/D = 30.8 Hz
      │ █     █     █     █     █
   -5 ┤▄█▄▁▁▁▄█▄▁▁▁▄█▄▁▁▁▄█▄▁▁▁▄█▄
      └─┴─────┴─────┴─────┴─────┴──► f
        0   fs/D  2fs/D  3fs/D
 ```
 
-這些 peak 就是 comb 的 **mode（共振頻率）**。單一個 comb 的 impulse response 是規律的 click 串（聽起來像在兩面平行牆間拍手的 flutter echo），頻譜是一根根分開的共振 —— 有明顯音高，聽起來「金屬」。要做出像房間的殘響，需要：
+These peaks are the comb's **modes (resonant frequencies)**. The impulse response of a single comb is a regular train of clicks (it sounds like the flutter echo when you clap between two parallel walls), and its spectrum is a set of separate resonances -- with a distinct pitch, it sounds "metallic". To make a reverb that sounds like a room you need:
 
-- **很多 mode，而且分布得夠密、夠不規則**（頻域）；
-- **很多 echo，而且越來越密**（時域）。
+- **many modes, distributed densely and irregularly enough** (frequency domain);
+- **many echoes, getting denser and denser** (time domain).
 
-#### 加上 damping：lowpass-in-feedback
+#### Adding damping: a lowpass in the feedback path
 
-真實房間高頻衰減較快。在迴路裡放一個 lowpass（Freeverb 用 one-pole）：
+Real rooms attenuate high frequencies faster. Put a lowpass in the loop (Freeverb uses a one-pole):
 
 $$
 y[n] = x[n-D] + g\cdot \mathrm{LP}\{y\}[n-D],\qquad
 \mathrm{LP}(z) = \frac{1-d}{1-d\,z^{-1}}
 $$
 
-現在每繞一圈的增益變成與頻率有關的 $g\,|\mathrm{LP}(e^{j\omega})|$。把它代進 RT60 公式：
+Now the gain per trip becomes frequency dependent: $g\,|\mathrm{LP}(e^{j\omega})|$. Substituting this into the RT60 formula:
 
 $$
 \mathrm{RT60}(\omega) = \frac{-3D}{f_s\log_{10}\!\big(g\,|\mathrm{LP}(e^{j\omega})|\big)},\qquad
 |\mathrm{LP}(e^{j\omega})| = \frac{1-d}{\sqrt{1 - 2d\cos\omega + d^2}}
 $$
 
-DC 時 $|\mathrm{LP}| = 1$（低頻 RT60 不變），Nyquist 時 $|\mathrm{LP}| = (1-d)/(1+d)$。代 d = 0.5、g = 0.894、D = 1557，在 4008 Hz（ω = 0.5246）：$|\mathrm{LP}| = 0.5/\sqrt{1.25 - \cos 0.5246} = 0.806$，RT60 = 0.685 s。範例量到 0.685 s。
+At DC $|\mathrm{LP}| = 1$ (the RT60 of the low frequencies is unchanged), and at Nyquist $|\mathrm{LP}| = (1-d)/(1+d)$. Plugging in d = 0.5, g = 0.894, D = 1557 at 4008 Hz (ω = 0.5246): $|\mathrm{LP}| = 0.5/\sqrt{1.25 - \cos 0.5246} = 0.806$, RT60 = 0.685 s. The example measures 0.685 s.
 
-### 2.4 Schroeder allpass：只打散、不染色
+### 2.4 The Schroeder allpass: scatter without coloring
 
-光是 comb 的 echo 不夠密。Schroeder 的另一個發明是 **allpass**：
+The echoes of a comb alone are not dense enough. Schroeder's other invention is the **allpass**:
 
 ```
             ┌──────────── × (−g) ─────────────────┐
@@ -186,28 +188,28 @@ v[n] = x[n] + g\,v[n-D],\qquad y[n] = -g\,v[n] + v[n-D]
 H(z) = \frac{-g + z^{-D}}{1 - g\,z^{-D}}
 $$
 
-**為什麼 |H| = 1**：令 $u = e^{-j\omega D}$（$|u| = 1$），分子 $u - g = u\,(1 - g\,\bar u)$，所以 $|u - g| = |1 - g\bar u| = |\overline{1 - g u}| = |1 - g u|$，分子分母大小相同。振幅響應在每個頻率都是 0 dB（範例會量給你看：100 Hz 到 12 kHz 都是 ±0.00 dB）。
+**Why |H| = 1**: let $u = e^{-j\omega D}$ ($|u| = 1$). The numerator is $u - g = u\,(1 - g\,\bar u)$, so $|u - g| = |1 - g\bar u| = |\overline{1 - g u}| = |1 - g u|$, and the numerator and denominator have the same magnitude. The magnitude response is 0 dB at every frequency (the example measures it for you: ±0.00 dB from 100 Hz to 12 kHz).
 
-那它做了什麼？**把相位打亂**：一個 impulse 進去，出來是 $-g, 0,\dots,0, (1-g^2), 0,\dots, (1-g^2)g, \dots$ 一串 echo。把幾個不同長度的 allpass 串起來，每一級把每個 echo 再拆成一串，密度相乘 —— 一個 click 進去，出來是一團「沙沙」聲，但長時間的頻譜還是平的。這叫 **diffusion（擴散）**。
+So what does it do? **It scrambles the phase**: an impulse goes in, and out comes a train of echoes $-g, 0,\dots,0, (1-g^2), 0,\dots, (1-g^2)g, \dots$. Cascading several allpasses of different lengths, each stage splits every echo into a train of its own and the densities multiply -- a click goes in and a clump of "hiss" comes out, yet the long-term spectrum is still flat. This is called **diffusion**.
 
-> 注意：allpass 是「長時間平均」上不染色。短時間看（例如 20 ms 的 window），它的 echo 仍然會帶點音色，g 太大或 D 太長會聽到「嗡嗡」或「彈簧」感。所以 diffuser 的 D 通常很短（幾 ms），g 在 0.5–0.7。
+> Note: an allpass is non-coloring only on a long-time average. Over a short time (say a 20 ms window) its echoes still carry some coloration, and with a large g or a long D you hear "buzzing" or a "spring" quality. That is why the D of a diffuser is usually very short (a few ms) and g is between 0.5 and 0.7.
 
-### 2.5 Schroeder reverb 與 Freeverb
+### 2.5 The Schroeder reverb and Freeverb
 
-Schroeder（1962）把兩者組合起來：
+Schroeder (1962) combined the two:
 
 ```
                 ┌─► comb 1 (D1, g1) ─┐
                 ├─► comb 2 (D2, g2) ─┤
  x ─────────────┼─► comb 3 (D3, g3) ─┼─(+)─► allpass (5 ms) ─► allpass (1.7 ms) ─► y
                 └─► comb 4 (D4, g4) ─┘
-        parallel comb：產生 mode 的「密度」與 decay       series allpass：增加 echo 密度（擴散）
+        parallel combs: produce the "density" of modes and the decay       series allpasses: raise echo density (diffusion)
 ```
 
-- **Parallel combs**：每個 comb 的 mode 間距是 $f_s/D_i$，4 個不同長度的 comb 疊起來，mode 數量變成 4 倍；每個 comb 用自己的 $g_i = 10^{-3D_i/(\mathrm{RT60}f_s)}$，所以全部以同一個 RT60 衰減。
-- **Series allpass**：把 comb 輸出的規律 echo 打散成密集的雜訊狀尾巴，又不改變整體頻譜。
+- **Parallel combs**: the mode spacing of each comb is $f_s/D_i$, and stacking 4 combs of different lengths quadruples the number of modes; each comb uses its own $g_i = 10^{-3D_i/(\mathrm{RT60}f_s)}$, so they all decay with the same RT60.
+- **Series allpasses**: they scatter the regular echoes coming out of the combs into a dense, noise-like tail without changing the overall spectrum.
 
-**Freeverb**（Jezar at Dreampoint，2000 年公開為 public domain）是這個架構最廣為流傳的版本：
+**Freeverb** (by Jezar at Dreampoint, released as public domain in 2000) is the most widely circulated version of this architecture:
 
 ```
            ┌─► LBCF 1116 ─┐
@@ -215,40 +217,40 @@ Schroeder（1962）把兩者組合起來：
            ├─► LBCF 1277 ─┤
  in (L+R) ─┼─► LBCF 1356 ─┼─(+)─► AP 556 ─► AP 441 ─► AP 341 ─► AP 225 ─► out L
   × 0.015  ├─► LBCF 1422 ─┤
-           ├─► LBCF 1491 ─┤        右聲道：每個 delay 長度 + 23 samples（stereo spread）
+           ├─► LBCF 1491 ─┤        right channel: every delay length + 23 samples (stereo spread)
            ├─► LBCF 1557 ─┤
            └─► LBCF 1617 ─┘
-   LBCF = lowpass-feedback comb filter（長度為 44.1 kHz 時的 samples）
+   LBCF = lowpass-feedback comb filter (lengths are in samples at 44.1 kHz)
 ```
 
-- **8 個 lowpass-feedback comb（LBCF）並聯**：迴路裡的 one-pole lowpass 就是 2.3 節的 damping。Freeverb 的實作是 `filterstore = output·(1−damp) + filterstore·damp`、`buffer = input + filterstore·feedback` —— 本章 `CombFilter` 用同樣的寫法。
-- **4 個 allpass 串聯**，g = 0.5。細節：Freeverb 的 allpass 程式碼是 `output = bufout − input`、`buffer = input + bufout·g`，也就是 $v[n] = x[n] + g\,v[n-D]$、$y[n] = v[n-D] - x[n]$，transfer function
+- **8 lowpass-feedback combs (LBCF) in parallel**: the one-pole lowpass in the loop is the damping of section 2.3. Freeverb's implementation is `filterstore = output·(1−damp) + filterstore·damp`, `buffer = input + filterstore·feedback` -- this chapter's `CombFilter` is written the same way.
+- **4 allpasses in series**, with g = 0.5. A detail: Freeverb's allpass code is `output = bufout − input`, `buffer = input + bufout·g`, i.e. $v[n] = x[n] + g\,v[n-D]$, $y[n] = v[n-D] - x[n]$, with transfer function
   $$H(z) = \frac{-1 + (1+g)\,z^{-D}}{1 - g\,z^{-D}}$$
-  要成為 allpass，分子係數必須是分母係數「倒過來」的倍數：$[-1,\ 1+g] = c\,[-g,\ 1]$ ⇒ $c = 1/g$、$1 + g = 1/g$ ⇒ $g^2 + g - 1 = 0$ ⇒ $g = (\sqrt5 - 1)/2 \approx 0.618$。Freeverb 用 g = 0.5，所以它**不是**嚴格的 allpass（在 $f_s/D$ 的整數倍是 0 dB，半整數倍是 $2.5/1.5$ → +4.4 dB 的起伏）；它在實務上「聽起來對」，但不要拿它當 allpass 的定義（J. O. Smith 的 *Physical Audio Signal Processing*「Freeverb Allpass Approximation」一節有同樣的分析）。我們的 `AllpassDiffuser` 用的是 2.4 節的標準式。
-- **Stereo spread**：右聲道每一條 delay 都比左聲道長 23 samples，兩聲道的殘響因此去相關（decorrelated），聽起來很寬。
-- **參數映射**：`roomsize` 0..1 → feedback = roomsize·0.28 + 0.7（0.7–0.98），`damp` 0..1 → damping 係數 = damp·0.4。注意 Freeverb 的 roomsize 直接控制 feedback，**不是** RT60：8 個 comb 用同一個 g，所以長的 comb 衰減得比短的慢一點，RT60 依 comb 而異（例如 g = 0.84 時，1116 samples 的 comb RT60 = 1.00 s，1617 的是 1.45 s）。
-- **Freeze**：feedback = 1、damping = 0、輸入增益 = 0 → 尾巴無限延長。
+  For this to be an allpass, the numerator coefficients must be a multiple of the denominator coefficients reversed: $[-1,\ 1+g] = c\,[-g,\ 1]$ => $c = 1/g$, $1 + g = 1/g$ => $g^2 + g - 1 = 0$ => $g = (\sqrt5 - 1)/2 \approx 0.618$. Freeverb uses g = 0.5, so it is **not** a strict allpass (it is 0 dB at integer multiples of $f_s/D$ and has a ripple of $2.5/1.5$ -> +4.4 dB at half-integer multiples); in practice it "sounds right", but do not take it as the definition of an allpass (the section "Freeverb Allpass Approximation" in J. O. Smith's *Physical Audio Signal Processing* gives the same analysis). Our `AllpassDiffuser` uses the standard form of section 2.4.
+- **Stereo spread**: every delay of the right channel is 23 samples longer than that of the left channel, so the reverbs of the two channels are decorrelated and sound wide.
+- **Parameter mapping**: `roomsize` 0..1 -> feedback = roomsize·0.28 + 0.7 (0.7–0.98), `damp` 0..1 -> damping coefficient = damp·0.4. Note that Freeverb's roomsize controls the feedback directly and is **not** the RT60: the 8 combs share one g, so the longer combs decay a little more slowly than the shorter ones and the RT60 differs from comb to comb (e.g. for g = 0.84, the 1116-sample comb has an RT60 of 1.00 s and the 1617-sample one has 1.45 s).
+- **Freeze**: feedback = 1, damping = 0, input gain = 0 -> the tail is extended indefinitely.
 
-Freeverb 的優點是簡單、便宜、聽起來不錯；缺點是：8 個 comb 的總長度不大（mode 密度有限，長 decay 時會有一點 metallic）、所有 comb 用同一個 g（不是嚴格的「同一個 RT60」）、comb 與 comb 之間沒有能量交換（每條線各自衰減，echo 密度不會隨時間增加）。FDN 解決了後兩點。
+Freeverb's strengths are that it is simple, cheap and sounds decent; its weaknesses are: the total length of the 8 combs is not large (the mode density is limited, so a long decay is slightly metallic), all combs use the same g (so it is not strictly "one RT60"), and there is no energy exchange between combs (each line decays on its own, so the echo density does not grow over time). The FDN solves the last two.
 
-本章的 `ReverbBuildingBlocks.h` 已經提供 `CombFilter`（含 damping）與 `AllpassDiffuser`：你可以照上圖自己拼一個 Freeverb 當延伸挑戰（提示：48 kHz 時把長度乘 48000/44100）。
+This chapter's `ReverbBuildingBlocks.h` already provides `CombFilter` (with damping) and `AllpassDiffuser`: you can assemble a Freeverb yourself following the figure above as an extension challenge (hint: at 48 kHz, multiply the lengths by 48000/44100).
 
-### 2.6 FDN：Feedback Delay Network
+### 2.6 The FDN: Feedback Delay Network
 
-Schroeder 結構的 comb 彼此獨立。如果讓 N 條 delay line 的輸出**經過一個矩陣混合**再回授給所有線，每一個 echo 下一圈就會分裂成 N 個，echo 密度隨時間指數成長 —— 這比較像真實房間（反射越多次、越密）。這就是 FDN（Stautner & Puckette 1982；Jot & Chaigne 1991 把它系統化）：
+The combs in a Schroeder structure are independent of one another. If the outputs of N delay lines are **mixed through a matrix** and fed back to all lines, then on the next trip each echo splits into N echoes, and the echo density grows exponentially over time -- which is closer to a real room (the more times sound has been reflected, the denser it is). This is the FDN (Stautner & Puckette 1982; systematized by Jot & Chaigne 1991):
 
 ```
-         b（輸入分配）
+         b (input distribution)
  x ──────┬────────┬────────┬────────┐
          ▼        ▼        ▼        ▼
-   ┌──►(+)─►[z^-L0]─►(+)─►[z^-L1]─► ...  (+)─►[z^-L7]──┐   v = 各 delay 線的輸出
+   ┌──►(+)─►[z^-L0]─►(+)─►[z^-L1]─► ...  (+)─►[z^-L7]──┐   v = outputs of the delay lines
    │                                                      │
    │     s_i = g_i · LP_i( (A·v)_i ) + b_i·x               │──► y = cᵀ v
    │                                                      │
-   └──────── g_i ◄── LP_i ◄── [ 回授矩陣 A（N×N）] ◄───────┘
+   └──────── g_i ◄── LP_i ◄── [ feedback matrix A (N×N) ] ◄───────┘
 ```
 
-狀態方程式（N 條線，第 i 條長 $L_i$）：
+The state equations (N lines, line i has length $L_i$):
 
 $$
 v_i[n] = s_i[n - L_i],\qquad
@@ -256,29 +258,29 @@ v_i[n] = s_i[n - L_i],\qquad
 y[n] = \mathbf c^{\mathsf T}\mathbf v[n]
 $$
 
-$\boldsymbol\Gamma = \mathrm{diag}(g_0,\dots,g_{N-1})$ 是每條線的衰減（之後再加 damping）。
+$\boldsymbol\Gamma = \mathrm{diag}(g_0,\dots,g_{N-1})$ is the per-line attenuation (damping is added after it).
 
-#### 為什麼正交矩陣 ⇒ 無損
+#### Why an orthogonal matrix => lossless
 
-先看 $\boldsymbol\Gamma = \mathbf I$、沒有輸入的情況。整個系統的「能量」是所有 delay line 裡面存的 sample 平方和 $E[n]$。每過一個 sample，每條線吐出一個 $v_i$、吃進一個 $s_i$：
+First consider the case $\boldsymbol\Gamma = \mathbf I$ with no input. The "energy" of the whole system is the sum of squares of all the samples stored in the delay lines, $E[n]$. With every sample that passes, each line emits one $v_i$ and takes in one $s_i$:
 
 $$
 E[n+1] - E[n] = \sum_i s_i^2 - \sum_i v_i^2 = \|\mathbf A\mathbf v\|^2 - \|\mathbf v\|^2
 $$
 
-如果 $\mathbf A$ 是**正交矩陣**（$\mathbf A^{\mathsf T}\mathbf A = \mathbf I$），則 $\|\mathbf A\mathbf v\|^2 = \mathbf v^{\mathsf T}\mathbf A^{\mathsf T}\mathbf A\mathbf v = \|\mathbf v\|^2$，能量**完全不變**：系統既不會爆掉、也不會自己衰減，是一個「無損（lossless）」的原型。所有 decay 都由我們刻意加入的 $g_i$ 與 damping 控制。練習 4 會驗證：g = 1 時 1.0 s 與 2.5 s 的 RMS 只差 0.01 dB。
+If $\mathbf A$ is an **orthogonal matrix** ($\mathbf A^{\mathsf T}\mathbf A = \mathbf I$), then $\|\mathbf A\mathbf v\|^2 = \mathbf v^{\mathsf T}\mathbf A^{\mathsf T}\mathbf A\mathbf v = \|\mathbf v\|^2$, and the energy is **completely unchanged**: the system neither blows up nor decays by itself, which makes it a "lossless" prototype. All the decay is then controlled by the $g_i$ and the damping that we add deliberately. Exercise 4 verifies this: with g = 1 the RMS at 1.0 s and at 2.5 s differs by only 0.01 dB.
 
-常用的正交矩陣：
+Commonly used orthogonal matrices:
 
-- **Householder**：$\mathbf A = \mathbf I - \frac{2}{N}\mathbf 1\mathbf 1^{\mathsf T}$。驗證：$\mathbf A^{\mathsf T}\mathbf A = \mathbf I - \frac4N\mathbf 1\mathbf 1^{\mathsf T} + \frac{4}{N^2}\mathbf 1(\mathbf 1^{\mathsf T}\mathbf 1)\mathbf 1^{\mathsf T} = \mathbf I - \frac4N\mathbf 1\mathbf 1^{\mathsf T} + \frac4N\mathbf 1\mathbf 1^{\mathsf T} = \mathbf I$。計算只要 O(N)：先算總和 $S = \sum v_j$，再 $u_i = v_i - \frac2N S$。N = 8 時對角是 0.75、非對角是 −0.25：每條線把 75% 留給自己、其餘平均分給別人。（N = 4 時對角是 0.5，混合更「平均」。）
-- **Hadamard**：$\mathbf H_2 = \frac{1}{\sqrt2}\begin{bmatrix}1&1\\1&-1\end{bmatrix}$、$\mathbf H_{2N} = \mathbf H_2\otimes\mathbf H_N$（N 為 2 的次方）。所有元素的大小都是 $1/\sqrt N$ —— 混合得最徹底，可以用類似 FFT 的 butterfly 在 O(N log N) 算完。
-- 任意旋轉矩陣、或隨機正交矩陣（QR 分解產生）也都可以。
+- **Householder**: $\mathbf A = \mathbf I - \frac{2}{N}\mathbf 1\mathbf 1^{\mathsf T}$. Check: $\mathbf A^{\mathsf T}\mathbf A = \mathbf I - \frac4N\mathbf 1\mathbf 1^{\mathsf T} + \frac{4}{N^2}\mathbf 1(\mathbf 1^{\mathsf T}\mathbf 1)\mathbf 1^{\mathsf T} = \mathbf I - \frac4N\mathbf 1\mathbf 1^{\mathsf T} + \frac4N\mathbf 1\mathbf 1^{\mathsf T} = \mathbf I$. It costs only O(N) to apply: first compute the sum $S = \sum v_j$, then $u_i = v_i - \frac2N S$. For N = 8 the diagonal entries are 0.75 and the off-diagonal entries are -0.25: each line keeps 75% for itself and spreads the rest evenly over the others. (For N = 4 the diagonal is 0.5, a more "even" mix.)
+- **Hadamard**: $\mathbf H_2 = \frac{1}{\sqrt2}\begin{bmatrix}1&1\\1&-1\end{bmatrix}$, $\mathbf H_{2N} = \mathbf H_2\otimes\mathbf H_N$ (N a power of 2). All entries have magnitude $1/\sqrt N$ -- it mixes the most thoroughly, and it can be computed in O(N log N) with an FFT-like butterfly.
+- Any rotation matrix, or a random orthogonal matrix (generated by a QR decomposition), also works.
 
-本章 `Reverb.h` 用 Householder（簡單、便宜、N = 8 時擴散已經足夠）。
+This chapter's `Reverb.h` uses the Householder matrix (simple, cheap, and the diffusion is already sufficient for N = 8).
 
-#### 讓所有 mode 以同一速率衰減：$g_i = \gamma^{L_i}$
+#### Making all modes decay at the same rate: $g_i = \gamma^{L_i}$
 
-我們希望每個頻率都以同一個 RT60 衰減。Jot 的做法：讓每條線的衰減與它的長度成正比 —— 在 dB 上，每「一個 sample」都衰減一樣多：
+We want every frequency to decay with the same RT60. Jot's approach: make the attenuation of each line proportional to its length -- in dB, every "single sample" attenuates by the same amount:
 
 $$
 g_i = \gamma^{L_i},\qquad \gamma = 10^{-3/(\mathrm{RT60}\cdot f_s)}
@@ -286,66 +288,66 @@ g_i = \gamma^{L_i},\qquad \gamma = 10^{-3/(\mathrm{RT60}\cdot f_s)}
 g_i = 10^{-3L_i/(\mathrm{RT60}\cdot f_s)}
 $$
 
-為什麼這樣就對：把無損系統的每一個 $z^{-1}$ 換成 $\gamma z^{-1}$，等於把每條 delay $z^{-L_i}$ 乘上 $\gamma^{L_i}$ —— 正好是我們加的 $g_i$。而「$z^{-1} \to \gamma z^{-1}$」的效果是把系統所有的 pole 半徑乘以 γ：無損系統的 pole 全在單位圓上，現在全在半徑 γ 的圓上，**每個 mode 每個 sample 都衰減 γ 倍**，所以 RT60 全部相同。這跟 comb 的公式長得一樣，只是現在每條線各自代入自己的 $L_i$。
+Why this is right: replacing every $z^{-1}$ of the lossless system by $\gamma z^{-1}$ multiplies each delay $z^{-L_i}$ by $\gamma^{L_i}$ -- exactly the $g_i$ we added. And the effect of "$z^{-1} \to \gamma z^{-1}$" is to multiply the radius of all the system's poles by γ: the poles of the lossless system all lie on the unit circle, and now they all lie on a circle of radius γ, so **every mode decays by a factor of γ per sample** and the RT60 is the same for all of them. This has the same form as the comb formula, except that now each line plugs in its own $L_i$.
 
-#### Damping：頻率相依的 RT60
+#### Damping: a frequency-dependent RT60
 
-把每條線的 $g_i$ 換成一個 filter $G_i(z)$，讓它的大小 $|G_i(e^{j\omega})| = 10^{-3L_i/(\mathrm{RT60}(\omega) f_s)}$，就可以讓不同頻率有不同 RT60（Jot 的 absorptive filter）。精確設計需要 shelving filter；本章用簡化版：每條線放一個第 02 章的 `OnePole` lowpass（cutoff = `setDampingHz`），再乘 $g_i$。結果是低頻 RT60 ≈ 設定值、高頻越來越短，跟真實房間的趨勢一致（範例 2 會量出每個頻帶的 RT60）。
+Replace each line's $g_i$ by a filter $G_i(z)$ whose magnitude is $|G_i(e^{j\omega})| = 10^{-3L_i/(\mathrm{RT60}(\omega) f_s)}$, and different frequencies can have different RT60 values (Jot's absorptive filter). An exact design needs shelving filters; this chapter uses a simplified version: put the chapter 02 `OnePole` lowpass (cutoff = `setDampingHz`) in each line and then multiply by $g_i$. The result is an RT60 ≈ the set value at low frequencies and increasingly shorter at high frequencies, which matches the trend of real rooms (example 2 measures the RT60 of each frequency band).
 
-#### 輸入、輸出向量
+#### Input and output vectors
 
-- **b**：輸入要灌進哪些線。我們讓左聲道進偶數線、右聲道進奇數線。
-- **c**：輸出取哪些線、正負號。我們取 $y_L = v_0 - v_2 + v_4 - v_6$、$y_R = v_1 - v_3 + v_5 - v_7$。正負交錯可以抵消一部分 Householder 造成的「所有線同相」成分，左右用不同的線 → 左右聲道去相關（寬的 stereo）。
+- **b**: which lines the input is fed into. We feed the left channel into the even lines and the right channel into the odd lines.
+- **c**: which lines are taken as output and with what signs. We take $y_L = v_0 - v_2 + v_4 - v_6$ and $y_R = v_1 - v_3 + v_5 - v_7$. Alternating signs cancel part of the "all lines in phase" component that the Householder matrix produces, and using different lines for left and right -> decorrelated left/right channels (a wide stereo image).
 
-#### Echo 密度與 mode 密度
+#### Echo density and mode density
 
-- 時域：每一個 echo 下一圈分裂成 N 個（矩陣混合），echo 密度很快就滿了。範例 2 會印每 10 ms 內非零 sample 的數量：0, 0, 1, 6, 27, 71, 145, 231, 319, 398（滿分 480），100 ms 內就接近全滿。
-- 頻域：FDN 的 mode 總數 = 所有 delay 長度的總和 $\sum L_i$，所以平均 **mode 密度 = $\sum L_i / f_s$ 個 / Hz**。本章的 8 條線總長 19502 samples → 0.41 個 / Hz（平均每 2.5 Hz 一個 mode）。練習 4 的 4 線 FDN 只有 0.14 個 / Hz（每 7 Hz 一個），尾巴就聽得出音高。常被引用的經驗法則來自 Schroeder 與 Logan：RT60 = 1 s 時 mode 密度約 0.15 個 / Hz 就夠，而需要的密度與 RT60 成正比，也就是 mode 密度（個 / Hz，等於總 delay 長度的秒數）至少要約 0.15 × RT60，寫成 delay 總長度就是 $\sum L_i \ge 0.15\cdot\mathrm{RT60}\cdot f_s$（J. O. Smith 的 *Physical Audio Signal Processing*「Mode Density Requirement」一節）。不夠的話，長 decay 會聽起來像一堆分開的共振（ringing tones）。本章 0.41 對 RT60 = 2 s（需要 0.3）足夠；RT60 = 4 s 時（需要 0.6）就不太夠了 —— 這時把 size 調大、或加 modulation 會有幫助。
+- Time domain: on the next trip every echo splits into N echoes (matrix mixing), so the echo density fills up very quickly. Example 2 prints the number of non-zero samples in each 10 ms: 0, 0, 1, 6, 27, 71, 145, 231, 319, 398 (out of a possible 480), nearly full within 100 ms.
+- Frequency domain: the total number of modes of an FDN equals the sum of all the delay lengths $\sum L_i$, so the average **mode density = $\sum L_i / f_s$ modes per Hz**. The 8 lines of this chapter total 19502 samples -> 0.41 modes/Hz (on average one mode every 2.5 Hz). The 4-line FDN of exercise 4 has only 0.14 modes/Hz (one every 7 Hz), and its tail already sounds pitched. A frequently quoted rule of thumb comes from Schroeder and Logan: for RT60 = 1 s a mode density of about 0.15 modes/Hz is enough, and the required density is proportional to RT60; that is, the mode density (modes/Hz, equal to the total delay length in seconds) should be at least about 0.15 × RT60, which in terms of total delay length is $\sum L_i \ge 0.15\cdot\mathrm{RT60}\cdot f_s$ (the section "Mode Density Requirement" in J. O. Smith's *Physical Audio Signal Processing*). If it is not enough, a long decay sounds like a bunch of separate resonances (ringing tones). The 0.41 of this chapter is sufficient for RT60 = 2 s (which needs 0.3); at RT60 = 4 s (which needs 0.6) it is no longer quite enough -- increasing size or adding modulation helps then.
 
-### 2.7 為什麼 delay 長度要互質
+### 2.7 Why the delay lengths should be mutually coprime
 
-假設兩條線長 1500 與 2000 samples（gcd = 500）：
+Suppose two lines have lengths 1500 and 2000 samples (gcd = 500):
 
-- **頻域**：第一條的 mode 在 $f_s/1500 = 32$ Hz 的整數倍、第二條在 24 Hz 的整數倍。兩者在 $f_s/500 = 96$ Hz 的整數倍**重疊** —— 那些頻率被兩條線同時共振，能量特別大、衰減特別久，聽起來就是「金屬聲」（metallic ringing）。
-- **時域**：兩條線的 echo 每 lcm(1500, 2000) = 6000 samples（125 ms）就**同時抵達**一次，形成規律的 flutter。
+- **Frequency domain**: the modes of the first lie at integer multiples of $f_s/1500 = 32$ Hz and those of the second at integer multiples of 24 Hz. They **overlap** at integer multiples of $f_s/500 = 96$ Hz -- those frequencies are resonated by both lines at once, so they carry particularly large energy and decay particularly slowly, and they sound "metallic" (metallic ringing).
+- **Time domain**: the echoes of the two lines **arrive together** once every lcm(1500, 2000) = 6000 samples (125 ms), forming a regular flutter.
 
-如果長度互質（例如 1427 與 1783，都是質數），除了 DC 以外沒有共同的 mode，echo 同時抵達的週期是 lcm = 1427·1783 = 2,544,341 samples（53 秒），實務上等於不會重複。
+If the lengths are coprime (say 1427 and 1783, both prime), then apart from DC there are no common modes, and the period at which echoes arrive together is lcm = 1427·1783 = 2,544,341 samples (53 seconds), which in practice means it never repeats.
 
-所以 `Reverb.h` 把每條線的長度換算成 samples 之後再取 `nextPrime()`：8 條線全是質數，兩兩必然互質。除了互質，長度最好也不要成簡單整數比、也不要都擠在一起：本章用 30–73 ms 之間大致均勻分布的長度（最長/最短 ≈ 2.5）。
+That is why `Reverb.h` converts each line's length to samples and then applies `nextPrime()`: all 8 lines are prime, so any two are necessarily coprime. Besides being coprime, the lengths should preferably not be in simple integer ratios and should not be bunched together: this chapter uses lengths spread roughly evenly between 30 and 73 ms (longest/shortest ≈ 2.5).
 
-### 2.8 Modulation：讓 mode 不要「站著不動」
+### 2.8 Modulation: don't let the modes "stand still"
 
-即使 delay 互質，長 decay（數秒）時尾巴仍然是成千上萬個固定頻率的共振。耳朵對「靜止不動、衰減很慢的窄頻共振」很敏感，會聽到隱約的音高或 ringing。解法：讓 delay 長度**緩慢地調變**（例如 ±0.5–2 ms、0.5–2 Hz 的 LFO，每條線相位不同）。
+Even with coprime delays, a long decay (several seconds) still leaves a tail made of thousands of resonances at fixed frequencies. The ear is very sensitive to "stationary, slowly decaying narrowband resonances" and hears a faint pitch or ringing. The fix: **modulate the delay lengths slowly** (e.g. an LFO of ±0.5–2 ms at 0.5–2 Hz, with a different phase for every line).
 
-- mode 的頻率 ≈ $k f_s / L_i$；$L_i$ 在動，mode 就在頻率軸上來回漂移。
-- 長時間平均下來，能量被抹到相鄰頻率，頻譜變平滑，ringing 消失。
-- 代價：調變 delay 等於微小的 vibrato（第 10 章 chorus 的原理），深度太大會聽到音高晃動，對鋼琴等長音很明顯。
+- The mode frequency is ≈ $k f_s / L_i$; as $L_i$ moves, the modes drift back and forth along the frequency axis.
+- Averaged over time, the energy is smeared into the neighboring frequencies, the spectrum becomes smooth, and the ringing disappears.
+- The cost: modulating a delay is a tiny vibrato (the principle of the chorus in chapter 10); too large a depth produces audible pitch wobble, which is obvious on sustained sounds such as a piano.
 
-練習 4 會量化這件事：4 線 FDN 尾巴頻譜（dB）的標準差，靜態時 8.85 dB，加 1 ms / 1.3 Hz modulation 後降到 5.89 dB（接近白雜訊頻譜的理論值，約 5.6 dB）。`Reverb.h` 也提供 `setModulationDepthMs()` / `setModulationRateHz()`（預設關閉）。
+Exercise 4 quantifies this: the standard deviation of the tail spectrum (in dB) of a 4-line FDN is 8.85 dB when static and drops to 5.89 dB with 1 ms / 1.3 Hz modulation (close to the theoretical value for a white-noise spectrum, about 5.6 dB). `Reverb.h` also provides `setModulationDepthMs()` / `setModulationRateHz()` (off by default).
 
-> 調變的 delay 需要讀「非整數位置」的 sample，所以用第 09 章的 `FractionalDelayLine`（linear 或 cubic 插值）。這也是 `Reverb.h` 不用整數 `DelayLine` 的原因：`setSize()` 改變 delay 長度時也需要平滑的非整數長度。
+> A modulated delay has to read samples at "non-integer positions", so it uses chapter 09's `FractionalDelayLine` (linear or cubic interpolation). This is also why `Reverb.h` does not use the integer `DelayLine`: `setSize()` also needs smoothly varying non-integer lengths when it changes the delay lengths.
 >
-> 代價之一：在非整數位置做 linear interpolation 本身就是一個輕微的 lowpass（小數部分 0.5 時，Nyquist 直接歸零），放在迴路裡就是每繞一圈多一點損失。平常這點損失混在 $g_i$ 的衰減裡聽不出來，但 freeze 要求迴路**嚴格無損**，所以 `Reverb` 在 freeze 時會把 modulation 淡出，讓讀取位置回到整數長度（3.2 節）。
+> One cost: linear interpolation at a non-integer position is itself a mild lowpass (with a fractional part of 0.5 it goes straight to zero at Nyquist), and inside the loop that means a little extra loss on every trip. Normally this small loss is mixed into the attenuation of $g_i$ and is inaudible, but freeze requires the loop to be **strictly lossless**, so `Reverb` fades the modulation out while frozen so that the read positions return to integer lengths (section 3.2).
 
-### 2.9 Pre-delay 與 early reflections
+### 2.9 Pre-delay and early reflections
 
-- **Pre-delay**：在 reverb 最前面放一條純 delay（0–250 ms）。聽感上，pre-delay 讓直達音的 transient 先完整出來、殘響晚一點才跟上 → 人聲、鼓更清楚，不會被殘響糊掉；同時暗示「空間很大、牆很遠」。混音常見做法是把 pre-delay 對齊歌曲 tempo 的小音符（例如 1/64 或 1/32 音符）。
-- **Early reflections（ER）**：用一條 **tapped delay line** 實作 —— 一條 delay、多個讀取點（tap），每個 tap 有自己的 delay 與 gain：
+- **Pre-delay**: put a pure delay (0–250 ms) at the very front of the reverb. Perceptually, the pre-delay lets the transient of the direct sound come out in full first and the reverb follow a little later -> vocals and drums stay clearer and are not smeared by the reverb; it also suggests "a large space with distant walls". A common mixing practice is to align the pre-delay with a small note value of the song's tempo (e.g. a 1/64 or 1/32 note).
+- **Early reflections (ER)**: implemented with a **tapped delay line** -- one delay line with several read points (taps), each tap having its own delay and gain:
 
 $$
 y_{\mathrm{ER}}[n] = \sum_{k} a_k\, x[n - d_k]
 $$
 
-tap 的位置可以手調，也可以用幾何算：**image-source 法**（Allen & Berkley 1979）把聲源對每一面牆做鏡射，牆面反射就等於從鏡像位置發出的虛擬聲源。一階反射有 6 個（shoebox 房間的 6 面牆），每個的
+The tap positions can be set by hand or computed geometrically: the **image-source method** (Allen & Berkley 1979) mirrors the source across each wall, so that a reflection off a wall is equivalent to a virtual source emitting from the mirrored position. There are 6 first-order reflections (the 6 walls of a shoebox room), and for each one
 
 $$
 d_k = \frac{|\mathbf r_{\mathrm{img},k} - \mathbf r_{\mathrm{listener}}| - |\mathbf r_{\mathrm{src}} - \mathbf r_{\mathrm{listener}}|}{c},\qquad
 a_k = \sqrt{1-\alpha}\cdot\frac{|\mathbf r_{\mathrm{src}} - \mathbf r_{\mathrm{listener}}|}{|\mathbf r_{\mathrm{img},k} - \mathbf r_{\mathrm{listener}}|}
 $$
 
-（相對直達音的延遲與增益；$\sqrt{1-\alpha}$ 是牆面的振幅反射係數，距離比是 1/r 的球面擴散。）練習 3 就是實作這個，並把 ER 接上 FDN（pre-delay = 最晚的一個 ER）組成完整的「ER + late」reverb。
+(the delay and gain relative to the direct sound; $\sqrt{1-\alpha}$ is the wall's amplitude reflection coefficient and the distance ratio is the 1/r spherical spreading.) Exercise 3 implements this and connects the ER to the FDN (pre-delay = the latest ER) to form a complete "ER + late" reverb.
 
-完整的 algorithmic reverb 大致長這樣：
+A complete algorithmic reverb looks roughly like this:
 
 ```mermaid
 flowchart LR
@@ -363,267 +365,267 @@ flowchart LR
 
 ### 2.10 Convolution reverb
 
-#### 直接卷積的成本
+#### The cost of direct convolution
 
-$y[n] = \sum_{k=0}^{M-1} h[k]x[n-k]$：每個輸出 sample 要 M 次乘加。一個 2 秒的 IR 在 48 kHz 是 M = 96000，stereo 每秒就要 2 × 48000 × 96000 ≈ 9.2 × 10⁹ 次乘加 —— 一般 CPU 一個 core 做不到即時。範例 3 用 0.33 秒的 IR（15840 samples）處理 1 秒音訊，直接卷積在 Release build 就要約 0.76 秒（本機實測；Debug build 約 3.7 秒）。
+$y[n] = \sum_{k=0}^{M-1} h[k]x[n-k]$: every output sample needs M multiply-adds. A 2-second IR at 48 kHz has M = 96000, and in stereo that is 2 × 48000 × 96000 ≈ 9.2 × 10⁹ multiply-adds per second -- a single core of an ordinary CPU cannot do it in real time. Example 3 processes 1 second of audio with a 0.33-second IR (15840 samples), and direct convolution takes about 0.9 seconds in a Release build (measured on this machine; several seconds in a Debug build).
 
-#### FFT 快速卷積
+#### Fast convolution with the FFT
 
-卷積定理：**時域卷積 = 頻域相乘**。用 N 點 FFT 計算的是**循環卷積**（circular convolution），要讓它等於線性卷積，N 必須 ≥ 兩段長度和 − 1，不夠長的部分補零。
+The convolution theorem: **convolution in the time domain = multiplication in the frequency domain**. What an N-point FFT computes is **circular convolution**; for it to equal linear convolution, N must be ≥ the sum of the two lengths − 1, with zero-padding for whatever is missing.
 
-對無限長的輸入，把輸入切成長 B 的 block 逐塊處理，有兩種標準做法：
+For an infinitely long input, cut the input into blocks of length B and process them one at a time. There are two standard ways:
 
-**Overlap-add（OLA）**：每塊輸入 $x_j$（長 B）補零到 N ≥ B + M − 1，FFT、乘 $H$、IFFT，得到長 B + M − 1 的結果；相鄰塊的結果有 M − 1 個 sample 重疊，**相加**起來。
-
-```
- x_j  補零 → FFT → ×H → IFFT → [ B + M − 1 個輸出 ]
-                                 └─ 尾巴 M−1 個與下一塊的開頭相加 ─┘
-```
-
-**Overlap-save（OLS）**：每次取 N 個輸入（新的 B 個 + 前面舊的 N − B 個），FFT、乘 $H$、IFFT；結果的前 M − 1 個 sample 被循環卷積「繞回來」的部分污染（wrap-around），**丟掉**，只留後面 B 個正確的輸出。
+**Overlap-add (OLA)**: zero-pad each input block $x_j$ (length B) to N ≥ B + M − 1, FFT, multiply by $H$, IFFT, and obtain a result of length B + M − 1; the results of adjacent blocks overlap by M − 1 samples, and the overlapping parts are **added**.
 
 ```
- frame = [ 舊的 N−B 個 | 新的 B 個 ] → FFT → ×H → IFFT → [ 前 N−B 個：wrap，丟掉 | 後 B 個：正確輸出 ]
+ x_j  zero-pad → FFT → ×H → IFFT → [ B + M − 1 output samples ]
+                                 └─ the tail's M−1 samples are added to the start of the next block ─┘
 ```
 
-兩者成本相同。本章用 overlap-save（不需要額外的累加 buffer）。
+**Overlap-save (OLS)**: each time take N input samples (B new ones + the previous N − B old ones), FFT, multiply by $H$, IFFT; the first M − 1 samples of the result are contaminated by the circular convolution "wrapping around" (wrap-around) and are **discarded**, and only the last B correct output samples are kept.
+
+```
+ frame = [ old N−B | new B ] → FFT → ×H → IFFT → [ first N−B: wrap, discard | last B: correct output ]
+```
+
+The two cost the same. This chapter uses overlap-save (no extra accumulation buffer needed).
 
 #### Uniform partitioned convolution
 
-單純的 FFT 卷積要求 N ≥ B + M − 1：IR 很長時 FFT 也很長，而且要等到湊滿一大塊輸入才能算 → latency 太大。解法是**把 IR 也切段**：
+Plain FFT convolution requires N ≥ B + M − 1: when the IR is long the FFT is long too, and you have to wait until a large block of input has accumulated before you can compute anything -> too much latency. The fix is to **cut the IR into pieces as well**:
 
 $$
-h = [\,h_0 \,|\, h_1 \,|\, \cdots \,|\, h_{K-1}\,],\quad\text{每段長 } P,\quad K = \lceil M/P\rceil
+h = [\,h_0 \,|\, h_1 \,|\, \cdots \,|\, h_{K-1}\,],\quad\text{each piece of length } P,\quad K = \lceil M/P\rceil
 $$
 
-卷積是線性的，所以
+Convolution is linear, so
 
 $$
-y = h * x = \sum_{k=0}^{K-1} \big(h_k * x\big)\ \text{延遲 } kP
+y = h * x = \sum_{k=0}^{K-1} \big(h_k * x\big)\ \text{delayed by } kP
 $$
 
-每一段 $h_k$ 只有 P 長，配上長 P 的輸入塊，用 N = 2P 的 FFT 就夠（overlap-save：frame = [上一塊 P 個 | 這一塊 P 個]）。關鍵觀察：「延遲 kP 再跟 $h_k$ 卷積」在頻域就是「**k 塊以前的輸入頻譜** $X_{j-k}$ 乘上 $H_k$」。所以只要把每一塊輸入的頻譜存起來（**frequency-domain delay line，FDL**），每一塊輸出就是：
+Each piece $h_k$ is only P long, and paired with an input block of length P an FFT with N = 2P is enough (overlap-save: frame = [previous P | this P]). The key observation: "delay by kP and then convolve with $h_k$" is, in the frequency domain, "**the input spectrum from k blocks ago** $X_{j-k}$ multiplied by $H_k$". So if we store the spectrum of every input block (a **frequency-domain delay line, FDL**), each output block is:
 
 $$
 Y_j = \sum_{k=0}^{K-1} H_k \cdot X_{j-k}
-\qquad\text{（逐 bin 的 complex 乘加）}
+\qquad\text{(complex multiply-accumulate, bin by bin)}
 $$
 
 ```
- 輸入塊 j ──► [上一塊|這一塊] ──► FFT ──► X_j ──► FDL： X_j  X_{j-1}  X_{j-2} ... X_{j-K+1}
-                                                     ×     ×        ×             ×
-                                     （預先算好）    H_0   H_1      H_2    ...    H_{K-1}
-                                                     └─────┴────────┴──── Σ ──────┘
-                                                                      │
-                                                         IFFT ◄───────┘ → 取後 P 個 → 輸出塊 j
+ input block j ──► [previous|this] ──► FFT ──► X_j ──► FDL:  X_j  X_{j-1}  X_{j-2} ... X_{j-K+1}
+                                                              ×     ×        ×             ×
+                                          (precomputed)      H_0   H_1      H_2    ...    H_{K-1}
+                                                              └─────┴────────┴──── Σ ──────┘
+                                                                               │
+                                                                  IFFT ◄───────┘ → take the last P → output block j
 ```
 
-一次 FFT、K 個頻譜乘加、一次 IFFT，就算出 P 個輸出。IR 的頻譜 $H_k$ 在 `setImpulseResponse()` 時就算好。
+One FFT, K spectrum multiply-accumulates and one IFFT produce P output samples. The IR spectra $H_k$ are precomputed in `setImpulseResponse()`.
 
-#### Latency 從哪裡來
+#### Where the latency comes from
 
-第 j 塊的輸出需要第 j 塊的**全部 P 個輸入**才能算（FFT 需要完整的 frame）。如果輸入是一個 sample 一個 sample 到來，第一個 sample 進來之後要再等 P − 1 個 sample 才能開始算，所以輸出整體必須晚 P 個 sample：**latency = partition size P**。
+The output of block j needs **all P inputs** of block j before it can be computed (the FFT needs a complete frame). If the input arrives one sample at a time, then after the first sample arrives you still have to wait P − 1 more samples before you can start computing, so the output as a whole has to be P samples late: **latency = partition size P**.
 
-`ConvolutionReverb` 用一個 FIFO 接受任意長度的 host block：每收滿 P 個 sample 做一次運算，算出來的 P 個輸出在接下來的 P 個 sample 吐出。所以它的 latency 固定是 P（48 kHz、P = 512 → 10.67 ms），並由 `getLatencySamples()` 回報給 host 做延遲補償（第 13、14 章）。
+`ConvolutionReverb` accepts host blocks of any length through a FIFO: every time P samples have been collected it does one round of computation, and the P outputs it produces are emitted over the next P samples. Its latency is therefore fixed at P (48 kHz, P = 512 -> 10.67 ms), and it is reported to the host through `getLatencySamples()` for latency compensation (chapters 13 and 14).
 
-> 如果 host 保證每次 callback 剛好給 P 個 sample（而且對齊 partition 邊界），可以在同一個 callback 裡收完、算完、吐出這一塊的輸出，額外 latency 就是 0 —— 「等湊滿 P 個 sample」的延遲已經被 host 的 buffer 吸收了。我們的實作為了支援任意 block 長度，選擇固定多付 P 的 latency。練習 7 會討論這點。
+> If the host guarantees that every callback delivers exactly P samples (aligned to the partition boundary), the block can be collected, computed and emitted within the same callback, and the extra latency is 0 -- the delay of "waiting until P samples have accumulated" has already been absorbed by the host's buffer. To support arbitrary block lengths, our implementation chooses to pay a fixed extra latency of P. Exercise 7 discusses this.
 
-#### 成本與記憶體分析
+#### Cost and memory analysis
 
-每 P 個輸出 sample：1 次 N 點實數 FFT + K·(N/2 + 1) 次 complex 乘加 + 1 次 N 點 IFFT。N = 2P 時，每個輸出 sample 平均：
+For every P output samples: one N-point real FFT + K·(N/2 + 1) complex multiply-adds + one N-point IFFT. With N = 2P, per output sample on average:
 
 $$
-\underbrace{\frac{K(P+1)}{P}}_{\approx K\ \text{次 complex MAC}} \approx \frac{M}{P}\ \text{次 complex MAC}\ \approx \frac{4M}{P}\ \text{次實數乘法}
-\;+\;\underbrace{O(\log_2 P)}_{\text{兩次 FFT 攤提}}
+\underbrace{\frac{K(P+1)}{P}}_{\approx K\ \text{complex MACs}} \approx \frac{M}{P}\ \text{complex MACs}\ \approx \frac{4M}{P}\ \text{real multiplications}
+\;+\;\underbrace{O(\log_2 P)}_{\text{two FFTs, amortized}}
 $$
 
-相對於直接卷積的 M 次乘加，大約省 **P/4 倍**。P = 512、M = 15840（K = 31）：直接 15840 次 vs. partitioned 約 31 次 complex MAC ≈ 124 次實數乘法，理論 128 倍；範例 3 在 Release build 量到約 120 倍（多次執行約在 115–140 倍之間，依機器與當下負載而異；Debug build 沒有最佳化，`std::complex` 的運算與 `std::vector` 的索引都不會被 inline，只有約 20 倍）。
+Compared with the M multiply-adds of direct convolution, this saves roughly a factor of **P/4**. With P = 512 and M = 15840 (K = 31): 15840 for direct convolution vs. about 31 complex MACs ≈ 124 real multiplications for partitioned, a theoretical factor of 128; example 3 measures about 114 times in a Release build (repeated runs fall between about 110 and 140 times, depending on the machine and the current load; a Debug build has no optimization, neither the `std::complex` operations nor the `std::vector` indexing get inlined, and it reaches only about 15–20 times).
 
-記憶體：每個 IR channel 存 K 個頻譜、每個頻譜 P + 1 個 `complex<float>`（8 bytes）≈ **8M bytes**（時域 IR 的 2 倍），每個處理 channel 的 FDL 也是同樣大小。2 秒 stereo IR（M = 105600、K = 207）：IR 頻譜 2 × 207 × 513 × 8 = 1.70 MB，FDL 再 1.70 MB，合計約 3.4 MB（範例印出 3.24 MiB）。
+Memory: for each IR channel we store K spectra of P + 1 `complex<float>` (8 bytes) each ≈ **8M bytes** (2 times the time-domain IR), and the FDL of each processed channel is the same size. For a 2-second stereo IR (M = 105600, K = 207): IR spectra 2 × 207 × 513 × 8 = 1.70 MB, plus 1.70 MB for the FDL, about 3.4 MB in total (the example prints 3.24 MiB).
 
-**P 的取捨**：P 越小 → latency 越小，但 K = M/P 越大 → 每個 sample 的 complex MAC 數 ≈ K 越多（3 秒 IR：P = 512 時 K = 282，P = 64 時 K = 2250，CPU 多 8 倍）。
+**The trade-off in P**: the smaller P is -> the smaller the latency, but the larger K = M/P becomes -> the more complex MACs per sample ≈ K (for a 3-second IR: K = 282 with P = 512 and K = 2250 with P = 64, i.e. 8 times the CPU).
 
-#### Non-uniform partition（簡介）
+#### Non-uniform partitions (a brief introduction)
 
-想要低 latency 又不要高 CPU：IR 的**開頭**用小 partition（甚至直接用時域 FIR，latency 0），越後面的部分用越大的 partition。後段 partition 的輸出本來就要延遲很久才需要，有充裕的時間用大 FFT 慢慢算。Gardner（1995）提出了 partition 大小倍增（P, P, 2P, 2P, 4P, …）的配置，做到零 latency 而且每 sample 成本只有 O(log M) 級；實務上常見的是兩到三層（例如 128 + 1024 + 8192）。代價是排程複雜：大 partition 的 FFT 要分散到多個 callback（或背景 thread）裡做，才不會造成 CPU 尖峰。
+If you want low latency without high CPU: use small partitions for the **beginning** of the IR (even a direct time-domain FIR, with latency 0), and use larger and larger partitions further back. The output of the later partitions is not needed until much later anyway, so there is plenty of time to compute it slowly with a large FFT. Gardner (1995) proposed a layout in which the partition size doubles (P, P, 2P, 2P, 4P, ...), which achieves zero latency with a per-sample cost of only O(log M); in practice two or three tiers are common (e.g. 128 + 1024 + 8192). The price is scheduling complexity: the FFTs of the large partitions must be spread over several callbacks (or a background thread) to avoid CPU spikes.
 
-#### IR 從哪裡來
+#### Where IRs come from
 
-- **真實空間錄製**：在空間裡放喇叭播 **exponential sine sweep**，錄下來再用反濾波器 deconvolve 得到 IR（Farina 2000，目前的主流方法，能把喇叭的諧波失真分離出去）；也有人用起始槍、氣球爆破這種近似 impulse 的聲源（簡單，但 SNR 與頻寬較差）。錄到的 IR 也包含喇叭、麥克風的音色。
-- **硬體效果器取樣**：把經典的 plate、spring、數位 reverb 餵 sweep，得到它們的 IR（只能取到「LTI 的部分」，modulation 等時變效果取不到）。
-- **合成**：最簡單的合成 IR 是**指數衰減的雜訊**：$h[n] = w[n]\cdot e^{-\ln(1000)\,n/(\mathrm{RT60}\,f_s)}$，$w$ 是白雜訊（可再加 lowpass 讓高頻衰減）。這正是 late reverb 的統計模型。`ConvolutionReverb::makeSyntheticImpulseResponse()` 就是這樣做的：每個 channel 用不同 seed（stereo 去相關），8 kHz one-pole lowpass，最後 10% 線性 fade-out 避免截斷，並正規化成單位能量 $\sum h^2 = 1$（讓輸入輸出的響度大致相同）。
-- 也可以用 algorithmic reverb 錄出 IR（範例 2 的 `l12_fdn_ir_2s.wav`）再拿去當 convolution 的 IR。
+- **Recording a real space**: play an **exponential sine sweep** through a loudspeaker in the space, record it, and deconvolve with an inverse filter to obtain the IR (Farina 2000, the mainstream method today, which can separate out the loudspeaker's harmonic distortion); some people also use near-impulsive sources such as a starter pistol or a bursting balloon (simple, but with worse SNR and bandwidth). The recorded IR also contains the timbre of the loudspeaker and microphone.
+- **Sampling hardware units**: feed a classic plate, spring or digital reverb a sweep to get their IRs (this only captures "the LTI part"; time-varying effects such as modulation cannot be captured).
+- **Synthesis**: the simplest synthetic IR is **exponentially decaying noise**: $h[n] = w[n]\cdot e^{-\ln(1000)\,n/(\mathrm{RT60}\,f_s)}$, where $w$ is white noise (a lowpass can be added to make the highs decay). This is exactly the statistical model of late reverb. `ConvolutionReverb::makeSyntheticImpulseResponse()` does exactly this: each channel uses a different seed (stereo decorrelation), an 8 kHz one-pole lowpass, a linear fade-out over the last 10% to avoid truncation, and normalization to unit energy $\sum h^2 = 1$ (so that input and output have roughly the same loudness).
+- You can also record an IR from an algorithmic reverb (example 2's `l12_fdn_ir_2s.wav`) and use it as the IR of a convolution.
 
-### 2.11 Plate、hall、room 的特徵
+### 2.11 The character of plate, hall and room
 
-| 類型 | 來源 | 聽感特徵 | 典型參數（起點建議） |
+| Type | Source | Perceptual character | Typical parameters (suggested starting points) |
 |---|---|---|---|
-| **Room** | 小到中型房間 | early reflections 明顯，尾巴短，有「在房間裡」的貼近感 | RT60 0.3–1 s、pre-delay 0–10 ms、size 小、damping 中等 |
-| **Hall** | 音樂廳 | 開頭建立較慢、ER 稀疏，尾巴長而平滑、偏暗（低頻 RT60 較長） | RT60 1.8–3 s、pre-delay 20–60 ms、size 大、damping 4–6 kHz |
-| **Plate** | 懸吊的金屬板 + 驅動器 + 拾音器（EMT 140 等） | 沒有明顯 ER，一開始就很密，明亮、光滑；人聲、小鼓的經典選擇 | RT60 1.5–4 s、pre-delay 0–20 ms、高 diffusion、damping 高（7 kHz 以上） |
-| **Chamber** | 專門蓋來錄殘響的硬牆房間 | 介於 room 與 hall，密而有個性 | RT60 1–2.5 s |
-| **Spring** | 吉他音箱裡的彈簧 | 有「boing」聲的色散 echo | 通常用專門模型，不是 FDN 的強項 |
+| **Room** | Small to medium room | Prominent early reflections, short tail, a close "in the room" feel | RT60 0.3–1 s, pre-delay 0–10 ms, small size, medium damping |
+| **Hall** | Concert hall | Slower build-up, sparse ER, a long and smooth tail that leans dark (longer RT60 at low frequencies) | RT60 1.8–3 s, pre-delay 20–60 ms, large size, damping 4–6 kHz |
+| **Plate** | A suspended metal plate + driver + pickups (EMT 140 etc.) | No distinct ER, very dense from the start, bright and smooth; a classic choice for vocals and snare | RT60 1.5–4 s, pre-delay 0–20 ms, high diffusion, high damping (above 7 kHz) |
+| **Chamber** | A hard-walled room built specifically for recording reverb | Between room and hall, dense and characterful | RT60 1–2.5 s |
+| **Spring** | The spring in a guitar amp | A dispersive echo with a "boing" sound | Usually done with a dedicated model; not an FDN strength |
 
-用本章的 `Reverb` 對應：size 大 → delay 長、mode 密、echo 建立慢（hall）；size 小 → 密集、短（room）；把 pre-delay 設 0、size 小但 decay 長、damping 高 → 接近 plate 的感覺。
+Mapping to this chapter's `Reverb`: large size -> long delays, dense modes, slow echo build-up (hall); small size -> dense and short (room); pre-delay 0 with small size but long decay and high damping -> close to the feel of a plate.
 
-### 2.12 混音裡的 reverb：send / return
+### 2.12 Reverb in a mix: send / return
 
-混音時 reverb 很少直接插（insert）在每一軌上，而是放在 **aux / return bus**：
+In a mix, reverb is rarely inserted directly on each track; it sits on an **aux / return bus**:
 
 ```
  track A ──► [insert FX] ──► fader A ──────────────────────────────┐
                     │                  │                           │
-                    │ pre-fader send   │ post-fader send（預設）     ├──► master
+                    │ pre-fader send   │ post-fader send (default) ├──► master
                     └──────────┬───────┘                           │
  track B ──► ... ──► fader B ──┤                                   │
-                    （send B）  ▼                                   │
-                     reverb bus：Reverb（mix = 100% wet）─► return fader ┘
+                    (send B)   ▼                                   │
+                     reverb bus: Reverb (mix = 100% wet) ─► return fader ┘
 ```
 
-- **Bus 上的 reverb 一律 mix = 1（100% wet）**：dry 已經從各軌的 fader 走到 master 了。如果 bus 上的 reverb 還混了 dry，dry 會被加兩次（而且如果 reverb 有 latency 還會 comb filtering）。
-- **送多少 / 混多少**：每軌的 **send level** 決定這軌「多濕」，bus 的 **return fader** 決定整體 reverb 的量。
-- **一條 reverb 給很多軌用**：省 CPU（一個 reverb 取代 N 個），而且所有樂器聽起來在**同一個空間**，混音更有整體感。
-- **Post-fader send**（預設）：send 在 fader 之後 —— 把軌道 fader 拉小，送進 reverb 的量也跟著變小，乾濕比例維持不變。這幾乎總是你要的。
-- **Pre-fader send**：send 在 fader 之前 —— fader 拉到底 reverb 還在。用在耳機監聽混音（cue mix，和主混音互不影響），或「只剩殘響」的特效。
-- 常見技巧：在 reverb return 上放 EQ（切掉 200–300 Hz 以下避免低頻糊、切掉一點高頻讓它「退後」）、用 compressor 讓 reverb 被主唱 sidechain 壓住（ducking），或像練習 5 一樣用 gate 砍斷尾巴（1980 年代的 gated reverb 鼓聲）。
+- **A reverb on a bus is always mix = 1 (100% wet)**: the dry signal already travels from each track's fader to the master. If the reverb on the bus also mixed in dry, the dry would be added twice (and if the reverb has latency, there would also be comb filtering).
+- **How much to send / how much to mix back**: each track's **send level** decides how "wet" that track is, and the bus's **return fader** decides the overall amount of reverb.
+- **One reverb for many tracks**: it saves CPU (one reverb replaces N), and all the instruments sound like they are in **the same space**, which gives the mix more cohesion.
+- **Post-fader send** (default): the send is taken after the fader -- pull the track fader down and the amount sent into the reverb goes down with it, so the dry/wet proportion stays the same. This is almost always what you want.
+- **Pre-fader send**: the send is taken before the fader -- with the fader all the way down the reverb is still there. It is used for headphone monitor mixes (a cue mix that is independent of the main mix) or for "reverb only" effects.
+- Common tricks: put an EQ on the reverb return (cut below 200–300 Hz to avoid muddy lows, cut a little of the highs to make it "recede"), use a compressor so the reverb is ducked by the lead vocal's sidechain, or, as in exercise 5, chop the tail with a gate (the gated-reverb drum sound of the 1980s).
 
-範例 4（`l12_send_return`）用數字驗證這些行為：post-fader 時 fader −12 dB → return 也正好掉 −12.00 dB；pre-fader 時 fader 拉到 −∞，return 不變（+0.00 dB）。
+Example 4 (`l12_send_return`) verifies these behaviors with numbers: with post-fader, a fader at -12 dB -> the return also drops by exactly -12.00 dB; with pre-fader and the fader at -∞, the return is unchanged (+0.00 dB).
 
 ---
 
-## 3. 從公式到程式碼
+## 3. From formulas to code
 
-本章新增三個 header（都在 `dsp/include/dawlab/dsp/`）：
+This chapter adds three headers (all in `dsp/include/dawlab/dsp/`):
 
-| Header | 內容 |
+| Header | Contents |
 |---|---|
-| `ReverbBuildingBlocks.h` | 教學用元件：`CombFilter`、`AllpassDiffuser`、`TappedDelay`、`measureRt60()` / `DecayMeasurement`、`nextPrime()` |
-| `Reverb.h` | `class Reverb`：8 線 FDN algorithmic reverb（合約 API） |
-| `ConvolutionReverb.h` | `class ConvolutionReverb`：uniform partitioned FFT convolution（overlap-save）（合約 API） |
+| `ReverbBuildingBlocks.h` | Teaching components: `CombFilter`, `AllpassDiffuser`, `TappedDelay`, `measureRt60()` / `DecayMeasurement`, `nextPrime()` |
+| `Reverb.h` | `class Reverb`: an 8-line FDN algorithmic reverb (contract API) |
+| `ConvolutionReverb.h` | `class ConvolutionReverb`: uniform partitioned FFT convolution (overlap-save) (contract API) |
 
 ### 3.1 `ReverbBuildingBlocks.h`
 
-**`CombFilter`**：2.3 節的 lowpass-feedback comb。核心只有三行：
+**`CombFilter`**: the lowpass-feedback comb of section 2.3. The core is only three lines:
 
 ```cpp
 float processSample(float x) noexcept {
-    const float delayed = ring_.read(delay_ - 1);                          // y[n] = buffer 裡 D 個 sample 前寫入的值
-    lowpassState_ = flushDenormal(delayed * (1.0f - damping_) + lowpassState_ * damping_); // LP：Freeverb 的 damping
-    ring_.push(x + feedback_ * lowpassState_);                             // 寫回：x[n] + g·LP{y}[n]
+    const float delayed = ring_.read(delay_ - 1);                          // y[n] = the value written D samples ago in the buffer
+    lowpassState_ = flushDenormal(delayed * (1.0f - damping_) + lowpassState_ * damping_); // LP: Freeverb's damping
+    ring_.push(x + feedback_ * lowpassState_);                             // write back: x[n] + g·LP{y}[n]
     return delayed;
 }
 ```
 
-注意 `read(delay_ - 1)`：內部 ring buffer 的慣例是「push 之後 `read(0)` 是剛寫入的值」，而這裡是**先讀後寫**，上一次 push 的值已經是一個 sample 以前了，所以讀 D − 1 才是「D 個 sample 前寫入」的值，迴路長度剛好是 D。這種 off-by-one 是 reverb 程式最常見的錯（會讓 RT60 與 mode 頻率有微小偏差）。
+Note `read(delay_ - 1)`: the convention of the internal ring buffer is that "after a push, `read(0)` is the value just written", but here we **read first and write afterwards**, so the value pushed last time is already one sample old, and reading D − 1 gives "the value written D samples ago", making the loop length exactly D. This kind of off-by-one is the most common mistake in reverb code (it causes small deviations in the RT60 and the mode frequencies).
 
-兩個 static 函式對應 2.3 節的公式：`feedbackForRt60(D, RT60, fs)` 回傳 $10^{-3D/(\mathrm{RT60} f_s)}$、`rt60ForFeedback(D, g, fs)` 回傳 $-3D/(f_s\log_{10}g)$。
+The two static functions correspond to the formulas of section 2.3: `feedbackForRt60(D, RT60, fs)` returns $10^{-3D/(\mathrm{RT60} f_s)}$ and `rt60ForFeedback(D, g, fs)` returns $-3D/(f_s\log_{10}g)$.
 
-**`AllpassDiffuser`**：2.4 節的標準 Schroeder allpass，`v = x + g·v[n−D]`、`y = v[n−D] − g·v`。
+**`AllpassDiffuser`**: the standard Schroeder allpass of section 2.4, `v = x + g·v[n−D]`, `y = v[n−D] − g·v`.
 
-**`TappedDelay`**：`setTaps(std::vector<Tap>)`（會 allocate，只在準備階段呼叫），`processSample()` 回傳 $\sum a_k x[n-d_k]$。
+**`TappedDelay`**: `setTaps(std::vector<Tap>)` (allocates; call it only during the preparation phase), and `processSample()` returns $\sum a_k x[n-d_k]$.
 
-**`measureRt60(x, n, fs, windowMs, fitStartDb, fitEndDb)`**：以 windowMs 為單位算 RMS envelope（dB），從 peak 之後第一次低於 −5 dB 的點開始、到 −35 dB 為止做線性回歸，RT60 = −60 / slope。window 要比 echo 間距長（comb 的 D = 32 ms，所以範例 1 用 40 ms），否則會量到 echo 之間的 0。練習 6 會實作更標準的 Schroeder backward integration。
+**`measureRt60(x, n, fs, windowMs, fitStartDb, fitEndDb)`**: computes an RMS envelope (in dB) in units of windowMs, and runs a linear regression from the first point after the peak that falls below -5 dB down to -35 dB; RT60 = −60 / slope. The window must be longer than the echo spacing (the comb has D = 32 ms, so example 1 uses 40 ms), otherwise it would measure the zeros between echoes. Exercise 6 implements the more standard Schroeder backward integration.
 
-### 3.2 `Reverb.h`：8 線 FDN
+### 3.2 `Reverb.h`: the 8-line FDN
 
-訊號流（每個 sample，對照 2.6 節）：
+Signal flow (per sample, compare with section 2.6):
 
 ```
- in L/R ─► pre-delay（FractionalDelayLine，平滑變化）
-        ─► input diffusion：每聲道 4 級 AllpassDiffuser（4.77 / 3.60 / 12.73 / 9.31 ms，g = 0.5；右聲道 ×1.07）
-        ─► × 0.35（freeze 時 × 0）
-        ─► 偶數線吃 L、奇數線吃 R
- FDN：  v_i = line_i.readLinear(L_i − 1 + lfo_i)                 （先讀後寫 → −1）
-        u_i = v_i − (2/8)·Σ v_j                                 （Householder）
-        u_i = OnePole_i(u_i)                                    （damping，>= 20 kHz 或 freeze 時略過）
-        line_i.push(g_i · u_i + input_i)                        （g_i = 10^(−3·L_i/(RT60·fs))）
- 輸出： wetL = v0 − v2 + v4 − v6，wetR = v1 − v3 + v5 − v7
-        width（mid/side）─► dry/wet mix
+ in L/R ─► pre-delay (FractionalDelayLine, smoothly varying)
+        ─► input diffusion: 4 AllpassDiffuser stages per channel (4.77 / 3.60 / 12.73 / 9.31 ms, g = 0.5; right channel ×1.07)
+        ─► × 0.35 (× 0 when frozen)
+        ─► even lines take L, odd lines take R
+ FDN:   v_i = line_i.readLinear(L_i − 1 + lfo_i)                 (read before write → −1)
+        u_i = v_i − (2/8)·Σ v_j                                 (Householder)
+        u_i = OnePole_i(u_i)                                    (damping; skipped when >= 20 kHz or frozen)
+        line_i.push(g_i · u_i + input_i)                        (g_i = 10^(−3·L_i/(RT60·fs)))
+ output: wetL = v0 − v2 + v4 − v6, wetR = v1 − v3 + v5 − v7
+        width (mid/side) ─► dry/wet mix
 ```
 
-幾個設計重點：
+A few design points:
 
-- **delay 長度**：基礎長度 29.7–73.1 ms（`kBaseDelaysMs`），乘上 `size` 對應的倍率 0.5 + size（0.5–1.5），換算成 samples 後取 `nextPrime()`。size = 0.5、48 kHz 時是 1427, 1783, 1973, 2099, 2579, 2879, 3251, 3511（全是質數）。
-- **`setDecaySeconds()`** 立刻重算 $g_i$；**`setSize()`** 改變目標長度，實際長度以約 30 ms 的時間常數平滑滑過去（delay 長度跳動會 click，平滑滑動則只是短暫的音高變化），同時重算 $g_i$。
-- **`setFreeze(true)`**：$g_i = 1$、略過 damping、輸入增益 0，而且 modulation 以約 30 ms 的時間常數淡出到 0。Householder 矩陣無損，所以尾巴永遠不衰減（範例 2：凍結後 1.1 秒 RMS 只差 +0.02 dB）。modulation 一定要停：在小數位置讀 delay 線（linear interpolation）等於每圈多一個 lowpass，開著 1 ms 的 modulation 凍結 28 秒會掉約 4 dB、而且越來越暗；停掉之後 28 秒只差 0.03 dB。同理，delay 長度的平滑在接近目標時會直接吸附到整數長度（delay 長度是幾千 samples 的 float，差距小於約 0.1–0.2 sample 時，平滑的增量小於半個 ulp，加不上去，會永遠停在小數點上）。解除 freeze 時 modulation 再淡入。
-- **`setWidth()`**：對 wet 做 mid/side，side × width。width = 0 → wet 變 mono。
-- **`setMix()`**：線性 dry/wet，`out = dry·(1−mix) + wet·mix`，有平滑。
-- **NaN 參數**：所有 float setter 開頭都有 `if (std::isnan(x)) return;`，收到 NaN 時保留上一個有效值（理由見第 4 節）。
-- **Modulation**（額外參數）：`setModulationDepthMs()`（0–2 ms，預設 0）、`setModulationRateHz()`；每條線的 LFO 相位相差 45°。
-- **Mono**：block 只有 1 個 channel 時，左右輸入都用同一個訊號，只輸出左聲道的 wet。
-- **`processSampleStereo(inL, inR, wetL, wetR)`**：只算 wet（不含 width / mix），給想自己組合的人用。
+- **Delay lengths**: the base lengths are 29.7–73.1 ms (`kBaseDelaysMs`), multiplied by the factor 0.5 + size (0.5–1.5) given by `size`, converted to samples and passed through `nextPrime()`. At size = 0.5 and 48 kHz they are 1427, 1783, 1973, 2099, 2579, 2879, 3251, 3511 (all prime).
+- **`setDecaySeconds()`** recomputes $g_i$ immediately; **`setSize()`** changes the target lengths, and the actual lengths glide there with a time constant of about 30 ms (a jump in delay length clicks, whereas a smooth glide is only a brief pitch change), and it recomputes $g_i$ at the same time.
+- **`setFreeze(true)`**: $g_i = 1$, damping is skipped, the input gain is 0, and the modulation fades out to 0 with a time constant of about 30 ms. The Householder matrix is lossless, so the tail never decays (example 2: after freezing, the RMS differs by only +0.02 dB over 1.1 seconds). The modulation must stop: reading a delay line at a fractional position (linear interpolation) amounts to an extra lowpass on every trip; with 1 ms modulation left on, a freeze of 28 seconds loses about 4 dB and gets steadily darker, while with it stopped the difference over 28 seconds is only 0.03 dB. Likewise, the smoothing of the delay lengths snaps straight to the integer length when it gets close to the target (the delay length is a float of a few thousand samples; when the gap is below about 0.1–0.2 sample, the smoothing increment is smaller than half a ulp and cannot be added, so it would stay on a fractional value forever). When the freeze is released the modulation fades back in.
+- **`setWidth()`**: mid/side on the wet signal, side × width. width = 0 -> the wet signal becomes mono.
+- **`setMix()`**: a linear dry/wet, `out = dry·(1−mix) + wet·mix`, smoothed.
+- **NaN parameters**: every float setter begins with `if (std::isnan(x)) return;`, so a NaN keeps the previous valid value (see section 4 for the reason).
+- **Modulation** (extra parameters): `setModulationDepthMs()` (0–2 ms, default 0), `setModulationRateHz()`; the LFO phases of the lines are 45° apart.
+- **Mono**: when the block has only 1 channel, the same signal is used for both left and right inputs, and only the left wet output is produced.
+- **`processSampleStereo(inL, inR, wetL, wetR)`**: computes only the wet signal (no width / mix), for those who want to assemble their own.
 
-**為什麼 FDN 而不是 Freeverb**：同樣的 delay 數量，FDN 有能量交換（echo 密度隨時間增加）、$g_i$ 讓所有 mode 嚴格同一 RT60（範例 2 量到的誤差 < 1%），而 Freeverb 的 roomsize 只是 feedback。Freeverb 的元件（`CombFilter`、`AllpassDiffuser`）都在 `ReverbBuildingBlocks.h`，你可以自己組一個比較看看。
+**Why an FDN rather than Freeverb**: for the same number of delays, the FDN has energy exchange (the echo density grows over time), and $g_i$ makes all modes follow strictly one RT60 (example 2 measures errors < 1%), whereas Freeverb's roomsize is merely a feedback amount. Freeverb's components (`CombFilter`, `AllpassDiffuser`) are all in `ReverbBuildingBlocks.h`, so you can assemble one yourself and compare.
 
 ### 3.3 `ConvolutionReverb.h`
 
-- `prepare(sr, maxBlockSize, nch)`：partition size P = 大於等於 maxBlockSize 的最小 2 的次方（至少 64），FFT size N = 2P；建立第 11 章的 `Fft(order)`、每個 channel 的 FIFO、frame、FDL。
-- `setImpulseResponse(ir)`：**非 audio thread**。把 IR 切成 K 段、每段前半放 IR、後半補零到 N，`forwardReal` 得到 $H_k$（N/2 + 1 個 bin）。IR 的 channel 數可以是 1（所有 channel 共用）或 ≥ 處理的 channel 數。可在 prepare 之前或之後呼叫。
-- `process(block)`：每個 sample 先從 output FIFO 取出「P 個 sample 前算好的」wet，再把輸入放進 input FIFO；收滿 P 個就呼叫 `processPartition()`。dry/wet mix 用的 dry 也要晚 P 個 sample，否則 wet 晚 P、dry 不晚，兩者的 latency 不一樣：IR 有直達音時（真實錄製的 IR 都有），dry 和晚 P 的直達音疊加會變成間距 fs/P 的 comb filtering（48 kHz、P = 512 時每 93.75 Hz 一個 notch），而 host 依 `getLatencySamples()` 做延遲補償後，這一軌的 dry 反而比其他軌早 P。好在不需要另一條 delay line：input FIFO 的第 `fifoPos` 格在被覆寫之前，存的正好是 P 個 sample 前的輸入 $x[n-P]$：
+- `prepare(sr, maxBlockSize, nch)`: partition size P = the smallest power of 2 that is ≥ maxBlockSize (at least 64), FFT size N = 2P; it creates chapter 11's `Fft(order)` and the FIFOs, frame and FDL of each channel.
+- `setImpulseResponse(ir)`: **not on the audio thread**. It cuts the IR into K pieces, puts the IR in the first half of each and zero-pads the second half to N, and `forwardReal` gives $H_k$ (N/2 + 1 bins). The IR may have 1 channel (shared by all channels) or at least as many channels as are processed. It may be called before or after prepare.
+- `process(block)`: for each sample it first takes from the output FIFO the wet value "computed P samples ago" and then puts the input into the input FIFO; once P samples have been collected it calls `processPartition()`. The dry used in the dry/wet mix must also be P samples late; otherwise wet is P late and dry is not, and the two have different latencies: when the IR has a direct sound (every recorded IR does), dry summed with the direct sound that is P late becomes comb filtering with spacing fs/P (at 48 kHz, P = 512, one notch every 93.75 Hz), and after the host applies latency compensation based on `getLatencySamples()`, the dry of this track would actually be P earlier than the other tracks. Fortunately no extra delay line is needed: before it is overwritten, slot `fifoPos` of the input FIFO holds exactly the input from P samples ago, $x[n-P]$:
 
 ```cpp
-const float dryDelayed = inputFifo[fifoPos];   // x[n-P]（還沒被覆寫）
-const float wet        = outputFifo[fifoPos];  // 晚 P 個 sample 的 wet
-inputFifo[fifoPos] = in;                        // 寫入 x[n]
+const float dryDelayed = inputFifo[fifoPos];   // x[n-P] (not yet overwritten)
+const float wet        = outputFifo[fifoPos];  // the wet signal, P samples late
+inputFifo[fifoPos] = in;                        // store x[n]
 ...
-out = dryDelayed * (1 - mix) + wet * mix;       // 兩個成分都晚 P → 整體 latency 一致 = P
+out = dryDelayed * (1 - mix) + wet * mix;       // both components are P late → uniform overall latency = P
 ```
 
-`processPartition()` 做的事：
+What `processPartition()` does:
 
 ```cpp
-// overlap-save：frame = [上一塊 P 個 | 這一塊 P 個]
+// overlap-save: frame = [previous P | this P]
 std::copy(frame.begin() + P, frame.end(), frame.begin());
 std::copy(inputFifo.begin(), inputFifo.end(), frame.begin() + P);
-fdlPos = (fdlPos + 1) % K;                     // FDL 是 ring buffer：新的頻譜覆蓋最舊的
+fdlPos = (fdlPos + 1) % K;                     // the FDL is a ring buffer: the new spectrum overwrites the oldest
 fft.forwardReal(frame, fdl[fdlPos]);           // X_j
-Y = Σ_k H_k · fdl[fdlPos − k]                  // 逐 bin complex 乘加
+Y = Σ_k H_k · fdl[fdlPos − k]                  // complex multiply-accumulate bin by bin
 fft.inverseReal(Y, ifftOut);
-copy(ifftOut 的後半 P 個 → outputFifo)         // 前半是 circular wrap，丟掉
+copy(second half (P samples) of ifftOut → outputFifo)   // the first half is circular wrap, discard it
 ```
 
-- `getLatencySamples()` = P，任何 mix 都一樣（mix = 0 時輸出就是延遲 P 的 dry）。另外提供 `getPartitionSize()`、`getFftSize()`、`getNumPartitions()`、`getImpulseResponseLength()`、`getSpectraMemoryBytes()` 方便印表格。
-- `makeSyntheticImpulseResponse(sr, rt60, nch, seed)`：2.10 節的指數衰減雜訊 IR，長度 1.1 × RT60。
+- `getLatencySamples()` = P, the same at every mix (at mix = 0 the output is simply the dry signal delayed by P). It also provides `getPartitionSize()`, `getFftSize()`, `getNumPartitions()`, `getImpulseResponseLength()` and `getSpectraMemoryBytes()` for printing tables.
+- `makeSyntheticImpulseResponse(sr, rt60, nch, seed)`: the exponentially decaying noise IR of section 2.10, with length 1.1 × RT60.
 
-### 3.4 範例
+### 3.4 The examples
 
-所有範例都不帶參數執行，WAV 輸出在 build 目錄的 `dawlab_output/`。建置與執行：
+All examples run with no arguments, and the WAV output goes to `dawlab_output/` in the build directory. To build and run:
 
 ```powershell
-.\scripts\build.ps1 -Only 12-reverb                  # 建置（Debug）+ 跑全部 ctest
+.\scripts\build.ps1 -Only 12-reverb                  # build (Debug) + run all ctest tests
 cd build
-.\bin\Debug\l12_comb_rt60.exe                        # 手動執行（工作目錄要是 build 目錄）
+.\bin\Debug\l12_comb_rt60.exe                        # run by hand (the working directory must be the build directory)
 ```
 
-範例 3 的執行時間與加速比是 **Release build** 的數字（Debug build 沒有最佳化，加速比只有約 20 倍）。要重現書上的數字：
+The running time and speedup of example 3 are **Release build** numbers (a Debug build has no optimization and the speedup is only about 15–20 times). To reproduce the numbers in the text:
 
 ```powershell
-.\scripts\build.ps1 -Only 12-reverb -Config Release   # Release 建置 + 跑 ctest
+.\scripts\build.ps1 -Only 12-reverb -Config Release   # Release build + run ctest
 cd build
 .\bin\Release\l12_convolution_reverb.exe
 ```
 
-#### 範例 1：`l12_comb_rt60`（`examples/comb_rt60.cpp`）
+#### Example 1: `l12_comb_rt60` (`examples/comb_rt60.cpp`)
 
-用 D = 1557（Freeverb 的一條 comb 長度）驗證 2.3 節的所有公式。實際輸出（節錄）：
+Uses D = 1557 (the length of one of Freeverb's combs) to verify all the formulas of section 2.3. Actual output (excerpt):
 
 ```
---- RT60 驗證（impulse response 的第 k 個 echo = g^(k-1)）---
- RT60(s)          g 預期圈數k-1 衰減-60dB(s) 回歸估計(s)
+--- RT60 verification (the k-th echo of the impulse response = g^(k-1)) ---
+ RT60(s)          g   rounds k-1  -60dB time(s)  regression(s)
     0.50    0.63881           16          0.519          0.519
     1.00    0.79926           31          1.006          0.965
     2.00    0.89401           62          2.011          2.037
     4.00    0.94552          124          4.022          4.018
 
---- 頻率響應（g = 0.8940）---
-理論 peak = 1/(1-g) = +19.49 dB，notch = 1/(1+g) = -5.55 dB
-  f = 10.0 × fs/D =   308.29 Hz :  +19.49 dB  (peak)
-  f = 10.5 × fs/D =   323.70 Hz :   -5.55 dB  (notch)
+--- Frequency response (g = 0.8940) ---
+Theoretical peak = 1/(1-g) = +19.49 dB, notch = 1/(1+g) = -5.55 dB
+  f = 10.0 x fs/D =   308.29 Hz :  +19.49 dB  (peak)
+  f = 10.5 x fs/D =   323.70 Hz :   -5.55 dB  (notch)
 
---- Schroeder allpass（D = 556, g = 0.5）的振幅響應 ---
+--- Magnitude response of a Schroeder allpass (D = 556, g = 0.5) ---
        100 Hz :  +0.00 dB   ...   12000 Hz :  +0.00 dB
 
---- damping 對各頻率 RT60 的影響 ---
+--- Effect of damping on the RT60 at each frequency (two 0.2 s windows, at 0.1 s and 0.9 s) ---
   freq(Hz)       damp=0     damp=0.5
      246.6        1.999        1.982
      986.5        1.999        1.745
@@ -631,23 +633,23 @@ cd build
     8015.4        1.999        0.339
 ```
 
-- 「衰減 −60dB」從第一個 echo（t = D/fs，振幅 1）起算：第 k 個 echo 的振幅是 $g^{k-1}$，找第一個振幅 ≤ 10⁻³ 的 echo，衰減時間 = 圈數 (k − 1) × D/fs。RT60 = 2 s 時 k − 1 = ⌈61.65⌉ = 62 圈 → 2.011 s，被量化到 D/fs = 32.4 ms 的整數倍，所以略大於設定值。如果看絕對時間，那個 echo（第 63 個）出現在 63 × D/fs = 2.044 s，多出來的 D/fs 是第一個 echo 本身的傳播延遲，不算衰減。
-- damp = 0.5 時 4 kHz 的 RT60 = 0.685 s，與 2.3 節的手算一致。
-- 輸出 `l12_comb_ir.wav`（RT60 2 s 的 comb IR：一串每 32 ms 一個、越來越小的 click，像 flutter echo）、`l12_comb_damped_ir.wav`（click 越來越悶）。
+- The "-60dB time" is counted from the first echo (t = D/fs, amplitude 1): the amplitude of the k-th echo is $g^{k-1}$; find the first echo whose amplitude is ≤ 10⁻³, and the decay time = the number of trips (k − 1) × D/fs. For RT60 = 2 s, k − 1 = ⌈61.65⌉ = 62 trips -> 2.011 s, quantized to an integer multiple of D/fs = 32.4 ms, hence slightly above the set value. In absolute time that echo (the 63rd) appears at 63 × D/fs = 2.044 s; the extra D/fs is the propagation delay of the first echo itself and does not count as decay.
+- With damp = 0.5 the RT60 at 4 kHz is 0.685 s, which agrees with the hand calculation in section 2.3.
+- It writes `l12_comb_ir.wav` (the comb IR for RT60 2 s: a train of clicks every 32 ms, each one quieter, like a flutter echo) and `l12_comb_damped_ir.wav` (the clicks get duller and duller).
 
-#### 範例 2：`l12_reverb_impulse`（`examples/reverb_impulse.cpp`）
+#### Example 2: `l12_reverb_impulse` (`examples/reverb_impulse.cpp`)
 
-把 impulse 餵進 `Reverb`（mix = 1、damping 關閉），印出 8 條線的長度與 $g_i$、RT60 設定 vs 量測、ASCII 衰減曲線、echo density、damping 與 freeze 的效果。實際輸出（節錄）：
+Feeds an impulse into `Reverb` (mix = 1, damping off) and prints the lengths and $g_i$ of the 8 lines, the set vs measured RT60, an ASCII decay curve, the echo density, and the effects of damping and freeze. Actual output (excerpt):
 
 ```
---- RT60 驗證（無 damping；windowed-RMS 回歸，-5 .. -35 dB 區段）---
- 設定(s)    量測(s)  誤差(%)
+--- RT60 verification (no damping; windowed-RMS regression over the -5 .. -35 dB range) ---
+    set(s)  measured(s)   error(%)
       0.50        0.505        0.9
       1.00        1.003        0.3
       2.00        2.004        0.2
       4.00        3.997       -0.1
 
-  RT60 = 2 s 的衰減曲線（左聲道，每 100 ms 的 RMS）：
+  Decay curve for RT60 = 2 s (left channel, RMS every 100 ms):
    t(s)   dB   |-60 dB                                   0 dB|
    0.00   -0.5  |################################################# |
    0.10    0.0  |##################################################|
@@ -657,123 +659,123 @@ cd build
    1.50  -42.2  |##############                                    |
    2.10  -60.1  |                                                  |
 
---- echo density：每 10 ms 內 |h[n]| > 1e-4 的 sample 數 ---
+--- Echo density: number of samples with |h[n]| > 1e-4 in each 10 ms (diffusion quickly drives it toward 480 = completely full) ---
       0   0   1   6  27  71 145 231 319 398
 
---- damping = 4 kHz（RT60 設定 2 s）---
-  寬頻 RT60 量測 = 1.487 s
-  freq(Hz)  無damping(s)   damping4k(s)
+--- damping = 4 kHz (RT60 set to 2 s) ---
+  Measured broadband RT60 = 1.487 s (shorter than the set value: the highs vanish first, so the RMS curve gets steeper)
+  freq(Hz)  no damping(s)   damping4k(s)
        250          1.865          1.852
       1000          1.998          1.634
       4000          1.969          0.771
       8000          2.078          0.446
 
---- freeze（0.2 s 時凍結；RT60 原本 1 s）---
-  RMS @0.5s = 0.00488, RMS @1.6s = 0.00489, 差 = +0.02 dB
+--- Freeze (frozen at 0.2 s; the RT60 was originally 1 s) ---
+  RMS @0.5s = 0.00488, RMS @1.6s = 0.00489, difference = +0.02 dB (without freeze it would drop 66 dB over 1.1 s)
 ```
 
-- 衰減曲線每 100 ms 掉約 3 dB = 60 dB / 2 s，是一條直線（指數衰減）。開頭 0–0.1 s 是 echo 正在建立（build-up）。
-- 前 29.7 ms 完全沒有輸出：最短的 delay 線是 1427 samples（29.7 ms），第一個 echo 要繞完它才出來 —— 這就是 FDN 本身的「天然 pre-delay」（size 越大越長）。
-- 「每頻帶 RT60」是在 ±12% 頻帶內加總能量後比較兩個時間窗；沒有 damping 時各頻帶都在 2 s 附近（±7%，FDN 的 mode 讓窄頻帶的量測有起伏），有 damping 時高頻明顯變短。
-- 輸出 `l12_fdn_ir_2s.wav`、`l12_fdn_ir_damped.wav`、`l12_fdn_ir_frozen.wav`。聽：平滑、沒有 flutter 的尾巴；damped 版本像鋪了地毯；frozen 版本是一團不散的 pad。
+- The decay curve drops about 3 dB every 100 ms = 60 dB / 2 s, a straight line (exponential decay). The first 0–0.1 s is the echoes building up (build-up).
+- There is no output at all in the first 29.7 ms: the shortest delay line is 1427 samples (29.7 ms), and the first echo only emerges after travelling around it -- this is the FDN's own "natural pre-delay" (the larger the size, the longer it is).
+- The "per-band RT60" sums the energy within a ±12% band and compares two time windows; without damping every band is around 2 s (±7%; the modes of the FDN make measurements in narrow bands fluctuate), and with damping the highs are clearly shorter.
+- It writes `l12_fdn_ir_2s.wav`, `l12_fdn_ir_damped.wav` and `l12_fdn_ir_frozen.wav`. What you should hear: a smooth tail with no flutter; the damped version sounds like a carpeted room; the frozen version is a pad that never dissipates.
 
-#### 範例 3：`l12_convolution_reverb`（`examples/convolution_reverb.cpp`）
+#### Example 3: `l12_convolution_reverb` (`examples/convolution_reverb.cpp`)
 
-1. 合成 RT60 = 0.3 s 的 stereo IR（15840 samples、31 個 partition），用直接卷積與 `ConvolutionReverb` 處理 1 秒的 pluck sequence，比較誤差、速度與 latency。
-2. 用 RT60 = 2 s 的 IR 處理 4 秒的 pluck sequence（mix = 0.35），輸出 WAV。
+1. Synthesize a stereo IR with RT60 = 0.3 s (15840 samples, 31 partitions), process 1 second of a pluck sequence with both direct convolution and `ConvolutionReverb`, and compare the error, speed and latency.
+2. Process 4 seconds of a pluck sequence with an IR of RT60 = 2 s (mix = 0.35) and write the WAVs.
 
-Release build（3.4 節的 `-Config Release` 指令）的實際輸出（節錄；時間會隨機器與每次執行而變動，加速比約在 115–140 倍之間。Debug build 慢很多：直接卷積約 3.7 s、partitioned 約 0.18 s（約 20 倍），4 s 音訊配 2 s IR 要約 2.0 s，只剩約 2 倍即時）：
+Actual output of a Release build (the `-Config Release` command of section 3.4) (excerpt; the timings vary with the machine and from run to run, and the speedup lies between about 110 and 140 times. A Debug build is much slower: direct convolution takes several seconds, partitioned about 0.4 s (about 15–20 times), and 4 s of audio with a 2 s IR takes several seconds, only about 1–2 times real time):
 
 ```
 partition size P = 512, FFT size N = 2P = 1024, latency = 512 samples (10.67 ms)
-直接卷積      :    760.2 ms（1.52e+09 次乘加）
-partitioned   :      6.3 ms（約 3.01e+06 次 complex 乘加 + 376 次 FFT）
-加速比        : 120.5 x
-最大誤差      : 1.788e-07（訊號 peak 0.695 → -100.0 dB 以下）
-前 512 個輸出的 peak = 0.000e+00（latency 期間輸出必須是 0）
+direct convolution :    918.4 ms (1.52e+09 multiply-adds)
+partitioned        :      8.1 ms (about 3.01e+06 complex multiply-adds + 376 FFTs)
+speedup            : 113.6 x
+max error          : 1.788e-07 (signal peak 0.695 -> below -100.0 dB)
+peak of the first 512 outputs = 0.000e+00 (the output must be 0 during the latency)
 
---- 長 IR（RT60 = 2.0 s → 105600 samples，207 個 partition）---
-頻譜記憶體：IR 頻譜 + FDL = 3.24 MiB（每個 partition 513 個 complex<float> bin）
-IR 能量 Σh² = 1.0000（合成 IR 正規化成 1）, IR peak = 0.027
-處理 4.0 s 音訊花 91.0 ms（即時倍率 44 x）
+--- Long IR (RT60 = 2.0 s -> 105600 samples, 207 partitions) ---
+Spectrum memory: IR spectra + FDL = 3.24 MiB (513 complex<float> bins per partition)
+IR energy sum(h^2) = 1.0000 (the synthetic IR is normalized to 1), IR peak = 0.027
+Processing 4.0 s of audio took 108.8 ms (37 x real time)
 ```
 
-- 誤差 ≈ 1.8 × 10⁻⁷，是 float FFT 的捨入誤差等級（相對訊號 −100 dB 以下），證明 partitioned 的結果**就是**卷積。
-- 前 P = 512 個輸出全為 0：latency 正好等於 P。
-- 輸出 `l12_conv_ir.wav`（合成 IR：一聲「噗」接著雜訊尾巴）、`l12_conv_dry.wav`、`l12_conv_wet.wav`（mix = 0.35；裡面的 dry 也延遲了 P = 512 個 sample，和 wet 對齊，所以整個檔案比 `l12_conv_dry.wav` 晚 10.67 ms）。聽：pluck 之間被平滑的尾巴連起來，沒有 metallic ringing（IR 本身就是雜訊，沒有規律的 mode）。
+- The error ≈ 1.8 × 10⁻⁷ is at the level of the rounding error of a float FFT (below -100 dB relative to the signal), which proves that the result of the partitioned algorithm **is** the convolution.
+- The first P = 512 outputs are all 0: the latency is exactly P.
+- It writes `l12_conv_ir.wav` (the synthetic IR: a "thump" followed by a noisy tail), `l12_conv_dry.wav` and `l12_conv_wet.wav` (mix = 0.35; the dry inside it is also delayed by P = 512 samples to line up with the wet, so the whole file is 10.67 ms later than `l12_conv_dry.wav`). What you should hear: the plucks are joined by a smooth tail, with no metallic ringing (the IR itself is noise, with no regular modes).
 
-#### 範例 4：`l12_send_return`（`examples/send_return.cpp`）
+#### Example 4: `l12_send_return` (`examples/send_return.cpp`)
 
-drum loop 與 pluck 兩軌共用一條 reverb bus（`Reverb`：mix 1、RT60 1.6 s、pre-delay 20 ms、damping 5 kHz、size 0.6）。實際輸出：
+The drum loop and the pluck, two tracks, share one reverb bus (`Reverb`: mix 1, RT60 1.6 s, pre-delay 20 ms, damping 5 kHz, size 0.6). Actual output:
 
 ```
-dry 兩軌相加           : RMS 0.1127, peak 0.784
+dry, two tracks summed : RMS 0.1127, peak 0.784
 post-fader, fader 0 dB : master RMS 0.1344, peak 0.871, return(wet) RMS 0.0752
-post-fader, fader -12dB: return RMS 0.0189（相對 0 dB 時 -12.00 dB → 跟著 fader 掉）
-pre-fader,  fader -inf : return RMS 0.0752（相對 0 dB 時 +0.00 dB → 不受 fader 影響）, master = 純殘響
+post-fader, fader -12dB: return RMS 0.0189 (-12.00 dB relative to 0 dB -> follows the fader down)
+pre-fader,  fader -inf : return RMS 0.0752 (+0.00 dB relative to 0 dB -> unaffected by the fader), master = reverb only
 ```
 
-輸出 `l12_send_dry.wav`、`l12_send_mix.wav`（dry + return）、`l12_send_prefader.wav`（只剩殘響）。聽：mix 版本多了空間感但鼓的 transient 還在（20 ms pre-delay 的功勞）；prefader 版本只有「房間的聲音」。
+It writes `l12_send_dry.wav`, `l12_send_mix.wav` (dry + return) and `l12_send_prefader.wav` (reverb only). What you should hear: the mix version gains a sense of space while the drum transients remain (thanks to the 20 ms pre-delay); the prefader version contains only "the sound of the room".
 
 ---
 
-## 4. Real-time 注意事項
+## 4. Real-time considerations
 
-- **Allocation**：`Reverb::prepare()`、`ConvolutionReverb::prepare()` / `setImpulseResponse()`、`TappedDelay::setTaps()` 會 allocate，只能在非 audio thread 呼叫。其他 setter 與 `process()` 都不 allocate、不 lock、不 throw。
-- **換 IR**：`setImpulseResponse()` 不可以和 `process()` 同時執行。真正的 plugin 做法是在背景 thread 準備好「新的一組 IR 頻譜」，再用 atomic 指標交換（舊的那組延後到非 audio thread 釋放），必要時兩組輸出交叉淡化，避免切換時 click。本章為了清楚沒有做這一層。
-- **CPU 尖峰**：uniform partitioned convolution 的所有工作都在「收滿 P 個 sample」的那一刻做。如果 host block = 128、P = 512，每 4 個 callback 才有一個要做全部的 FFT 與 K 次頻譜乘加 —— 平均 CPU 很低，但最壞情況的那個 callback 決定會不會掉音。這是 `prepare()` 讓 P ≥ maxBlockSize 的原因之一，也是 non-uniform partition 要把大 FFT 分散到多個 callback 的原因。
-- **`Fft` 物件不可共用**：第 11 章的 `Fft::forwardReal()` 使用內部 scratch buffer，同一個物件不能同時被兩個 thread 使用。每個 `ConvolutionReverb` 有自己的 `Fft`。
-- **Denormal**：遞迴結構的尾巴最後會衰減到 denormal 範圍，CPU 可能暴增數十倍。`ReverbBuildingBlocks.h` 的 `flushDenormal()` 把 |x| < 10⁻²⁰ 直接變 0，FDN 寫回 delay 線前也會 flush；`OnePole` 本身也有 flush。在 plugin 裡還應該在 callback 開頭設定 FTZ/DAZ（JUCE 的 `ScopedNoDenormals`）。
-- **參數平滑**：`setMix()`、`setWidth()`、`setPreDelayMs()`、`setSize()` 都會平滑（約 30 ms 時間常數）。`setSize()` 與 pre-delay 的變化本質上是 delay 長度在滑動 → 短暫的音高變化（Doppler），比 click 好得多，但不要拿來做快速自動化。`setDecaySeconds()` 立即生效（只改變衰減率，不會 click）。
-- **`reset()` 會讓平滑值直接跳到目標**：reset 之後內部沒有任何聲音，跳值不會 click。所以離線處理時的慣用順序是 `prepare()` → 各種 setter → `reset()`，第一個 sample 起參數就到位（否則前 ~0.1 s 會從預設值滑過來，例如 mix 從 0.3 滑到 1，漏出 dry）。
-- **Latency 回報**：`ConvolutionReverb::getLatencySamples()` = P。內建的 dry/wet mix 已經把 dry 也延遲 P（3.3 節），所以不論 mix 多少，整個輸出的 latency 都一致是 P；但 host 仍然必須做延遲補償，否則和其他軌或 send/return 的 dry 訊號平行混音時，這一路會晚 P 個 sample。`Reverb`（FDN）沒有 latency。
-- **NaN 參數**：`std::clamp(NaN, lo, hi)` 會原樣回傳 NaN。如果 setter 只靠 clamp，一個 NaN 參數（例如 host automation 出錯）就會讓 $g_i$ 或 mix 變 NaN，輸出永久變 NaN，連 `reset()` 都救不回來（reset 只是把平滑值設成已經是 NaN 的目標）。本章所有 setter 都和 `OnePole`、`Delay` 一樣，開頭先 `if (std::isnan(x)) return;`。
-- **Freeze 的安全性**：freeze 時 $g_i = 1$，只有在矩陣嚴格正交時才不會發散。不要在 freeze 時打開 damping 以外的增益（或把 A 換成非正交矩陣），float 誤差也可能慢慢累積 —— 實務上可以讓 freeze 的 g 是 0.99999 而不是 1。
+- **Allocation**: `Reverb::prepare()`, `ConvolutionReverb::prepare()` / `setImpulseResponse()` and `TappedDelay::setTaps()` allocate and may only be called off the audio thread. The other setters and `process()` do not allocate, lock or throw.
+- **Swapping the IR**: `setImpulseResponse()` must not run at the same time as `process()`. The real-plugin approach is to prepare "a new set of IR spectra" on a background thread and then swap it in through an atomic pointer (the old set is released later, off the audio thread), crossfading the two outputs when necessary to avoid a click at the switch. For clarity this chapter does not implement that layer.
+- **CPU spikes**: all the work of uniform partitioned convolution is done at the moment "P samples have been collected". If the host block = 128 and P = 512, only one callback in four has to do all the FFT work and the K spectrum multiply-accumulates -- the average CPU is very low, but the worst-case callback decides whether the audio drops out. This is one reason `prepare()` makes P ≥ maxBlockSize, and it is why non-uniform partitioning spreads the large FFTs over several callbacks.
+- **`Fft` objects cannot be shared**: chapter 11's `Fft::forwardReal()` uses an internal scratch buffer, so one object cannot be used by two threads at the same time. Each `ConvolutionReverb` has its own `Fft`.
+- **Denormals**: the tail of a recursive structure eventually decays into the denormal range, and the CPU load can jump by tens of times. `flushDenormal()` in `ReverbBuildingBlocks.h` turns |x| < 10⁻²⁰ straight into 0, and the FDN also flushes before writing back to the delay lines; `OnePole` has a flush as well. In a plugin you should also set FTZ/DAZ at the start of the callback (JUCE's `ScopedNoDenormals`).
+- **Parameter smoothing**: `setMix()`, `setWidth()`, `setPreDelayMs()` and `setSize()` are all smoothed (about a 30 ms time constant). A change of `setSize()` or the pre-delay is essentially a delay length sliding -> a brief pitch change (Doppler), which is far better than a click, but do not use it for fast automation. `setDecaySeconds()` takes effect immediately (it only changes the decay rate and does not click).
+- **`reset()` makes the smoothed values jump straight to their targets**: after a reset there is no sound inside, so the jump cannot click. The usual order for offline processing is therefore `prepare()` -> the various setters -> `reset()`, and the parameters are in place from the first sample (otherwise the first ~0.1 s would glide in from the defaults, e.g. mix gliding from 0.3 to 1 and leaking the dry signal).
+- **Latency reporting**: `ConvolutionReverb::getLatencySamples()` = P. The built-in dry/wet mix already delays the dry signal by P as well (section 3.3), so whatever the mix, the latency of the whole output is uniformly P; but the host must still apply latency compensation, otherwise this path would be P samples late when mixed in parallel with other tracks or with the dry signal of a send/return. `Reverb` (the FDN) has no latency.
+- **NaN parameters**: `std::clamp(NaN, lo, hi)` returns the NaN unchanged. If a setter relies on clamp alone, a single NaN parameter (e.g. a faulty host automation) turns $g_i$ or mix into NaN, the output becomes NaN permanently, and even `reset()` cannot rescue it (reset just sets the smoothed values to a target that is already NaN). All setters in this chapter, like those of `OnePole` and `Delay`, start with `if (std::isnan(x)) return;`.
+- **Safety of freeze**: with freeze, $g_i = 1$, which only avoids divergence if the matrix is strictly orthogonal. Do not enable gains other than damping while frozen (or swap A for a non-orthogonal matrix); float errors can also accumulate slowly -- in practice you can make the frozen g 0.99999 instead of 1.
 
 ---
 
-## 5. 常見錯誤與除錯
+## 5. Common mistakes and debugging
 
-| 症狀 | 可能原因 | 怎麼查 / 怎麼修 |
+| Symptom | Possible cause | How to check / fix |
 |---|---|---|
-| 殘響越來越大聲、最後爆掉（NaN / 滿格雜訊） | 某條線 g ≥ 1；矩陣不是正交（例如 Householder 寫成 1/N 而不是 2/N）；damping filter 在某些頻率增益 > 1 | 用 `hasNanOrInf()` 檢查；把 g 設 1、關 damping，量 IR 的 RMS 是否維持不變（練習 4 的 lossless 測試） |
-| 量到的 RT60 和設定值差很多 | 迴路長度 off-by-one（先讀後寫要讀 L − 1）；g 公式用了錯的 D（例如 ms 而不是 samples）；迴路裡的 damping 在「沒開」時其實還在（cutoff 20 kHz 的 one-pole 在 Nyquist 仍有 −1.3 dB，每圈累積） | 用 `measureRt60()` 或練習 6 的 Schroeder 法量；關掉 damping 時要真的 bypass |
-| 尾巴有明顯音高、「金屬聲」、「嗡嗡」 | delay 長度有公因數或成整數比；線太少 / 總長度太短（mode 密度不夠）；diffuser 的 g 太大 | delay 取質數；增加線數或長度；加 modulation |
-| 規律的 flutter echo（「噠噠噠」） | 只有 comb 沒有 diffusion；或 delay 長度太接近 | 輸入加 allpass diffusion；拉開 delay 長度的分布 |
-| 開頭有一聲 dry 的「啪」漏出來（mix = 1 時） | mix 從預設值平滑滑過來 | 設定參數後呼叫 `reset()` |
-| 改 size 時有 click | delay 長度直接跳（整數 delay 突然改變） | 長度要平滑變化並用 fractional read |
-| Convolution 輸出有週期性的「咔咔」或 aliasing 般的雜訊 | overlap-save 留錯半邊、FFT 長度不夠（N < 2P）造成 circular wrap；IR 段沒有補零 | 和直接卷積逐 sample 比對（範例 3 的作法），誤差應該在 10⁻⁶ 以下 |
-| Convolution wet 和 dry 對不齊、平行混音時音色變薄（間距 fs/P 的 comb filtering） | 內部 mix 只延遲了 wet、dry 沒延遲；或在外面自己拿 mix = 1 的 wet 和未延遲的 dry 相加 | 內部 mix 的 dry 要取 P 個 sample 前的輸入（3.3 節）；外部平行混音用 `getLatencySamples()` 把 dry 也延遲 P，或讓 host 做 PDC |
-| 某次自動化之後輸出永久變 NaN，`reset()` 也救不回來 | setter 只用 `std::clamp`，NaN 直接穿過去 | setter 開頭 `if (std::isnan(x)) return;` |
-| Freeze 的尾巴還是慢慢變暗、變小 | freeze 時 delay 讀取位置仍在小數點上（modulation 沒停、或長度平滑卡在離目標一點點的地方），linear interpolation 每圈都是 lowpass | freeze 時把 modulation 淡出，長度平滑在接近目標時吸附到整數 |
-| Convolution reverb 大聲到爆 | IR 沒有正規化（錄來的 IR 能量可能很大） | 正規化成單位能量，或量 wet 的 RMS 再調整 |
-| 播完之後 CPU 越來越高 | denormal | flush denormal、FTZ/DAZ |
-| Stereo 的 reverb 在 mono 播放時變小聲或變空洞 | 左右 wet 太去相關、甚至反相 | 用 width 控制；在 mono 下檢查 |
+| The reverb gets louder and louder and finally blows up (NaN / full-scale noise) | Some line has g ≥ 1; the matrix is not orthogonal (e.g. Householder written with 1/N instead of 2/N); the damping filter has gain > 1 at some frequencies | Check with `hasNanOrInf()`; set g to 1 and turn damping off, and see whether the RMS of the IR stays constant (the lossless test of exercise 4) |
+| The measured RT60 differs a lot from the set value | Off-by-one in the loop length (read-before-write must read L − 1); the g formula uses the wrong D (e.g. ms instead of samples); the damping in the loop is actually still active when "off" (a one-pole with a 20 kHz cutoff still has −1.3 dB at Nyquist, which accumulates every trip) | Measure with `measureRt60()` or exercise 6's Schroeder method; when damping is off, really bypass it |
+| The tail has an obvious pitch, "metallic", "buzzing" | The delay lengths share common factors or are in integer ratios; too few lines / total length too short (insufficient mode density); the diffuser's g is too large | Use prime delay lengths; add lines or length; add modulation |
+| Regular flutter echo ("ta-ta-ta") | Only combs and no diffusion; or the delay lengths are too close together | Add allpass diffusion to the input; spread the delay lengths further apart |
+| A dry "clap" leaks out at the start (when mix = 1) | mix glides in from its default value | Call `reset()` after setting the parameters |
+| A click when size is changed | The delay length jumps directly (an integer delay changes suddenly) | The length must change smoothly with a fractional read |
+| The convolution output has periodic "clicking" or aliasing-like noise | overlap-save keeps the wrong half; the FFT length is too short (N < 2P) causing circular wrap; the IR segments are not zero-padded | Compare sample by sample with direct convolution (as in example 3); the error should be below 10⁻⁶ |
+| Convolution wet and dry are misaligned, and the timbre thins out in a parallel mix (comb filtering with spacing fs/P) | The internal mix delays only wet and not dry; or externally you add a mix = 1 wet to an undelayed dry yourself | The dry in the internal mix must be taken from the input P samples ago (section 3.3); for external parallel mixing, use `getLatencySamples()` to delay the dry by P too, or let the host do PDC |
+| After some automation the output is permanently NaN and `reset()` does not help | The setter uses only `std::clamp` and the NaN passes straight through | Start the setter with `if (std::isnan(x)) return;` |
+| The freeze tail still gets slowly darker and quieter | While frozen, the delay read positions are still at fractional values (modulation not stopped, or the length smoothing is stuck a little short of the target), and linear interpolation is a lowpass on every trip | Fade the modulation out when frozen, and snap the length smoothing to an integer when it is near the target |
+| The convolution reverb is deafeningly loud | The IR is not normalized (the energy of a recorded IR can be very large) | Normalize to unit energy, or measure the RMS of wet and adjust |
+| The CPU gets higher and higher after playback ends | Denormals | Flush denormals, FTZ/DAZ |
+| A stereo reverb gets quieter or hollow when played in mono | The left and right wet signals are too decorrelated, or even out of phase | Control it with width; check in mono |
 
 ---
 
-## 6. 練習題
+## 6. Exercises
 
-見 [exercises/README.md](exercises/README.md)。共 7 題：comb feedback 計算、互質 delay 觀念、early reflections（image-source + tapped delay）、FDN modulation、gated reverb、Schroeder backward integration 估 RT60、partitioned convolution 的 latency 與成本。解答在 [solutions/README.md](solutions/README.md)。
-
----
-
-## 7. 延伸閱讀
-
-- M. R. Schroeder, "Natural Sounding Artificial Reverberation," *Journal of the Audio Engineering Society*, vol. 10, no. 3, 1962. —— comb + allpass 架構的原始論文。
-- M. R. Schroeder, "New Method of Measuring Reverberation Time," *Journal of the Acoustical Society of America*, vol. 37, 1965. —— backward integration（練習 6）。
-- J.-M. Jot and A. Chaigne, "Digital Delay Networks for Designing Artificial Reverberators," AES 90th Convention, 1991. —— FDN 的系統化設計、$g_i = \gamma^{L_i}$、absorptive filter。
-- J. Dattorro, "Effect Design, Part 1: Reverberator and Other Filters," *JAES*, vol. 45, no. 9, 1997. —— 經典的 plate reverb 拓樸（本章 input diffuser 的長度取自這裡）。
-- V. Välimäki, J. D. Parker, L. Savioja, J. O. Smith, J. S. Abel, "Fifty Years of Artificial Reverberation," *IEEE Transactions on Audio, Speech, and Language Processing*, vol. 20, no. 5, 2012. —— 很好的綜述。
-- Julius O. Smith III, *Physical Audio Signal Processing*（CCRMA 線上書）—— Schroeder reverb、Freeverb、FDN 的章節，有詳細推導。
-- W. G. Gardner, "Efficient Convolution without Input-Output Delay," *JAES*, vol. 43, no. 3, 1995. —— non-uniform partitioned convolution。
-- A. Farina, "Simultaneous Measurement of Impulse Response and Distortion with a Swept-Sine Technique," AES 108th Convention, 2000. —— 現代 IR 量測方法。
-- J. B. Allen and D. A. Berkley, "Image Method for Efficiently Simulating Small-Room Acoustics," *JASA*, vol. 65, no. 4, 1979. —— image-source 法（練習 3）。
-- Heinrich Kuttruff, *Room Acoustics*（Spon Press / CRC）—— 殘響的物理、Sabine / Eyring 公式、echo density。
-- Will Pirkle, *Designing Audio Effect Plugins in C++*（2nd ed., Routledge, 2019）—— reverb 章節有完整的 plugin 實作。
+See [exercises/README.md](exercises/README.md). There are 7 in total: comb feedback computation, the idea of coprime delays, early reflections (image-source + tapped delay), FDN modulation, gated reverb, estimating RT60 with Schroeder backward integration, and the latency and cost of partitioned convolution. The solutions are in [solutions/README.md](solutions/README.md).
 
 ---
 
-## 8. 下一章
+## 7. Further reading
 
-到這裡，我們已經有了一整套純 C++、可離線測試的 DSP 元件；[第 13 章](../13-vst-hosting/README.md)要進入 JUCE：把第 04 章的 `Compressor` 包成 VST3 plugin，並寫出能在自己的程式裡載入、執行第三方 VST3 的 hosting 程式碼。
+- M. R. Schroeder, "Natural Sounding Artificial Reverberation," *Journal of the Audio Engineering Society*, vol. 10, no. 3, 1962. -- the original paper on the comb + allpass architecture.
+- M. R. Schroeder, "New Method of Measuring Reverberation Time," *Journal of the Acoustical Society of America*, vol. 37, 1965. -- backward integration (exercise 6).
+- J.-M. Jot and A. Chaigne, "Digital Delay Networks for Designing Artificial Reverberators," AES 90th Convention, 1991. -- the systematic design of FDNs, $g_i = \gamma^{L_i}$, absorptive filters.
+- J. Dattorro, "Effect Design, Part 1: Reverberator and Other Filters," *JAES*, vol. 45, no. 9, 1997. -- the classic plate reverb topology (this chapter's input diffuser lengths are taken from here).
+- V. Välimäki, J. D. Parker, L. Savioja, J. O. Smith, J. S. Abel, "Fifty Years of Artificial Reverberation," *IEEE Transactions on Audio, Speech, and Language Processing*, vol. 20, no. 5, 2012. -- an excellent survey.
+- Julius O. Smith III, *Physical Audio Signal Processing* (CCRMA online book) -- chapters on the Schroeder reverb, Freeverb and FDNs, with detailed derivations.
+- W. G. Gardner, "Efficient Convolution without Input-Output Delay," *JAES*, vol. 43, no. 3, 1995. -- non-uniform partitioned convolution.
+- A. Farina, "Simultaneous Measurement of Impulse Response and Distortion with a Swept-Sine Technique," AES 108th Convention, 2000. -- the modern IR measurement method.
+- J. B. Allen and D. A. Berkley, "Image Method for Efficiently Simulating Small-Room Acoustics," *JASA*, vol. 65, no. 4, 1979. -- the image-source method (exercise 3).
+- Heinrich Kuttruff, *Room Acoustics* (Spon Press / CRC) -- the physics of reverberation, the Sabine / Eyring formulas, echo density.
+- Will Pirkle, *Designing Audio Effect Plugins in C++* (2nd ed., Routledge, 2019) -- the reverb chapter has a complete plugin implementation.
+
+---
+
+## 8. Next chapter
+
+By now we have a complete set of pure C++ DSP components that can be tested offline; [chapter 13](../13-vst-hosting/README.md) moves on to JUCE: wrapping chapter 04's `Compressor` into a VST3 plugin, and writing hosting code that can load and run third-party VST3 plugins inside our own program.

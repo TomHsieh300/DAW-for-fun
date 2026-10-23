@@ -1,18 +1,19 @@
-// 練習 4 解答：為 FDN 加 modulation，量化 metallic ringing
+// Exercise 4 solution: add modulation to an FDN and quantify metallic ringing
 //
-// 自己寫一個 4 線 FDN（比 Reverb.h 的 8 線版本小，方便看清楚）：
+// We write our own 4-line FDN (smaller than the 8-line version in Reverb.h, so it is easier to see):
 //
-//   v_i = delay_i 的輸出（延遲 L_i + depth·sin(φ + i·π/2) 個 sample，用 readCubic 插值）
-//   u   = A·v，A = I - (2/N)·1·1ᵀ（Householder；Aᵀ A = I → 無損）
-//   delay_i ← g_i · lowpass_i(u_i) + x        g_i = 10^(-3·L_i/(RT60·fs))
+//   v_i = output of delay_i (delay L_i + depth*sin(phi + i*pi/2) samples, interpolated with readCubic)
+//   u   = A*v, A = I - (2/N)*1*1^T (Householder; A^T A = I -> lossless)
+//   delay_i <- g_i * lowpass_i(u_i) + x        g_i = 10^(-3*L_i/(RT60*fs))
 //   y   = v_0 - v_1 + v_2 - v_3
 //
-// 「metallic ringing」的量化：4 條線的 FDN 模態密度只有 Σ L_i / fs ≈ 0.14 個 mode / Hz（每 7 Hz 一個），
-// 尾巴的頻譜是一根根分開的尖峰 → 聽起來有音高、像敲金屬管。把 delay 長度緩慢調變，mode 的頻率
-// 會隨時間漂移，長時間平均下來頻譜就變平滑。這裡用「尾巴頻譜（dB）在 100 Hz .. 6 kHz 的標準差」
-// 當作 roughness 指標，modulation 開啟後應該明顯下降。
+// Quantifying "metallic ringing": the modal density of a 4-line FDN is only sum(L_i)/fs ~ 0.14 modes/Hz
+// (one mode every 7 Hz), so the spectrum of the tail is a set of separate sharp peaks -> it sounds pitched,
+// like striking a metal pipe. If the delay lengths are modulated slowly, the mode frequencies drift over
+// time and the long-term average spectrum becomes smooth. Here we use the "standard deviation of the tail
+// spectrum (in dB) over 100 Hz .. 6 kHz" as the roughness metric; with modulation on it should drop clearly.
 //
-// 輸出：dawlab_output/l12_ex4_fdn_static.wav、l12_ex4_fdn_modulated.wav（都是 impulse response）
+// Output: dawlab_output/l12_ex4_fdn_static.wav, l12_ex4_fdn_modulated.wav (both impulse responses)
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Fft.h>
@@ -43,7 +44,7 @@ public:
         const int maxDepth = msToSamples(kMaxDepthMs, sampleRate);
         int maxDelay = 0;
         for (int i = 0; i < kN; ++i) {
-            // 轉成 samples 後取下一個質數 → 互質
+            // Convert to samples and take the next prime -> the lengths are mutually coprime
             delay_[static_cast<size_t>(i)] = static_cast<float>(nextPrime(msToSamples(kBaseMs[static_cast<size_t>(i)], sampleRate)));
             maxDelay = std::max(maxDelay, static_cast<int>(delay_[static_cast<size_t>(i)]));
         }
@@ -68,13 +69,13 @@ public:
             gain_[static_cast<size_t>(i)] =
                 lossless_ ? 1.0f : CombFilter::feedbackForRt60(static_cast<int>(delay_[static_cast<size_t>(i)]), rt60, sampleRate_);
     }
-    // g_i = 1 且不 damping：用來驗證 Householder 矩陣真的無損
+    // g_i = 1 and no damping: used to verify that the Householder matrix really is lossless
     void setLossless(bool on) noexcept {
         lossless_ = on;
         setDecaySeconds(decaySeconds_);
     }
-    // >= 20 kHz 視為關閉 damping（就算 cutoff 20 kHz，one-pole 在 Nyquist 仍有 -1.3 dB，
-    // 每繞一圈都乘一次，累積起來會讓高頻 RT60 明顯變短）
+    // >= 20 kHz is treated as damping off (even with a 20 kHz cutoff the one-pole is still -1.3 dB at Nyquist,
+    // and that is applied once per trip around the loop, so it accumulates and clearly shortens the RT60 of the highs)
     void setDampingHz(float hz) noexcept {
         dampingHz_ = hz;
         dampingEnabled_ = hz < 20000.0f;
@@ -89,7 +90,7 @@ public:
     float getDelaySamples(int i) const noexcept { return delay_[static_cast<size_t>(i)]; }
 
     float processSample(float x) noexcept {
-        // 1. 讀 4 條線（含 modulation：每條線 LFO 相位差 90°）
+        // 1. Read the 4 lines (with modulation: the LFO phases of the lines are 90 degrees apart)
         phase_ += increment_;
         if (phase_ >= static_cast<float>(kTwoPi))
             phase_ -= static_cast<float>(kTwoPi);
@@ -97,11 +98,11 @@ public:
         float sum = 0.0f;
         for (int i = 0; i < kN; ++i) {
             const float mod = depth_ > 0.0f ? depth_ * std::sin(phase_ + static_cast<float>(i) * 1.5707964f) : 0.0f;
-            // 先讀後寫：readCubic(d) 回傳 d+1 個 sample 前寫入的值，所以讀 L_i - 1 → 迴路長度剛好 L_i
+            // Read before write: readCubic(d) returns the value written d+1 samples ago, so reading L_i - 1 makes the loop length exactly L_i
             v[static_cast<size_t>(i)] = lines_.readCubic(i, delay_[static_cast<size_t>(i)] - 1.0f + mod);
             sum += v[static_cast<size_t>(i)];
         }
-        // 2. Householder：u_i = v_i - (2/N)·Σv
+        // 2. Householder: u_i = v_i - (2/N)*sum(v)
         const float scale = 2.0f / static_cast<float>(kN);
         for (int i = 0; i < kN; ++i) {
             float u = v[static_cast<size_t>(i)] - scale * sum;
@@ -110,7 +111,7 @@ public:
             u = u * gain_[static_cast<size_t>(i)] + x;
             lines_.push(i, reverb_detail::flushDenormal(u));
         }
-        // 3. 輸出：正負交錯相加
+        // 3. Output: sum with alternating signs
         return v[0] - v[1] + v[2] - v[3];
     }
 
@@ -141,7 +142,7 @@ AudioBuffer impulseResponse(Fdn4& fdn, double seconds) {
     return ir;
 }
 
-// 尾巴頻譜的「粗糙度」：Hann window + FFT，取 fLo..fHi 的 bin，算 magnitude(dB) 的標準差
+// "Roughness" of the tail spectrum: Hann window + FFT, take the bins in fLo..fHi, and compute the standard deviation of the magnitude (dB)
 double spectralRoughnessDb(const float* x, int fftOrder, double fLo, double fHi) {
     Fft fft(fftOrder);
     const int n = fft.getSize();
@@ -170,16 +171,16 @@ double spectralRoughnessDb(const float* x, int fftOrder, double fLo, double fHi)
 } // namespace
 
 int main() {
-    std::printf("=== 練習 4：FDN 的 modulation 與 metallic ringing ===\n");
+    std::printf("=== Exercise 4: FDN modulation and metallic ringing ===\n");
 
     Fdn4 fdn;
     fdn.prepare(kSampleRate);
-    std::printf("delay 線長度（samples）：");
+    std::printf("Delay-line lengths (samples): ");
     for (int i = 0; i < Fdn4::kN; ++i)
         std::printf("%s%.0f", i ? ", " : "", fdn.getDelaySamples(i));
-    std::printf("（都是質數）\n");
+    std::printf(" (all prime)\n");
 
-    // ---- 1. Householder 無損驗證：g = 1、無 damping、無 modulation → 能量不衰減 -----------
+    // ---- 1. Householder losslessness check: g = 1, no damping, no modulation -> the energy does not decay -----------
     {
         fdn.setLossless(true);
         fdn.setModulation(0.0f, 1.0f);
@@ -187,50 +188,51 @@ int main() {
         const int w = secondsToSamples(0.5, kSampleRate);
         const float e1 = rms(ir.getReadPointer(0) + secondsToSamples(1.0, kSampleRate), w);
         const float e2 = rms(ir.getReadPointer(0) + secondsToSamples(2.5, kSampleRate), w);
-        std::printf("lossless：RMS @1.0s = %.4f, @2.5s = %.4f（差 %+.2f dB，應接近 0）\n", e1, e2, gainToDb(e2 / e1));
+        std::printf("lossless: RMS @1.0s = %.4f, @2.5s = %.4f (difference %+.2f dB, should be close to 0)\n", e1, e2,
+                    gainToDb(e2 / e1));
         DAWLAB_CHECK_NEAR(gainToDb(e2 / e1), 0.0, 1.0);
         DAWLAB_CHECK(!hasNanOrInf(ir));
         fdn.setLossless(false);
     }
 
-    // ---- 2. RT60 驗證（無 modulation）-------------------------------------------------
+    // ---- 2. RT60 verification (no modulation) ----------------------------------------
     fdn.setDecaySeconds(2.0f);
     fdn.setDampingHz(20000.0f);
     AudioBuffer irStatic = impulseResponse(fdn, 2.6);
     {
         const DecayMeasurement m = measureRt60(irStatic.getReadPointer(0), irStatic.getNumSamples(), kSampleRate, 20.0);
-        std::printf("RT60 設定 2.0 s → 量測 %.3f s\n", m.rt60Seconds);
+        std::printf("RT60 set to 2.0 s -> measured %.3f s\n", m.rt60Seconds);
         DAWLAB_CHECK(m.valid);
         DAWLAB_CHECK_NEAR(m.rt60Seconds, 2.0, 0.3);
     }
 
-    // ---- 3. modulation 對尾巴頻譜的影響 ------------------------------------------------
+    // ---- 3. Effect of modulation on the tail spectrum --------------------------------
     fdn.setModulation(1.0f, 1.3f);
     AudioBuffer irMod = impulseResponse(fdn, 2.6);
     {
         const int start = secondsToSamples(0.4, kSampleRate);
         const double rStatic = spectralRoughnessDb(irStatic.getReadPointer(0) + start, 14, 100.0, 6000.0);
         const double rMod = spectralRoughnessDb(irMod.getReadPointer(0) + start, 14, 100.0, 6000.0);
-        std::printf("尾巴頻譜 dB 標準差（0.4 s 起、16384 點 FFT、100 Hz..6 kHz）：static %.2f dB, modulated %.2f dB\n", rStatic,
-                    rMod);
+        std::printf("Std. dev. of the tail spectrum in dB (from 0.4 s, 16384-point FFT, 100 Hz..6 kHz): static %.2f dB, modulated %.2f dB\n",
+                    rStatic, rMod);
         DAWLAB_CHECK(rMod < rStatic - 1.0);
-        // modulation 不應明顯改變整體衰減
+        // Modulation should not noticeably change the overall decay
         const DecayMeasurement m = measureRt60(irMod.getReadPointer(0), irMod.getNumSamples(), kSampleRate, 20.0);
-        std::printf("modulated 的 RT60 量測 %.3f s\n", m.rt60Seconds);
+        std::printf("Measured RT60 of the modulated version: %.3f s\n", m.rt60Seconds);
         DAWLAB_CHECK_NEAR(m.rt60Seconds, 2.0, 0.4);
         DAWLAB_CHECK(!hasNanOrInf(irMod));
     }
     writeWav(outputPath("l12_ex4_fdn_static.wav"), irStatic, kSampleRate);
     writeWav(outputPath("l12_ex4_fdn_modulated.wav"), irMod, kSampleRate);
 
-    // ---- 4. 太深的 modulation：pitch wobble（只印數字，自己聽聽看）------------------------
+    // ---- 4. Too-deep modulation: pitch wobble (numbers only; listen for yourself) ---------
     {
         fdn.setModulation(4.0f, 1.3f);
         AudioBuffer deep = impulseResponse(fdn, 2.6);
         const int start = secondsToSamples(0.4, kSampleRate);
-        // 最大 pitch 偏移 = 2π·f_LFO·depth：1 ms → 0.82%（約 14 cents）；4 ms → 3.3%（約 56 cents）
+        // Maximum pitch deviation = 2*pi*f_LFO*depth: 1 ms -> 0.82% (about 14 cents); 4 ms -> 3.3% (about 56 cents)
         const double maxPitchDev = kTwoPi * 1.3 * 0.004;
-        std::printf("depth 4 ms：頻譜標準差 %.2f dB（更平，但最大 pitch 偏移 %.1f%% ≈ %.0f cents → 聽得到音高晃動）\n",
+        std::printf("depth 4 ms: spectrum std. dev. %.2f dB (flatter, but the maximum pitch deviation is %.1f%% = %.0f cents -> audible pitch wobble)\n",
                     spectralRoughnessDb(deep.getReadPointer(0) + start, 14, 100.0, 6000.0), maxPitchDev * 100.0,
                     1200.0 * std::log2(1.0 + maxPitchDev));
     }

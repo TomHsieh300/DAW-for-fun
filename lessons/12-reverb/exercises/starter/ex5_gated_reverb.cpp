@@ -1,15 +1,16 @@
-// 練習 5 起始碼：gated reverb
+// Exercise 5 starter: gated reverb
 //
-//   snare ──┬──────────────────────────────► dry
-//           │
-//           └─► Reverb（RT60 3 s, mix 1）──► Gate（sidechain = dry snare）──► wet
+//   snare --+------------------------------------> dry
+//           |
+//           +-> Reverb (RT60 3 s, mix 1) --> Gate (sidechain = dry snare) --> wet
 //
-// 目標：
-//   1. 設定 Gate：threshold -30 dB、hysteresis 6 dB、range -80 dB、attack 0.5 ms、hold 100 ms、release 30 ms。
-//   2. 逐 block 呼叫 gate.process(main, sidechain)：main = reverb 的 wet、sidechain = dry snare。
-//   3. self-check：門開時 gated ≈ ungated；門關後（0.40 .. 0.58 s）gated 比 ungated 低 40 dB 以上。
+// Goals:
+//   1. Configure the Gate: threshold -30 dB, hysteresis 6 dB, range -80 dB, attack 0.5 ms, hold 100 ms, release 30 ms.
+//   2. Call gate.process(main, sidechain) block by block: main = the reverb's wet signal, sidechain = the dry snare.
+//   3. Self-check: while the gate is open, gated ~ ungated; after the gate closes (0.40 .. 0.58 s), gated is
+//      more than 40 dB below ungated.
 //
-// 執行時 self-check 會印 FAIL，完成 TODO 後應該全部 PASS。
+// At run time the self-checks print FAIL; after you complete the TODOs they should all PASS.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Gate.h>
@@ -54,7 +55,7 @@ float rmsDbWindow(const AudioBuffer& b, double t0, double t1) {
 } // namespace
 
 int main() {
-    std::printf("=== 練習 5：gated reverb（起始碼）===\n");
+    std::printf("=== Exercise 5: gated reverb (starter) ===\n");
 
     AudioBuffer dry = makeSnareHits(2.4, 2);
     const int n = dry.getNumSamples();
@@ -65,7 +66,7 @@ int main() {
     reverb.setDecaySeconds(3.0f);
     reverb.setDampingHz(8000.0f);
     reverb.setSize(0.7f);
-    reverb.reset(); // 讓 mix = 1 立刻生效（否則前 ~0.1 s 會從預設 mix 0.3 滑過來）
+    reverb.reset(); // make mix = 1 take effect immediately (otherwise the first ~0.1 s would glide in from the default mix of 0.3)
 
     AudioBuffer wet = dry;
     for (int start = 0; start < n; start += kBlockSize)
@@ -74,11 +75,11 @@ int main() {
 
     Gate gate;
     gate.prepare(kSampleRate, kBlockSize, 2);
-    // TODO: 設定 gate 參數（threshold / hysteresis / range / attack / hold / release）
+    // TODO: set the gate parameters (threshold / hysteresis / range / attack / hold / release)
 
     for (int start = 0; start < n; start += kBlockSize) {
         const int len = std::min(kBlockSize, n - start);
-        // TODO: gate.process(wet 的 sub-block, dry 的 sub-block 當 sidechain)
+        // TODO: gate.process(a sub-block of wet, the matching sub-block of dry as the sidechain)
         (void)len;
     }
 

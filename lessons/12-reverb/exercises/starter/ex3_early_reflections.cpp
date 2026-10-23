@@ -1,17 +1,19 @@
-// 練習 3 起始碼：early reflections —— image-source 法算一階反射，餵進 TappedDelay
+// Exercise 3 starter: early reflections -- compute first-order reflections with the image-source method
+// and feed them into a TappedDelay
 //
-// 目標：
-//   1. 完成 firstOrderReflections()：對 shoebox 房間的 6 面牆各算一個 image source，
-//      轉成 TappedDelay::Tap（delay 相對直達音、gain 相對直達音），依 delay 排序。
-//   2. 完成 EarlyReflections::process()：用 TappedDelay 逐 sample 處理。
-//   3. 把 ER 與 Reverb（late）串起來處理 pluck sequence，輸出 WAV。
+// Goals:
+//   1. Complete firstOrderReflections(): compute one image source for each of the 6 walls of a shoebox room,
+//      convert each to a TappedDelay::Tap (delay relative to the direct sound, gain relative to the direct
+//      sound), and sort by delay.
+//   2. Complete EarlyReflections::process(): process sample by sample with TappedDelay.
+//   3. Chain the ER with Reverb (the late part) to process a pluck sequence and write WAVs.
 //
-// 公式（README 2.9 節）：
-//   image：把 source 對牆面鏡射，例如牆 x = 0 → (-sx, sy, sz)，牆 x = Lx → (2Lx - sx, sy, sz)
-//   delay = (|image - listener| - |source - listener|) / c，c = 343 m/s
-//   gain  = sqrt(1 - α) · |source - listener| / |image - listener|
+// Formulas (README section 2.9):
+//   image: mirror the source across the wall, e.g. wall x = 0 -> (-sx, sy, sz), wall x = Lx -> (2Lx - sx, sy, sz)
+//   delay = (|image - listener| - |source - listener|) / c, with c = 343 m/s
+//   gain  = sqrt(1 - alpha) * |source - listener| / |image - listener|
 //
-// 執行時 self-check 會印 FAIL，完成 TODO 後應該全部 PASS。
+// At run time the self-checks print FAIL; after you complete the TODOs they should all PASS.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Reverb.h>
@@ -37,7 +39,7 @@ struct Vec3 {
 
 struct Room {
     Vec3 size;
-    double absorption; // α
+    double absorption; // alpha
 };
 
 double distance(Vec3 a, Vec3 b) {
@@ -47,7 +49,8 @@ double distance(Vec3 a, Vec3 b) {
 
 std::vector<TappedDelay::Tap> firstOrderReflections(const Room& room, Vec3 source, Vec3 listener, double sampleRate) {
     std::vector<TappedDelay::Tap> taps;
-    // TODO: 算 6 個 image source、每個的 delay（samples）與 gain，push 進 taps，最後依 delay 排序
+    // TODO: compute the 6 image sources and each one's delay (in samples) and gain, push them into taps,
+    //       and finally sort by delay
     (void)room;
     (void)source;
     (void)listener;
@@ -80,7 +83,8 @@ public:
     const std::vector<TappedDelay::Tap>& getTaps(int ch) const noexcept { return taps_[static_cast<size_t>(ch)]; }
 
     void process(AudioBlock block) noexcept {
-        // TODO: 每個 channel 逐 sample 呼叫 delay_[ch].processSample()（輸出只有反射、沒有直達音）
+        // TODO: for each channel call delay_[ch].processSample() sample by sample (the output contains only
+        //       the reflections, not the direct sound)
         (void)block;
     }
 
@@ -93,7 +97,7 @@ private:
 } // namespace
 
 int main() {
-    std::printf("=== 練習 3：early reflections（起始碼）===\n");
+    std::printf("=== Exercise 3: early reflections (starter) ===\n");
 
     const Room room{{6.0, 4.0, 3.0}, 0.3};
     const Vec3 source{2.0, 1.5, 1.6};
@@ -106,9 +110,9 @@ int main() {
 
     DAWLAB_CHECK(taps.size() == 6);
     if (taps.size() == 6) {
-        DAWLAB_CHECK(taps[0].delaySamples == 169); // 地板反射（手算見 solutions/README.md）
+        DAWLAB_CHECK(taps[0].delaySamples == 169); // floor reflection (worked by hand in solutions/README.md)
         DAWLAB_CHECK_NEAR(taps[0].gain, 0.570, 0.005);
-        DAWLAB_CHECK(taps[5].delaySamples == 536); // x = 0 那面牆
+        DAWLAB_CHECK(taps[5].delaySamples == 536); // the wall at x = 0
         DAWLAB_CHECK_NEAR(taps[5].gain, 0.337, 0.005);
     }
 
@@ -125,8 +129,8 @@ int main() {
         DAWLAB_CHECK(ir.getSample(0, 0) == 0.0f);
     }
 
-    // TODO: 用 ER + Reverb（pre-delay = 最晚的 tap）處理 makePluckSequence，輸出
-    //       dawlab_output/l12_ex3_er_only.wav 與 l12_ex3_er_late.wav
+    // TODO: process makePluckSequence with ER + Reverb (pre-delay = the latest tap), and write
+    //       dawlab_output/l12_ex3_er_only.wav and l12_ex3_er_late.wav
 
     return dawlab::test::summary("l12_ex3_starter");
 }
