@@ -1,8 +1,8 @@
-// 練習 4（起始碼）：host 端的 automation —— 把 audio block 切成 sub-block，每段開頭設定一次參數
+// Exercise 4 (starter): host-side automation -- split the audio block into sub-blocks and set a parameter at the start of each one
 //
-// 目標：讓 DawLabCompressor 的 Threshold 在 8 秒內從 0 dB 線性降到 −40 dB（snap 到 0.1 dB），
-//       時間解析度 32 samples：每個 512-sample 的 block 切成 16 段，每段開頭呼叫一次 setParameterValue。
-// 完成後 self-check 會全部 PASS；目前的程式沒有做 automation，所以會印出 FAIL（這是預期的）。
+// Goal: make DawLabCompressor's Threshold fall linearly from 0 dB to -40 dB over 8 seconds (snapped to 0.1 dB),
+//       with a time resolution of 32 samples: each 512-sample block is split into 16 segments and setParameterValue is called once at the start of each.
+// Once done, every self-check will PASS; the current code does no automation, so it prints FAIL (this is expected).
 
 #include "../../examples/L13Common.h"
 
@@ -14,7 +14,7 @@ constexpr double kSampleRate = 48000.0;
 constexpr int kBlockSize = 512;
 constexpr int kSubBlock = 32;
 
-// automation 曲線：t = 0 → 0 dB，t = 結尾 → −40 dB；snap 到 plugin 的 interval（0.1 dB）
+// Automation curve: t = 0 -> 0 dB, t = end -> -40 dB; snapped to the plugin's interval (0.1 dB)
 float thresholdAt(int sample, int totalSamples) {
     const double t = static_cast<double>(sample) / totalSamples;
     const double db = -40.0 * t;
@@ -36,7 +36,7 @@ int main() {
     if (plugin == nullptr)
         return 1;
 
-    const dawlab::AudioBuffer input = dawlab::makeDrumLoop(kSampleRate, 4); // 8 秒
+    const dawlab::AudioBuffer input = dawlab::makeDrumLoop(kSampleRate, 4); // 8 seconds
     const int total = input.getNumSamples();
     const int thresholdIndex = plugin->findParameter("Threshold");
     DAWLAB_CHECK(thresholdIndex >= 0);
@@ -47,17 +47,17 @@ int main() {
     int parameterChanges = 0;
     for (int start = 0; start < total; start += kBlockSize) {
         const int blockLen = std::min(kBlockSize, total - start);
-        // TODO：把這個 block 切成長度 kSubBlock 的 sub-block（all.getSubBlock(...)），每一段：
-        //   1. 用 thresholdAt(start + sub, total) 算出 dB 值；
-        //   2. 用 l13::toNormalized(db, -60.0f, 0.0f) 換成 0..1，呼叫 plugin->setParameterValue(thresholdIndex, ...)；
-        //   3. ++parameterChanges；
-        //   4. plugin->process(那一段 sub-block)。
-        // 目前整個 block 一次處理、從不改參數：
+        // TODO: split this block into sub-blocks of length kSubBlock (all.getSubBlock(...)); for each one:
+        //   1. compute the dB value with thresholdAt(start + sub, total);
+        //   2. convert it to 0..1 with l13::toNormalized(db, -60.0f, 0.0f) and call plugin->setParameterValue(thresholdIndex, ...);
+        //   3. ++parameterChanges;
+        //   4. plugin->process(that sub-block).
+        // Currently the whole block is processed at once and the parameter is never changed:
         plugin->process(all.getSubBlock(start, blockLen));
     }
     plugin->releaseResources();
 
-    // 參考答案：同樣的 automation，直接套在 dsp::Compressor 上（其他參數 = plugin 預設值）
+    // Reference answer: the same automation applied directly to dsp::Compressor (other parameters = the plugin defaults)
     dawlab::dsp::Compressor reference;
     reference.prepare(kSampleRate, kBlockSize, 2);
     reference.setRatio(4.0f);
@@ -78,9 +78,9 @@ int main() {
     const float early = rmsChangeDb(input, output, 0, half);
     const float late = rmsChangeDb(input, output, total - second, second);
 
-    std::printf("參數變化次數：%d\n", parameterChanges);
-    std::printf("前 0.5 秒 RMS 變化：%+.2f dB；最後 1 秒：%+.2f dB\n", early, late);
-    std::printf("與參考（dsp::Compressor）的最大差異：%.3g\n", diff);
+    std::printf("Parameter changes: %d\n", parameterChanges);
+    std::printf("RMS change in the first 0.5 s: %+.2f dB; in the last 1 s: %+.2f dB\n", early, late);
+    std::printf("Max difference from the reference (dsp::Compressor): %.3g\n", diff);
 
     DAWLAB_CHECK(parameterChanges >= total / kSubBlock);
     DAWLAB_CHECK(diff < 1.0e-4f);

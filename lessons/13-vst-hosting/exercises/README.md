@@ -1,92 +1,93 @@
-# 第 13 章練習題：VST3 plugin 與 hosting
+# Chapter 13 Exercises: VST3 Plugins and Hosting
+**English** | [繁體中文](README.zh-TW.md)
 
-難度：★☆☆ 基礎、★★☆ 中等、★★★ 進階。解答在 [`../solutions/README.md`](../solutions/README.md)。
+Difficulty: ★☆☆ basic, ★★☆ intermediate, ★★★ advanced. Solutions are in [`../solutions/README.md`](../solutions/README.md).
 
-實作題的起始碼在 `exercises/starter/`，都能編譯，但留有 `// TODO`；直接執行會印出 `[FAIL]`（這是預期的）。
-完成後執行對應的 `l13_exN_starter`，全部 `[PASS]` 就代表做對了。解答檔 `l13_exN_solution` 會在 `ctest -L solution` 自動驗證。
+The starter code for the hands-on exercises is in `exercises/starter/`. It all compiles but contains `// TODO` markers; running it as is prints `[FAIL]` (this is expected).
+After you finish, run the matching `l13_exN_starter`; all `[PASS]` means you got it right. The solution programs `l13_exN_solution` are verified automatically by `ctest -L solution`.
 
 ```powershell
 .\scripts\build.ps1 -Only 13-vst-hosting -Juce -NoTest
-cd build                               # 你的 build 資料夾
+cd build                               # your build folder
 .\bin\Debug\l13_ex4_starter.exe
 ```
 
-> 所有實作題都會載入本章 build 出來的 `DawLabCompressor.vst3` / `DawLabLimiter.vst3`（路徑在 CMake 時編進程式），
-> 所以要先完整 build 一次（`l13_*` target 已經設定好依賴，build 它們時會自動先 build plugin）。
+> Every hands-on exercise loads the `DawLabCompressor.vst3` / `DawLabLimiter.vst3` built by this chapter (the paths are compiled into the programs at CMake time),
+> so you must do one full build first (the `l13_*` targets already have their dependencies set up, so building them builds the plugins first).
 
 ---
 
-## 練習 1 ★☆☆（計算）：normalized parameter 換算
+## Exercise 1 ★☆☆ (calculation): normalized parameter conversion
 
-DawLabCompressor 的參數範圍如下（`plugin/compressor/CompressorProcessor.cpp`）：
+DawLabCompressor's parameter ranges are as follows (`plugin/compressor/CompressorProcessor.cpp`):
 
-| 參數 | 範圍 | skew |
+| Parameter | Range | skew |
 |---|---|---|
-| Threshold | −60 … 0 dB | 1（線性） |
+| Threshold | −60 … 0 dB | 1 (linear) |
 | Ratio | 1 … 20 | 0.5 |
 | Attack | 0.1 … 200 ms | `setSkewForCentre(10)` |
 | Release | 5 … 2000 ms | `setSkewForCentre(100)` |
 
-JUCE 的換算公式：$n = \left(\dfrac{v - s}{e - s}\right)^{k}$，$v = s + (e - s)\, n^{1/k}$。
+JUCE's conversion formulas: $n = \left(\dfrac{v - s}{e - s}\right)^{k}$, $v = s + (e - s)\, n^{1/k}$.
 
-1. host 要把 Threshold 設成 −24 dB、Ratio 設成 8:1，各要送出多少 normalized value？
-2. `setSkewForCentre(c)` 讓 $n = 0.5$ 剛好對到 $v = c$。推導 skew $k$ 的公式，並算出 Attack 與 Release 的 $k$。
-3. 使用者把 Release 旋鈕轉到 1/4 的位置（$n = 0.25$），實際是幾 ms？（提示：$0.25 = 0.5^2$，答案有很漂亮的封閉形式。）
-4. 為什麼 VST3 規定 host 與 plugin 之間只傳 0..1 的值，而不是直接傳「−24 dB」？
+1. The host wants to set Threshold to −24 dB and Ratio to 8:1. What normalized value must it send for each?
+2. `setSkewForCentre(c)` makes $n = 0.5$ land exactly on $v = c$. Derive the formula for the skew $k$, and compute $k$ for Attack and for Release.
+3. The user turns the Release knob to the 1/4 position ($n = 0.25$). How many ms is that actually? (Hint: $0.25 = 0.5^2$; the answer has a very neat closed form.)
+4. Why does VST3 require the host and the plugin to exchange only values in 0..1, rather than passing "−24 dB" directly?
 
-## 練習 2 ★★☆（觀念）：thread、掃描與 crash
+## Exercise 2 ★★☆ (concepts): threads, scanning and crashes
 
-1. 下列動作各應該在哪個 thread 執行？為什麼？
-   (a) `PluginHost::scan()`　(b) `HostedPlugin::process()`　(c) `HostedPlugin::setState()`　(d) 建立 `PluginWindow`　(e) 在 automation 播放中每 32 samples 呼叫一次 `setParameterValue()`
-2. `HostedPlugin::process()` 為什麼用 `ScopedTryLock` 而不是 `ScopedLock` 去拿 plugin 的 callback lock？拿不到時我們做了什麼？這樣做的代價是什麼？
-3. 為什麼專業 DAW（例如 Reaper、Bitwig、Cubase）要在「另一個 process」裡掃描 plugin？本章的 `PluginHost::scan()` 是 in-process 的，如果某個 plugin 在掃描時 crash，會發生什麼事？請設計一個「out-of-process 掃描 + blacklist」的流程（文字或流程圖即可）。
-4. `PluginWindow` 的註解說「一定要在 HostedPlugin 被解構之前刪掉這個視窗」。如果順序反過來會怎樣？
+1. In which thread should each of the following run, and why?
+   (a) `PluginHost::scan()`　(b) `HostedPlugin::process()`　(c) `HostedPlugin::setState()`　(d) creating a `PluginWindow`　(e) calling `setParameterValue()` once every 32 samples while automation is playing
+2. Why does `HostedPlugin::process()` use `ScopedTryLock` instead of `ScopedLock` to take the plugin's callback lock? What do we do when the lock cannot be taken? What is the cost of doing so?
+3. Why do professional DAWs (for example Reaper, Bitwig, Cubase) scan plugins in "a separate process"? This chapter's `PluginHost::scan()` is in-process; what happens if a plugin crashes during a scan? Design an "out-of-process scanning + blacklist" workflow (text or a flowchart is fine).
+4. The comment in `PluginWindow` says "you must delete this window before the HostedPlugin is destroyed". What happens if the order is reversed?
 
-## 練習 3 ★★☆（計算）：latency 與 PDC
+## Exercise 3 ★★☆ (calculation): latency and PDC
 
-48 kHz 的專案有三條 track 匯到 master：
+A 48 kHz project has three tracks feeding the master:
 
-- Track A：DawLabLimiter（lookahead 5 ms）
-- Track B：一個回報 latency = 1024 samples 的 linear-phase EQ
-- Track C：沒有 plugin
+- Track A: DawLabLimiter (lookahead 5 ms)
+- Track B: a linear-phase EQ that reports latency = 1024 samples
+- Track C: no plugin
 
-1. 每個 plugin 的 latency 是幾個 sample、幾 ms？
-2. 為了讓三條 track 在 master 對齊，host 要在每條 track 額外延遲多少 sample？整個專案的總 latency 是多少？
-3. 如果 host 沒做 PDC，Track A 的 kick 跟 Track C 的 kick 會差幾 ms？兩個相同的 kick 疊在一起、但差了 240 samples，在哪些頻率會完全抵消？（提示：comb filter，$f_k = \dfrac{(2k+1)\, f_s}{2D}$）
-4. 錄音時（monitoring 輸入訊號）PDC 會帶來什麼問題？DAW 通常怎麼處理？
+1. What is each plugin's latency in samples and in ms?
+2. To line up the three tracks at the master, how many extra samples must the host delay each track by? What is the total latency of the whole project?
+3. If the host did no PDC, how many ms apart would the kick on Track A and the kick on Track C be? If two identical kicks are stacked but offset by 240 samples, at which frequencies do they cancel completely? (Hint: a comb filter, $f_k = \dfrac{(2k+1)\, f_s}{2D}$)
+4. What problem does PDC cause while recording (monitoring the input signal)? How do DAWs usually handle it?
 
-## 練習 4 ★★☆（實作）：host 端的 automation —— 切 sub-block
+## Exercise 4 ★★☆ (hands-on): host-side automation -- slicing into sub-blocks
 
-起始碼：`exercises/starter/ex4_automation.cpp`（target `l13_ex4_starter`）
+Starter code: `exercises/starter/ex4_automation.cpp` (target `l13_ex4_starter`)
 
-讓 DawLabCompressor 的 Threshold 在 8 秒的 drum loop 內從 0 dB 線性降到 −40 dB。plugin 每次 `processBlock` 只讀一次參數，所以把每個 512-sample 的 block 切成 32-sample 的 sub-block，每段開頭用 `setParameterValue()` 送一次新值。
+Make DawLabCompressor's Threshold fall linearly from 0 dB to −40 dB over an 8-second drum loop. The plugin reads its parameters only once per `processBlock`, so split every 512-sample block into 32-sample sub-blocks and send a new value with `setParameterValue()` at the start of each segment.
 
-self-check：結果跟「直接呼叫 `dsp::Compressor`、每 32 samples 改一次 threshold」的參考答案差 < 1e-4；開頭 0.5 秒 RMS 幾乎不變（> −1 dB），最後 1 秒被壓 6 dB 以上。
+Self-check: the result differs from the reference answer ("call `dsp::Compressor` directly and change the threshold every 32 samples") by < 1e-4; the RMS of the first 0.5 s is nearly unchanged (> −1 dB), and the last 1 s is compressed by 6 dB or more.
 
-延伸思考：sub-block 越小時間解析度越好，但代價是什麼？
+Further thought: the smaller the sub-block, the better the time resolution, but what is the cost?
 
-## 練習 5 ★★☆（實作）：preset 存成檔案再載回
+## Exercise 5 ★★☆ (hands-on): save a preset to a file and load it back
 
-起始碼：`exercises/starter/ex5_preset_file.cpp`（target `l13_ex5_starter`）
+Starter code: `exercises/starter/ex5_preset_file.cpp` (target `l13_ex5_starter`)
 
-實作 `savePreset()` / `loadPreset()`：把 `HostedPlugin::getState()` 的 binary blob 用 base64 存進自訂的 XML 檔（`dawlab_output/l13_ex5_preset.dawpreset`），附上 plugin 名稱與 uid；載入時檢查是不是同一個 plugin、檔案有沒有壞掉。
+Implement `savePreset()` / `loadPreset()`: store the binary blob from `HostedPlugin::getState()` as base64 in a custom XML file (`dawlab_output/l13_ex5_preset.dawpreset`), together with the plugin name and uid; when loading, check that it is the same plugin and that the file is not corrupted.
 
-self-check：載回後所有參數誤差 < 1e-3、處理結果與存檔前逐 sample 相同（< 1e-6）；把 compressor 的 preset 載進 DawLabLimiter、或載入壞掉的檔案時要回傳 false。
+Self-check: after loading back, every parameter's error is < 1e-3 and the processed result is identical sample by sample to the result before saving (< 1e-6); loading the compressor's preset into DawLabLimiter, or loading a corrupted file, must return false.
 
-## 練習 6 ★★★（實作）：用 AudioProcessorGraph 串兩個 plugin，並量測 latency
+## Exercise 6 ★★★ (hands-on): chain two plugins with AudioProcessorGraph and measure the latency
 
-起始碼：`exercises/starter/ex6_graph_chain.cpp`（target `l13_ex6_starter`）
+Starter code: `exercises/starter/ex6_graph_chain.cpp` (target `l13_ex6_starter`)
 
-用 `juce::AudioProcessorGraph` 建立 `audio in → DawLabCompressor（makeup +12 dB）→ DawLabLimiter（ceiling −1 dB）→ audio out`。
+Use `juce::AudioProcessorGraph` to build `audio in → DawLabCompressor (makeup +12 dB) → DawLabLimiter (ceiling −1 dB) → audio out`.
 
-self-check：graph 回報的 latency = 240 samples（5 ms）；用 impulse 量到的延遲 = 回報值；只有 compressor 時 peak > 0 dBFS，整條鏈的 peak ≤ −1 dBFS。
+Self-check: the latency the graph reports = 240 samples (5 ms); the delay measured with an impulse = the reported value; with only the compressor the peak is > 0 dBFS, and the peak of the whole chain is ≤ −1 dBFS.
 
-## 練習 7 ★★★（實作）：沒有 click 的 bypass（latency 補償 + crossfade）
+## Exercise 7 ★★★ (hands-on): a bypass without clicks (latency compensation + crossfade)
 
-起始碼：`exercises/starter/ex7_bypass_crossfade.cpp`（target `l13_ex7_starter`）
+Starter code: `exercises/starter/ex7_bypass_crossfade.cpp` (target `l13_ex7_starter`)
 
-完成 `CrossfadeBypass::process()`：dry 訊號先延遲 plugin 的 latency（用第 05 章的 `dsp::DelayLine`），再用 10 ms 的 `SmoothedValue` 在 dry 與 wet 之間 crossfade。bypass 時 plugin 仍繼續處理。
+Complete `CrossfadeBypass::process()`: first delay the dry signal by the plugin's latency (using chapter 05's `dsp::DelayLine`), then crossfade between dry and wet with a 10 ms `SmoothedValue`. The plugin keeps processing while bypassed.
 
-self-check（DawLabLimiter，ceiling −20 dB，440 Hz 正弦波）：bypass 穩定後輸出 = 輸入延遲 240 samples；crossfade 版最大 sample-to-sample 跳動 < 0.025；沒有補償的 hard bypass 跳動 > 0.05。
+Self-check (DawLabLimiter, ceiling −20 dB, 440 Hz sine wave): once bypass has settled, the output = the input delayed by 240 samples; the crossfade version's maximum sample-to-sample jump is < 0.025; a hard bypass without compensation jumps by > 0.05.
 
-延伸：DawLabCompressor 的 Mix 參數（parallel compression）其實就是同一招——為什麼它不需要延遲 dry？如果 compressor 有 lookahead，Mix 要怎麼改？
+Extension: DawLabCompressor's Mix parameter (parallel compression) is in fact the same trick -- why does it not need to delay dry? If the compressor had lookahead, how would Mix have to change?

@@ -1,47 +1,47 @@
 #pragma once
-// 第 13 章：可重用的 VST3 plugin hosting 函式庫（CMake target：dawlab_plugin_host）。
+// Chapter 13: a reusable VST3 plugin hosting library (CMake target: dawlab_plugin_host).
 //
-// 三個 class，由外而內：
+// Three classes, from the outside in:
 //
-//   PluginHost    ── 「找 plugin、生 plugin」：掃描 .vst3、維護 KnownPluginList（快取）、建立 instance。
-//   HostedPlugin  ── 「用 plugin」：包住一個 juce::AudioPluginInstance，負責 prepare / process /
-//                    參數（0..1 normalized）/ state 保存與還原。第 14 章的 DAW 在每個 insert slot 放一個。
-//   PluginWindow  ── 「看 plugin」：一個 DocumentWindow，顯示 plugin 自己的 editor；
-//                    plugin 沒有 editor 時改用 juce::GenericAudioProcessorEditor（自動產生的滑桿介面）。
+//   PluginHost    -- "find and create plugins": scans .vst3 files, maintains a KnownPluginList (cache), creates instances.
+//   HostedPlugin  -- "use a plugin": wraps a juce::AudioPluginInstance and handles prepare / process /
+//                    parameters (0..1 normalized) / saving and restoring state. The chapter 14 DAW puts one in every insert slot.
+//   PluginWindow  -- "look at a plugin": a DocumentWindow that shows the plugin's own editor;
+//                    if the plugin has no editor it falls back to juce::GenericAudioProcessorEditor (an auto-generated slider UI).
 //
-// ─────────────────────────────────────────────────────────────────────────────
-// Thread 規則（非常重要，第 14 章也照這套走）
-// ─────────────────────────────────────────────────────────────────────────────
-//   message thread（= GUI thread，JUCE 的 MessageManager 所在的 thread）：
-//     - PluginHost 的所有函式（scan / loadFromFile / createInstance）。VST3 規格要求 plugin 的
-//       建立、初始化、editor 開關都在 UI thread 上進行；很多 plugin 在別的 thread 上被建立會直接 crash。
-//     - HostedPlugin::prepare / releaseResources / getState / setState / 建立 PluginWindow。
-//       prepare / setState 必須在「audio thread 沒有同時呼叫 process()」時執行
-//       （例如 audio device 停止時，或先把 plugin 從 audio callback 拿掉）。
-//   audio thread（audio device 的 callback，或離線 render 的迴圈）：
-//     - 只呼叫 HostedPlugin::process()。它不 allocate、不複製 audio、不等待 lock：
-//       用 juce::AudioBuffer<float> 的 referencing constructor 直接包住 dawlab::AudioBlock 的指標；
-//       plugin 的 callback lock 用 try-lock，拿不到（message thread 正在 suspendProcessing(true)）就輸出原音。
-//       注意：try-lock 只在 suspendProcessing 期間生效；setState / prepare 不受它保護（JUCE 的 VST3 hosting
-//       換 state 時拿的是 MessageManagerLock），所以才需要上面「audio thread 沒有同時呼叫 process()」的規則。
-//       另外 JUCE 的 VST3PluginInstance::processBlock 內部會 spin 等待 processMutex（SpinLock），
-//       prepareToPlay / releaseResources / reset / isBusesLayoutSupported 在 message thread 拿同一把鎖；
-//       「不等待 lock」只在 host 遵守上述規則（這些呼叫不與 process() 同時進行）時才成立。
-//   任意 thread：
-//     - getParameterValue / setParameterValue / getLatencySamples / getNumParameters / getName。
-//       JUCE 的 VST3 hosting 的 setValue() 只把值寫進 lock-free cache 並排進 dispatcher，
-//       下一個 process() 再透過 IParameterChanges 送進 plugin，所以 audio thread 上做 automation
-//       （每個 sub-block 設一次參數）是可行的。
-//       細節：setParameterValue() 之後還會呼叫 sendValueChangedMessageToListeners() 讓開著的 editor 跟著動，
-//       它會短暫拿參數的 listenerLock（CriticalSection）並同步呼叫 listener。平常沒有競爭、很快，
-//       但嚴格說不是 lock-free；要求最嚴格的 host 可以在 audio thread 改呼叫
-//       getInstance().getParameters()[i]->setValue(v)（不通知 listener），再由 message thread 的 timer 更新 UI。
+// -----------------------------------------------------------------------------
+// Thread rules (very important; chapter 14 follows the same scheme)
+// -----------------------------------------------------------------------------
+//   message thread (= GUI thread, the thread that owns JUCE's MessageManager):
+//     - Every PluginHost function (scan / loadFromFile / createInstance). The VST3 spec requires plugin
+//       creation, initialization and editor open/close to happen on the UI thread; many plugins crash outright if created on another thread.
+//     - HostedPlugin::prepare / releaseResources / getState / setState / creating a PluginWindow.
+//       prepare / setState must run while the audio thread is NOT calling process() at the same time
+//       (for example while the audio device is stopped, or after taking the plugin out of the audio callback).
+//   audio thread (the audio device callback, or an offline render loop):
+//     - Only calls HostedPlugin::process(). It does not allocate, does not copy audio, does not wait on a lock:
+//       it wraps the dawlab::AudioBlock pointers directly with juce::AudioBuffer<float>'s referencing constructor;
+//       the plugin's callback lock is a try-lock, and if it cannot be taken (the message thread is in suspendProcessing(true)) the input is passed through.
+//       Note: the try-lock only takes effect during suspendProcessing; setState / prepare are not protected by it (JUCE's VST3 hosting
+//       takes a MessageManagerLock when changing state), which is why the rule above, "the audio thread is not calling process() at the same time", is needed.
+//       Also, JUCE's VST3PluginInstance::processBlock internally spin-waits on processMutex (a SpinLock), and
+//       prepareToPlay / releaseResources / reset / isBusesLayoutSupported take the same lock on the message thread;
+//       "does not wait on a lock" therefore holds only if the host obeys the rules above (those calls never overlap with process()).
+//   any thread:
+//     - getParameterValue / setParameterValue / getLatencySamples / getNumParameters / getName.
+//       In JUCE's VST3 hosting, setValue() only writes the value into a lock-free cache and queues it for the dispatcher;
+//       the next process() then delivers it to the plugin through IParameterChanges, so doing automation on the audio thread
+//       (setting a parameter once per sub-block) is feasible.
+//       Detail: after setParameterValue() it also calls sendValueChangedMessageToListeners() so an open editor follows along;
+//       that briefly takes the parameter's listenerLock (a CriticalSection) and calls the listeners synchronously. It is normally uncontended and fast,
+//       but strictly speaking it is not lock-free; the most demanding hosts can instead call
+//       getInstance().getParameters()[i]->setValue(v) on the audio thread (which does not notify listeners) and update the UI from a message-thread timer.
 //
-// 生命週期（lifecycle）：
-//   PluginHost::loadFromFile()  →  HostedPlugin(std::move(instance))  →  prepare()
-//     →  process() × N  →  releaseResources()  →（先關掉 PluginWindow）→ 解構 HostedPlugin
+// Lifecycle:
+//   PluginHost::loadFromFile()  ->  HostedPlugin(std::move(instance))  ->  prepare()
+//     ->  process() x N  ->  releaseResources()  -> (close the PluginWindow first) -> destroy the HostedPlugin
 //
-// 依賴：JUCE（juce_audio_utils 以上，含 juce_audio_processors 的 VST3 hosting）與 dawlab::dsp。
+// Dependencies: JUCE (juce_audio_utils and above, including the VST3 hosting in juce_audio_processors) and dawlab::dsp.
 
 #include <dawlab/AudioBuffer.h>
 
@@ -54,47 +54,47 @@
 namespace dawlab::host {
 
 // ===========================================================================
-// PluginHost：掃描與建立 plugin（全部在 message thread 呼叫）
+// PluginHost: scanning and creating plugins (all calls on the message thread)
 // ===========================================================================
 class PluginHost {
 public:
-    // 建立 juce::AudioPluginFormatManager 並註冊 VST3 格式（含 editor 支援的 juce::VST3PluginFormat）。
+    // Creates a juce::AudioPluginFormatManager and registers the VST3 format (juce::VST3PluginFormat, including editor support).
     PluginHost();
     ~PluginHost();
 
     PluginHost(const PluginHost&) = delete;
     PluginHost& operator=(const PluginHost&) = delete;
 
-    // 掃描一個 .vst3（檔案或 bundle 資料夾）或一個資料夾（找出底下所有 .vst3）。
-    // 每個找到的 plugin 會加進 KnownPluginList（快取：同一個檔案沒被修改就不會重新載入）。
-    // 注意：VST3 的掃描必須真的把 DLL 載進來、呼叫 factory，所以有問題的 plugin 可能讓整個程式 crash。
-    // 專業 DAW 會在另一個 process 裡掃描（out-of-process scanning），本函式庫為了教學簡潔是 in-process。
+    // Scans one .vst3 (a file or a bundle folder) or one folder (finding every .vst3 under it).
+    // Every plugin found is added to the KnownPluginList (a cache: a file that has not been modified is not reloaded).
+    // Note: scanning a VST3 really has to load the DLL and call its factory, so a misbehaving plugin can crash the whole program.
+    // Professional DAWs scan in a separate process (out-of-process scanning); to keep it simple for teaching, this library scans in-process.
     juce::Array<juce::PluginDescription> scan(const juce::File& fileOrFolder, bool recursive = true);
 
-    // 掃描 vst3File，取第一個 plugin 建立 instance。失敗回傳 nullptr，原因寫進 error。
+    // Scans vst3File and creates an instance from the first plugin. On failure returns nullptr and writes the reason to error.
     std::unique_ptr<juce::AudioPluginInstance> loadFromFile(const juce::File& vst3File, double sampleRate,
                                                             int blockSize, juce::String& error);
 
-    // 依 PluginDescription（例如從 KnownPluginList 或存檔讀回來的）建立 instance。
+    // Creates an instance from a PluginDescription (for example one read back from a KnownPluginList or from a saved file).
     std::unique_ptr<juce::AudioPluginInstance> createInstance(const juce::PluginDescription& desc, double sampleRate,
                                                               int blockSize, juce::String& error);
 
     juce::AudioPluginFormatManager& getFormatManager();
 
-    // ---- 額外功能（合約之外） ---------------------------------------------------------
-    // 系統預設的 VST3 資料夾（Windows：%LOCALAPPDATA%\Programs\Common\VST3 與
-    // C:\Program Files\Common Files\VST3，以及環境變數 VST3_PATH）。
+    // ---- Extras (beyond the contract) -------------------------------------------------
+    // The system default VST3 folders (Windows: %LOCALAPPDATA%\Programs\Common\VST3 and
+    // C:\Program Files\Common Files\VST3, plus the VST3_PATH environment variable).
     juce::FileSearchPath getDefaultSearchPaths();
 
-    // 只列出資料夾底下的 .vst3 路徑，不載入任何 DLL（很快、不會 crash）。
+    // Only lists the .vst3 paths under a folder without loading any DLL (fast, cannot crash).
     juce::StringArray findPluginFiles(const juce::File& folder, bool recursive = true);
 
-    // 掃描結果的快取。DAW 啟動時讀回來，就不必每次重新載入所有 plugin。
+    // Cache of the scan results. A DAW reads it back at startup so it need not reload every plugin each time.
     juce::KnownPluginList& getKnownPluginList();
     bool saveKnownPluginList(const juce::File& xmlFile) const;
     bool loadKnownPluginList(const juce::File& xmlFile);
 
-    // 上一次 scan() 裡「是 .vst3 但載不出任何 plugin」的檔案。
+    // Files from the last scan() that are .vst3 but yielded no plugin when loaded.
     const juce::StringArray& getLastScanFailures() const;
 
 private:
@@ -106,7 +106,7 @@ private:
 };
 
 // ===========================================================================
-// HostedPlugin：包住一個 plugin instance
+// HostedPlugin: wraps one plugin instance
 // ===========================================================================
 class HostedPlugin {
 public:
@@ -116,41 +116,41 @@ public:
     HostedPlugin(const HostedPlugin&) = delete;
     HostedPlugin& operator=(const HostedPlugin&) = delete;
 
-    // message thread（或 audio 停止時）。唯一會 allocate 的地方：
-    //   1. 跟 plugin 協商 bus layout：主輸入 / 主輸出都試著設成 numChannels（1 = mono、2 = stereo），
-    //      plugin 不接受就沿用它的預設 layout；
-    //   2. 呼叫 plugin 的 prepareToPlay(sampleRate, maxBlockSize)；
-    //   3. 預先配置 process() 需要的東西：channel 指標陣列、多出來的 channel 用的暫存 buffer、MidiBuffer。
-    // 可以重複呼叫（例如換 sample rate）；會先 releaseResources()。
+    // Message thread (or while audio is stopped). The only place that allocates:
+    //   1. Negotiate the bus layout with the plugin: try to set both the main input and main output to numChannels (1 = mono, 2 = stereo);
+    //      if the plugin does not accept it, keep its default layout;
+    //   2. call the plugin's prepareToPlay(sampleRate, maxBlockSize);
+    //   3. pre-allocate what process() needs: the channel pointer array, a scratch buffer for extra channels, and a MidiBuffer.
+    // Can be called repeatedly (e.g. to change the sample rate); it calls releaseResources() first.
     void prepare(double sampleRate, int maxBlockSize, int numChannels);
     void releaseResources();
     bool isPrepared() const noexcept { return prepared_; }
 
-    // audio thread：in-place 處理 block。不 allocate、不複製 audio。
-    //   - block 比 maxBlockSize 長：自動切成多段依序處理；
-    //   - block 的 channel 比 plugin 少（例如 mono block 進 stereo plugin）：多出來的輸入 channel
-    //     用 channel 0 的複本餵進去，對應的輸出丟掉；
-    //   - block 的 channel 比 plugin 多：多出來的 channel 原封不動（plugin 看不到它們）。
-    //   - 還沒 prepare、或 plugin 正被 suspend：block 原封不動（等同 bypass）。
+    // Audio thread: processes a block in place. Does not allocate or copy audio.
+    //   - block longer than maxBlockSize: automatically split into several segments processed in order;
+    //   - block has fewer channels than the plugin (e.g. a mono block into a stereo plugin): the extra input channels
+    //     are fed with a copy of channel 0, and the corresponding outputs are discarded;
+    //   - block has more channels than the plugin: the extra channels are left untouched (the plugin never sees them).
+    //   - not yet prepared, or the plugin is suspended: the block is left untouched (equivalent to bypass).
     void process(dawlab::AudioBlock block) noexcept;
 
-    // plugin 回報的延遲（sample 數），host 要拿來做 plugin delay compensation（PDC）。
+    // The latency the plugin reports (in samples); the host uses it for plugin delay compensation (PDC).
     int getLatencySamples() const;
 
-    // ---- 參數：一律用 0..1 的 normalized value（VST3 的規定） ---------------------------
+    // ---- Parameters: always a normalized value in 0..1 (as the VST3 spec requires) ----
     int getNumParameters() const;
     juce::String getParameterName(int index) const;
-    // 依名稱（不分大小寫）或 parameter ID 找參數；找不到回傳 -1。
+    // Finds a parameter by name (case-insensitive) or parameter ID; returns -1 if not found.
     int findParameter(const juce::String& name) const;
     float getParameterValue(int index) const;
     void setParameterValue(int index, float normalizedValue);
-    // 額外：把目前的值或任意 normalized 值轉成 plugin 自己的顯示文字（例如 "-20.0 dB"）。
+    // Extra: converts the current value, or any normalized value, to the plugin's own display text (e.g. "-20.0 dB").
     juce::String getParameterText(int index) const;
     juce::String getParameterText(int index, float normalizedValue) const;
-    // 額外：parameter ID（VST3 hosting 下是 plugin 內部的 ParamID 數字字串）。
+    // Extra: the parameter ID (under VST3 hosting, the plugin's internal ParamID as a numeric string).
     juce::String getParameterId(int index) const;
 
-    // ---- state：plugin 自訂格式的 binary blob，host 只負責保存，不解讀 ----------------------
+    // ---- State: a plugin-defined binary blob; the host only stores it and never interprets it ----
     juce::MemoryBlock getState();
     void setState(const juce::MemoryBlock& state);
 
@@ -159,7 +159,7 @@ public:
     juce::AudioPluginInstance& getInstance();
     const juce::AudioPluginInstance& getInstance() const;
 
-    // 額外：prepare 後實際生效的設定
+    // Extra: the settings actually in effect after prepare
     double getSampleRate() const noexcept { return sampleRate_; }
     int getMaxBlockSize() const noexcept { return maxBlockSize_; }
     int getNumPluginChannels() const noexcept { return numPluginChannels_; }
@@ -172,26 +172,26 @@ private:
     std::unique_ptr<juce::AudioPluginInstance> instance_;
     double sampleRate_ = 0.0;
     int maxBlockSize_ = 0;
-    int numPluginChannels_ = 0; // max(總輸入 channel, 總輸出 channel)
+    int numPluginChannels_ = 0; // max(total input channels, total output channels)
     bool prepared_ = false;
 
-    std::vector<float*> channelPtrs_;         // 預先配置的 channel 指標陣列（process 時只填值）
-    juce::AudioBuffer<float> scratch_;        // block 沒有的 channel 用這裡的記憶體
-    juce::MidiBuffer midi_;                   // 效果器不吃 MIDI，但 processBlock 介面需要一個
+    std::vector<float*> channelPtrs_;         // pre-allocated channel pointer array (process only fills in values)
+    juce::AudioBuffer<float> scratch_;        // memory for channels the block does not have
+    juce::MidiBuffer midi_;                   // effects do not take MIDI, but the processBlock interface needs one
 };
 
 // ===========================================================================
-// PluginWindow：顯示 plugin 的 editor（message thread）
+// PluginWindow: shows the plugin's editor (message thread)
 // ===========================================================================
 class PluginWindow : public juce::DocumentWindow {
 public:
-    // 建立並顯示視窗。plugin 有 editor 就用 createEditorAndMakeActive()，否則用 GenericAudioProcessorEditor。
-    // 視窗不擁有 plugin：一定要在 HostedPlugin 被解構「之前」刪掉這個視窗（editor 必須先於 plugin 消失）。
+    // Creates and shows the window. If the plugin has an editor, uses createEditorAndMakeActive(); otherwise a GenericAudioProcessorEditor.
+    // The window does not own the plugin: you must delete this window BEFORE the HostedPlugin is destroyed (the editor must go away before the plugin).
     explicit PluginWindow(HostedPlugin& plugin);
     ~PluginWindow() override;
 
-    // 按下關閉鈕時：有設定 onCloseRequested 就交給它（通常是擁有者把這個視窗 delete 掉）；
-    // 沒有設定就只把視窗隱藏。兩種情況都不會刪除 plugin。
+    // When the close button is pressed: if onCloseRequested is set, hands off to it (usually the owner deletes this window);
+    // if not set, it only hides the window. Neither case deletes the plugin.
     std::function<void()> onCloseRequested;
 
     bool isUsingGenericEditor() const noexcept { return usingGenericEditor_; }

@@ -1,24 +1,24 @@
-// 練習 7 解答：host 端的「無爆音 bypass」—— latency 補償 + crossfade
+// Exercise 7 solution: host-side "click-free bypass" -- latency compensation + crossfade
 //
-// 直接把 plugin 拿掉（hard bypass）會出兩個問題：
-//   (a) 波形不連續 → click；
-//   (b) plugin 有 latency L 時，wet 比 dry 晚 L 個 sample，切換瞬間時間軸跳了 L → 更大的跳動，
-//       而且整條 track 突然「提早」L 個 sample（跟其他 track 對不齊）。
-// 解法：
-//   dry 也延遲 L（跟 PDC 同一個道理），再用 10 ms 的線性 crossfade 在 dry 與 wet 之間切換：
-//     y[n] = g[n]·wet[n] + (1 − g[n])·dry[n − L]，g 從 1 平滑走到 0（bypass）或反過來。
-//   plugin 在 bypass 時仍然繼續處理（保持內部狀態「熱」的，取消 bypass 時才不會有暫態）。
-// 這其實就是 plugin 內部 mix（parallel）參數的同一招：dry/wet 混合 + dry 對齊 latency。
+// Simply removing the plugin (hard bypass) causes two problems:
+//   (a) the waveform is discontinuous -> a click;
+//   (b) when the plugin has latency L, wet is L samples later than dry, so at the moment of the switch the timeline jumps by L -> an even larger jump,
+//       and the whole track suddenly arrives L samples "early" (out of alignment with the other tracks).
+// The fix:
+//   delay dry by L too (the same idea as PDC), then switch between dry and wet with a 10 ms linear crossfade:
+//     y[n] = g[n]*wet[n] + (1 - g[n])*dry[n - L], with g moving smoothly from 1 to 0 (bypass) or the other way round.
+//   The plugin keeps processing while bypassed (to keep its internal state "warm", so there is no transient when bypass is released).
+// This is in fact the same trick as the plugin's internal mix (parallel) parameter: dry/wet blending + aligning dry to the latency.
 //
-// 驗證（DawLabLimiter：ceiling −20 dB、lookahead 5 ms → L = 240；輸入 440 Hz、振幅 0.3 的正弦波）：
-//   1. bypass 穩定後，輸出 = 輸入延遲 L（時間軸沒有跳）；
-//   2. crossfade 版的最大 sample-to-sample 跳動 < 0.025（正弦波本身最大斜率 0.3·2π·440/48000 ≈ 0.0173）；
-//   3. 沒有補償、沒有 crossfade 的 hard bypass 跳動 > 0.05（聽得到的 click）。
-// 延伸：plugin 自己的 Bypass 參數（VST3 wrapper 自動加的）也要遵守同一個規則。DawLabLimiter override 了
-// processBlockBypassed()，在 plugin 內部做同樣的「dry 延遲 L + 10 ms crossfade」：
-//   4. Bypass = 1 時，位置 1000 的 impulse 出現在 1000 + L（不是 1000），而且就是原音（0.25）；
-//   5. 播放中每 0.5 秒切換 Bypass 參數：最大跳動同樣 < 0.025，bypass 區 = 輸入延遲 L，作用區 peak ≤ ceiling。
-// 輸出：dawlab_output/l13_ex7_crossfade.wav、l13_ex7_hard.wav（每 0.5 秒切換一次 bypass；hard 版有明顯的「喀」聲）
+// Verification (DawLabLimiter: ceiling -20 dB, lookahead 5 ms -> L = 240; input is a 440 Hz sine wave with amplitude 0.3):
+//   1. Once bypass has settled, the output = the input delayed by L (the timeline does not jump);
+//   2. The crossfade version's maximum sample-to-sample jump is < 0.025 (the sine's own maximum slope is 0.3*2*pi*440/48000 ~ 0.0173);
+//   3. The hard bypass with no compensation and no crossfade jumps by > 0.05 (an audible click).
+// Extension: the plugin's own Bypass parameter (added automatically by the VST3 wrapper) must obey the same rule. DawLabLimiter overrides
+// processBlockBypassed() and does the same "dry delayed by L + 10 ms crossfade" inside the plugin:
+//   4. With Bypass = 1, an impulse at position 1000 appears at 1000 + L (not 1000), and it is the original audio (0.25);
+//   5. Toggling the Bypass parameter every 0.5 s during playback: the maximum jump is likewise < 0.025, the bypass region = the input delayed by L, and the active-region peak <= the ceiling.
+// Output: dawlab_output/l13_ex7_crossfade.wav, l13_ex7_hard.wav (bypass toggles every 0.5 s; the hard version has an obvious "click")
 
 #include "../examples/L13Common.h"
 
@@ -32,7 +32,7 @@ constexpr int kBlockSize = 512;
 
 class CrossfadeBypass {
 public:
-    // message thread：配置記憶體。latencySamples 取自 plugin.getLatencySamples()。
+    // message thread: allocates memory. latencySamples comes from plugin.getLatencySamples().
     void prepare(double sampleRate, int maxBlockSize, int numChannels, int latencySamples, double fadeSeconds = 0.01) {
         latency_ = latencySamples;
         delay_.prepare(std::max(1, latencySamples), numChannels);
@@ -46,11 +46,11 @@ public:
         gain_.setTargetValue(bypassed ? 0.0f : 1.0f);
     }
 
-    // audio thread：不 allocate
+    // audio thread: does not allocate
     void process(dawlab::AudioBlock block, dawlab::host::HostedPlugin& plugin) noexcept {
         const int n = block.getNumSamples();
         const int numCh = std::min(block.getNumChannels(), dry_.getNumChannels());
-        // 1) dry 對齊：dry[n] = x[n − L]
+        // 1) align dry: dry[n] = x[n - L]
         for (int ch = 0; ch < numCh; ++ch) {
             const float* x = block.getChannelPointer(ch);
             float* d = dry_.getWritePointer(ch);
@@ -59,9 +59,9 @@ public:
                 d[i] = delay_.read(ch, latency_);
             }
         }
-        // 2) wet：plugin 永遠在跑
+        // 2) wet: the plugin is always running
         plugin.process(block);
-        // 3) crossfade（g = 1 → 全 wet；g = 0 → 全 dry）
+        // 3) crossfade (g = 1 -> fully wet; g = 0 -> fully dry)
         if (!gain_.isSmoothing() && gain_.getTargetValue() >= 1.0f)
             return;
         for (int i = 0; i < n; ++i) {
@@ -81,7 +81,7 @@ private:
     bool bypassed_ = false;
 };
 
-// 每 0.5 秒切換一次：0.5 s bypass、1.0 s 取消、1.5 s 再 bypass
+// Toggles every 0.5 s: bypassed at 0.5 s, released at 1.0 s, bypassed again at 1.5 s
 bool bypassAt(int sample) { return (sample / static_cast<int>(0.5 * kSampleRate)) % 2 == 1; }
 
 float maxStep(const dawlab::AudioBuffer& b, int from) {
@@ -105,7 +105,7 @@ int main() {
     const dawlab::AudioBuffer input = dawlab::makeSine(440.0, kSampleRate, 2.0, 0.3f, 2);
     const int total = input.getNumSamples();
 
-    // ---- crossfade + latency 補償 --------------------------------------------------
+    // ---- crossfade + latency compensation -----------------------------------------
     plugin->prepare(kSampleRate, kBlockSize, 2);
     const int latency = plugin->getLatencySamples();
     CrossfadeBypass bypass;
@@ -113,28 +113,28 @@ int main() {
     dawlab::AudioBuffer smooth = input;
     dawlab::AudioBlock smoothBlock(smooth);
     for (int start = 0; start < total; start += kBlockSize) {
-        bypass.setBypassed(bypassAt(start)); // automation：只在 block 邊界改
+        bypass.setBypassed(bypassAt(start)); // automation: changes only at block boundaries
         bypass.process(smoothBlock.getSubBlock(start, std::min(kBlockSize, total - start)), *plugin);
     }
     plugin->releaseResources();
 
-    // ---- 天真的 hard bypass：bypass 時直接輸出原音（沒有延遲、沒有 fade）------------------------
+    // ---- Naive hard bypass: output the original audio directly when bypassed (no delay, no fade) ----
     plugin->prepare(kSampleRate, kBlockSize, 2);
     dawlab::AudioBuffer hard = input;
     dawlab::AudioBlock hardBlock(hard);
     for (int start = 0; start < total; start += kBlockSize) {
         auto sub = hardBlock.getSubBlock(start, std::min(kBlockSize, total - start));
         if (!bypassAt(start))
-            plugin->process(sub); // bypass 時什麼都不做 = 原音
+            plugin->process(sub); // do nothing when bypassed = the original audio
     }
     plugin->releaseResources();
 
-    // ---- 延伸：plugin 自己的 Bypass 參數（processBlockBypassed）--------------------------
+    // ---- Extension: the plugin's own Bypass parameter (processBlockBypassed) ------------
     const int bypassParam = plugin->findParameter("Bypass");
     int bypassImpulseAt = -1;
     float bypassImpulseValue = 0.0f, stepParam = 1.0f, paramAlignError = 1.0f, paramActivePeak = 1.0f;
     if (bypassParam >= 0) {
-        // (4) Bypass = 1 再 prepare：impulse 應該被延遲 L，而且就是原音
+        // (4) Bypass = 1 then prepare: the impulse should be delayed by L, and be the original audio
         plugin->setParameterValue(bypassParam, 1.0f);
         plugin->prepare(kSampleRate, kBlockSize, 2);
         const dawlab::AudioBuffer impulse = dawlab::makeImpulse(4096, 2, 1000, 0.25f);
@@ -146,7 +146,7 @@ int main() {
             }
         plugin->releaseResources();
 
-        // (5) 播放中切換 Bypass 參數（每 0.5 秒，只在 block 邊界改），plugin 內部的 crossfade 讓它不爆音
+        // (5) Toggle the Bypass parameter during playback (every 0.5 s, changing only at block boundaries); the plugin's internal crossfade keeps it click-free
         plugin->setParameterValue(bypassParam, 0.0f);
         plugin->prepare(kSampleRate, kBlockSize, 2);
         dawlab::AudioBuffer viaParam = input;
@@ -158,7 +158,7 @@ int main() {
         plugin->releaseResources();
         plugin->setParameterValue(bypassParam, 0.0f);
         stepParam = maxStep(viaParam, static_cast<int>(0.1 * kSampleRate));
-        // 確認參數真的生效：bypass 區（0.7–0.95 s）= 輸入延遲 L；作用區（0.3–0.45 s）被壓到 ceiling 0.1
+        // Confirm that the parameter really takes effect: bypass region (0.7-0.95 s) = input delayed by L; active region (0.3-0.45 s) squashed to the ceiling 0.1
         paramAlignError = 0.0f;
         paramActivePeak = 0.0f;
         for (int i = static_cast<int>(0.7 * kSampleRate); i < static_cast<int>(0.95 * kSampleRate); ++i)
@@ -167,27 +167,27 @@ int main() {
             paramActivePeak = std::max(paramActivePeak, std::abs(viaParam.getSample(0, i)));
     }
 
-    // ---- 量測 -----------------------------------------------------------------------
-    const int skip = static_cast<int>(0.1 * kSampleRate); // 跳過開頭（limiter 剛開始的暫態）
+    // ---- Measurement ---------------------------------------------------------------
+    const int skip = static_cast<int>(0.1 * kSampleRate); // skip the start (the limiter's initial transient)
     const float stepSmooth = maxStep(smooth, skip);
     const float stepHard = maxStep(hard, skip);
     const float signalStep = static_cast<float>(0.3 * dawlab::kTwoPi * 440.0 / kSampleRate);
 
-    // bypass 穩定區（0.7–0.95 s）：輸出應該 = 輸入延遲 latency
+    // Bypass steady region (0.7-0.95 s): the output should = the input delayed by latency
     float alignError = 0.0f;
     for (int i = static_cast<int>(0.7 * kSampleRate); i < static_cast<int>(0.95 * kSampleRate); ++i)
         alignError = std::max(alignError, std::abs(smooth.getSample(0, i) - input.getSample(0, i - latency)));
-    // 作用區（0.3–0.45 s）：limiter 把 0.3 壓到 ceiling 0.1
+    // Active region (0.3-0.45 s): the limiter squashes 0.3 down to the ceiling 0.1
     float activePeak = 0.0f;
     for (int i = static_cast<int>(0.3 * kSampleRate); i < static_cast<int>(0.45 * kSampleRate); ++i)
         activePeak = std::max(activePeak, std::abs(smooth.getSample(0, i)));
 
-    std::printf("plugin latency：%d samples\n", latency);
-    std::printf("正弦波本身的最大 sample-to-sample 變化：%.4f\n", signalStep);
-    std::printf("crossfade + 補償：最大跳動 %.4f；hard bypass：最大跳動 %.4f\n", stepSmooth, stepHard);
-    std::printf("bypass 時輸出與「輸入延遲 %d」的最大差：%.3g；作用時的 peak：%.4f（ceiling 0.1）\n", latency, alignError,
+    std::printf("plugin latency: %d samples\n", latency);
+    std::printf("Sine's own maximum sample-to-sample change: %.4f\n", signalStep);
+    std::printf("crossfade + compensation: max jump %.4f; hard bypass: max jump %.4f\n", stepSmooth, stepHard);
+    std::printf("Max difference between the bypassed output and \"input delayed by %d\": %.3g; peak when active: %.4f (ceiling 0.1)\n", latency, alignError,
                 activePeak);
-    std::printf("plugin 的 Bypass 參數：impulse 1000 → %d（%.4f），回報 latency %d；切換時最大跳動 %.4f，bypass 區與「輸入延遲 L」的最大差 %.3g，作用區 peak %.4f\n",
+    std::printf("plugin Bypass parameter: impulse 1000 -> %d (%.4f), reported latency %d; max jump while toggling %.4f, max difference of the bypass region from \"input delayed by L\" %.3g, active-region peak %.4f\n",
                 bypassImpulseAt, bypassImpulseValue, latency, stepParam, paramAlignError, paramActivePeak);
     dawlab::writeWav(dawlab::outputPath("l13_ex7_crossfade.wav"), smooth, kSampleRate);
     dawlab::writeWav(dawlab::outputPath("l13_ex7_hard.wav"), hard, kSampleRate);

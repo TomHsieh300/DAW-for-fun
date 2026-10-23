@@ -1,14 +1,14 @@
-// 練習 4 解答：host 端的 automation —— 把 audio block 切成 sub-block，每段開頭設定一次參數
+// Exercise 4 solution: host-side automation -- split the audio block into sub-blocks and set a parameter at the start of each one
 //
-// 情境：DAW 的 automation lane 上畫了一條線，讓 DawLabCompressor 的 Threshold 在 8 秒內從 0 dB 降到 −40 dB。
-// plugin 每個 processBlock 只讀一次參數，所以 host 想要更細的時間解析度，就把 512 個 sample 的 block
-// 切成 32 個 sample 的 sub-block，每段開頭送一次新值（VST3 其實允許 sample-accurate 的 parameter queue，
-// 但 JUCE 的 plugin 端只在 block 開頭套用，切 sub-block 是最通用、所有 host 都能做的方法）。
+// Scenario: a line is drawn on a DAW automation lane that takes DawLabCompressor's Threshold from 0 dB to -40 dB over 8 seconds.
+// The plugin reads its parameters only once per processBlock, so if the host wants a finer time resolution it splits the 512-sample block
+// into 32-sample sub-blocks and sends a new value at the start of each (VST3 actually allows sample-accurate parameter queues,
+// but on the JUCE plugin side values are only applied at the start of a block; splitting into sub-blocks is the most general method, and every host can do it).
 //
-// 驗證：
-//   1. 跟「直接呼叫 dsp::Compressor、每 32 個 sample 改一次 threshold」的參考結果相同（差 < 1e-4）；
-//   2. 開頭 0.5 秒幾乎沒壓（RMS 變化 > −1 dB），最後 1 秒壓很多（RMS 變化 < −6 dB）。
-// 輸出：dawlab_output/l13_ex4_automation.wav（聽起來：鼓一開始很鬆，越來越扁、越來越「被擠壓」）
+// Verification:
+//   1. Matches the reference result of "calling dsp::Compressor directly and changing the threshold every 32 samples" (difference < 1e-4);
+//   2. The first 0.5 s is barely compressed (RMS change > -1 dB) and the last 1 s is compressed a lot (RMS change < -6 dB).
+// Output: dawlab_output/l13_ex4_automation.wav (what you hear: the drums start out loose and get flatter and more "squeezed")
 
 #include "../examples/L13Common.h"
 
@@ -20,7 +20,7 @@ constexpr double kSampleRate = 48000.0;
 constexpr int kBlockSize = 512;
 constexpr int kSubBlock = 32;
 
-// automation 曲線：t = 0 → 0 dB，t = 結尾 → −40 dB；snap 到 plugin 的 interval（0.1 dB）
+// Automation curve: t = 0 -> 0 dB, t = end -> -40 dB; snapped to the plugin's interval (0.1 dB)
 float thresholdAt(int sample, int totalSamples) {
     const double t = static_cast<double>(sample) / totalSamples;
     const double db = -40.0 * t;
@@ -42,7 +42,7 @@ int main() {
     if (plugin == nullptr)
         return 1;
 
-    const dawlab::AudioBuffer input = dawlab::makeDrumLoop(kSampleRate, 4); // 8 秒
+    const dawlab::AudioBuffer input = dawlab::makeDrumLoop(kSampleRate, 4); // 8 seconds
     const int total = input.getNumSamples();
     const int thresholdIndex = plugin->findParameter("Threshold");
     DAWLAB_CHECK(thresholdIndex >= 0);
@@ -53,7 +53,7 @@ int main() {
     int parameterChanges = 0;
     for (int start = 0; start < total; start += kBlockSize) {
         const int blockLen = std::min(kBlockSize, total - start);
-        // 一個 audio callback（512 samples）切成 16 個 sub-block
+        // One audio callback (512 samples) is split into 16 sub-blocks
         for (int sub = 0; sub < blockLen; sub += kSubBlock) {
             const int len = std::min(kSubBlock, blockLen - sub);
             const float db = thresholdAt(start + sub, total);
@@ -64,7 +64,7 @@ int main() {
     }
     plugin->releaseResources();
 
-    // 參考答案：同樣的 automation，直接套在 dsp::Compressor 上（其他參數 = plugin 預設值）
+    // Reference answer: the same automation applied directly to dsp::Compressor (other parameters = the plugin defaults)
     dawlab::dsp::Compressor reference;
     reference.prepare(kSampleRate, kBlockSize, 2);
     reference.setRatio(4.0f);
@@ -85,10 +85,10 @@ int main() {
     const float early = rmsChangeDb(input, output, 0, half);
     const float late = rmsChangeDb(input, output, total - second, second);
 
-    std::printf("參數變化次數：%d（每 %d samples 一次，時間解析度 %.2f ms）\n", parameterChanges, kSubBlock,
+    std::printf("Parameter changes: %d (once every %d samples, time resolution %.2f ms)\n", parameterChanges, kSubBlock,
                 1000.0 * kSubBlock / kSampleRate);
-    std::printf("前 0.5 秒 RMS 變化：%+.2f dB；最後 1 秒：%+.2f dB\n", early, late);
-    std::printf("與參考（dsp::Compressor）的最大差異：%.3g\n", diff);
+    std::printf("RMS change in the first 0.5 s: %+.2f dB; in the last 1 s: %+.2f dB\n", early, late);
+    std::printf("Max difference from the reference (dsp::Compressor): %.3g\n", diff);
     dawlab::writeWav(dawlab::outputPath("l13_ex4_automation.wav"), output, kSampleRate);
 
     DAWLAB_CHECK(parameterChanges >= total / kSubBlock);

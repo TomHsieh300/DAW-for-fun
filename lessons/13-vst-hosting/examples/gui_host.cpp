@@ -1,16 +1,16 @@
-// l13_gui_host：有視窗的迷你 plugin host
+// l13_gui_host: a mini plugin host with a window
 //
-// 示範：
-//   - 選一個 .vst3（或直接載入本章的 DawLabCompressor / DawLabLimiter）；
-//   - 用 PluginWindow 打開 plugin 的 editor（DawLabLimiter 沒有 editor → 自動改用 GenericAudioProcessorEditor）；
-//   - 經 juce::AudioDeviceManager + juce::AudioProcessorPlayer 即時播放一段 drum loop 穿過 plugin；
-//   - message thread 與 audio thread 的分工：換 plugin 時先把 processor 從 player 拿掉，再刪舊的、建新的。
+// Demonstrates:
+//   - choosing a .vst3 (or directly loading this chapter's DawLabCompressor / DawLabLimiter);
+//   - using PluginWindow to open the plugin's editor (DawLabLimiter has no editor -> falls back to GenericAudioProcessorEditor);
+//   - playing a drum loop through the plugin in real time via juce::AudioDeviceManager + juce::AudioProcessorPlayer;
+//   - the division of labor between the message thread and the audio thread: when switching plugins, first take the processor off the player, then delete the old one and create the new one.
 //
-// 執行：l13_gui_host                 開視窗（會用系統預設的音訊輸出，注意音量）
-//       l13_gui_host --smoke-test    不開音訊裝置：自動載入兩個 plugin、開關 editor、離線跑幾個 block，
-//                                    然後結束；結果寫在 dawlab_output/l13_gui_host_smoke.txt（給自動檢查用）
-// 該聽到什麼：Play 之後是 120 BPM 的鼓；把 Threshold 往下轉，鼓頭被壓扁、GR meter 往下長；
-//             按 Bypass 可以比較原音（直接切換，會有一點 click —— 練習 7 用 crossfade 解決）。
+// Run: l13_gui_host                 opens the window (uses the system default audio output, mind the volume)
+//       l13_gui_host --smoke-test    opens no audio device: automatically loads both plugins, opens and closes the editors, renders a few blocks offline,
+//                                    then exits; the result is written to dawlab_output/l13_gui_host_smoke.txt (for automated checking)
+// What to listen for: after Play, a 120 BPM drum loop; turn Threshold down and the drum heads get squashed while the GR meter grows downward;
+//             press Bypass to compare with the original (a direct switch, with a slight click -- exercise 7 fixes this with a crossfade).
 
 #include "L13Common.h"
 
@@ -19,14 +19,14 @@
 namespace {
 
 // ---------------------------------------------------------------------------
-// LoopPlayer：host 內部的 AudioProcessor，產生 drum loop 並送進 HostedPlugin。
-// AudioProcessorPlayer 會在 audio thread 呼叫它的 processBlock。
+// LoopPlayer: an AudioProcessor inside the host that generates the drum loop and feeds it into the HostedPlugin.
+// AudioProcessorPlayer calls its processBlock on the audio thread.
 // ---------------------------------------------------------------------------
 class LoopPlayer final : public juce::AudioProcessor {
 public:
     LoopPlayer() : juce::AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)) {}
 
-    // 只能在「沒有接在 AudioProcessorPlayer 上」的時候呼叫（message thread）
+    // May only be called while it is "not connected to the AudioProcessorPlayer" (message thread)
     void setPlugin(dawlab::host::HostedPlugin* plugin) { plugin_ = plugin; }
 
     std::atomic<bool> playing{false};
@@ -36,7 +36,7 @@ public:
     const juce::String getName() const override { return "LoopPlayer"; }
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override {
-        // 在 prepare 階段配置：loop 依目前裝置的 sample rate 重新產生
+        // Allocated in the prepare phase: the loop is regenerated for the current device's sample rate
         loop_ = dawlab::makeDrumLoop(sampleRate, 2, 120.0, 0.5f);
         position_ = 0;
         if (plugin_ != nullptr)
@@ -60,7 +60,7 @@ public:
                 buffer.setSample(ch, i, loop_.getSample(std::min(ch, loop_.getNumChannels() - 1), position_));
             position_ = (position_ + 1) % len;
         }
-        // 把 JUCE buffer 的指標包成 dawlab::AudioBlock（零複製）交給 HostedPlugin
+        // Wrap the JUCE buffer's pointers as a dawlab::AudioBlock (zero copy) and hand it to the HostedPlugin
         if (plugin_ != nullptr && !bypassed.load())
             plugin_->process(dawlab::AudioBlock(buffer.getArrayOfWritePointers(), numCh, n));
         outputPeak.store(buffer.getMagnitude(0, n));
@@ -86,7 +86,7 @@ private:
 };
 
 // ---------------------------------------------------------------------------
-// MainComponent：按鈕 + 狀態列
+// MainComponent: buttons + status line
 // ---------------------------------------------------------------------------
 class MainComponent final : public juce::Component, private juce::Timer {
 public:
@@ -109,10 +109,10 @@ public:
         audioButton_.onClick = [this] { showAudioSettings(); };
 
         if (!smokeTest_) {
-            // 0 個輸入、2 個輸出；用系統預設裝置
+            // 0 inputs, 2 outputs; use the system default device
             const auto err = deviceManager_.initialiseWithDefaultDevices(0, 2);
             if (err.isNotEmpty())
-                lastMessage_ = l13::u8("音訊裝置初始化失敗：") + err;
+                lastMessage_ = l13::u8("Audio device initialisation failed: ") + err;
             deviceManager_.addAudioCallback(&player_);
         }
         player_.setProcessor(&loop_);
@@ -122,7 +122,7 @@ public:
 
     ~MainComponent() override {
         stopTimer();
-        // 關閉順序：editor 視窗 → 從 audio callback 拿掉 → plugin
+        // Shutdown order: editor window -> take off the audio callback -> plugin
         window_.reset();
         deviceManager_.removeAudioCallback(&player_);
         player_.setProcessor(nullptr);
@@ -130,12 +130,12 @@ public:
         plugin_.reset();
     }
 
-    // message thread：換 plugin
+    // message thread: switching plugins
     bool loadPlugin(const juce::File& file) {
-        window_.reset();               // 1) editor 必須先於 plugin 消失
-        player_.setProcessor(nullptr); // 2) 停止 audio thread 對 loop_ / plugin 的呼叫（內部會拿 lock 並 releaseResources）
+        window_.reset();               // 1) the editor must disappear before the plugin
+        player_.setProcessor(nullptr); // 2) stop the audio thread's calls into loop_ / the plugin (internally takes a lock and calls releaseResources)
         loop_.setPlugin(nullptr);
-        plugin_.reset();               // 3) 現在可以安全刪除舊 plugin
+        plugin_.reset();               // 3) now it is safe to delete the old plugin
 
         double sampleRate = 48000.0;
         int blockSize = 512;
@@ -148,11 +148,11 @@ public:
         if (instance != nullptr) {
             plugin_ = std::make_unique<dawlab::host::HostedPlugin>(std::move(instance));
             loop_.setPlugin(plugin_.get());
-            lastMessage_ = l13::u8("已載入：") + file.getFullPathName();
+            lastMessage_ = l13::u8("Loaded: ") + file.getFullPathName();
         } else {
             lastMessage_ = error;
         }
-        player_.setProcessor(&loop_); // 4) 接回 player：裝置在跑的話會立刻 prepareToPlay → plugin->prepare
+        player_.setProcessor(&loop_); // 4) reconnect to the player: if the device is running, prepareToPlay -> plugin->prepare happens immediately
         updateStatus();
         return plugin_ != nullptr;
     }
@@ -165,11 +165,11 @@ public:
             return;
         }
         window_ = std::make_unique<dawlab::host::PluginWindow>(*plugin_);
-        // 關閉鈕：交給我們刪除視窗（非同步，避免在視窗自己的 callback 裡 delete this）
+        // Close button: let us delete the window (asynchronously, to avoid deleting this inside the window's own callback)
         window_->onCloseRequested = [this] { juce::MessageManager::callAsync([this] { window_.reset(); }); };
     }
 
-    // ---- smoke test：不開音訊裝置，自動走過一遍所有功能 ------------------------------------
+    // ---- smoke test: opens no audio device and walks through every feature automatically ----
     int runSmokeTest(juce::String& report) {
         int failures = 0;
         auto check = [&](bool ok, const char* what) {
@@ -191,30 +191,30 @@ public:
             return peak;
         };
 
-        check(loadPlugin(l13::defaultCompressorVst3()), "載入 DawLabCompressor");
+        check(loadPlugin(l13::defaultCompressorVst3()), "load DawLabCompressor");
         toggleEditor();
-        check(window_ != nullptr && !window_->isUsingGenericEditor(), "DawLabCompressor 用自己的 editor");
+        check(window_ != nullptr && !window_->isUsingGenericEditor(), "DawLabCompressor uses its own editor");
         if (window_ != nullptr)
             report << "  editor size: " << window_->getContentComponent()->getWidth() << " x "
                    << window_->getContentComponent()->getHeight() << "\n";
-        player_.setProcessor(nullptr); // smoke test 自己呼叫 processBlock
+        player_.setProcessor(nullptr); // the smoke test calls processBlock itself
         const float peakComp = renderBlocks(200);
-        check(peakComp > 0.0f && peakComp < 1.0f, "DawLabCompressor 有輸出、沒有爆");
+        check(peakComp > 0.0f && peakComp < 1.0f, "DawLabCompressor produces output without clipping");
         loop_.bypassed = true;
         const float peakBypass = renderBlocks(200);
         loop_.bypassed = false;
-        report << "  peak（plugin）= " << peakComp << "，peak（bypass）= " << peakBypass << "\n";
-        check(peakComp < peakBypass, "壓縮後 peak 比 bypass 小");
+        report << "  peak (plugin) = " << peakComp << ", peak (bypass) = " << peakBypass << "\n";
+        check(peakComp < peakBypass, "compressed peak is lower than the bypass peak");
 
-        check(loadPlugin(l13::defaultLimiterVst3()), "載入 DawLabLimiter");
+        check(loadPlugin(l13::defaultLimiterVst3()), "load DawLabLimiter");
         toggleEditor();
-        check(window_ != nullptr && window_->isUsingGenericEditor(), "DawLabLimiter 沒有 editor → GenericAudioProcessorEditor");
+        check(window_ != nullptr && window_->isUsingGenericEditor(), "DawLabLimiter has no editor -> GenericAudioProcessorEditor");
         player_.setProcessor(nullptr);
-        const float peakLim = renderBlocks(200); // prepare 之後 plugin 才回報 latency
+        const float peakLim = renderBlocks(200); // the plugin only reports its latency after prepare
         const int latency = plugin_ != nullptr ? plugin_->getLatencySamples() : -1;
         report << "  DawLabLimiter latency = " << latency << " samples, peak = " << peakLim << "\n";
-        check(latency == 240, "DawLabLimiter 回報 latency 240 samples（5 ms @ 48 kHz）");
-        check(peakLim <= 0.8913f * 1.001f, "DawLabLimiter 輸出 ≤ ceiling −1 dBFS");
+        check(latency == 240, "DawLabLimiter reports a latency of 240 samples (5 ms @ 48 kHz)");
+        check(peakLim <= 0.8913f * 1.001f, "DawLabLimiter output <= ceiling -1 dBFS");
         window_.reset();
         return failures;
     }
@@ -237,9 +237,9 @@ public:
 
 private:
     void chooseFile() {
-        chooser_ = std::make_unique<juce::FileChooser>(l13::u8("選擇 VST3 plugin"), l13::defaultCompressorVst3(),
+        chooser_ = std::make_unique<juce::FileChooser>(l13::u8("Choose a VST3 plugin"), l13::defaultCompressorVst3(),
                                                        "*.vst3");
-        // .vst3 在 Windows 上多半是資料夾（bundle），所以檔案與資料夾都要能選
+        // On Windows a .vst3 is mostly a folder (bundle), so both files and folders must be selectable
         chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles |
                                   juce::FileBrowserComponent::canSelectDirectories,
                               [this](const juce::FileChooser& fc) {
@@ -270,7 +270,7 @@ private:
             for (int i = 0; i < std::min(8, plugin_->getNumParameters()); ++i)
                 s << "  " << plugin_->getParameterName(i) << " = " << plugin_->getParameterText(i) << "\n";
         } else {
-            s << l13::u8("尚未載入 plugin\n");
+            s << l13::u8("No plugin loaded yet\n");
         }
         if (auto* device = deviceManager_.getCurrentAudioDevice())
             s << "Audio: " << device->getName() << "  " << device->getCurrentSampleRate() << " Hz / "
@@ -301,7 +301,7 @@ private:
 };
 
 // ---------------------------------------------------------------------------
-// 應用程式與主視窗
+// Application and main window
 // ---------------------------------------------------------------------------
 class MainWindow final : public juce::DocumentWindow {
 public:
@@ -327,7 +327,7 @@ public:
         const bool smoke = commandLine.contains("--smoke-test");
         window_ = std::make_unique<MainWindow>("DawLab l13_gui_host", smoke);
         if (smoke) {
-            // 等視窗真的顯示出來再跑（editor 需要 peer 存在才會建立原生視窗）
+            // Wait until the window is really shown before running (the editor needs a peer to exist before it can create a native window)
             juce::Timer::callAfterDelay(500, [this] {
                 juce::String report;
                 const int failures = window_->getMain().runSmokeTest(report);

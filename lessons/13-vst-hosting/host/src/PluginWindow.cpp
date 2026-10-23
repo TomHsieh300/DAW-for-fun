@@ -1,5 +1,5 @@
-// PluginWindow：顯示 plugin 的 editor（VST3 的 IPlugView 由 JUCE 包成 AudioProcessorEditor）。
-// 全部在 message thread 執行。
+// PluginWindow: shows the plugin's editor (the VST3 IPlugView, wrapped by JUCE as an AudioProcessorEditor).
+// Everything runs on the message thread.
 
 #include <dawlab/host/PluginHost.h>
 
@@ -9,14 +9,14 @@ namespace {
 
 juce::AudioProcessorEditor* createEditorFor(juce::AudioPluginInstance& instance, bool& usedGeneric) {
     usedGeneric = false;
-    // createEditorAndMakeActive()：建立 editor 並讓 getActiveEditor() 記住它（JUCE 8.0.13 起不可直接呼叫 createEditor()）。
-    // 對 VST3 而言，這一步會呼叫 IEditController::createView("editor") 取得 IPlugView，
-    // 再把 plugin 的原生視窗 attach 到我們的 Component 裡。
+    // createEditorAndMakeActive(): creates the editor and lets getActiveEditor() remember it (since JUCE 8.0.13 createEditor() must not be called directly).
+    // For VST3 this step calls IEditController::createView("editor") to obtain an IPlugView,
+    // then attaches the plugin's native window inside our Component.
     if (instance.hasEditor())
         if (auto* editor = instance.createEditorAndMakeActive())
             return editor;
 
-    // 沒有 editor（或建立失敗）：JUCE 依參數列表自動產生滑桿介面
+    // No editor (or creation failed): JUCE auto-generates a slider UI from the parameter list
     usedGeneric = true;
     auto* generic = new juce::GenericAudioProcessorEditor(instance);
     generic->setResizeLimits(300, 200, 1600, 1600);
@@ -32,7 +32,7 @@ PluginWindow::PluginWindow(HostedPlugin& plugin)
       plugin_(plugin) {
     setUsingNativeTitleBar(true);
     auto* editor = createEditorFor(plugin_.getInstance(), usingGenericEditor_);
-    // setContentOwned(..., true)：視窗擁有 editor，並依 editor 的大小調整視窗
+    // setContentOwned(..., true): the window owns the editor and resizes itself to the editor's size
     setContentOwned(editor, true);
     setResizable(editor->isResizable(), false);
     centreWithSize(getWidth(), getHeight());
@@ -40,14 +40,14 @@ PluginWindow::PluginWindow(HostedPlugin& plugin)
 }
 
 PluginWindow::~PluginWindow() {
-    // 先刪 editor：AudioProcessorEditor 的解構會呼叫 processor.editorBeingDeleted()，
-    // 所以 plugin 必須在這之後才能消失（這也是「先關視窗、再刪 plugin」規則的由來）。
+    // Delete the editor first: the AudioProcessorEditor destructor calls processor.editorBeingDeleted(),
+    // so the plugin must not disappear before this point (this is where the rule "close the window first, then delete the plugin" comes from).
     clearContentComponent();
 }
 
 void PluginWindow::closeButtonPressed() {
     if (onCloseRequested)
-        onCloseRequested(); // 通常是擁有者 delete 這個視窗；之後不可以再碰 this
+        onCloseRequested(); // usually the owner deletes this window; never touch this afterwards
     else
         setVisible(false);
 }

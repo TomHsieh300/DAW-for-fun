@@ -1,10 +1,10 @@
-# 本章的兩個 plugin。每個 juce_add_plugin 會產生：
-#   <name>            shared code 靜態函式庫（我們的 processor / editor + JUCE modules）
-#   <name>_VST3       VST3 bundle：<build>/lessons/13-vst-hosting/plugin/<name>_artefacts/<Config>/VST3/<name>.vst3
-#   <name>_Standalone 獨立執行檔（JUCE 幫 plugin 包一個有 audio 設定的視窗程式，方便不開 DAW 就試聽）
+# The two plugins of this chapter. Each juce_add_plugin produces:
+#   <name>            shared-code static library (our processor / editor + JUCE modules)
+#   <name>_VST3       VST3 bundle: <build>/lessons/13-vst-hosting/plugin/<name>_artefacts/<Config>/VST3/<name>.vst3
+#   <name>_Standalone standalone executable (JUCE wraps the plugin in a windowed app with audio settings, so you can audition it without a DAW)
 #
-# COPY_PLUGIN_AFTER_BUILD FALSE：絕對不要自動安裝到 C:\Program Files\Common Files\VST3。
-# 要給 Reaper 等 DAW 使用時，請照 README「把 plugin 交給其他 DAW」一節手動複製。
+# COPY_PLUGIN_AFTER_BUILD FALSE: never install automatically into C:\Program Files\Common Files\VST3.
+# To use the plugins in a DAW such as Reaper, copy them manually as described in the README section "Handing the plugins to other DAWs".
 
 set(_l13_plugin_defs
     JUCE_WEB_BROWSER=0
@@ -13,7 +13,7 @@ set(_l13_plugin_defs
     JUCE_USE_FLAC=0
     JUCE_USE_OGGVORBIS=0)
 
-# 只對我們自己的原始碼開 /W4（JUCE module 的原始碼也在同一個 target 裡，不套用）
+# Enable /W4 only for our own sources (the JUCE module sources are in the same target and are excluded)
 function(_l13_strict_warnings)
     if(MSVC)
         set_source_files_properties(${ARGN} PROPERTIES COMPILE_OPTIONS "/W4;/permissive-")
@@ -22,11 +22,11 @@ function(_l13_strict_warnings)
     endif()
 endfunction()
 
-# ---- DawLabCompressor（第 04 章 Compressor + 第 01 章 Gain）---------------------------
+# ---- DawLabCompressor(chapter 04 Compressor + chapter 01 Gain)---------------------------
 juce_add_plugin(DawLabCompressor
     COMPANY_NAME "DawLab"
-    PLUGIN_MANUFACTURER_CODE Dwlb        # 4 個字元、至少一個大寫
-    PLUGIN_CODE Dcmp                     # 4 個字元、恰好一個大寫；同一個廠商內不可重複
+    PLUGIN_MANUFACTURER_CODE Dwlb        # 4 characters, at least one uppercase
+    PLUGIN_CODE Dcmp                     # 4 characters, exactly one uppercase; must be unique within a manufacturer
     FORMATS VST3 Standalone
     PRODUCT_NAME "DawLabCompressor"
     DESCRIPTION "DawLab chapter 13 compressor"
@@ -55,7 +55,7 @@ target_link_libraries(DawLabCompressor
         juce::juce_recommended_config_flags)
 _l13_strict_warnings(${_comp_sources})
 
-# ---- DawLabLimiter（第 05 章 Limiter，會回報 latency）----------------------------------
+# ---- DawLabLimiter(chapter 05 Limiter, reports latency)----------------------------------
 juce_add_plugin(DawLabLimiter
     COMPANY_NAME "DawLab"
     PLUGIN_MANUFACTURER_CODE Dwlb
@@ -91,7 +91,7 @@ foreach(_t DawLabCompressor DawLabCompressor_VST3 DawLabCompressor_Standalone
     endif()
 endforeach()
 
-# 給範例 / 測試用的 VST3 bundle 路徑（$<CONFIG> 會在 build 時換成 Debug / Release）
+# VST3 bundle paths for the examples / tests ($<CONFIG> becomes Debug / Release at build time)
 set(L13_COMPRESSOR_VST3
     "${CMAKE_CURRENT_BINARY_DIR}/DawLabCompressor_artefacts/$<CONFIG>/VST3/DawLabCompressor.vst3" PARENT_SCOPE)
 set(L13_LIMITER_VST3

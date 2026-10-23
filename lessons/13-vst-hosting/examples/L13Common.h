@@ -1,12 +1,12 @@
 #pragma once
-// 第 13 章範例、練習共用的小工具（只給本章的程式用，不是 dsp 元件）。
+// Small utilities shared by this chapter's examples and exercises (used only by this chapter's programs; not a dsp component).
 //
-//   - defaultCompressorVst3() / defaultLimiterVst3()：本章 build 出來的 plugin 路徑（CMake 編進程式）
-//   - u8()：把 UTF-8 字串字面值轉成 juce::String（juce::String(const char*) 只接受 ASCII）
-//   - toNormalized() / fromNormalized()：JUCE NormalisableRange 的換算公式（README「normalized parameter」）
-//   - mustLoad()：載入 plugin，失敗就印出原因
-//   - setParam()：用「名稱 + 實際值」設定參數（自己換算成 0..1）
-//   - renderOffline()：把整段 AudioBuffer 以固定 block size 送進 plugin（模擬 audio callback）
+//   - defaultCompressorVst3() / defaultLimiterVst3(): paths of the plugins built by this chapter (compiled in by CMake)
+//   - u8(): converts a UTF-8 string literal to juce::String (juce::String(const char*) only accepts ASCII)
+//   - toNormalized() / fromNormalized(): the JUCE NormalisableRange conversion formulas (README "Normalized parameters")
+//   - mustLoad(): loads a plugin and prints the reason on failure
+//   - setParam(): sets a parameter by "name + real value" (does the conversion to 0..1 itself)
+//   - renderOffline(): feeds a whole AudioBuffer into the plugin at a fixed block size (simulating the audio callback)
 
 #include <dawlab/Common.h>
 #include <dawlab/host/PluginHost.h>
@@ -29,9 +29,9 @@ inline juce::String u8(const char* text) { return juce::String::fromUTF8(text); 
 inline juce::File defaultCompressorVst3() { return juce::File(u8(DAWLAB_L13_COMPRESSOR_VST3)); }
 inline juce::File defaultLimiterVst3() { return juce::File(u8(DAWLAB_L13_LIMITER_VST3)); }
 
-// JUCE NormalisableRange 的換算（skew = 1 時就是線性）：
-//   normalized = ((value − start) / (end − start))^skew
-//   value      = start + (end − start) · normalized^(1/skew)
+// JUCE NormalisableRange conversion (with skew = 1 it is linear):
+//   normalized = ((value - start) / (end - start))^skew
+//   value      = start + (end - start) * normalized^(1/skew)
 inline float toNormalized(float value, float start, float end, float skew = 1.0f) {
     const double proportion = std::clamp((static_cast<double>(value) - start) / (static_cast<double>(end) - start), 0.0, 1.0);
     return static_cast<float>(std::pow(proportion, static_cast<double>(skew)));
@@ -42,7 +42,7 @@ inline float fromNormalized(float normalized, float start, float end, float skew
     return static_cast<float>(start + (end - start) * std::pow(n, 1.0 / skew));
 }
 
-// setSkewForCentre(centre) 算出來的 skew：讓 normalized 0.5 剛好對到 centre
+// The skew computed by setSkewForCentre(centre): makes normalized 0.5 land exactly on centre
 inline float skewForCentre(float start, float end, float centre) {
     return static_cast<float>(std::log(0.5) / std::log((static_cast<double>(centre) - start) / (static_cast<double>(end) - start)));
 }
@@ -52,18 +52,18 @@ inline std::unique_ptr<dawlab::host::HostedPlugin> mustLoad(dawlab::host::Plugin
     juce::String error;
     auto instance = host.loadFromFile(file, sampleRate, blockSize, error);
     if (instance == nullptr) {
-        std::printf("  載入失敗：%s\n  （先 build plugin：cmake --build <build> --target DawLabCompressor_VST3）\n",
+        std::printf("  Load failed: %s\n  (build the plugin first: cmake --build <build> --target DawLabCompressor_VST3)\n",
                     error.toRawUTF8());
         return nullptr;
     }
     return std::make_unique<dawlab::host::HostedPlugin>(std::move(instance));
 }
 
-// 以名稱找參數並設定 normalized 值；找不到就印警告並回傳 false
+// Finds a parameter by name and sets its normalized value; prints a warning and returns false if it is not found
 inline bool setParam(dawlab::host::HostedPlugin& plugin, const char* name, float normalized) {
     const int index = plugin.findParameter(name);
     if (index < 0) {
-        std::printf("  [警告] 找不到參數 %s\n", name);
+        std::printf("  [warning] parameter not found: %s\n", name);
         return false;
     }
     plugin.setParameterValue(index, normalized);
@@ -75,7 +75,7 @@ inline float getParam(const dawlab::host::HostedPlugin& plugin, const char* name
     return index >= 0 ? plugin.getParameterValue(index) : -1.0f;
 }
 
-// 把 input 複製一份、以 blockSize 一塊一塊送進 plugin（就像 audio callback），回傳處理後的結果
+// Copies the input and feeds it into the plugin block by block of blockSize (like the audio callback); returns the processed result
 inline dawlab::AudioBuffer renderOffline(dawlab::host::HostedPlugin& plugin, const dawlab::AudioBuffer& input,
                                          int blockSize) {
     dawlab::AudioBuffer out = input;

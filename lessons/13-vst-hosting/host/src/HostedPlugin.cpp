@@ -1,6 +1,6 @@
-// HostedPlugin：包住一個 juce::AudioPluginInstance。
-// prepare / releaseResources / getState / setState：message thread（audio 停止時）。
-// process：audio thread，不 allocate、不複製 audio、不等待 lock（前提：host 遵守 PluginHost.h 的 thread 規則）。
+// HostedPlugin: wraps a juce::AudioPluginInstance.
+// prepare / releaseResources / getState / setState: message thread (while audio is stopped).
+// process: audio thread; does not allocate, does not copy audio, does not wait on a lock (provided the host obeys the thread rules in PluginHost.h).
 
 #include <dawlab/host/PluginHost.h>
 
@@ -13,12 +13,12 @@ HostedPlugin::HostedPlugin(std::unique_ptr<juce::AudioPluginInstance> instance) 
 }
 
 HostedPlugin::~HostedPlugin() {
-    // 解構前一定要 release：VST3 規定 setActive(false) → terminate 的順序
+    // Always release before destruction: VST3 requires the order setActive(false) -> terminate
     releaseResources();
 }
 
 // ---------------------------------------------------------------------------
-// prepare：bus layout 協商 + prepareToPlay + 預先配置
+// prepare: bus layout negotiation + prepareToPlay + pre-allocation
 // ---------------------------------------------------------------------------
 void HostedPlugin::prepare(double sampleRate, int maxBlockSize, int numChannels) {
     if (instance_ == nullptr)
@@ -30,11 +30,11 @@ void HostedPlugin::prepare(double sampleRate, int maxBlockSize, int numChannels)
     maxBlockSize_ = std::max(1, maxBlockSize);
     auto& p = *instance_;
 
-    // 1) Bus layout 協商（negotiation）。
-    //    host 提出「主輸入 / 主輸出各 numChannels 個 channel」，問 plugin 支不支援
-    //    （checkBusesLayoutSupported 會呼叫 plugin 的 isBusesLayoutSupported；VST3 則是 setBusArrangements）。
-    //    不支援就保留 plugin 的預設 layout，process() 再處理 channel 數不一致的情況。
-    //    sidechain 之類的額外 bus 維持原狀（預設多半是關閉的）。
+    // 1) Bus layout negotiation.
+    //    The host proposes "numChannels channels on both the main input and the main output" and asks whether the plugin supports it
+    //    (checkBusesLayoutSupported calls the plugin's isBusesLayoutSupported; for VST3 it is setBusArrangements).
+    //    If not supported, the plugin's default layout is kept and process() handles the channel-count mismatch.
+    //    Extra buses such as a sidechain are left as they are (mostly disabled by default).
     if (numChannels >= 1) {
         auto layout = p.getBusesLayout();
         const auto set = juce::AudioChannelSet::canonicalChannelSet(numChannels);
@@ -46,17 +46,17 @@ void HostedPlugin::prepare(double sampleRate, int maxBlockSize, int numChannels)
             p.setBusesLayout(layout);
     }
 
-    // 2) 生命週期：prepareToPlay 之後 plugin 才能 processBlock。
-    //    對 VST3 而言這一步會做 setupProcessing → activateBus → setActive(true)，並讀出 latency。
+    // 2) Lifecycle: the plugin can only processBlock after prepareToPlay.
+    //    For VST3 this step performs setupProcessing -> activateBus -> setActive(true), and reads out the latency.
     p.setRateAndBufferSizeDetails(sampleRate_, maxBlockSize_);
     p.prepareToPlay(sampleRate_, maxBlockSize_);
 
-    // 3) 預先配置 process() 要用的東西（之後 audio thread 上就不必 allocate）
+    // 3) Pre-allocate what process() needs (so the audio thread never has to allocate later)
     numPluginChannels_ = std::max(p.getTotalNumInputChannels(), p.getTotalNumOutputChannels());
     channelPtrs_.assign(static_cast<size_t>(numPluginChannels_), nullptr);
     scratch_.setSize(std::max(1, numPluginChannels_), maxBlockSize_, false, true, false);
     scratch_.clear();
-    midi_.ensureSize(256); // 效果器通常不需要 MIDI；留一點空間避免 plugin 輸出 MIDI 時臨時 allocate
+    midi_.ensureSize(256); // effects usually need no MIDI; leave some room so a plugin that outputs MIDI does not allocate on the fly
     midi_.clear();
     prepared_ = true;
 }
@@ -68,14 +68,14 @@ void HostedPlugin::releaseResources() {
 }
 
 // ---------------------------------------------------------------------------
-// process：audio thread
+// process: audio thread
 // ---------------------------------------------------------------------------
 void HostedPlugin::process(dawlab::AudioBlock block) noexcept {
     if (!prepared_ || numPluginChannels_ <= 0)
         return;
     const int n = block.getNumSamples();
-    // host 承諾過「每次最多 maxBlockSize 個 sample」（prepareToPlay 的第二個參數），
-    // 遇到更長的 block 就切段，絕不能違約（很多 plugin 依 maxBlockSize 配置內部 buffer）。
+    // The host promised "at most maxBlockSize samples at a time" (the second argument of prepareToPlay),
+    // so a longer block is split into segments; the promise must never be broken (many plugins size internal buffers from maxBlockSize).
     for (int start = 0; start < n; start += maxBlockSize_)
         processChunk(block, start, std::min(maxBlockSize_, n - start));
 }
@@ -84,9 +84,9 @@ void HostedPlugin::processChunk(const dawlab::AudioBlock& block, int start, int 
     const int blockChannels = block.getNumChannels();
     const int mainInputs = instance_->getMainBusNumInputChannels();
 
-    // 準備 channel 指標：block 有的 channel 直接指進 block（零複製）；
-    // block 沒有的 channel 用 scratch_ 的記憶體：主輸入的部分放 channel 0 的複本（mono → stereo），
-    // 其他（例如 sidechain）清成 0。
+    // Prepare the channel pointers: channels the block has point straight into the block (zero copy);
+    // channels the block lacks use the memory of scratch_: the main-input ones get a copy of channel 0 (mono -> stereo),
+    // the rest (e.g. sidechain) are cleared to 0.
     for (int ch = 0; ch < numPluginChannels_; ++ch) {
         if (ch < blockChannels) {
             channelPtrs_[static_cast<size_t>(ch)] = block.getChannelPointer(ch) + start;
@@ -100,26 +100,26 @@ void HostedPlugin::processChunk(const dawlab::AudioBlock& block, int start, int 
         }
     }
 
-    // referencing constructor：不配置記憶體、不複製 sample，只記住指標（32 個 channel 以內用內建陣列）
+    // Referencing constructor: allocates no memory and copies no samples, it only remembers the pointers (up to 32 channels use a built-in array)
     juce::AudioBuffer<float> buffer(channelPtrs_.data(), numPluginChannels_, length);
     midi_.clear();
 
-    // plugin 的 callback lock：message thread 只在 suspendProcessing(true) 期間拿著它（換 state / prepare 不會）。
-    // audio thread 絕不能等待，所以用 try-lock：拿不到就讓這一段維持原音（等同瞬間 bypass）。
-    // setState / prepare 不受這個 lock 保護，由 host 保證它們不與 process() 同時進行（見 PluginHost.h）；
-    // 這也讓 JUCE VST3 hosting 在 processBlock 內部 spin 等待的 processMutex 不會有競爭。
+    // The plugin's callback lock: the message thread holds it only during suspendProcessing(true) (changing state / prepare do not).
+    // The audio thread must never wait, so it uses a try-lock: if the lock cannot be taken, this segment keeps the original audio (an instantaneous bypass).
+    // setState / prepare are not protected by this lock; the host guarantees they never run at the same time as process() (see PluginHost.h);
+    // that also means the processMutex that JUCE's VST3 hosting spin-waits on inside processBlock is never contended.
     const juce::ScopedTryLock lock(instance_->getCallbackLock());
     if (!lock.isLocked() || instance_->isSuspended())
         return;
 
-    const juce::ScopedNoDenormals noDenormals; // 遞迴 filter 的極小值會讓 CPU 變很慢（denormal）
+    const juce::ScopedNoDenormals noDenormals; // tiny values in recursive filters make the CPU very slow (denormals)
     instance_->processBlock(buffer, midi_);
 }
 
 int HostedPlugin::getLatencySamples() const { return instance_ != nullptr ? instance_->getLatencySamples() : 0; }
 
 // ---------------------------------------------------------------------------
-// 參數
+// Parameters
 // ---------------------------------------------------------------------------
 juce::AudioProcessorParameter* HostedPlugin::getParam(int index) const {
     if (instance_ == nullptr)
@@ -147,7 +147,7 @@ int HostedPlugin::findParameter(const juce::String& name) const {
     for (int i = 0; i < n; ++i)
         if (getParameterName(i).equalsIgnoreCase(name))
             return i;
-    for (int i = 0; i < n; ++i) // 名稱找不到再比對 parameter ID
+    for (int i = 0; i < n; ++i) // if the name is not found, compare against the parameter ID
         if (getParameterId(i).equalsIgnoreCase(name))
             return i;
     return -1;
@@ -161,8 +161,8 @@ float HostedPlugin::getParameterValue(int index) const {
 
 void HostedPlugin::setParameterValue(int index, float normalizedValue) {
     if (auto* p = getParam(index)) {
-        // setValue：把值交給 plugin（VST3 hosting 會在下一個 processBlock 透過 IParameterChanges 送進去，
-        // 同時更新 edit controller）。再通知 listener，讓開著的 editor（例如 GenericAudioProcessorEditor）跟著動。
+        // setValue: hands the value to the plugin (VST3 hosting delivers it through IParameterChanges in the next processBlock,
+        // and also updates the edit controller). Then notify listeners so an open editor (e.g. GenericAudioProcessorEditor) follows along.
         const float v = juce::jlimit(0.0f, 1.0f, normalizedValue);
         p->setValue(v);
         p->sendValueChangedMessageToListeners(v);
@@ -187,7 +187,7 @@ juce::String HostedPlugin::getParameterText(int index, float normalizedValue) co
 juce::MemoryBlock HostedPlugin::getState() {
     juce::MemoryBlock state;
     if (instance_ != nullptr)
-        instance_->getStateInformation(state); // VST3：component state + controller state 一起打包
+        instance_->getStateInformation(state); // VST3: component state + controller state packed together
     return state;
 }
 
@@ -197,7 +197,7 @@ void HostedPlugin::setState(const juce::MemoryBlock& state) {
 }
 
 // ---------------------------------------------------------------------------
-// 其他
+// Extras
 // ---------------------------------------------------------------------------
 juce::String HostedPlugin::getName() const { return instance_ != nullptr ? instance_->getName() : juce::String(); }
 
@@ -214,11 +214,11 @@ juce::String HostedPlugin::describeBusLayout() const {
     for (int i = 0; i < instance_->getBusCount(true); ++i)
         if (auto* bus = instance_->getBus(true, i))
             s << "in[" << i << "] " << bus->getName() << ": " << bus->getCurrentLayout().getDescription()
-              << (bus->isEnabled() ? juce::String() : juce::String::fromUTF8("（關閉）")) << "  ";
+              << (bus->isEnabled() ? juce::String() : juce::String(" (disabled)")) << "  ";
     for (int i = 0; i < instance_->getBusCount(false); ++i)
         if (auto* bus = instance_->getBus(false, i))
             s << "out[" << i << "] " << bus->getName() << ": " << bus->getCurrentLayout().getDescription()
-              << (bus->isEnabled() ? juce::String() : juce::String::fromUTF8("（關閉）")) << "  ";
+              << (bus->isEnabled() ? juce::String() : juce::String(" (disabled)")) << "  ";
     return s.trimEnd();
 }
 

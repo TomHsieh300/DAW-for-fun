@@ -31,7 +31,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout LimiterProcessor::createPara
                                                      withUnit("dB", 1)));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID{id::release, 1}, "Release", releaseRange, 100.0f,
                                                      withUnit("ms", 1)));
-    // lookahead 的上限 20 ms = dsp::Limiter 預設的 setMaxLookaheadMs(20)
+    // The 20 ms upper bound of lookahead = dsp::Limiter's default setMaxLookaheadMs(20)
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID{id::lookahead, 1}, "Lookahead",
                                                      NormalisableRange<float>(0.0f, 20.0f, 0.1f), 5.0f,
                                                      withUnit("ms", 1)));
@@ -55,7 +55,7 @@ LimiterProcessor::~LimiterProcessor() = default;
 void LimiterProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     maxBlockSize_ = std::max(1, samplesPerBlock);
     const int numChannels = std::max(getTotalNumInputChannels(), getTotalNumOutputChannels());
-    // lookahead 上限用 dsp::Limiter 的預設（20 ms，在 prepare 時配置），與參數範圍 0..20 ms 一致
+    // The lookahead upper bound uses dsp::Limiter's default (20 ms, allocated in prepare), consistent with the parameter range 0..20 ms
     limiter_.setLookaheadMs(lookaheadParam_->load());
     limiter_.prepare(sampleRate, maxBlockSize_, numChannels);
     limiter_.setCeilingDb(ceilingParam_->load());
@@ -64,14 +64,14 @@ void LimiterProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     limiter_.reset();
     appliedLookaheadMs_ = lookaheadParam_->load();
 
-    // bypass 用的延遲線：processInternal 一次處理最多 maxBlockSize_ 個 sample，先把整段 push 進去，
-    // 再讀「d = (n − 1 − i) + L」之前的值，所以容量要 ≥ (maxBlockSize − 1) + lookahead 上限。
+    // Delay line for bypass: processInternal handles at most maxBlockSize_ samples at a time; the whole segment is pushed in first,
+    // then the value from "d = (n - 1 - i) + L" back is read, so the capacity must be >= (maxBlockSize - 1) + the lookahead upper bound.
     const int maxLookaheadSamples = std::max(0, dawlab::msToSamples(limiter_.getMaxLookaheadMs(), sampleRate));
     dryDelay_.prepare(maxLookaheadSamples + maxBlockSize_, numChannels);
     bypassStep_ = 1.0f / static_cast<float>(std::max(1, dawlab::msToSamples(10.0, sampleRate)));
     snapBypassMix_ = true;
 
-    // 在 prepareToPlay 裡回報 latency：host（JUCE 的 VST3 hosting 也是）在 prepare 完成後讀取這個值
+    // Report the latency in prepareToPlay: the host (and JUCE's VST3 hosting) reads this value once prepare has finished
     setLatencySamples(limiter_.getLatencySamples());
 }
 
@@ -83,7 +83,7 @@ bool LimiterProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const 
 }
 
 double LimiterProcessor::getTailLengthSeconds() const {
-    // 輸入停止後，輸出還會再「吐」出 lookahead 那麼長的訊號
+    // After the input stops, the output keeps "flushing out" a signal as long as the lookahead
     const double sr = getSampleRate();
     return sr > 0.0 ? limiter_.getLatencySamples() / sr : 0.0;
 }
@@ -94,8 +94,8 @@ void LimiterProcessor::applyLookaheadIfChanged() noexcept {
         return;
     appliedLookaheadMs_ = la;
     limiter_.setLookaheadMs(la);
-    // 播放中改 latency：JUCE 的 wrapper 會通知 host（VST3：restartComponent(kLatencyChanged)），
-    // host 多半會在下一次 prepare（或停止 / 重新開始播放）時重新計算 PDC。
+    // Changing latency during playback: JUCE's wrapper notifies the host (VST3: restartComponent(kLatencyChanged)),
+    // and the host mostly recomputes PDC at the next prepare (or on stop / restart of playback).
     setLatencySamples(limiter_.getLatencySamples());
 }
 
@@ -104,9 +104,9 @@ void LimiterProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     processInternal(buffer, false);
 }
 
-// JUCE 的預設 processBlockBypassed() 什麼都不做（輸出 = 輸入，延遲 0）。可是我們回報的 latency 是 L，
-// host 的 PDC 會把其他 track 延遲 L 來配合我們 → bypass 時這條 track 會提早 L 個 sample（PDC 錯位）。
-// 所以 bypass 時輸出「延遲 L 的原音」，時間位置與 bypass 前完全相同。
+// JUCE's default processBlockBypassed() does nothing (output = input, latency 0). But the latency we report is L,
+// and the host's PDC delays the other tracks by L to match us -> when bypassed this track would be L samples early (PDC misalignment).
+// So when bypassed we output "the original audio delayed by L", keeping the time position exactly the same as before bypass.
 void LimiterProcessor::processBlockBypassed(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
     juce::ignoreUnused(midi);
     processInternal(buffer, true);
@@ -136,25 +136,25 @@ void LimiterProcessor::processInternal(juce::AudioBuffer<float>& buffer, bool by
     }
 
     float* const* data = buffer.getArrayOfWritePointers();
-    // 即使 host 違約給了比 maxBlockSize 大的 block，也切段處理（延遲線容量只保證 maxBlockSize）
+    // Even if the host breaks its promise and passes a block larger than maxBlockSize, process it in segments (the delay-line capacity only guarantees maxBlockSize)
     for (int start = 0; start < numSamples; start += maxBlockSize_) {
         const int n = std::min(maxBlockSize_, numSamples - start);
 
-        // 1) 原音先 push 進延遲線（limiter 是 in-place，處理完原音就不見了）
+        // 1) Push the original audio into the delay line first (the limiter works in place, so the original is gone after processing)
         for (int ch = 0; ch < numChannels; ++ch)
             for (int i = 0; i < n; ++i)
                 dryDelay_.push(ch, data[ch][start + i]);
 
-        // 2) limiter 照常處理：bypass 時也跑，讓 envelope / lookahead 狀態保持最新，切回來時不會有舊聲音
+        // 2) The limiter runs as usual, also while bypassed, so its envelope / lookahead state stays current and no stale sound appears when switching back
         dawlab::AudioBlock block(data, numChannels, numSamples);
         limiter_.process(block.getSubBlock(start, n));
 
-        // 3) 完全沒有 bypass、也沒在 fade：輸出就是 limiter 的結果（不碰任何 sample）
+        // 3) No bypass at all and no fade in progress: the output is simply the limiter result (no sample is touched)
         if (bypassMix_ == 0.0f && target == 0.0f)
             continue;
 
-        // 4) crossfade：y = (1 − m)·wet + m·dry[n − L]，m 每個 sample 往目標移動 bypassStep_（10 ms 走完）
-        //    第 i 個 sample 的原音是 (n − 1 − i) 次 push 之前的值，再往前 L 個 sample
+        // 4) Crossfade: y = (1 - m)*wet + m*dry[n - L]; m moves toward the target by bypassStep_ per sample (done in 10 ms)
+        //    The original audio for the i-th sample is the value from (n - 1 - i) pushes ago, then L more samples back
         const int latency = limiter_.getLatencySamples();
         for (int i = 0; i < n; ++i) {
             if (bypassMix_ < target)

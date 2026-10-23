@@ -5,7 +5,7 @@
 namespace dawlab::plugin {
 
 namespace {
-constexpr float kMeterRangeDb = 24.0f; // meter 顯示 0..24 dB 的 gain reduction
+constexpr float kMeterRangeDb = 24.0f; // the meter shows 0..24 dB of gain reduction
 const juce::Colour kBackground{0xff1e2228};
 const juce::Colour kAccent{0xffe0a030};
 } // namespace
@@ -14,12 +14,12 @@ const juce::Colour kAccent{0xffe0a030};
 // GainReductionMeter
 // ---------------------------------------------------------------------------
 void GainReductionMeter::setGainReductionDb(float db) {
-    // 顯示用的 ballistics：上升立刻跟上，下降每 frame 最多回彈 1 dB（約 30 dB/s），眼睛才看得清楚
+    // Display ballistics: rises follow immediately, falls recover at most 1 dB per frame (about 30 dB/s) so the eye can follow
     db = std::clamp(db, 0.0f, kMeterRangeDb);
     displayDb_ = db > displayDb_ ? db : std::max(db, displayDb_ - 1.0f);
     if (db >= peakHoldDb_) {
         peakHoldDb_ = db;
-        holdFrames_ = 45; // 約 1.5 s
+        holdFrames_ = 45; // about 1.5 s
     } else if (--holdFrames_ <= 0) {
         peakHoldDb_ = std::max(db, peakHoldDb_ - 0.5f);
     }
@@ -33,13 +33,13 @@ void GainReductionMeter::paint(juce::Graphics& g) {
 
     const float h = area.getHeight() * displayDb_ / kMeterRangeDb;
     g.setColour(kAccent);
-    g.fillRect(area.withHeight(h)); // 從上往下長：壓得越多 bar 越長
+    g.fillRect(area.withHeight(h)); // grows from the top down: the more compression, the longer the bar
 
     const float holdY = area.getY() + area.getHeight() * peakHoldDb_ / kMeterRangeDb;
     g.setColour(juce::Colours::white);
     g.drawHorizontalLine(static_cast<int>(holdY), area.getX(), area.getRight());
 
-    // 刻度：每 6 dB 一條
+    // Scale marks: one every 6 dB
     g.setColour(juce::Colours::grey);
     g.setFont(juce::FontOptions(10.0f));
     for (int db = 6; db < static_cast<int>(kMeterRangeDb); db += 6) {
@@ -68,8 +68,8 @@ CompressorEditor::CompressorEditor(CompressorProcessor& processor)
         k.label.setText(names[i], juce::dontSendNotification);
         k.label.setJustificationType(juce::Justification::centred);
         addAndMakeVisible(k.label);
-        // attachment 要在 slider 之後建立、在 slider 之前銷毀（std::array 裡 attachment 是最後一個成員，
-        // 解構順序是反向的，所以 attachment 會先被刪掉）
+        // The attachment must be created after the slider and destroyed before it (the attachment is the last member of the std::array,
+        // and destruction runs in reverse order, so the attachment is deleted first)
         k.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
             processor_.getValueTreeState(), ids[i], k.slider);
     }

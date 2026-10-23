@@ -1,10 +1,10 @@
 #pragma once
-// DawLabCompressor 的自訂 editor：7 個旋鈕 + gain reduction meter + 輸入 / 輸出 peak。
+// Custom editor for DawLabCompressor: 7 knobs + a gain reduction meter + input / output peak.
 //
-// Thread 規則：editor 活在 message thread。
-//   - 旋鈕透過 SliderAttachment 綁到 APVTS 的參數：使用者轉旋鈕 → 參數變化（並通知 host 錄 automation）；
-//     host 自動化參數 → 旋鈕跟著動。
-//   - meter 用 juce::Timer（30 Hz）讀 processor 的 std::atomic<float>，絕不碰 audio buffer。
+// Thread rules: the editor lives on the message thread.
+//   - Knobs are bound to the APVTS parameters through SliderAttachment: the user turns a knob -> the parameter changes (and the host is told so it can record automation);
+//     the host automates a parameter -> the knob follows.
+//   - The meters use a juce::Timer (30 Hz) to read the processor's std::atomic<float> values, and never touch the audio buffer.
 
 #include "CompressorProcessor.h"
 
@@ -15,7 +15,7 @@
 
 namespace dawlab::plugin {
 
-// 垂直 bar：顯示「正在壓幾 dB」（0 dB 在上，往下長）
+// Vertical bar: shows "how many dB are being compressed" (0 dB at the top, growing downward)
 class GainReductionMeter final : public juce::Component {
 public:
     void setGainReductionDb(float db);

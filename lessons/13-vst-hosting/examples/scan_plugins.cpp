@@ -1,17 +1,17 @@
-// l13_scan_plugins：掃描 VST3 plugin 並列出資訊（PluginHost::scan + KnownPluginList 快取）
+// l13_scan_plugins: scans VST3 plugins and lists their information (PluginHost::scan + the KnownPluginList cache)
 //
-// 示範：
-//   1. 只「找檔案」（不載入 DLL）和真正「掃描」（載入 DLL、讀 factory）的差別；
-//   2. KnownPluginList 快取：同一個檔案第二次掃描直接用快取，不再載入；
-//   3. 把掃描結果存成 XML（DAW 下次啟動就不必重掃）。
+// Demonstrates:
+//   1. The difference between only "finding files" (no DLL is loaded) and really "scanning" (loading the DLL and reading the factory);
+//   2. The KnownPluginList cache: scanning the same file a second time uses the cache and does not load it again;
+//   3. Saving the scan result as XML (so a DAW need not rescan at its next startup).
 //
-// 執行：
-//   l13_scan_plugins                 掃描本章 build 出來的 plugin 資料夾；系統 VST3 資料夾只列檔名、不載入
-//   l13_scan_plugins <資料夾或.vst3>   掃描指定位置
-//   l13_scan_plugins --system        真的掃描系統預設 VST3 資料夾（in-process：壞掉的 plugin 可能讓本程式 crash）
+// Run:
+//   l13_scan_plugins                 scans the plugin folder built by this chapter; the system VST3 folders only have their file names listed, nothing is loaded
+//   l13_scan_plugins <folder or .vst3>   scans the given location
+//   l13_scan_plugins --system        really scans the system default VST3 folders (in-process: a broken plugin can crash this program)
 //
-// 輸出：dawlab_output/l13_known_plugins.xml（KnownPluginList 的快取檔）
-// 這支程式沒有聲音；重點是印出來的表格。
+// Output: dawlab_output/l13_known_plugins.xml (the KnownPluginList cache file)
+// This program makes no sound; the point is the table it prints.
 
 #include "L13Common.h"
 
@@ -38,27 +38,27 @@ double millisecondsSince(std::chrono::steady_clock::time_point t0) {
 } // namespace
 
 int main(int argc, char* argv[]) {
-    // VST3 plugin 的建立、查詢都要在 message thread 上做：
-    // console 程式用 ScopedJuceInitialiser_GUI 建立 MessageManager，main thread 就成為 message thread。
+    // Creating and querying VST3 plugins must be done on the message thread:
+    // a console program uses ScopedJuceInitialiser_GUI to create the MessageManager, which makes the main thread the message thread.
     const juce::ScopedJuceInitialiser_GUI juceInit;
     dawlab::host::PluginHost host;
 
     const juce::String arg = argc > 1 ? juce::String::fromUTF8(argv[1]) : juce::String();
     const bool scanSystem = arg == "--system";
 
-    // ---- 1. 系統預設 VST3 資料夾 -------------------------------------------------------
+    // ---- 1. System default VST3 folders -------------------------------------------------
     const auto defaults = host.getDefaultSearchPaths();
-    std::printf("== 系統預設的 VST3 搜尋路徑 ==\n");
+    std::printf("== System default VST3 search paths ==\n");
     for (int i = 0; i < defaults.getNumPaths(); ++i) {
         const juce::File dir = defaults[i];
-        const auto files = host.findPluginFiles(dir, true); // 只看檔名，不載入
-        std::printf("  %s  （%s，%d 個 .vst3）\n", dir.getFullPathName().toRawUTF8(),
-                    dir.isDirectory() ? "存在" : "不存在", files.size());
+        const auto files = host.findPluginFiles(dir, true); // file names only, nothing is loaded
+        std::printf("  %s  (%s, %d .vst3)\n", dir.getFullPathName().toRawUTF8(),
+                    dir.isDirectory() ? "exists" : "does not exist", files.size());
         for (const auto& f : files)
             std::printf("     - %s\n", f.toRawUTF8());
     }
 
-    // ---- 2. 決定要真正掃描哪裡 ----------------------------------------------------------
+    // ---- 2. Decide where to really scan -------------------------------------------------
     juce::Array<juce::File> targets;
     if (scanSystem) {
         for (int i = 0; i < defaults.getNumPaths(); ++i)
@@ -66,63 +66,63 @@ int main(int argc, char* argv[]) {
     } else if (arg.isNotEmpty()) {
         targets.add(juce::File(arg));
     } else {
-        // 本章的 plugin 資料夾：.../plugin/DawLabCompressor_artefacts/Debug/VST3/DawLabCompressor.vst3 往上 4 層
+        // This chapter's plugin folder: .../plugin/DawLabCompressor_artefacts/Debug/VST3/DawLabCompressor.vst3 up 4 levels
         targets.add(l13::defaultCompressorVst3().getParentDirectory().getParentDirectory().getParentDirectory()
                         .getParentDirectory());
     }
 
-    std::printf("\n== 掃描（載入每個 .vst3、讀出 factory 資訊）==\n");
+    std::printf("\n== Scan (load every .vst3 and read the factory information) ==\n");
     juce::Array<juce::PluginDescription> all;
     double firstScanMs = 0.0;
     for (const auto& t : targets) {
-        std::printf("掃描：%s\n", t.getFullPathName().toRawUTF8());
+        std::printf("Scanning: %s\n", t.getFullPathName().toRawUTF8());
         const auto t0 = std::chrono::steady_clock::now();
         const auto found = host.scan(t, true);
         firstScanMs += millisecondsSince(t0);
         all.addArray(found);
         for (const auto& failed : host.getLastScanFailures())
-            std::printf("  [失敗] %s\n", failed.toRawUTF8());
+            std::printf("  [failed] %s\n", failed.toRawUTF8());
     }
     printDescriptions(all);
-    std::printf("（ins / outs = 0 代表「還不知道」：資訊來自 bundle 裡的 moduleinfo.json，沒有載入 DLL）\n");
-    std::printf("共 %d 個 plugin，第一次掃描花了 %.1f ms\n", all.size(), firstScanMs);
+    std::printf("(ins / outs = 0 means \"not known yet\": the information comes from moduleinfo.json in the bundle, no DLL was loaded)\n");
+    std::printf("%d plugin(s) in total; the first scan took %.1f ms\n", all.size(), firstScanMs);
 
-    // ---- 3. 第二次掃描：KnownPluginList 快取命中，不再載入 DLL ------------------------------
+    // ---- 3. Second scan: the KnownPluginList cache hits, no DLL is loaded again -----------
     const auto t1 = std::chrono::steady_clock::now();
     int again = 0;
     for (const auto& t : targets)
         again += host.scan(t, true).size();
     const double secondScanMs = millisecondsSince(t1);
-    std::printf("第二次掃描（快取）：%d 個 plugin，%.1f ms\n", again, secondScanMs);
+    std::printf("Second scan (cached): %d plugin(s), %.1f ms\n", again, secondScanMs);
 
-    // ---- 4. 存成 XML 快取檔，再讀回另一個 PluginHost ---------------------------------------
+    // ---- 4. Save as an XML cache file and read it back into another PluginHost -------------
     const juce::File cacheFile(juce::File::getCurrentWorkingDirectory().getChildFile(
         juce::String::fromUTF8(dawlab::outputPath("l13_known_plugins.xml").c_str())));
     const bool saved = host.saveKnownPluginList(cacheFile);
     dawlab::host::PluginHost host2;
     const bool loaded = host2.loadKnownPluginList(cacheFile);
-    std::printf("KnownPluginList → %s（%s），讀回後有 %d 個 plugin\n", cacheFile.getFullPathName().toRawUTF8(),
-                saved ? "已儲存" : "儲存失敗", host2.getKnownPluginList().getNumTypes());
+    std::printf("KnownPluginList -> %s (%s), %d plugin(s) after reading it back\n", cacheFile.getFullPathName().toRawUTF8(),
+                saved ? "saved" : "save failed", host2.getKnownPluginList().getNumTypes());
 
-    // ---- 5. 真的 instantiate：看實際的 I/O ---------------------------------------------
-    // 有 moduleinfo.json 的 VST3（VST3 SDK 3.7.5 起的格式，JUCE 會在 build 後自動產生）可以「不載入 DLL」
-    // 就讀到名稱、廠商、類別、uid，所以上面的掃描很快；但 channel 數要等 instantiate 之後才知道（上表的 0）。
+    // ---- 5. Really instantiate: look at the actual I/O ---------------------------------
+    // A VST3 with moduleinfo.json (a format since VST3 SDK 3.7.5; JUCE generates it automatically after the build) lets us read the name, vendor, category and uid
+    // without loading the DLL, which is why the scan above is fast; but the channel counts are only known after instantiating (the 0s in the table above).
     if (arg.isNotEmpty())
-        return 0; // 使用者指定的資料夾：不自動 instantiate 別人的 plugin
+        return 0; // user-specified folder: do not automatically instantiate other people's plugins
 
-    std::printf("\n== instantiate 本章的 plugin，讀出實際的 bus 設定 ==\n");
+    std::printf("\n== Instantiate this chapter's plugins and read the actual bus configuration ==\n");
     int stereoPlugins = 0;
     bool foundComp = false, foundLim = false;
     for (const auto& d : all) {
         juce::String error;
         auto instance = host.createInstance(d, 48000.0, 512, error);
         if (instance == nullptr) {
-            std::printf("  %s：%s\n", d.name.toRawUTF8(), error.toRawUTF8());
+            std::printf("  %s: %s\n", d.name.toRawUTF8(), error.toRawUTF8());
             continue;
         }
         const auto full = instance->getPluginDescription();
         std::printf("  %-18s ins %d  outs %d  latency %d  editor %s\n", full.name.toRawUTF8(), full.numInputChannels,
-                    full.numOutputChannels, instance->getLatencySamples(), instance->hasEditor() ? "有" : "沒有");
+                    full.numOutputChannels, instance->getLatencySamples(), instance->hasEditor() ? "yes" : "no");
         if (full.numInputChannels == 2 && full.numOutputChannels == 2)
             ++stereoPlugins;
         foundComp |= d.name == "DawLabCompressor" && d.pluginFormatName == "VST3";
