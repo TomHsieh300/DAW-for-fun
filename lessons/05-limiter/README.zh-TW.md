@@ -33,19 +33,7 @@ $$
 g = \min\!\Bigl(1,\ \frac{c}{|x|}\Bigr)
 $$
 
-```
- 輸出 (dB)
-   ▲
-   │            compressor 4:1  ╱
- T ┤─────────────────────────╱─────────  limiter（ratio ∞）= ceiling
-   │                       ╱╱
-   │                     ╱╱
-   │                   ╱╱
-   │                 ╱╱
-   │               ╱  ← 1:1
-   └───────────────┴──────────────────▶ 輸入 (dB)
-                   T
-```
+![靜態曲線：輸入 dB 對輸出 dB。1:1 的直線在 threshold T = -20 dB 轉折：4:1 的 compressor 之後以較緩的斜率上升，limiter（ratio ∞）則在 ceiling 變成水平線。](images/limiter-static-curve.svg)
 
 但靜態曲線只是一半。第 04 章的 attack / release 平滑器決定 gain「多快」到位，而 limiter 要求的是「在峰值抵達輸出之前」就到位——attack 不只要快，還要**是負的**。
 
@@ -86,14 +74,15 @@ Compressor 在第一毫秒就讓 **12 dB 的 overshoot** 通過（-7.99 dBFS 比
 
 「brickwall」的意思是：對**任何**輸入，輸出的每一個 sample 都滿足 $`|y[n]| \le c`$。要同時做到「平滑的 gain 曲線」（不然會有失真）與「絕對不超過」，gain 必須在峰值抵達輸出之前就降到 $`\le c/|x|`$。既然在時間 $`n`$ 看不到未來，那就**把音訊延後**：
 
-```
-                    ┌──────────────────────┐
-  x[n] ──┬─────────►│  DelayLine（延遲 L）  ├────────► × ──► y[n] = x[n-L] · s[n]
-         │          └──────────────────────┘          ▲
-         │   ┌──────────┐  ┌──────────┐  ┌─────────┐  │
-         └──►│ gain 計算 ├─►│ window   ├─►│ 平滑     ├──┘
-             │ g = c/|x| │  │ min (L+1)│  │ avg (L+1)│   s[n]
-             └──────────┘  └──────────┘  └─────────┘
+```mermaid
+flowchart LR
+    X["x[n]"] -->|"x[n]"| D["DelayLine<br/>延遲 L"]
+    X --> G["gain 計算<br/>g = c/|x|"]
+    G --> M["window min<br/>長度 L+1"]
+    M --> A["平滑 avg<br/>長度 L+1"]
+    D -->|"x[n-L]"| MUL(("×"))
+    A -->|"s[n]"| MUL
+    MUL --> Y["y[n] = x[n-L] · s[n]"]
 ```
 
 音訊走的那條路晚了 $`L`$ 個 sample，gain 那條路沒有延遲——相對於音訊，gain「提前」了 $`L`$ 個 sample，有 $`L`$ 個 sample 的時間可以慢慢降下來。這就是 lookahead。$`L`$ 由 `setLookaheadMs()` 決定：$`L = \mathrm{round}(\text{ms}\cdot f_s / 1000)`$，5 ms @ 48 kHz 就是 240 個 sample。
@@ -111,19 +100,7 @@ Compressor 在第一毫秒就讓 **12 dB 的 overshoot** 通過（-7.99 dBFS 比
 
 為什麼是「min 再 average」，而不是直接 average？看時間軸。假設 $`gr`$ 在 $`n_0`$ 突然從 1 掉到 $`g`$：
 
-```
- index:        n0-L        n0          n0+L        n0+2L
-                 │          │           │            │
- gr[n]   1 1 1 1 1 1 1 1 1 1│g g g g g g g g g g g g g g g g      ← 瞬間下降
-                            │
- m[n]    1 1 1 1 1 1 1 1 1 1│g g g g g g g g g g g g g g g g      ← min：和 gr 同時下降，
-                            │                                        但之後會「撐住」L 個 sample
- s[n]    1 1 1 1 1 1 1 1 1 1 ╲                                    ← avg：從 n0 開始線性下降，
-                               ╲                                      在 n0+L 剛好到 g
-                                 ╲____ g g g g g g g g
-                            │           │
- 音訊          ...x[n0-L]...│...........│x[n0] 在 n0+L 才從 delay line 出來 ←┘ 這時 s 剛好 = g
-```
+![gain 隨時間的變化：gr[n] 在 n0 從 1 瞬間降到 g；window min 的 m[n] 同時下降，moving average 的 s[n] 則線性下降，剛好在 n0+L 到達 g。](images/limiter-gain-smoothing.svg)
 
 - 移動平均把「瞬間下降」變成「長度 $`L+1`$ 的線性 ramp」：這就是 attack，而且 ramp 長度剛好等於 lookahead——峰值 $`x[n_0]`$ 在 $`n_0 + L`$ 抵達輸出時，$`s`$ 剛好降到 $`g`$，不早不晚。
 - 如果沒有 min、直接對 $`gr`$ 做平均，當 $`gr`$ 只有一個 sample 很低（一個尖峰）時，平均會把它「稀釋」掉：$`s[n_0+L] = (L\cdot 1 + g)/(L+1) \gg g`$，峰值就超過 ceiling 了。min 讓那個很低的值在視窗內「撐」滿 $`L+1`$ 個 sample，平均起來才會真的到 $`g`$。
@@ -183,10 +160,10 @@ sampleRate    lookahead  getLatencySamples       impulse at     match?
 
 DAW 怎麼處理這個延遲？Plugin 透過 host API 回報 latency（JUCE 是 `AudioProcessor::setLatencySamples()`，VST3 是 `IAudioProcessor::getLatencySamples()`），host 做 **plugin delay compensation（PDC）**：
 
-```
- vocal  ──► [limiter, 240] ─────────────────────┐
-                                                 ├──► mix bus
- guitar ──► [沒有 plugin] ──► [PDC delay 240] ───┘
+```mermaid
+flowchart LR
+    VOC["vocal"] --> LIM["limiter, 240"] --> BUS["mix bus"]
+    GTR["guitar"] --> NOP["沒有 plugin"] --> PDC["PDC delay 240"] --> BUS
 ```
 
 找出所有路徑的最大 latency，對其他路徑插入補償延遲，讓所有訊號抵達 mix bus 時對齊；代價是整個 mix 的輸出晚了 240 samples。第 14 章的 engine 會實作這套 PDC（[Step 8](../14-daw-8track/docs/step-08-pdc.zh-TW.md)），並用 `Engine::getLatencySamples()` 回報整個 mix 的 latency。
@@ -203,15 +180,7 @@ $$
 
 Sample peak ≤ ceiling 只保證「這些取樣點」不超過。DAC 重建出來的連續波形在兩個 sample 之間可能更高——**inter-sample peak**。極端例子：頻率 $`f_s/4`$ 的正弦波，每個週期只有 4 個取樣點，如果相位偏 45°，每個 sample 都落在 $`\pm 0.707A`$：
 
-```
-  真正的波形           取樣點（都在 ±0.707A）
-      ╭─╮                  •       •
-     ╱   ╲                ╱ ╲     ╱ ╲
- ───╱─────╲─────╱──    ──•───•───•───•──
-           ╲   ╱                ╲ ╱
-            ╰─╯                  •
-  峰值 = A           sample peak = 0.707A（低估 3.01 dB）
-```
+![fs/4 的 sine 且相位偏移 45 度：每個取樣點都在 ±0.707A，而連續波形在取樣點之間會達到 A。](images/limiter-inter-sample-peak.svg)
 
 ITU-R BS.1770-4 定義的 **true peak** 是把訊號升頻 4 倍（48 kHz → 192 kHz，用 lowpass 插值）之後量 sample peak，單位 **dBTP**。
 
@@ -221,11 +190,13 @@ ITU-R BS.1770-4 定義的 **true peak** 是把訊號升頻 4 倍（48 kHz → 19
 
 **(1) 零插入。** 在每兩個 sample 之間插 3 個 0，sample rate 變成 $`4f_s`$：
 
+```text
+ original (fs)         x[0]            x[1]            x[2]
+ zero-inserted (4fs)   x[0]  0  0  0   x[1]  0  0  0   x[2]  0  0  0
+ wanted (4fs)          x[0]  .  .  .   x[1]  .  .  .   x[2]  .  .  .
 ```
- 原始（fs）        x[0]            x[1]            x[2]
- 零插入（4fs）     x[0]  0  0  0   x[1]  0  0  0   x[2]  0  0  0
- 想要的（4fs）     x[0]  ·  ·  ·   x[1]  ·  ·  ·   x[2]  ·  ·  ·     ← · = 連續波形在 1/4、1/2、3/4 處的值
-```
+
+最後一列的 `.` 代表連續波形在 1/4、1/2、3/4 處的值（原始 sample 與下一個原始 sample 之間）。
 
 我們要的是最後一列：原始 sample 不動，中間三格填上「DAC 重建出來的連續波形」在那些時間點的值。零插入只是先把格子空出來。
 
@@ -305,8 +276,9 @@ Peak 只告訴你「最大的那一個 sample」，跟人耳感受的「大聲�
 
 ### 2.11 Mastering chain 中的位置
 
-```
- mix ──► EQ ──► compressor（glue）──► saturation / stereo ──► [soft clip] ──► LIMITER ──► dither ──► 輸出
+```mermaid
+flowchart LR
+    MIX["mix"] --> EQ["EQ"] --> CMP["compressor<br/>（glue）"] --> SAT["saturation /<br/>stereo"] --> CLP["soft clip"] --> LIM["LIMITER"] --> DTH["dither"] --> OUT["輸出"]
 ```
 
 Limiter 幾乎永遠是最後一個（dither 除外；dither 是降低位元深度、例如轉成 16-bit 之前加入的極小雜訊，讓量化誤差變成平滑的底噪而不是跟著訊號走的失真，它的振幅只有 1 LSB 左右，對 peak 幾乎沒有影響），因為它的工作是「對最終輸出的 peak 做保證」；後面再放任何會改變增益的東西，保證就失效了。它的 input gain（或 threshold）決定最終 loudness，ceiling 設 -1 dBTP，gain reduction 表最好只在最大的 transient 上偶爾跳 2–4 dB——持續壓 6 dB 以上，鼓的 punch 就沒了。
@@ -449,13 +421,12 @@ input gain      in peak     out peak      out RMS     RMS gain       max GR
 
 `l05_latency_impulse` 第 (3) 段（tone burst -30 → 0 dBFS、ceiling -6 dB、L = 240）：
 
-```
- Output pos. rel. to step+L    gain (dB)  output (dBFS)
-           -240 samples        -0.12         -30.12      ← gain 從這裡開始下降（比峰值早 L 個 sample）
-           -120 samples        -2.63         -32.63      ← 線性 ramp 走到一半（線性 gain 0.75）
-             +0 samples        -6.00          -6.00      ← 峰值抵達輸出，gain 剛好 = ceiling / 峰值
-           +240 samples        -6.00          -6.00
-```
+| 輸出位置（相對於 step + L） | Gain (dB) | 輸出 (dBFS) | 說明 |
+|---|---|---|---|
+| -240 samples | -0.12 | -30.12 | gain 從這裡開始下降（比峰值早 L 個 sample） |
+| -120 samples | -2.63 | -32.63 | 線性 ramp 走到一半（線性 gain 0.75） |
+| +0 samples | -6.00 | -6.00 | 峰值抵達輸出，gain 剛好 = ceiling / 峰值 |
+| +240 samples | -6.00 | -6.00 | |
 
 （節錄；程式還會印出 -480、-180、-60 等位置。）線性 gain 在 241 個 sample 內從 1 線性降到 0.5：理論上 -240 處是 $`(240 + 0.5)/241 = 0.998`$（-0.02 dB），-120 處是 0.75（-2.50 dB）。表中的數字略低（-0.12、-2.63 dB），是因為範例用「0.5 ms（24 個 sample）視窗內的輸出 peak ÷ 輸入 peak」來量 gain，而 gain 在這 24 個 sample 內還在繼續往下掉。
 

@@ -33,19 +33,7 @@ $$
 g = \min\!\Bigl(1,\ \frac{c}{|x|}\Bigr)
 $$
 
-```
- output (dB)
-   ▲
-   │            compressor 4:1  ╱
- T ┤─────────────────────────╱─────────  limiter (ratio ∞) = ceiling
-   │                       ╱╱
-   │                     ╱╱
-   │                   ╱╱
-   │                 ╱╱
-   │               ╱  ← 1:1
-   └───────────────┴──────────────────▶ input (dB)
-                   T
-```
+![Static curve: input dB versus output dB. The 1:1 line bends at the threshold T = -20 dB: the 4:1 compressor continues with a shallow slope, the limiter (ratio infinity) goes flat at the ceiling.](images/limiter-static-curve.svg)
 
 But the static curve is only half the story. The attack / release smoother from Chapter 04 decides *how fast* the gain gets into place, whereas a limiter requires the gain to be in place *before the peak reaches the output* — so attack must not only be fast, it must be **negative**.
 
@@ -86,14 +74,15 @@ In the very first millisecond the compressor lets **12 dB of overshoot** through
 
 "Brickwall" means: for **any** input, every output sample satisfies $`|y[n]| \le c`$. To have both a "smooth gain curve" (otherwise there is distortion) and "never exceeds", the gain must already be down to $`\le c/|x|`$ before the peak reaches the output. Since we cannot see the future at time $`n`$, we **delay the audio**:
 
-```
-                    ┌──────────────────────┐
-  x[n] ──┬─────────►│ DelayLine (delay L)  ├────────► × ──► y[n] = x[n-L] · s[n]
-         │          └──────────────────────┘          ▲
-         │   ┌───────────┐  ┌───────────┐  ┌──────────┐  │
-         └──►│ gain calc ├─►│ window    ├─►│ smoothing├──┘
-             │ g = c/|x| │  │ min (L+1) │  │ avg (L+1)│   s[n]
-             └───────────┘  └───────────┘  └──────────┘
+```mermaid
+flowchart LR
+    X["x[n]"] -->|"x[n]"| D["DelayLine<br/>delay L"]
+    X --> G["gain calc<br/>g = c/|x|"]
+    G --> M["window min<br/>length L+1"]
+    M --> A["smoothing avg<br/>length L+1"]
+    D -->|"x[n-L]"| MUL(("×"))
+    A -->|"s[n]"| MUL
+    MUL --> Y["y[n] = x[n-L] · s[n]"]
 ```
 
 The audio path is $`L`$ samples late and the gain path has no delay — relative to the audio, the gain is $`L`$ samples "early", which gives it $`L`$ samples of time to come down gradually. That is lookahead. $`L`$ is set by `setLookaheadMs()`: $`L = \mathrm{round}(\text{ms}\cdot f_s / 1000)`$, so 5 ms @ 48 kHz is 240 samples.
@@ -111,19 +100,7 @@ Let $`x_s[n] = x[n]\cdot g_{\text{in}}`$ (the signal after the input gain), $`c`
 
 Why "min, then average" rather than averaging directly? Look at the time axis. Suppose $`gr`$ suddenly drops from 1 to $`g`$ at $`n_0`$:
 
-```
- index:        n0-L        n0          n0+L        n0+2L
-                 │          │           │            │
- gr[n]   1 1 1 1 1 1 1 1 1 1│g g g g g g g g g g g g g g g g      ← instantaneous drop
-                            │
- m[n]    1 1 1 1 1 1 1 1 1 1│g g g g g g g g g g g g g g g g      ← min: drops together with gr,
-                            │                                        but then "holds" for L samples
- s[n]    1 1 1 1 1 1 1 1 1 1 ╲                                    ← avg: falls linearly from n0,
-                               ╲                                      reaching g exactly at n0+L
-                                 ╲____ g g g g g g g g
-                            │           │
- audio         ...x[n0-L]...│...........│x[n0] leaves the delay line at n0+L ←┘ s is exactly g now
-```
+![Gain over time: gr[n] drops from 1 to g at n0; the window minimum m[n] drops with it, and the moving average s[n] ramps down linearly, reaching g exactly at n0+L.](images/limiter-gain-smoothing.svg)
 
 - The moving average turns the "instantaneous drop" into a "linear ramp of length $`L+1`$": that is the attack, and the ramp length equals the lookahead exactly — when the peak $`x[n_0]`$ reaches the output at $`n_0 + L`$, $`s`$ has just come down to $`g`$, neither early nor late.
 - Without the min, if we averaged $`gr`$ directly, then when $`gr`$ is low for only a single sample (a spike), the average would "dilute" it: $`s[n_0+L] = (L\cdot 1 + g)/(L+1) \gg g`$, and the peak would exceed the ceiling. The min makes that low value "hold" for the full $`L+1`$ samples of the window, so the average truly reaches $`g`$.
@@ -183,10 +160,10 @@ The null test in the same example: feed a signal below the ceiling (so the limit
 
 How does a DAW deal with this delay? The plugin reports its latency through the host API (`AudioProcessor::setLatencySamples()` in JUCE, `IAudioProcessor::getLatencySamples()` in VST3), and the host performs **plugin delay compensation (PDC)**:
 
-```
- vocal  ──► [limiter, 240] ─────────────────────┐
-                                                 ├──► mix bus
- guitar ──► [no plugin] ──► [PDC delay 240] ─────┘
+```mermaid
+flowchart LR
+    VOC["vocal"] --> LIM["limiter, 240"] --> BUS["mix bus"]
+    GTR["guitar"] --> NOP["no plugin"] --> PDC["PDC delay 240"] --> BUS
 ```
 
 It finds the maximum latency over all paths and inserts compensating delay on the other paths so that every signal arrives at the mix bus aligned; the price is that the output of the whole mix is 240 samples late. The Chapter 14 engine implements this PDC ([Step 8](../14-daw-8track/docs/step-08-pdc.md)) and reports the latency of the whole mix through `Engine::getLatencySamples()`.
@@ -203,15 +180,7 @@ $$
 
 Sample peak ≤ ceiling guarantees only that "these sampling points" do not exceed it. The continuous waveform reconstructed by a DAC can be higher between two samples — the **inter-sample peak**. An extreme example: a sine of frequency $`f_s/4`$ has only 4 sampling points per cycle, and if its phase is offset by 45°, every sample lands at $`\pm 0.707A`$:
 
-```
-  true waveform        sampling points (all at ±0.707A)
-      ╭─╮                  •       •
-     ╱   ╲                ╱ ╲     ╱ ╲
- ───╱─────╲─────╱──    ──•───•───•───•──
-           ╲   ╱                ╲ ╱
-            ╰─╯                  •
-  peak = A           sample peak = 0.707A (underestimates by 3.01 dB)
-```
+![A sine at fs/4 whose phase is offset by 45 degrees: every sampling point sits at plus or minus 0.707 A, while the continuous waveform reaches A between the samples.](images/limiter-inter-sample-peak.svg)
 
 The **true peak** defined in ITU-R BS.1770-4 is the sample peak measured after upsampling the signal by 4 (48 kHz → 192 kHz, interpolating with a lowpass), in units of **dBTP**.
 
@@ -221,11 +190,13 @@ This subsection gives only the intuition needed for Exercise 4; the full theory 
 
 **(1) Zero insertion.** Insert 3 zeros between every two samples, so the sample rate becomes $`4f_s`$:
 
+```text
+ original (fs)         x[0]            x[1]            x[2]
+ zero-inserted (4fs)   x[0]  0  0  0   x[1]  0  0  0   x[2]  0  0  0
+ wanted (4fs)          x[0]  .  .  .   x[1]  .  .  .   x[2]  .  .  .
 ```
- original (fs)     x[0]            x[1]            x[2]
- zero-inserted(4fs) x[0]  0  0  0   x[1]  0  0  0   x[2]  0  0  0
- wanted (4fs)      x[0]  ·  ·  ·   x[1]  ·  ·  ·   x[2]  ·  ·  ·     ← · = value of the continuous waveform at 1/4, 1/2, 3/4
-```
+
+In the last row, `.` stands for the value of the continuous waveform at 1/4, 1/2 and 3/4 of the way to the next original sample.
 
 What we want is the last row: the original samples stay put, and the three slots in between are filled with the values of "the continuous waveform the DAC reconstructs" at those instants. Zero insertion merely makes room for them first.
 
@@ -305,8 +276,9 @@ The example `l05_drum_limiting` in this chapter uses RMS as a rough proxy for lo
 
 ### 2.11 Position in a mastering chain
 
-```
- mix ──► EQ ──► compressor (glue) ──► saturation / stereo ──► [soft clip] ──► LIMITER ──► dither ──► output
+```mermaid
+flowchart LR
+    MIX["mix"] --> EQ["EQ"] --> CMP["compressor<br/>(glue)"] --> SAT["saturation /<br/>stereo"] --> CLP["soft clip"] --> LIM["LIMITER"] --> DTH["dither"] --> OUT["output"]
 ```
 
 The limiter is almost always last (dither excepted; dither is a very small amount of noise added before reducing the bit depth, for example to 16-bit, so that quantization error becomes a smooth noise floor instead of distortion that follows the signal; its amplitude is only about 1 LSB, so it hardly affects the peak), because its job is to "guarantee the peak of the final output"; if anything that changes gain is placed after it, the guarantee is void. Its input gain (or threshold) determines the final loudness, the ceiling is set to -1 dBTP, and the gain reduction meter should ideally only jump 2–4 dB occasionally on the biggest transients — if it is pressing continuously by more than 6 dB, the punch of the drums is gone.
@@ -449,13 +421,12 @@ What to listen for: `limited_6dB` is clearly louder than `dry` with hardly any a
 
 Part (3) of `l05_latency_impulse` (tone burst -30 → 0 dBFS, ceiling -6 dB, L = 240):
 
-```
- Output pos. rel. to step+L    gain (dB)  output (dBFS)
-           -240 samples        -0.12         -30.12      ← the gain starts coming down here (L samples earlier than the peak)
-           -120 samples        -2.63         -32.63      ← the linear ramp is halfway (linear gain 0.75)
-             +0 samples        -6.00          -6.00      ← the peak reaches the output; the gain is exactly ceiling / peak
-           +240 samples        -6.00          -6.00
-```
+| Output position relative to step + L | Gain (dB) | Output (dBFS) | Note |
+|---|---|---|---|
+| -240 samples | -0.12 | -30.12 | the gain starts coming down here (L samples earlier than the peak) |
+| -120 samples | -2.63 | -32.63 | the linear ramp is halfway (linear gain 0.75) |
+| +0 samples | -6.00 | -6.00 | the peak reaches the output; the gain is exactly ceiling / peak |
+| +240 samples | -6.00 | -6.00 | |
 
 (An excerpt; the program also prints positions such as -480, -180 and -60.) The linear gain falls linearly from 1 to 0.5 over 241 samples: in theory at -240 it is $`(240 + 0.5)/241 = 0.998`$ (-0.02 dB) and at -120 it is 0.75 (-2.50 dB). The numbers in the table are slightly lower (-0.12, -2.63 dB) because the example measures gain as "the output peak within a 0.5 ms (24-sample) window ÷ the input peak", and within those 24 samples the gain is still falling.
 
