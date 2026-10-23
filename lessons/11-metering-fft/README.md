@@ -65,18 +65,7 @@ If the meter displayed "the maximum of this block" directly, the display would f
 2. **Slow fall**: after that, fall at a fixed rate in **dB/s** (12–26 dB/s is typical).
 3. In addition there is a **peak hold** marker: it stays at the most recent maximum for a while (e.g. 1–2 s, or indefinitely until the user clicks) before starting to fall.
 
-```
-dB
- -6 ┤ ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■┐ ← hold: stays for 1 s
-    │ █                                          ╲
--12 ┤ █╲  peak: rises instantly, then falls linearly at 24 dB/s ╲
-    │ █ ╲                                          ╲
--18 ┤ █  ╲                                          ╲
-    │ █   ╲
--24 ┤ █    ╲
-    └─┴─────┴──────────┴──────────┴────────────┴───────▶ t
-     0.5 s signal stops   0.75        1.0          1.5 (hold time ends)
-```
+![Peak meter ballistics: after a 0.5 s signal, the peak falls linearly at 24 dB/s, while the hold marker stays at -6 dBFS for 1 s before it also falls](images/peak-meter-hold-decay.svg)
 
 #### Math: dB/s → per-sample coefficient
 
@@ -92,10 +81,10 @@ This is better than "subtract $`D \cdot B / f_s`$ dB per block": it is independe
 
 The hold logic:
 
-```
+```text
 if |x| >= hold:      hold = |x|, counter = holdSamples
 elif counter > 0:    counter -= 1
-else:                hold = max(hold · g, peak)      // hold never falls below peak
+else:                hold = max(hold * g, peak)      // hold never falls below peak
 ```
 
 ### 2.3 RMS and window length
@@ -144,15 +133,7 @@ and it falls very slowly so that the operator can read the peaks clearly. This c
 A digital signal is only samples of a continuous waveform, and the DAC fills in between samples with (approximately) sinc interpolation. **The true peak may fall between two samples.**
 The classic example: a sine at $`f_s/4`$ with 45° phase has every sample at $`\pm 0.707`$ (sample peak -3.01 dBFS), but the continuous waveform peaks at 1.0 (0 dBTP):
 
-```
-Amplitude (x[n] = sin(π n/2 + π/4), a sine at fs/4, one period every 4 samples; o = sample, * = peak of the continuous waveform)
-  1.0 |        *                       *     <- the true peak 1.0 (0 dBTP) lies exactly midway between two samples
-0.707 |     o     o                 o     o     <- samples only land on ±0.707 (-3.01 dBFS)
-    0 +--------------------------------------------------> n
--0.707|                 o     o                 o     o
- -1.0 |                    *                       *
-   n =      0     1     2     3     4     5     6     7
-```
+![A sine at fs/4 with 45 degree phase: every sample is at +/-0.707 (-3.01 dBFS) but the continuous waveform peaks at 1.0 (0 dBTP) between samples](images/intersample-peak.svg)
 
 The approach in ITU-R BS.1770-4 Annex 2: **oversample the signal 4x** (48 kHz → 192 kHz, using an FIR interpolation filter),
 take the maximum $`|x|`$ at the higher rate, and report it in **dBTP**. 4x can still miss a little: for a sine near Nyquist, the peak can fall exactly between two 4x samples,
@@ -198,11 +179,11 @@ so that any vendor can produce exactly the same numbers; that matters more than 
 
 ```mermaid
 flowchart LR
-    L[L] --> KL[K-weighting<br/>stage 1 shelf<br/>stage 2 highpass] --> ML["mean square z_L<br/>(400 ms block)"]
-    R[R] --> KR[K-weighting] --> MR["mean square z_R"]
+    L["L"] --> KL["K-weighting<br/>stage 1 shelf<br/>stage 2 highpass"] --> ML["mean square z_L<br/>(400 ms block)"]
+    R["R"] --> KR["K-weighting"] --> MR["mean square z_R"]
     ML --> S["Σ G_i · z_i"]
     MR --> S
-    S --> LU["−0.691 + 10·log10(·)"] --> OUT[LUFS]
+    S --> LU["−0.691 + 10·log10(·)"] --> OUT["LUFS"]
 ```
 
 #### K-weighting: two biquad stages
@@ -290,13 +271,7 @@ $$
 
 #### 400 ms blocks, 75% overlap, momentary / short-term / integrated
 
-```
-time ─────────────────────────────────────────────────────▶
-      ├────── 400 ms block 1 ──────┤
-               ├────── block 2 ──────────┤        a new block every 100 ms
-                        ├────── block 3 ────────────┤  (75% overlap)
-      ├100┤100┤100┤100┤100┤100┤ ...   ← in the implementation we accumulate 100 ms "sub-blocks"
-```
+![Loudness gating blocks: each block is 400 ms long and a new one starts every 100 ms, so neighbouring blocks overlap by 75%](images/loudness-block-overlap.svg)
 
 - **momentary**: the most recent 400 ms (one block); fast response, a fairly steady meter.
 - **short-term**: the most recent 3 s (EBU Tech 3341); used to see the loudness of a passage and to compute LRA.
@@ -428,13 +403,13 @@ $$
 
 This pair of equations is called a **butterfly**:
 
-```
-E[k] ──────────●──────(+)────▶ X[k]
-                ╲    ╱
-                 ╲  ╱
-                  ╳
-                 ╱  ╲
-O[k] ──(×W^k)──●──────(−)────▶ X[k+N/2]
+```mermaid
+flowchart LR
+    Ek["E[k]"] --> Xk["X[k] = E[k] + W^k·O[k]"]
+    Ek --> Xk2["X[k+N/2] = E[k] − W^k·O[k]"]
+    Ok["O[k]"] --> Tw["× W^k"]
+    Tw --> Xk
+    Tw --> Xk2
 ```
 
 One N-point DFT = two N/2-point DFTs + N/2 butterflies. Recursing:
@@ -449,12 +424,12 @@ There are $`\log_2 N`$ layers in total, each with $`N/2`$ butterflies (one compl
 
 At the bottom of the recursion, the input order is "the binary representation of the index reversed". For N = 8:
 
-```
-index:      0    1    2    3    4    5    6    7
-binary:    000  001  010  011  100  101  110  111
-reversed:  000  100  010  110  001  101  011  111
-→ order:    0    4    2    6    1    5    3    7
-```
+| | | | | | | | | |
+|---|---|---|---|---|---|---|---|---|
+| index | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+| binary | 000 | 001 | 010 | 011 | 100 | 101 | 110 | 111 |
+| reversed | 000 | 100 | 010 | 110 | 001 | 101 | 011 | 111 |
+| **new order** | **0** | **4** | **2** | **6** | **1** | **5** | **3** | **7** |
 
 So `Fft` first applies a bit-reversal permutation, then performs $`\log_2 N`$ layers of butterflies from small to large (lengths 2, 4, 8, ..., N).
 The twiddle factors and the bit-reversal table are computed at construction (which allocates); afterwards `forward()` / `inverse()` allocate no memory at all.
@@ -490,12 +465,7 @@ to avoid false failures when the machine is busy.
 
 The DFT sees only N samples and **implicitly assumes they repeat forever**. If the frame does not contain a whole number of periods of the sine, joining the end to the start produces a jump:
 
-```
-frame:   ╭─╮   ╭─╮   ╭─╮   ╭       ← ends halfway through
-        ╯   ╰─╯   ╰─╯   ╰─╯
-repeated: ...╯ ╭─╮   ╭─╮   ╭─╮   ╭│╭─╮   ╭─╮ ...
-                               ↑ discontinuity! Many frequencies are needed to build it → energy leaks into every bin
-```
+![A sine with 3.3 periods per frame: repeating the frame makes the waveform jump at every seam](images/dft-implied-periodicity.svg)
 
 In the frequency domain: "taking only N samples" = multiplying by a rectangular window; multiplication in time = convolution in frequency.
 So the true spectrum (a single line) is convolved with the spectrum of the rectangular window, a sinc: a central **main lobe** plus **side lobes** on both sides that decay slowly (the highest at −13 dB).
@@ -534,7 +504,7 @@ The test signal in `l11_window_leakage` is a 0 dBFS 1 kHz tone plus a **−60 dB
 
 ASCII spectrum (actual output, linear axis from 0 to 5 kHz, 78 Hz per column, taking the maximum within each column):
 
-```
+```text
 ---- Rectangular ----
       0 dB |                                                                |
     -10 dB |            #                                                   |
@@ -542,7 +512,7 @@ ASCII spectrum (actual output, linear axis from 0 to 5 kHz, 78 Hz per column, ta
     -30 dB |          #####                                                 |
     -40 dB |####################                                            |
     -50 dB |##################################                              |
-    -60 dB |################################################################|   ← the skirt of leakage covers everything
+    -60 dB |################################################################|   <- the skirt of leakage covers everything
     ...
 ---- Hann ----
       0 dB |                                                                |
@@ -552,12 +522,16 @@ ASCII spectrum (actual output, linear axis from 0 to 5 kHz, 78 Hz per column, ta
     -40 dB |           ###                                                  |
     -50 dB |           ####                                                 |
     -60 dB |           ####                                                 |
-    -70 dB |          ######                         ##                     |   ← the −60 dB tone at 3.3 kHz
+    -70 dB |          ######                         ##                     |   <- the −60 dB tone at 3.3 kHz
     -80 dB |        #########                        ##                     |
     -90 dB |      #############                      ##                     |
    -100 dB |   ###################                   ##                     |
    -110 dB |##########################..............####....................|
 ```
+
+The same signals as curves, with the Blackman-Harris window added (the rectangular window's skirt buries the weak tone, while Hann and Blackman-Harris show it clearly):
+
+![Spectra of a 1 kHz tone at 0 dBFS plus a 3.3 kHz tone at -60 dBFS with a rectangular, Hann and Blackman-Harris window: the rectangular window buries the weak tone in leakage](images/window-leakage-spectra.svg)
 
 The 1 kHz reading is not 0 dB because 1000 Hz is not at a bin center (it is 0.33 bin off); this is called **scalloping loss**. The theoretical values:
 the rectangular window's response is $`\text{sinc}(\delta)`$, and with $`\delta = 1/3`$ → $`\frac{\sin(\pi/3)}{\pi/3} = 0.827`$ → **−1.65 dB**;
@@ -590,9 +564,9 @@ $$
 
 ```mermaid
 flowchart LR
-    A[audio thread<br/>pushSamples] -->|lock-free FIFO| B[take the latest N samples]
-    B --> C[× window] --> D[forwardReal<br/>N/2+1 bins] --> E["|X|·2/(N·CG)"]
-    E --> F["exponential averaging<br/>s = α·s + (1−α)·m"] --> G[20·log10] --> H[UI: log frequency axis]
+    A["audio thread<br/>pushSamples"] -->|"lock-free FIFO"| B["take the latest N samples"]
+    B --> C["× window"] --> D["forwardReal<br/>N/2+1 bins"] --> E["|X|·2/(N·CG)"]
+    E --> F["exponential averaging<br/>s = α·s + (1−α)·m"] --> G["20·log10"] --> H["UI: log frequency axis"]
 ```
 
 - **Overlap**: frames overlap. hop = $`N(1 - \text{overlap})`$. With 50% overlap and N = 4096, a new spectrum is computed every 2048 new samples (23 times per second at 48 kHz).
@@ -624,16 +598,28 @@ the audio breaks up (a dropout). So passing meter and spectrum data must be **lo
    `memory_order_relaxed` is enough (we only need to "read some complete value", not any ordering relative to other data).
 2. **A stream of samples** (the spectrum analyzer needs the most recent N samples): use a single-producer / single-consumer (SPSC) ring buffer.
 
+```text
+                       ring buffer (capacity 4N, a power of two)
+audio thread   +---+---+---+---+---+---+---+---+---+---+---+---+
+pushSamples -->| x | x | x | x | x | x | x | x |   |   |   |   |
+               +---+---+---+---+---+---+---+---+---+---+---+---+
+                 ^ start = writePos - N          ^ writePos
+                                         (atomic, monotonically increasing uint64)
 ```
-                       ring buffer (capacity 4N, a power of two → use & mask instead of %)
-audio thread   ┌───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┐
-pushSamples ──▶│ x │ x │ x │ x │ x │ x │ x │ x │   │   │   │   │
-               └───┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───┘
-                 ↑ start = writePos − N               ↑ writePos (atomic, monotonically increasing uint64)
-audio thread: pushSamples(x, n): ① writeEnd = pos + n (first announce "how far I will write") + release fence
-                                 ② write n samples  ③ writePos = pos + n (release, announce "done writing")
-UI thread: computeSpectrum() reads writePos (acquire) → copies [start, writePos) → acquire fence → reads writeEnd,
-           if the producer has already "started writing" and would wrap around over positions after start (writeEnd − start > capacity), this frame is discarded.
+
+The producer and the consumer act in this order:
+
+```mermaid
+sequenceDiagram
+    participant P as Audio thread
+    participant R as Ring buffer
+    participant U as UI thread
+    P->>R: 1. writeEnd = pos + n, then release fence
+    P->>R: 2. write n samples
+    P->>R: 3. writePos = pos + n (release)
+    U->>R: computeSpectrum reads writePos (acquire), copies [start, writePos)
+    U->>R: acquire fence, then read writeEnd
+    Note over U: if writeEnd - start > capacity, the frame is discarded
 ```
 
 Key details:
@@ -766,12 +752,12 @@ The first section is the ballistics verification (a −6 dBFS 1 kHz sine for 0.5
 so the peak reads −6.00). It first prints a timeline with blocks of 512, then re-runs with blocks of 480 (10 ms) so the readings fall on whole-number times, and verifies them with
 `DAWLAB_CHECK`. Excerpt of the actual output:
 
-```
+```text
  time(s)   peak dB    RMS dB   hold dB   expected (peak / hold)
-     0.5     -6.01     -9.01     -6.00   -6.00 / -6.00     ← sine RMS = peak − 3.01 dB
-     1.0    -18.01   -100.00     -6.00   -18.00 / -6.00    ← 0.5 s after stopping: −6 − 24 × 0.5 = −18; hold is still parked
-     1.5    -30.01   -100.00     -6.01   -30.00 / -6.00    ← 1 s after stopping: −30; the 1 s of hold has just run out
-     2.0    -42.01   -100.00    -18.01   -42.00 / -18.00   ← hold has fallen for 0.5 s: −6 − 12 = −18
+     0.5     -6.01     -9.01     -6.00   -6.00 / -6.00     <- sine RMS = peak − 3.01 dB
+     1.0    -18.01   -100.00     -6.00   -18.00 / -6.00    <- 0.5 s after stopping: −6 − 24 × 0.5 = −18; hold is still parked
+     1.5    -30.01   -100.00     -6.01   -30.00 / -6.00    <- 1 s after stopping: −30; the 1 s of hold has just run out
+     2.0    -42.01   -100.00    -18.01   -42.00 / -18.00   <- hold has fallen for 0.5 s: −6 − 12 = −18
 ```
 
 (300 ms after stopping the RMS window is all zeros, so it reads −100 dB = `kMinusInfinityDb`.)

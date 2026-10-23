@@ -64,18 +64,7 @@ master 上有 loudness meter，EQ 外掛背後有一片即時的頻譜。這些�
 2. **慢慢下降**：之後以固定的 **dB/s** 速度往下掉（常見 12~26 dB/s）。
 3. 另外有一個 **peak hold** 標記：停在最近的最大值上一段時間（例如 1~2 s，或無限直到使用者點擊），再開始下降。
 
-```
-dB
- -6 ┤ ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■┐ ← hold：停 1 s
-    │ █                                          ╲
--12 ┤ █╲  peak：瞬間上升，之後 24 dB/s 直線下降       ╲
-    │ █ ╲                                          ╲
--18 ┤ █  ╲                                          ╲
-    │ █   ╲
--24 ┤ █    ╲
-    └─┴─────┴──────────┴──────────┴────────────┴───────▶ t
-     0.5 s 訊號停止   0.75        1.0          1.5（hold 時間到）
-```
+![Peak meter 的 ballistics：訊號持續 0.5 s 後，peak 以 24 dB/s 直線下降，peak hold 標記在 -6 dBFS 停 1 s 後才開始下降](images/peak-meter-hold-decay.svg)
 
 #### 數學：dB/s → 每個 sample 的係數
 
@@ -91,11 +80,13 @@ $`D = 24`$ dB/s、$`f_s = 48`$ kHz → $`g = 10^{-24/960000} \approx 0.9999424`$
 
 hold 的邏輯：
 
-```
+```text
 if |x| >= hold:      hold = |x|, counter = holdSamples
 elif counter > 0:    counter -= 1
-else:                hold = max(hold · g, peak)      // hold 永遠不低於 peak
+else:                hold = max(hold * g, peak)      // hold never falls below peak
 ```
+
+（最後一行的意思：hold 永遠不低於 peak。）
 
 ### 2.3 RMS 與視窗長度
 
@@ -143,15 +134,7 @@ PPM（peak programme meter）則是廣播用的「準峰值」：積分時間只
 數位訊號只是連續波形的取樣，DAC 會用（近似）sinc 內插把 sample 之間補起來。**真正的峰值可能落在兩個 sample 之間**。
 經典例子：$`f_s/4`$ 的正弦、相位 45°，每個 sample 都是 $`\pm 0.707`$（sample peak -3.01 dBFS），但連續波形的峰值是 1.0（0 dBTP）：
 
-```
-振幅（x[n] = sin(π n/2 + π/4)，fs/4 的正弦，每 4 個 sample 一個週期；o = sample，* = 連續波形的峰值）
-  1.0 |        *                       *     <- 真正的峰值 1.0（0 dBTP）落在兩個 sample 正中間
-0.707 |     o     o                 o     o     <- sample 只踩在 ±0.707（-3.01 dBFS）
-    0 +--------------------------------------------------> n
--0.707|                 o     o                 o     o
- -1.0 |                    *                       *
-   n =      0     1     2     3     4     5     6     7
-```
+![fs/4 的正弦、相位 45°：每個 sample 都是 ±0.707（-3.01 dBFS），但連續波形的峰值是 1.0（0 dBTP），落在 sample 之間](images/intersample-peak.svg)
 
 ITU-R BS.1770-4 Annex 2 的作法：把訊號 **4x oversampling**（48 kHz → 192 kHz，用 FIR 內插 filter），
 在高取樣率下取 $`|x|`$ 最大值，單位 **dBTP**。4x 仍可能錯過一點點：Nyquist 附近的正弦，峰值可能剛好在兩個 4x sample 中間，
@@ -197,11 +180,11 @@ BS.1770 用一個很簡單的 filter 近似這件事，叫 **K-weighting**，再
 
 ```mermaid
 flowchart LR
-    L[L] --> KL[K-weighting<br/>stage 1 shelf<br/>stage 2 highpass] --> ML["mean square z_L<br/>(400 ms block)"]
-    R[R] --> KR[K-weighting] --> MR["mean square z_R"]
+    L["L"] --> KL["K-weighting<br/>stage 1 shelf<br/>stage 2 highpass"] --> ML["mean square z_L<br/>(400 ms block)"]
+    R["R"] --> KR["K-weighting"] --> MR["mean square z_R"]
     ML --> S["Σ G_i · z_i"]
     MR --> S
-    S --> LU["−0.691 + 10·log10(·)"] --> OUT[LUFS]
+    S --> LU["−0.691 + 10·log10(·)"] --> OUT["LUFS"]
 ```
 
 #### K-weighting：兩級 biquad
@@ -289,13 +272,7 @@ $$
 
 #### 400 ms block、75% overlap、momentary / short-term / integrated
 
-```
-時間 ─────────────────────────────────────────────────────▶
-      ├────── 400 ms block 1 ──────┤
-               ├────── block 2 ──────────┤        每 100 ms 一個新 block
-                        ├────── block 3 ────────────┤  （overlap 75%）
-      ├100┤100┤100┤100┤100┤100┤ ...   ← 實作上累積 100 ms 的「子區塊」
-```
+![Loudness 的 gating block：每個 block 長 400 ms，每 100 ms 開始一個新的，相鄰 block 重疊 75%](images/loudness-block-overlap.svg)
 
 - **momentary**：最近 400 ms（一個 block），反應快，像一條比較穩的 meter。
 - **short-term**：最近 3 s（EBU Tech 3341），用來看段落的響度、算 LRA。
@@ -427,13 +404,13 @@ $$
 
 這一對式子叫 **butterfly**（蝴蝶）：
 
-```
-E[k] ──────────●──────(+)────▶ X[k]
-                ╲    ╱
-                 ╲  ╱
-                  ╳
-                 ╱  ╲
-O[k] ──(×W^k)──●──────(−)────▶ X[k+N/2]
+```mermaid
+flowchart LR
+    Ek["E[k]"] --> Xk["X[k] = E[k] + W^k·O[k]"]
+    Ek --> Xk2["X[k+N/2] = E[k] − W^k·O[k]"]
+    Ok["O[k]"] --> Tw["× W^k"]
+    Tw --> Xk
+    Tw --> Xk2
 ```
 
 一個 N 點 DFT = 兩個 N/2 點 DFT + N/2 個 butterfly。遞迴下去：
@@ -448,12 +425,12 @@ $$
 
 遞迴到最底層時，輸入的順序是「index 的二進位倒過來」。N = 8：
 
-```
-index:      0    1    2    3    4    5    6    7
-二進位:    000  001  010  011  100  101  110  111
-倒過來:    000  100  010  110  001  101  011  111
-→ 順序:     0    4    2    6    1    5    3    7
-```
+| | | | | | | | | |
+|---|---|---|---|---|---|---|---|---|
+| index | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+| 二進位 | 000 | 001 | 010 | 011 | 100 | 101 | 110 | 111 |
+| 倒過來 | 000 | 100 | 010 | 110 | 001 | 101 | 011 | 111 |
+| **新的順序** | **0** | **4** | **2** | **6** | **1** | **5** | **3** | **7** |
 
 所以 `Fft` 先做一次 bit-reversal 排列，再由小到大做 $`\log_2 N`$ 層 butterfly（長度 2、4、8……N）。
 twiddle factor 與 bit-reversal 表在建構時算好（會 allocate），之後的 `forward()` / `inverse()` 完全不配置記憶體。
@@ -489,12 +466,7 @@ twiddle factor 與 bit-reversal 表在建構時算好（會 allocate），之後
 
 DFT 只看到 N 個 sample，並**隱含地假設它們無限循環**。如果 frame 裡的正弦不是整數個週期，首尾接起來會有一個跳躍：
 
-```
-frame:   ╭─╮   ╭─╮   ╭─╮   ╭       ← 結尾停在半路
-        ╯   ╰─╯   ╰─╯   ╰─╯
-循環:    ...╯ ╭─╮   ╭─╮   ╭─╮   ╭│╭─╮   ╭─╮ ...
-                               ↑ 不連續！需要很多頻率才拼得出來 → 能量漏到所有 bin
-```
+![每個 frame 含 3.3 個週期的正弦：把 frame 首尾接起來，波形在每個接縫處都會跳一下](images/dft-implied-periodicity.svg)
 
 從頻域看：「只取 N 個 sample」= 乘上一個 rectangular window；時域相乘 = 頻域卷積。
 所以真正的頻譜（一根線）被卷上 rectangular window 的頻譜——一個 sinc：中間的 **main lobe** 加上兩側緩慢衰減的 **side lobe**（最高 −13 dB）。
@@ -533,7 +505,7 @@ $`\frac{0.54\,\text{sinc}(\frac12) + 0.23\,[\text{sinc}(\frac12) + \text{sinc}(\
 
 ASCII 頻譜（實際輸出，0~5 kHz 線性軸，每欄 78 Hz，取欄內最大值）：
 
-```
+```text
 ---- Rectangular ----
       0 dB |                                                                |
     -10 dB |            #                                                   |
@@ -541,7 +513,7 @@ ASCII 頻譜（實際輸出，0~5 kHz 線性軸，每欄 78 Hz，取欄內最大
     -30 dB |          #####                                                 |
     -40 dB |####################                                            |
     -50 dB |##################################                              |
-    -60 dB |################################################################|   ← leakage 的裙襬蓋住了一切
+    -60 dB |################################################################|
     ...
 ---- Hann ----
       0 dB |                                                                |
@@ -551,12 +523,17 @@ ASCII 頻譜（實際輸出，0~5 kHz 線性軸，每欄 78 Hz，取欄內最大
     -40 dB |           ###                                                  |
     -50 dB |           ####                                                 |
     -60 dB |           ####                                                 |
-    -70 dB |          ######                         ##                     |   ← 3.3 kHz 的 −60 dB 音
+    -70 dB |          ######                         ##                     |
     -80 dB |        #########                        ##                     |
     -90 dB |      #############                      ##                     |
    -100 dB |   ###################                   ##                     |
    -110 dB |##########################..............####....................|
 ```
+
+Rectangular 那張的 -60 dB 那一列整排都是 `#`：leakage 的裙襬蓋住了一切。Hann 那張的 -70 dB 那一列右邊多出來的兩個 `#` 就是 3.3 kHz 的 -60 dB 音。
+下面的圖把同樣的訊號畫成曲線，並加上 Blackman-Harris window（rectangular 的裙襬淹沒了微弱的音，Hann 與 Blackman-Harris 都能清楚看到）：
+
+![1 kHz（0 dBFS）加 3.3 kHz（-60 dBFS）兩個音，分別用 rectangular、Hann、Blackman-Harris window 的頻譜：rectangular 把微弱的音淹沒在 leakage 裡](images/window-leakage-spectra.svg)
 
 1 kHz 的讀數不是 0 dB，是因為 1000 Hz 不在 bin 中心（偏 0.33 bin），這叫 **scalloping loss**。理論值：
 rectangular 的響應是 $`\text{sinc}(\delta)`$，$`\delta = 1/3`$ → $`\frac{\sin(\pi/3)}{\pi/3} = 0.827`$ → **−1.65 dB**；
@@ -589,9 +566,9 @@ $$
 
 ```mermaid
 flowchart LR
-    A[audio thread<br/>pushSamples] -->|lock-free FIFO| B[取最新 N 個 sample]
-    B --> C[× window] --> D[forwardReal<br/>N/2+1 bins] --> E["|X|·2/(N·CG)"]
-    E --> F["exponential averaging<br/>s = α·s + (1−α)·m"] --> G[20·log10] --> H[UI：對數頻率軸]
+    A["audio thread<br/>pushSamples"] -->|"lock-free FIFO"| B["取最新 N 個 sample"]
+    B --> C["× window"] --> D["forwardReal<br/>N/2+1 bins"] --> E["|X|·2/(N·CG)"]
+    E --> F["exponential averaging<br/>s = α·s + (1−α)·m"] --> G["20·log10"] --> H["UI：對數頻率軸"]
 ```
 
 - **overlap**：frame 之間重疊。hop = $`N(1 - \text{overlap})`$。overlap 50%、N = 4096 → 每 2048 個新 sample 算一次（48 kHz 時每秒 23 次）。
@@ -623,16 +600,28 @@ audio 就會斷掉（dropout）。所以 meter 與頻譜的資料傳遞必須是
    `memory_order_relaxed` 就夠了（我們只需要「讀到某個完整的值」，不需要和其他資料的先後順序）。
 2. **一串 sample**（頻譜分析需要最近 N 個 sample）：用 single-producer / single-consumer（SPSC）ring buffer。
 
+```text
+                       ring buffer (capacity 4N, a power of two)
+audio thread   +---+---+---+---+---+---+---+---+---+---+---+---+
+pushSamples -->| x | x | x | x | x | x | x | x |   |   |   |   |
+               +---+---+---+---+---+---+---+---+---+---+---+---+
+                 ^ start = writePos - N          ^ writePos
 ```
-                       ring buffer（容量 4N，2 的冪次 → 用 & mask 取代 %）
-audio thread   ┌───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┐
-pushSamples ──▶│ x │ x │ x │ x │ x │ x │ x │ x │   │   │   │   │
-               └───┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───┘
-                 ↑ start = writePos − N               ↑ writePos（atomic，單調遞增的 uint64）
-audio thread：pushSamples(x, n)：① writeEnd = pos + n（先公告「要寫到哪」）+ release fence
-                                 ② 寫 n 個 sample  ③ writePos = pos + n（release，公告「寫完了」）
-UI thread：computeSpectrum() 讀 writePos（acquire）→ 複製 [start, writePos) → acquire fence → 讀 writeEnd，
-           如果 producer 已經「開始寫」會繞一圈蓋到 start 之後的位置（writeEnd − start > 容量），這個 frame 作廢。
+
+ring buffer 的容量是 4N（2 的冪次，所以用 `& mask` 取代 `%`）；`writePos` 是 atomic、單調遞增的 uint64；`start = writePos − N` 是 consumer 要複製的最新 N 個 sample 的起點。
+producer 與 consumer 的動作順序如下：
+
+```mermaid
+sequenceDiagram
+    participant P as audio thread
+    participant R as ring buffer
+    participant U as UI thread
+    P->>R: 1. writeEnd = pos + n（先公告要寫到哪），再 release fence
+    P->>R: 2. 寫 n 個 sample
+    P->>R: 3. writePos = pos + n（release，公告寫完了）
+    U->>R: computeSpectrum 讀 writePos（acquire），複製 [start, writePos)
+    U->>R: acquire fence，再讀 writeEnd
+    Note over U: 若 writeEnd - start > 容量，這個 frame 作廢
 ```
 
 關鍵細節：
@@ -765,13 +754,20 @@ public:
 所以 peak 讀 −6.00）。先用 512 的 block 印出時間軸，再用 480（10 ms）的 block 重跑，讓讀數剛好落在整數時間點並以
 `DAWLAB_CHECK` 驗證。實際輸出節錄：
 
-```
+```text
  time(s)   peak dB    RMS dB   hold dB   expected (peak / hold)
-     0.5     -6.01     -9.01     -6.00   -6.00 / -6.00     ← 正弦 RMS = peak − 3.01 dB
-     1.0    -18.01   -100.00     -6.00   -18.00 / -6.00    ← 停止 0.5 s：−6 − 24 × 0.5 = −18；hold 還停著
-     1.5    -30.01   -100.00     -6.01   -30.00 / -6.00    ← 停止 1 s：−30；hold 的 1 s 剛好用完
-     2.0    -42.01   -100.00    -18.01   -42.00 / -18.00   ← hold 下降 0.5 s：−6 − 12 = −18
+     0.5     -6.01     -9.01     -6.00   -6.00 / -6.00
+     1.0    -18.01   -100.00     -6.00   -18.00 / -6.00
+     1.5    -30.01   -100.00     -6.01   -30.00 / -6.00
+     2.0    -42.01   -100.00    -18.01   -42.00 / -18.00
 ```
+
+逐列說明：
+
+- 0.5 s：正弦 RMS = peak − 3.01 dB。
+- 1.0 s：停止 0.5 s，−6 − 24 × 0.5 = −18；hold 還停著。
+- 1.5 s：停止 1 s，−30；hold 的 1 s 剛好用完。
+- 2.0 s：hold 下降 0.5 s，−6 − 12 = −18。
 
 （停止 300 ms 之後 RMS 視窗裡全是 0，所以讀 −100 dB = `kMinusInfinityDb`。）
 
