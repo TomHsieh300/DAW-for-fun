@@ -513,7 +513,7 @@ cd build
 
 Using the app: the demo song is generated at start-up (File > Load demo song, Ctrl+D, does it
 again). Click a lane's ruler to seek, drag clips, click an insert slot's arrow to choose an effect
-and its body to open the generated panel, "Load..." loads a WAV / AIFF into a track,
+and its body to open the generated panel, "Load..." (or dragging files from the file browser onto a lane) loads WAV / AIFF / FLAC / Ogg / Opus / MP3 into a track,
 File > Export mixdown (Ctrl+E) bounces 24-bit WAV, File > Audio settings (Ctrl+,) chooses the
 device. Without an audio device the app runs in offline mode (status line).
 

@@ -71,6 +71,7 @@ MainComponent::MainComponent(Mode mode) : mode_(mode) {
             vst->closeEditor();
     };
     session_.newProject();
+    arrangement_.onFilesDropped = [this](int track, const juce::StringArray& files) { loadDroppedFiles(track, files); };
 
     // ---- commands, menu, keyboard ------------------------------------------------------------------
     commandManager_.registerAllCommandsForTarget(this);
@@ -237,6 +238,15 @@ void MainComponent::chooseAudioFileForTrack(int track) {
                                   if (safe != nullptr && chooser.getResult() != juce::File())
                                       safe->loadAudioFile(track, chooser.getResult());
                               });
+}
+
+void MainComponent::loadDroppedFiles(int track, const juce::StringArray& files) {
+    const int count = std::min(files.size(), engine::kNumTracks - track);
+    for (int i = 0; i < count; ++i)
+        loadAudioFile(track + i, juce::File(files[i]));
+    if (files.size() > count)
+        setStatus(juce::String(files.size() - count) + " file(s) not loaded: no tracks left below track " +
+                  juce::String(track + 1));
 }
 
 void MainComponent::loadAudioFile(int track, const juce::File& file) {

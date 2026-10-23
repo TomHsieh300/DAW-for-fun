@@ -19,6 +19,11 @@
 //   lane:  click             select the track (File > Load audio..., M / S shortcuts act on it)
 //   wheel                    scroll in time;  Ctrl + wheel: zoom around the mouse
 //
+// Drag and drop: audio files dragged in from the file browser (Explorer / Finder) onto a lane
+// load into that track; several files fill that track and the ones below it. The lane under the
+// mouse is highlighted while dragging. Only the routing happens here: onFilesDropped hands the
+// files to MainComponent, which loads them like File > Load audio... does.
+//
 // Waveform thumbnails: computing min/max over thousands of samples per pixel in paint() would
 // be slow, so a WaveformCache reduces every source buffer once to min/max pairs per
 // kSamplesPerBucket samples (a "peak file", like every DAW keeps next to its audio). paint()
@@ -57,7 +62,9 @@ private:
     std::map<const AudioBuffer*, Peaks> cache_;
 };
 
-class ArrangementView final : public juce::Component, private juce::ChangeListener {
+class ArrangementView final : public juce::Component,
+                              public juce::FileDragAndDropTarget,
+                              private juce::ChangeListener {
 public:
     static constexpr int kRulerHeight = 26;
     static constexpr int kHeaderWidth = 132;
@@ -94,6 +101,18 @@ public:
     void setSelectedTrack(int track);
     std::function<void(int track)> onTrackSelected;
 
+    // ---- drag and drop from the file browser ---------------------------------------------------
+    // Called with the lane the files were dropped on and the readable audio files among them (in
+    // the order they were dragged). Unreadable files are filtered out before the call.
+    std::function<void(int track, const juce::StringArray& files)> onFilesDropped;
+    int getDropTargetTrack() const noexcept { return dropTrack_; } // -1 when nothing is dragged over
+
+    bool isInterestedInFileDrag(const juce::StringArray& files) override;
+    void fileDragEnter(const juce::StringArray& files, int x, int y) override;
+    void fileDragMove(const juce::StringArray& files, int x, int y) override;
+    void fileDragExit(const juce::StringArray& files) override;
+    void filesDropped(const juce::StringArray& files, int x, int y) override;
+
     const WaveformCache& getWaveformCache() const noexcept { return waveforms_; }
 
     void paint(juce::Graphics&) override;
@@ -117,6 +136,7 @@ private:
     double viewStart_ = 0.0;
     double samplesPerPixel_ = 1000.0;
     int selectedTrack_ = 0;
+    int dropTrack_ = -1; // lane highlighted while files are dragged over the view
     float lastPlayheadX_ = -1.0f;
 
     // drag state

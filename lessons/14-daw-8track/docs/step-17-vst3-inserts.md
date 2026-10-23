@@ -118,7 +118,7 @@ with `build.ps1 -Only 13-vst-hosting,14-daw-8track -Juce` the author got
 5b. VST3 DawLabCompressor on the drums: 8 parameters, latency 0, 1 s render peak -1.00 dBFS
 5b. VST3 DawLabLimiter on track 8 (insert latency now 752): plugin latency 240, mix latency 752 -> 992,
     |with - without| = 0 (the two compared 240 samples apart: 1.33)
-[PASS] l14_app_smoke_test (105 checks passed)
+[PASS] l14_app_smoke_test (127 checks passed)
 ```
 
 The compressor has no latency, so it only proves that a real bundle loads, processes and is
@@ -137,7 +137,7 @@ that computes and reports its own latency:
   compensation.
 - After `clearInsert()` the mix latency is back to 752.
 
-(105 = the 92 checks of the stand-alone build, which prints two "not built in this tree" lines for
+(127 = the 114 checks of the stand-alone build, which prints two "not built in this tree" lines for
 section 5b, plus 5 checks for the compressor and 8 for the limiter. The 192 process calls of the
 test plugin are two 1-second renders of $`48\,000 + 852`$ samples in 512-sample blocks,
 $`2 \lceil 48\,852 / 512 \rceil = 2 \cdot 96`$.)

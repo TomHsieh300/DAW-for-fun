@@ -197,6 +197,49 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
             DAWLAB_CHECK_NEAR(media.fileSampleRate, 44100.0, 1e-9);
             DAWLAB_CHECK_NEAR(20.0 * std::log10(amp2 / 0.5), 0.0, 0.05);
         }
+
+        // Compressed formats: write the same sine as FLAC (lossless) and Ogg Vorbis (lossy) with
+        // JUCE's writers, then read them back through the loader. MP3 and Opus have no writer
+        // here, so only their registration is checked.
+        auto writeWith = [&](juce::AudioFormat& format, const juce::String& fileName, int bits) {
+            const juce::File f = wav.getSiblingFile(fileName);
+            f.deleteFile();
+            std::unique_ptr<juce::OutputStream> stream = std::make_unique<juce::FileOutputStream>(f);
+            const auto options = juce::AudioFormatWriterOptions{}
+                                     .withSampleRate(44100.0)
+                                     .withNumChannels(1)
+                                     .withBitsPerSample(bits)
+                                     .withQualityOptionIndex(format.getQualityOptions().size() - 1);
+            std::unique_ptr<juce::AudioFormatWriter> writer = format.createWriterFor(stream, options);
+            const float* ch[] = {sine.getReadPointer(0)};
+            const bool ok = writer != nullptr && writer->writeFromFloatArrays(ch, 1, sine.getNumSamples());
+            writer.reset(); // flushes and closes the file
+            return ok ? f : juce::File();
+        };
+        juce::FlacAudioFormat flac;
+        juce::OggVorbisAudioFormat ogg;
+        const struct { juce::File file; double toleranceDb; } compressed[] = {
+            {writeWith(flac, "l14_app_smoke_44k.flac", 24), 0.05},
+            {writeWith(ogg, "l14_app_smoke_44k.ogg", 16), 0.5},
+        };
+        for (const auto& c : compressed) {
+            DAWLAB_CHECK(c.file.existsAsFile());
+            const LoadedMedia m = MediaLoader::readAudioFile(c.file, 48000.0);
+            DAWLAB_CHECK(m.audio != nullptr);
+            if (m.audio == nullptr) {
+                std::printf("   %s: %s\n", c.file.getFileName().toRawUTF8(), m.error.toRawUTF8());
+                continue;
+            }
+            const double a = goertzelAmplitude(m.audio->getReadPointer(0) + 12000, n, 1000.0, 48000.0);
+            std::printf("   %s -> %d channels at 48 kHz, 1 kHz amplitude %.4f\n", c.file.getFileName().toRawUTF8(),
+                        m.audio->getNumChannels(), a);
+            DAWLAB_CHECK(m.audio->getNumChannels() == 2 && std::abs(m.audio->getNumSamples() - 48000) <= 64);
+            DAWLAB_CHECK_NEAR(20.0 * std::log10(a / 0.5), 0.0, c.toleranceDb);
+        }
+        for (const char* name : {"a.wav", "a.aiff", "a.flac", "a.ogg", "a.opus", "a.mp3"})
+            DAWLAB_CHECK(MediaLoader::canRead(juce::File::getCurrentWorkingDirectory().getChildFile(name)));
+        DAWLAB_CHECK(!MediaLoader::canRead(juce::File::getCurrentWorkingDirectory().getChildFile("notes.txt")));
+        std::printf("   readable formats: %s\n", MediaLoader::getWildcard().toRawUTF8());
     }
 
     // 2. Engine + Session + the demo song (the GUI's code path)
@@ -437,6 +480,34 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         DAWLAB_CHECK(main.loadDemoSongNow() == 0);
         Engine& e = main.getEngine();
         e.applyPendingCommandsOffline();
+
+        // drag and drop from the file browser -> the lane under the mouse, readable files only
+        {
+            main.setSize(MainComponent::kDefaultWidth, MainComponent::kDefaultHeight);
+            auto& arrangement = main.getArrangement();
+            const auto lane = arrangement.getLaneBounds(2).getCentre();
+            const juce::StringArray dragged{"C:/music/kick.flac", "C:/music/readme.txt", "C:/music/bass.mp3"};
+            int droppedTrack = -1;
+            juce::StringArray droppedFiles;
+            auto realHandler = arrangement.onFilesDropped;
+            arrangement.onFilesDropped = [&](int t, const juce::StringArray& f) {
+                droppedTrack = t;
+                droppedFiles = f;
+            };
+            DAWLAB_CHECK(arrangement.isInterestedInFileDrag(dragged));
+            DAWLAB_CHECK(!arrangement.isInterestedInFileDrag(juce::StringArray{"C:/music/readme.txt"}));
+            arrangement.fileDragEnter(dragged, lane.x, lane.y);
+            DAWLAB_CHECK(arrangement.getDropTargetTrack() == 2);
+            arrangement.filesDropped(dragged, lane.x, lane.y);
+            DAWLAB_CHECK(arrangement.getDropTargetTrack() == -1);
+            DAWLAB_CHECK(droppedTrack == 2);
+            DAWLAB_CHECK(droppedFiles.size() == 2 && droppedFiles[0].endsWith("kick.flac") &&
+                         droppedFiles[1].endsWith("bass.mp3"));
+            arrangement.onFilesDropped = realHandler;
+            DAWLAB_CHECK(arrangement.onFilesDropped != nullptr); // MainComponent wired it up
+            std::printf("   drag and drop: %d of 3 dragged files accepted, dropped on track %d\n", droppedFiles.size(),
+                        droppedTrack + 1);
+        }
 
         // fader -> ChannelStrip::setGainDb
         auto& strip0 = main.getMixer().getStrip(0);

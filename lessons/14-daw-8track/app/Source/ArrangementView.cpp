@@ -2,6 +2,7 @@
 
 #include "AudioHost.h"
 #include "DawLookAndFeel.h"
+#include "MediaLoader.h"
 
 #include <algorithm>
 #include <cmath>
@@ -168,6 +169,56 @@ void ArrangementView::paint(juce::Graphics& g) {
         tri.addTriangle(x - 6.0f, 0.0f, x + 6.0f, 0.0f, x, 9.0f);
         g.fillPath(tri);
     }
+
+    // drop target while audio files are dragged over the view
+    if (dropTrack_ >= 0) {
+        const auto lane = getLaneBounds(dropTrack_);
+        g.setColour(DawColours::accent().withAlpha(0.18f));
+        g.fillRect(lane);
+        g.setColour(DawColours::accent());
+        g.drawRect(lane, 2);
+        g.setFont(DawLookAndFeel::uiFont(13.0f));
+        g.drawText("Drop to load into track " + juce::String(dropTrack_ + 1),
+                   lane.withTrimmedLeft(kHeaderWidth).reduced(10, 0), juce::Justification::centredLeft);
+    }
+}
+
+// ---- drag and drop from the file browser ----------------------------------------------------------
+
+bool ArrangementView::isInterestedInFileDrag(const juce::StringArray& files) {
+    for (const auto& path : files)
+        if (MediaLoader::canRead(juce::File(path)))
+            return true;
+    return false;
+}
+
+void ArrangementView::fileDragEnter(const juce::StringArray& files, int x, int y) { fileDragMove(files, x, y); }
+
+void ArrangementView::fileDragMove(const juce::StringArray&, int, int y) {
+    const int track = laneAt(y);
+    if (track != dropTrack_) {
+        dropTrack_ = track;
+        repaint();
+    }
+}
+
+void ArrangementView::fileDragExit(const juce::StringArray&) {
+    dropTrack_ = -1;
+    repaint();
+}
+
+void ArrangementView::filesDropped(const juce::StringArray& files, int, int y) {
+    const int track = laneAt(y);
+    dropTrack_ = -1;
+    repaint();
+    if (track < 0)
+        return;
+    juce::StringArray readable;
+    for (const auto& path : files)
+        if (MediaLoader::canRead(juce::File(path)))
+            readable.add(path);
+    if (!readable.isEmpty() && onFilesDropped)
+        onFilesDropped(track, readable);
 }
 
 void ArrangementView::paintRuler(juce::Graphics& g, juce::Rectangle<int> area) {

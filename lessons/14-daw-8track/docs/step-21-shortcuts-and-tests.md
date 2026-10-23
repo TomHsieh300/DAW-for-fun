@@ -135,7 +135,7 @@ DawLab 8 smoke test (no audio device)
 10. GUI device change 48 -> 44.1 kHz (loader thread): engine 44100 Hz, transport stopped at once: yes, bass clip 3 96000 -> 88200,
     converted in 5010 ms with 457 message-loop turns meanwhile, playback resumed: yes, status "Sample rate changed to 44100 Hz: clips converted"
 
-[PASS] l14_app_smoke_test (92 checks passed)
+[PASS] l14_app_smoke_test (114 checks passed)
 ```
 
 (Debug build; the CPU figures and the render time in section 9 vary with the machine; the master

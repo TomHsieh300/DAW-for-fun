@@ -75,7 +75,7 @@ public:
     MediaLoader(const MediaLoader&) = delete;
     MediaLoader& operator=(const MediaLoader&) = delete;
 
-    // Reads `file` (WAV / AIFF) on the loader thread, converts it to stereo float at
+    // Reads `file` (WAV / AIFF / FLAC / Ogg Vorbis / Opus / MP3) on the loader thread, converts it to stereo float at
     // `targetSampleRate` and calls `onDone` on the message thread.
     void loadFile(int track, const juce::File& file, double targetSampleRate,
                   std::function<void(const LoadedMedia&)> onDone);
@@ -94,8 +94,12 @@ public:
     // The synchronous part of loadFile(), usable from any thread (tests, the smoke test).
     static LoadedMedia readAudioFile(const juce::File& file, double targetSampleRate);
 
-    // File patterns the reader understands ("*.wav;*.aif;*.aiff").
+    // File patterns the reader understands, for the file chooser ("*.wav;*.aif;...;*.mp3").
     static juce::String getWildcard();
+
+    // True when the file's extension belongs to a format the reader understands (used to accept
+    // files dragged in from the file browser; the content is only checked when it is read).
+    static bool canRead(const juce::File& file);
 
 private:
     juce::ThreadPool pool_{juce::ThreadPoolOptions{}.withThreadName("DawLab loader").withNumberOfThreads(1)};

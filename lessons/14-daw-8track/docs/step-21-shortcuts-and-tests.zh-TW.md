@@ -94,7 +94,7 @@ DawLab 8 smoke test (no audio device)
 10. GUI device change 48 -> 44.1 kHz (loader thread): engine 44100 Hz, transport stopped at once: yes, bass clip 3 96000 -> 88200,
     converted in 5010 ms with 457 message-loop turns meanwhile, playback resumed: yes, status "Sample rate changed to 44100 Hz: clips converted"
 
-[PASS] l14_app_smoke_test (92 checks passed)
+[PASS] l14_app_smoke_test (114 checks passed)
 ```
 
 （Debug build；CPU 數字與第 9 節的 render 時間隨機器而異；第 6 行的 master peak 與第 9 行的 loudness 取決於 chapter 01-12 的 DSP 實作。所有被精確檢查的東西——長度、latency、零差異——都不會變動。）Exercise 13 對 app 的 18 個 command 加上它自己的 10 個（共 28 個）增加了衝突檢查：預設的 map 沒有衝突。

@@ -5,10 +5,39 @@
 
 ## Goal
 
-"Load..." on a track strip (or Ctrl+O for the selected track) reads a WAV or AIFF file - any
-sample rate, mono or stereo - converts it to the engine's sample rate and places it as a clip at
-bar 1. "File > Load demo song" (Ctrl+D) builds the 8-track demo song of Step 9. Neither may
-freeze the GUI, and neither may touch the audio thread except through a finished clip list.
+"Load..." on a track strip (or Ctrl+O for the selected track) reads an audio file - WAV, AIFF,
+FLAC, Ogg Vorbis, Opus or MP3, any sample rate, mono or stereo - converts it to the engine's
+sample rate and places it as a clip at bar 1. Audio files dragged from the file browser onto a
+lane load the same way. "File > Load demo song" (Ctrl+D) builds the 8-track demo song of Step 9.
+None of these may freeze the GUI, and none may touch the audio thread except through a finished
+clip list.
+
+## Formats and drag and drop
+
+`MediaLoader` reads through `juce::AudioFormatManager::registerBasicFormats()`. Which formats that
+registers is decided at compile time by JUCE options, set on chapter 13's host library
+(`lessons/13-vst-hosting/host/CMakeLists.txt`): `JUCE_USE_FLAC`, `JUCE_USE_OGGVORBIS`,
+`JUCE_USE_OPUS` and `JUCE_USE_MP3AUDIOFORMAT` are all 1, next to the always-present WAV and AIFF.
+The codecs are compiled into the app (libFLAC, libogg/libvorbis and Opus are BSD-licensed; the MP3
+decoder is JUCE's own), so nothing has to be installed. MP3 can be read but not written; mixdowns
+are still exported as WAV (Step 19). On Windows, JUCE also registers its Windows Media reader
+(`JUCE_USE_WINDOWS_MEDIA_FORMAT`, on by default there), so WMA files load as well; the smoke test
+prints the full list: `*.wav;*.bwf;*.aiff;*.aif;*.flac;*.ogg;*.opus;*.mp3;*.wmv;*.asf;*.wm;*.wma`.
+
+`MediaLoader::getWildcard()` asks the same format manager for its file patterns, so the file
+chooser always lists exactly what the reader understands. `MediaLoader::canRead(file)` checks the
+extension the same way; the arrangement view uses it for drag and drop:
+
+| `juce::FileDragAndDropTarget` callback | `ArrangementView` does |
+|---|---|
+| `isInterestedInFileDrag(files)` | true if at least one file has a readable extension |
+| `fileDragEnter` / `fileDragMove(files, x, y)` | highlights the lane under the mouse (`laneAt(y)`) |
+| `fileDragExit` | removes the highlight |
+| `filesDropped(files, x, y)` | keeps the readable files and calls `onFilesDropped(track, files)` |
+
+The view only routes; `MainComponent::loadDroppedFiles()` loads the first file into the lane it
+was dropped on and further files into the tracks below it (files beyond track 8 are reported in the
+status bar), each through the same `loadAudioFile()` as the button.
 
 ## Design
 

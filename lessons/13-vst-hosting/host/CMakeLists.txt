@@ -29,8 +29,12 @@ target_compile_definitions(dawlab_plugin_host_juce
         JUCE_PLUGINHOST_AU=0
         JUCE_PLUGINHOST_LADSPA=0
         JUCE_PLUGINHOST_LV2=0
-        JUCE_USE_FLAC=0
-        JUCE_USE_OGGVORBIS=0
+        # Audio file readers for the chapter 14 DAW (AudioFormatManager::registerBasicFormats):
+        # WAV and AIFF are always there; these add FLAC, Ogg Vorbis, Opus and MP3 (decode only).
+        JUCE_USE_FLAC=1
+        JUCE_USE_OGGVORBIS=1
+        JUCE_USE_OPUS=1
+        JUCE_USE_MP3AUDIOFORMAT=1
     INTERFACE
         # forward all compile definitions, including those of the JUCE modules (e.g. JUCE_MODULE_AVAILABLE_xxx=1)
         $<TARGET_PROPERTY:dawlab_plugin_host_juce,COMPILE_DEFINITIONS>)

@@ -79,7 +79,26 @@ AudioBuffer resampleBuffer(const AudioBuffer& input, double fromRate, double toR
 
 // ---- file reading ---------------------------------------------------------------------------------
 
-juce::String MediaLoader::getWildcard() { return "*.wav;*.aif;*.aiff"; }
+namespace {
+
+// WAV and AIFF always; FLAC, Ogg Vorbis, Opus and MP3 when the JUCE_USE_xxx options are on
+// (they are, in chapter 13's host library). Every format here can be read; MP3 cannot be written.
+void registerReadableFormats(juce::AudioFormatManager& formats) { formats.registerBasicFormats(); }
+
+} // namespace
+
+juce::String MediaLoader::getWildcard() {
+    juce::AudioFormatManager formats;
+    registerReadableFormats(formats);
+    return formats.getWildcardForAllFormats();
+}
+
+bool MediaLoader::canRead(const juce::File& file) {
+    juce::AudioFormatManager formats;
+    registerReadableFormats(formats);
+    return file.getFileExtension().isNotEmpty() &&
+           formats.findFormatForFileExtension(file.getFileExtension()) != nullptr;
+}
 
 LoadedMedia MediaLoader::readAudioFile(const juce::File& file, double targetSampleRate) {
     LoadedMedia result;
@@ -87,10 +106,10 @@ LoadedMedia MediaLoader::readAudioFile(const juce::File& file, double targetSamp
     result.targetSampleRate = targetSampleRate;
 
     juce::AudioFormatManager formats;
-    formats.registerBasicFormats(); // WAV and AIFF (FLAC / Ogg are disabled in this build)
+    registerReadableFormats(formats);
     std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(file));
     if (reader == nullptr) {
-        result.error = "Cannot read " + file.getFullPathName() + " (WAV or AIFF expected)";
+        result.error = "Cannot read " + file.getFullPathName() + " (WAV, AIFF, FLAC, Ogg Vorbis, Opus or MP3 expected)";
         return result;
     }
     const auto length = reader->lengthInSamples;

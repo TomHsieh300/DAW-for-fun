@@ -511,7 +511,7 @@ cd build
 
 使用 app：demo song 會在啟動時產生（File > Load demo song，Ctrl+D，會再產生一次）。
 點擊 lane 的 ruler 來 seek，拖曳 clip，點擊 insert slot 的箭頭來選擇 effect，
-點它的本體來開啟自動產生的面板，"Load..." 會把 WAV / AIFF 載入到一個 track，
+點它的本體來開啟自動產生的面板，"Load..."（或從檔案總管把音檔拖到 lane 上）會把 WAV / AIFF / FLAC / Ogg / Opus / MP3 載入到一個 track，
 File > Export mixdown（Ctrl+E）會 bounce 成 24-bit WAV，File > Audio settings（Ctrl+,）用來選擇
 device。沒有 audio device 時，app 會以 offline 模式執行（狀態列會顯示）。
 

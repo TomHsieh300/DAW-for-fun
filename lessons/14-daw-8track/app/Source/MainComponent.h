@@ -79,6 +79,8 @@ public:
     int loadDemoSongNow();          // synchronous (snapshot, tests); returns unknown parameter count
     void chooseAudioFileForTrack(int track);
     void loadAudioFile(int track, const juce::File& file); // asynchronous (loader thread)
+    // Files dropped on a lane: the first loads into `track`, the next ones into the tracks below.
+    void loadDroppedFiles(int track, const juce::StringArray& files);
     void exportMixdownInteractive(); // file chooser, then exportMixdown()
     void exportMixdown(const juce::File& file);
     void showAudioSettings();

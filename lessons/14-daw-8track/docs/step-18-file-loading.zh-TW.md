@@ -6,7 +6,22 @@
 
 ## 目標
 
-Track strip 上的 "Load..."（或對選取的 track 按 Ctrl+O）會讀取一個 WAV 或 AIFF 檔——任何 sample rate、mono 或 stereo——把它轉換成 engine 的 sample rate，並作為 clip 放在 bar 1。"File > Load demo song"（Ctrl+D）會建出 Step 9 的 8-track demo song。兩者都不能讓 GUI 凍結，也都不能碰 audio thread，除非透過一份已完成的 clip 清單。
+Track strip 上的 "Load..."（或對選取的 track 按 Ctrl+O）會讀取一個音檔——WAV、AIFF、FLAC、Ogg Vorbis、Opus 或 MP3，任何 sample rate、mono 或 stereo——把它轉換成 engine 的 sample rate，並作為 clip 放在 bar 1。從檔案總管把音檔拖到某條 lane 上，也會以同樣方式載入。"File > Load demo song"（Ctrl+D）會建出 Step 9 的 8-track demo song。這些操作都不能讓 GUI 凍結，也都不能碰 audio thread，除非透過一份已完成的 clip 清單。
+
+## 支援的格式與拖放
+
+`MediaLoader` 透過 `juce::AudioFormatManager::registerBasicFormats()` 讀檔。它會註冊哪些格式，是在編譯時由 JUCE 的選項決定的，這些選項設定在第 13 章的 host library（`lessons/13-vst-hosting/host/CMakeLists.txt`）：除了一定存在的 WAV 與 AIFF，`JUCE_USE_FLAC`、`JUCE_USE_OGGVORBIS`、`JUCE_USE_OPUS`、`JUCE_USE_MP3AUDIOFORMAT` 都設為 1。這些 codec 直接編進 app（libFLAC、libogg/libvorbis 與 Opus 是 BSD 授權；MP3 decoder 是 JUCE 自己的），不需要另外安裝任何東西。MP3 只能讀不能寫；mixdown 仍然匯出成 WAV（Step 19）。在 Windows 上，JUCE 還會註冊它的 Windows Media reader（`JUCE_USE_WINDOWS_MEDIA_FORMAT`，在 Windows 預設開啟），所以 WMA 也能載入；smoke test 會印出完整清單：`*.wav;*.bwf;*.aiff;*.aif;*.flac;*.ogg;*.opus;*.mp3;*.wmv;*.asf;*.wm;*.wma`。
+
+`MediaLoader::getWildcard()` 向同一個 format manager 取得檔名樣式，所以檔案選擇視窗列出的永遠正好是 reader 看得懂的格式。`MediaLoader::canRead(file)` 用同樣方式檢查副檔名；arrangement view 用它來處理拖放：
+
+| `juce::FileDragAndDropTarget` callback | `ArrangementView` 做的事 |
+|---|---|
+| `isInterestedInFileDrag(files)` | 至少有一個檔案的副檔名可讀時回傳 true |
+| `fileDragEnter` / `fileDragMove(files, x, y)` | 標示滑鼠下方的 lane（`laneAt(y)`） |
+| `fileDragExit` | 取消標示 |
+| `filesDropped(files, x, y)` | 只留下可讀的檔案，呼叫 `onFilesDropped(track, files)` |
+
+View 只負責轉送；`MainComponent::loadDroppedFiles()` 把第一個檔案載入放下的那條 lane，其餘檔案依序載入下面的 track（超過第 8 軌的檔案會在 status bar 提示），每個檔案都走和按鈕相同的 `loadAudioFile()`。
 
 ## 設計
 

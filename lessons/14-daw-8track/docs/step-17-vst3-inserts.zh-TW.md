@@ -85,7 +85,7 @@ openInsertEditor(ref, slot, false);   // -> VstInsert::openEditor() -> host::Plu
 5b. VST3 DawLabCompressor on the drums: 8 parameters, latency 0, 1 s render peak -1.00 dBFS
 5b. VST3 DawLabLimiter on track 8 (insert latency now 752): plugin latency 240, mix latency 752 -> 992,
     |with - without| = 0 (the two compared 240 samples apart: 1.33)
-[PASS] l14_app_smoke_test (105 checks passed)
+[PASS] l14_app_smoke_test (127 checks passed)
 ```
 
 Compressor 沒有 latency，所以它只證明真正的 bundle 能載入、處理，並在 message thread 上被刪除。Limiter 才是真正的 PDC 測試——再次是第 5 節，但用的是會自行計算並回報 latency 的 plugin：
@@ -94,7 +94,7 @@ Compressor 沒有 latency，所以它只證明真正的 bundle 能載入、處�
 - 它的 ceiling 設為 0 dB（normalized 1.0），高於該 track 的電平，所以對這個訊號而言，limiter 是 240 個 sample 的純 delay。帶著它的 1 秒 bounce 因此與不帶它的 bounce 逐 bit 相同：PDC 對齊了全部八個 track，而 renderer 移除了較大的 mix latency。把同樣的兩個 bounce 錯開 240 個 sample 比較——也就是未補償的 plugin 會對該 track 造成的結果——差異為 1.33，所以這項檢查能抓出缺少的補償。
 - 在 `clearInsert()` 之後，mix latency 回到 752。
 
-（105 = stand-alone build 的 92 項檢查（它針對第 5b 節印出兩行 "not built in this tree"），加上 compressor 的 5 項與 limiter 的 8 項。測試 plugin 的 192 次 process 呼叫，是兩次 1 秒的 render，每次 $`48\,000 + 852`$ 個 sample，以 512 個 sample 的 block 處理，$`2 \lceil 48\,852 / 512 \rceil = 2 \cdot 96`$。）
+（127 = stand-alone build 的 114 項檢查（它針對第 5b 節印出兩行 "not built in this tree"），加上 compressor 的 5 項與 limiter 的 8 項。測試 plugin 的 192 次 process 呼叫，是兩次 1 秒的 render，每次 $`48\,000 + 852`$ 個 sample，以 512 個 sample 的 block 處理，$`2 \lceil 48\,852 / 512 \rceil = 2 \cdot 96`$。）
 
 在 app 中：把 chapter 13 的 DawLab Compressor 插在 drum 上，開啟它的 editor，把 threshold 拉低——plugin 自己 GUI 裡的 meter 會隨著 song 移動。把 DawLab Limiter 插在 Hits track 上，並觀察 mixer 下方的 "Mix latency (PDC)"：752 -> 992 個 sample；轉動它的 lookahead 旋鈕，這個數字會在一個 block 之內跟著變動，同時所有 track 都保持對拍。（在 bass 上，它的 insert 回報 31 個 sample，$`31 + 240 = 271`$ 仍低於 Hits track 的 512：bass 只是被 delay 得較少，mix latency 並不改變。）
 
