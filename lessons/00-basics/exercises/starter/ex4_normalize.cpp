@@ -1,8 +1,8 @@
-// 練習 4 起始碼：normalize 到指定 peak 與計算 clipping sample 數。
+// Exercise 4 starter: normalize to a given peak and count clipped samples.
 //
-// 完成下面兩個 // TODO 的函式，讓所有 self-check 通過。
-// 執行：bin/Debug/l00_ex4_starter.exe（未完成時會印出 FAIL，這是預期的）
-// 提示：dawlab::peakAbs、dawlab::dbToGain、dawlab::gainToDb、AudioBuffer::applyGain。
+// Complete the two functions marked // TODO so that every self-check passes.
+// Run: bin/Debug/l00_ex4_starter.exe (it prints FAIL until you finish; that is expected)
+// Hints: dawlab::peakAbs, dawlab::dbToGain, dawlab::gainToDb, AudioBuffer::applyGain.
 
 #include <dawlab/Common.h>
 
@@ -11,22 +11,22 @@
 
 namespace {
 
-// 計算 |x| >= threshold 的 sample 數（所有 channel 加總）。
+// Counts the samples with |x| >= threshold (summed over all channels).
 int countClippedSamples(const dawlab::AudioBuffer& buffer, float threshold = 1.0f) {
-    // TODO: 走訪每個 channel、每個 sample，計算 std::abs(x) >= threshold 的個數
+    // TODO: walk over every channel and every sample and count those with std::abs(x) >= threshold
     (void)buffer;
     (void)threshold;
     return -1;
 }
 
-// 把整個 buffer 的 peak 調整到 targetPeakDb（所有 channel 乘同一個 gain）。
-// 回傳套用的 gain（dB）。全靜音的 buffer 不動，回傳 0。
+// Scales the whole buffer so its peak lands on targetPeakDb (every channel is multiplied by the same gain).
+// Returns the gain applied (in dB). A completely silent buffer is left untouched and 0 is returned.
 float normalizeToPeakDb(dawlab::AudioBuffer& buffer, float targetPeakDb) {
     // TODO:
-    //   1. 找出 peak = 最大的 |sample|（提示：dawlab::peakAbs(buffer)）
-    //   2. 若 peak <= 0 直接回傳 0（不能除以 0）
-    //   3. gain = dbToGain(targetPeakDb) / peak，套用到整個 buffer
-    //   4. 回傳 gainToDb(gain)
+    //   1. Find peak = the largest |sample| (hint: dawlab::peakAbs(buffer))
+    //   2. If peak <= 0, return 0 right away (you cannot divide by 0)
+    //   3. gain = dbToGain(targetPeakDb) / peak, applied to the whole buffer
+    //   4. Return gainToDb(gain)
     (void)buffer;
     (void)targetPeakDb;
     return 0.0f;
@@ -38,18 +38,18 @@ int main() {
     using namespace dawlab;
     constexpr double sr = 48000.0;
 
-    // 1. 振幅 0.25（-12.04 dBFS）的正弦波 normalize 到 -1 dBFS
+    // 1. Normalize a sine of amplitude 0.25 (-12.04 dBFS) to -1 dBFS
     AudioBuffer sine = makeSine(440.0, sr, 1.0, 0.25f);
     const float applied = normalizeToPeakDb(sine, -1.0f);
-    std::printf("正弦波 0.25 → -1 dBFS：套用 %+.2f dB，結果 peak = %.4f（%.2f dBFS）\n", applied, peakAbs(sine),
+    std::printf("Sine 0.25 -> -1 dBFS: applied %+.2f dB, resulting peak = %.4f (%.2f dBFS)\n", applied, peakAbs(sine),
                 gainToDb(peakAbs(sine)));
     DAWLAB_CHECK_NEAR(peakAbs(sine), dbToGain(-1.0f), 1e-5);
     DAWLAB_CHECK_NEAR(applied, -1.0 - gainToDb(0.25f), 0.01); // -1 - (-12.04) = +11.04 dB
     DAWLAB_CHECK(countClippedSamples(sine) == 0);
 
-    // 2. 兩個 channel 音量不同：normalize 以「最大的那個 channel」為準，左右比例不變
+    // 2. The two channels have different levels: normalization goes by the "loudest channel", so the left/right ratio is unchanged
     AudioBuffer stereo = makeSine(440.0, sr, 1.0, 0.5f);
-    AudioBlock(stereo).getChannelSubset(1, 1).multiplyBy(0.5f); // 右聲道 -6 dB
+    AudioBlock(stereo).getChannelSubset(1, 1).multiplyBy(0.5f); // right channel -6 dB
     const float ratioBefore = peakAbs(stereo.getReadPointer(1), stereo.getNumSamples()) /
                               peakAbs(stereo.getReadPointer(0), stereo.getNumSamples());
     normalizeToPeakDb(stereo, 0.0f);
@@ -58,23 +58,23 @@ int main() {
     DAWLAB_CHECK_NEAR(peakAbs(stereo), 1.0, 1e-5);
     DAWLAB_CHECK_NEAR(ratioAfter, ratioBefore, 1e-5);
 
-    // 3. 靜音 buffer：不可以產生 NaN
+    // 3. Silent buffer: must not produce NaN
     AudioBuffer silence(2, 1000);
     const float silentGain = normalizeToPeakDb(silence, -1.0f);
     DAWLAB_CHECK(silentGain == 0.0f);
     DAWLAB_CHECK(!hasNanOrInf(silence));
     DAWLAB_CHECK(peakAbs(silence) == 0.0f);
 
-    // 4. clipping 計數：振幅 1.5 的 1 kHz 正弦波，每個週期 48 個 sample 裡有 26 個 |x| >= 1
+    // 4. Clipping count: for a 1 kHz sine of amplitude 1.5, 26 of the 48 samples in each period have |x| >= 1
     AudioBuffer loud = makeSine(1000.0, sr, 1.0, 1.5f, 1);
     const int clipped = countClippedSamples(loud);
-    std::printf("振幅 1.5 的正弦波：%d / %d samples 超過 ±1.0\n", clipped, loud.getNumSamples());
+    std::printf("Sine of amplitude 1.5: %d / %d samples exceed ±1.0\n", clipped, loud.getNumSamples());
     DAWLAB_CHECK(clipped == 26000);
     normalizeToPeakDb(loud, -0.1f);
     DAWLAB_CHECK(countClippedSamples(loud) == 0);
     DAWLAB_CHECK_NEAR(peakAbs(loud), dbToGain(-0.1f), 1e-5);
 
-    // 5. 真實素材：鼓組 loop normalize 到 -1 dBFS 並輸出
+    // 5. Real material: normalize the drum loop to -1 dBFS and write it out
     AudioBuffer drums = makeDrumLoop(sr);
     normalizeToPeakDb(drums, -1.0f);
     DAWLAB_CHECK_NEAR(gainToDb(peakAbs(drums)), -1.0, 0.01);

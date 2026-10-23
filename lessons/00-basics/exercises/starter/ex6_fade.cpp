@@ -1,7 +1,8 @@
-// 練習 6 起始碼：linear vs equal-power 的 fade in / fade out 與 crossfade。
+// Exercise 6 starter: linear vs equal-power fade in / fade out, and crossfade.
 //
-// 完成 fadeGain、applyFadeIn、applyFadeOut 三個 // TODO，讓所有 self-check 通過。
-// 執行：bin/Debug/l00_ex6_starter.exe（未完成時會印出 FAIL，這是預期的）
+// Complete the three // TODO functions fadeGain, applyFadeIn and applyFadeOut so that every
+// self-check passes.
+// Run: bin/Debug/l00_ex6_starter.exe (it prints FAIL until you finish; that is expected)
 
 #include <dawlab/Common.h>
 
@@ -12,39 +13,39 @@ namespace {
 
 enum class FadeShape { Linear, EqualPower };
 
-// 位置 t ∈ [0, 1] 的 fade-in 增益：
+// Fade-in gain at position t ∈ [0, 1]:
 //   Linear      g(t) = t
 //   EqualPower  g(t) = sin(t · π/2)
-// fade-out 用 1 - t 代入。
+// A fade-out substitutes 1 - t.
 float fadeGain(float t, FadeShape shape) {
     t = std::clamp(t, 0.0f, 1.0f);
-    // TODO: 依 shape 回傳對應的增益（提示：dawlab::kPi 是 double，要轉成 float）
+    // TODO: return the gain that matches shape (hint: dawlab::kPi is a double, so convert it to float)
     (void)shape;
     return 0.0f;
 }
 
-// 對 buffer 開頭 numSamples 個 sample 做 fade-in（gain 從 0 升到 1）。
-// 第 i 個 sample 的 t = i / (n - 1)，所以第 0 個是 0、第 n-1 個是 1。
+// Applies a fade-in over the first numSamples samples of the buffer (gain rises from 0 to 1).
+// Sample i has t = i / (n - 1), so sample 0 gets 0 and sample n-1 gets 1.
 void applyFadeIn(dawlab::AudioBuffer& buffer, int numSamples, FadeShape shape) {
     const int n = std::min(numSamples, buffer.getNumSamples());
     if (n <= 1)
         return;
-    // TODO: 對每個 channel 的前 n 個 sample 乘上 fadeGain(t, shape)
+    // TODO: multiply the first n samples of every channel by fadeGain(t, shape)
     (void)buffer;
     (void)shape;
 }
 
-// 對 buffer 結尾 numSamples 個 sample 做 fade-out（gain 從 1 降到 0）
+// Applies a fade-out over the last numSamples samples of the buffer (gain falls from 1 to 0)
 void applyFadeOut(dawlab::AudioBuffer& buffer, int numSamples, FadeShape shape) {
     const int total = buffer.getNumSamples();
     const int n = std::min(numSamples, total);
     if (n <= 1)
         return;
-    // TODO: 對每個 channel 的最後 n 個 sample 乘上 fadeGain(1 - t, shape)
+    // TODO: multiply the last n samples of every channel by fadeGain(1 - t, shape)
     (void)shape;
 }
 
-// 把 a 整段 fade-out、b 整段 fade-in 之後相加 = crossfade
+// Fade out all of a, fade in all of b, then add them = crossfade
 dawlab::AudioBuffer crossfade(dawlab::AudioBuffer a, dawlab::AudioBuffer b, FadeShape shape) {
     const int n = std::min(a.getNumSamples(), b.getNumSamples());
     applyFadeOut(a, n, shape);
@@ -55,7 +56,7 @@ dawlab::AudioBuffer crossfade(dawlab::AudioBuffer a, dawlab::AudioBuffer b, Fade
     return a;
 }
 
-// 量測 buffer 中央 10% 區段的 RMS（第 0 channel）
+// Measures the RMS of the middle 10% of the buffer (channel 0)
 float middleRmsDb(const dawlab::AudioBuffer& b) {
     const int n = b.getNumSamples();
     const int len = n / 10;
@@ -68,16 +69,16 @@ int main() {
     using namespace dawlab;
     constexpr double sr = 48000.0;
 
-    // 1. 增益曲線本身：中點與端點
+    // 1. The gain curves themselves: midpoint and endpoints
     DAWLAB_CHECK_NEAR(fadeGain(0.5f, FadeShape::Linear), 0.5, 1e-6);
     DAWLAB_CHECK_NEAR(fadeGain(0.5f, FadeShape::EqualPower), std::sqrt(0.5), 1e-6);
     DAWLAB_CHECK_NEAR(fadeGain(1.0f, FadeShape::EqualPower), 1.0, 1e-6);
     for (float t : {0.1f, 0.3f, 0.5f, 0.8f}) {
         const float gi = fadeGain(t, FadeShape::EqualPower), go = fadeGain(1.0f - t, FadeShape::EqualPower);
-        DAWLAB_CHECK_NEAR(gi * gi + go * go, 1.0, 1e-5); // 功率守恆
+        DAWLAB_CHECK_NEAR(gi * gi + go * go, 1.0, 1e-5); // power conserved
     }
 
-    // 2. fade-in / fade-out 套在常數訊號（DC = 1.0）上，直接讀 sample 看曲線
+    // 2. Apply fade-in / fade-out to a constant signal (DC = 1.0) and read the samples to see the curve
     const int fadeLen = 1001;
     AudioBuffer dc(1, 4000);
     for (int i = 0; i < 4000; ++i)
@@ -94,7 +95,7 @@ int main() {
     DAWLAB_CHECK_NEAR(dcOut.getSample(0, 4000 - fadeLen + 500), std::sqrt(0.5), 1e-6);
     DAWLAB_CHECK_NEAR(dcOut.getSample(0, 3999), 0.0, 1e-6);
 
-    // 3. crossfade 兩段「不相關」的白雜訊：equal-power 中段音量不變、linear 中段掉 3 dB
+    // 3. Crossfade two "uncorrelated" white-noise signals: equal-power keeps the middle level, linear dips 3 dB in the middle
     AudioBuffer n1 = makeWhiteNoise(sr, 2.0, 0.3f, 2, 1);
     AudioBuffer n2 = makeWhiteNoise(sr, 2.0, 0.3f, 2, 999);
     const float refDb = middleRmsDb(n1);
@@ -102,11 +103,11 @@ int main() {
     AudioBuffer xfEqual = crossfade(n1, n2, FadeShape::EqualPower);
     const float linDip = middleRmsDb(xfLinear) - refDb;
     const float eqDip = middleRmsDb(xfEqual) - refDb;
-    std::printf("不相關素材 crossfade 中段 RMS 變化：linear %+.2f dB，equal-power %+.2f dB\n", linDip, eqDip);
+    std::printf("Uncorrelated material, crossfade mid RMS change: linear %+.2f dB, equal-power %+.2f dB\n", linDip, eqDip);
     DAWLAB_CHECK_NEAR(linDip, -3.01, 0.25);
     DAWLAB_CHECK_NEAR(eqDip, 0.0, 0.25);
 
-    // 4. crossfade 兩段「相同」的訊號：linear 剛好不變，equal-power 反而 +3 dB
+    // 4. Crossfade two "identical" signals: linear stays exactly unchanged, equal-power actually gains 3 dB
     AudioBuffer s1 = makeSine(440.0, sr, 2.0, 0.3f, 2);
     const float sineRef = middleRmsDb(s1);
     DAWLAB_CHECK_NEAR(middleRmsDb(crossfade(s1, s1, FadeShape::Linear)) - sineRef, 0.0, 0.05);

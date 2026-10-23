@@ -1,7 +1,7 @@
-// 練習 5 解答：stereo → mono downmix 與 mono → stereo upmix（注意增益）。
+// Exercise 5 solution: stereo -> mono downmix and mono -> stereo upmix (mind the gain).
 //
-// 執行：bin/Debug/l00_ex5_solution.exe（ctest label: solution）
-// 輸出：dawlab_output/l00_ex5_mono.wav、l00_ex5_stereo_again.wav
+// Run: bin/Debug/l00_ex5_solution.exe (ctest label: solution)
+// Output: dawlab_output/l00_ex5_mono.wav, l00_ex5_stereo_again.wav
 
 #include <dawlab/Common.h>
 
@@ -10,11 +10,13 @@
 
 namespace {
 
-// 把多聲道 buffer 混成單聲道：mono[i] = channelGain * Σ_ch in[ch][i]
+// Mixes a multichannel buffer down to mono: mono[i] = channelGain * Σ_ch in[ch][i]
 //
-// channelGain 的選擇（以立體聲為例）：
-//   0.5   （-6 dB）：左右相同時音量不變，左右不相關時 -3 dB。永遠不會 clip。
-//   0.707 （-3 dB）：左右不相關時音量不變，左右相同時 +3 dB，可能 clip。
+// Choosing channelGain (stereo as the example):
+//   0.5   (-6 dB): level unchanged when left and right are identical, -3 dB when they are
+//                  uncorrelated. Never clips.
+//   0.707 (-3 dB): level unchanged when left and right are uncorrelated, +3 dB when they are
+//                  identical, and it may clip.
 dawlab::AudioBuffer downmixToMono(const dawlab::AudioBuffer& in, float channelGain) {
     const int n = in.getNumSamples();
     dawlab::AudioBuffer mono(1, n);
@@ -27,7 +29,7 @@ dawlab::AudioBuffer downmixToMono(const dawlab::AudioBuffer& in, float channelGa
     return mono;
 }
 
-// 單聲道複製到 numChannels 個 channel。「同一個訊號放到左右」在聽感上會在正中間。
+// Copies the mono signal into numChannels channels. "The same signal on left and right" is heard dead center.
 dawlab::AudioBuffer upmixToStereo(const dawlab::AudioBuffer& mono, int numChannels = 2) {
     const int n = mono.getNumSamples();
     dawlab::AudioBuffer out(numChannels, n);
@@ -52,40 +54,40 @@ int main() {
     const float minus6 = 0.5f;
     const float minus3 = static_cast<float>(1.0 / std::sqrt(2.0));
 
-    // 1. 左右相同（正弦波）：gain 0.5 → mono 跟原本一樣大；gain 0.707 → +3.01 dB
+    // 1. Left and right identical (sine): gain 0.5 -> mono is as loud as the original; gain 0.707 -> +3.01 dB
     AudioBuffer sine = makeSine(440.0, sr, 1.0, 0.5f, 2);
     AudioBuffer monoA = downmixToMono(sine, minus6);
     AudioBuffer monoB = downmixToMono(sine, minus3);
     const float sameA = gainToDb(rms(monoA, 0)) - gainToDb(rms(sine, 0));
     const float sameB = gainToDb(rms(monoB, 0)) - gainToDb(rms(sine, 0));
-    std::printf("左右相同：  gain 0.5 → %+.2f dB，gain 0.707 → %+.2f dB\n", sameA, sameB);
+    std::printf("Identical L/R:     gain 0.5 -> %+.2f dB, gain 0.707 -> %+.2f dB\n", sameA, sameB);
     DAWLAB_CHECK_NEAR(sameA, 0.0, 0.01);
     DAWLAB_CHECK_NEAR(sameB, 3.01, 0.02);
-    DAWLAB_CHECK_NEAR(maxAbsDifference(monoA, sine), 0.0, 1e-6); // 逐 sample 完全等於左聲道
+    DAWLAB_CHECK_NEAR(maxAbsDifference(monoA, sine), 0.0, 1e-6); // sample for sample identical to the left channel
 
-    // 2. 左右不相關（白雜訊，兩聲道不同 seed）：gain 0.5 → -3.01 dB；gain 0.707 → 0 dB
+    // 2. Left and right uncorrelated (white noise, different seed per channel): gain 0.5 -> -3.01 dB; gain 0.707 -> 0 dB
     AudioBuffer noise = makeWhiteNoise(sr, 2.0, 0.25f, 2);
     AudioBuffer noiseA = downmixToMono(noise, minus6);
     AudioBuffer noiseB = downmixToMono(noise, minus3);
     const float uncA = gainToDb(rms(noiseA, 0)) - gainToDb(rms(noise, 0));
     const float uncB = gainToDb(rms(noiseB, 0)) - gainToDb(rms(noise, 0));
-    std::printf("左右不相關：gain 0.5 → %+.2f dB，gain 0.707 → %+.2f dB\n", uncA, uncB);
+    std::printf("Uncorrelated L/R:  gain 0.5 -> %+.2f dB, gain 0.707 -> %+.2f dB\n", uncA, uncB);
     DAWLAB_CHECK_NEAR(uncA, -3.01, 0.1);
     DAWLAB_CHECK_NEAR(uncB, 0.0, 0.1);
 
-    // 3. 左右反相（L = -R）：downmix 之後完全消失。這就是「mono 相容性」問題。
+    // 3. Left and right in anti-phase (L = -R): the signal vanishes completely after downmixing. This is the "mono compatibility" problem.
     AudioBuffer antiPhase = makeSine(440.0, sr, 1.0, 0.5f, 2);
     AudioBlock(antiPhase).getChannelSubset(1, 1).multiplyBy(-1.0f);
     AudioBuffer cancelled = downmixToMono(antiPhase, minus6);
-    std::printf("左右反相：  downmix 後 peak = %g（完全抵消）\n", peakAbs(cancelled));
+    std::printf("Anti-phase L/R:    peak after downmix = %g (complete cancellation)\n", peakAbs(cancelled));
     DAWLAB_CHECK(peakAbs(cancelled) == 0.0f);
 
-    // 4. gain 0.5 永遠不會 clip：就算左右都是 full-scale 的 1.0
+    // 4. gain 0.5 never clips, even if both left and right are full-scale 1.0
     AudioBuffer fullScale = makeSine(440.0, sr, 0.1, 1.0f, 2);
     DAWLAB_CHECK(peakAbs(downmixToMono(fullScale, minus6)) <= 1.0f);
-    DAWLAB_CHECK(peakAbs(downmixToMono(fullScale, minus3)) > 1.0f); // 0.707 會超過
+    DAWLAB_CHECK(peakAbs(downmixToMono(fullScale, minus3)) > 1.0f); // 0.707 exceeds 1.0
 
-    // 5. upmix：兩個 channel 都等於 mono；stereo → mono → stereo 對「左右相同」的素材是無損的
+    // 5. upmix: both channels equal the mono signal; stereo -> mono -> stereo is lossless for material whose left and right are identical
     AudioBuffer pluck = makePluckSequence(sr, 2.0, 0.4f, 2);
     AudioBuffer pluckMono = downmixToMono(pluck, minus6);
     AudioBuffer pluckStereo = upmixToStereo(pluckMono);
@@ -96,7 +98,7 @@ int main() {
     for (int i = 0; i < pluckStereo.getNumSamples(); ++i)
         lrDiff = std::max(lrDiff, std::abs(pluckStereo.getSample(0, i) - pluckStereo.getSample(1, i)));
     DAWLAB_CHECK(lrDiff == 0.0f);
-    std::printf("stereo → mono → stereo：最大差異 %g\n", maxAbsDifference(pluckStereo, pluck));
+    std::printf("stereo -> mono -> stereo: max difference %g\n", maxAbsDifference(pluckStereo, pluck));
 
     writeWav(outputPath("l00_ex5_mono.wav"), pluckMono, sr);
     writeWav(outputPath("l00_ex5_stereo_again.wav"), pluckStereo, sr);

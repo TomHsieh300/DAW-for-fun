@@ -1,60 +1,62 @@
-# 第 00 章：數位音訊基礎與開發環境
+# Chapter 00: Digital Audio Fundamentals and the Development Environment
 
-> [教材首頁](../../README.md)　｜　下一章：[01 Gain 與 Pan](../01-gain/README.md)
+**English** | [繁體中文](README.zh-TW.md)
 
-這是整套教材的起點。讀完這一章，你會知道「聲音在電腦裡長什麼樣子」、會算 dB、知道 audio callback 是什麼，而且能編譯、執行、試聽本教材的每一支程式。後面 14 章的所有 DSP 元件都建立在這一章的觀念上。
+> [Course home](../../README.md) | Next chapter: [01 Gain and Pan](../01-gain/README.md)
 
-## 整套教材的路線圖
+This is the starting point of the whole course. By the end of this chapter you will know what sound looks like inside a computer, be able to do dB arithmetic, know what an audio callback is, and be able to compile, run and listen to every program in this course. Every DSP component in the next 14 chapters builds on the ideas introduced here.
 
-章節依編號順序前進，一條直線走到底：
+## Roadmap of the whole course
+
+The chapters go in numeric order, in a single straight line:
 
 ```
 00 → 01 → 02 → 03 → 04 → 05 → 06 → 07
   → 08 → 09 → 10 → 11 → 12 → 13 → 14
 ```
 
-| 章 | 主題 | 你會做出什麼 |
+| Chapter | Topic | What you will build |
 |---|---|---|
-| 00 | 數位音訊基礎、開發環境 | 看懂 sample、dB、block、latency；能建置與試聽 |
-| 01 | gain、pan、參數平滑 | `Gain`、`Panner`、`SmoothedValue` |
-| 02 | filter（one-pole、biquad） | `OnePole`、`Biquad`（RBJ cookbook） |
-| 03 | parametric EQ | 6 段 `ParametricEq` |
-| 04 | compressor | `EnvelopeFollower`、`Compressor` |
-| 05 | limiter 與 lookahead | `DelayLine`、`Limiter` |
-| 06 | saturation 與 oversampling | `Oversampler`、`Saturation` |
-| 07 | distortion | `Distortion`（hard clip、foldback、bitcrush…） |
-| 08 | gate / expander / de-esser / transient shaper | 四種動態處理器 |
-| 09 | delay | `FractionalDelayLine`、`Delay`（ping-pong、tempo sync） |
-| 10 | modulation | `Lfo`、`Chorus`、`Flanger`、`Phaser`、`Tremolo` |
-| 11 | metering 與 FFT | `Fft`、`LevelMeter`、`LoudnessMeter`（LUFS）、`SpectrumAnalyzer` |
-| 12 | reverb | algorithmic `Reverb` 與 `ConvolutionReverb` |
-| 13 | VST3 plugin 與 hosting（JUCE） | 把 compressor 包成 VST3，並寫一個能載入 VST3 的 host |
-| 14 | 自製 8 軌 DAW（英文） | 把以上全部組成一個能編排 clip、混音、插 VST3 plugin、匯出 WAV 的 DAW（錄音是延伸練習） |
+| 00 | Digital audio fundamentals, development environment | Understand sample, dB, block and latency; build and listen to the examples |
+| 01 | Gain, pan, parameter smoothing | `Gain`, `Panner`, `SmoothedValue` |
+| 02 | Filters (one-pole, biquad) | `OnePole`, `Biquad` (RBJ cookbook) |
+| 03 | Parametric EQ | A 6-band `ParametricEq` |
+| 04 | Compressor | `EnvelopeFollower`, `Compressor` |
+| 05 | Limiter and lookahead | `DelayLine`, `Limiter` |
+| 06 | Saturation and oversampling | `Oversampler`, `Saturation` |
+| 07 | Distortion | `Distortion` (hard clip, foldback, bitcrush, ...) |
+| 08 | Gate / expander / de-esser / transient shaper | Four kinds of dynamics processors |
+| 09 | Delay | `FractionalDelayLine`, `Delay` (ping-pong, tempo sync) |
+| 10 | Modulation | `Lfo`, `Chorus`, `Flanger`, `Phaser`, `Tremolo` |
+| 11 | Metering and FFT | `Fft`, `LevelMeter`, `LoudnessMeter` (LUFS), `SpectrumAnalyzer` |
+| 12 | Reverb | An algorithmic `Reverb` and a `ConvolutionReverb` |
+| 13 | VST3 plugins and hosting (JUCE) | Wrap the compressor as a VST3, and write a host that can load VST3 plugins |
+| 14 | Build your own 8-track DAW | Put everything together into a DAW that arranges clips, mixes, hosts VST3 plugins and exports WAV (recording is an extension exercise) |
 
 ---
 
-## 0. 開發環境
+## 0. Development environment
 
-### 0.1 Windows：Visual Studio 2022
+### 0.1 Windows: Visual Studio 2022
 
-1. 下載 [Visual Studio 2022](https://visualstudio.microsoft.com/)：**Build Tools**（純命令列，體積小）或 **Community**（含 IDE，免費）都可以。
-2. 安裝時勾選工作負載 **「使用 C++ 的桌面開發」（Desktop development with C++）**。它會一併裝好 MSVC 編譯器、Windows SDK 與 **CMake**（本教材的腳本會自動找到 VS 內附的 CMake，不需要另外裝）。
-3. 打開 PowerShell，切到專案根目錄，執行：
+1. Download [Visual Studio 2022](https://visualstudio.microsoft.com/): either **Build Tools** (command line only, small) or **Community** (includes the IDE, free) will do.
+2. During installation, select the workload **"Desktop development with C++"**. It installs the MSVC compiler, the Windows SDK and **CMake** together (this course's scripts automatically find the CMake bundled with VS, so you do not need to install it separately).
+3. Open PowerShell, change to the project root, and run:
 
 ```powershell
-.\scripts\build.ps1 -Only 00-basics        # 設定 + 建置 + 測試第 00 章
-.\scripts\build.ps1                        # 全部純 C++ 章節
-.\scripts\build.ps1 -Only 00-basics -NoTest             # 只建置
-.\scripts\build.ps1 -Only 00-basics -TestLabel example  # 只跑範例（或 solution）
-.\scripts\build.ps1 -Only 00-basics -Config Release     # Release 建置
-.\scripts\build.ps1 -Only 14-daw-8track -Juce          # JUCE 章節（13、14）要加 -Juce
+.\scripts\build.ps1 -Only 00-basics        # configure + build + test chapter 00
+.\scripts\build.ps1                        # all pure C++ chapters
+.\scripts\build.ps1 -Only 00-basics -NoTest             # build only
+.\scripts\build.ps1 -Only 00-basics -TestLabel example  # run only the examples (or "solution")
+.\scripts\build.ps1 -Only 00-basics -Config Release     # Release build
+.\scripts\build.ps1 -Only 14-daw-8track -Juce          # JUCE chapters (13, 14) need -Juce
 ```
 
-`-Only` 後面接的是 `lessons/` 底下的資料夾名稱（例如 `00-basics`、`14-daw-8track`）。名稱打錯（`lessons/` 底下沒有那個資料夾）時，那個名稱會被默默略過，只會建出共用工具的 `common_selftest`；建完如果發現沒有那一章的執行檔，先檢查拼字。要一次建多章，用逗號分隔：`-Only 13-vst-hosting,14-daw-8track`。
+`-Only` takes the name of a folder under `lessons/` (for example `00-basics` or `14-daw-8track`). If you mistype it (there is no such folder under `lessons/`), that name is silently skipped and only the shared utilities' `common_selftest` gets built; if you finish a build and find no executable for the chapter, check the spelling first. To build several chapters at once, separate them with commas: `-Only 13-vst-hosting,14-daw-8track`.
 
-如果 PowerShell 說「無法載入指令碼」，用 `powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1 -Only 00-basics`。
+If PowerShell complains that scripts cannot be loaded, use `powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1 -Only 00-basics`.
 
-腳本做的事等同於下面三行（VS 內附的 cmake 在 `C:\Program Files (x86)\Microsoft Visual Studio\2022\<版本>\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\`）：
+The script does the equivalent of the following three lines (the cmake bundled with VS lives in `C:\Program Files (x86)\Microsoft Visual Studio\2022\<edition>\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\`):
 
 ```powershell
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DDAWLAB_ONLY=00-basics
@@ -62,7 +64,7 @@ cmake --build build --config Debug --parallel
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
-建好的執行檔在 `build\bin\Debug\`（Release 在 `build\bin\Release\`）。**手動執行範例時請先 `cd build`**，因為程式把 WAV 寫在「目前工作目錄」底下的 `dawlab_output\`：
+The built executables are in `build\bin\Debug\` (Release builds go to `build\bin\Release\`). **When you run an example by hand, `cd build` first**, because the programs write WAV files under `dawlab_output\` in the *current working directory*:
 
 ```powershell
 cd build
@@ -70,66 +72,66 @@ cd build
 .\bin\Debug\l00_wav_info.exe dawlab_output\l00_drum_loop.wav
 ```
 
-### 0.2 其他方式：VS Code、Visual Studio IDE
+### 0.2 Alternatives: VS Code and the Visual Studio IDE
 
-- **VS Code + CMake Tools 擴充套件**：開啟專案資料夾 → 下方狀態列選 kit「Visual Studio Build Tools 2022 Release - amd64」（或 Community）→ 按「Build」。要只建一章，在 `.vscode/settings.json` 加 `"cmake.configureSettings": { "DAWLAB_ONLY": "00-basics" }`。狀態列的「Run CTest」會跑測試；要手動執行某支程式，記得終端機的工作目錄要在 build 資料夾。
-- **Visual Studio 2022 IDE**：「開啟本機資料夾」選專案根目錄，VS 會自動偵測 `CMakeLists.txt`。在「專案 → CMake 設定」裡加 CMake 變數 `DAWLAB_ONLY=00-basics` 可以只建一章。目標執行檔從工具列的「選取啟動項目」挑，例如 `l00_db_math.exe`。
+- **VS Code + the CMake Tools extension**: open the project folder, pick the kit "Visual Studio Build Tools 2022 Release - amd64" (or Community) in the status bar at the bottom, and click "Build". To build just one chapter, add `"cmake.configureSettings": { "DAWLAB_ONLY": "00-basics" }` to `.vscode/settings.json`. "Run CTest" in the status bar runs the tests; to run a program by hand, make sure the terminal's working directory is the build folder.
+- **Visual Studio 2022 IDE**: choose "Open a local folder" and select the project root; VS detects `CMakeLists.txt` automatically. Under "Project → CMake Settings", add the CMake variable `DAWLAB_ONLY=00-basics` to build just one chapter. Pick the target executable from the toolbar's "Select Startup Item" dropdown, for example `l00_db_math.exe`.
 
 ### 0.3 macOS / Linux
 
-安裝 CMake ≥ 3.22 與 C++17 編譯器（macOS：`xcode-select --install` 加 `brew install cmake`；Ubuntu：`sudo apt install build-essential cmake`），然後：
+Install CMake ≥ 3.22 and a C++17 compiler (macOS: `xcode-select --install` plus `brew install cmake`; Ubuntu: `sudo apt install build-essential cmake`), then:
 
 ```bash
 cmake -S . -B build -DDAWLAB_ONLY=00-basics
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
-cd build && ./bin/l00_test_signals      # 單一組態 generator 沒有 Debug/ 子資料夾
+cd build && ./bin/l00_test_signals      # single-configuration generators have no Debug/ subfolder
 ```
 
-Linux 需要 `libasound2-dev` 等套件的只有 JUCE 章節（13、14），本章不需要。
+Only the JUCE chapters (13, 14) need extra packages such as `libasound2-dev` on Linux; this chapter does not.
 
-### 0.4 輸出的 WAV 在哪裡、怎麼試聽
+### 0.4 Where the output WAVs go and how to listen to them
 
-所有程式都用 `dawlab::outputPath("檔名")` 寫到 `<build 目錄>/dawlab_output/`。用 ctest 跑時工作目錄就是 build 目錄，所以也在同一個地方。
+Every program writes through `dawlab::outputPath("filename")` to `<build directory>/dawlab_output/`. When ctest runs a program, the working directory is the build directory, so the files end up in the same place.
 
-強烈建議安裝免費的 [Audacity](https://www.audacityteam.org/)：
+We strongly recommend installing the free [Audacity](https://www.audacityteam.org/):
 
-- **波形**：直接拖 WAV 進去。用滑鼠滾輪 + Ctrl 放大到看得見一顆一顆的 sample——那就是 $x[n]$。
-- **頻譜圖**：音軌名稱旁的下拉選單 → 「Spectrogram」。正弦波是一條水平線、掃頻是往上彎的曲線、白雜訊是整片均勻的雜訊、脈衝是一條垂直線。
-- **單一時間點的頻譜**：選取一段 → 「分析 → 繪製頻譜」。看 `l00_clipped_sine.wav` 可以清楚看到 1、3、5 kHz 的奇次諧波。
-- **檢查 clip**：「View → Show Clipping」（中文介面的選單名稱依版本而異）會把 clip 的 sample 標成紅色。
-- 聽 `l00_aliasing_sweep.wav` 時請把音量調小：接近 Nyquist 的高頻很刺耳。
+- **Waveform**: just drag the WAV in. Zoom in with Ctrl + mouse wheel until you can see individual samples; those are $x[n]$.
+- **Spectrogram**: the drop-down menu next to the track name → "Spectrogram". A sine wave is a horizontal line, a sweep is an upward-curving line, white noise is a uniform wash of noise, and an impulse is a vertical line.
+- **Spectrum at a single moment**: select a region → "Analyze → Plot Spectrum". Look at `l00_clipped_sine.wav` and you can clearly see the odd harmonics at 1, 3 and 5 kHz.
+- **Checking for clipping**: "View → Show Clipping" (the menu name varies by version and language) marks clipped samples in red.
+- Turn the volume down when you listen to `l00_aliasing_sweep.wav`: the high frequencies near Nyquist are harsh.
 
 ---
 
-## 1. 本章目標
+## 1. Chapter goals
 
-讀完這一章，你應該能：
+After this chapter you should be able to:
 
-- 說明聲音如何變成一串數字：sampling、sample rate、bit depth，以及為什麼 DSP 程式裡一律用 `float` 且範圍是 $[-1, 1]$。
-- 用 Nyquist 定理算出「某個頻率在某個 sample rate 下會 alias 到幾 Hz」，並解釋 aliasing 聽起來像什麼。
-- 熟練 dB 的數學：$20\log_{10}$、+6 dB ≈ 兩倍振幅、相同訊號相加 +6 dB vs 不相關訊號相加 +3 dB、quantization 的 SNR ≈ 6.02N + 1.76 dB。
-- 分辨 peak、RMS、crest factor，知道 clipping 在數字上長什麼樣子。
-- 解釋 channel、interleaved / non-interleaved、buffer、block processing、audio callback、latency = blockSize / sampleRate。
-- 說出 real-time audio thread 的四大禁忌（allocation、lock、I/O、無界迴圈 / GC）以及**為什麼**。
-- 在 Windows（或 macOS / Linux）上建置整套教材、跑測試、找到輸出的 WAV 並用 Audacity 看波形與頻譜。
-- 看懂 `common/include/dawlab/` 裡的共用工具：`AudioBuffer` / `AudioBlock`、`WavFile`、`Signals`、`Analysis`、`Check`。
+- Explain how sound becomes a stream of numbers: sampling, sample rate and bit depth, and why DSP code always uses `float` with the range $[-1, 1]$.
+- Use the Nyquist theorem to work out which frequency a given tone will alias to at a given sample rate, and explain what aliasing sounds like.
+- Be fluent in dB arithmetic: $20\log_{10}$, +6 dB ≈ twice the amplitude, summing identical signals (+6 dB) vs summing uncorrelated signals (+3 dB), and the quantization SNR ≈ 6.02N + 1.76 dB.
+- Tell peak, RMS and crest factor apart, and know what clipping looks like in numbers.
+- Explain channel, interleaved / non-interleaved, buffer, block processing, audio callback, and latency = blockSize / sampleRate.
+- Name the four cardinal sins of the real-time audio thread (allocation, locks, I/O, unbounded loops / GC) and **why** each is forbidden.
+- Build the whole course on Windows (or macOS / Linux), run the tests, find the output WAVs and inspect their waveforms and spectra in Audacity.
+- Read the shared utilities in `common/include/dawlab/`: `AudioBuffer` / `AudioBlock`, `WavFile`, `Signals`, `Analysis` and `Check`.
 
 ---
 
-## 2. 原理
+## 2. Theory
 
-### 2.1 聲波與取樣（sampling）
+### 2.1 Sound waves and sampling
 
-聲音是空氣壓力隨時間的微小變化。麥克風把壓力變成電壓，電壓是一條**連續**的曲線 $x(t)$：任何時刻都有值，而且值可以是任意實數。電腦存不了連續的東西，所以 ADC（analog-to-digital converter）做兩件事：
+Sound is a tiny variation of air pressure over time. A microphone turns the pressure into a voltage, and that voltage is a **continuous** curve $x(t)$: it has a value at every instant, and the value can be any real number. A computer cannot store anything continuous, so an ADC (analog-to-digital converter) does two things:
 
-1. **取樣（sampling）**：每隔固定的時間 $T$ 量一次電壓。$T$ 叫 sampling period，它的倒數 $f_s = 1/T$ 叫 **sample rate**（取樣率），單位 Hz。48000 Hz 代表每秒量 48000 次，每個 sample 相隔 $1/48000 \approx 20.8\ \mu s$。
-2. **量化（quantization）**：把量到的電壓四捨五入到有限個刻度之一（見 2.3）。
+1. **Sampling**: measure the voltage once every fixed interval $T$. $T$ is called the sampling period, and its reciprocal $f_s = 1/T$ is the **sample rate**, in Hz. 48000 Hz means 48000 measurements per second, with consecutive samples $1/48000 \approx 20.8\ \mu s$ apart.
+2. **Quantization**: round each measured voltage to one of a finite set of levels (see 2.3).
 
-結果就是一串數字 $x[n] = x(nT)$，$n = 0, 1, 2, \ldots$。這一串數字就是「聲音在電腦裡的樣子」——沒有別的了。一秒鐘的立體聲 48 kHz 音訊就是 2 × 48000 = 96000 個數字。
+The result is a stream of numbers $x[n] = x(nT)$, $n = 0, 1, 2, \ldots$. That stream of numbers is "what sound looks like inside a computer"; there is nothing else. One second of 48 kHz stereo audio is 2 × 48000 = 96000 numbers.
 
 ```
-連續的聲波 x(t)                      取樣後的 x[n]（每格一個 sample）
+Continuous sound wave x(t)           Sampled x[n] (one dot per sample)
       ╭──╮                                  •
      ╱    ╲                               •   •
     ╱      ╲        ╭──                 •       •         •
@@ -139,68 +141,68 @@ Linux 需要 `libasound2-dev` 等套件的只有 JUCE 章節（13、14），本�
                                  |←T→|   T = 1 / fs
 ```
 
-一個很常見的誤解：「sample 之間的聲音不見了，所以數位音訊是階梯狀的、有損的」。只要訊號裡沒有超過 $f_s/2$ 的成分，這些點**唯一地**決定了原本那條平滑曲線（這就是下一節的 Nyquist 定理）；DAC 輸出時會用一個 reconstruction filter 把平滑曲線還原回來，不是輸出階梯。
+A very common misconception: "the sound between the samples is lost, so digital audio is stair-stepped and lossy". As long as the signal contains no component above $f_s/2$, these points determine the original smooth curve **uniquely** (this is the Nyquist theorem of the next section); on output the DAC uses a reconstruction filter to recover the smooth curve, not a staircase.
 
-「超過 $f_s/2$ 的成分」是什麼意思？要回答這個問題，得先講清楚頻率、正弦波與頻譜。
+What does "a component above $f_s/2$" mean? To answer that, we first have to be clear about frequency, sine waves and spectra.
 
-#### 頻率、正弦波與頻譜
+#### Frequency, sine waves and the spectrum
 
-**頻率（frequency）** 是「每秒振動幾次」，單位 Hz。它對應到我們聽到的**音高**：鋼琴中央 C 上方的 A（A4）是 440 Hz，高八度的 A5 是 880 Hz（頻率加倍 = 高八度）。人耳大約聽得到 20 Hz～20 kHz，年紀越大上限越低。
+**Frequency** is "how many vibrations per second", in Hz. It corresponds to the **pitch** we hear: the A above middle C on a piano (A4) is 440 Hz, and the A an octave higher (A5) is 880 Hz (doubling the frequency = going up an octave). Human ears can hear roughly 20 Hz to 20 kHz, and the upper limit drops with age.
 
-**正弦波（sine wave）** 是最「純」的聲音，只有單一頻率，聽起來像音叉或測試音的「嗶——」：
+A **sine wave** is the "purest" sound, with a single frequency; it sounds like a tuning fork or the "beeeep" of a test tone:
 
 $$
 x(t) = A \sin(2\pi f t)
 $$
 
-$A$ 是振幅（決定多大聲），$f$ 是頻率（決定音高）。取樣後就是 $x[n] = A\sin(2\pi f n / f_s)$——`Signals.h` 的 `makeSine()` 做的就是這件事。
+$A$ is the amplitude (how loud) and $f$ is the frequency (what pitch). After sampling it becomes $x[n] = A\sin(2\pi f n / f_s)$, which is exactly what `makeSine()` in `Signals.h` computes.
 
-**任何聲音都可以拆成很多正弦波疊加**。這是 Fourier（傅立葉）的核心觀念：一把吉他、一句人聲、一個鼓聲，都等於「很多個不同頻率、不同振幅的正弦波加在一起」。把「每個頻率的正弦波有多大」畫成圖，就叫**頻譜（spectrum）**：橫軸是頻率，縱軸是振幅。
+**Any sound can be decomposed into a sum of many sine waves.** This is the core idea of Fourier analysis: a guitar, a human voice or a drum hit is equivalent to "many sine waves of different frequencies and amplitudes added together". Plotting "how large the sine wave at each frequency is" gives the **spectrum**: frequency on the horizontal axis, amplitude on the vertical axis.
 
 ```
-振幅                                    振幅
+Amplitude                               Amplitude
  │  █                                    │  █
  │  █                                    │  █   █
  │  █                                    │  █   █   █
  │  █                                    │  █   █   █   █   ▄   ▂
- └──┴──────────────────── 頻率           └──┴───┴───┴───┴───┴───┴─── 頻率
+ └──┴──────────────────── Frequency      └──┴───┴───┴───┴───┴───┴─── Frequency
    440                                     110 220 330 440 550 660
- 正弦波：只有一根柱子                    撥弦（基頻 110 Hz）：一根基頻 + 一排諧波
+ Sine wave: a single bar                 Pluck (fundamental 110 Hz): a fundamental plus a row of harmonics
 ```
 
-真實樂器的頻譜通常像右圖：最低的那根叫**基頻（fundamental）**，決定我們聽到的音高；上面一排頻率剛好是基頻**整數倍**（2、3、4…倍）的成分叫**諧波（harmonics）**，第 $k$ 次諧波的頻率是 $k \cdot f_0$。基頻本身算第 1 次諧波（H1），2 倍的是 H2，以此類推；頻率是基頻奇數倍的叫**奇次諧波**（H3、H5…），偶數倍的叫**偶次諧波**（H2、H4…）。
+The spectrum of a real instrument usually looks like the right-hand plot: the lowest bar is the **fundamental**, which determines the pitch we hear; the row of components above it whose frequencies are exactly **integer multiples** (2×, 3×, 4×, ...) of the fundamental are the **harmonics**, and the $k$-th harmonic has frequency $k \cdot f_0$. The fundamental itself counts as the first harmonic (H1), the 2× component is H2, and so on; components at odd multiples of the fundamental are **odd harmonics** (H3, H5, ...), and those at even multiples are **even harmonics** (H2, H4, ...).
 
-**諧波的組成決定音色（timbre）**：同樣是 110 Hz 的 A，鋼琴、吉他、小提琴聽起來不一樣，就是因為各次諧波的大小不同。之後談 clipping、saturation、distortion 時會一直說「產生了新的諧波」，意思就是：處理之後的頻譜多出了原本沒有的柱子，所以音色變了。
+**The make-up of the harmonics determines the timbre**: a piano, a guitar and a violin playing the same 110 Hz A sound different because the harmonics have different sizes. When we later talk about clipping, saturation and distortion and keep saying "new harmonics are generated", it means that the processed spectrum has bars that were not there before, so the timbre has changed.
 
-親耳對照：`l00_test_signals` 輸出的 `l00_sine_440.wav` 是單一正弦波，聽起來乾淨但單調、像測試音；`l00_pluck_110.wav` 是 110 Hz 的撥弦，音高比較低，但因為有一整排諧波，聽起來「像樂器」、明亮而有質感，而且高次諧波隨時間衰減得比較快，所以聲音越來越悶。用 Audacity 的「分析 → 繪製頻譜」（見 0.4）看這兩個檔案，就是上面兩張圖。
+To hear the difference: `l00_sine_440.wav`, written by `l00_test_signals`, is a single sine wave: clean but monotonous, like a test tone. `l00_pluck_110.wav` is a 110 Hz pluck; its pitch is lower, but because it has a whole row of harmonics it sounds "like an instrument", bright and rich, and since the higher harmonics decay faster over time, the sound gets duller and duller. Look at these two files with Audacity's "Analyze → Plot Spectrum" (see 0.4) and you get the two plots above.
 
-### 2.2 sample rate、Nyquist 定理與 aliasing
+### 2.2 Sample rate, the Nyquist theorem and aliasing
 
-**Nyquist–Shannon 取樣定理**：如果訊號最高頻率是 $f_{max}$，那麼只要 $f_s > 2 f_{max}$，就可以從 sample 完美重建原訊號。反過來說，在 sample rate $f_s$ 之下，能正確表示的最高頻率是
+**The Nyquist–Shannon sampling theorem**: if the highest frequency in a signal is $f_{max}$, then as long as $f_s > 2 f_{max}$, the original signal can be reconstructed perfectly from the samples. Put the other way round, at sample rate $f_s$ the highest frequency that can be represented correctly is
 
 $$
 f_{Nyquist} = \frac{f_s}{2}
 $$
 
-人耳聽覺上限約 20 kHz，所以 CD 用 44.1 kHz（Nyquist 22.05 kHz），專業音訊常用 48 kHz（Nyquist 24 kHz）、96 kHz、192 kHz。
+The upper limit of human hearing is about 20 kHz, so CDs use 44.1 kHz (Nyquist 22.05 kHz), and professional audio commonly uses 48 kHz (Nyquist 24 kHz), 96 kHz and 192 kHz.
 
-**那超過 Nyquist 的頻率會怎樣？** 它不會消失，而是「偽裝」成一個較低的頻率——這叫 **aliasing**（混疊）。直覺：想像你每秒拍 48 張照片去記錄一個每秒轉 30 圈的風扇。每張照片之間風扇轉了 30/48 = 0.625 圈；但是「轉了 0.625 圈」和「倒轉了 0.375 圈」拍出來的照片一模一樣。所以你會看到風扇以每秒 18 圈倒轉。
+**So what happens to frequencies above Nyquist?** They do not disappear; they "masquerade" as a lower frequency. This is called **aliasing**. Intuition: imagine photographing a fan that spins 30 times per second at 48 pictures per second. Between pictures the fan turns 30/48 = 0.625 revolutions, but "turned 0.625 revolutions forward" and "turned 0.375 revolutions backward" produce identical pictures. So you see the fan spinning backward at 18 revolutions per second.
 
-把它寫成公式：一個頻率 $f_{in}$ 的正弦波取樣後，和下列所有頻率產生**完全相同**的 sample：
+As a formula: a sine wave of frequency $f_{in}$, once sampled, produces **exactly the same** samples as all of the following frequencies:
 
 $$
 f_{alias} = \left| f_{in} - k \cdot f_s \right|,\quad k = 0, \pm 1, \pm 2, \ldots
 $$
 
-其中落在 $[0, f_s/2]$ 內的那一個，就是你會「聽到」的頻率。
+The one that falls within $[0, f_s/2]$ is the frequency you will "hear".
 
-**計算：30 kHz 在 48 kHz 取樣下會變成幾 Hz？**
+**Calculation: what does 30 kHz become when sampled at 48 kHz?**
 
 $$
 f_{alias} = |30000 - 1 \times 48000| = 18000\ \text{Hz}
 $$
 
-30 kHz 超過 Nyquist（24 kHz）6 kHz，就「折返」到 Nyquist 以下 6 kHz 的位置，也就是 18 kHz。可以用三角函數驗證（$n$ 是整數）：
+30 kHz is 6 kHz above Nyquist (24 kHz), so it "folds back" to 6 kHz below Nyquist, which is 18 kHz. You can verify this with trigonometry ($n$ is an integer):
 
 $$
 \sin\!\left(2\pi \tfrac{30000}{48000} n\right)
@@ -208,44 +210,44 @@ $$
 = -\sin\!\left(2\pi \tfrac{18000}{48000} n\right)
 $$
 
-兩組 sample 除了正負號完全相同——電腦根本無法分辨它們。範例 `l00_db_math` 用 Goertzel（一個只量「單一頻率振幅」的演算法，見 3.4）量測一個 30 kHz 正弦波，在 18 kHz 量到的振幅就是完整的 0.5：
+The two sets of samples are identical except for the sign; the computer has no way to tell them apart. The example `l00_db_math` uses Goertzel (an algorithm that measures only the amplitude of a *single frequency*; see 3.4) on a 30 kHz sine wave, and the amplitude measured at 18 kHz is the full 0.5:
 
 ```
-== aliasing：f_in = 30 kHz，fs = 48 kHz ==
-    在 18 kHz（|30000 − 48000|）量到振幅 0.5000  ← 全部能量都「折」到這裡
+== Aliasing: f_in = 30 kHz, fs = 48 kHz ==
+    at 18 kHz (|30000 - 48000|) the amplitude is 0.5000  <- all the energy has folded here
 ```
 
 ```
-振幅
+Amplitude
  │                       Nyquist = 24 kHz
  │                            │
- │                            │   30 kHz（原本）
- │   18 kHz（alias）          │        ╎
+ │                            │   30 kHz (original)
+ │   18 kHz (alias)           │        ╎
  │        █                   │        ╎
  │        █                   │        ╎
- │        █   ◄───── 折返 ────┼────────╎
- └────────┴───────────────────┴────────┴──── 頻率
+ │        █   ◄──── fold back ┼────────╎
+ └────────┴───────────────────┴────────┴──── Frequency
           18k                24k      30k
 ```
 
-**為什麼要在乎？** 兩個地方會產生超過 Nyquist 的成分：
+**Why should you care?** There are two places where components above Nyquist can be created:
 
-1. **ADC 之前**：真實世界的聲音有超音波成分，所以 ADC 前面一定有 anti-aliasing lowpass filter 把它們濾掉。這是硬體的事，我們不用管。
-2. **我們自己的 DSP**：任何**非線性**處理（saturation、distortion、clipping，甚至 compressor 的快速 gain 變化）都會產生新的諧波。1.1 kHz 的訊號經過 hard clip 會產生 3.3、5.5、7.7、… kHz 的奇次諧波，一路到無限高；超過 24 kHz 的部分全部 alias 回來，例如第 23 次諧波 25.3 kHz 會折到 $|25300 - 48000| = 22.7$ kHz、第 25 次 27.5 kHz 折到 20.5 kHz——這些位置都**不是** 1.1 kHz 的整數倍，變成跟原本音高無關的刺耳雜音。（例外：如果 $f_s$ 剛好是基頻的整數倍，例如 1 kHz @ 48 kHz，alias 會剛好落回諧波的格點上，例如 25 kHz 折到 23 kHz = H23。這是巧合，一般的音高不會這樣。）這就是第 06 章要用 oversampling 的原因：先把 sample rate 升到 4 倍（192 kHz，Nyquist 96 kHz），做完非線性處理，濾掉 24 kHz 以上的成分，再降回來。
+1. **Before the ADC**: real-world sound contains ultrasonic components, so there is always an anti-aliasing lowpass filter in front of an ADC to remove them. That is the hardware's business; we do not need to worry about it.
+2. **In our own DSP**: any **nonlinear** processing (saturation, distortion, clipping, even the fast gain changes of a compressor) creates new harmonics. A 1.1 kHz signal through a hard clip produces odd harmonics at 3.3, 5.5, 7.7, ... kHz, all the way up to infinity; everything above 24 kHz aliases back. For example the 23rd harmonic at 25.3 kHz folds to $|25300 - 48000| = 22.7$ kHz, and the 25th harmonic at 27.5 kHz folds to 20.5 kHz. These positions are **not** integer multiples of 1.1 kHz, so they turn into harsh noise unrelated to the original pitch. (The exception: if $f_s$ happens to be an integer multiple of the fundamental, e.g. 1 kHz @ 48 kHz, the aliases land back exactly on harmonic grid positions, e.g. 25 kHz folds to 23 kHz = H23. That is a coincidence; ordinary pitches do not do this.) This is why chapter 06 uses oversampling: first raise the sample rate to 4× (192 kHz, Nyquist 96 kHz), do the nonlinear processing, filter out everything above 24 kHz, and then come back down.
 
-聽感上，aliasing 是「金屬感」、「數位感」、「音高往反方向跑」。`l00_db_math` 輸出的 `l00_aliasing_sweep.wav` 是一段從 20 Hz 掃到 40 kHz 的 sweep（刻意超過 Nyquist）：音高一路往上，碰到 24 kHz 之後反而往下掉，就是這個現象。
+Perceptually, aliasing is "metallic", "digital", "the pitch running in the opposite direction". `l00_aliasing_sweep.wav`, written by `l00_db_math`, is a sweep from 20 Hz to 40 kHz (deliberately exceeding Nyquist): the pitch climbs all the way up, then after 24 kHz it falls instead. That is this phenomenon.
 
-### 2.3 bit depth 與 quantization
+### 2.3 Bit depth and quantization
 
-每個 sample 要用多少 bit 儲存，叫 **bit depth**。N bit 的整數 PCM 有 $2^N$ 個刻度：16 bit 有 65536 個（$-32768 \ldots 32767$），24 bit 有 16777216 個。注意正負不對稱：負端可以到 $-2^{N-1}$，正端最多只到 $2^{N-1}-1$。換成 $[-1, 1]$ 的 float 時除以 $2^{N-1}$，所以 16 bit 能存的最大正值是 $32767/32768 \approx 0.99997$，略小於 1.0；`l00_db_math` 的 `quantize()` 在四捨五入後會 clamp 到這個合法範圍。
+The number of bits used to store each sample is the **bit depth**. N-bit integer PCM has $2^N$ levels: 16 bit has 65536 ($-32768 \ldots 32767$), and 24 bit has 16777216. Note the asymmetry between positive and negative: the negative end reaches $-2^{N-1}$, but the positive end only reaches $2^{N-1}-1$. When converting to float in $[-1, 1]$ we divide by $2^{N-1}$, so the largest positive value 16 bit can store is $32767/32768 \approx 0.99997$, slightly below 1.0; the `quantize()` in `l00_db_math` clamps to this valid range after rounding.
 
-量化就是把真實的值四捨五入到最近的刻度，誤差 $e[n]$ 介於 $\pm \Delta/2$，$\Delta$ 是刻度間距。對大多數訊號，這個誤差像是均勻分布的隨機雜訊（quantization noise），功率是
+Quantization means rounding the true value to the nearest level; the error $e[n]$ lies within $\pm \Delta/2$, where $\Delta$ is the level spacing. For most signals this error behaves like uniformly distributed random noise (quantization noise), with power
 
 $$
 P_{noise} = \frac{\Delta^2}{12}
 $$
 
-（均勻分布在 $[-\Delta/2, \Delta/2]$ 的變異數。）把全幅（full-scale）正弦波的功率 $P_{signal} = A^2/2$ 除以它，就得到最好情況的 **SNR（signal-to-noise ratio）**。若刻度範圍是 $[-1, 1]$，則 $\Delta = 2 / 2^N = 2^{1-N}$，$A = 1$：
+(the variance of a uniform distribution on $[-\Delta/2, \Delta/2]$). Dividing the power of a full-scale sine wave, $P_{signal} = A^2/2$, by it gives the best-case **SNR (signal-to-noise ratio)**. If the range of levels is $[-1, 1]$, then $\Delta = 2 / 2^N = 2^{1-N}$ and $A = 1$:
 
 $$
 \text{SNR} = 10\log_{10}\frac{1/2}{2^{2-2N}/12}
@@ -254,7 +256,7 @@ $$
 \approx 6.02N + 1.76\ \text{dB}
 $$
 
-**直覺：每多 1 bit，雜訊就低 6 dB。** 16 bit 約 98 dB、24 bit 約 146 dB。`l00_db_math` 實際把正弦波量化後量 SNR，跟公式幾乎一樣：
+**Intuition: every extra bit lowers the noise by 6 dB.** 16 bit gives about 98 dB and 24 bit about 146 dB. `l00_db_math` actually quantizes a sine wave and measures the SNR, and it matches the formula closely:
 
 ```
   bits     measured      formula
@@ -265,40 +267,40 @@ $$
     24    146.24 dB    146.24 dB
 ```
 
-8 bit 量到的值比公式低約 0.8 dB：0 dBFS 正弦波的正半週頂端超過了最大合法碼 $127/128$，被 clamp 住多了一點誤差；bit 數越多，這一階佔的比例越小，差異就消失了。
+The 8-bit measurement is about 0.8 dB below the formula: the tops of the positive half-cycles of a 0 dBFS sine wave exceed the largest valid code $127/128$ and get clamped, adding a little extra error; the more bits there are, the smaller the share of that one step, and the difference vanishes.
 
-注意 SNR 是以**全幅訊號**算的。訊號小 20 dB，SNR 也少 20 dB（同一個範例：8 bit 在 -20 dBFS 只剩 29.78 dB）。這就是為什麼錄音時要有足夠的位準。聽 `l00_quantized_8bit.wav`，正弦波底下有明顯的嘶嘶聲與失真；`l00_quantized_16bit.wav` 則幾乎聽不出來。16 bit 的底噪（最小刻度約 -90 dBFS）只有在極安靜的段落、而且把監聽音量開得很大時才可能察覺；這也是錄音和混音內部常用 24 bit / float 的原因。（把高解析度的音訊轉成 16 bit 時，實務上會先加一點極小的隨機雜訊再量化，叫 **dither**，讓量化誤差變成均勻的嘶聲，而不是跟訊號相關的失真；第 07 章 bitcrusher 會再提到。）
+Note that the SNR is computed for a **full-scale signal**. If the signal is 20 dB lower, the SNR is 20 dB lower as well (same example: 8 bit at -20 dBFS has only 29.78 dB left). This is why you need enough level when recording. Listen to `l00_quantized_8bit.wav`: there is obvious hiss and distortion under the sine wave; `l00_quantized_16bit.wav` is almost indistinguishable from a clean one. The noise floor of 16 bit (smallest step about -90 dBFS) can only be noticed in extremely quiet passages with the monitoring level turned very high; this is also why recording and mixing internally commonly use 24 bit / float. (When converting high-resolution audio to 16 bit, in practice a tiny amount of random noise is added before quantizing. This is called **dither**; it turns the quantization error into an even hiss instead of distortion correlated with the signal. The bitcrusher in chapter 07 returns to this.)
 
-### 2.4 為什麼 DSP 用 float，以及 0 dBFS
+### 2.4 Why DSP uses float, and 0 dBFS
 
-雖然檔案與硬體用整數，但 DSP 內部一律用 **32-bit float**，範圍約定為 $[-1.0, 1.0]$：
+Although files and hardware use integers, DSP internally always uses **32-bit float**, with the range by convention $[-1.0, 1.0]$:
 
-- **不用擔心溢位**：16 bit 整數相加兩次就可能 overflow（繞到負數，爆音），float 可以放心超過 1.0，最後再處理。
-- **動態範圍極大**：float 有 24 bit 的 mantissa，相對精度不隨音量改變。-60 dB 的小訊號還是有 24 bit 的精度；整數在 -60 dB 時只剩 6 bit（16 bit 的情況）。
-- **乘法自然**：gain 就是乘一個數，不用做定點數的 shift。
+- **No worrying about overflow**: adding two 16-bit integers can already overflow (wrap around to negative, causing a loud pop). A float can safely exceed 1.0, and you deal with it at the end.
+- **Huge dynamic range**: a float has a 24-bit mantissa, and the relative precision does not change with level. A small -60 dB signal still has 24 bits of precision; an integer at -60 dB is left with only 6 bits (in the 16-bit case).
+- **Natural multiplication**: gain is just multiplying by a number, with no fixed-point shifts.
 
-$[-1, 1]$ 這個範圍對應整數 PCM 的「滿刻度」（full scale）。振幅剛好 1.0 的訊號叫 **0 dBFS**（dB relative to Full Scale）；所有以 dBFS 標示的位準都是負數（或 0），例如 -6 dBFS 的正弦波振幅是 0.5。這是 DAW meter 上看到的刻度。
+The range $[-1, 1]$ corresponds to the "full scale" of integer PCM. A signal with amplitude exactly 1.0 is at **0 dBFS** (dB relative to Full Scale); every level quoted in dBFS is negative (or 0), for example a -6 dBFS sine wave has amplitude 0.5. This is the scale you see on a DAW meter.
 
-float 可以超過 1.0 而不壞，但寫成整數 WAV 或送到 DAC 時，超過的部分會被**截斷**（clipping，見 2.7）。`WavFile.h` 寫 16/24-bit 時會 clamp 到 ±1；寫 32-bit float 時原樣保留。
+A float can exceed 1.0 without breaking, but when it is written to an integer WAV or sent to a DAC, the excess is **cut off** (clipping, see 2.7). `WavFile.h` clamps to ±1 when writing 16/24-bit and keeps values as they are when writing 32-bit float.
 
-### 2.5 dB 數學
+### 2.5 dB arithmetic
 
-人耳對音量的感覺是對數的：從 0.1 到 0.2 跟從 0.5 到 1.0 聽起來「差不多大一步」。所以音訊幾乎都用 **dB（decibel）**：
+Human perception of loudness is logarithmic: going from 0.1 to 0.2 sounds like "about the same size step" as going from 0.5 to 1.0. So audio almost always uses **dB (decibel)**:
 
 $$
 L_{dB} = 20\log_{10}\frac{A}{A_{ref}} \qquad\Longleftrightarrow\qquad \frac{A}{A_{ref}} = 10^{L_{dB}/20}
 $$
 
-這是**振幅**（amplitude）的公式。如果比較的是**功率**（power，正比於振幅平方），係數是 10 而不是 20：$10\log_{10}(P/P_{ref}) = 10\log_{10}(A^2/A_{ref}^2) = 20\log_{10}(A/A_{ref})$。兩個公式算出來一樣，只是看你手上拿的是振幅還是功率。
+This is the formula for **amplitude**. If you are comparing **power** (proportional to amplitude squared), the factor is 10 instead of 20: $10\log_{10}(P/P_{ref}) = 10\log_{10}(A^2/A_{ref}^2) = 20\log_{10}(A/A_{ref})$. The two formulas give the same answer; which one you use only depends on whether you are holding an amplitude or a power.
 
-幾個一定要記住的數字（來自 `l00_db_math` 的輸出）：
+A few numbers you must memorize (from the output of `l00_db_math`):
 
-| dB | 倍率 | 記法 |
+| dB | Ratio | How to remember it |
 |---:|---:|---|
-| +20 | ×10 | 每 +20 dB 多一個零 |
+| +20 | ×10 | every +20 dB adds a zero |
 | +12 | ×3.98 ≈ ×4 | |
-| +6 | ×1.995 ≈ ×2 | **+6 dB ≈ 兩倍振幅** |
-| +3 | ×1.41 ≈ √2 | **+3 dB ≈ 兩倍功率** |
+| +6 | ×1.995 ≈ ×2 | **+6 dB ≈ double the amplitude** |
+| +3 | ×1.41 ≈ √2 | **+3 dB ≈ double the power** |
 | 0 | ×1 | |
 | -3 | ×0.708 ≈ 1/√2 | |
 | -6 | ×0.501 ≈ ×0.5 | |
@@ -307,43 +309,43 @@ $$
 | -40 | ×0.01 | |
 | -60 | ×0.001 | |
 
-精確值：×2 = +6.0206 dB、√2 = +3.0103 dB。教材裡寫 6.02 / 3.01。
+Exact values: ×2 = +6.0206 dB and √2 = +3.0103 dB. The course text writes 6.02 / 3.01.
 
-**相加：+6 dB 還是 +3 dB？** 這是初學者最常搞混的地方，關鍵在「兩個訊號相關不相關」：
+**Summing: +6 dB or +3 dB?** This is where beginners mix things up most often, and the key is whether the two signals are correlated:
 
-- **完全相同的訊號**（例如同一軌複製兩份）：每個 sample 都是 $x + x = 2x$，振幅 ×2 → **+6.02 dB**。
-- **不相關的訊號**（例如兩段不同的雜訊、兩把不同的吉他）：每個 sample 有時同號有時異號，振幅不會直接相加；相加的是**功率**：$P = P_1 + P_2 = 2P_1$，振幅 ×√2 → **+3.01 dB**。
+- **Perfectly identical signals** (for example the same track duplicated): every sample is $x + x = 2x$, so the amplitude is ×2 → **+6.02 dB**.
+- **Uncorrelated signals** (for example two different noise signals, or two different guitars): the samples sometimes have the same sign and sometimes opposite signs, so the amplitudes do not add directly; it is the **power** that adds: $P = P_1 + P_2 = 2P_1$, so the amplitude is ×√2 → **+3.01 dB**.
 
 ```
-== 兩個 -12 dBFS 的訊號相加 ==
-  相同的正弦波：RMS 增加 +6.02 dB（振幅 ×2）
-  不相關的白雜訊：RMS 增加 +3.04 dB（功率 ×2，振幅 ×√2）
+== Summing two -12 dBFS signals ==
+  Identical sines: RMS rises by +6.02 dB (amplitude ×2)
+  Uncorrelated white noise: RMS rises by +3.04 dB (power ×2, amplitude ×√2)
 ```
 
-推廣：$N$ 條相同的軌混在一起 +20log₁₀N dB，$N$ 條不相關的軌 +10log₁₀N dB。8 軌不相關的 -18 dBFS 訊號混起來約 -9 dBFS；但如果它們相同，就是 +18 dB → 剛好 0 dBFS，再多一點就 clip。這會直接影響你第 14 章 DAW 的 mix bus 要留多少 headroom。
+Generalizing: mixing $N$ identical tracks gives +20log₁₀N dB, and $N$ uncorrelated tracks gives +10log₁₀N dB. Mixing 8 uncorrelated -18 dBFS signals gives about -9 dBFS; but if they are identical it is +18 dB → exactly 0 dBFS, and any more would clip. This directly affects how much headroom the mix bus of your chapter 14 DAW needs.
 
-`DspMath.h` 提供 `dbToGain()` 與 `gainToDb()`。低於 `kMinusInfinityDb`（-100 dB）一律視為靜音，避免 $\log_{10}(0) = -\infty$。
+`DspMath.h` provides `dbToGain()` and `gainToDb()`. Anything below `kMinusInfinityDb` (-100 dB) is treated as silence, to avoid $\log_{10}(0) = -\infty$.
 
-### 2.6 peak、RMS 與 crest factor
+### 2.6 Peak, RMS and crest factor
 
-一段訊號「多大聲」有兩種量法：
+There are two ways to measure "how loud" a signal is:
 
-- **Peak**：最大的 $|x[n]|$。它決定會不會 clip。
-- **RMS（root mean square）**：$\sqrt{\frac{1}{N}\sum x[n]^2}$，等於功率的平方根。它比較接近人耳感受到的「平均音量」。
+- **Peak**: the largest $|x[n]|$. It decides whether the signal clips.
+- **RMS (root mean square)**: $\sqrt{\frac{1}{N}\sum x[n]^2}$, which is the square root of the power. It is closer to the "average loudness" that the ear perceives.
 
-兩者的比值叫 **crest factor**（波峰因數），通常用 dB 表示：$\text{crest} = 20\log_{10}(\text{peak}/\text{RMS})$。它告訴你訊號「尖不尖」：
+The ratio of the two is the **crest factor**, usually expressed in dB: $\text{crest} = 20\log_{10}(\text{peak}/\text{RMS})$. It tells you how "spiky" the signal is:
 
-| 波形 | peak / RMS | crest factor |
+| Waveform | peak / RMS | crest factor |
 |---|---|---|
-| 方波 | 1 | 0 dB |
-| 正弦波 | √2 | 3.01 dB |
-| 均勻分布白雜訊 | √3 | 4.77 dB |
-| 單一脈衝（0.5 秒內 1 個 sample） | √24000 | 43.8 dB |
-| 鼓組 loop（本教材的合成鼓） | ≈ 5.3 | 14.5 dB |
+| Square wave | 1 | 0 dB |
+| Sine wave | √2 | 3.01 dB |
+| Uniformly distributed white noise | √3 | 4.77 dB |
+| Single impulse (1 sample in 0.5 s) | √24000 | 43.8 dB |
+| Drum loop (this course's synthesized drums) | ≈ 5.3 | 14.5 dB |
 
-正弦波的推導：$x = A\sin\theta$，$\overline{x^2} = A^2 \cdot \overline{\sin^2\theta} = A^2/2$，所以 RMS = $A/\sqrt 2$。均勻分布在 $[-A, A]$ 的雜訊：$\overline{x^2} = \int_{-A}^{A} \frac{x^2}{2A}dx = A^2/3$，RMS = $A/\sqrt 3$。
+Derivation for the sine wave: $x = A\sin\theta$, $\overline{x^2} = A^2 \cdot \overline{\sin^2\theta} = A^2/2$, so RMS = $A/\sqrt 2$. For noise uniformly distributed on $[-A, A]$: $\overline{x^2} = \int_{-A}^{A} \frac{x^2}{2A}dx = A^2/3$, so RMS = $A/\sqrt 3$.
 
-`l00_test_signals` 印出的 peak / RMS / crest 就是這些數字：
+The peak / RMS / crest printed by `l00_test_signals` are exactly these numbers:
 
 ```
 sine 440 Hz      ...  peak  -6.02 dBFS  RMS  -9.03 dBFS  crest  3.01 dB
@@ -351,88 +353,88 @@ white noise      ...  peak -12.04 dBFS  RMS -16.81 dBFS  crest  4.77 dB
 drum loop        ...  peak  -2.92 dBFS  RMS -17.43 dBFS  crest 14.51 dB
 ```
 
-鼓組 loop 的 peak 只有 -2.9 dBFS，RMS 卻只有 -17.4 dBFS：鼓聲的能量集中在很短的瞬間（transient），其餘時間很安靜。這就是「動態大」的數字意義，也是第 04、05 章 compressor / limiter 要處理的東西——把 crest factor 壓小，RMS 才能推大。
+The drum loop's peak is only -2.9 dBFS, yet its RMS is just -17.4 dBFS: the energy of a drum hit is concentrated in very short instants (transients), and the rest of the time it is quiet. This is what the numbers mean by "highly dynamic", and it is what the compressor / limiter of chapters 04 and 05 deal with: squeeze the crest factor, and only then can you push the RMS up.
 
-### 2.7 clipping
+### 2.7 Clipping
 
-當 $|x[n]| > 1.0$ 的訊號被轉成整數（寫 WAV、送到 DAC），超過的部分會被**硬切**在 ±1.0：
+When a signal with $|x[n]| > 1.0$ is converted to integers (written to a WAV, sent to a DAC), the excess is **hard-cut** at ±1.0:
 
 $$
 y[n] = \begin{cases} 1 & x[n] > 1 \\ x[n] & -1 \le x[n] \le 1 \\ -1 & x[n] < -1 \end{cases}
 $$
 
 ```
-  1.0 ┤  ╭───────╮            ╭───   ← 被削平的部分
+  1.0 ┤  ╭───────╮            ╭───   ← the part that gets flattened
       │ ╱         ╲          ╱
   0.0 ┼╱───────────╲────────╱──────
       │             ╲      ╱
  -1.0 ┤              ╰────╯
 ```
 
-波形被削平，等於加入了原本沒有的高次諧波——聽起來刺耳、「破掉」。`l00_db_math` 把振幅 1.5 的 1 kHz 正弦波硬切，量到：
+A flattened waveform amounts to adding high-order harmonics that were not there before; it sounds harsh and "broken". `l00_db_math` hard-clips a 1 kHz sine wave of amplitude 1.5 and measures:
 
 ```
-  clip 的 sample 數 = 26000 / 48000（54.2%；理論 |sin| ≥ 2/3 的比例 ≈ 54%）
-  THD = 15.22%；諧波相對基頻：H1 +0.0 dB  H2 -100.0 dB  H3 -16.5 dB  H4 -100.0 dB  H5 -35.7 dB
+  clipped samples = 26000 / 48000 (54.2%; theory: the fraction with |sin| >= 2/3 ≈ 54%)
+  THD = 15.22%; harmonics relative to the fundamental: H1 +0.0 dB  H2 -100.0 dB  H3 -16.5 dB  H4 -100.0 dB  H5 -35.7 dB
 ```
 
-**THD（Total Harmonic Distortion，總諧波失真）** 是衡量「多出來的諧波總共有多少」的單一數字：
+**THD (Total Harmonic Distortion)** is a single number that measures "how much harmonic content has been added in total":
 
 $$
 \text{THD} = \frac{\sqrt{H_2^2 + H_3^2 + H_4^2 + \cdots}}{H_1} \times 100\%
 $$
 
-$H_k$ 是第 $k$ 次諧波的振幅。也就是「新增的諧波總共佔基頻多少比例」：0% 代表完全乾淨（只有原本的正弦波），數字越大失真越重。`Analysis.h` 的 `thdPercent()` 用 Goertzel 量 H2～H10（低於 Nyquist 的部分）再套這個公式。上面的 15.22% 主要來自 H3（-16.5 dB ≈ 0.15 倍）。
+$H_k$ is the amplitude of the $k$-th harmonic. In other words, it is "the total of the added harmonics as a fraction of the fundamental": 0% means perfectly clean (only the original sine wave), and the larger the number, the heavier the distortion. `thdPercent()` in `Analysis.h` uses Goertzel to measure H2 to H10 (the ones below Nyquist) and then applies this formula. The 15.22% above comes mainly from H3 (-16.5 dB ≈ 0.15×).
 
-對稱的 clip 只產生**奇次**諧波（3、5、7…），偶次諧波為 0——這個規律第 06 章會再回來談。（這裡用 1 kHz @ 48 kHz 是為了讓 clip 的 sample 數是整齊的 26000；如 2.2 所說，這個頻率剛好讓 alias 回來的高次諧波也落在奇次諧波的位置上，所以 H2、H4 量起來是乾淨的 -100 dB。換成 1.1 kHz，alias 回來的成分會散落在各種非整數倍的位置，量 H2、H4 時可能會碰到一些 alias 的能量，但對稱 clip 本身仍然不產生偶次諧波。）數 clip 的 sample 數是練習 4 的題目之一。
+Symmetric clipping produces only **odd** harmonics (3, 5, 7, ...) and the even harmonics are 0; chapter 06 returns to this pattern. (We use 1 kHz @ 48 kHz here so that the number of clipped samples is a tidy 26000; as noted in 2.2, this frequency happens to make the high harmonics that alias back land on odd-harmonic positions as well, which is why H2 and H4 measure a clean -100 dB. With 1.1 kHz, the aliased components scatter to all sorts of non-integer-multiple positions, and measuring H2 and H4 might pick up some alias energy, but symmetric clipping itself still produces no even harmonics.) Counting the clipped samples is one of the problems in Exercise 4.
 
-### 2.8 channel 與 interleaved / non-interleaved
+### 2.8 Channels, and interleaved / non-interleaved
 
-立體聲有左右兩個 channel，每個 channel 是獨立的一串 sample。同一個時間點上所有 channel 的 sample 合稱一個 **frame**。兩個 channel 在記憶體裡有兩種排法：
+Stereo has two channels, left and right, and each channel is an independent stream of samples. The samples of all channels at the same instant together are called a **frame**. There are two ways to lay out two channels in memory:
 
 ```
-non-interleaved（planar）：每個 channel 一段連續記憶體
+non-interleaved (planar): each channel is one contiguous block of memory
    L: [L0 L1 L2 L3 L4 L5 ...]
    R: [R0 R1 R2 R3 R4 R5 ...]
 
-interleaved：所有 channel 交錯在同一段記憶體
+interleaved: all channels alternate within one block of memory
    [L0 R0 L1 R1 L2 R2 L3 R3 ...]
 ```
 
-- **WAV 檔案、大多數 audio driver API（WASAPI、CoreAudio 的部分模式）** 用 interleaved。
-- **DSP 程式、JUCE、VST3** 用 non-interleaved：處理「一個 channel 的一段訊號」只要一個指標加一個迴圈，SIMD 也好做。
+- **WAV files and most audio driver APIs (WASAPI, some modes of CoreAudio)** use interleaved.
+- **DSP code, JUCE and VST3** use non-interleaved: processing "a stretch of one channel" takes just one pointer and one loop, and it is easier to SIMD.
 
-本教材的 `AudioBuffer` 是 non-interleaved。`WavFile.h` 在讀寫時負責轉換；練習 7 要你自己實作 interleave / deinterleave。
+This course's `AudioBuffer` is non-interleaved. `WavFile.h` does the conversion when reading and writing; Exercise 7 asks you to implement interleave / deinterleave yourself.
 
-### 2.9 buffer、block processing 與 audio callback
+### 2.9 Buffers, block processing and the audio callback
 
-真正的 audio 程式**不會**「把整首歌讀進來、一次處理完」。audio driver 每隔一小段時間就把一塊 **block**（也叫 buffer）的 sample 交給你，要你在**下一塊到來之前**處理完交回去。這個被 driver 呼叫的函式叫 **audio callback**：
+A real audio program does **not** "read the whole song in and process it all at once". Every so often the audio driver hands you one **block** (also called a buffer) of samples, and you must process it and hand it back **before the next one arrives**. The function the driver calls is the **audio callback**:
 
 ```
-          ┌────────────┐   每隔 blockSize / fs 秒呼叫一次
+          ┌────────────┐   called once every blockSize / fs seconds
           │ audio      │ ────────────────────────────────┐
           │ driver     │                                 ▼
-          │ (硬體計時) │ ◄──────────────────  void audioCallback(float** in, float** out, int n)
-          └────────────┘   在期限內交回 n 個   {
-                           sample，否則爆音       // 你的 DSP：gain、filter、compressor…
-                                                }
+          │ (hardware  │ ◄──────────────────  void audioCallback(float** in, float** out, int n)
+          │  clock)    │   n samples must be  {
+          └────────────┘   returned in time,    // your DSP: gain, filter, compressor...
+                           or you hear a glitch }
 ```
 
 ```
-時間 ──────────────────────────────────────────────────────►
+time ──────────────────────────────────────────────────────►
 block 0   │ block 1   │ block 2   │ block 3   │ ...
- 處理中   │ 處理中    │ 處理中    │ 處理中    │
+processing│ processing│ processing│ processing│
           ▲           ▲           ▲
-          driver 取走 block 0，送給 DAC；同時交給你 block 1
+          the driver takes block 0 and sends it to the DAC; at the same time it hands you block 1
 ```
 
-因為你拿到一塊 sample 之後，最快也要等整塊處理完才能播出去，**延遲**（latency）至少是
+Because once you receive a block of samples, the earliest it can be played is after the whole block has been processed, the **latency** is at least
 
 $$
 \text{latency} = \frac{\text{blockSize}}{f_s}
 $$
 
-`l00_block_processing` 印出的表：
+The table printed by `l00_block_processing`:
 
 ```
      block      44100 Hz      48000 Hz      96000 Hz
@@ -445,131 +447,131 @@ $$
       2048      46.44 ms      42.67 ms      21.33 ms
 ```
 
-這是單程的最小值。實際上輸入與輸出各有一塊，driver 還可能多加一層 buffer，所以錄音時聽到自己聲音的 **round-trip latency** 通常是 2～3 倍：512 @ 48 kHz 約 21～32 ms，彈樂器時會明顯感覺「慢半拍」；128 以下才會覺得「即時」。
+This is the one-way minimum. In practice there is one block on input and one on output, and the driver may add another layer of buffering, so the **round-trip latency** when you hear yourself while recording is usually 2 to 3 times that: 512 @ 48 kHz is about 21 to 32 ms, which clearly feels "half a beat late" when playing an instrument; only 128 and below feels "instant".
 
-**block size 小 → latency 低，但 callback 被呼叫得更頻繁**，每次處理的固定開銷（function call、參數更新）比例變大，CPU 壓力變高、更容易來不及。這是個 trade-off，所以 DAW 都讓使用者自己選。
+**A small block size → low latency, but the callback is invoked more often**, so the fixed overhead of each call (function calls, parameter updates) takes a larger share, CPU load goes up, and you are more likely to miss the deadline. This is a trade-off, which is why DAWs let the user choose.
 
-**為什麼每支範例都用 block size 512 逐塊處理？** 因為所有 DSP 元件都必須在「只看到一小塊」的情況下正確運作：filter 的記憶（上一個 sample 的值）、envelope 的狀態、delay line 的內容都要跨 block 保留。如果整段一次處理，你永遠不會發現「忘了保存狀態」的 bug。`l00_block_processing` 示範了分塊處理 gain 這種「沒有狀態」的操作，結果和整段處理完全相同（最大差異 = 0）；之後的章節會看到有狀態的元件怎麼處理。
+**Why does every example process in blocks of 512?** Because every DSP component must work correctly while "seeing only a small block": the memory of a filter (the value of the previous sample), the state of an envelope and the contents of a delay line must all be carried across blocks. If you process the whole signal at once, you will never discover the bug of "forgot to save the state". `l00_block_processing` demonstrates block-wise processing of a "stateless" operation like gain, and the result is identical to whole-signal processing (maximum difference = 0); later chapters show how stateful components handle this.
 
-### 2.10 Real-time 的四大禁忌
+### 2.10 The four cardinal sins of real-time audio
 
-audio callback 跑在一個高優先權的 **audio thread** 上，有硬性的期限（deadline）：512 samples @ 48 kHz 就是 10.67 ms，一次錯過就是聽得見的 click / dropout。所以 callback 裡絕對不可以做任何「**不知道要花多久**」的事。四大禁忌：
+The audio callback runs on a high-priority **audio thread** with a hard deadline: 512 samples @ 48 kHz is 10.67 ms, and a single miss is an audible click / dropout. So the callback must never do anything whose duration is **unknown**. The four cardinal sins:
 
-| 禁忌 | 為什麼 |
+| Sin | Why |
 |---|---|
-| **Allocation**（`new`、`malloc`、`std::vector::push_back`、`std::string`…） | 記憶體配置器內部有 lock，而且可能要向 OS 要新的 page（system call）。偶爾一次就要幾毫秒，deadline 直接爆掉。解法：所有記憶體在 `prepare()` 配好。 |
-| **Lock**（`std::mutex`、任何會 block 的同步） | 如果持有 lock 的是低優先權的 UI thread，而它剛好被 OS 換掉，audio thread 就得等它——這叫 **priority inversion**。解法：`std::atomic`、lock-free queue（第 11 章 `SpectrumAnalyzer` 會用到）。 |
-| **I/O**（檔案、console `printf`、網路、log） | 系統呼叫，時間完全不可預期（磁碟可能在休眠）。解法：audio thread 把資料丟進 lock-free FIFO，由另一個 thread 寫檔。 |
-| **無界迴圈 / GC** | 迴圈次數不固定（例如「一直算到收斂」）就無法保證在期限內結束。有 garbage collector 的語言（Java、C#、Python）隨時可能暫停所有 thread 幾十毫秒——這就是為什麼 audio engine 幾乎都是 C / C++。 |
+| **Allocation** (`new`, `malloc`, `std::vector::push_back`, `std::string`, ...) | The memory allocator has locks inside, and may have to ask the OS for new pages (a system call). Just once in a while it takes several milliseconds, and the deadline is blown. Fix: allocate all memory in `prepare()`. |
+| **Locks** (`std::mutex`, any blocking synchronization) | If the lock is held by a low-priority UI thread and the OS happens to swap that thread out, the audio thread has to wait for it: this is called **priority inversion**. Fix: `std::atomic`, lock-free queues (the `SpectrumAnalyzer` in chapter 11 uses one). |
+| **I/O** (files, console `printf`, network, logging) | System calls with completely unpredictable timing (the disk may be asleep). Fix: the audio thread drops the data into a lock-free FIFO and another thread writes the file. |
+| **Unbounded loops / GC** | If the iteration count is not fixed (for example "keep computing until it converges") there is no guarantee that it finishes before the deadline. Languages with a garbage collector (Java, C#, Python) may pause all threads for tens of milliseconds at any time; this is why audio engines are almost always C / C++. |
 
-另外要避免：throw exception、呼叫不知道內部做什麼的第三方函式、denormal float（極小的數字會讓 CPU 慢 10～100 倍，第 02 章講 filter 時會處理）。
+Also avoid: throwing exceptions, calling third-party functions whose internals you do not know, and denormal floats (extremely small numbers can slow the CPU by 10 to 100 times; chapter 02 deals with this when we cover filters).
 
-本教材每個 DSP 元件都遵守同一個介面：`prepare()` 是**唯一**可以 allocate 的地方，`process()` 裡只有算術。`l00_block_processing` 的 `audioCallback()` 示範了這個紀律——連統計結果的 `std::vector` 都是在進入迴圈前就配好的。
+Every DSP component in this course follows the same interface: `prepare()` is the **only** place that may allocate, and `process()` contains nothing but arithmetic. The `audioCallback()` in `l00_block_processing` demonstrates this discipline; even the `std::vector` that holds the statistics is sized before entering the loop.
 
 ---
 
-## 3. 從公式到程式碼
+## 3. From formulas to code
 
-本章沒有新的 DSP 演算法要實作，所以「從公式到程式碼」分成兩部分：3.1～3.6 導覽 `common/` 共用工具，3.7～3.11 逐支解說範例程式。
+This chapter has no new DSP algorithms to implement, so "from formulas to code" is split into two parts: 3.1 to 3.6 tour the shared `common/` utilities, and 3.7 to 3.11 walk through the example programs one by one.
 
-本章沒有新的 `dsp/` header；所有範例只用 `common/include/dawlab/` 的工具。它們是之後 14 章每一支程式的基礎，值得花 20 分鐘把 header 讀一遍。一行 `#include <dawlab/Common.h>` 就全部引入。
+This chapter has no new `dsp/` header; all the examples use only the utilities in `common/include/dawlab/`. They are the foundation of every program in the next 14 chapters, and it is worth spending 20 minutes reading the headers through. A single `#include <dawlab/Common.h>` pulls in all of them.
 
-### 3.1 `AudioBuffer.h`：`AudioBuffer` 與 `AudioBlock`
+### 3.1 `AudioBuffer.h`: `AudioBuffer` and `AudioBlock`
 
 ```cpp
-dawlab::AudioBuffer buffer(2, 48000);      // 2 ch × 48000 samples，配置並清 0（會 allocate）
-float* left = buffer.getWritePointer(0);   // non-interleaved：每個 channel 一段連續記憶體
+dawlab::AudioBuffer buffer(2, 48000);      // 2 ch × 48000 samples, allocated and zeroed (allocates)
+float* left = buffer.getWritePointer(0);   // non-interleaved: one contiguous block of memory per channel
 buffer.setSample(1, 100, 0.5f);
 buffer.applyGain(0.5f);
 
-dawlab::AudioBlock block(buffer);          // 不擁有記憶體的 view（不 allocate）
-dawlab::AudioBlock part = block.getSubBlock(512, 512);      // 第 512..1023 個 sample
-dawlab::AudioBlock right = block.getChannelSubset(1, 1);    // 只有右聲道
-part.multiplyBy(0.5f);                     // 直接改到 buffer 裡
+dawlab::AudioBlock block(buffer);          // a view that does not own memory (does not allocate)
+dawlab::AudioBlock part = block.getSubBlock(512, 512);      // samples 512..1023
+dawlab::AudioBlock right = block.getChannelSubset(1, 1);    // the right channel only
+part.multiplyBy(0.5f);                     // modifies the buffer directly
 ```
 
-- **`AudioBuffer` 擁有記憶體**（owning）。`setSize()` 會 allocate，所以只能在 `prepare()` 或離線程式裡呼叫，絕對不可以在 audio callback 裡呼叫。
-- **`AudioBlock` 是 non-owning view**：只存 `float* const*`（每個 channel 的指標）、channel 數、sample 數與起始位移。複製它只是複製幾個整數和指標，不碰音訊資料。
+- **`AudioBuffer` owns its memory** (owning). `setSize()` allocates, so it may only be called in `prepare()` or in offline programs, and must never be called inside the audio callback.
+- **`AudioBlock` is a non-owning view**: it stores only `float* const*` (a pointer per channel), the channel count, the sample count and a start offset. Copying it just copies a few integers and pointers and never touches the audio data.
 
-**為什麼要有 view？** 兩個理由：
+**Why have a view?** Two reasons:
 
-1. **切子區塊不用複製**：`getSubBlock()` 只是把起始位移往後移，`l00_block_processing` 就是這樣把 192000 個 sample 切成 375 塊 512 的 block，零複製。
-2. **跟 JUCE / VST3 接軌**：它們也是用 `float**` 傳 channel 指標。第 13、14 章只要 `AudioBlock(juceBuffer.getArrayOfWritePointers(), numCh, numSamples)` 就能把同一份 DSP 程式碼用在 plugin 與 DAW 上，不用改一行。
+1. **Cutting out sub-blocks needs no copying**: `getSubBlock()` just moves the start offset forward. This is how `l00_block_processing` cuts 192000 samples into 375 blocks of 512 with zero copies.
+2. **It meets JUCE / VST3 halfway**: they also pass channel pointers as `float**`. In chapters 13 and 14, `AudioBlock(juceBuffer.getArrayOfWritePointers(), numCh, numSamples)` is all it takes to use the same DSP code in a plugin and in a DAW, without changing a line.
 
-所以本教材所有 DSP 元件的 `process()` 都吃 `AudioBlock`，而且 `AudioBuffer` 可以隱式轉成 `AudioBlock`，`processor.process(buffer)` 直接寫就對了。
+So the `process()` of every DSP component in this course takes an `AudioBlock`, and an `AudioBuffer` converts implicitly to an `AudioBlock`, so you can simply write `processor.process(buffer)`.
 
-### 3.2 `WavFile.h`：`readWav`、`writeWav`、`outputPath`
+### 3.2 `WavFile.h`: `readWav`, `writeWav`, `outputPath`
 
 ```cpp
 dawlab::WavData wav;
 std::string error;
-if (!dawlab::readWav("in.wav", wav, &error)) { /* error 有中文訊息 */ }
-// wav.buffer（AudioBuffer，已轉成 float [-1,1]）、wav.sampleRate、wav.bitDepth
+if (!dawlab::readWav("in.wav", wav, &error)) { /* error holds a description of what went wrong */ }
+// wav.buffer (an AudioBuffer, already converted to float [-1,1]), wav.sampleRate, wav.bitDepth
 
-dawlab::writeWav(dawlab::outputPath("out.wav"), wav.buffer, wav.sampleRate);      // 預設 24-bit PCM
-dawlab::writeWav(dawlab::outputPath("out32.wav"), wav.buffer, wav.sampleRate, 32); // 32-bit float，保留超過 ±1 的值
+dawlab::writeWav(dawlab::outputPath("out.wav"), wav.buffer, wav.sampleRate);      // 24-bit PCM by default
+dawlab::writeWav(dawlab::outputPath("out32.wav"), wav.buffer, wav.sampleRate, 32); // 32-bit float, keeps values beyond ±1
 ```
 
-讀取支援 8/16/24/32-bit PCM、32/64-bit float 與 WAVE_FORMAT_EXTENSIBLE；寫入支援 16/24-bit PCM 與 32-bit float。整數格式寫出時會把超過 ±1.0 的值 clamp（這就是 2.7 的 clipping）。`outputPath()` 回傳 `dawlab_output/<檔名>` 並確保資料夾存在。
+Reading supports 8/16/24/32-bit PCM, 32/64-bit float and WAVE_FORMAT_EXTENSIBLE; writing supports 16/24-bit PCM and 32-bit float. Integer formats clamp values beyond ±1.0 when written (this is the clipping of 2.7). `outputPath()` returns `dawlab_output/<filename>` and makes sure the folder exists.
 
-### 3.3 `Signals.h`：測試訊號
+### 3.3 `Signals.h`: test signals
 
-每一章都用這些 deterministic（同樣參數 → 同樣結果）的訊號當輸入，不需要準備音檔：
+Every chapter uses these deterministic signals (same parameters → same result) as input, so you do not need to prepare any audio files:
 
-| 函式 | 用途 |
+| Function | Purpose |
 |---|---|
-| `makeSine(freq, sr, seconds, amp, nch)` | 最單純的訊號，只有一個頻率。量 gain、量 THD 的基準。 |
-| `makeLogSweep(f0, f1, sr, seconds, amp, nch)` | 頻率對數上升。用耳朵「聽」filter / EQ 的頻率響應。 |
-| `makeWhiteNoise(sr, seconds, amp, nch, seed)` | 所有頻率能量平均；左右聲道用不同 seed 所以**不相關**。 |
-| `makeImpulse(numSamples, nch, position, amp)` | 一個 sample = 1，其餘 0。送進線性系統，輸出就是 impulse response（第 12 章 convolution 會用）。 |
-| `makeToneBursts(freq, sr, {levelsDb...}, segSeconds, nch)` | 音量階梯，例如 -30 → -10 → -30 dBFS。看 compressor 的 attack / release。 |
-| `makeDrumLoop(sr, bars, bpm, amp, nch)` | 合成 kick / snare / hi-hat，crest factor 高。dynamics 章節的主要素材。 |
-| `makePluck(freq, sr, seconds, ...)` | Karplus-Strong 撥弦，諧波豐富且高頻隨時間衰減。EQ、saturation 用。 |
-| `makePluckSequence(sr, seconds, amp, nch)` | A 小調琶音，「像音樂」的素材。 |
-| `NoiseGenerator` | xorshift32，輸出 $[-1, 1)$，給你自己合成訊號用。 |
-| `secondsToSamples(sec, sr)` | 秒 → sample 數（`DspMath.h` 另有 `msToSamples`、`samplesToMs`）。 |
+| `makeSine(freq, sr, seconds, amp, nch)` | The simplest signal, with a single frequency. The reference for measuring gain and THD. |
+| `makeLogSweep(f0, f1, sr, seconds, amp, nch)` | The frequency rises logarithmically. Use it to "hear" the frequency response of a filter / EQ. |
+| `makeWhiteNoise(sr, seconds, amp, nch, seed)` | Equal energy at all frequencies; the left and right channels use different seeds so they are **uncorrelated**. |
+| `makeImpulse(numSamples, nch, position, amp)` | One sample = 1, the rest 0. Fed into a linear system, the output is its impulse response (chapter 12's convolution uses it). |
+| `makeToneBursts(freq, sr, {levelsDb...}, segSeconds, nch)` | Level steps, e.g. -30 → -10 → -30 dBFS. For watching a compressor's attack / release. |
+| `makeDrumLoop(sr, bars, bpm, amp, nch)` | Synthesized kick / snare / hi-hat with a high crest factor. The main material of the dynamics chapters. |
+| `makePluck(freq, sr, seconds, ...)` | Karplus-Strong pluck, rich in harmonics with the highs decaying over time. Used for EQ and saturation. |
+| `makePluckSequence(sr, seconds, amp, nch)` | An A-minor arpeggio, "musical" material. |
+| `NoiseGenerator` | xorshift32, outputs $[-1, 1)$, for synthesizing your own signals. |
+| `secondsToSamples(sec, sr)` | Seconds → number of samples (`DspMath.h` also has `msToSamples` and `samplesToMs`). |
 
-### 3.4 `Analysis.h`：用數字驗證
+### 3.4 `Analysis.h`: verifying with numbers
 
-| 函式 | 用途 |
+| Function | Purpose |
 |---|---|
-| `peakAbs(buffer)` / `peakAbs(ptr, n)` | 最大 $\|x\|$ |
+| `peakAbs(buffer)` / `peakAbs(ptr, n)` | The largest $\|x\|$ |
 | `rms(buffer, ch)` / `rms(ptr, n)` | RMS |
-| `hasNanOrInf(buffer)` | 抓 DSP 寫錯造成的 NaN / Inf |
-| `goertzelAmplitude(ptr, n, freq, sr)` | 訊號中**單一頻率**的正弦振幅 |
-| `measureGainDb(processFn, freq, sr)` | 任何「一次一個 sample」的系統在某頻率的增益（dB） |
-| `harmonicLevelsDb(...)`、`thdPercent(...)` | 諧波分析、THD |
+| `hasNanOrInf(buffer)` | Catches NaN / Inf caused by DSP bugs |
+| `goertzelAmplitude(ptr, n, freq, sr)` | The sine amplitude of a **single frequency** in the signal |
+| `measureGainDb(processFn, freq, sr)` | The gain (dB) at a given frequency of any "one sample at a time" system |
+| `harmonicLevelsDb(...)`, `thdPercent(...)` | Harmonic analysis, THD |
 
-**Goertzel 的直覺**：FFT 一次算出所有頻率，但如果你只想知道「這段訊號裡 1 kHz 有多大」，Goertzel 更便宜：它是一個刻意把共振頻率調在目標頻率的二階 IIR filter，把整段訊號餵過去，最後從 filter 的兩個狀態變數算出該頻率的振幅。餵進振幅 $A$ 的正弦波，回傳值 ≈ $A$。前面加了 Hann window，減少訊號頭尾不連續造成的洩漏（leakage）。IIR filter、window、leakage、FFT 這些名詞會在第 02 章（IIR filter）和第 11 章（FFT、window、leakage）詳談；現在只要知道：**給它一段訊號和一個頻率，它回傳那個頻率的正弦振幅**。
+**Intuition for Goertzel**: an FFT computes all frequencies at once, but if you only want to know "how large is 1 kHz in this signal", Goertzel is cheaper: it is a second-order IIR filter whose resonance is deliberately tuned to the target frequency; you feed the whole signal through it and finally compute the amplitude at that frequency from the filter's two state variables. Feed in a sine wave of amplitude $A$ and the return value ≈ $A$. A Hann window is applied first, to reduce the leakage caused by discontinuities at the start and end of the signal. Terms such as IIR filter, window, leakage and FFT are covered in detail in chapter 02 (IIR filters) and chapter 11 (FFT, window, leakage); for now all you need to know is: **give it a signal and a frequency, and it returns the sine amplitude at that frequency**.
 
-`measureGainDb()` 是第 02、03 章驗證 filter 的主力：丟一個 lambda 進去，它自動送正弦波、跳過 transient、量輸出對輸入的比值。
+`measureGainDb()` is the workhorse for verifying filters in chapters 02 and 03: pass in a lambda, and it automatically feeds a sine wave, skips the transient, and measures the ratio of output to input.
 
-### 3.5 `Check.h`：寫 self-check
+### 3.5 `Check.h`: writing self-checks
 
 ```cpp
 DAWLAB_CHECK(peak <= 1.0f);
 DAWLAB_CHECK_NEAR(gainDb, -3.01, 0.05);         // |a - b| <= tol
-return dawlab::test::summary("l00_ex4");          // 全過回傳 0（ctest PASS），否則 1
+return dawlab::test::summary("l00_ex4");          // returns 0 if everything passed (ctest PASS), otherwise 1
 ```
 
-失敗時印出運算式、實際值、預期值與檔案行號。每題練習的解答都以這個方式驗證，而不是「用耳朵聽起來對」。本章的 `l00_db_math` 也用它驗證 README 的每一個數值宣稱。
+On failure it prints the expression, the actual value, the expected value and the file and line number. The solution of every exercise is verified this way, instead of "it sounds right to my ears". This chapter's `l00_db_math` also uses it to verify every numerical claim in the README.
 
-### 3.6 `DspMath.h`、`Console.h`
+### 3.6 `DspMath.h`, `Console.h`
 
-`kPi`、`kTwoPi`（MSVC 沒有 `M_PI`）、`dbToGain`、`gainToDb`、`lerp`、`msToSamples`、`samplesToMs`。`Console.h` 讓 Windows console 用 UTF-8 顯示中文，任何引入 `dawlab/` header 的程式都會自動設定。
+`kPi`, `kTwoPi` (MSVC has no `M_PI`), `dbToGain`, `gainToDb`, `lerp`, `msToSamples`, `samplesToMs`. `Console.h` makes the Windows console display UTF-8 text (such as the ×, → and √ symbols in the examples' output); any program that includes a `dawlab/` header sets it up automatically.
 
-### 3.7 範例程式總覽
+### 3.7 Overview of the example programs
 
-| target | 原始碼 | 示範 | 輸出 WAV |
+| target | Source | Demonstrates | Output WAVs |
 |---|---|---|---|
-| `l00_test_signals` | `examples/test_signals.cpp` | 產生全部測試訊號、印 peak / RMS / crest | `l00_sine_440.wav`、`l00_log_sweep.wav`、`l00_white_noise.wav`、`l00_impulse.wav`、`l00_tone_bursts.wav`、`l00_drum_loop.wav`、`l00_pluck_110.wav`、`l00_pluck_sequence.wav` |
-| `l00_block_processing` | `examples/block_processing.cpp` | 模擬 audio callback、latency 表、每個 block 的 peak / RMS | `l00_block_input.wav`、`l00_block_processed.wav` |
-| `l00_wav_info` | `examples/wav_info.cpp` | 讀 WAV（`argv[1]` 或自製）印資訊、normalize 到 -1 dBFS | `l00_wav_info_input.wav`、`l00_wav_info_normalized.wav` |
-| `l00_db_math` | `examples/db_math.cpp` | 用數字驗證 2.2～2.7 的每個宣稱（self-check） | `l00_sum_identical.wav`、`l00_sum_uncorrelated.wav`、`l00_aliasing_30k.wav`、`l00_aliasing_sweep.wav`、`l00_quantized_8bit.wav`、`l00_quantized_16bit.wav`、`l00_clipped_sine.wav` |
+| `l00_test_signals` | `examples/test_signals.cpp` | Generates all the test signals, prints peak / RMS / crest | `l00_sine_440.wav`, `l00_log_sweep.wav`, `l00_white_noise.wav`, `l00_impulse.wav`, `l00_tone_bursts.wav`, `l00_drum_loop.wav`, `l00_pluck_110.wav`, `l00_pluck_sequence.wav` |
+| `l00_block_processing` | `examples/block_processing.cpp` | Simulates an audio callback, the latency table, per-block peak / RMS | `l00_block_input.wav`, `l00_block_processed.wav` |
+| `l00_wav_info` | `examples/wav_info.cpp` | Reads a WAV (`argv[1]` or a generated one), prints its info, normalizes to -1 dBFS | `l00_wav_info_input.wav`, `l00_wav_info_normalized.wav` |
+| `l00_db_math` | `examples/db_math.cpp` | Verifies every claim in 2.2 to 2.7 with numbers (self-check) | `l00_sum_identical.wav`, `l00_sum_uncorrelated.wav`, `l00_aliasing_30k.wav`, `l00_aliasing_sweep.wav`, `l00_quantized_8bit.wav`, `l00_quantized_16bit.wav`, `l00_clipped_sine.wav` |
 
 ### 3.8 `l00_test_signals`
 
-把 `Signals.h` 的每一種訊號各做一段，寫成 WAV，並印出長度、peak、RMS、crest factor。這支程式的重點是**建立你對數字的直覺**：
+It makes a segment of every kind of signal in `Signals.h`, writes each to a WAV, and prints the length, peak, RMS and crest factor. The point of this program is to **build your intuition for the numbers**:
 
 ```
 sine 440 Hz      2 ch    96000 samples (2.00 s)  peak  -6.02 dBFS  RMS  -9.03 dBFS  crest  3.01 dB
@@ -582,116 +584,116 @@ pluck 110 Hz     2 ch    96000 samples (2.00 s)  peak  -6.03 dBFS  RMS -25.19 dB
 pluck sequence   2 ch   192000 samples (4.00 s)  peak  -5.18 dBFS  RMS -19.71 dBFS  crest 14.53 dB
 ```
 
-對照 2.5、2.6：振幅 0.5 = -6.02 dBFS；正弦波 RMS 比 peak 低 3.01 dB；白雜訊振幅 0.25 = -12.04 dBFS，crest 4.77 dB；脈衝 $\text{crest} = 10\log_{10}(24000) = 43.8$ dB。
+Compare with 2.5 and 2.6: amplitude 0.5 = -6.02 dBFS; the RMS of a sine wave is 3.01 dB below its peak; white noise of amplitude 0.25 = -12.04 dBFS with a crest of 4.77 dB; and for the impulse $\text{crest} = 10\log_{10}(24000) = 43.8$ dB.
 
-**該聽到什麼**：用 Audacity 開頻譜圖。sine 是一條水平線；sweep 是往上彎的曲線（對數掃頻在對數頻率軸上是直線）；white noise 整片均勻；impulse 是一條垂直線（所有頻率同時出現）；drum loop 看得到 kick 在低頻、hi-hat 在高頻。
+**What you should see and hear**: open the spectrogram in Audacity. The sine is a horizontal line; the sweep is an upward-curving line (a logarithmic sweep is a straight line on a logarithmic frequency axis); the white noise is uniform throughout; the impulse is a vertical line (all frequencies appear at once); in the drum loop you can see the kick in the low frequencies and the hi-hat in the highs.
 
 ### 3.9 `l00_block_processing`
 
-先印 2.9 的 latency 表，然後把 4 秒的鼓組 loop 切成 375 塊 512 samples 的 block，逐塊呼叫一個模擬的 `audioCallback()`：套 -6 dB gain、量該 block 的 peak 與 RMS（這就是 DAW meter 的雛型），最後驗證「分塊處理」與「整段處理」逐 sample 完全相同：
+It first prints the latency table of 2.9, then cuts the 4-second drum loop into 375 blocks of 512 samples and calls a simulated `audioCallback()` on each block: apply a -6 dB gain and measure that block's peak and RMS (this is the seed of a DAW meter), and finally verify that "block-wise processing" and "whole-signal processing" are identical sample for sample:
 
 ```
-== 模擬 audio callback：192000 samples，block size 512 → 375 個 block（最後一塊 512 samples）==
+== Simulated audio callback: 192000 samples, block size 512 -> 375 blocks (last block 512 samples) ==
    block   time(ms)  peak dBFS   RMS dBFS
        0        0.0      -9.31     -14.01
       23      245.3     -19.13     -28.83
      ...
-     138     1472.0    -100.00    -100.00     ← 這段是靜音（-100 dB = kMinusInfinityDb）
+     138     1472.0    -100.00    -100.00     <- this stretch is silent (-100 dB = kMinusInfinityDb)
      ...
-輸入 peak -2.92 dBFS → 輸出 peak -8.92 dBFS（所有 block 的最大 peak -8.92 dBFS）
-分塊處理 vs 整段處理的最大差異 = 0（gain 沒有狀態，所以應該是 0）
+Input peak -2.92 dBFS -> output peak -8.92 dBFS (largest block peak -8.92 dBFS)
+Max difference between block-wise and whole-signal processing = 0 (gain has no state, so it should be 0)
 ```
 
-注意程式結構：`stats` 這個 `std::vector` 在進迴圈前就配好大小，`audioCallback()` 本身是 `noexcept` 而且只有乘法與比較——這就是 2.10 說的紀律。
+Notice the structure of the program: the `std::vector` called `stats` is sized before entering the loop, and `audioCallback()` itself is `noexcept` and contains only multiplications and comparisons; this is the discipline described in 2.10.
 
-**該聽到什麼**：`l00_block_processed.wav` 比 `l00_block_input.wav` 小聲一半（-6.02 dB），而且完全聽不出 375 個「塊」的接縫，因為 gain 沒有跨 block 的狀態。
+**What you should hear**: `l00_block_processed.wav` is half as loud as `l00_block_input.wav` (-6.02 dB), and you cannot hear any seams between the 375 "blocks", because gain has no state across blocks.
 
 ### 3.10 `l00_wav_info`
 
-不帶參數時自己產生一段撥弦琶音、寫成 24-bit WAV、再讀回來（示範 `readWav` 的完整流程）；帶參數時分析你給的檔案。印出 channel 數、sample rate、bit depth、長度、記憶體用量、clip 的 sample 數、每個 channel 的 peak / RMS / crest / DC offset，然後 normalize 到 -1 dBFS 並以 32-bit float 寫出：
+Without arguments it generates a plucked arpeggio, writes it as a 24-bit WAV and reads it back (demonstrating the complete `readWav` flow); with an argument it analyzes the file you give it. It prints the channel count, sample rate, bit depth, length, memory usage, the number of clipped samples, and each channel's peak / RMS / crest / DC offset, then normalizes to -1 dBFS and writes the result as 32-bit float:
 
 ```
-檔案：dawlab_output\l00_wav_info_input.wav
+File: dawlab_output\l00_wav_info_input.wav
   channels    = 2
   sample rate = 48000 Hz
   bit depth   = 24 bit
-  frames      = 192000 (4.000 秒)
-  記憶體用量  = 1500.0 KB（float，2 ch × 192000 samples × 4 bytes）
-  clipped     = 0 samples（|x| >= 1.0）
-處理前：
+  frames      = 192000 (4.000 s)
+  memory      = 1500.0 KB (float, 2 ch × 192000 samples × 4 bytes)
+  clipped     = 0 samples (|x| >= 1.0)
+Before processing:
   channel   peak dBFS   RMS dBFS   crest dB    DC offset
   0             -7.68     -22.21      14.53    -0.013856
-normalize 到 -1.0 dBFS：套用 +6.68 dB（× 2.1571）
-處理後：
+Normalize to -1.0 dBFS: applied +6.68 dB (× 2.1571)
+After processing:
   0             -1.00     -15.53      14.53    -0.029889
 ```
 
-normalize 是「找到 peak，算出讓 peak 剛好等於目標的 gain，整段乘上去」：
+Normalizing means "find the peak, work out the gain that makes the peak exactly equal to the target, and multiply the whole signal by it":
 
 $$
-g = \frac{10^{-1/20}}{\text{peak}} \quad\Rightarrow\quad \text{新 peak} = g \cdot \text{peak} = 10^{-1/20} = 0.891 = -1\ \text{dBFS}
+g = \frac{10^{-1/20}}{\text{peak}} \quad\Rightarrow\quad \text{new peak} = g \cdot \text{peak} = 10^{-1/20} = 0.891 = -1\ \text{dBFS}
 $$
 
-注意 crest factor 不變（peak 與 RMS 同時加 6.68 dB），DC offset 也被乘了 2.157 倍。DC offset 是訊號的平均值，理想上是 0；這段撥弦有一點點負的 DC，是 Karplus-Strong 初始亂數的平均不是零造成的，實務上會用第 02 章的 highpass 把它濾掉。
+Note that the crest factor is unchanged (peak and RMS both gain 6.68 dB), and the DC offset is also multiplied by 2.157. DC offset is the mean of the signal and ideally 0; this pluck has a tiny negative DC because the mean of the Karplus-Strong initial random numbers is not zero, and in practice you would filter it out with the highpass of chapter 02.
 
-試試看：`.\bin\Debug\l00_wav_info.exe dawlab_output\l00_drum_loop.wav`，或拿你自己的 WAV（16/24/32-bit 都可以）。
+Try it: `.\bin\Debug\l00_wav_info.exe dawlab_output\l00_drum_loop.wav`, or use your own WAV (16/24/32-bit all work).
 
 ### 3.11 `l00_db_math`
 
-這支範例沒有示範新的 API，它的工作是**用 `DAWLAB_CHECK` 驗證本章每一個數值宣稱**：dB 對照表、相同 vs 不相關相加（+6.02 / +3.04 dB）、四種波形的 crest factor、30 kHz → 18 kHz 的 aliasing、8～24 bit 的 quantization SNR 對 6.02N + 1.76、clipping 的 sample 數與諧波。輸出以 `[PASS] l00_db_math (17 checks passed)` 結尾。讀者可以改數字（例如把 30 kHz 改成 50 kHz）看看會發生什麼。
+This example does not demonstrate any new API. Its job is to **verify every numerical claim in this chapter with `DAWLAB_CHECK`**: the dB table, identical vs uncorrelated summing (+6.02 / +3.04 dB), the crest factor of four waveforms, 30 kHz → 18 kHz aliasing, the quantization SNR of 8 to 24 bit against 6.02N + 1.76, and the clipped-sample count and harmonics of clipping. The output ends with `[PASS] l00_db_math (17 checks passed)`. Readers can change the numbers (for example change 30 kHz to 50 kHz) and see what happens.
 
-**該聽到什麼**：`l00_aliasing_sweep.wav` 的音高過了 24 kHz 後往下掉；`l00_quantized_8bit.wav` 有嘶嘶聲；`l00_clipped_sine.wav` 比乾淨的正弦波「亮」而刺耳。
-
----
-
-## 4. Real-time 注意事項
-
-本章沒有 DSP 元件，但這裡先立下之後每一章都遵守的規矩：
-
-- **`prepare(sampleRate, maxBlockSize, numChannels)` 是唯一可以 allocate 的地方**。所有 `std::vector`、delay line、暫存 buffer 都在這裡配到最大需要的尺寸。`process()` 收到的 block 永遠 ≤ `maxBlockSize`。
-- **`process(AudioBlock)` 裡只有算術**：沒有 `new`、沒有 `std::vector::push_back`、沒有 mutex、沒有 `printf`、沒有 exception。範例程式的 `printf` 都在模擬的 callback **之外**。
-- **參數從 UI thread 來**：setter 寫入的值會被 audio thread 讀，用 `std::atomic<float>` 或至少保證是單一 word 的寫入；而且參數變化要平滑（第 01 章 `SmoothedValue`），否則會有 zipper noise。
-- **量測值給 UI 讀**（meter、gain reduction）：用 `std::atomic<float>` relaxed 存，UI thread 定時讀。
-- **不要在 audio thread 讀寫檔案**。本教材的範例是離線程式，所以 `writeWav` 沒關係；到了第 13、14 章有真正的 audio device 時，錄音要透過 lock-free FIFO 交給另一個 thread 寫。
+**What you should hear**: the pitch of `l00_aliasing_sweep.wav` falls after passing 24 kHz; `l00_quantized_8bit.wav` has hiss; `l00_clipped_sine.wav` sounds "brighter" and harsher than a clean sine wave.
 
 ---
 
-## 5. 常見錯誤與除錯
+## 4. Real-time notes
 
-| 症狀 | 可能原因 | 怎麼查 |
+This chapter has no DSP components, but here we lay down the rules that every later chapter obeys:
+
+- **`prepare(sampleRate, maxBlockSize, numChannels)` is the only place that may allocate.** All `std::vector`s, delay lines and scratch buffers are sized here to the maximum they will need. The block `process()` receives is always ≤ `maxBlockSize`.
+- **`process(AudioBlock)` contains only arithmetic**: no `new`, no `std::vector::push_back`, no mutex, no `printf`, no exceptions. The `printf`s in the example programs are all **outside** the simulated callback.
+- **Parameters come from the UI thread**: values written by a setter are read by the audio thread, so use `std::atomic<float>` or at least guarantee a single-word write; and parameter changes must be smoothed (chapter 01's `SmoothedValue`), otherwise you get zipper noise.
+- **Measurements for the UI to read** (meters, gain reduction): store them in a `std::atomic<float>` with relaxed ordering, and let the UI thread read periodically.
+- **Never read or write files on the audio thread.** The examples in this course are offline programs, so `writeWav` is fine; once chapters 13 and 14 have a real audio device, recording must hand its data over a lock-free FIFO to another thread that writes the file.
+
+---
+
+## 5. Common mistakes and debugging
+
+| Symptom | Likely cause | How to check |
 |---|---|---|
-| 輸出 WAV 聽起來破掉、Audacity 一片紅 | 超過 ±1.0 就寫成 16/24-bit → clipping | `peakAbs()` > 1？用 `l00_wav_info` 看 clipped 數；寫 32-bit float 看原始值 |
-| 音量比預期小/大 6 dB | 把 +6 dB 當成兩倍功率，或把兩個相同訊號相加當成 +3 dB | 回到 2.5；`gainToDb(2.0f)` 是 6.02 |
-| 每隔固定時間一個 click | block 邊界處狀態沒保存（filter 記憶、envelope…） | 用 `l00_block_processing` 的方法比較「分塊」與「整段」結果 |
-| 高頻聽起來「金屬感」、音高跑反方向 | aliasing：非線性處理沒有 oversampling，或產生了超過 Nyquist 的訊號 | 聽 `l00_aliasing_sweep.wav` 熟悉這個聲音；第 06 章 |
-| 很小聲但有嘶嘶聲 | bit depth 太低或訊號位準太低 | 2.3：SNR 隨位準下降 |
-| 左右聲道合併後某些聲音消失 | 左右反相（L = -R）→ downmix 相消 | 練習 5 |
-| 輸出全是 0 或 NaN | 除以 0（例如 normalize 靜音 buffer）、log(0) | `hasNanOrInf()`；normalize 前檢查 peak > 0 |
-| 程式找不到輸出檔 | 工作目錄不在 build 資料夾 | `outputPath()` 寫到 `<工作目錄>/dawlab_output/`；先 `cd build` |
-| 中文 printf 變亂碼 | 沒有引入 `dawlab/Console.h`（`Common.h` 已含）或 terminal 不是 UTF-8 | PowerShell 可用 `chcp 65001` |
-| MSVC `M_PI` 未定義 | MSVC 預設沒有 | 用 `dawlab::kPi` |
-| `/W4` 警告：double → float、signed/unsigned | 混用型別 | 明確 `static_cast<float>()`、index 用 `size_t` |
+| The output WAV sounds broken and Audacity shows all red | Values beyond ±1.0 written as 16/24-bit → clipping | Is `peakAbs()` > 1? Use `l00_wav_info` to see the clipped count; write 32-bit float to see the raw values |
+| The volume is 6 dB lower/higher than expected | Treating +6 dB as double the power, or treating the sum of two identical signals as +3 dB | Go back to 2.5; `gainToDb(2.0f)` is 6.02 |
+| A click at regular intervals | State not saved at block boundaries (filter memory, envelope, ...) | Compare "block-wise" and "whole-signal" results the way `l00_block_processing` does |
+| Highs sound "metallic" and the pitch runs the wrong way | Aliasing: nonlinear processing without oversampling, or a signal beyond Nyquist was produced | Listen to `l00_aliasing_sweep.wav` to get to know the sound; chapter 06 |
+| Very quiet but hissy | Bit depth too low or signal level too low | 2.3: SNR falls with level |
+| Some sounds vanish when left and right are merged | Left and right out of phase (L = -R) → cancellation in the downmix | Exercise 5 |
+| The output is all 0 or NaN | Division by 0 (for example normalizing a silent buffer), log(0) | `hasNanOrInf()`; check peak > 0 before normalizing |
+| The program cannot find the output file | The working directory is not the build folder | `outputPath()` writes to `<working directory>/dawlab_output/`; `cd build` first |
+| Non-ASCII symbols (×, →, √) in printf output show up garbled | `dawlab/Console.h` is not included (`Common.h` already includes it) or the terminal is not UTF-8 | In PowerShell, `chcp 65001` works |
+| MSVC reports `M_PI` undefined | MSVC does not define it by default | Use `dawlab::kPi` |
+| `/W4` warnings: double → float, signed/unsigned | Mixed types | Use an explicit `static_cast<float>()`, and use `size_t` for indices |
 
 ---
 
-## 6. 練習題
+## 6. Exercises
 
-見 [`exercises/README.md`](exercises/README.md)。7 題：3 題計算 / 觀念（dB 換算、latency、aliasing）、4 題實作（normalize 與 clipping 計數、stereo↔mono、linear vs equal-power fade、interleave/deinterleave），每題實作都有 `exercises/starter/` 的起始碼與 `solutions/` 的完整解答。解答與解說在 [`solutions/README.md`](solutions/README.md)。
-
----
-
-## 7. 延伸閱讀
-
-- Julius O. Smith III, *Mathematics of the Discrete Fourier Transform (DFT) with Audio Applications*（線上免費，CCRMA）—— sampling、aliasing、dB 的嚴謹推導。
-- Udo Zölzer (ed.), *DAFX: Digital Audio Effects*, 2nd ed., Wiley, 2011 —— 整套教材會反覆引用的效果器聖經。
-- Will Pirkle, *Designing Audio Effect Plugins in C++*, 2nd ed., Routledge, 2019 —— 從 DSP 到 plugin 的實作導向書。
-- Ross Bencina, "Real-time audio programming 101: time waits for nothing"（部落格文章，2011）—— 2.10 四大禁忌最常被引用的出處。
-- Timur Doumler, "C++ in the Audio Industry"（CppCon 2015 演講）—— real-time C++ 的實務。
-- Bob Katz, *Mastering Audio: The Art and the Science*, 3rd ed., Focal Press, 2014 —— peak、RMS、crest factor、headroom 的聽感面。
-- ITU-R BS.1770（loudness 與 true-peak 的量測演算法：K-weighting、gating）、EBU R 128（loudness 正規化的建議書）與 EBU Tech 3341（loudness meter 規格：momentary / short-term / integrated）—— 第 11 章 `LoudnessMeter` 用。EBU Tech 3343 則是依 R 128 製作節目的實務指引，可當補充讀物。
+See [`exercises/README.md`](exercises/README.md). There are 7 problems: 3 calculation / concept problems (dB conversion, latency, aliasing) and 4 implementation problems (normalize and clipping count, stereo↔mono, linear vs equal-power fade, interleave/deinterleave). Every implementation problem comes with starter code in `exercises/starter/` and a complete solution in `solutions/`. The solutions and their explanations are in [`solutions/README.md`](solutions/README.md).
 
 ---
 
-## 8. 下一章
+## 7. Further reading
 
-[第 01 章：gain](../01-gain/README.md) —— 從「乘一個數」開始，做出第一個真正的 DSP 元件 `Gain`，並學會用 `SmoothedValue` 避免參數變化時的 zipper noise，以及 `Panner` 的三種 pan law。
+- Julius O. Smith III, *Mathematics of the Discrete Fourier Transform (DFT) with Audio Applications* (free online, CCRMA): a rigorous derivation of sampling, aliasing and dB.
+- Udo Zölzer (ed.), *DAFX: Digital Audio Effects*, 2nd ed., Wiley, 2011: the bible of effects, cited repeatedly throughout this course.
+- Will Pirkle, *Designing Audio Effect Plugins in C++*, 2nd ed., Routledge, 2019: a hands-on book that goes from DSP to plugins.
+- Ross Bencina, "Real-time audio programming 101: time waits for nothing" (blog post, 2011): the most frequently cited source for the four sins of 2.10.
+- Timur Doumler, "C++ in the Audio Industry" (CppCon 2015 talk): real-time C++ in practice.
+- Bob Katz, *Mastering Audio: The Art and the Science*, 3rd ed., Focal Press, 2014: the perceptual side of peak, RMS, crest factor and headroom.
+- ITU-R BS.1770 (the loudness and true-peak measurement algorithms: K-weighting, gating), EBU R 128 (the recommendation for loudness normalization) and EBU Tech 3341 (the loudness meter specification: momentary / short-term / integrated), used by chapter 11's `LoudnessMeter`. EBU Tech 3343 is a practical guide to producing programs according to R 128 and makes good supplementary reading.
+
+---
+
+## 8. Next chapter
+
+[Chapter 01: Gain](../01-gain/README.md): start from "multiply by a number" to build the first real DSP component, `Gain`, and learn to use `SmoothedValue` to avoid zipper noise when parameters change, plus the three pan laws of `Panner`.
