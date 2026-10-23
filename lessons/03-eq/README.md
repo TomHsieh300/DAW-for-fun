@@ -44,37 +44,17 @@ A frequently quoted rule of thumb is "**cuts narrow, boosts wide**": a narrow bo
 
 **Parametric EQ**: all three parameters of each band (frequency, Q, gain) are adjustable, plus the band type. With just a few bands it can precisely treat any frequency. Almost every DAW's built-in EQ is parametric, and so is the one implemented in this chapter.
 
-```
-Graphic EQ (10 bands, gain only)           Parametric EQ (three knobs per band)
- +12 ┤ ▮                                    ┌───────── band 3 ─────────┐
-     │ ▮       ▮                            │ Type : Peak               │
-   0 ┼─▮─▮─▮─▮─▮─▮─▮─▮─▮─▮─                 │ Freq : 3000 Hz  (10..~0.49·fs)
-     │       ▮                              │ Q    : 1.0      (0.05..40)│
- -12 ┤                                      │ Gain : +5 dB    (±36 dB)  │
-      31 63 125 ... 8k 16k                  └───────────────────────────┘
-```
+![Graphic EQ: ten fixed bands where only the gain moves, versus a parametric EQ band with type, frequency, Q and gain (Peak, 3000 Hz, Q 1.0, +5 dB)](images/graphic-vs-parametric-eq.svg)
+
+Left: the ten fader positions are only an example. Right: one parametric band (Type Peak, Freq 3000 Hz, Q 1.0, Gain +5 dB), with the range of each knob written in the box (frequency 10 Hz up to about 0.49·fs, Q 0.05..40, gain ±36 dB).
 
 ### 2.3 Band types and how they sound
 
 This chapter's `EqBandType` has six values, all of them RBJ factories of the Chapter 02 `BiquadCoefficients` (a cut at 24 dB/oct uses two of them):
 
-```
- Peak / Bell              Low Shelf               High Shelf
- dB                       dB                      dB
- +g ┤     ╭─╮             +g ┤━━━╮                +g ┤            ╭━━━
-    │    ╱   ╲               │    ╲                  │           ╱
-  0 ┼━━━╯     ╰━━━         0 ┼     ╰━━━━━━         0 ┼━━━━━━━━━━╯
-    └──────┬──────► f        └─────┬───────► f       └──────────┬────► f
-           f0                      f0 (midpoint)                 f0 (midpoint)
+![The six band types Peak, Low Shelf, High Shelf, Low Cut, High Cut and Notch, as magnitude responses in dB against frequency with f0 = 1 kHz; the cuts show both 12 and 24 dB per octave](images/eq-band-types.svg)
 
- Low Cut (highpass)       High Cut (lowpass)      Notch
-  0 ┼        ╭━━━━━━       0 ┼━━━━━━╮              0 ┼━━━━━╮ ╭━━━━━
-    │       ╱  -3 dB @ f0     │       ╲                 │     │ │
-    │      ╱ 12 or 24 dB/oct  │        ╲                │     │ │
-    │     ╱                   │         ╲               │     ╰─╯ → -∞ dB
-    └─────┬────────► f        └────────┬─────► f        └──────┬─────► f
-          f0                           f0                      f0
-```
+All six curves are drawn with f0 = 1 kHz at 48 kHz: Peak +6 dB with Q = 1; Low / High Shelf +6 dB with Q = 0.707 (at f0 the gain is the midpoint, +3 dB); Low Cut / High Cut at 12 dB/oct (one biquad, Q = 0.707) and at 24 dB/oct (two biquads), both −3 dB at f0; Notch with Q = 2 going to −∞ dB at f0.
 
 | Type | RBJ formula used | Meaning of `frequency` | Meaning of `q` | `gainDb` | Sound / typical use |
 |---|---|---|---|---|---|
@@ -219,10 +199,10 @@ The last table of Example 1 sweeps a +6 dB @ 1 kHz low shelf over 10 Hz–23 kHz
 ```
       Q     S(equiv)  |H(f0)|(dB)   curve max(dB)   curve min(dB)
    0.500     0.51        +3.00         +6.00          +0.00
-   0.707     1.00        +3.00         +6.00          +0.00     ← steepest but still monotonic
+   0.707     1.00        +3.00         +6.00          +0.00     <- steepest but still monotonic
    1.000     1.89        +3.00         +6.44          -0.44
    1.500     3.75        +3.00         +7.64          -1.64
-   2.000     5.72        +3.00         +8.86          -2.86     ← overshoot 2.86 dB, dip 2.86 dB
+   2.000     5.72        +3.00         +8.86          -2.86     <- overshoot 2.86 dB, dip 2.86 dB
 ```
 
 Three things to see at once: (1) whatever the Q, $`f_0`$ is at +3.00 dB (the midpoint property); (2) for Q ≤ 0.707 the curve stays within 0..+6 dB; (3) as Q grows, the overshoot and the dip are **equally large**. The reason: replace $`s`$ with $`1/s`$ in the $`H_{LS}(s)`$ above and simplify to get $`H_{LS}(1/s) = A^2 / H_{LS}(s)`$, so $`\text{dB}(f_0 \cdot 2^k) + \text{dB}(f_0 \cdot 2^{-k}) = g`$ -- on a log frequency axis the curve is symmetric about the point $`(f_0,\ g/2)`$, so however far it rises above $`g`$ on one side, it dips below 0 dB by the same amount on the other.
@@ -267,7 +247,7 @@ Example 4 prints a peak of +6 dB @ 1 kHz, Q = 1:
  freq(Hz)   mag(dB)   phase(deg)   group delay(samples)
       500     +1.88      +18.00          -2.89
       707     +3.96      +18.39           3.21
-     1000     +6.00       +0.00          10.80      ← 0.225 ms
+     1000     +6.00       +0.00          10.80      <- 0.225 ms
      1414     +3.96      -18.40           1.61
      2000     +1.87      -17.97          -0.73
 ```
@@ -297,11 +277,11 @@ Example 3 sweeps a +12 dB, Q = 6 peak logarithmically from 150 Hz to 6 kHz (4 se
 
 ```
   version      max jump(dB/ms)  jumps>1 dB     envelope peak
-  reference        0.09            0           -3.11 @ 2063 ms   ← recompute at every sample along the ideal curve
-  naive            3.35           12           -4.41 @ 2105 ms   ← swap the coefficients directly
-  smooth/1         0.10            0           -3.11 @ 2156 ms   ← smooth the parameters + recompute at every sample
-  smooth/32        0.10            0           -3.11 @ 2155 ms   ← smooth the parameters + recompute every 32 samples (default)
-  smooth/512       0.26            0           -3.10 @ 2164 ms   ← smooth the parameters + recompute once per block
+  reference        0.09            0           -3.11 @ 2063 ms   <- recompute at every sample along the ideal curve
+  naive            3.35           12           -4.41 @ 2105 ms   <- swap the coefficients directly
+  smooth/1         0.10            0           -3.11 @ 2156 ms   <- smooth the parameters + recompute at every sample
+  smooth/32        0.10            0           -3.11 @ 2155 ms   <- smooth the parameters + recompute every 32 samples (default)
+  smooth/512       0.26            0           -3.10 @ 2164 ms   <- smooth the parameters + recompute once per block
 ```
 
 **Strategy: smooth the parameters, then recompute the coefficients.** What `ParametricEq` does:
@@ -350,10 +330,10 @@ $$
 
 ```
  freq(Hz)   analog(dB)   digital(dB)   diff
-    10000      +6.00        +6.00      +0.00   ← the center lines up
+    10000      +6.00        +6.00      +0.00   <- the center lines up
     14000      +4.05        +2.40      -1.65
     17000      +2.70        +0.74      -1.96
-    22050      +1.52        +0.00      -1.52   ← Nyquist is forced to 0 dB
+    22050      +1.52        +0.00      -1.52   <- Nyquist is forced to 0 dB
 ```
 
 The digital bell becomes asymmetric and narrower on the right; this is **cramping**. The "air" high-shelf band at high frequencies is affected too. Solutions:

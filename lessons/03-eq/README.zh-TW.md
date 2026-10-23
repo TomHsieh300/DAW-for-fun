@@ -44,37 +44,17 @@ EQ 做的事情一句話就講完：**對不同頻率給不同的 gain**。數�
 
 **Parametric EQ**：每個 band 的三個參數（frequency、Q、gain）都可以調，再加上 band 類型。少少幾個 band 就能精準處理任何頻率。DAW 內建的 EQ 幾乎都是 parametric，本章實作的也是。
 
-```
-Graphic EQ（10 band，只能推 gain）        Parametric EQ（每個 band 三個旋鈕）
- +12 ┤ ▮                                    ┌───────── band 3 ─────────┐
-     │ ▮       ▮                            │ Type : Peak               │
-   0 ┼─▮─▮─▮─▮─▮─▮─▮─▮─▮─▮─                 │ Freq : 3000 Hz  (10..~0.49·fs)
-     │       ▮                              │ Q    : 1.0      (0.05..40)│
- -12 ┤                                      │ Gain : +5 dB    (±36 dB)  │
-      31 63 125 ... 8k 16k                  └───────────────────────────┘
-```
+![Graphic EQ：十個固定的 band，只能推 gain；對照 parametric EQ 的單一 band，有 type、frequency、Q 與 gain（Peak、3000 Hz、Q 1.0、+5 dB）](images/graphic-vs-parametric-eq.svg)
+
+左：十支 fader 的位置只是示意。右：一個 parametric band（Type Peak、Freq 3000 Hz、Q 1.0、Gain +5 dB），方框內寫出每個旋鈕的範圍（frequency 10 Hz 到約 0.49·fs、Q 0.05..40、gain ±36 dB）。
 
 ### 2.3 Band 類型與聽感
 
 本章的 `EqBandType` 有六種，全部是第 02 章 `BiquadCoefficients` 的 RBJ factory（cut 在 24 dB/oct 時用兩顆）：
 
-```
- Peak / Bell              Low Shelf               High Shelf
- dB                       dB                      dB
- +g ┤     ╭─╮             +g ┤━━━╮                +g ┤            ╭━━━
-    │    ╱   ╲               │    ╲                  │           ╱
-  0 ┼━━━╯     ╰━━━         0 ┼     ╰━━━━━━         0 ┼━━━━━━━━━━╯
-    └──────┬──────► f        └─────┬───────► f       └──────────┬────► f
-           f0                      f0（中點）                    f0（中點）
+![六種 band 類型 Peak、Low Shelf、High Shelf、Low Cut、High Cut、Notch 的 magnitude response（dB 對 frequency，f0 = 1 kHz）；兩種 cut 同時畫出 12 與 24 dB/oct](images/eq-band-types.svg)
 
- Low Cut（highpass）      High Cut（lowpass）     Notch
-  0 ┼        ╭━━━━━━       0 ┼━━━━━━╮              0 ┼━━━━━╮ ╭━━━━━
-    │       ╱  -3 dB @ f0     │       ╲                 │     │ │
-    │      ╱ 12 或 24 dB/oct  │        ╲                │     │ │
-    │     ╱                   │         ╲               │     ╰─╯ → -∞ dB
-    └─────┬────────► f        └────────┬─────► f        └──────┬─────► f
-          f0                           f0                      f0
-```
+六條曲線都取 f0 = 1 kHz、48 kHz 取樣：Peak +6 dB、Q = 1；Low / High Shelf +6 dB、Q = 0.707（在 f0 處的 gain 是中點，+3 dB）；Low Cut / High Cut 畫 12 dB/oct（一顆 biquad、Q = 0.707）與 24 dB/oct（兩顆 biquad），在 f0 處都是 −3 dB；Notch 取 Q = 2，在 f0 處下探到 −∞ dB。
 
 | 類型 | 用到的 RBJ 公式 | `frequency` 的意義 | `q` 的意義 | `gainDb` | 聽感 / 典型用途 |
 |---|---|---|---|---|---|
@@ -219,10 +199,10 @@ S = 1 時，不管 gain 多少都得到 $`Q = 1/\sqrt{2}`$——cookbook 的描�
 ```
       Q     S(equiv)  |H(f0)|(dB)   curve max(dB)   curve min(dB)
    0.500     0.51        +3.00         +6.00          +0.00
-   0.707     1.00        +3.00         +6.00          +0.00     ← steepest but still monotonic
+   0.707     1.00        +3.00         +6.00          +0.00     <- steepest but still monotonic
    1.000     1.89        +3.00         +6.44          -0.44
    1.500     3.75        +3.00         +7.64          -1.64
-   2.000     5.72        +3.00         +8.86          -2.86     ← overshoot 2.86 dB, dip 2.86 dB
+   2.000     5.72        +3.00         +8.86          -2.86     <- overshoot 2.86 dB, dip 2.86 dB
 ```
 
 三件事一次看清楚：（1）不管 Q 多少，$`f_0`$ 處都是 +3.00 dB（中點性質）；（2）Q ≤ 0.707 時曲線不會超出 0..+6 dB；（3）Q 變大時過衝與凹陷**一樣大**。原因：把上面的 $`H_{LS}(s)`$ 裡的 $`s`$ 換成 $`1/s`$，整理後得到 $`H_{LS}(1/s) = A^2 / H_{LS}(s)`$，所以 $`\text{dB}(f_0 \cdot 2^k) + \text{dB}(f_0 \cdot 2^{-k}) = g`$——曲線在 log 頻率軸上以 $`(f_0,\ g/2)`$ 為中心點對稱，高過 $`g`$ 多少，另一側就低過 0 dB 多少。
@@ -267,7 +247,7 @@ UI 只要在 log 頻率軸上取幾百個點呼叫 `getMagnitudeDb()` 就能畫�
  freq(Hz)   mag(dB)   phase(deg)   group delay(samples)
       500     +1.88      +18.00          -2.89
       707     +3.96      +18.39           3.21
-     1000     +6.00       +0.00          10.80      ← 0.225 ms
+     1000     +6.00       +0.00          10.80      <- 0.225 ms
      1414     +3.96      -18.40           1.61
      2000     +1.87      -17.97          -0.73
 ```
@@ -297,11 +277,11 @@ UI 只要在 log 頻率軸上取幾百個點呼叫 `getMagnitudeDb()` 就能畫�
 
 ```
   version      max jump(dB/ms)  jumps>1 dB     envelope peak
-  reference        0.09            0           -3.11 @ 2063 ms   ← recompute at every sample along the ideal curve
-  naive            3.35           12           -4.41 @ 2105 ms   ← swap the coefficients directly
-  smooth/1         0.10            0           -3.11 @ 2156 ms   ← smooth the parameters + recompute at every sample
-  smooth/32        0.10            0           -3.11 @ 2155 ms   ← smooth the parameters + recompute every 32 samples (default)
-  smooth/512       0.26            0           -3.10 @ 2164 ms   ← smooth the parameters + recompute once per block
+  reference        0.09            0           -3.11 @ 2063 ms   <- recompute at every sample along the ideal curve
+  naive            3.35           12           -4.41 @ 2105 ms   <- swap the coefficients directly
+  smooth/1         0.10            0           -3.11 @ 2156 ms   <- smooth the parameters + recompute at every sample
+  smooth/32        0.10            0           -3.11 @ 2155 ms   <- smooth the parameters + recompute every 32 samples (default)
+  smooth/512       0.26            0           -3.10 @ 2164 ms   <- smooth the parameters + recompute once per block
 ```
 
 **策略：平滑參數，再重算係數。** `ParametricEq` 的做法：
@@ -350,10 +330,10 @@ $$
 
 ```
  freq(Hz)   analog(dB)   digital(dB)   diff
-    10000      +6.00        +6.00      +0.00   ← the center lines up
+    10000      +6.00        +6.00      +0.00   <- the center lines up
     14000      +4.05        +2.40      -1.65
     17000      +2.70        +0.74      -1.96
-    22050      +1.52        +0.00      -1.52   ← Nyquist is forced to 0 dB
+    22050      +1.52        +0.00      -1.52   <- Nyquist is forced to 0 dB
 ```
 
 數位版的鐘形變得不對稱、右邊變窄，這就是 **cramping**。高頻的 high shelf「air」band 也會受影響。解法：
