@@ -1,25 +1,30 @@
-// 練習 3 起始碼：重用第 06 章的 Oversampler 做 true-peak meter，並與第 05 章練習 4 的 windowed-sinc 版比較
+// Exercise 3 starter: build a true-peak meter by reusing the chapter 06 Oversampler, and compare it with the
+// chapter 05 exercise 4 windowed-sinc version
 //
-// 為什麼 sample peak 不夠？數位訊號的「真正波形」是 sample 之間用 sinc 內插出來的連續曲線，
-// 峰值很可能落在兩個 sample 之間（inter-sample peak）。BS.1770-4 Annex 2：把訊號升到 4 倍取樣率後
-// 取 |x| 的最大值，單位 dBTP。
+// Why is the sample peak not enough? The "true waveform" of a digital signal is the continuous curve obtained by sinc
+// interpolation between the samples, and its peak may well fall between two samples (an inter-sample peak).
+// BS.1770-4 Annex 2: upsample the signal to 4x the sample rate and take the maximum of |x|, in dBTP.
 //
-// 第 05 章練習 4 已經從零做過一次（64 tap Hann windowed-sinc，4 個 phase 一次升 4 倍）。這一題換個角度：
-//   (A) 重用：第 06 章的 Oversampler（兩級 2x halfband）已經是現成、測過的 4x 升頻器，
-//       true-peak meter 只要「upsample → 找 |x| 最大值」，不需要 downsample。
-//   (B) 比較：同一段訊號同時餵兩種 meter，跟「理想 sinc 內插」（FFT 補零）比誤差，再比 CPU 成本：
-//       - 插值點落在哪裡（halfband 的 0、1/4、1/2、3/4 vs 偶數長度 FIR 的 1/8、3/8、5/8、7/8）
-//       - 接近 Nyquist 的頻率響應（transition band 從哪裡開始）
-//       - 每個輸入 sample 要幾次乘法、實際跑多快
+// Chapter 05 exercise 4 already built this from scratch (64-tap Hann windowed-sinc, 4 phases for 4x upsampling).
+// This exercise takes a different angle:
+//   (A) Reuse: the chapter 06 Oversampler (two 2x halfband stages) is already a ready-made, tested 4x upsampler;
+//       a true-peak meter only needs "upsample -> find the maximum of |x|" and no downsampling.
+//   (B) Compare: feed the same signal to both meters, compare their error against "ideal sinc interpolation"
+//       (FFT zero-padding), and then compare CPU cost:
+//       - where the interpolation points fall (halfband 0, 1/4, 1/2, 3/4 vs an even-length FIR's 1/8, 3/8, 5/8, 7/8)
+//       - the frequency response near Nyquist (where the transition band starts)
+//       - how many multiplies per input sample, and how fast it actually runs
 //
-// 你的任務（完成前執行會印出 FAIL，這是預期的）：
-//   TODO 1：TruePeakMeter::process() 的 true peak 部分（用 Oversampler 升頻後找最大值）
-//   TODO 2：multipliesPerInputSample()：從 Oversampler 的各級設定算出每個輸入 sample 的乘法數
-//   其餘部分（對照組 WindowedSincTruePeak、FFT 理想內插、所有比較與計時）都已完成，
-//   完成 TODO 之後請讀印出來的表格，回答 exercises/README.md 練習 3 的問題。
+// Your task (running it before you finish prints FAIL, which is expected):
+//   TODO 1: the true-peak part of TruePeakMeter::process() (upsample with the Oversampler and find the maximum)
+//   TODO 2: multipliesPerInputSample(): from the Oversampler's stage configuration, compute the number of multiplies
+//           per input sample
+//   Everything else (the reference WindowedSincTruePeak, the FFT ideal interpolation, all comparisons and timing)
+//   is already done. After finishing the TODOs, read the printed tables and answer the exercise 3 questions in
+//   exercises/README.md.
 //
-// 執行：bin/Debug/l11_ex3_starter.exe（解答：solutions/ex3_true_peak.cpp）
-// 輸出：dawlab_output/l11_ex3_true_peak_normalized.wav（clip 過的鼓組，normalize 到 -1 dBTP）
+// Run: bin/Debug/l11_ex3_starter.exe (solution: solutions/ex3_true_peak.cpp)
+// Output: dawlab_output/l11_ex3_true_peak_normalized.wav (the clipped drums, normalized to -1 dBTP)
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Fft.h>
@@ -43,13 +48,13 @@ constexpr double kSampleRate = 48000.0;
 constexpr int kBlockSize = 512;
 
 // ============================================================================================
-// (A) 本題的主角：用第 06 章 Oversampler 做的 true-peak meter
+// (A) The star of this exercise: a true-peak meter built on the chapter 06 Oversampler
 // ============================================================================================
 class TruePeakMeter {
 public:
     static constexpr int kOversamplingLog2 = 2; // 2^2 = 4x
 
-    // 唯一可以 allocate 的地方
+    // The only place that may allocate
     void prepare(double sampleRate, int maxBlockSize, int numChannels) {
         numChannels_ = numChannels;
         oversampler_.prepare(sampleRate, maxBlockSize, numChannels);
@@ -63,7 +68,7 @@ public:
         resetPeaks();
     }
 
-    // 只清掉「自上次以來的最大值」，不清 oversampler 的 filter 狀態
+    // Clear only the "maximum since last time"; the oversampler's filter state is left alone
     void resetPeaks() noexcept {
         for (int ch = 0; ch < numChannels_; ++ch) {
             samplePeak_[static_cast<size_t>(ch)].store(0.0f, std::memory_order_relaxed);
@@ -71,24 +76,26 @@ public:
         }
     }
 
-    // audio thread：不 allocate、不鎖
+    // Audio thread: no allocation, no locks
     void process(const AudioBlock& block) noexcept {
         const int nch = std::min(numChannels_, block.getNumChannels());
-        // 1. sample peak（原始取樣率）
+        // 1. Sample peak (at the original sample rate)
         for (int ch = 0; ch < nch; ++ch) {
             const float p = peakAbs(block.getChannelPointer(ch), block.getNumSamples());
             auto& slot = samplePeak_[static_cast<size_t>(ch)];
             if (p > slot.load(std::memory_order_relaxed))
                 slot.store(p, std::memory_order_relaxed);
         }
-        // 2. TODO 1：true peak
-        //    (a) 用 oversampler_.upsample(block) 把 block 升到 4 倍取樣率。回傳的是 Oversampler 內部 buffer 的
-        //        view，sample 數是原本的 4 倍。想想看：為什麼這裡不需要呼叫 downsample()？
-        //    (b) 對每個 channel 找 |x| 的最大值（peakAbs），比 truePeak_[ch] 大就存進去（relaxed，和上面第 1 步一樣）。
-        //    整個 TODO 只要幾行——這就是「重用已經測過的元件」的好處。
+        // 2. TODO 1: true peak
+        //    (a) Use oversampler_.upsample(block) to raise the block to 4x the sample rate. It returns a view of the
+        //        Oversampler's internal buffer holding 4 times as many samples. Think about it: why is there no need to
+        //        call downsample() here?
+        //    (b) For each channel find the maximum of |x| (peakAbs) and store it into truePeak_[ch] if it is larger
+        //        (relaxed, like step 1 above).
+        //    The whole TODO is only a few lines -- that is the benefit of "reusing a component that is already tested".
     }
 
-    // 以下 getter thread-safe；都是「自 reset 以來的最大值」
+    // The getters below are thread-safe; all of them return "the maximum since reset"
     float getSamplePeakDb(int ch) const noexcept { return gainToDb(load(samplePeak_.get(), ch)); }
     float getTruePeakDb(int ch) const noexcept { return gainToDb(load(truePeak_.get(), ch)); } // dBTP
     float getTruePeakLinear(int ch) const noexcept { return load(truePeak_.get(), ch); }
@@ -107,19 +114,22 @@ private:
     std::unique_ptr<std::atomic<float>[]> samplePeak_, truePeak_;
 };
 
-// 只升頻、不降頻時，每個「原始取樣率的 sample」要幾次乘法？
-// 第 i 級（i = 1, 2, …）的輸入取樣率是 fs·2^(i-1)：每個原始 sample 會變成 2^(i-1) 個該級的輸入 sample，
-// 每個輸入 sample 只算一次奇數 tap 的 FIR（getNumOddTaps() 次乘法）；另一個輸出是純延遲，0 次乘法。
+// Without downsampling (upsampling only), how many multiplies does each "sample at the original rate" need?
+// The input rate of stage i (i = 1, 2, ...) is fs·2^(i-1): every original sample becomes 2^(i-1) input samples of that
+// stage, and each input sample runs the odd-tap FIR only once (getNumOddTaps() multiplies); the other output is a pure
+// delay, with 0 multiplies.
 int multipliesPerInputSample(const dsp::Oversampler& os) {
-    // TODO 2：用 os.getNumStages() 與 os.getStage(i).getNumOddTaps()（i = 0 是第 1 級）算出總乘法數。
-    //   提示：第 1 級每個原始 sample 跑一次；第 2 級的輸入已經是 2 倍取樣率，每個原始 sample 要跑幾次？
-    //   （答案應該和 self-check 7 的期望值一致；第 06 章 2.6 節有每一級的 tap 數表。）
+    // TODO 2: use os.getNumStages() and os.getStage(i).getNumOddTaps() (i = 0 is stage 1) to compute the total number of multiplies.
+    //   Hint: stage 1 runs once per original sample; the input of stage 2 is already at 2x the sample rate, so how many times
+    //   does it run per original sample?
+    //   (The answer should match the expected value in self-check 7; chapter 06 section 2.6 has a table of tap counts per stage.)
     (void)os;
     return 0;
 }
 
 // ============================================================================================
-// (B) 對照組：第 05 章練習 4 的 windowed-sinc 版（64 tap、Hann、4 個 phase；與該題解答相同，已完成）
+// (B) Reference: the chapter 05 exercise 4 windowed-sinc version (64 taps, Hann, 4 phases; identical to that
+// exercise's solution, already complete)
 // ============================================================================================
 class WindowedSincTruePeak {
 public:
@@ -129,7 +139,7 @@ public:
 
     void prepare(int numChannels) {
         numChannels_ = numChannels;
-        // h[k] = sinc((k - M) / 4) · Hann[k]，正規化成 Σh = 4，再拆成 phase：coeffs_[p][j] = h[4j + p]
+        // h[k] = sinc((k - M) / 4) · Hann[k], normalized so that Σh = 4, then split into phases: coeffs_[p][j] = h[4j + p]
         std::array<double, kNumTaps> h{};
         const double M = (kNumTaps - 1) / 2.0;
         double sum = 0.0;
@@ -177,8 +187,8 @@ public:
         }
     }
 
-    float getTruePeakDb() const noexcept { return gainToDb(truePeak_); } // 所有 channel 的最大值
-    static constexpr int multipliesPerInputSample() { return kNumTaps; } // 4 個 phase × 16 tap
+    float getTruePeakDb() const noexcept { return gainToDb(truePeak_); } // maximum over all channels
+    static constexpr int multipliesPerInputSample() { return kNumTaps; } // 4 phases × 16 taps
 
 private:
     int numChannels_ = 0;
@@ -189,10 +199,10 @@ private:
 };
 
 // ============================================================================================
-// 量測工具
+// Measurement utilities
 // ============================================================================================
 
-// 一塊一塊餵（模擬 audio callback）
+// Feed block by block (simulating the audio callback)
 template <typename Meter>
 void feed(Meter& meter, AudioBuffer& audio) {
     for (int start = 0; start < audio.getNumSamples(); start += kBlockSize) {
@@ -215,7 +225,7 @@ float maxSamplePeakDb(const TruePeakMeter& meter) {
     return m;
 }
 
-// windowed-sinc 版的讀數（每次重新 prepare，兩種 meter 看到的都是同一段、從靜音開始的訊號）
+// The windowed-sinc version's reading (it is re-prepared every time, so both meters see the same signal starting from silence)
 float sincTruePeakDb(AudioBuffer& audio) {
     WindowedSincTruePeak meter;
     meter.prepare(audio.getNumChannels());
@@ -223,8 +233,9 @@ float sincTruePeakDb(AudioBuffer& audio) {
     return meter.getTruePeakDb();
 }
 
-// 「理想」true peak：整段做一次大 FFT，頻譜補 0 到 4 倍長再 IFFT = 理想 sinc 內插在 4x 取樣率上的取樣
-// （只差 FFT 的循環邊界效應；訊號頭尾是靜音或淡入淡出時可以忽略）。回傳所有 channel 的最大值。
+// The "ideal" true peak: run one big FFT over the whole signal, zero-pad the spectrum to 4x the length, then take the IFFT
+// = samples of ideal sinc interpolation at the 4x sample rate (differing only by the circular boundary effect of the FFT,
+// which can be ignored when the signal starts and ends with silence or fades). Returns the maximum over all channels.
 float idealTruePeakDb(const AudioBuffer& audio) {
     int order = 1;
     while ((1 << order) < audio.getNumSamples())
@@ -240,15 +251,15 @@ float idealTruePeakDb(const AudioBuffer& audio) {
         std::copy_n(audio.getReadPointer(ch), audio.getNumSamples(), x.begin());
         std::fill(spec.begin(), spec.end(), std::complex<float>(0.0f, 0.0f));
         fft.forwardReal(x.data(), spec.data());
-        spec[static_cast<size_t>(n / 2)] *= 0.5f; // Nyquist bin 在 4N 的頻譜裡會被當成兩個共軛 bin，平分
+        spec[static_cast<size_t>(n / 2)] *= 0.5f; // In the 4N spectrum the Nyquist bin is treated as two conjugate bins, so split it in half
         fft4.inverseReal(spec.data(), up.data());
-        // inverseReal 含 1/(4N)，原本的 forward 沒有正規化 → 乘 4 補回振幅
+        // inverseReal includes 1/(4N) and the original forward has no normalization -> multiply by 4 to restore the amplitude
         peak = std::max(peak, 4.0f * peakAbs(up.data(), 4 * n));
     }
     return gainToDb(peak);
 }
 
-// fs/4 的正弦：x[n] = A·sin(π n/2 + φ)
+// A sine at fs/4: x[n] = A·sin(π n/2 + φ)
 AudioBuffer makeQuarterRateSine(double seconds, double phaseRadians, float amplitude = 1.0f) {
     AudioBuffer b(1, secondsToSamples(seconds, kSampleRate));
     for (int i = 0; i < b.getNumSamples(); ++i)
@@ -256,7 +267,7 @@ AudioBuffer makeQuarterRateSine(double seconds, double phaseRadians, float ampli
     return b;
 }
 
-// 頭尾加 raised-cosine 淡入淡出，避免訊號「突然開始」本身的步階產生額外的 inter-sample 過衝
+// Add raised-cosine fades at both ends so the step of the signal "starting abruptly" does not produce extra inter-sample overshoot
 void fadeInOut(AudioBuffer& b, double ms) {
     const int n = std::min(b.getNumSamples() / 2, msToSamples(ms, kSampleRate));
     for (int ch = 0; ch < b.getNumChannels(); ++ch)
@@ -272,42 +283,42 @@ void fadeInOut(AudioBuffer& b, double ms) {
 int main() {
     TruePeakMeter meter;
     meter.prepare(kSampleRate, kBlockSize, 2);
-    std::printf("Oversampler：%dx，%d 級 halfband；對照組：第 05 章練習 4 的 64 tap windowed-sinc\n\n",
+    std::printf("Oversampler: %dx, %d halfband stages; reference: the 64-tap windowed-sinc from chapter 05 exercise 4\n\n",
                 meter.getOversamplingFactor(), meter.getOversampler().getNumStages());
 
-    // ---- 1. 1 kHz、0 dBFS：sample 剛好踩到峰值（48 個 sample 一週期，第 12 個 = sin(π/2)）--------
+    // ---- 1. 1 kHz, 0 dBFS: a sample lands exactly on the peak (48 samples per period, the 12th = sin(π/2)) ----
     {
         AudioBuffer sine = makeSine(1000.0, kSampleRate, 1.0, 1.0f, 1);
         meter.reset();
         feed(meter, sine);
         const float sinc = sincTruePeakDb(sine);
-        std::printf("1 kHz 0 dBFS：sample peak = %.3f dBFS，true peak：Oversampler %.3f / windowed-sinc %.3f dBTP\n",
+        std::printf("1 kHz 0 dBFS: sample peak = %.3f dBFS, true peak: Oversampler %.3f / windowed-sinc %.3f dBTP\n",
                     meter.getSamplePeakDb(0), meter.getTruePeakDb(0), sinc);
         DAWLAB_CHECK_NEAR(meter.getSamplePeakDb(0), 0.0, 0.01);
         DAWLAB_CHECK_NEAR(meter.getTruePeakDb(0), 0.0, 0.1);
         DAWLAB_CHECK_NEAR(sinc, 0.0, 0.1);
     }
 
-    // ---- 2. fs/4、相位 45°：sample peak -3.01 dBFS，真正的峰值 0 dBTP ------------------------------
+    // ---- 2. fs/4, phase 45°: sample peak -3.01 dBFS, true peak 0 dBTP ----------------------------
     {
         AudioBuffer q = makeQuarterRateSine(1.0, kPi / 4.0);
         fadeInOut(q, 10.0);
         meter.reset();
         feed(meter, q);
         const float sinc = sincTruePeakDb(q);
-        std::printf("12 kHz 相位 45°：sample peak = %.3f dBFS，true peak：Oversampler %.3f / windowed-sinc %.3f dBTP\n",
+        std::printf("12 kHz, phase 45°: sample peak = %.3f dBFS, true peak: Oversampler %.3f / windowed-sinc %.3f dBTP\n",
                     meter.getSamplePeakDb(0), meter.getTruePeakDb(0), sinc);
         DAWLAB_CHECK_NEAR(meter.getSamplePeakDb(0), -3.01, 0.02);
         DAWLAB_CHECK_NEAR(meter.getTruePeakDb(0), 0.0, 0.15);
     }
 
-    // ---- 3. 相位掃描：同一個 fs/4 正弦，峰值落在原始 sample 之間的不同位置 -------------------------
-    //   Oversampler 的 4x 點在 0、1/4、1/2、3/4；64 tap（偶數長度）的點在 1/8、3/8、5/8、7/8。
-    //   峰值離最近的點最遠 1/8 sample = 11.25°（fs/4 時），兩者最差都低估 20·log10(cos 11.25°) = -0.17 dB，
-    //   只是發生在不同的相位：一個量得準的地方，另一個剛好最差。
+    // ---- 3. Phase sweep: the same fs/4 sine, with the peak falling at different positions between the original samples ----
+    //   The Oversampler's 4x points are at 0, 1/4, 1/2, 3/4; the 64-tap (even-length) points are at 1/8, 3/8, 5/8, 7/8.
+    //   The peak is at most 1/8 sample = 11.25° (at fs/4) from the nearest point, and both underestimate by at worst
+    //   20·log10(cos 11.25°) = -0.17 dB, just at different phases: where one is accurate, the other happens to be worst.
     {
-        std::printf("\n相位掃描（fs/4 正弦，振幅 1；誤差 = 讀數 − 0 dBTP）\n");
-        std::printf("  相位     峰值位置    Oversampler    windowed-sinc\n");
+        std::printf("\nPhase sweep (fs/4 sine, amplitude 1; error = reading - 0 dBTP)\n");
+        std::printf("  phase    peak pos    Oversampler    windowed-sinc\n");
         float worstOs = 0.0f, worstSinc = 0.0f;
         double worstOsPhase = 0.0, worstSincPhase = 0.0;
         constexpr int kSteps = 32;
@@ -327,24 +338,25 @@ int main() {
                 worstSinc = sinc;
                 worstSincPhase = phaseDeg;
             }
-            // 峰值在 n = 1 − 2φ/π（取小數部分）：φ = 0 → 0，φ = 45° → 1/2，φ = 90° → 0
+            // The peak is at n = 1 − 2φ/π (fractional part): φ = 0 -> 0, φ = 45° -> 1/2, φ = 90° -> 0
             double where = 1.0 - phaseDeg / 90.0;
             where -= std::floor(where);
             if (s % 4 == 0)
                 std::printf("  %5.2f°     %5.3f       %+7.3f dB      %+7.3f dB\n", phaseDeg, where, os, sinc);
         }
-        std::printf("  最差：Oversampler %+.3f dB（相位 %.2f°），windowed-sinc %+.3f dB（相位 %.2f°）\n", worstOs,
+        std::printf("  Worst: Oversampler %+.3f dB (phase %.2f°), windowed-sinc %+.3f dB (phase %.2f°)\n", worstOs,
                     worstOsPhase, worstSinc, worstSincPhase);
         DAWLAB_CHECK_NEAR(worstOs, -0.17, 0.03);
         DAWLAB_CHECK_NEAR(worstSinc, -0.17, 0.03);
-        DAWLAB_CHECK(std::abs(worstOsPhase - worstSincPhase) > 5.0); // 最差的位置不一樣
+        DAWLAB_CHECK(std::abs(worstOsPhase - worstSincPhase) > 5.0); // the worst positions differ
     }
 
-    // ---- 4. 接近 Nyquist 的頻率響應：振幅 0.5（-6.02 dBFS）的正弦，頻率稍微偏離整數比 -----------------
-    //   讓峰值在 1 秒內掃過 sample 之間的所有位置，讀數就幾乎只反映插值 filter 在這個頻率的增益。
+    // ---- 4. Frequency response near Nyquist: a sine of amplitude 0.5 (-6.02 dBFS) with the frequency slightly off an integer ratio ----
+    //   Letting the peak sweep through every position between samples within 1 second makes the reading reflect almost
+    //   purely the gain of the interpolation filter at that frequency.
     {
-        std::printf("\n頻率響應（振幅 0.5 的正弦，誤差 = 讀數 − (-6.02 dBTP)）\n");
-        std::printf("  頻率          Oversampler    windowed-sinc\n");
+        std::printf("\nFrequency response (sine of amplitude 0.5, error = reading - (-6.02 dBTP))\n");
+        std::printf("  frequency     Oversampler    windowed-sinc\n");
         const double freqs[] = {1000.3, 10000.3, 16000.3, 18000.3, 20000.3, 21000.3, 22000.3};
         const float ref = gainToDb(0.5f);
         float osErr[7] = {}, sincErr[7] = {};
@@ -357,22 +369,23 @@ int main() {
             sincErr[i] = sincTruePeakDb(s) - ref;
             std::printf("  %7.1f Hz     %+7.3f dB      %+7.3f dB\n", freqs[i], osErr[i], sincErr[i]);
         }
-        // 低頻到 16 kHz 兩者都準（< 0.02 dB）
+        // Both are accurate from low frequencies up to 16 kHz (< 0.02 dB)
         for (int i = 0; i <= 2; ++i)
             DAWLAB_CHECK(std::abs(osErr[i]) < 0.02f && std::abs(sincErr[i]) < 0.02f);
-        // Oversampler 一路到 22 kHz 都在 0.02 dB 內：第 1 級 halfband 在 22 kHz 其實衰減 0.65 dB，
-        // 但它沒濾乾淨的 image（26 kHz）剛好補回來——halfband 的 |H(f)| + |H(fs − f)| = 1（第 06 章 2.6 節），
-        // 兩者同相疊加時峰值正好是原本的振幅
+        // The Oversampler stays within 0.02 dB all the way to 22 kHz: stage 1's halfband actually attenuates 0.65 dB at 22 kHz,
+        // but the image it fails to filter out completely (26 kHz) happens to make up for it -- for a halfband
+        // |H(f)| + |H(fs − f)| = 1 (chapter 06 section 2.6), and when the two add in phase the peak is exactly the
+        // original amplitude
         for (int i = 0; i < 7; ++i)
             DAWLAB_CHECK(std::abs(osErr[i]) < 0.02f);
-        // 64 tap Hann windowed-sinc 的 transition band 寬得多：18 kHz 起就有 ±0.1 dB 的誤差，22 kHz 低估約 0.4 dB
+        // The transition band of the 64-tap Hann windowed-sinc is much wider: errors of ±0.1 dB from 18 kHz, and about 0.4 dB underestimate at 22 kHz
         DAWLAB_CHECK(sincErr[6] < osErr[6] - 0.3f);
     }
 
-    // ---- 5. hard clip 過的鼓組：同一段訊號、三種讀數；再 normalize 到 -1 dBTP ------------------------
+    // ---- 5. Hard-clipped drums: one signal, three readings; then normalize to -1 dBTP ------------
     {
         AudioBuffer drums = makeDrumLoop(kSampleRate, 2, 120.0, 0.8f, 2);
-        drums.applyGain(dbToGain(12.0f)); // 推 +12 dB 再 clip
+        drums.applyGain(dbToGain(12.0f)); // push +12 dB, then clip
         for (int ch = 0; ch < drums.getNumChannels(); ++ch)
             for (int i = 0; i < drums.getNumSamples(); ++i)
                 drums.setSample(ch, i, std::clamp(drums.getSample(ch, i), -1.0f, 1.0f));
@@ -381,27 +394,27 @@ int main() {
         const float sp = maxSamplePeakDb(meter), tp = maxTruePeakDb(meter);
         const float sinc = sincTruePeakDb(drums);
         const float ideal = idealTruePeakDb(drums);
-        std::printf("\nclip 過的鼓組：sample peak = %.3f dBFS，true peak：Oversampler %.3f / windowed-sinc %.3f / "
-                    "FFT 理想內插 %.3f dBTP\n",
+        std::printf("\nClipped drums: sample peak = %.3f dBFS, true peak: Oversampler %.3f / windowed-sinc %.3f / "
+                    "FFT ideal interpolation %.3f dBTP\n",
                     sp, tp, sinc, ideal);
         DAWLAB_CHECK_NEAR(sp, 0.0, 0.01);
-        DAWLAB_CHECK(tp >= sp - 1e-3f); // halfband 的純延遲 phase 就是原始 sample，所以不可能更低
-        DAWLAB_CHECK(tp > sp + 0.05f);  // clip 出來的平頂一定會有 inter-sample 過衝
-        DAWLAB_CHECK(std::abs(tp - ideal) < std::abs(sinc - ideal)); // 高頻很多時，halfband 較接近理想值
+        DAWLAB_CHECK(tp >= sp - 1e-3f); // the halfband's pure-delay phase is the original sample, so it cannot read lower
+        DAWLAB_CHECK(tp > sp + 0.05f);  // the flat tops produced by clipping always have inter-sample overshoot
+        DAWLAB_CHECK(std::abs(tp - ideal) < std::abs(sinc - ideal)); // with a lot of high-frequency content, the halfband is closer to the ideal value
 
-        // 母帶流程：normalize 到 -1 dBTP（而不是 -1 dBFS）
+        // Mastering workflow: normalize to -1 dBTP (not -1 dBFS)
         const float gainDb = -1.0f - tp;
         drums.applyGain(dbToGain(gainDb));
         meter.reset();
         feed(meter, drums);
-        std::printf("套用 %+.2f dB 後：sample peak = %.3f dBFS，true peak = %.3f dBTP\n", gainDb,
+        std::printf("After applying %+.2f dB: sample peak = %.3f dBFS, true peak = %.3f dBTP\n", gainDb,
                     maxSamplePeakDb(meter), maxTruePeakDb(meter));
         DAWLAB_CHECK_NEAR(maxTruePeakDb(meter), -1.0, 0.05);
         DAWLAB_CHECK(maxSamplePeakDb(meter) <= -1.0f + 0.01f);
         writeWav(outputPath("l11_ex3_true_peak_normalized.wav"), drums, kSampleRate);
     }
 
-    // ---- 6. 撥弦素材：每個音都從一段白雜訊開始，接近 Nyquist 的成分很多 ------------------------------
+    // ---- 6. Plucked material: every note starts from a burst of white noise, with a lot of content near Nyquist ----
     {
         AudioBuffer plucks = makePluckSequence(kSampleRate, 2.0, 0.4f, 1);
         meter.reset();
@@ -409,28 +422,28 @@ int main() {
         const float sp = meter.getSamplePeakDb(0), tp = meter.getTruePeakDb(0);
         const float sinc = sincTruePeakDb(plucks);
         const float ideal = idealTruePeakDb(plucks);
-        std::printf("pluck sequence：sample peak = %.3f dBFS，true peak：Oversampler %.3f / windowed-sinc %.3f / "
-                    "FFT 理想內插 %.3f dBTP\n",
+        std::printf("pluck sequence: sample peak = %.3f dBFS, true peak: Oversampler %.3f / windowed-sinc %.3f / "
+                    "FFT ideal interpolation %.3f dBTP\n",
                     sp, tp, sinc, ideal);
         DAWLAB_CHECK(tp >= sp - 1e-3f);
-        DAWLAB_CHECK(ideal >= tp - 0.1f);   // 4x 只會低估（少量 filter ripple 容許 0.1 dB）
+        DAWLAB_CHECK(ideal >= tp - 0.1f);   // 4x can only underestimate (0.1 dB tolerance for a little filter ripple)
         DAWLAB_CHECK(ideal >= sinc - 0.1f);
         DAWLAB_CHECK(std::abs(ideal - tp) < 1.0f);
         DAWLAB_CHECK(std::abs(ideal - sinc) < 1.5f);
-        DAWLAB_CHECK(std::abs(ideal - tp) < std::abs(ideal - sinc)); // 同樣是 Nyquist 附近的能量多，halfband 較接近
+        DAWLAB_CHECK(std::abs(ideal - tp) < std::abs(ideal - sinc)); // again lots of energy near Nyquist, so the halfband is closer
     }
 
-    // ---- 7. CPU：每個輸入 sample 的乘法數 + 實際計時 --------------------------------------------------
+    // ---- 7. CPU: multiplies per input sample + actual timing -----------------------------------
     {
         const int osMul = multipliesPerInputSample(meter.getOversampler());
         const int sincMul = WindowedSincTruePeak::multipliesPerInputSample();
-        std::printf("\n每個輸入 sample 的乘法數：Oversampler %d（第 1 級 %d + 第 2 級 %d × 2），windowed-sinc %d（4 × 16）\n",
+        std::printf("\nMultiplies per input sample: Oversampler %d (stage 1: %d + stage 2: %d × 2), windowed-sinc %d (4 × 16)\n",
                     osMul, meter.getOversampler().getStage(0).getNumOddTaps(),
                     meter.getOversampler().getStage(1).getNumOddTaps(), sincMul);
         DAWLAB_CHECK(osMul == 32 + 2 * 12);
         DAWLAB_CHECK(sincMul == 64);
 
-        // 10 秒 stereo 白雜訊，各跑 3 次取最快的一次（排除第一次的 cache / page fault 等干擾）
+        // 10 s of stereo white noise, run 3 times each and keep the fastest (to exclude first-run cache / page-fault interference)
         AudioBuffer noise = makeWhiteNoise(kSampleRate, 10.0, 0.25f, 2);
         const double numSamples = static_cast<double>(noise.getNumSamples()) * noise.getNumChannels();
         auto timeIt = [&](auto&& run) {
@@ -453,8 +466,8 @@ int main() {
             sincMeter.reset();
             feed(sincMeter, noise);
         });
-        std::printf("實際計時（10 s stereo，每個 channel-sample）：Oversampler %.1f ns，windowed-sinc %.1f ns，"
-                    "比值 %.2f（依建置設定與機器而異）\n",
+        std::printf("Measured timing (10 s stereo, per channel-sample): Oversampler %.1f ns, windowed-sinc %.1f ns, "
+                    "ratio %.2f (varies with build settings and machine)\n",
                     osNs, sincNs, sincNs / osNs);
         DAWLAB_CHECK(osNs > 0.0 && sincNs > 0.0);
     }

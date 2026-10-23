@@ -1,21 +1,22 @@
-// 練習 4 起始碼：VU meter 的 ballistics（IEC 60268-17）
+// Exercise 4 starter: VU meter ballistics (IEC 60268-17)
 //
-// VU meter 是一支「有質量的指針」：它量的是整流後的平均（接近 RMS，但不是），而且反應刻意很慢，
-// 讓人看到「感覺上的音量」而不是每個 transient。規範的要求：
-//   - 給一個突然開始的 1 kHz 正弦（0 VU），指針在 300 ms（±10%）內到達最終讀數的 99%
-//   - 過衝（overshoot）1% ~ 1.5%
-//   - 掉下來的時間與上升相同
-//   - 0 VU 對應 +4 dBu；在 DAW 裡通常校準成 -18 dBFS（EBU）或 -20 dBFS（K-20）的正弦 = 0 VU
+// A VU meter is a "needle with mass": it measures the rectified average (close to RMS, but not RMS), and its response is
+// deliberately slow so that you see the "perceived loudness" rather than every transient. The standard requires:
+//   - for a sudden-onset 1 kHz sine (0 VU), the needle reaches 99% of its final reading within 300 ms (±10%)
+//   - overshoot of 1% ~ 1.5%
+//   - the fall time equals the rise time
+//   - 0 VU corresponds to +4 dBu; in a DAW it is usually calibrated so that a -18 dBFS (EBU) or -20 dBFS (K-20) sine = 0 VU
 //
-// 用一個二階系統（彈簧 + 阻尼的指針）模擬：
-//     p'' + 2ζω_n p' + ω_n² p = ω_n² u(t),  u = 整流後的輸入
-//   阻尼比 ζ 決定過衝：overshoot = exp(-πζ / sqrt(1-ζ²))，ζ = 0.82 → 1.11%
-//   自然頻率 ω_n 決定快慢：解出「步階響應第一次到 0.99 的正規化時間 u99」，ω_n = u99 / 0.3 s
-// 每個 sample 用 semi-implicit Euler 積分（ω_n·T ≈ 3e-4，非常穩定）。
+// It is modelled with a second-order system (a needle on a spring with damping):
+//     p'' + 2ζω_n p' + ω_n² p = ω_n² u(t),  u = the rectified input
+//   The damping ratio ζ sets the overshoot: overshoot = exp(-πζ / sqrt(1-ζ²)); ζ = 0.82 -> 1.11%
+//   The natural frequency ω_n sets the speed: solve for "the normalized time u99 at which the step response first reaches 0.99",
+//   then ω_n = u99 / 0.3 s
+// Each sample is integrated with semi-implicit Euler (ω_n·T ≈ 3e-4, very stable).
 //
-// 你的任務：完成標示 TODO 的兩個地方（每個 sample 的指針運動、0 VU 的校準倍率）。
-// 完成前執行會印出 FAIL（這是預期的）。
-// 執行：bin/Debug/l11_ex4_starter.exe（解答：solutions/ex4_vu_meter.cpp）
+// Your task: complete the two places marked TODO (the per-sample needle motion and the 0 VU calibration factor).
+// Running it before you finish prints FAIL (this is expected).
+// Run: bin/Debug/l11_ex4_starter.exe (solution: solutions/ex4_vu_meter.cpp)
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/LevelMeter.h>
@@ -50,12 +51,12 @@ public:
             readingVu_[static_cast<size_t>(ch)].store(kMinusInfinityDb, std::memory_order_relaxed);
     }
 
-    // 0 VU 對應的正弦 peak 位準（dBFS），預設 -18
+    // Peak level (dBFS) of the sine that corresponds to 0 VU, default -18
     void setReferenceDbfs(float dbfs) noexcept {
         referenceDbfs_ = dbfs;
         updateCoefficients();
     }
-    // 到達 99% 的時間（預設 300 ms）與阻尼比（預設 0.82 → 過衝 1.1%）
+    // Time to reach 99% (default 300 ms) and the damping ratio (default 0.82 -> 1.1% overshoot)
     void setRiseTimeMs(float ms) noexcept {
         riseTimeMs_ = std::max(1.0f, ms);
         updateCoefficients();
@@ -73,14 +74,14 @@ public:
             NeedleState& s = state_[static_cast<size_t>(ch)];
             const float* x = block.getChannelPointer(ch);
             for (int i = 0; i < n; ++i) {
-                // TODO：
-                //   1. 全波整流 + 校準：u = |x| · inputScale_
-                //   2. 二階系統 p'' = ω_n²(u − p) − 2ζω_n p'，用 semi-implicit Euler 積分：
-                //        先 s.velocity += 加速度 · dt_，再 s.position += s.velocity · dt_
-                //      （需要的係數已經在 updateCoefficients() 算好：wn2_、twoZetaWn_、dt_）
+                // TODO:
+                //   1. Full-wave rectification + calibration: u = |x| · inputScale_
+                //   2. Second-order system p'' = ω_n²(u − p) − 2ζω_n p', integrated with semi-implicit Euler:
+                //        first s.velocity += acceleration · dt_, then s.position += s.velocity · dt_
+                //      (the coefficients you need are already computed in updateCoefficients(): wn2_, twoZetaWn_, dt_)
                 (void)x[i];
             }
-            // 指針不能跑到刻度左邊的 0 以下（真的指針會撞到擋板）
+            // The needle cannot go below 0 at the left end of the scale (a real needle hits the stop)
             const double needle = std::max(0.0, s.position);
             readingVu_[static_cast<size_t>(ch)].store(gainToDb(static_cast<float>(needle)), std::memory_order_relaxed);
         }
@@ -91,20 +92,20 @@ public:
         return (ch >= 0 && ch < numChannels_) ? readingVu_[static_cast<size_t>(ch)].load(std::memory_order_relaxed)
                                               : kMinusInfinityDb;
     }
-    // 指針的線性位置（1.0 = 0 VU）
+    // Linear needle position (1.0 = 0 VU)
     float getNeedle(int ch) const noexcept { return dbToGain(getVu(ch)); }
 
     double getNaturalFrequencyHz() const noexcept { return wn_ / kTwoPi; }
     double getOvershootPercent() const noexcept { return 100.0 * std::exp(-kPi * zeta_ / std::sqrt(1.0 - zeta_ * zeta_)); }
 
-    // 二階系統正規化步階響應 y(u)，u = ω_n t（欠阻尼，ζ < 1）：
+    // Normalized step response y(u) of the second-order system, u = ω_n t (underdamped, ζ < 1):
     //     y(u) = 1 − e^{−ζu} / sqrt(1−ζ²) · sin( sqrt(1−ζ²)·u + acos ζ )
     static double stepResponse(double zeta, double u) noexcept {
         const double s = std::sqrt(1.0 - zeta * zeta);
         return 1.0 - std::exp(-zeta * u) / s * std::sin(s * u + std::acos(zeta));
     }
 
-    // 第一次到達 target（例如 0.99）的正規化時間：在 [0, 峰值時間 π/sqrt(1−ζ²)] 之間 y 單調上升，用二分法
+    // Normalized time at which the response first reaches target (e.g. 0.99): y rises monotonically on [0, peak time π/sqrt(1−ζ²)], so bisect
     static double timeToReach(double zeta, double target) noexcept {
         double lo = 0.0, hi = kPi / std::sqrt(1.0 - zeta * zeta);
         for (int i = 0; i < 60; ++i) {
@@ -125,11 +126,11 @@ private:
             return;
         dt_ = 1.0 / sampleRate_;
         const double u99 = timeToReach(zeta_, 0.99);
-        wn_ = u99 / (riseTimeMs_ * 0.001); // 讓 y(0.3 s) = 0.99
+        wn_ = u99 / (riseTimeMs_ * 0.001); // so that y(0.3 s) = 0.99
         wn2_ = wn_ * wn_;
         twoZetaWn_ = 2.0 * zeta_ * wn_;
-        // TODO：參考位準（referenceDbfs_）的正弦，全波整流後的平均是 2A/π。
-        //       讓它乘上 inputScale_ 之後剛好等於 1.0（= 0 VU）。
+        // TODO: a sine at the reference level (referenceDbfs_) has a full-wave-rectified average of 2A/π.
+        //       Make it equal exactly 1.0 (= 0 VU) after multiplying by inputScale_.
         inputScale_ = 1.0;
     }
 
@@ -143,7 +144,7 @@ private:
     std::unique_ptr<std::atomic<float>[]> readingVu_;
 };
 
-// 一塊一塊餵，blockSize 可調（量 300 ms 的點時用 480 = 10 ms 讓邊界對齊）
+// Feed block by block; blockSize is adjustable (use 480 = 10 ms when measuring at 300 ms so the boundaries line up)
 template <typename OnBlock>
 void feed(VuMeter& meter, AudioBuffer& audio, int blockSize, OnBlock&& onBlock) {
     for (int start = 0; start < audio.getNumSamples(); start += blockSize) {
@@ -158,11 +159,11 @@ void feed(VuMeter& meter, AudioBuffer& audio, int blockSize, OnBlock&& onBlock) 
 int main() {
     VuMeter vu;
     vu.prepare(kSampleRate, 2);
-    std::printf("ζ = 0.82 → 過衝 %.2f%%；u99 = %.3f → ω_n = %.2f rad/s（%.2f Hz）\n\n", vu.getOvershootPercent(),
+    std::printf("ζ = 0.82 -> overshoot %.2f%%; u99 = %.3f -> ω_n = %.2f rad/s (%.2f Hz)\n\n", vu.getOvershootPercent(),
                 VuMeter::timeToReach(0.82, 0.99), vu.getNaturalFrequencyHz() * kTwoPi, vu.getNaturalFrequencyHz());
     DAWLAB_CHECK(vu.getOvershootPercent() >= 1.0 && vu.getOvershootPercent() <= 1.5);
 
-    // ---- 1. 步階響應：-18 dBFS 的 1 kHz 正弦（= 0 VU）突然開始，1 s 後突然停止 -------------------------
+    // ---- 1. Step response: a -18 dBFS 1 kHz sine (= 0 VU) starts abruptly and stops abruptly after 1 s ----------
     {
         AudioBuffer step = makeToneBursts(1000.0, kSampleRate, {-18.0f, -200.0f}, 1.0, 1);
         const int blockSize = 480; // 10 ms
@@ -172,58 +173,58 @@ int main() {
             const double t = samplesDone / kSampleRate;
             const float needle = vu.getNeedle(0);
             if (samplesDone == 14400)
-                needleAt300 = needle; // 剛好 300 ms
+                needleAt300 = needle; // exactly 300 ms
             if (t <= 1.0) {
                 maxNeedle = std::max(maxNeedle, needle);
                 finalNeedle = needle;
             }
             if (samplesDone == 48000 + 14400)
-                needleAfterStop300 = needle; // 停止後 300 ms
+                needleAfterStop300 = needle; // 300 ms after the stop
             if (samplesDone % 4800 == 0 && t <= 1.6)
                 std::printf("%8.2f %10.4f %10.2f\n", t, needle, vu.getVu(0));
         });
-        // 規範的 99% 與過衝都是相對於「最終讀數」。最終讀數不是精確的 1.0：1 kHz 在 48 kHz 下一週期只有
-        // 48 個 sample，取樣後的 |sin| 平均 = cot(π/48)/24 = 0.63571，比連續的 2/π = 0.63662 低 0.14%。
+        // The standard's 99% and overshoot are both relative to the "final reading". The final reading is not exactly 1.0: at 48 kHz a 1 kHz period has only
+        // 48 samples, and the average of the sampled |sin| = cot(π/48)/24 = 0.63571, 0.14% below the continuous 2/π = 0.63662.
         const float settle = needleAt300 / finalNeedle;
         const float overshoot = maxNeedle / finalNeedle - 1.0f;
-        std::printf("1 s 時（最終讀數）= %.4f（%.3f VU）；300 ms 時 = 最終讀數的 %.2f%%（規範 99%%）；"
-                    "過衝 %.2f%%（規範 1~1.5%%）\n",
+        std::printf("At 1 s (final reading) = %.4f (%.3f VU); at 300 ms = %.2f%% of the final reading (standard: 99%%); "
+                    "overshoot %.2f%% (standard: 1~1.5%%)\n",
                     finalNeedle, gainToDb(finalNeedle), 100.0 * settle, 100.0 * overshoot);
-        std::printf("停止後 300 ms 指針 = %.4f（≤ 0.015：掉下來和升上去一樣快）\n\n", needleAfterStop300);
+        std::printf("Needle 300 ms after the stop = %.4f (<= 0.015: it falls as fast as it rises)\n\n", needleAfterStop300);
         DAWLAB_CHECK_NEAR(settle, 0.99, 0.005);
         DAWLAB_CHECK(overshoot >= 0.01f && overshoot <= 0.015f);
         DAWLAB_CHECK_NEAR(gainToDb(finalNeedle), 0.0, 0.05);
         DAWLAB_CHECK(needleAfterStop300 <= 0.015f);
     }
 
-    // ---- 2. 校準：-24 dBFS 的正弦 → -6 VU；0 dBFS → +18 VU ----------------------------------------
+    // ---- 2. Calibration: a -24 dBFS sine -> -6 VU; 0 dBFS -> +18 VU -------------------------------
     {
         AudioBuffer quiet = makeSine(1000.0, kSampleRate, 1.0, dbToGain(-24.0f), 1);
         vu.reset();
         feed(vu, quiet, 512, [](int) {});
-        std::printf("-24 dBFS 正弦 → %.2f VU（期望 -6）\n", vu.getVu(0));
+        std::printf("-24 dBFS sine -> %.2f VU (expected -6)\n", vu.getVu(0));
         DAWLAB_CHECK_NEAR(vu.getVu(0), -6.0, 0.05);
 
         AudioBuffer loud = makeSine(1000.0, kSampleRate, 1.0, 1.0f, 1);
         vu.reset();
         feed(vu, loud, 512, [](int) {});
-        std::printf("0 dBFS 正弦 → %.2f VU（期望 +18）\n", vu.getVu(0));
+        std::printf("0 dBFS sine -> %.2f VU (expected +18)\n", vu.getVu(0));
         DAWLAB_CHECK_NEAR(vu.getVu(0), 18.0, 0.05);
 
-        vu.setReferenceDbfs(-20.0f); // K-20 校準
+        vu.setReferenceDbfs(-20.0f); // K-20 calibration
         vu.reset();
         feed(vu, quiet, 512, [](int) {});
-        std::printf("改成 -20 dBFS = 0 VU 後，-24 dBFS 正弦 → %.2f VU（期望 -4）\n\n", vu.getVu(0));
+        std::printf("After changing to -20 dBFS = 0 VU, a -24 dBFS sine -> %.2f VU (expected -4)\n\n", vu.getVu(0));
         DAWLAB_CHECK_NEAR(vu.getVu(0), -4.0, 0.05);
         vu.setReferenceDbfs(-18.0f);
     }
 
-    // ---- 3. 鼓組：VU（平均）遠低於 sample peak，而且幾乎不跟著每一下鼓點跳 ----------------------------
+    // ---- 3. Drums: the VU (average) is far below the sample peak and barely follows each drum hit ------------
     {
         AudioBuffer drums = makeDrumLoop(kSampleRate, 2, 120.0, 0.8f, 2);
         dsp::LevelMeter peakMeter;
         peakMeter.prepare(kSampleRate, 2);
-        peakMeter.setPeakHoldMs(-1.0f); // 無限 hold
+        peakMeter.setPeakHoldMs(-1.0f); // infinite hold
         vu.reset();
         float minVu = 1000.0f, maxVu = -1000.0f;
         std::printf("%8s %10s %10s\n", "time(s)", "VU", "peak dBFS");
@@ -239,29 +240,30 @@ int main() {
                 std::printf("%8.2f %10.2f %10.2f\n", t, vu.getVu(0), peakMeter.getPeakDb(0));
         });
         const float peakDbfs = peakMeter.getPeakHoldDb(0);
-        const float vuAsDbfs = maxVu - 18.0f; // VU 讀數換回 dBFS（以 -18 dBFS = 0 VU）
-        std::printf("鼓組：VU 在 %.2f ~ %.2f 之間擺動（換算 %.2f dBFS），sample peak = %.2f dBFS\n", minVu, maxVu,
+        const float vuAsDbfs = maxVu - 18.0f; // convert the VU reading back to dBFS (with -18 dBFS = 0 VU)
+        std::printf("Drums: the VU swings between %.2f and %.2f (equivalent to %.2f dBFS), sample peak = %.2f dBFS\n", minVu, maxVu,
                     vuAsDbfs, peakDbfs);
-        DAWLAB_CHECK(vuAsDbfs < peakDbfs - 6.0f); // 平均值比峰值低很多（crest factor）
-        // 注意：VU 在鼓點之間的空檔會掉很多（minVu 很低）—— 300 ms 的 ballistics 是「上升與下降一樣慢」，
-        // 而這個鼓組的空檔有好幾百 ms，所以指針確實會落下來。這是正常的 VU 行為。
+        DAWLAB_CHECK(vuAsDbfs < peakDbfs - 6.0f); // the average is far below the peak (crest factor)
+        // Note: the VU falls a lot in the gaps between drum hits (minVu is very low) -- the 300 ms ballistics are "as slow to fall
+        // as to rise", and the gaps in this drum pattern last several hundred ms, so the needle really does drop.
+        // This is normal VU behaviour.
     }
 
-    // ---- 4. 短促的 transient：10 ms 的 0 VU 正弦，VU 指針幾乎不動 -------------------------------------
-    // 這才是「VU 看不到 transient」的正確量法：同樣的位準，持續 10 ms 與持續 1 s 的讀數差很多。
+    // ---- 4. A short transient: a 10 ms 0 VU sine barely moves the VU needle ------------------------
+    // This is the right way to show that "the VU cannot see transients": at the same level, lasting 10 ms vs lasting 1 s gives very different readings.
     {
-        // 10 ms 的正弦之後接 290 ms 靜音：指針有慣性，burst 結束後還會再往上走一小段（約 80 ms 後才到最高點），
-        // 所以要多觀察一段時間才抓得到真正的最大值。
+        // A 10 ms sine followed by 290 ms of silence: the needle has inertia and keeps climbing a little after the burst ends
+        // (peaking about 80 ms later), so we need to observe for a while longer to catch the true maximum.
         std::vector<float> levels(30, -200.0f);
         levels[0] = -18.0f;
         AudioBuffer click = makeToneBursts(1000.0, kSampleRate, levels, 0.01, 1);
         vu.reset();
         float maxNeedle = 0.0f;
-        feed(vu, click, 48, [&](int) { maxNeedle = std::max(maxNeedle, vu.getNeedle(0)); }); // 1 ms 一塊，抓得到最大值
-        std::printf("\n10 ms 的 0 VU 正弦：指針最高 = %.4f（%.2f VU）；持續的同位準正弦會到 0 VU\n", maxNeedle,
+        feed(vu, click, 48, [&](int) { maxNeedle = std::max(maxNeedle, vu.getNeedle(0)); }); // 1 ms per block, so the maximum is caught
+        std::printf("\n10 ms 0 VU sine: needle maximum = %.4f (%.2f VU); a sustained sine at the same level reaches 0 VU\n", maxNeedle,
                     gainToDb(maxNeedle));
-        DAWLAB_CHECK(maxNeedle < 0.25f); // 低於 -12 VU：短促的 transient 幾乎推不動指針
-        DAWLAB_CHECK(maxNeedle > 0.01f); // 但也不是完全沒反應
+        DAWLAB_CHECK(maxNeedle < 0.25f); // below -12 VU: a short transient hardly moves the needle
+        DAWLAB_CHECK(maxNeedle > 0.01f); // but it is not completely unresponsive either
     }
 
     return dawlab::test::summary("l11_ex4");

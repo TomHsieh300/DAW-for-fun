@@ -1,23 +1,26 @@
-// 範例 5：SpectrumAnalyzer 對 pluck sequence 的 ASCII 頻譜（對數頻率軸）
+// Example 5: SpectrumAnalyzer on the pluck sequence, as an ASCII spectrum (logarithmic frequency axis)
 //
-// 示範什麼：
-//   - 模擬 audio callback：每 512 個 sample 呼叫一次 pushBlock()（audio thread 那一側）。
-//   - 模擬 UI timer：每個 block 之後呼叫 computeSpectrum()（UI thread 那一側）；
-//     只有累積了 hop（N/2 = 2048，N = 4096）個新 sample 才會回傳 true，否則 false。
-//   - 在幾個時間點印出 20 Hz .. 20 kHz 的對數頻率軸 ASCII 頻譜，並找出最強的 bin。
-//     A 小調琶音的音高是 110、164.8、220、261.6、329.6 Hz …；Karplus-Strong 撥弦的諧波分布由
-//     初始雜訊決定，所以最強的 bin 通常是某個諧波（基頻的整數倍），不一定是基頻本身。
-//   - 比較 smoothing = 0 與 0.8 的差異（平滑讓畫面穩定但反應慢）。
-//   - 校準：振幅 0.5、正好落在 bin 中心的正弦讀 -6.02 dBFS（coherent gain 正規化）；不在 bin 中心時少
-//     scalloping loss。
-//   - 最後真的開一個 std::thread 當 audio thread，主 thread 當 UI thread，驗證 lock-free FIFO 沒有讀到壞 frame。
-//   重要的數字都有 DAWLAB_CHECK，最後印出 [PASS] / [FAIL]（ctest 也會跑這支）。
+// What it demonstrates:
+//   - Simulating the audio callback: pushBlock() is called once every 512 samples (the audio-thread side).
+//   - Simulating the UI timer: computeSpectrum() is called after every block (the UI-thread side); it returns true
+//     only once a hop's worth of new samples (N/2 = 2048, N = 4096) has accumulated, and false otherwise.
+//   - At a few points in time it prints an ASCII spectrum on a 20 Hz .. 20 kHz logarithmic frequency axis and finds
+//     the strongest bin. The pitches of the A-minor arpeggio are 110, 164.8, 220, 261.6, 329.6 Hz ...; the harmonic
+//     distribution of a Karplus-Strong pluck is determined by the initial noise, so the strongest bin is usually
+//     some harmonic (an integer multiple of the fundamental), not necessarily the fundamental itself.
+//   - Compares smoothing = 0 with 0.8 (smoothing steadies the display but reacts slowly).
+//   - Calibration: a sine of amplitude 0.5 exactly on a bin centre reads -6.02 dBFS (coherent-gain normalization);
+//     off the bin centre it reads lower by the scalloping loss.
+//   - Finally it spawns a real std::thread as the audio thread, with the main thread as the UI thread, to verify
+//     that the lock-free FIFO never yields a corrupted frame.
+//   The important numbers all have DAWLAB_CHECK, and [PASS] / [FAIL] is printed at the end (ctest runs this program too).
 //
-// 怎麼執行：bin/Debug/l11_spectrum_analyzer.exe（不需要參數；可給 argv[1] 指定輸入 WAV）
-// 輸出檔案：dawlab_output/l11_spectrum_plucks.wav
+// How to run: bin/Debug/l11_spectrum_analyzer.exe (no arguments needed; argv[1] may name an input WAV)
+// Output file: dawlab_output/l11_spectrum_plucks.wav
 //
-// 實際的 DAW（第 14 章）裡，pushBlock 在 audio thread、computeSpectrum 在 UI timer（例如 30 Hz）；
-// 兩邊靠 lock-free ring buffer 溝通，前半段為了輸出 deterministic 用單一 thread 依序模擬。
+// In the real DAW (chapter 14), pushBlock runs on the audio thread and computeSpectrum on a UI timer (e.g. 30 Hz);
+// the two sides communicate through a lock-free ring buffer. For deterministic output, the first half here is
+// simulated sequentially on a single thread.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/SpectrumAnalyzer.h>
@@ -37,7 +40,7 @@ namespace {
 
 constexpr int kBlockSize = 512;
 
-// 對數頻率軸：columns 欄，從 fLow 到 fHigh，每欄取範圍內 bin 的最大值
+// Logarithmic frequency axis: `columns` columns from fLow to fHigh, each taking the maximum of the bins in its range
 void plotLogSpectrum(const SpectrumAnalyzer& analyzer, const std::vector<float>& db, double fLow, double fHigh,
                      int columns, int rows, float topDb, float bottomDb) {
     std::vector<float> col(static_cast<size_t>(columns), -200.0f);
@@ -49,7 +52,7 @@ void plotLogSpectrum(const SpectrumAnalyzer& analyzer, const std::vector<float>&
         const int c = std::clamp(static_cast<int>((std::log(f) - logLow) / logRange * columns), 0, columns - 1);
         col[static_cast<size_t>(c)] = std::max(col[static_cast<size_t>(c)], db[static_cast<size_t>(k)]);
     }
-    // 低頻的欄位可能沒有任何 bin（bin 比欄寬）：用左邊最近的值補
+    // A low-frequency column may contain no bin at all (the bin is wider than the column): fill it with the nearest value to the left
     for (int c = 1; c < columns; ++c)
         if (col[static_cast<size_t>(c)] <= -200.0f)
             col[static_cast<size_t>(c)] = col[static_cast<size_t>(c - 1)];
@@ -65,8 +68,8 @@ void plotLogSpectrum(const SpectrumAnalyzer& analyzer, const std::vector<float>&
     std::printf("%9s  20   50  100   200   500   1k    2k    5k   10k  20k Hz\n", "");
 }
 
-// 找最強的 bin。從 30 Hz 以上開始找：Karplus-Strong 撥弦的初始雜訊有 DC 成分，會經由 window 的
-// main lobe 漏到 bin 1、2，不是我們要看的音高。
+// Find the strongest bin, searching only from 30 Hz upward: the initial noise of a Karplus-Strong pluck has a DC
+// component that leaks into bins 1 and 2 through the window's main lobe, and that is not the pitch we want to see.
 int peakBin(const SpectrumAnalyzer& analyzer, const std::vector<float>& db) {
     int best = -1;
     for (int k = 1; k < static_cast<int>(db.size()); ++k) {
@@ -87,7 +90,7 @@ int main(int argc, char** argv) {
         WavData wav;
         std::string err;
         if (!readWav(argv[1], wav, &err)) {
-            std::printf("讀取失敗：%s\n", err.c_str());
+            std::printf("Failed to read: %s\n", err.c_str());
             return 1;
         }
         audio = wav.buffer;
@@ -98,76 +101,76 @@ int main(int argc, char** argv) {
     writeWav(outputPath("l11_spectrum_plucks.wav"), audio, sr);
 
     SpectrumAnalyzer analyzer;
-    analyzer.prepare(sr, 12); // N = 4096 → bin 寬 11.7 Hz，才分得開低音的諧波
+    analyzer.prepare(sr, 12); // N = 4096 -> bin width 11.7 Hz, enough to separate the low harmonics
     analyzer.setWindowType(WindowType::Hann);
     analyzer.setSmoothing(0.8f);
     analyzer.setOverlap(0.5f);
-    std::printf("N = %d，bin 寬 = %.2f Hz，hop = %d samples，window = %s，smoothing = %.1f\n\n",
+    std::printf("N = %d, bin width = %.2f Hz, hop = %d samples, window = %s, smoothing = %.1f\n\n",
                 analyzer.getFftSize(), analyzer.getBinWidthHz(), analyzer.getHopSize(),
                 dsp::windowTypeName(analyzer.getWindowType()), analyzer.getSmoothing());
 
-    const double snapshotTimes[] = {0.15, 1.1, 2.1, 3.1}; // 對應琶音第 1、5、9、13 個音
+    const double snapshotTimes[] = {0.15, 1.1, 2.1, 3.1}; // correspond to the 1st, 5th, 9th and 13th notes of the arpeggio
     size_t nextSnapshot = 0;
     std::vector<float> db;
     int frames = 0, polls = 0;
 
     for (int start = 0; start < audio.getNumSamples(); start += kBlockSize) {
         const int len = std::min(kBlockSize, audio.getNumSamples() - start);
-        analyzer.pushBlock(AudioBlock(audio).getSubBlock(start, len)); // ← audio thread 那一側
+        analyzer.pushBlock(AudioBlock(audio).getSubBlock(start, len)); // <- the audio-thread side
 
         ++polls;
-        if (analyzer.computeSpectrum(db)) // ← UI thread 那一側
+        if (analyzer.computeSpectrum(db)) // <- the UI-thread side
             ++frames;
 
         const double t = (start + len) / sr;
         if (nextSnapshot < 4 && t >= snapshotTimes[nextSnapshot]) {
             const int pk = peakBin(analyzer, db);
-            std::printf("---- t = %.2f s：最大 bin = %d（%.1f Hz，%.1f dBFS）----\n", t, pk,
+            std::printf("---- t = %.2f s: strongest bin = %d (%.1f Hz, %.1f dBFS) ----\n", t, pk,
                         analyzer.getBinFrequency(pk), db[static_cast<size_t>(pk)]);
             plotLogSpectrum(analyzer, db, 20.0, 20000.0, 64, 10, 0.0f, -100.0f);
             std::printf("\n");
             ++nextSnapshot;
         }
     }
-    std::printf("computeSpectrum 被呼叫 %d 次，其中 %d 次有新 frame（hop = %d，block = %d → 每 %d 次 block 一個 frame）\n\n",
+    std::printf("computeSpectrum was called %d times, %d of which produced a new frame (hop = %d, block = %d -> one frame every %d blocks)\n\n",
                 polls, frames, analyzer.getHopSize(), kBlockSize, analyzer.getHopSize() / kBlockSize);
-    // 第一個 frame 在累積滿 N 個 sample 時產生，之後每 hop 個 sample 一個
+    // The first frame is produced once N samples have accumulated, then one per hop samples
     const int expectedFrames = (audio.getNumSamples() - analyzer.getFftSize()) / analyzer.getHopSize() + 1;
     if (audio.getNumSamples() % kBlockSize == 0 && analyzer.getHopSize() % kBlockSize == 0)
         DAWLAB_CHECK(frames == expectedFrames);
 
-    // 沒有新資料 → false
+    // No new data -> false
     std::vector<float> again;
     const bool gotAgain = analyzer.computeSpectrum(again);
-    std::printf("沒有推入新 sample 時 computeSpectrum 回傳 %s\n", gotAgain ? "true" : "false");
+    std::printf("computeSpectrum returns %s when no new samples were pushed\n", gotAgain ? "true" : "false");
     DAWLAB_CHECK(!gotAgain);
 
-    // ---- 校準：bin 中心 vs 不在 bin 中心 --------------------------------------------------------------
+    // ---- Calibration: on a bin centre vs off it -----------------------------------------------------
     {
         SpectrumAnalyzer cal;
         cal.prepare(48000.0, 12);
         cal.setSmoothing(0.0f);
         std::vector<float> calDb;
-        const double centred = 100.0 * cal.getBinWidthHz(); // 1171.875 Hz，正好是 bin 100
+        const double centred = 100.0 * cal.getBinWidthHz(); // 1171.875 Hz, exactly bin 100
         AudioBuffer s1 = makeSine(centred, 48000.0, 0.2, 0.5f, 1);
         cal.pushSamples(s1.getReadPointer(0), s1.getNumSamples());
         cal.computeSpectrum(calDb);
         const float atCentre = calDb[100];
         cal.prepare(48000.0, 12);
         cal.setSmoothing(0.0f);
-        const double between = 100.5 * cal.getBinWidthHz(); // 正好在 bin 100 與 101 中間
+        const double between = 100.5 * cal.getBinWidthHz(); // exactly halfway between bins 100 and 101
         AudioBuffer s2 = makeSine(between, 48000.0, 0.2, 0.5f, 1);
         cal.pushSamples(s2.getReadPointer(0), s2.getNumSamples());
         cal.computeSpectrum(calDb);
         const float halfBin = std::max(calDb[100], calDb[101]);
-        std::printf("\n校準（Hann、N = 4096、振幅 0.5 = -6.02 dBFS）：bin 中心 %.2f dB；偏 0.5 bin %.2f dB"
-                    "（少 %.2f dB = Hann 的 scalloping loss）\n",
+        std::printf("\nCalibration (Hann, N = 4096, amplitude 0.5 = -6.02 dBFS): bin centre %.2f dB; 0.5 bin off %.2f dB"
+                    " (%.2f dB lower = Hann's scalloping loss)\n",
                     atCentre, halfBin, atCentre - halfBin);
         DAWLAB_CHECK_NEAR(atCentre, -6.02, 0.02);
         DAWLAB_CHECK_NEAR(atCentre - halfBin, 1.42, 0.05);
     }
 
-    // smoothing 對比：同一段訊號，α = 0 的頻譜在音符切換時立刻改變；α = 0.8 需要幾個 frame
+    // Smoothing comparison: for the same signal, the spectrum with α = 0 changes instantly when the note changes; with α = 0.8 it takes several frames
     {
         SpectrumAnalyzer fast, slow;
         fast.prepare(sr, 12);
@@ -176,7 +179,7 @@ int main(int argc, char** argv) {
         slow.setSmoothing(0.8f);
         AudioBuffer bursts = makeToneBursts(440.0, sr, {-6.0f, -200.0f}, 0.5, 1);
         std::vector<float> dbFast, dbSlow;
-        std::printf("\nsmoothing 對比：440 Hz 正弦 0.5 s 後突然靜音，觀察 440 Hz bin 的讀數\n");
+        std::printf("\nSmoothing comparison: a 440 Hz sine that suddenly goes silent after 0.5 s; watch the 440 Hz bin\n");
         std::printf("%8s %12s %12s\n", "time(s)", "alpha=0", "alpha=0.8");
         const int bin440 = static_cast<int>(std::lround(440.0 / fast.getBinWidthHz()));
         float prevSlow = 0.0f, lastSlowStep = 0.0f;
@@ -194,29 +197,31 @@ int main(int argc, char** argv) {
                 prevSlow = dbSlow[static_cast<size_t>(bin440)];
             }
         }
-        // 440 Hz 偏離 bin 中心 0.45 bin → Hann 的 scalloping 讓讀數比 -6.02 低約 1.2 dB
-        // 靜音之後 α = 0.8：每個 frame 乘 0.8 → 20·log10(0.8) = -1.94 dB / frame
-        std::printf("α = 0.8 時靜音後每個 frame 下降 %.2f dB（理論 20·log10(0.8) = %.2f dB）\n", lastSlowStep,
+        // 440 Hz is 0.45 bin off the bin centre -> Hann's scalloping makes the reading about 1.2 dB below -6.02
+        // After the silence with α = 0.8: each frame is multiplied by 0.8 -> 20·log10(0.8) = -1.94 dB / frame
+        std::printf("With α = 0.8 each frame after the silence drops %.2f dB (theory: 20·log10(0.8) = %.2f dB)\n", lastSlowStep,
                     -20.0 * std::log10(0.8));
         DAWLAB_CHECK_NEAR(lastSlowStep, -20.0 * std::log10(0.8), 0.05);
         DAWLAB_CHECK(dbFast[static_cast<size_t>(bin440)] <= kMinusInfinityDb);
     }
-    // ---- 真的用兩個 thread：audio thread 推 1 kHz 正弦，UI thread 一直讀 -----------------------------
-    // 沒有 mutex。若 FIFO 寫錯（例如忘了 release/acquire，或沒偵測到被覆寫），UI 端會讀到「新舊混雜」
-    // 的 frame：接縫處的不連續會讓能量漏到整個頻帶。所以我們檢查兩件事：
-    //   (1) 最強的 bin 在 1 kHz；(2) 5 kHz 以上的最大讀數 < -80 dB（乾淨的 Hann frame 遠低於此，
-    //       有接縫的 frame 會高出好幾十 dB）。frame 的數量每次執行都不一樣（取決於 thread 排程）。
+    // ---- Using two real threads: the audio thread pushes a 1 kHz sine while the UI thread keeps reading ----------
+    // No mutex. If the FIFO is wrong (for example a forgotten release/acquire, or overwrites that go undetected), the UI
+    // side reads "old and new mixed" frames: the discontinuity at the seam leaks energy over the whole band. So we check
+    // two things:
+    //   (1) the strongest bin is at 1 kHz; (2) the maximum reading above 5 kHz is < -80 dB (a clean Hann frame is far
+    //       below that, while a frame with a seam is tens of dB higher). The number of frames differs on every run
+    //       (it depends on thread scheduling).
     {
         SpectrumAnalyzer live;
         live.prepare(sr, 11);
         live.setSmoothing(0.0f);
         std::atomic<bool> done{false};
         std::atomic<int> framesSeen{0};
-        int pushedBlocks = 0; // 只有 audio thread 寫；join() 之後主 thread 才讀
+        int pushedBlocks = 0; // only the audio thread writes it; the main thread reads it only after join()
         std::thread audioThread([&] {
             std::vector<float> block(static_cast<size_t>(kBlockSize));
             double phase = 0.0;
-            // 全速推（不照真實時間），直到 UI 端拿到 50 個 frame 為止（上限 20 萬個 block，避免無窮迴圈）
+            // Push at full speed (not in real time) until the UI side has 50 frames (capped at 200000 blocks to avoid an infinite loop)
             for (int b = 0; b < 200000 && framesSeen.load(std::memory_order_relaxed) < 50; ++b, ++pushedBlocks) {
                 for (float& v : block) {
                     v = static_cast<float>(0.5 * std::sin(phase));
@@ -243,13 +248,13 @@ int main(int argc, char** argv) {
                 ++badFrames;
         }
         audioThread.join();
-        std::printf("\n兩個 thread 同時跑：audio thread 推了 %d 個 block（%.1f 秒的音訊），UI 端算了 %d 個 frame，"
-                    "壞 frame %d 個（應為 0）；所有 frame 在 5 kHz 以上的最大讀數 = %.1f dB\n",
+        std::printf("\nTwo threads running at once: the audio thread pushed %d blocks (%.1f seconds of audio), the UI side computed %d frames, "
+                    "%d bad frames (should be 0); the maximum reading above 5 kHz over all frames = %.1f dB\n",
                     pushedBlocks, pushedBlocks * kBlockSize / sr, liveFrames, badFrames, worstHighDb);
         DAWLAB_CHECK(liveFrames > 0);
         DAWLAB_CHECK(badFrames == 0);
     }
 
-    std::printf("\n→ dawlab_output/l11_spectrum_plucks.wav\n");
+    std::printf("\n-> dawlab_output/l11_spectrum_plucks.wav\n");
     return dawlab::test::summary("l11_spectrum_analyzer");
 }

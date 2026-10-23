@@ -1,27 +1,30 @@
-// 練習 5 解答：Loudness Range（LRA，EBU Tech 3342）
+// Exercise 5 solution: Loudness Range (LRA, EBU Tech 3342)
 //
-// LRA 回答的問題是「這首歌大聲的段落和小聲的段落差多少 LU」——也就是 macro dynamics（宏觀動態），
-// 跟 crest factor（峰值 / RMS，micro dynamics）是兩回事。演算法（EBU Tech 3342）：
+// LRA answers the question "how many LU separate the loud passages of the song from the quiet ones" -- that is,
+// macro dynamics, which is a different thing from the crest factor (peak / RMS, micro dynamics). The algorithm
+// (EBU Tech 3342):
 //
-//   1. 以 short-term loudness（3 s 視窗，K-weighting）為原料，每隔一小段時間取一個值
-//      （我們每 100 ms 取一個，跟 LoudnessMeter 的子區塊同步；規範要求 overlap 至少 66%）。
-//      只有「完整的 3 s 視窗」才算數。
-//   2. absolute gate：丟掉 < -70 LUFS 的值。
-//   3. relative gate：算剩下的值的「功率平均」再換回 LUFS，丟掉低於它 20 LU 的值
-//      （注意：integrated loudness 用 -10 LU，LRA 用 -20 LU）。
-//   4. LRA = 剩下的值的第 95 百分位數 − 第 10 百分位數（單位 LU）。
-//      用 10% / 95% 而不是 min / max：避免一聲很短的爆炸聲或一段淡出把 LRA 撐大。
+//   1. Take short-term loudness (3 s window, K-weighting) as the raw material and take one value every so often
+//      (we take one every 100 ms, in sync with LoudnessMeter's sub-blocks; the standard requires at least 66% overlap).
+//      Only "complete 3 s windows" count.
+//   2. Absolute gate: discard values below -70 LUFS.
+//   3. Relative gate: compute the "power average" of the remaining values, convert it back to LUFS, and discard values
+//      more than 20 LU below it (note: integrated loudness uses -10 LU, while LRA uses -20 LU).
+//   4. LRA = the 95th percentile of the remaining values minus the 10th percentile (in LU).
+//      10% / 95% are used instead of min / max so that a very short explosion or a fade-out does not inflate the LRA.
 //
-// 和 LoudnessMeter 一樣，我們不在 audio thread 上存一條越來越長的 vector，而是用 0.1 LU 一格的直方圖：
-// 百分位數直接從累積次數找，誤差最多 0.1 LU，完全不 allocate。
+// As with LoudnessMeter, we do not keep an ever-growing vector on the audio thread; we use a histogram with one bin
+// per 0.1 LU: percentiles are found directly from the cumulative counts, with an error of at most 0.1 LU and no
+// allocation at all.
 //
-// 限制：每次 process() 的 block 長度不可超過 100 ms（4800 samples @ 48 kHz），否則一次 process 會
-// 跨過兩個子區塊、我們只看得到最後一個 short-term 值。實際的 audio callback 遠小於這個長度。
+// Limitation: the block length of each process() call must not exceed 100 ms (4800 samples @ 48 kHz); otherwise one
+// process() would cross two sub-blocks and we would only see the last short-term value. Real audio callbacks are far
+// shorter than this.
 //
-// 驗證（EBU Tech 3342 的測試訊號）：1 kHz 正弦，前 20 s 在位準 A、後 20 s 在位準 B，
-//   -20 / -30 dBFS → LRA = 10 ± 1 LU；-20 / -15 → 5 ± 1；-40 / -20 → 20 ± 1；固定位準 → 0。
+// Verification (the EBU Tech 3342 test signals): a 1 kHz sine, level A for the first 20 s and level B for the last 20 s,
+//   -20 / -30 dBFS -> LRA = 10 ± 1 LU; -20 / -15 -> 5 ± 1; -40 / -20 -> 20 ± 1; constant level -> 0.
 //
-// 執行：bin/Debug/l11_ex5_solution.exe（ctest label: solution）
+// Run: bin/Debug/l11_ex5_solution.exe (ctest label: solution)
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/LoudnessMeter.h>
@@ -61,15 +64,15 @@ public:
         lra_.store(0.0f, std::memory_order_relaxed);
     }
 
-    // audio thread（block 長度 <= 100 ms）
+    // Audio thread (block length <= 100 ms)
     void process(const AudioBlock& block) noexcept {
         meter_.process(block);
         const uint32_t updates = meter_.getUpdateCount();
         if (updates == lastUpdate_)
-            return; // 這個 block 沒有完成新的 100 ms 子區塊
+            return; // this block did not complete a new 100 ms sub-block
         lastUpdate_ = updates;
         if (updates < static_cast<uint32_t>(kFullShortTermSteps))
-            return; // 前 3 s：short-term 視窗還沒填滿，不算
+            return; // first 3 s: the short-term window is not full yet, so it doesn't count
         const float st = meter_.getShortTermLufs();
         if (st <= kAbsoluteGateLufs)
             return; // absolute gate
@@ -81,7 +84,7 @@ public:
     float getLoudnessRangeLu() const noexcept { return lra_.load(std::memory_order_relaxed); }
     float getIntegratedLufs() const noexcept { return meter_.getIntegratedLufs(); }
 
-    // 除錯 / 教學用：最近一次計算的 10% 與 95% 位置
+    // For debugging / teaching: the 10% and 95% positions from the most recent computation
     float getLowLufs() const noexcept { return lowLufs_; }
     float getHighLufs() const noexcept { return highLufs_; }
 
@@ -94,7 +97,7 @@ private:
     static float binCentre(int b) noexcept { return kMinLufs + (static_cast<float>(b) + 0.5f) * kStepLu; }
 
     float computeLra() noexcept {
-        // relative gate：功率平均（不是 dB 平均！）
+        // Relative gate: a power average (not a dB average!)
         double sumPower = 0.0;
         uint64_t count = 0;
         for (int b = 0; b < kBins; ++b) {
@@ -108,7 +111,7 @@ private:
             return 0.0f;
         const float gate = LoudnessMeter::powerToLufs(sumPower / static_cast<double>(count)) + kRelativeGateLu;
 
-        // 通過 relative gate 的總數
+        // Total count that passes the relative gate
         const int firstBin = std::clamp(static_cast<int>(std::ceil((gate - kMinLufs) / kStepLu - 0.5f)), 0, kBins);
         uint64_t gated = 0;
         for (int b = firstBin; b < kBins; ++b)
@@ -116,7 +119,7 @@ private:
         if (gated == 0)
             return 0.0f;
 
-        // 百分位數：累積次數第一次 >= p·total 的那一格
+        // Percentile: the bin where the cumulative count first reaches >= p·total
         auto percentile = [&](float p) {
             const double target = std::max(1.0, std::ceil(p * static_cast<double>(gated)));
             uint64_t acc = 0;
@@ -156,7 +159,7 @@ int main() {
     LoudnessRangeMeter meter;
     meter.prepare(kSampleRate, 2);
 
-    // ---- EBU Tech 3342 風格的測試：兩段 20 s 的立體聲 1 kHz 正弦 ------------------------------------
+    // ---- EBU Tech 3342-style test: two 20 s sections of a stereo 1 kHz sine ----------------------------
     struct Case {
         float levelA, levelB, expectedLra;
     };
@@ -172,29 +175,29 @@ int main() {
         DAWLAB_CHECK_NEAR(lra, c.expectedLra, 1.0);
     }
 
-    // ---- 固定位準 → LRA ≈ 0 -----------------------------------------------------------------------
+    // ---- Constant level -> LRA ≈ 0 ----------------------------------------------------------------
     {
         AudioBuffer steady = makeSine(1000.0, kSampleRate, 10.0, dbToGain(-20.0f), 2);
         const float lra = measureLra(meter, steady);
-        std::printf("\n固定 -20 dBFS 的正弦 10 s → LRA = %.2f LU（期望 0）\n", lra);
+        std::printf("\nConstant -20 dBFS sine for 10 s -> LRA = %.2f LU (expected 0)\n", lra);
         DAWLAB_CHECK_NEAR(lra, 0.0, 0.2);
     }
 
-    // ---- 中間夾一段很長的靜音：absolute gate 讓靜音不影響 LRA -----------------------------------------
+    // ---- A long stretch of silence in the middle: the absolute gate keeps it from affecting the LRA --------
     {
         AudioBuffer withSilence = makeToneBursts(1000.0, kSampleRate, {-20.0f, -200.0f, -30.0f}, 20.0, 2);
         const float lra = measureLra(meter, withSilence);
-        std::printf("-20 dBFS 20 s → 靜音 20 s → -30 dBFS 20 s：LRA = %.2f LU（靜音被 absolute gate 擋掉，仍約 10）\n",
+        std::printf("-20 dBFS 20 s -> silence 20 s -> -30 dBFS 20 s: LRA = %.2f LU (the silence is blocked by the absolute gate, still about 10)\n",
                     lra);
         DAWLAB_CHECK_NEAR(lra, 10.0, 1.0);
     }
 
-    // ---- 很小聲的一段（比主體低 30 LU）：relative gate 把它排除 ----------------------------------------
+    // ---- A very quiet section (30 LU below the main body): the relative gate excludes it --------------------
     {
         AudioBuffer quietTail = makeToneBursts(1000.0, kSampleRate, {-20.0f, -20.0f, -50.0f}, 10.0, 2);
         const float lra = measureLra(meter, quietTail);
-        std::printf("-20 dBFS 20 s → -50 dBFS 10 s：LRA = %.2f LU（-50 那段低於 relative gate 20 LU，被排除；"
-                    "只剩過渡區的少數值）\n",
+        std::printf("-20 dBFS 20 s -> -50 dBFS 10 s: LRA = %.2f LU (the -50 section is more than 20 LU below the relative gate and is excluded; "
+                    "only a few values in the transition region remain)\n",
                     lra);
         DAWLAB_CHECK(lra < 5.0f);
     }

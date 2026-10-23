@@ -1,29 +1,31 @@
 #pragma once
-// 第 11 章：LoudnessMeter —— ITU-R BS.1770-4 / EBU R128 的 loudness 量測（LUFS）。
+// Chapter 11: LoudnessMeter -- ITU-R BS.1770-4 / EBU R128 loudness measurement (LUFS).
 //
-// 流程（每個 channel 各自做前兩步）：
-//   1. K-weighting：兩級 biquad（第 02 章 Biquad）
-//        stage 1：高頻 shelf（+4 dB、約 1.68 kHz 以上），模擬頭部的聲學效應
-//        stage 2：highpass（約 38 Hz），拿掉聽不太到的極低頻
-//   2. mean square：每個 400 ms 的 block（gating block）算 z_i = (1/T) Σ y_i[n]^2
-//      block 之間 overlap 75%，也就是每 100 ms 產生一個新的 block
-//   3. 把各 channel 加權相加後換成 LUFS：
+// Pipeline (the first two steps are done per channel):
+//   1. K-weighting: two biquad stages (the chapter 02 Biquad)
+//        stage 1: high shelf (+4 dB above roughly 1.68 kHz), modelling the acoustic effect of the head
+//        stage 2: highpass (about 38 Hz), removing the very low frequencies we barely hear
+//   2. Mean square: for each 400 ms block (gating block), compute z_i = (1/T) Σ y_i[n]^2.
+//      Blocks overlap by 75%, i.e. a new block is produced every 100 ms.
+//   3. Weight and sum the channels, then convert to LUFS:
 //        L = −0.691 + 10·log10( Σ_i G_i · z_i )
-//      G_i：L、R、C = 1.0；Ls、Rs = 1.41（+1.5 dB）；LFE 不計
-//   4. momentary  = 最近 400 ms（一個 block）
-//      short-term = 最近 3 s（30 個 100 ms 子區塊的平均）
-//      integrated = 所有 block 經過兩道 gate 後的平均：
-//          absolute gate：丟掉 < −70 LUFS 的 block
-//          relative gate：丟掉 < (通過 absolute gate 的平均 − 10 LU) 的 block
+//      G_i: L, R, C = 1.0; Ls, Rs = 1.41 (+1.5 dB); LFE is excluded
+//   4. momentary   = the last 400 ms (one block)
+//      short-term  = the last 3 s (average of thirty 100 ms sub-blocks)
+//      integrated  = the average of all blocks after two gates:
+//          absolute gate: discard blocks below −70 LUFS
+//          relative gate: discard blocks below (mean of the blocks that passed the absolute gate − 10 LU)
 //
-// 實作上我們以 100 ms 為單位累積 mean square（子區塊），400 ms block = 最近 4 個子區塊，
-// 3 s = 最近 30 個子區塊，這樣每個 sample 只要做一次平方累加。
+// In the implementation we accumulate the mean square in 100 ms units (sub-blocks): a 400 ms block is
+// the latest 4 sub-blocks and 3 s is the latest 30 sub-blocks, so each sample needs only one
+// square-and-accumulate.
 //
-// integrated 的 gating 需要「所有 block 的 loudness」——若用 vector 存會在 audio thread allocate。
-// 這裡用直方圖（histogram）：把 [−70, +10) LUFS 以 0.1 LU 切成 800 格，每格記錄 block 數與
-// mean-square 總和；relative gate 以格的中心值判斷，誤差最多 0.05 LU，而且完全不 allocate。
+// The integrated gating needs "the loudness of every block" -- storing them in a vector would allocate
+// on the audio thread. Instead we use a histogram: [−70, +10) LUFS is divided into 800 bins of 0.1 LU,
+// and each bin records the block count and the sum of mean squares. The relative gate is judged at the
+// bin centre, with an error of at most 0.05 LU, and nothing is ever allocated.
 //
-// 所有 getter 都讀 std::atomic（relaxed），UI thread 可以直接讀。
+// All getters read std::atomic (relaxed), so the UI thread can read them directly.
 
 #include <dawlab/AudioBuffer.h>
 #include <dawlab/DspMath.h>
@@ -43,37 +45,42 @@ class LoudnessMeter {
 public:
     static constexpr float kAbsoluteGateLufs = -70.0f;
     static constexpr float kRelativeGateLu = -10.0f;
-    static constexpr double kBlockSeconds = 0.4;   // gating block 長度
-    static constexpr double kStepSeconds = 0.1;    // 75% overlap → 每 100 ms 一個新 block
+    static constexpr double kBlockSeconds = 0.4;   // gating block length
+    static constexpr double kStepSeconds = 0.1;    // 75% overlap -> a new block every 100 ms
     static constexpr int kBlockSteps = 4;          // 400 ms / 100 ms
     static constexpr int kShortTermSteps = 30;     // 3 s / 100 ms
-    static constexpr float kLufsOffset = -0.691f;  // 補償 K-weighting 在 1 kHz 的增益（約 +0.691 dB）
+    static constexpr float kLufsOffset = -0.691f;  // compensates the K-weighting gain at 1 kHz (about +0.691 dB)
     static constexpr int kMaxChannels = 8;
 
-    // ---- K-weighting 係數 ----------------------------------------------------------------
-    // ITU-R BS.1770-4 的 Table 1 / Table 2 只列出 48 kHz 的係數（a0 已正規化為 1）：
+    // ---- K-weighting coefficients ----------------------------------------------------------
+    // Table 1 / Table 2 of ITU-R BS.1770-4 list coefficients for 48 kHz only (a0 normalized to 1):
     //
-    //   stage 1（pre-filter，高頻 shelf）  b0 =  1.53512485958697  b1 = -2.69169618940638  b2 = 1.19839281085285
-    //                                     a1 = -1.69065929318241  a2 =  0.73248077421585
-    //   stage 2（RLB weighting，highpass） b0 =  1.0               b1 = -2.0               b2 = 1.0
-    //                                     a1 = -1.99004745483398  a2 =  0.99007225036621
+    //   stage 1 (pre-filter, high shelf)   b0 =  1.53512485958697  b1 = -2.69169618940638  b2 = 1.19839281085285
+    //                                      a1 = -1.69065929318241  a2 =  0.73248077421585
+    //   stage 2 (RLB weighting, highpass)  b0 =  1.0               b1 = -2.0               b2 = 1.0
+    //                                      a1 = -1.99004745483398  a2 =  0.99007225036621
     //
-    // 規範沒有給其他取樣率的係數，必須從「類比原型」重新設計：
+    // The standard gives no coefficients for other sample rates; they must be redesigned from the
+    // "analog prototype":
     //
-    //   stage 1：H1(s) = (Vh·s² + Vb·s/Q + 1) / (s² + s/Q + 1)   Vh = 10^(G/20)，Vb = Vh^0.49967
-    //            f0 = 1681.974 Hz，G = 3.9998 dB，Q = 0.70718
-    //            s → 0（DC）增益 1、s → ∞（高頻）增益 Vh ≈ +4 dB：這是 high shelf
-    //   stage 2：H2(s) = s² / (s² + s/Q + 1)                     f0 = 38.135 Hz，Q = 0.50033
+    //   stage 1: H1(s) = (Vh·s² + Vb·s/Q + 1) / (s² + s/Q + 1)   Vh = 10^(G/20), Vb = Vh^0.49967
+    //            f0 = 1681.974 Hz, G = 3.9998 dB, Q = 0.70718
+    //            gain is 1 as s → 0 (DC) and Vh ≈ +4 dB as s → ∞ (high frequencies): a high shelf
+    //   stage 2: H2(s) = s² / (s² + s/Q + 1)                     f0 = 38.135 Hz, Q = 0.50033
     //
-    //   s 已對 ω0 = 2π f0 正規化。bilinear transform 用 s = (1/K)·(1 − z⁻¹)/(1 + z⁻¹)，K = tan(π f0 / fs)
-    //   （這個 K 讓 f0 剛好映射到 f0，不會被頻率扭曲移走）。代入 H1 後上下同乘 K²(1 + z⁻¹)²：
-    //     分子 = Vh(1 − z⁻¹)² + Vb(K/Q)(1 − z⁻¹)(1 + z⁻¹) + K²(1 + z⁻¹)²
-    //     分母 =   (1 − z⁻¹)² +    (K/Q)(1 − z⁻¹)(1 + z⁻¹) + K²(1 + z⁻¹)²
-    //   展開成 z⁻¹ 的多項式就是 makeKWeightingStage1() 裡的 b0 = (Vh + Vb·K/Q + K²)/a0 等式子。
+    //   s is normalized to ω0 = 2π f0. The bilinear transform uses s = (1/K)·(1 − z⁻¹)/(1 + z⁻¹) with
+    //   K = tan(π f0 / fs) (this K maps f0 exactly onto f0, so frequency warping does not move it).
+    //   Substituting into H1 and multiplying numerator and denominator by K²(1 + z⁻¹)²:
+    //     numerator   = Vh(1 − z⁻¹)² + Vb(K/Q)(1 − z⁻¹)(1 + z⁻¹) + K²(1 + z⁻¹)²
+    //     denominator =   (1 − z⁻¹)² +    (K/Q)(1 − z⁻¹)(1 + z⁻¹) + K²(1 + z⁻¹)²
+    //   Expanding into polynomials in z⁻¹ gives the expressions in makeKWeightingStage1(), such as
+    //   b0 = (Vh + Vb·K/Q + K²)/a0.
     //
-    // 這組原型參數是從 48 kHz 標準係數反推出來的（libebur128 也用同一組）；代入 48 kHz 會還原出上表
-    // （誤差 < 1e-10，範例 loudness_verify 會驗證），代入 44.1 / 96 kHz 則得到同一條曲線。
-    // 注意 stage 1 不是 RBJ cookbook 的 shelf：RBJ 的 corner 定義在「增益一半」處，兩者參數不能互換。
+    // These prototype parameters were back-derived from the 48 kHz standard coefficients (libebur128 uses
+    // the same set); plugging in 48 kHz reproduces the table above (error < 1e-10, checked by the
+    // loudness_verify example), and plugging in 44.1 / 96 kHz gives the same response curve.
+    // Note that stage 1 is not the RBJ cookbook shelf: RBJ defines the corner at "half the gain", so the
+    // two parameter sets are not interchangeable.
     static constexpr double kStage1Hz = 1681.974450955533;
     static constexpr double kStage1Q = 0.7071752369554196;
     static constexpr double kStage1GainDb = 3.999843853973347;
@@ -81,13 +88,13 @@ public:
     static constexpr double kStage2Hz = 38.13547087602444;
     static constexpr double kStage2Q = 0.5003270373238773;
 
-    // 48 kHz 的標準係數表（b0, b1, b2, a1, a2），給驗證與教學用
+    // The standard 48 kHz coefficient tables (b0, b1, b2, a1, a2), for verification and teaching
     static constexpr double kStage1Table48k[5] = {1.53512485958697, -2.69169618940638, 1.19839281085285,
                                                   -1.69065929318241, 0.73248077421585};
     static constexpr double kStage2Table48k[5] = {1.0, -2.0, 1.0, -1.99004745483398, 0.99007225036621};
 
     static BiquadCoefficients makeKWeightingStage1(double sampleRate) noexcept {
-        const double K = std::tan(kPi * kStage1Hz / sampleRate); // bilinear transform 的頻率映射
+        const double K = std::tan(kPi * kStage1Hz / sampleRate); // frequency mapping of the bilinear transform
         const double Vh = std::pow(10.0, kStage1GainDb / 20.0);
         const double Vb = std::pow(Vh, kStage1VbExponent);
         const double a0 = 1.0 + K / kStage1Q + K * K;
@@ -100,8 +107,9 @@ public:
         return c;
     }
 
-    // 規範的 Table 2 分子固定是 1, -2, 1（沒有除以 a0），所以高頻增益是 a0 ≈ +0.043 dB 而不是精確的 0 dB；
-    // 我們照規範做，這一點點增益已經包含在 -0.691 的補償裡。
+    // The numerator of the standard's Table 2 is fixed at 1, -2, 1 (not divided by a0), so the high-frequency
+    // gain is a0 ≈ +0.043 dB rather than exactly 0 dB; we follow the standard, and that little bit of gain
+    // is already included in the -0.691 offset.
     static BiquadCoefficients makeKWeightingStage2(double sampleRate) noexcept {
         const double K = std::tan(kPi * kStage2Hz / sampleRate);
         const double a0 = 1.0 + K / kStage2Q + K * K;
@@ -114,16 +122,16 @@ public:
         return c;
     }
 
-    // mean square（已加權相加）→ LUFS
+    // mean square (already weighted and summed) -> LUFS
     static float powerToLufs(double weightedMeanSquare) noexcept {
-        if (weightedMeanSquare <= 1e-15) // 約 -150 dB，視為靜音
+        if (weightedMeanSquare <= 1e-15) // about -150 dB, treated as silence
             return kMinusInfinityDb;
         return kLufsOffset + static_cast<float>(10.0 * std::log10(weightedMeanSquare));
     }
 
     static double lufsToPower(float lufs) noexcept { return std::pow(10.0, (lufs - kLufsOffset) / 10.0); }
 
-    // ---- 標準介面 -------------------------------------------------------------------------
+    // ---- Standard interface ---------------------------------------------------------------
     void prepare(double sampleRate, int numChannels) {
         assert(sampleRate > 0.0 && numChannels > 0 && numChannels <= kMaxChannels);
         sampleRate_ = sampleRate;
@@ -158,7 +166,7 @@ public:
         updateCount_.store(0u, std::memory_order_relaxed);
     }
 
-    // 各 channel 的加權（預設全部 1.0）。5.1 的 Ls / Rs 應設 1.41，LFE 設 0。
+    // Per-channel weights (all 1.0 by default). For 5.1, set Ls / Rs to 1.41 and LFE to 0.
     void setChannelWeight(int channel, float weight) noexcept {
         if (channel >= 0 && channel < kMaxChannels)
             channelWeights_[static_cast<size_t>(channel)] = weight;
@@ -167,13 +175,13 @@ public:
         return (channel >= 0 && channel < kMaxChannels) ? channelWeights_[static_cast<size_t>(channel)] : 0.0f;
     }
 
-    // audio thread：不 allocate、不鎖
+    // Audio thread: no allocation, no locks
     void process(const AudioBlock& block) noexcept {
         const int nch = std::min(numChannels_, block.getNumChannels());
         const int n = block.getNumSamples();
         for (int i = 0; i < n; ++i) {
             for (int ch = 0; ch < nch; ++ch) {
-                // K-weighting：兩級 biquad 串接
+                // K-weighting: two biquads in series
                 const float y = stage2_.processSample(ch, stage1_.processSample(ch, block.getSample(ch, i)));
                 stepAccumulators_[static_cast<size_t>(ch)] += static_cast<double>(y) * y;
             }
@@ -186,11 +194,13 @@ public:
     float getMomentaryLufs() const noexcept { return momentary_.load(std::memory_order_relaxed); }   // 400 ms
     float getShortTermLufs() const noexcept { return shortTerm_.load(std::memory_order_relaxed); }   // 3 s
     float getIntegratedLufs() const noexcept { return integrated_.load(std::memory_order_relaxed); } // gated
-    // 最大值：只統計完整的視窗（max momentary 從第 400 ms、max short-term 從第 3 s 開始更新），之前回傳 kMinusInfinityDb
+    // Maxima: only complete windows count (max momentary starts updating at 400 ms, max short-term at 3 s);
+    // before that they return kMinusInfinityDb
     float getMaxMomentaryLufs() const noexcept { return maxMomentary_.load(std::memory_order_relaxed); }
     float getMaxShortTermLufs() const noexcept { return maxShortTerm_.load(std::memory_order_relaxed); }
 
-    // 每 100 ms（每個子區塊結束）+1。UI 或練習（例如 LRA）可以用它判斷 short-term 值是否更新了。
+    // Incremented every 100 ms (at the end of each sub-block). A UI or an exercise (e.g. LRA) can use it to
+    // tell whether the short-term value has been updated.
     uint32_t getUpdateCount() const noexcept { return updateCount_.load(std::memory_order_relaxed); }
 
     double getSampleRate() const noexcept { return sampleRate_; }
@@ -202,7 +212,8 @@ private:
     static constexpr float kHistogramMinLufs = -70.0f;
     static constexpr float kHistogramStepLu = 0.1f;
 
-    // 一個 100 ms 子區塊結束：把各 channel 的平方和加權相加後放進 ring，更新三種 loudness
+    // A 100 ms sub-block has ended: weight and sum the per-channel sums of squares, put the result into the
+    // ring, and update the three loudness values
     void finishStep() noexcept {
         double weighted = 0.0;
         for (int ch = 0; ch < numChannels_; ++ch) {
@@ -211,12 +222,12 @@ private:
             stepAccumulators_[static_cast<size_t>(ch)] = 0.0;
         }
         stepSampleCount_ = 0;
-        stepRing_[static_cast<size_t>(ringPos_)] = weighted; // 這格存的是「平方總和」，還沒除以 sample 數
+        stepRing_[static_cast<size_t>(ringPos_)] = weighted; // this slot holds the sum of squares, not yet divided by the sample count
         ringPos_ = (ringPos_ + 1) % kShortTermSteps;
         if (stepsSeen_ < kShortTermSteps)
             ++stepsSeen_;
 
-        // momentary：最近 4 個子區塊；short-term：最近 30 個（不足時用目前累積到的數量）
+        // momentary: the latest 4 sub-blocks; short-term: the latest 30 (fewer if not that many have accumulated yet)
         const int momentarySteps = std::min(stepsSeen_, kBlockSteps);
         const int shortTermSteps = stepsSeen_;
         double sumM = 0.0, sumS = 0.0;
@@ -233,15 +244,17 @@ private:
         const float shortTermLufs = powerToLufs(shortTermPower);
         momentary_.store(momentaryLufs, std::memory_order_relaxed);
         shortTerm_.store(shortTermLufs, std::memory_order_relaxed);
-        // 最大值只在「視窗已經填滿」之後才更新：開頭不到 400 ms / 3 s 時只平均了 1~3 個（或不到 30 個）子區塊，
-        // 一個剛好落在開頭的強 transient 會被高估（例如 100 ms 的 burst 只平均 100 ms 而不是 400 ms，高 6 dB），
-        // 而且結果會隨內容在串流中的位置改變。momentary / short-term 的即時讀數則照常顯示，讓 UI 一開始就有反應。
+        // The maxima are updated only once the window is full: in the first 400 ms / 3 s only 1-3 (or fewer
+        // than 30) sub-blocks are averaged, so a strong transient right at the start would be overestimated
+        // (e.g. a 100 ms burst averaged over 100 ms instead of 400 ms reads 6 dB too high), and the result
+        // would depend on where the content sits in the stream. The live momentary / short-term readings are
+        // still shown as usual so the UI reacts from the very beginning.
         if (stepsSeen_ >= kBlockSteps && momentaryLufs > maxMomentary_.load(std::memory_order_relaxed))
             maxMomentary_.store(momentaryLufs, std::memory_order_relaxed);
         if (stepsSeen_ >= kShortTermSteps && shortTermLufs > maxShortTerm_.load(std::memory_order_relaxed))
             maxShortTerm_.store(shortTermLufs, std::memory_order_relaxed);
 
-        // integrated：只有「完整的 400 ms block」才算 gating block
+        // integrated: only a complete 400 ms block counts as a gating block
         if (stepsSeen_ >= kBlockSteps && momentaryLufs > kAbsoluteGateLufs) {
             int bin = static_cast<int>(std::floor((momentaryLufs - kHistogramMinLufs) / kHistogramStepLu));
             bin = std::clamp(bin, 0, kHistogramBins - 1);
@@ -253,7 +266,8 @@ private:
     }
 
     float computeIntegrated() const noexcept {
-        // 第一道：absolute gate 已經在放進直方圖時過濾了。先算通過 absolute gate 的平均
+        // First gate: the absolute gate was already applied when blocks went into the histogram. Compute the
+        // mean of the blocks that passed it
         double sumPower = 0.0;
         uint64_t count = 0;
         for (int b = 0; b < kHistogramBins; ++b) {
@@ -263,7 +277,7 @@ private:
         if (count == 0)
             return kMinusInfinityDb;
         const float relativeGate = powerToLufs(sumPower / static_cast<double>(count)) + kRelativeGateLu;
-        // 第二道：relative gate（以格中心值判斷）
+        // Second gate: the relative gate (judged at the bin centre)
         double gatedPower = 0.0;
         uint64_t gatedCount = 0;
         for (int b = 0; b < kHistogramBins; ++b) {

@@ -1,33 +1,36 @@
 #pragma once
-// 第 11 章：SpectrumAnalyzer —— audio thread 推 sample、UI thread 算頻譜，中間用 lock-free FIFO。
+// Chapter 11: SpectrumAnalyzer -- the audio thread pushes samples, the UI thread computes the spectrum,
+// and a lock-free FIFO sits in between.
 //
-// 架構（single-producer / single-consumer）：
+// Architecture (single-producer / single-consumer):
 //
-//   audio thread                      ring buffer (2 的冪次, = 4N)                  UI thread
-//   pushSamples() ──store samples──▶ [ . . . . x x x x x x x x . . . ] ──copy 最近 N 個──▶ computeSpectrum()
-//     1. writeEnd_ = pos + n（公告「要寫到哪」）+ release fence           1. writePos_ (acquire) → 決定 start
-//     2. 寫 sample（relaxed）                                            2. 複製 [start, start + N)
-//     3. writePos_ = pos + n（release，公告「寫完了」）                   3. acquire fence → 讀 writeEnd_
+//   audio thread                      ring buffer (power of 2, = 4N)                UI thread
+//   pushSamples() ──store samples──▶ [ . . . . x x x x x x x x . . . ] ──copy latest N──▶ computeSpectrum()
+//     1. writeEnd_ = pos + n (announce "how far I will write") + release fence   1. writePos_ (acquire) -> decide start
+//     2. write the samples (relaxed)                                             2. copy [start, start + N)
+//     3. writePos_ = pos + n (release, announce "done writing")                  3. acquire fence -> read writeEnd_
 //
-// - producer 只寫 ring、writeEnd_ 與 writePos_，consumer 只讀：不需要 mutex。
-// - consumer 每次都取「最新的 N 個 sample」而不是依序消費，所以 UI 慢了也不會越落後越多，
-//   只會跳過中間的 frame。
-// - 覆寫偵測：consumer 複製完之後看 writeEnd_。只要 writeEnd_ − start > 容量，就表示 producer
-//   （可能是一個還沒結束的 push）已經開始寫會繞回 [start, start + N) 的位置，這一 frame 作廢。
-//   只看 writePos_ 不夠：進行中的 push 可能已經覆寫了一部分，writePos_ 卻還是舊值。
-//   什麼時候會發生？一次 push 的長度 n 加上 N 超過容量 4N（例如 N = 64、block 512），
-//   或 UI thread 在複製到一半時被作業系統暫停太久。
-// - ring 的元素是 std::atomic<float>（relaxed）：兩個 thread 同時讀寫同一塊記憶體在 C++ 記憶體模型裡
-//   必須是 atomic 才不是 data race；在 x86 / ARM 上 relaxed 的 float 讀寫就是普通的 load / store。
+// - The producer only writes the ring, writeEnd_ and writePos_; the consumer only reads them: no mutex is needed.
+// - The consumer always takes "the latest N samples" instead of consuming in order, so a slow UI does not fall
+//   further and further behind; it simply skips the intermediate frames.
+// - Overwrite detection: after copying, the consumer looks at writeEnd_. If writeEnd_ - start > capacity, the
+//   producer (possibly in a push that has not finished yet) has started writing far enough to wrap around onto
+//   [start, start + N), and this frame is discarded. Looking at writePos_ alone is not enough: a push in
+//   progress may already have overwritten part of the region while writePos_ still holds the old value.
+//   When can this happen? When one push of length n plus N exceeds the capacity 4N (e.g. N = 64, block 512),
+//   or when the UI thread is suspended by the OS for too long in the middle of copying.
+// - The ring elements are std::atomic<float> (relaxed): in the C++ memory model two threads touching the same
+//   memory at once must use atomics to avoid a data race; on x86 / ARM a relaxed float access is just an
+//   ordinary load / store.
 //
-// computeSpectrum() 的頻譜後處理：
-//   1. 乘上 window（預設 Hann）
-//   2. forwardReal → N/2+1 個 bin
-//   3. 正規化：振幅 A 的正弦（正好在 bin 中心）→ |X[k]| = A · N · CG / 2（CG = coherent gain）
-//      所以 A = 2|X[k]| / (N·CG)；DC 與 Nyquist 沒有鏡像 bin，係數是 1 而不是 2。
-//      如此 full-scale 正弦讀 0 dBFS。
-//   4. exponential averaging（線性域）：s[k] = α·s[k] + (1-α)·m[k]，α = smoothing
-//   5. 轉 dB
+// Post-processing in computeSpectrum():
+//   1. Multiply by the window (Hann by default)
+//   2. forwardReal -> N/2+1 bins
+//   3. Normalize: a sinusoid of amplitude A (exactly on a bin centre) -> |X[k]| = A · N · CG / 2 (CG = coherent gain)
+//      so A = 2|X[k]| / (N·CG); DC and Nyquist have no mirror bin, so their factor is 1 instead of 2.
+//      This makes a full-scale sinusoid read 0 dBFS.
+//   4. Exponential averaging (linear domain): s[k] = α·s[k] + (1-α)·m[k], α = smoothing
+//   5. Convert to dB
 
 #include <dawlab/AudioBuffer.h>
 #include <dawlab/DspMath.h>
@@ -46,7 +49,7 @@ namespace dawlab::dsp {
 
 class SpectrumAnalyzer {
 public:
-    // 會 allocate。fftOrder = 11 → N = 2048，48 kHz 時 bin 解析度 23.4 Hz。
+    // Allocates. fftOrder = 11 -> N = 2048, a bin resolution of 23.4 Hz at 48 kHz.
     void prepare(double sampleRate, int fftOrder = 11) {
         assert(sampleRate > 0.0 && fftOrder >= 4 && fftOrder <= 16);
         sampleRate_ = sampleRate;
@@ -68,27 +71,29 @@ public:
         updateHop();
     }
 
-    // UI thread：清掉平滑狀態（不清 ring）
+    // UI thread: clear the smoothing state (the ring is not cleared)
     void reset() noexcept {
         std::fill(smoothed_.begin(), smoothed_.end(), 0.0f);
         primed_ = false;
     }
 
-    // 以下三個 setter 在 UI thread 呼叫（computeSpectrum 的同一個 thread）
+    // The three setters below are called on the UI thread (the same thread as computeSpectrum)
     void setWindowType(WindowType type) {
         windowType_ = type;
         rebuildWindow();
     }
-    // 0 = 不平滑；0.8 左右看起來穩定又不至於太慢。α 是「舊值的比重」。
+    // 0 = no smoothing; around 0.8 looks steady without being too slow. α is the weight of the old value.
     void setSmoothing(float alpha) noexcept { smoothing_ = std::clamp(alpha, 0.0f, 0.99f); }
-    // 相鄰 frame 的重疊比例（0 ~ 0.9），預設 0.5 → 每累積 N/2 個新 sample 才算下一個 frame
+    // Overlap fraction between adjacent frames (0 ~ 0.9); the default 0.5 -> the next frame is computed only after
+    // another N/2 new samples have accumulated
     void setOverlap(float fraction) noexcept {
         overlap_ = std::clamp(fraction, 0.0f, 0.9f);
         updateHop();
     }
 
-    // ---- audio thread（lock-free、不 allocate）-------------------------------------------
-    // 一次可以推任意長度（n 很大時 ring 只會留下最後 4N 個 sample，正好是 consumer 需要的）。
+    // ---- audio thread (lock-free, no allocation) -----------------------------------------
+    // May push any length at once (for very large n the ring keeps only the last 4N samples, which is exactly what
+    // the consumer needs).
     void pushSamples(const float* x, int n) noexcept {
         if (!ring_ || n <= 0)
             return;
@@ -98,7 +103,7 @@ public:
         endWrite(pos, n);
     }
 
-    // 多聲道 block：各 channel 平均成 mono 後推入
+    // Multichannel block: average the channels down to mono, then push
     void pushBlock(const AudioBlock& block) noexcept {
         const int nch = block.getNumChannels();
         const int n = block.getNumSamples();
@@ -116,45 +121,48 @@ public:
     }
 
     // ---- UI thread ----------------------------------------------------------------------
-    // 回傳 true 並填入 N/2+1 個 bin 的 dBFS；沒有足夠的新資料時回傳 false（magnitudesDb 不變）。
+    // Returns true and fills in N/2+1 bins of dBFS; returns false (magnitudesDb unchanged) when there is not
+    // enough new data.
     bool computeSpectrum(std::vector<float>& magnitudesDb) {
         if (!ring_)
             return false;
         const uint64_t written = writePos_.load(std::memory_order_acquire);
         const uint64_t n = static_cast<uint64_t>(fftSize_);
         if (written < n)
-            return false; // 還沒累積到一個完整的 frame
+            return false; // a complete frame has not accumulated yet
         if (written - lastFramePos_ < static_cast<uint64_t>(hop_))
-            return false; // 新 sample 不夠一個 hop，沒有新 frame
+            return false; // fewer than one hop of new samples, so no new frame
 
-        // 複製最新的 N 個 sample 並乘 window
+        // Copy the latest N samples and multiply by the window
         const uint64_t start = written - n;
         for (uint64_t i = 0; i < n; ++i)
             frame_[static_cast<size_t>(i)] =
                 ring_[static_cast<size_t>((start + i) & ringMask_)].load(std::memory_order_relaxed) *
                 window_[static_cast<size_t>(i)];
 
-        // 讀完再檢查 producer 有沒有在這段期間繞一圈覆寫掉我們讀的區域。
-        // 要看的是 writeEnd_（「已經開始寫到哪裡」），不是 writePos_（「已經寫完到哪裡」）：
-        // 一個還在進行中的 pushSamples() 可能已經覆寫了我們剛讀的格子，但它的 writePos_ 要等整個 push 結束才更新。
-        // 為什麼讀到 writeEnd_ 就一定夠新？如果上面某個 relaxed load 讀到了某次 push 寫進來的新值，
-        // 那次 push 的 release fence（在寫 sample 之前）就和下面的 acquire fence 同步（C++ 的 fence-fence synchronization），
-        // 所以那次 push 對 writeEnd_ 的 store 一定看得到（seqlock 的標準寫法）。
+        // After reading, check whether the producer wrapped around and overwrote the region we just read.
+        // What matters is writeEnd_ ("how far writing has started"), not writePos_ ("how far writing has finished"):
+        // a pushSamples() still in progress may already have overwritten cells we just read, but its writePos_ is
+        // only updated once the whole push ends.
+        // Why is reading writeEnd_ guaranteed to be recent enough? If one of the relaxed loads above saw a new value
+        // written by some push, that push's release fence (before it writes its samples) synchronizes with the
+        // acquire fence below (C++ fence-fence synchronization), so that push's store to writeEnd_ is certain to be
+        // visible (the standard seqlock pattern).
         std::atomic_thread_fence(std::memory_order_acquire);
         const uint64_t writeEnd = writeEnd_.load(std::memory_order_relaxed);
         if (writeEnd - start > static_cast<uint64_t>(ringCapacity_))
-            return false; // 讀的區域可能已被覆寫，這一 frame 作廢（下次再試）
+            return false; // the region may have been overwritten, so discard this frame (try again next time)
 
         lastFramePos_ = written;
 
         fft_.forwardReal(frame_.data(), spectrum_.data());
         const int bins = fft_.getNumRealBins();
-        magnitudesDb.resize(static_cast<size_t>(bins)); // UI thread，可以 allocate
+        magnitudesDb.resize(static_cast<size_t>(bins)); // UI thread, so allocating is fine
         for (int k = 0; k < bins; ++k) {
             const float scale = (k == 0 || k == bins - 1) ? normalization_ : 2.0f * normalization_;
             const float magnitude = std::abs(spectrum_[static_cast<size_t>(k)]) * scale;
             float& s = smoothed_[static_cast<size_t>(k)];
-            // 第一個 frame 直接採用（否則平滑狀態從 0 開始，頭幾個 frame 會讀得太低）
+            // Adopt the first frame as-is (otherwise the smoothing state starts at 0 and the first few frames read too low)
             s = primed_ ? smoothing_ * s + (1.0f - smoothing_) * magnitude : magnitude;
             magnitudesDb[static_cast<size_t>(k)] = gainToDb(s);
         }
@@ -171,28 +179,29 @@ public:
     WindowType getWindowType() const noexcept { return windowType_; }
     float getSmoothing() const noexcept { return smoothing_; }
 
-    // 目前 ring 裡「還沒被任何 frame 用過」的新 sample 數（除錯 / 教學用）
+    // Number of new samples in the ring that no frame has used yet (for debugging / teaching)
     uint64_t getPendingSamples() const noexcept { return writePos_.load(std::memory_order_acquire) - lastFramePos_; }
 
 private:
-    // producer 的兩段式寫入（seqlock 風格）：
-    //   beginWrite：先公告「我要寫到 pos + n」（writeEnd_），再放一個 release fence，之後才寫 sample；
-    //   endWrite  ：sample 寫完，writePos_.store(release) 公告「資料已經可以讀到 pos + n」。
-    // 只有 audio thread 會呼叫，所以讀自己寫的 writePos_ 用 relaxed 即可。
+    // The producer's two-phase write (seqlock style):
+    //   beginWrite: first announce "I am going to write up to pos + n" (writeEnd_), then place a release fence, and
+    //               only then write the samples;
+    //   endWrite  : once the samples are written, writePos_.store(release) announces "the data up to pos + n is now readable".
+    // Only the audio thread calls these, so reading our own writePos_ with relaxed is enough.
     uint64_t beginWrite(int n) noexcept {
         const uint64_t pos = writePos_.load(std::memory_order_relaxed);
         writeEnd_.store(pos + static_cast<uint64_t>(n), std::memory_order_relaxed);
-        std::atomic_thread_fence(std::memory_order_release); // 讓 writeEnd_ 排在之後所有 sample 寫入的前面
+        std::atomic_thread_fence(std::memory_order_release); // order writeEnd_ before all the sample writes that follow
         return pos;
     }
     void endWrite(uint64_t pos, int n) noexcept {
-        writePos_.store(pos + static_cast<uint64_t>(n), std::memory_order_release); // 之前的 sample 寫入對 acquire 端可見
+        writePos_.store(pos + static_cast<uint64_t>(n), std::memory_order_release); // the earlier sample writes become visible to the acquire side
     }
 
     void rebuildWindow() {
         Fft::makeWindow(window_, fftSize_, windowType_);
         const double cg = Fft::coherentGain(window_.data(), fftSize_);
-        normalization_ = static_cast<float>(1.0 / (fftSize_ * cg)); // 乘 2 的部分在 computeSpectrum 處理
+        normalization_ = static_cast<float>(1.0 / (fftSize_ * cg)); // the factor of 2 is handled in computeSpectrum
     }
 
     void updateHop() noexcept {
@@ -211,8 +220,8 @@ private:
 
     Fft fft_;
     std::unique_ptr<std::atomic<float>[]> ring_;
-    std::atomic<uint64_t> writePos_{0}; // 已經寫完（可以讀）的 sample 總數
-    std::atomic<uint64_t> writeEnd_{0}; // 已經「開始寫」到的位置（≥ writePos_；push 進行中時 > writePos_）
+    std::atomic<uint64_t> writePos_{0}; // total number of samples fully written (readable)
+    std::atomic<uint64_t> writeEnd_{0}; // position up to which writing has started (>= writePos_; > writePos_ while a push is in progress)
     uint64_t lastFramePos_ = 0;
     bool primed_ = false;
     std::vector<float> window_, frame_, smoothed_;

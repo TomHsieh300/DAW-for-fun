@@ -1,16 +1,17 @@
-// 範例 2：window function與 spectral leakage 對照
+// Example 2: window functions and spectral leakage compared
 //
-// 示範什麼：
-//   - 同一個 1 kHz 正弦（N = 2048、fs = 48 kHz，bin 寬 23.4375 Hz，1000 Hz 落在 bin 42.67，不在中心）
-//     用四種 window（Rectangular / Hann / Hamming / Blackman-Harris）做 FFT，印出 ASCII 頻譜圖。
-//   - 訊號裡還藏了一個 -60 dB 的 3.3 kHz 弱音：rectangular window 的 leakage 會把它淹沒，
-//     Hann / Blackman-Harris 則看得到。
-//   - 再用「正好落在 bin 中心」的 1007.8125 Hz（bin 43）示範「看不到 leakage」的特例。
-//   - 最後用 16 倍 zero-padding 量每個 window 的 -3 dB main lobe 寬度、最高 side lobe 與 scalloping loss，
-//     並和 Harris（1978）的理論值比對（DAWLAB_CHECK）。
+// What it demonstrates:
+//   - The same 1 kHz sine (N = 2048, fs = 48 kHz, bin width 23.4375 Hz, 1000 Hz sits at bin 42.67, off-centre)
+//     is run through the FFT with four windows (Rectangular / Hann / Hamming / Blackman-Harris) and an ASCII
+//     spectrum is printed for each.
+//   - The signal also hides a weak -60 dB tone at 3.3 kHz: the leakage of the rectangular window swamps it,
+//     while Hann / Blackman-Harris can still see it.
+//   - Then a sine at 1007.8125 Hz (exactly bin 43) shows the special case where the leakage is "invisible".
+//   - Finally, 16x zero-padding is used to measure each window's -3 dB main-lobe width, highest side lobe and
+//     scalloping loss, and the results are compared with Harris's (1978) theoretical values (DAWLAB_CHECK).
 //
-// 怎麼執行：bin/Debug/l11_window_leakage.exe（不需要參數）
-// 輸出檔案：dawlab_output/l11_window_test_tone.wav（1 kHz + 微弱 3.3 kHz，耳朵幾乎聽不到第二個音）
+// How to run: bin/Debug/l11_window_leakage.exe (no arguments needed)
+// Output file: dawlab_output/l11_window_test_tone.wav (1 kHz + a faint 3.3 kHz; the second tone is almost inaudible)
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Fft.h>
@@ -32,7 +33,7 @@ constexpr int kOrder = 11;
 constexpr int kN = 1 << kOrder; // 2048
 constexpr int kBins = kN / 2 + 1;
 
-// 對訊號加 window、做 FFT，回傳每個 bin 的 dBFS（振幅 1.0 的正弦在 bin 中心 → 0 dB）
+// Apply a window to the signal, run the FFT, and return the dBFS of every bin (a sine of amplitude 1.0 on a bin centre -> 0 dB)
 std::vector<float> spectrumDb(const float* x, WindowType type) {
     static Fft fft(kOrder);
     std::vector<float> window;
@@ -52,7 +53,7 @@ std::vector<float> spectrumDb(const float* x, WindowType type) {
     return db;
 }
 
-// ASCII 頻譜：線性頻率軸 0 .. maxHz，每一欄取該範圍內 bin 的最大值
+// ASCII spectrum: linear frequency axis 0 .. maxHz, each column takes the maximum of the bins in its range
 void plotAscii(const std::vector<float>& db, double maxHz, int columns, int rows, float topDb, float bottomDb) {
     const double binHz = kSampleRate / kN;
     const int maxBin = std::min(kBins - 1, static_cast<int>(maxHz / binHz));
@@ -73,15 +74,17 @@ void plotAscii(const std::vector<float>& db, double maxHz, int columns, int rows
     std::printf("%10s  0 Hz%*s%.0f Hz\n", "", columns - 10, "", maxHz);
 }
 
-// 量 window 本身的頻譜（DTFT）：main lobe 的 -3 dB 寬度（以「原本的 bin」為單位）與最高 side lobe（dB）。
+// Measure the spectrum (DTFT) of the window itself: the -3 dB width of the main lobe (in units of the original
+// bins) and the highest side lobe (dB).
 //
-// 為什麼不能直接拿「正好在 bin 中心的正弦」來量？因為那時 FFT 剛好只在 main lobe 的中心與 side lobe 的
-// 零點上取樣，看起來完全沒有 leakage。要看到 lobe 的形狀，得在 bin 與 bin 之間「多取幾個點」：
-// 把 N 點 window 後面補 15N 個 0 再做 16N 點 FFT（zero-padding 不會增加資訊，只是把 DTFT 取樣得更密）。
-// scalloping loss：正弦剛好落在兩個 bin 正中間（偏 0.5 bin）時，峰值讀數比在 bin 中心時低多少 dB。
-// 16 倍 zero-padding 下，「偏 0.5 bin」就是第 8 個取樣點。
+// Why can't we just measure "a sine exactly on a bin centre"? Because then the FFT samples only at the centre of the
+// main lobe and at the zeros of the side lobes, and there seems to be no leakage at all. To see the shape of the
+// lobes we need to take "more points" between the bins: pad the N-point window with 15N zeros and run a 16N-point
+// FFT (zero-padding adds no information, it just samples the DTFT more densely).
+// scalloping loss: how many dB lower the peak reading is when the sine falls exactly halfway between two bins
+// (0.5 bin off) than when it is on a bin centre. With 16x zero-padding, "0.5 bin off" is sample point 8.
 void measureLobes(WindowType type, double& width3dB, double& highestSideLobe, double& scallopingLoss) {
-    constexpr int kPadOrder = kOrder + 4; // 16 倍 zero-padding → 每個原始 bin 之間有 16 個取樣點
+    constexpr int kPadOrder = kOrder + 4; // 16x zero-padding -> 16 sample points between every pair of original bins
     constexpr int kPadN = 1 << kPadOrder;
     constexpr int kPadBins = kPadN / 2 + 1;
     static Fft fft(kPadOrder);
@@ -91,12 +94,12 @@ void measureLobes(WindowType type, double& width3dB, double& highestSideLobe, do
     std::copy(window.begin(), window.end(), frame.begin());
     std::vector<std::complex<float>> spec(static_cast<size_t>(kPadBins));
     fft.forwardReal(frame.data(), spec.data());
-    // 以 bin 0（= Σw，DC）為 0 dB
+    // Take bin 0 (= Σw, DC) as 0 dB
     const double peak = std::abs(spec[0]);
     std::vector<double> db(static_cast<size_t>(kPadBins));
     for (int k = 0; k < kPadBins; ++k)
         db[static_cast<size_t>(k)] = gainToDb(std::abs(spec[static_cast<size_t>(k)]) / peak, -300.0);
-    // -3 dB 點：第一個低於 -3 dB 的位置（線性內插），寬度 = 2 × 位置 / 16
+    // -3 dB point: the first position below -3 dB (linear interpolation), width = 2 x position / 16
     int k = 1;
     while (k < kPadBins && db[static_cast<size_t>(k)] > -3.0)
         ++k;
@@ -104,7 +107,7 @@ void measureLobes(WindowType type, double& width3dB, double& highestSideLobe, do
     const double t = (a + 3.0) / std::max(1e-9, a - b);
     width3dB = 2.0 * (static_cast<double>(k - 1) + t) / 16.0;
     scallopingLoss = -db[8];
-    // main lobe 結束 = 第一個局部最小值（第一個零點）；之後的最大值就是最高 side lobe
+    // The main lobe ends at the first local minimum (the first zero); the maximum after that is the highest side lobe
     k = 1;
     while (k + 1 < kPadBins && db[static_cast<size_t>(k + 1)] < db[static_cast<size_t>(k)])
         ++k;
@@ -119,10 +122,10 @@ int main() {
     const WindowType windows[] = {WindowType::Rectangular, WindowType::Hann, WindowType::Hamming,
                                   WindowType::BlackmanHarris};
     const double binHz = kSampleRate / kN;
-    std::printf("N = %d，fs = %.0f Hz → bin 寬 = fs/N = %.4f Hz\n", kN, kSampleRate, binHz);
-    std::printf("1000 Hz 落在 bin %.2f（不在中心 → leakage）；1007.8125 Hz 正好是 bin 43\n\n", 1000.0 / binHz);
+    std::printf("N = %d, fs = %.0f Hz -> bin width = fs/N = %.4f Hz\n", kN, kSampleRate, binHz);
+    std::printf("1000 Hz falls at bin %.2f (off-centre -> leakage); 1007.8125 Hz is exactly bin 43\n\n", 1000.0 / binHz);
 
-    // ---- 測試訊號：1 kHz（0 dBFS）+ 3.3 kHz（-60 dBFS）-------------------------------------
+    // ---- Test signal: 1 kHz (0 dBFS) + 3.3 kHz (-60 dBFS) ------------------------------------
     AudioBuffer tone = makeSine(1000.0, kSampleRate, 1.0, 1.0f, 1);
     AudioBuffer weak = makeSine(3300.0, kSampleRate, 1.0, dbToGain(-60.0f), 1);
     tone.addFrom(0, 0, weak, 0, 0, tone.getNumSamples());
@@ -135,7 +138,7 @@ int main() {
     }
 
     const int weakBin = static_cast<int>(std::lround(3300.0 / binHz)); // 140.8 → 141
-    // 1000 Hz 偏離 bin 43 中心 δ = 1/3 bin 時的理論讀數：rectangular = sinc(δ)、Hann = sinc(δ)/(1−δ²)
+    // Theoretical reading when 1000 Hz is δ = 1/3 bin off the centre of bin 43: rectangular = sinc(δ), Hann = sinc(δ)/(1−δ²)
     const double delta = 43.0 - 1000.0 / binHz;
     const double sincDelta = std::sin(kPi * delta) / (kPi * delta);
     const double theoryRectDb = gainToDb(sincDelta);
@@ -148,20 +151,20 @@ int main() {
                 peakBin = k;
         std::printf("---- %s ----\n", dsp::windowTypeName(type));
         plotAscii(db, 5000.0, 64, 12, 0.0f, -120.0f);
-        std::printf("peak bin %d（%.1f Hz）= %.2f dB；bin±1 = %.1f / %.1f dB；bin±10 = %.1f / %.1f dB；"
-                    "3.3 kHz 附近（bin %d）= %.1f dB\n",
+        std::printf("peak bin %d (%.1f Hz) = %.2f dB; bin+-1 = %.1f / %.1f dB; bin+-10 = %.1f / %.1f dB; "
+                    "near 3.3 kHz (bin %d) = %.1f dB\n",
                     peakBin, peakBin * binHz, db[static_cast<size_t>(peakBin)], db[static_cast<size_t>(peakBin - 1)],
                     db[static_cast<size_t>(peakBin + 1)], db[static_cast<size_t>(peakBin - 10)],
                     db[static_cast<size_t>(peakBin + 10)], weakBin, db[static_cast<size_t>(weakBin)]);
         DAWLAB_CHECK(peakBin == 43);
         if (type == WindowType::Rectangular) {
-            std::printf("（理論：偏離 bin 中心 δ = %.3f bin → sinc(δ) = %.2f dB）\n", delta, theoryRectDb);
+            std::printf("(Theory: offset from the bin centre by δ = %.3f bin -> sinc(δ) = %.2f dB)\n", delta, theoryRectDb);
             DAWLAB_CHECK_NEAR(db[43], theoryRectDb, 0.1);
-            DAWLAB_CHECK(db[static_cast<size_t>(weakBin)] > -55.0f); // -60 dB 的弱音被 leakage 淹沒
+            DAWLAB_CHECK(db[static_cast<size_t>(weakBin)] > -55.0f); // the -60 dB tone is swamped by leakage
         } else if (type == WindowType::Hann) {
-            std::printf("（理論：sinc(δ)/(1−δ²) = %.2f dB）\n", theoryHannDb);
+            std::printf("(Theory: sinc(δ)/(1−δ²) = %.2f dB)\n", theoryHannDb);
             DAWLAB_CHECK_NEAR(db[43], theoryHannDb, 0.1);
-            DAWLAB_CHECK_NEAR(db[static_cast<size_t>(weakBin)], -60.0, 1.0); // 看得到 -60 dB 的弱音
+            DAWLAB_CHECK_NEAR(db[static_cast<size_t>(weakBin)], -60.0, 1.0); // the -60 dB tone is visible
         } else if (type == WindowType::BlackmanHarris) {
             DAWLAB_CHECK(db[static_cast<size_t>(peakBin + 10)] < -95.0f);
             DAWLAB_CHECK_NEAR(db[static_cast<size_t>(weakBin)], -60.0, 1.0);
@@ -169,8 +172,8 @@ int main() {
         std::printf("\n");
     }
 
-    // ---- bin 中心的正弦：coherent gain 補償後每種 window 都讀 0 dB，而且鄰近 bin 幾乎是 0 ------
-    std::printf("== 正弦正好在 bin 43（%.4f Hz）：沒有 leakage 的情況 ==\n", 43 * binHz);
+    // ---- Sine on a bin centre: after coherent-gain compensation every window reads 0 dB, and the neighbouring bins are almost 0 ----
+    std::printf("== Sine exactly on bin 43 (%.4f Hz): the no-leakage case ==\n", 43 * binHz);
     std::printf("%-16s %12s %14s %14s %14s\n", "window", "bin 43 (dB)", "bin 44 (dB)", "bin 45 (dB)", "coherent gain");
     AudioBuffer centred = makeSine(43 * binHz, kSampleRate, 1.0, 1.0f, 1);
     for (WindowType type : windows) {
@@ -179,32 +182,33 @@ int main() {
         Fft::makeWindow(w, kN, type);
         std::printf("%-16s %12.3f %14.1f %14.1f %14.4f\n", dsp::windowTypeName(type), db[43], db[44], db[45],
                     Fft::coherentGain(w.data(), kN));
-        DAWLAB_CHECK_NEAR(db[43], 0.0, 0.01); // coherent gain 補償後，bin 中心的正弦一律讀 0 dB
+        DAWLAB_CHECK_NEAR(db[43], 0.0, 0.01); // after coherent-gain compensation, a sine on a bin centre always reads 0 dB
         if (type == WindowType::Rectangular)
-            DAWLAB_CHECK(db[44] < -100.0f);  // 只在 sinc 的零點上取樣
+            DAWLAB_CHECK(db[44] < -100.0f);  // sampled only at the zeros of the sinc
     }
-    std::printf("→ 整數個週期剛好填滿 frame 時，FFT 只在 side lobe 的零點上取樣，看起來「完全沒有 leakage」；\n"
-                "   Hann 的 bin±1 有 -6 dB 是 main lobe 本身比較寬（±2 bin），不是 leakage。\n\n");
+    std::printf("-> When a whole number of periods exactly fills the frame, the FFT samples only at the zeros of the side lobes, so there seems to be \"no leakage at all\";\n"
+                "   the -6 dB at Hann's bin+-1 is the main lobe itself being wider (+-2 bins), not leakage.\n\n");
 
-    // ---- window 的 DTFT：main lobe 寬度與最高 side lobe（16 倍 zero-padding）--------------------
-    std::printf("== window 本身的頻譜（zero-padding 16 倍取樣 DTFT）==\n");
-    std::printf("%-16s %16s %20s %22s\n", "window", "-3 dB 寬 (bins)", "最高 side lobe (dB)", "scalloping loss (dB)");
-    // Harris（1978）Table 1 的理論值：-3 dB 寬（bin）、最高 side lobe（dB）、scalloping loss（dB）。
-    // Hamming 的 scalloping 表上寫 1.78，直接代公式算：(0.54·sinc(½) + 0.23·(sinc(½) + sinc(1½))) / 0.54
-    // = 0.8174 → 1.75 dB，這裡用公式值。
+    // ---- DTFT of the window: main-lobe width and highest side lobe (16x zero-padding) --------
+    std::printf("== Spectrum of the window itself (DTFT sampled with 16x zero-padding) ==\n");
+    std::printf("%-16s %18s %24s %22s\n", "window", "-3 dB width (bins)", "highest side lobe (dB)", "scalloping loss (dB)");
+    // Theoretical values from Table 1 of Harris (1978): -3 dB width (bins), highest side lobe (dB), scalloping loss (dB).
+    // The table gives 1.78 for Hamming's scalloping; computing it directly from the formula:
+    // (0.54·sinc(½) + 0.23·(sinc(½) + sinc(1½))) / 0.54
+    // = 0.8174 -> 1.75 dB, so the formula value is used here.
     const double theory[4][3] = {{0.89, -13.3, 3.92}, {1.44, -31.5, 1.42}, {1.30, -42.7, 1.75}, {1.90, -92.0, 0.83}};
     int row = 0;
     for (WindowType type : windows) {
         double width = 0.0, sideLobe = 0.0, scallop = 0.0;
         measureLobes(type, width, sideLobe, scallop);
-        std::printf("%-16s %16.2f %20.1f %22.2f\n", dsp::windowTypeName(type), width, sideLobe, scallop);
+        std::printf("%-16s %18.2f %24.1f %22.2f\n", dsp::windowTypeName(type), width, sideLobe, scallop);
         DAWLAB_CHECK_NEAR(width, theory[row][0], 0.03);
         DAWLAB_CHECK_NEAR(sideLobe, theory[row][1], 0.5);
         DAWLAB_CHECK_NEAR(scallop, theory[row][2], 0.05);
         ++row;
     }
-    std::printf("\n理論值（Harris 1978）：Rectangular 0.89 bin / -13.3 dB / 3.92 dB；Hann 1.44 / -31.5 / 1.42；\n"
-                "Hamming 1.30 / -42.7 / 1.78（直接代公式是 1.75）；Blackman-Harris(4 項) 1.90 / -92.0 / 0.83。\n"
-                "side lobe 越低，main lobe 越寬（scalloping loss 也越小）。\n");
+    std::printf("\nTheoretical values (Harris 1978): Rectangular 0.89 bin / -13.3 dB / 3.92 dB; Hann 1.44 / -31.5 / 1.42;\n"
+                "Hamming 1.30 / -42.7 / 1.78 (1.75 when computed directly from the formula); Blackman-Harris (4-term) 1.90 / -92.0 / 0.83.\n"
+                "The lower the side lobes, the wider the main lobe (and the smaller the scalloping loss).\n");
     return dawlab::test::summary("l11_window_leakage");
 }

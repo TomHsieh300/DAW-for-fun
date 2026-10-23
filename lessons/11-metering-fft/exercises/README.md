@@ -1,116 +1,118 @@
-# 第 11 章 練習題
+# Chapter 11 Exercises
 
-難度：★☆☆ 基礎、★★☆ 中等、★★★ 進階。實作題的起始碼在 `exercises/starter/`，可以直接編譯；
-還沒完成 `// TODO` 之前執行會印出 `[FAIL]`，這是預期的。完成後 self-check 全部通過就會印出 `[PASS]`。
+**English** | [繁體中文](README.zh-TW.md)
+
+Difficulty: ★☆☆ basic, ★★☆ intermediate, ★★★ advanced. The starter code for the coding exercises is in `exercises/starter/` and compiles as is;
+until you finish the `// TODO`s it prints `[FAIL]` when run, which is expected. Once all the self-checks pass it prints `[PASS]`.
 
 ```powershell
 .\scripts\build.ps1 -Only 11-metering-fft -NoTest
 cd build
-.\bin\Debug\l11_ex3_starter.exe          # 你的版本
-.\bin\Debug\l11_ex3_solution.exe         # 參考解答
+.\bin\Debug\l11_ex3_starter.exe          # your version
+.\bin\Debug\l11_ex3_solution.exe         # reference solution
 ```
 
-解答與解說：[`../solutions/README.md`](../solutions/README.md)。
+Solutions and explanations: [`../solutions/README.md`](../solutions/README.md).
 
 ---
 
-## 練習 1（計算）★☆☆　bin 解析度與需要的 N
+## Exercise 1 (calculation) ★☆☆　Bin resolution and the N you need
 
-1. fs = 48 kHz、N = 2048。bin 寬是多少 Hz？一個 frame 涵蓋多少 ms？bin 100 對應幾 Hz？
-2. 1 kHz 的正弦落在第幾個 bin（小數）？要讓 1 kHz 正好落在某個 bin 的中心，N 最小可以是多少（不限 2 的冪次）？
-   如果限定 2 的冪次呢？
-3. 你想在頻譜上把低音 E1（41.20 Hz）和 F1（43.65 Hz）分成兩個峰。用 Hann window 時，兩個正弦至少要相隔
-   約 2 個 bin 才看得出兩個峰。fs = 48 kHz 時，N 至少要多大（取 2 的冪次）？這個 frame 有多長？
-   用它來看鼓組的 transient 會有什麼問題？
-4. 44.1 kHz、N = 4096：bin 寬與 frame 長度？
-5. spectrum analyzer 想要每秒更新 30 次（30 fps），fs = 48 kHz、N = 4096。hop 是多少 sample？overlap 是多少 %？
+1. With fs = 48 kHz and N = 2048, how wide is a bin in Hz? How many ms does a frame cover? What frequency does bin 100 correspond to?
+2. At which bin (fractional) does a 1 kHz sine fall? What is the smallest N (not restricted to powers of two) that puts 1 kHz exactly at the center of some bin?
+   What if N must be a power of two?
+3. You want the spectrum to show the bass notes E1 (41.20 Hz) and F1 (43.65 Hz) as two separate peaks. With a Hann window, two sines must be at least about 2 bins apart
+   to show two peaks. At fs = 48 kHz, how large must N be (a power of two)? How long is this frame?
+   What problem would you have using it to look at a drum kit's transients?
+4. At 44.1 kHz and N = 4096: what are the bin width and the frame length?
+5. A spectrum analyzer should update 30 times per second (30 fps), with fs = 48 kHz and N = 4096. How many samples is the hop? What is the overlap in %?
 
-提示：bin 寬 $\Delta f = f_s / N$；frame 長度 $N / f_s$；overlap $= 1 - \text{hop}/N$。
+Hint: bin width $\Delta f = f_s / N$; frame length $N / f_s$; overlap $= 1 - \text{hop}/N$.
 
-## 練習 2（觀念）★☆☆　為什麼要 window？leakage 是怎麼來的？
+## Exercise 2 (concept) ★☆☆　Why a window? Where does leakage come from?
 
-1. 用你自己的話解釋 spectral leakage：一個「純」的 1 kHz 正弦，為什麼 FFT 之後會在 1 kHz 以外的 bin 也有能量？
-   提示：DFT 隱含地假設 frame 會「週期性重複」，想像把 frame 首尾接起來。
-2. 為什麼「整數個週期剛好填滿 frame」時看不到 leakage？（`l11_window_leakage` 第二張表）
-3. 加 window 之後，峰值的讀數為什麼變小了？要怎麼補償？（coherent gain）
-4. 你要在 0 dBFS 的 1 kHz 旁邊找一個 -90 dB 的 1.2 kHz 雜訊（例如 hum 的諧波），該用哪個 window？
-   如果你要分辨 1000 Hz 和 1010 Hz 兩個一樣大的正弦呢？
-5. zero-padding（frame 後面補 0 再做更大的 FFT）能不能提高「頻率解析度」？它到底做了什麼？
+1. In your own words, explain spectral leakage: why does a "pure" 1 kHz sine have energy in bins other than 1 kHz after the FFT?
+   Hint: the DFT implicitly assumes the frame "repeats periodically"; imagine joining the end of the frame to its start.
+2. Why is there no visible leakage when a whole number of periods exactly fills the frame? (the second table of `l11_window_leakage`)
+3. After applying a window, why does the peak reading get smaller? How do you compensate? (coherent gain)
+4. You want to find a −90 dB 1.2 kHz noise component (for example a harmonic of hum) next to a 0 dBFS 1 kHz tone. Which window should you use?
+   What if you want to resolve two equal-sized sines at 1000 Hz and 1010 Hz?
+5. Can zero-padding (appending zeros to the frame and doing a larger FFT) improve "frequency resolution"? What does it actually do?
 
-## 練習 3（實作）★★☆　重用 Oversampler 做 true-peak meter，並與第 05 章的 windowed-sinc 版比較
+## Exercise 3 (coding) ★★☆　Build a true-peak meter reusing Oversampler, and compare it with Chapter 05's windowed-sinc version
 
-起始碼：`exercises/starter/ex3_true_peak.cpp`（target `l11_ex3_starter`）
+Starter code: `exercises/starter/ex3_true_peak.cpp` (target `l11_ex3_starter`)
 
-第 05 章練習 4 已經從零做過一個 4x true-peak meter（64 tap Hann windowed-sinc、4 個 phase）。這一題不再重做一次，
-而是換兩個角度：
+Chapter 05 Exercise 4 already built a 4x true-peak meter from scratch (64-tap Hann windowed-sinc, 4 phases). This exercise does not redo it,
+but approaches it from two new angles:
 
-1. **重用**：第 06 章的 `dsp::Oversampler`（兩級 2x halfband）已經是現成、測過的 4x 升頻器。
-   完成 `TruePeakMeter::process()`（TODO 1）：`upsample()` 每個 block，在 4 倍長的 view 上找 |x| 最大值。
-   只量測、不輸出，所以不需要 `downsample()`。
-2. **比較**：起始碼已經附上第 05 章練習 4 的 windowed-sinc 版（`WindowedSincTruePeak`，已完成）與 FFT「理想內插」，
-   會把同一段訊號同時餵給兩種 meter。你要完成 `multipliesPerInputSample()`（TODO 2）：從 Oversampler 各級的
-   `getNumOddTaps()` 算出每個輸入 sample 的乘法數。然後讀印出來的表格，回答下面的問題。
+1. **Reuse**: Chapter 06's `dsp::Oversampler` (two 2x halfband stages) is already a ready-made, tested 4x upsampler.
+   Complete `TruePeakMeter::process()` (TODO 1): call `upsample()` on each block and find the maximum |x| over the 4x-long view.
+   It only measures and does not output, so no `downsample()` is needed.
+2. **Compare**: the starter code already includes the Chapter 05 Exercise 4 windowed-sinc version (`WindowedSincTruePeak`, already complete) and the FFT "ideal interpolation",
+   and feeds the same signal to both meters. You complete `multipliesPerInputSample()` (TODO 2): compute the number of multiplications per input sample from each Oversampler stage's
+   `getNumOddTaps()`. Then read the printed table and answer the questions below.
 
-self-check 會驗證：
-- 1 kHz 0 dBFS → 0 dBTP；fs/4、相位 45° 的正弦：sample peak = -3.01 dBFS，Oversampler 讀到 0 dBTP
-- 相位掃描（fs/4 正弦、相位 0°～90°）：兩種 meter 最差都低估約 0.17 dB，但最差的相位不同
-- 接近 Nyquist 的頻率響應：Oversampler 到 22 kHz 都在 0.02 dB 內，windowed-sinc 在 22 kHz 明顯低估
-- hard clip 過的鼓組、撥弦素材：兩種 meter 與 FFT 理想內插的差距；normalize 到 -1 dBTP 後讀數正確
-- 乘法數：Oversampler 56、windowed-sinc 64；另外印出實際計時（只印不檢查，數字依機器與建置設定而異）
+The self-check verifies:
+- 1 kHz at 0 dBFS → 0 dBTP; a sine at fs/4 with 45° phase: sample peak = -3.01 dBFS, and the Oversampler reads 0 dBTP
+- Phase sweep (fs/4 sine, phase 0°–90°): both meters underestimate by about 0.17 dB at worst, but at different worst phases
+- Frequency response near Nyquist: the Oversampler is within 0.02 dB all the way to 22 kHz, while the windowed-sinc clearly underestimates at 22 kHz
+- Hard-clipped drum kit and plucked-string material: the gap between each meter and the FFT ideal interpolation; readings are correct after normalizing to -1 dBTP
+- Multiplication counts: Oversampler 56, windowed-sinc 64; actual timings are also printed (printed only, not checked, since the numbers depend on the machine and build settings)
 
-問題：
-1. 相位掃描的表格裡，Oversampler 在哪些「峰值位置」量得準、windowed-sinc 在哪些位置量得準？用兩者的插值點
-   落在原始 sample 之間的哪裡（README 2.5 節）解釋。為什麼兩者的最差誤差一樣大？
-2. 22 kHz 時第 06 章說第 1 級 halfband 單趟衰減 0.65 dB，為什麼 Oversampler 的讀數幾乎沒有誤差？
-   （提示：第 06 章 2.6 節「Passband 邊緣」那一段的 $|H(f)| + |H(f_s - f)| = 1$。）windowed-sinc 為什麼沒有這個性質？
-3. 乘法數只差 56 對 64（約 14%），實際計時卻差好幾倍。比較兩者的內迴圈：累加用 float 還是 double？
-   歷史緩衝怎麼取值（鏡像 ring buffer 的連續記憶體 vs 每個 tap 都要判斷繞回）？哪一種寫法編譯器比較容易向量化？
-4. 如果你要在 DAW 的 master bus 上即時顯示 true peak，會選哪一個？如果要做第 05 章 2.8 節說的 true-peak limiter
-   （sidechain 裡升頻），latency 又會是哪一個比較小？（提示：halfband 的 latency 在第 06 章 2.6 節；
-   64 tap FIR 的群延遲是 31.5 個 4x sample。）
+Questions:
+1. In the phase sweep table, at which "peak positions" does the Oversampler measure accurately, and at which does the windowed-sinc? Explain using where the two interpolation points
+   fall between the original samples (README section 2.5). Why is the worst-case error the same size for both?
+2. At 22 kHz, Chapter 06 says the first halfband stage attenuates 0.65 dB in a single pass, so why does the Oversampler's reading show almost no error?
+   (Hint: the "Passband edge" paragraph of Chapter 06 section 2.6, $|H(f)| + |H(f_s - f)| = 1$.) Why doesn't the windowed-sinc have this property?
+3. The multiplication counts differ only 56 vs 64 (about 14%), yet the measured times differ by several times. Compare the inner loops: is accumulation in float or double?
+   How is the history buffer accessed (contiguous memory from a mirrored ring buffer vs checking for wraparound on every tap)? Which style is easier for the compiler to vectorize?
+4. If you wanted to display true peak in real time on a DAW's master bus, which would you choose? If you were building the true-peak limiter described in Chapter 05 section 2.8
+   (upsampling in the sidechain), which has the smaller latency? (Hint: the halfband latency is in Chapter 06 section 2.6;
+   the group delay of the 64-tap FIR is 31.5 4x-samples.)
 
-## 練習 4（實作）★★☆　VU meter 的 ballistics
+## Exercise 4 (coding) ★★☆　VU meter ballistics
 
-起始碼：`exercises/starter/ex4_vu_meter.cpp`（target `l11_ex4_starter`）
+Starter code: `exercises/starter/ex4_vu_meter.cpp` (target `l11_ex4_starter`)
 
-VU meter 是一支有質量、有阻尼的指針：突然出現的 0 VU 正弦，指針要在 300 ms 到達最終讀數的 99%，
-過衝 1~1.5%。用二階系統模擬：
+A VU meter is a needle with mass and damping: when a 0 VU sine suddenly appears, the needle must reach 99% of its final reading in 300 ms
+and overshoot by 1–1.5%. Model it with a second-order system:
 
 $$\ddot p + 2\zeta\omega_n \dot p + \omega_n^2 p = \omega_n^2\, u(t),\qquad u = |x| \cdot \text{inputScale}$$
 
-完成兩個 TODO：每個 sample 的 semi-implicit Euler 積分，以及「-18 dBFS 正弦 = 0 VU」的校準倍率。
+Complete two TODOs: the per-sample semi-implicit Euler integration, and the calibration scale for "a -18 dBFS sine = 0 VU".
 
-self-check 會驗證：300 ms 時 = 最終讀數的 99% ± 0.5%、過衝 1~1.5%、-24 dBFS → -6 VU、
-10 ms 的短促 burst 推不動指針（< -12 VU）。
+The self-check verifies: at 300 ms the needle is at 99% ± 0.5% of the final reading, overshoot is 1–1.5%, -24 dBFS → -6 VU,
+and a short 10 ms burst cannot move the needle (< -12 VU).
 
-## 練習 5（實作）★★★　Loudness Range（LRA，EBU Tech 3342）
+## Exercise 5 (coding) ★★★　Loudness Range (LRA, EBU Tech 3342)
 
-起始碼：`exercises/starter/ex5_loudness_range.cpp`（target `l11_ex5_starter`）
+Starter code: `exercises/starter/ex5_loudness_range.cpp` (target `l11_ex5_starter`)
 
-LRA = short-term loudness 分布的第 95 百分位數 − 第 10 百分位數（先過 -70 LUFS absolute gate 與
--20 LU relative gate）。起始碼已經用本章的 `LoudnessMeter` 每 100 ms 取一個 short-term 值放進直方圖；
-你要完成 `computeLra()`。
+LRA = the 95th percentile minus the 10th percentile of the short-term loudness distribution (after the -70 LUFS absolute gate and the
+-20 LU relative gate). The starter code already uses this chapter's `LoudnessMeter` to take a short-term value every 100 ms and put it in a histogram;
+you complete `computeLra()`.
 
-self-check 會驗證 EBU Tech 3342 風格的測試訊號：前 20 s / 後 20 s 兩種位準的正弦，
--20/-30 dBFS → 10 LU、-20/-15 → 5 LU、-40/-20 → 20 LU（各 ±1 LU）；固定位準 → 0 LU。
+The self-check verifies EBU Tech 3342-style test signals: sines at two levels, the first 20 s and the last 20 s,
+-20/-30 dBFS → 10 LU, -20/-15 → 5 LU, -40/-20 → 20 LU (each ±1 LU); a constant level → 0 LU.
 
-## 練習 6（實作）★★★　用 FFT 做 overlap-add 快速卷積
+## Exercise 6 (coding) ★★★　Fast convolution with FFT overlap-add
 
-起始碼：`exercises/starter/ex6_fft_convolution.cpp`（target `l11_ex6_starter`）
+Starter code: `exercises/starter/ex6_fft_convolution.cpp` (target `l11_ex6_starter`)
 
-卷積定理：時域卷積 = 頻域相乘。把每個輸入 block 補 0 到 $N \ge B + L - 1$，做 FFT、乘上 IR 的頻譜、IFFT，
-再把超出 block 的尾巴疊加到下一個 block（overlap-add）。完成 `OverlapAddConvolver::process()`。
+The convolution theorem: convolution in time = multiplication in frequency. Zero-pad each input block to $N \ge B + L - 1$, take the FFT, multiply by the IR's spectrum, take the IFFT,
+and add the tail that extends beyond the block onto the next block (overlap-add). Complete `OverlapAddConvolver::process()`.
 
-self-check 會驗證：與直接卷積的誤差 < 1e-5（block 長度不固定也要對）、impulse 的輸出 = IR 本身、
-大 block 時比直接卷積快。這是第 12 章 convolution reverb 的基礎。
+The self-check verifies: the error against direct convolution is < 1e-5 (it must also be right when block lengths vary), the output for an impulse equals the IR itself,
+and it is faster than direct convolution for large blocks. This is the foundation of Chapter 12's convolution reverb.
 
-## 練習 7（實作）★★☆　stereo correlation meter
+## Exercise 7 (coding) ★★☆　Stereo correlation meter
 
-起始碼：`exercises/starter/ex7_correlation_meter.cpp`（target `l11_ex7_starter`）
+Starter code: `exercises/starter/ex7_correlation_meter.cpp` (target `l11_ex7_starter`)
 
 $$r = \frac{E[L R]}{\sqrt{E[L^2]\,E[R^2]}}$$
 
-用 exponential moving average（時間常數 300 ms）估計三個期望值。完成 `process()`。
+Estimate the three expectations with an exponential moving average (time constant 300 ms). Complete `process()`.
 
-self-check 會驗證：L = R → +1；L = −R → −1；sin / cos → 0；左右獨立的雜訊 → 約 0；
-共同成分 : 獨立成分 = 1 : 1 → 0.5；從 mono 突然變反相時，越過 0 的時間 = τ ln 2 ≈ 208 ms。
+The self-check verifies: L = R → +1; L = −R → −1; sin / cos → 0; independent noise on left and right → about 0;
+common : independent components = 1 : 1 → 0.5; when a mono signal suddenly turns anti-phase, the time to cross 0 = τ ln 2 ≈ 208 ms.

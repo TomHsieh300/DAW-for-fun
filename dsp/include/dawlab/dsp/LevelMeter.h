@@ -1,17 +1,20 @@
 #pragma once
-// 第 11 章：LevelMeter —— sample peak（含 hold 與 dB/s decay）與滑動視窗 RMS。
+// Chapter 11: LevelMeter -- sample peak (with hold and dB/s decay) and sliding-window RMS.
 //
-// 一個 meter 服務多個 channel（每個 channel 獨立狀態）。process() 在 audio thread 跑，
-// 量測結果寫進 std::atomic<float>（relaxed），UI thread 隨時可以用 getXxxDb() 讀取。
+// One meter serves several channels (each channel has independent state). process() runs on the audio
+// thread and writes its measurements into std::atomic<float> (relaxed); the UI thread can read them at
+// any time through getXxxDb().
 //
-// 三個讀數（都以 dBFS 表示，靜音 = kMinusInfinityDb = -100）：
-// - peak：      瞬間攻擊（新的 |x| 比目前大就立刻跳上去），之後以固定 dB/s 速度下降（ballistics）。
-// - peakHold：  在 hold 時間內停在最近的最大值，時間到才以同樣速度下降（永遠不低於 peak）。
-// - rms：       長度 rmsWindowMs 的滑動視窗 RMS = sqrt( (1/W) Σ x[n]^2 )。
+// Three readings (all in dBFS, silence = kMinusInfinityDb = -100):
+// - peak:      instant attack (jumps up immediately when a new |x| exceeds the current value), then falls
+//              at a fixed dB/s rate (ballistics).
+// - peakHold:  stays at the most recent maximum for the hold time, then falls at the same rate (never
+//              below peak).
+// - rms:       sliding-window RMS over rmsWindowMs = sqrt( (1/W) Σ x[n]^2 ).
 //
-// dB/s decay 在線性域就是每個 sample 乘一個固定係數：
+// A dB/s decay in the linear domain is a fixed multiplier applied once per sample:
 //     g = 10^( -decayDbPerSecond / (20 · fs) )
-// 因為 20·log10(g^fs) = -decayDbPerSecond。
+// because 20·log10(g^fs) = -decayDbPerSecond.
 
 #include <dawlab/AudioBuffer.h>
 #include <dawlab/DspMath.h>
@@ -27,9 +30,9 @@ namespace dawlab::dsp {
 
 class LevelMeter {
 public:
-    static constexpr float kMaxRmsWindowMs = 3000.0f; // prepare 時依此配置 ring buffer
+    static constexpr float kMaxRmsWindowMs = 3000.0f; // the ring buffer is sized from this in prepare()
 
-    // 唯一可以 allocate 的地方
+    // The only place that may allocate
     void prepare(double sampleRate, int numChannels) {
         assert(sampleRate > 0.0 && numChannels > 0);
         sampleRate_ = sampleRate;
@@ -63,19 +66,20 @@ public:
         rmsSamples_ = pendingRmsSamples_.load(std::memory_order_relaxed);
     }
 
-    // hold 時間；< 0 代表無限 hold（直到 resetPeakHold()）。預設 1000 ms。
+    // Hold time; < 0 means infinite hold (until resetPeakHold()). Default 1000 ms.
     void setPeakHoldMs(float ms) noexcept {
         peakHoldMs_ = ms;
         updateCoefficients();
     }
 
-    // peak / hold 的下降速度，預設 24 dB/s
+    // Fall rate of peak / hold, default 24 dB/s
     void setDecayDbPerSecond(float dbPerSecond) noexcept {
         decayDbPerSecond_ = std::max(0.0f, dbPerSecond);
         updateCoefficients();
     }
 
-    // RMS 滑動視窗長度（上限 kMaxRmsWindowMs），預設 300 ms。改變時視窗內容會清空重新累積。
+    // RMS sliding-window length (capped at kMaxRmsWindowMs), default 300 ms. Changing it clears the window
+    // contents so they re-accumulate.
     void setRmsWindowMs(float ms) noexcept {
         rmsWindowMs_ = std::clamp(ms, 1.0f, kMaxRmsWindowMs);
         updateCoefficients();
@@ -86,11 +90,11 @@ public:
     float getDecayDbPerSecond() const noexcept { return decayDbPerSecond_; }
     float getRmsWindowMs() const noexcept { return rmsWindowMs_; }
 
-    // audio thread：不 allocate、不鎖
+    // Audio thread: no allocation, no locks
     void process(const AudioBlock& block) noexcept {
         applyPendingRequests();
         if (rmsWindowChanged_.exchange(false, std::memory_order_relaxed)) {
-            // 視窗長度改了：清空 ring 重新累積（會短暫讀到偏低的 RMS）
+            // The window length changed: clear the ring and re-accumulate (RMS reads low for a short while)
             rmsSamples_ = pendingRmsSamples_.load(std::memory_order_relaxed);
             for (ChannelState& c : channels_) {
                 std::fill(c.rmsRing.begin(), c.rmsRing.end(), 0.0f);
@@ -106,7 +110,7 @@ public:
             for (int i = 0; i < n; ++i) {
                 const float a = std::abs(x[i]);
 
-                // --- peak：瞬間 attack、固定 dB/s release ---
+                // --- peak: instant attack, fixed dB/s release ---
                 if (a > c.peak)
                     c.peak = a;
                 else
@@ -117,28 +121,29 @@ public:
                     c.hold = a;
                     c.holdCounter = holdSamples_;
                 } else if (holdSamples_ < 0) {
-                    // 無限 hold：什麼都不做
+                    // infinite hold: do nothing
                 } else if (c.holdCounter > 0) {
                     --c.holdCounter;
                 } else {
                     c.hold = std::max(c.hold * decayPerSample_, c.peak);
                 }
 
-                // --- 滑動視窗 RMS：ring buffer 存 x^2，維護視窗內的總和 ---
+                // --- Sliding-window RMS: the ring buffer stores x^2 and we maintain the sum over the window ---
                 const float sq = a * a;
                 float& slot = c.rmsRing[static_cast<size_t>(c.ringPos)];
                 c.sumSquares += static_cast<double>(sq) - static_cast<double>(slot);
                 slot = sq;
                 if (++c.ringPos >= rmsSamples_) {
                     c.ringPos = 0;
-                    // 每繞一圈就重新精確加總一次，消除浮點累積誤差（攤平後仍是 O(1) / sample）
+                    // Re-sum exactly once per trip around the ring to remove accumulated floating-point error
+                    // (still O(1) per sample amortized)
                     double exact = 0.0;
                     for (int j = 0; j < rmsSamples_; ++j)
                         exact += c.rmsRing[static_cast<size_t>(j)];
                     c.sumSquares = exact;
                 }
             }
-            // 極小值 flush 成 0，避免 denormal 與永遠到不了 -inf
+            // Flush tiny values to 0 to avoid denormals and a reading that never reaches -inf
             if (c.peak < 1e-10f)
                 c.peak = 0.0f;
             if (c.hold < 1e-10f)
@@ -154,16 +159,17 @@ public:
         }
     }
 
-    // 以下 getter thread-safe（任何 thread 都可呼叫）
+    // The getters below are thread-safe (callable from any thread)
     float getPeakDb(int ch) const noexcept { return load(peakDb_.get(), ch); }
     float getRmsDb(int ch) const noexcept { return load(rmsDb_.get(), ch); }
     float getPeakHoldDb(int ch) const noexcept { return load(holdDb_.get(), ch); }
 
-    // 把 hold 清掉（例如使用者點了 meter）。這通常從 UI thread 呼叫，所以不直接碰 audio thread 的狀態，
-    // 而是設一個 atomic flag，讓 audio thread 在下一次 process() 自己清。
+    // Clear the hold (e.g. the user clicked the meter). This is normally called from the UI thread, so it
+    // does not touch audio-thread state directly; it sets an atomic flag and lets the audio thread clear
+    // it on the next process() call.
     void resetPeakHold() noexcept { resetHoldRequested_.store(true, std::memory_order_relaxed); }
 
-    // 把 dB/s 換成每個 sample 的線性倍率（公開給練習與範例驗證用）
+    // Convert dB/s into a per-sample linear multiplier (public so exercises and examples can check it)
     static float decayCoefficient(float dbPerSecond, double sampleRate) noexcept {
         return static_cast<float>(std::pow(10.0, -static_cast<double>(dbPerSecond) / (20.0 * sampleRate)));
     }
@@ -184,7 +190,7 @@ private:
         return v[ch].load(std::memory_order_relaxed);
     }
 
-    // audio thread：處理 UI thread 送來的請求
+    // Audio thread: handle requests sent from the UI thread
     void applyPendingRequests() noexcept {
         if (resetHoldRequested_.exchange(false, std::memory_order_relaxed))
             for (ChannelState& c : channels_) {
