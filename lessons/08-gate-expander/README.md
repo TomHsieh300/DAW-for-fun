@@ -24,38 +24,9 @@ After reading this chapter and doing the exercises, you should be able to:
 
 The static behavior of every effect that "changes gain according to level" can be described by a **transfer curve** (input dB to output dB). The 1:1 diagonal means "no processing". The only differences are: on **which side** of the threshold the curve departs from 1:1, and in **which direction**.
 
-```
- output dB
-   0 ┤                                                 ·
-     │                                               ·      · = 1:1 reference line (no processing)
-     │                                             ·        C = compressor 4:1, T = -20
-     │                                           ·          L = limiter inf:1, T = -10
- -10 ┤                                         · L L L L    E = downward expander 1:2, T = -40
-     │                                       ·              G = gate, T = -40, range -80
-     │                                     ·       C C C
-     │                                   ·   C C C          Each curve coincides with the
- -20 ┤                                 · C C                dots (no processing) on the other
-     │                               ·                      side of its own threshold
-     │                             ·
-     │                           ·                          compressor / limiter: flat above T
- -30 ┤                         ·                            expander: steeper below T (slope 2)
-     │                       ·                              gate: drops a full 80 dB below T,
-     │                     ·                                      off the chart (the vertical G)
-     │                   ·
- -40 ┤                 ·
-     │               · G
-     │             · E G
-     │           ·     G
- -50 ┤         ·   E   G
-     │       ·         G
-     │     ·     E     G
-     │   ·             G
- -60 ┤ ·       E       G
-     └─┴───────┴───────┴───────┴───────┴───────┴───────┴
-      -60     -50     -40     -30     -20     -10       0   input dB
-```
+![Transfer curves of a compressor 4:1 (T = -20), a limiter (T = -10), a downward expander 1:2 (T = -40) and a gate (T = -40, range -80), input dB against output dB, with the 1:1 diagonal as reference](images/transfer-curves-dynamics-family.svg)
 
-(Horizontally, every 2 characters = 2.5 dB (each tick ┴ is 8 characters = 10 dB); vertically, every row = 2.5 dB. So the 1:1 line moves 2 characters right for every row up: a 45-degree diagonal. The compressor's 4:1 rises only 2.5 dB per 10 dB above T; the expander's 1:2 falls 10 dB per 5 dB below T.)
+In the figure the thick gray diagonal is the 1:1 reference (no processing), and the dots mark each curve's threshold. Each curve coincides with the diagonal on the other side of its own threshold. Compressor / limiter: flat above T (the compressor's 4:1 rises only 2.5 dB per 10 dB above T; the limiter, at inf:1, does not rise at all). Expander: steeper below T (the 1:2 falls 10 dB per 5 dB below T, slope 2). Gate: drops a full 80 dB below T, off the chart (the vertical arrow).
 
 Example 2 (`l08_expander_vs_gate_curve`) prints these four curves as a table. An excerpt:
 
@@ -153,14 +124,9 @@ A gate can be seen as an expander with ratio → ∞: below the threshold it sim
 
 Imagine the tail of a snare slowly decaying and passing right through the threshold. The detected envelope is not a smooth line: the peak detector jumps up at each peak and falls again between two peaks, producing a ripple of a few dB. If opening and closing use the same threshold $`T`$:
 
-```
- envelope (dB)
-      │ ╲/\/\
-  T ──┼────╲/\/\──────────   ← the envelope crosses T with ripple; every peak may cross it once
-      │        ╲/\/\/\
-      │              ╲/\/\
- gate │ ███████▌▐▌▐▌▐▌▐▌_____  ← open, close, open, close... = chattering (sounds like a crackling "brrt-brrt")
-```
+![A gate with a single threshold: the rippling envelope crosses T many times, so the gate state flips open and closed repeatedly (chattering)](images/gate-chattering-single-threshold.svg)
+
+In the figure, the envelope of a slowly decaying 50 Hz tone (detector: peak, attack 0.1 ms, release 20 ms) ripples by about 1 dB around the threshold $`T = -30`$ dB, so every peak may cross it once: the gate (lower strip) changes state 11 times within about 100 ms, open, close, open, close... = chattering (sounds like a crackling "brrt-brrt").
 
 The fix borrows the **Schmitt trigger** from electronics:
 
@@ -168,15 +134,9 @@ The fix borrows the **Schmitt trigger** from electronics:
 - Close only when the envelope **< $`T_\text{close}`$ = threshold − hysteresis**;
 - Between the two, keep the current state.
 
-```
- envelope (dB)
-      │ ╲/\/\
- T_open ──┼───╲/\/\──────────────
-      │         ╲/\/\/\          ← the ripple lies between the two lines: state unchanged
- T_close ─┼───────────╲/\/\──────
-      │                   ╲/\
- gate │ ████████████████████▌____  ← closes only once
-```
+![The same rippling envelope with a hysteresis of 6 dB: the ripple stays between T_open and T_close and the gate closes only once](images/gate-hysteresis-schmitt.svg)
+
+In the figure, the same envelope now lies between $`T_\text{open}`$ and $`T_\text{close}`$ = $`T_\text{open}`$ - 6 dB for a long stretch: the ripple leaves the state unchanged, and the gate closes only once, when the envelope finally drops below $`T_\text{close}`$.
 
 The condition is simple: **the hysteresis must be larger than the peak-to-peak fluctuation of the envelope**. The first source of fluctuation is rectification ripple, which we can compute.
 
@@ -237,15 +197,14 @@ With range -80 dB, attack 1 ms, 48 kHz: $`\Delta_a = 80/48 \approx 1.67`$ dB/sam
 
 The timeline from Example 1 (threshold -30, hysteresis 6, attack 1 ms, hold 20 ms, release 50 ms):
 
-```
-    time(ms)   transition
-        0.10   Closed  -> Attack      ← at the very start of the kick, the 0.1 ms detector exceeds -30 dB
-        1.12   Attack  -> Open        ← the 1 ms attack finishes
-      457.04   Open    -> Hold        ← the kick tail drops below -36 dB
-      477.04   Hold    -> Release     ← hold of 20 ms
-      500.00   Release -> Attack      ← the snare at 500 ms arrives mid-release and climbs from the current gain
-      500.48   Attack  -> Open        ← it starts from mid-release, so it finishes opening in under 1 ms
-```
+| time (ms) | transition | note |
+|---:|---|---|
+| 0.10 | Closed -> Attack | at the very start of the kick, the 0.1 ms detector exceeds -30 dB |
+| 1.12 | Attack -> Open | the 1 ms attack finishes |
+| 457.04 | Open -> Hold | the kick tail drops below -36 dB |
+| 477.04 | Hold -> Release | hold of 20 ms |
+| 500.00 | Release -> Attack | the snare at 500 ms arrives mid-release and climbs from the current gain |
+| 500.48 | Attack -> Open | it starts from mid-release, so it finishes opening in under 1 ms |
 
 #### 2.4.3 Range
 
@@ -275,11 +234,15 @@ Microphones (especially the high-frequency presence peak of condenser microphone
 
 A de-esser is just "a compressor with a bandpass in front of the detector":
 
-```
- x ──┬──► Bandpass(f, Q = 1.5) ──► EnvelopeFollower ──► GR = clamp(level − T, 0, range) ──► g
-     │                              (peak, 1 / 40 ms)                                         │
-     ├── wideband:    y = x · g                                                              ◄┘
-     └── split-band:  y = LP(x) + HP(x) · g   (LR4 crossover, compresses only the high band)
+```mermaid
+flowchart LR
+    X["x"] --> BP["Bandpass<br/>(f, Q = 1.5)"]
+    BP --> ENV["EnvelopeFollower<br/>(peak, 1 / 40 ms)"]
+    ENV --> GR["GR = clamp(level - T, 0, range)"]
+    GR -->|"g"| WB["wideband:<br/>y = x · g"]
+    GR -->|"g"| SB["split-band:<br/>y = LP(x) + HP(x) · g<br/>(LR4 crossover, compresses only the high band)"]
+    X --> WB
+    X --> SB
 ```
 
 First estimate the −3 dB edges of the bandpass (0 dB peak) with an analog prototype: $`f_1, f_2`$ satisfy $`f_1 f_2 = f_0^2`$ and $`f_2 - f_1 = f_0 / Q`$. Solving these two equations:

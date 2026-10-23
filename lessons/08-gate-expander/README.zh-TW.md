@@ -24,38 +24,9 @@
 
 所有「依音量改變增益」的效果器，靜態行為都可以用一條 **transfer curve**（輸入 dB → 輸出 dB）描述。1:1 的斜線代表「不處理」。差別只在於：曲線在 threshold 的**哪一側**偏離 1:1、往**哪個方向**偏。
 
-```
- 輸出 dB
-   0 ┤                                                 ·
-     │                                               ·      · = 1:1 參考線（不處理）
-     │                                             ·        C = compressor 4:1，T = -20
-     │                                           ·          L = limiter ∞:1，T = -10
- -10 ┤                                         · L L L L    E = downward expander 1:2，T = -40
-     │                                       ·              G = gate，T = -40，range -80
-     │                                     ·       C C C
-     │                                   ·   C C C          各曲線在自己的 threshold 另一側
- -20 ┤                                 · C C                都和 · 重疊（不處理）
-     │                               ·
-     │                             ·                        compressor / limiter：T 以上「躺平」
-     │                           ·                          expander：T 以下「變陡」（斜率 2）
- -30 ┤                         ·                            gate：T 以下直接掉 80 dB，
-     │                       ·                                    掉出圖外（垂直的 G）
-     │                     ·
-     │                   ·
- -40 ┤                 ·
-     │               · G
-     │             · E G
-     │           ·     G
- -50 ┤         ·   E   G
-     │       ·         G
-     │     ·     E     G
-     │   ·             G
- -60 ┤ ·       E       G
-     └─┴───────┴───────┴───────┴───────┴───────┴───────┴
-      -60     -50     -40     -30     -20     -10       0   輸入 dB
-```
+![compressor 4:1（T = -20）、limiter（T = -10）、downward expander 1:2（T = -40）與 gate（T = -40，range -80）的 transfer curve，橫軸輸入 dB、縱軸輸出 dB，以 1:1 斜線為參考](images/transfer-curves-dynamics-family.svg)
 
-（橫向每 2 個字元 = 2.5 dB（刻度 ┴ 每 8 個字元 = 10 dB）、縱向每列 2.5 dB，所以 1:1 線每往上一列就往右 2 個字元，是一條 45° 的斜線。compressor 的 4:1 在 T 以上每 10 dB 只升 2.5 dB；expander 的 1:2 在 T 以下每 5 dB 掉 10 dB。）
+圖中粗灰色斜線是 1:1 參考線（不處理），圓點標出各曲線的 threshold。各曲線在自己的 threshold 另一側都和斜線重疊（不處理）。compressor / limiter：T 以上「躺平」（compressor 的 4:1 在 T 以上每 10 dB 只升 2.5 dB；limiter 是 ∞:1，完全不升）。expander：T 以下「變陡」（1:2 在 T 以下每 5 dB 掉 10 dB，斜率 2）。gate：T 以下直接掉 80 dB，掉出圖外（垂直的箭頭）。
 
 範例 2（`l08_expander_vs_gate_curve`）把這四條曲線印成表，節錄如下：
 
@@ -153,14 +124,9 @@ Gate 可以看成 ratio → ∞ 的 expander：低於 threshold 就直接衰減 
 
 想像 snare 的尾音慢慢衰減，正好經過 threshold。偵測到的 envelope 不是平滑的直線：peak detector 每遇到一個波峰就往上跳一下，兩個波峰之間又往下掉，造成數 dB 的漣漪（ripple）。如果開門和關門用同一個門檻 $`T`$：
 
-```
- envelope (dB)
-      │ ╲/\/\
-  T ──┼────╲/\/\──────────   ← envelope 帶著漣漪穿過 T，每個波峰都可能越過一次
-      │        ╲/\/\/\
-      │              ╲/\/\
- gate │ ███████▌▐▌▐▌▐▌▐▌_____  ← 開、關、開、關……= chattering（聽起來像碎裂的「嗶嗶剝剝」）
-```
+![只有單一 threshold 的 gate：帶漣漪的 envelope 多次穿過 T，gate 狀態不斷在開與關之間切換（chattering）](images/gate-chattering-single-threshold.svg)
+
+圖中是一個緩慢衰減的 50 Hz 音（偵測器：peak、attack 0.1 ms、release 20 ms）的 envelope，在 threshold $`T = -30`$ dB 附近帶著約 1 dB 的漣漪，每個波峰都可能越過它一次：下方的 gate 狀態條在約 100 ms 內改變了 11 次狀態，開、關、開、關……= chattering（聽起來像碎裂的「嗶嗶剝剝」）。
 
 解法是借用電子學的 **Schmitt trigger**：
 
@@ -168,15 +134,9 @@ Gate 可以看成 ratio → ∞ 的 expander：低於 threshold 就直接衰減 
 - envelope **< $`T_\text{close}`$ = threshold − hysteresis** 才關門；
 - 在兩者之間，維持目前的狀態。
 
-```
- envelope (dB)
-      │ ╲/\/\
- T_open ──┼───╲/\/\──────────────
-      │         ╲/\/\/\          ← 漣漪在兩條線之間：狀態不變
- T_close ─┼───────────╲/\/\──────
-      │                   ╲/\
- gate │ ████████████████████▌____  ← 只關一次
-```
+![同樣帶漣漪的 envelope，加上 6 dB 的 hysteresis：漣漪落在 T_open 與 T_close 之間，gate 只關一次](images/gate-hysteresis-schmitt.svg)
+
+圖中同一條 envelope 在很長一段時間都落在 $`T_\text{open}`$ 與 $`T_\text{close}`$ = $`T_\text{open}`$ - 6 dB 之間：漣漪不改變狀態，直到 envelope 真的掉到 $`T_\text{close}`$ 以下，gate 才關一次。
 
 條件很簡單：**hysteresis 必須大於 envelope 起伏的峰對峰值**。起伏的第一個來源是整流漣漪，我們可以把它算出來。
 
@@ -237,15 +197,14 @@ range -80 dB、attack 1 ms、48 kHz：$`\Delta_a = 80/48 \approx 1.67`$ dB/sampl
 
 範例 1 的時間軸（threshold -30、hysteresis 6、attack 1 ms、hold 20 ms、release 50 ms）：
 
-```
-    time(ms)   transition
-        0.10   Closed  -> Attack      ← kick 一開始，0.1 ms 偵測器就超過 -30 dB
-        1.12   Attack  -> Open        ← 1 ms 的 attack 走完
-      457.04   Open    -> Hold        ← kick 尾巴掉到 -36 dB 以下
-      477.04   Hold    -> Release     ← hold 20 ms
-      500.00   Release -> Attack      ← 500 ms 的 snare 在 release 途中到達，直接從當下 gain 往上爬
-      500.48   Attack  -> Open        ← 從 release 中途開，所以不到 1 ms 就開完
-```
+| time (ms) | transition | 說明 |
+|---:|---|---|
+| 0.10 | Closed -> Attack | kick 一開始，0.1 ms 偵測器就超過 -30 dB |
+| 1.12 | Attack -> Open | 1 ms 的 attack 走完 |
+| 457.04 | Open -> Hold | kick 尾巴掉到 -36 dB 以下 |
+| 477.04 | Hold -> Release | hold 20 ms |
+| 500.00 | Release -> Attack | 500 ms 的 snare 在 release 途中到達，直接從當下 gain 往上爬 |
+| 500.48 | Attack -> Open | 從 release 中途開，所以不到 1 ms 就開完 |
 
 #### 2.4.3 Range
 
@@ -275,11 +234,15 @@ gate 的偵測訊號不一定要是自己。`Gate::process(main, sidechain)` 用
 
 de-esser 就是「偵測器前面加一個 bandpass 的 compressor」：
 
-```
- x ──┬──► Bandpass(f, Q = 1.5) ──► EnvelopeFollower ──► GR = clamp(level − T, 0, range) ──► g
-     │                              (peak, 1 / 40 ms)                                         │
-     ├── wideband：   y = x · g                                                              ◄┘
-     └── split-band： y = LP(x) + HP(x) · g   （LR4 分頻，只壓高頻段）
+```mermaid
+flowchart LR
+    X["x"] --> BP["Bandpass<br/>(f, Q = 1.5)"]
+    BP --> ENV["EnvelopeFollower<br/>(peak, 1 / 40 ms)"]
+    ENV --> GR["GR = clamp(level - T, 0, range)"]
+    GR -->|"g"| WB["wideband：<br/>y = x · g"]
+    GR -->|"g"| SB["split-band：<br/>y = LP(x) + HP(x) · g<br/>（LR4 分頻，只壓高頻段）"]
+    X --> WB
+    X --> SB
 ```
 
 先用 analog prototype 估計 bandpass（0 dB peak）的 −3 dB 邊界：$`f_1, f_2`$ 滿足 $`f_1 f_2 = f_0^2`$、$`f_2 - f_1 = f_0 / Q`$。解這兩條式子：
