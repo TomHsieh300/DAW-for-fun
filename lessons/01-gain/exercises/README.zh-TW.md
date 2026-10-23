@@ -22,7 +22,7 @@ cd build
 
 ## 練習 1 ★☆☆（計算）dB 心算
 
-不要用計算機（最多用 $\log_{10} 2 \approx 0.301$、$\log_{10} 3 \approx 0.477$、$\sqrt{2} \approx 1.414$、$\sqrt{10} \approx 3.162$ 這幾個數），回答：
+不要用計算機（最多用 $`\log_{10} 2 \approx 0.301`$、$`\log_{10} 3 \approx 0.477`$、$`\sqrt{2} \approx 1.414`$、$`\sqrt{10} \approx 3.162`$ 這幾個數），回答：
 
 1. 振幅倍率 0.25 是幾 dB？振幅倍率 4 呢？
 2. +10 dB 對應的振幅倍率是多少？功率倍率是多少？
@@ -30,14 +30,14 @@ cd build
 4. 一個 peak 振幅 0.5 的正弦波，它的 peak 是幾 dBFS？RMS 是幾 dBFS？
 5. 兩軌**一模一樣**的訊號，各自 peak −6 dBFS，相加後 peak 幾 dBFS？如果是兩軌**彼此不相關**的雜訊，各自 RMS −6 dBFS，相加後 RMS 幾 dBFS？
 6. 16 軌彼此不相關的雜訊，每軌 RMS −20 dBFS，混在一起 RMS 幾 dBFS？最壞情況下 peak 可能比單軌 peak 高多少 dB？
-7. 16-bit 整數 PCM 的最小量化步長是 $1/32768$。這個步長是幾 dBFS？（這大約就是 16-bit 的 noise floor 量級。）
+7. 16-bit 整數 PCM 的最小量化步長是 $`1/32768`$。這個步長是幾 dBFS？（這大約就是 16-bit 的 noise floor 量級。）
 
 ## 練習 2 ★★☆（觀念 + 計算）參數平滑與 pan law
 
 1. 用「時域相乘 = 頻域摺積」解釋（先複習 README 2.4 節開頭「振幅調變與 sideband」的直覺）：為什麼 gain 瞬間從 1 跳到 0.1 會產生 click，而且 click 是寬頻的？
 2. 在 44.1 kHz 下做 50 ms 的 linear ramp，從 gain 1.0 走到 0.1：總共幾個 sample？每個 sample 前進多少？
-3. one-pole exponential smoother：$y[n] = y[n-1] + a\,(t - y[n-1])$。在 44.1 kHz 下 τ = 20 ms，$a$ 是多少？輸出到達目標 99% 需要幾個 sample、幾 ms？
-4. 分別寫出 linear 與 constant power pan law 在**中央**的 $g_L$、$g_R$（線性與 dB），以及 $g_L^2 + g_R^2$ 與 $g_L + g_R$ 的值。然後回答：為什麼廣播 / 影視業界偏好 linear 或 −4.5 dB，而不是純 constant power？
+3. one-pole exponential smoother：$`y[n] = y[n-1] + a\,(t - y[n-1])`$。在 44.1 kHz 下 τ = 20 ms，$`a`$ 是多少？輸出到達目標 99% 需要幾個 sample、幾 ms？
+4. 分別寫出 linear 與 constant power pan law 在**中央**的 $`g_L`$、$`g_R`$（線性與 dB），以及 $`g_L^2 + g_R^2`$ 與 $`g_L + g_R`$ 的值。然後回答：為什麼廣播 / 影視業界偏好 linear 或 −4.5 dB，而不是純 constant power？
 5. 一句話說明 **mono pan** 與 **stereo balance** 的差別；`dawlab::dsp::Panner::process()` 對立體聲 block 做的是哪一種？
 6. 為什麼 `Gain` 的 polarity invert 不直接乘 −1，而是把 SmoothedValue 的目標設成 −g？切換的瞬間 gain 會經過哪個值？
 
@@ -47,11 +47,11 @@ cd build
 
 實作 `ExpSmoother`：
 
-- `reset(sampleRate, timeConstantSeconds)`：算出 $a = 1 - e^{-1/(\tau f_s)}$（τ = 0 時 $a = 1$），並把 current 對齊 target。
-- `getNextValue()`：套用差分方程式；當 $|t - y| <$ `kSnapThreshold`（1e-6）時直接把 current 設成 target（否則永遠到不了、`isSmoothing()` 永遠是 true，而且會產生 denormal）。
+- `reset(sampleRate, timeConstantSeconds)`：算出 $`a = 1 - e^{-1/(\tau f_s)}`$（τ = 0 時 $`a = 1`$），並把 current 對齊 target。
+- `getNextValue()`：套用差分方程式；當 $`|t - y| <`$ `kSnapThreshold`（1e-6）時直接把 current 設成 target（否則永遠到不了、`isSmoothing()` 永遠是 true，而且會產生 denormal）。
 - `samplesToReach(s, fraction, maxSamples)`：對階梯 0 → 1 量測輸出第一次 ≥ fraction 的 sample index（從 1 起算）。
 
-Self-check 會驗證：$a$ 的值、63.2% 在 ≈ τ、99% 在 ≈ 4.605 τ、99.9% 在 ≈ 6.908 τ、與解析解 $1 - (1-a)^n$ 的誤差、單調遞增、不超過目標、夠久之後真的停止平滑。
+Self-check 會驗證：$`a`$ 的值、63.2% 在 ≈ τ、99% 在 ≈ 4.605 τ、99.9% 在 ≈ 6.908 τ、與解析解 $`1 - (1-a)^n`$ 的誤差、單調遞增、不超過目標、夠久之後真的停止平滑。
 
 提示：起始碼的狀態刻意用 `double`。做完之後試著把 `current_` 改成 `float`，看看最後兩個 check（`!s.isSmoothing()`、`getCurrentValue() == 1.0f`）會發生什麼事，並想想為什麼（第 02 章的 IIR filter 會再遇到同一件事）。
 
@@ -117,9 +117,9 @@ $$
 
 實作：
 
-- `applyStereoWidth(stereo, width)`：in-place；$w = 0$ 變 mono、$w = 1$ 原樣、$w = 2$ 左右差異放大一倍。
-- `applyBalance(stereo, balance)`：$b > 0$ 時左聲道乘 $(1 - b)$、右聲道不動；$b < 0$ 反之。
+- `applyStereoWidth(stereo, width)`：in-place；$`w = 0`$ 變 mono、$`w = 1`$ 原樣、$`w = 2`$ 左右差異放大一倍。
+- `applyBalance(stereo, balance)`：$`b > 0`$ 時左聲道乘 $`(1 - b)`$、右聲道不動；$`b < 0`$ 反之。
 
-Self-check 會驗證：左 = 正弦波、右 = 0 的極端訊號在 $w$ = 0 / 1 / 2 下左右 peak 分別是 0.25/0.25、0.5/0、0.75/0.25（$w = 2$ 時右聲道出現反相訊號）；**任何 $w$ 下 $(L' + R')/2$ 都等於原本的 $M$**（mono 相容）；不相關雜訊 $w = 2$ 時 side +6.02 dB、mid 不變；balance +1 時左聲道精確為 0、右聲道一個 sample 都沒變；balance +0.5 時左 −6.02 dB、右 0 dB。
+Self-check 會驗證：左 = 正弦波、右 = 0 的極端訊號在 $`w`$ = 0 / 1 / 2 下左右 peak 分別是 0.25/0.25、0.5/0、0.75/0.25（$`w = 2`$ 時右聲道出現反相訊號）；**任何 $`w`$ 下 $`(L' + R')/2`$ 都等於原本的 $`M`$**（mono 相容）；不相關雜訊 $`w = 2`$ 時 side +6.02 dB、mid 不變；balance +1 時左聲道精確為 0、右聲道一個 sample 都沒變；balance +0.5 時左 −6.02 dB、右 0 dB。
 
-想一想：$w > 1$ 時 $L'$ 的 peak 可能超過原本的 peak（上面的例子 0.5 → 0.75），這對 headroom 有什麼影響？如果左右聲道完全相同（真正的 mono），任何 $w$ 都沒有效果——為什麼？
+想一想：$`w > 1`$ 時 $`L'`$ 的 peak 可能超過原本的 peak（上面的例子 0.5 → 0.75），這對 headroom 有什麼影響？如果左右聲道完全相同（真正的 mono），任何 $`w`$ 都沒有效果——為什麼？

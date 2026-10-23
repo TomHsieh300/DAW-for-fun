@@ -35,23 +35,23 @@ g_L = 10^{\text{dB}/20}\cdot p_L, \qquad g_R = 10^{\text{dB}/20}\cdot p_R
 $$
 
 With the constant-power law (chapter 01, `dsp::Panner::computeGains`):
-$\theta = \frac{\pi}{4}(p + 1)$, $p_L = \cos\theta$, $p_R = \sin\theta$, so $p_L^2 + p_R^2 = 1$:
+$`\theta = \frac{\pi}{4}(p + 1)`$, $`p_L = \cos\theta`$, $`p_R = \sin\theta`$, so $`p_L^2 + p_R^2 = 1`$:
 a source keeps the same perceived loudness wherever you pan it. The price is -3.01 dB at the centre.
-The linear law ($p_L = (1-p)/2$) has -6.02 dB at the centre and a loudness dip; the -4.5 dB law is
+The linear law ($`p_L = (1-p)/2`$) has -6.02 dB at the centre and a loudness dip; the -4.5 dB law is
 the geometric mean of the two.
 
-| pan law | centre gain per side | total power at the centre ($p_L^2 + p_R^2$) | mono sum at the centre ($p_L + p_R$) |
+| pan law | centre gain per side | total power at the centre ($`p_L^2 + p_R^2`$) | mono sum at the centre ($`p_L + p_R`$) |
 |---|---|---|---|
 | Linear | 0.5 (-6.02 dB) | 0.5 (-3.01 dB: quieter in the middle) | 1 (0 dB) |
 | ConstantPower (default) | 0.7071 (-3.01 dB) | 1 (0 dB: constant) | 1.414 (+3.01 dB) |
 | Minus4_5dB | 0.5946 (-4.52 dB) | 0.707 (-1.5 dB) | 1.189 (+1.5 dB) |
 
-(At $p = \pm 1$ every law gives 1 on one side and 0 on the other.) No law is right for both stereo
+(At $`p = \pm 1`$ every law gives 1 on one side and 0 on the other.) No law is right for both stereo
 playback (where power adds) and mono playback (where amplitudes add); -4.5 dB splits the
 difference.
 
 Buses and the master are stereo strips; for them a "pan" is a **balance** control: centre = unity,
-$p_L = \min(1, 1-p)$, $p_R = \min(1, 1+p)$ (`PanMode::Balance`). A master at its default must not
+$`p_L = \min(1, 1-p)`$, $`p_R = \min(1, 1+p)`$ (`PanMode::Balance`). A master at its default must not
 drop the mix by 3 dB.
 
 ### Smoothing: no zipper noise, no clicks
@@ -88,7 +88,7 @@ converter does - hence faders below 0 dB and a limiter on the master (Step 9's s
 Each strip feeds its output into chapter 11's `dsp::LevelMeter` (ballistic peak with hold, 300 ms
 RMS) and `dsp::LoudnessMeter` (BS.1770 momentary / short-term / integrated LUFS), whose getters are
 atomics a UI can poll. For offline reports the strip also keeps exact statistics since the last
-reset - the highest $|x|$ and the RMS over all samples - available as `StripStats`.
+reset - the highest $`|x|`$ and the RMS over all samples - available as `StripStats`.
 
 ## The code
 
@@ -136,7 +136,7 @@ every track and then runs the master stages. Not here yet: inserts (Step 5), sen
 
 | | |
 |---|---|
-| You write | `ChannelStrip::computeStripGains()` (pan law via `dsp::Panner::computeGains`, balance mode, fader gain, $-\infty$), `Mixer::isTrackAudible()` (the solo rule), `Mixer::processTrack()` (clips -> `beginBlock` -> mute/solo -> fader x pan -> meter -> sum) |
+| You write | `ChannelStrip::computeStripGains()` (pan law via `dsp::Panner::computeGains`, balance mode, fader gain, $`-\infty`$), `Mixer::isTrackAudible()` (the solo rule), `Mixer::processTrack()` (clips -> `beginBlock` -> mute/solo -> fader x pan -> meter -> sum) |
 | File | `steps/step04-mixer/starter/step04.cpp` |
 | Run | `l14_step04_starter`; it prints `[FAIL] l14_step04 (21 of 27 checks failed)` until you are done |
 | Solution | `steps/step04-mixer/solution/step04.cpp` (ctest `l14_step04_solution`) |
@@ -155,7 +155,7 @@ Step 4: the mixer (build-along)
 ```
 
 It also checks the linear law, the master fader, the master's balance control and that a fader at
-the bottom (-100 dB) means silence, not $10^{-5}$.
+the bottom (-100 dB) means silence, not $`10^{-5}`$.
 
 ## Verify (reference route)
 

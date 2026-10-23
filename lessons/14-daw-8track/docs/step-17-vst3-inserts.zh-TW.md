@@ -46,7 +46,7 @@ Plugin 的 editor 必須在 plugin *之前*刪除。`VstInsert` 擁有它的 `Pl
 
 ### 手邊沒有 VST3？用測試 plugin
 
-自動化測試不能依賴某個 VST3 檔案。`createTestDelayPlugin(latency)`（SmokeTest.cpp）是一個 in-process 的 `juce::AudioPluginInstance`：一個 `latency` 個 sample 的 stereo delay，帶有一個參數 "Gain"（gain $= 2 \cdot$ value，預設 0.5 = unity）與 `setLatencySamples(latency)`。包進 `HostedPlugin` 與 `VstInsert` 之後，它走的程式碼路徑與真正的 plugin 相同。
+自動化測試不能依賴某個 VST3 檔案。`createTestDelayPlugin(latency)`（SmokeTest.cpp）是一個 in-process 的 `juce::AudioPluginInstance`：一個 `latency` 個 sample 的 stereo delay，帶有一個參數 "Gain"（gain $`= 2 \cdot`$ value，預設 0.5 = unity）與 `setLatencySamples(latency)`。包進 `HostedPlugin` 與 `VstInsert` 之後，它走的程式碼路徑與真正的 plugin 相同。
 
 當 chapter 13 在同一棵 tree 中建置時（`build.ps1 -Only 13-vst-hosting,14-daw-8track -Juce`），它的兩個 plugin 會直接出現在 insert 選單中："DawLab Compressor (chapter 13)"（latency 0）與 "DawLab Limiter (chapter 13)"（一個把 lookahead 回報為 latency 的 lookahead limiter：預設在 48 kHz 下為 240 個 sample = 5 ms）。`app/CMakeLists.txt` 把它們的 bundle 路徑以 `DAWLAB_L13_COMPRESSOR_VST3` / `DAWLAB_L13_LIMITER_VST3` 編譯進來（從 target 的 artefact 資料夾重新組出，因為 chapter 13 只在它自己的 directory scope 中設定 `L13_COMPRESSOR_VST3` / `L13_LIMITER_VST3`），並讓 `DawLab8` 依賴這兩個 bundle target，所以 smoke test 執行時它們已經存在。`EffectMenu::chapter13LimiterFile()` 只有在 bundle 存在於磁碟上時才回傳它；否則該項目不會顯示。
 
@@ -76,7 +76,7 @@ openInsertEditor(ref, slot, false);   // -> VstInsert::openEditor() -> host::Plu
 
 - Mix latency 剛好增加 100 個 sample（PDC 接手了）。
 - 以 unity gain 帶著 plugin 的 1 秒 bounce，與*不帶* plugin 的 bounce 逐 bit 相同：renderer 移除了整個 mix latency（Step 9），所以純 delay 是看不見的。
-- 透過 `InsertEffect::setParameter()` 把它的參數設為 0.25，會讓輸出降低 6.02 dB（$20\log_{10} 0.5$）。
+- 透過 `InsertEffect::setParameter()` 把它的參數設為 0.25，會讓輸出降低 6.02 dB（$`20\log_{10} 0.5`$）。
 - 在 `clearInsert()` + `collectGarbage()` 之後，沒有任何測試 plugin 的實例仍然存活，且 mix latency 回到 752。
 
 當 chapter 13 是建置的一部分時，smoke test 也會載入真正的 VST3 檔案（第 5b 節）；以 `build.ps1 -Only 13-vst-hosting,14-daw-8track -Juce`，作者得到
@@ -90,13 +90,13 @@ openInsertEditor(ref, slot, false);   // -> VstInsert::openEditor() -> host::Plu
 
 Compressor 沒有 latency，所以它只證明真正的 bundle 能載入、處理，並在 message thread 上被刪除。Limiter 才是真正的 PDC 測試——再次是第 5 節，但用的是會自行計算並回報 latency 的 plugin：
 
-- 它被放進 insert latency 已是最大的那個 track 的 slot 4（track 8，convolution reverb：512 個 sample），所以該 track 的路徑變成 $512 + 240 = 752$，其他每個 track 現在都必須再多 delay 240 個 sample。Mix latency 必須剛好增加 plugin 透過 `AudioProcessor::getLatencySamples()` 所回報的量：$752 \to 992$，$+240$。
+- 它被放進 insert latency 已是最大的那個 track 的 slot 4（track 8，convolution reverb：512 個 sample），所以該 track 的路徑變成 $`512 + 240 = 752`$，其他每個 track 現在都必須再多 delay 240 個 sample。Mix latency 必須剛好增加 plugin 透過 `AudioProcessor::getLatencySamples()` 所回報的量：$`752 \to 992`$，$`+240`$。
 - 它的 ceiling 設為 0 dB（normalized 1.0），高於該 track 的電平，所以對這個訊號而言，limiter 是 240 個 sample 的純 delay。帶著它的 1 秒 bounce 因此與不帶它的 bounce 逐 bit 相同：PDC 對齊了全部八個 track，而 renderer 移除了較大的 mix latency。把同樣的兩個 bounce 錯開 240 個 sample 比較——也就是未補償的 plugin 會對該 track 造成的結果——差異為 1.33，所以這項檢查能抓出缺少的補償。
 - 在 `clearInsert()` 之後，mix latency 回到 752。
 
-（105 = stand-alone build 的 92 項檢查（它針對第 5b 節印出兩行 "not built in this tree"），加上 compressor 的 5 項與 limiter 的 8 項。測試 plugin 的 192 次 process 呼叫，是兩次 1 秒的 render，每次 $48\,000 + 852$ 個 sample，以 512 個 sample 的 block 處理，$2 \lceil 48\,852 / 512 \rceil = 2 \cdot 96$。）
+（105 = stand-alone build 的 92 項檢查（它針對第 5b 節印出兩行 "not built in this tree"），加上 compressor 的 5 項與 limiter 的 8 項。測試 plugin 的 192 次 process 呼叫，是兩次 1 秒的 render，每次 $`48\,000 + 852`$ 個 sample，以 512 個 sample 的 block 處理，$`2 \lceil 48\,852 / 512 \rceil = 2 \cdot 96`$。）
 
-在 app 中：把 chapter 13 的 DawLab Compressor 插在 drum 上，開啟它的 editor，把 threshold 拉低——plugin 自己 GUI 裡的 meter 會隨著 song 移動。把 DawLab Limiter 插在 Hits track 上，並觀察 mixer 下方的 "Mix latency (PDC)"：752 -> 992 個 sample；轉動它的 lookahead 旋鈕，這個數字會在一個 block 之內跟著變動，同時所有 track 都保持對拍。（在 bass 上，它的 insert 回報 31 個 sample，$31 + 240 = 271$ 仍低於 Hits track 的 512：bass 只是被 delay 得較少，mix latency 並不改變。）
+在 app 中：把 chapter 13 的 DawLab Compressor 插在 drum 上，開啟它的 editor，把 threshold 拉低——plugin 自己 GUI 裡的 meter 會隨著 song 移動。把 DawLab Limiter 插在 Hits track 上，並觀察 mixer 下方的 "Mix latency (PDC)"：752 -> 992 個 sample；轉動它的 lookahead 旋鈕，這個數字會在一個 block 之內跟著變動，同時所有 track 都保持對拍。（在 bass 上，它的 insert 回報 31 個 sample，$`31 + 240 = 271`$ 仍低於 Hits track 的 512：bass 只是被 delay 得較少，mix latency 並不改變。）
 
 ## 換你動手
 

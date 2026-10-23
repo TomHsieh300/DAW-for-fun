@@ -101,7 +101,7 @@ checks the result and quits the application with the exit code.
 
 Checked: right after `exportMixdown()` the job runs and the editing commands report themselves
 disabled; afterwards the WAV file `dawlab_output/l14_app_export.wav` has exactly
-$19 \cdot 48000 = 912\,000$ stereo frames (16 s of song = 8 bars at 120 BPM, plus the 3 s tail),
+$`19 \cdot 48000 = 912\,000`$ stereo frames (16 s of song = 8 bars at 120 BPM, plus the 3 s tail),
 the peak is at the limiter's ceiling, the removed latency equals `Engine::getLatencySamples()`,
 the status line starts with "Exported", and the transport is back at 0, stopped. The -15.5 LUFS
 are the same as stage 1's mix report (Step 9): the GUI export *is* the engine's bounce. The

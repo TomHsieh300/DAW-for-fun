@@ -25,13 +25,13 @@ into atomics); everything expensive or allocating happens on the reading side.
 ### The spectrum: push mono samples, compute on the GUI side
 
 After `Engine::processBlock()` the device callback has the master output in the device buffer.
-`AudioHost::render()` forms the mono sum $m[n] = \tfrac12(L[n] + R[n])$ in a pre-allocated
+`AudioHost::render()` forms the mono sum $`m[n] = \tfrac12(L[n] + R[n])`$ in a pre-allocated
 scratch buffer and calls `SpectrumAnalyzer::pushSamples(m, n)` - a copy into the analyzer's ring
 buffer. On the message thread `SpectrumView::update()` calls `computeSpectrum(magnitudesDb)`, which
-windows the newest 4096 samples, runs the FFT of chapter 11 and returns $N/2 + 1 = 2049$ bins in
+windows the newest 4096 samples, runs the FFT of chapter 11 and returns $`N/2 + 1 = 2049`$ bins in
 dB (or `false` when no new data arrived, so a stopped transport costs nothing). With
-`prepare(sampleRate, 12)` the FFT has $2^{12} = 4096$ points: the bin spacing is
-$f_s / N = 48000 / 4096 = 11.7$ Hz, enough to separate the bass notes (A1 = 55 Hz, F1 = 43.7 Hz).
+`prepare(sampleRate, 12)` the FFT has $`2^{12} = 4096`$ points: the bin spacing is
+$`f_s / N = 48000 / 4096 = 11.7`$ Hz, enough to separate the bass notes (A1 = 55 Hz, F1 = 43.7 Hz).
 
 ### Drawing on a log axis
 
@@ -79,10 +79,10 @@ turns red and adds "PDC limit exceeded, not aligned!" (`Engine::hasPdcOverflow()
 ## Verify
 
 - `l14_app_smoke_test`, section 8, checks the display path with numbers: a sine exactly on bin 85
-  of the 4096-point FFT ($85 \cdot 48000 / 4096 = 996.09$ Hz) at amplitude 0.5 must appear in
-  `SpectrumView` at that frequency and at $20 \log_{10} 0.5 = -6.02$ dBFS (the analyzer divides by
+  of the 4096-point FFT ($`85 \cdot 48000 / 4096 = 996.09`$ Hz) at amplitude 0.5 must appear in
+  `SpectrumView` at that frequency and at $`20 \log_{10} 0.5 = -6.02`$ dBFS (the analyzer divides by
   the window's coherent gain, chapter 11), and the log axis must put the geometric mean of the
-  two ends, $\sqrt{20 \cdot 20000} = 632.5$ Hz, exactly in the middle:
+  two ends, $`\sqrt{20 \cdot 20000} = 632.5`$ Hz, exactly in the middle:
 
   ```
   8. spectrum view: 996.09 Hz sine at 0.5 -> peak at 996.09 Hz, -6.02 dBFS (-6.02 expected); 632.5 Hz at x = 0.500

@@ -33,7 +33,7 @@ fs = 48 kHz.
 2. At 44.1 kHz, the shortest Freeverb comb is 1116 samples and the longest is 1617 samples. With the roomsize setting giving g = 0.84, what is the RT60 of each of these two combs? What does this say about the problem with Freeverb's relationship between roomsize and RT60?
 3. In the damping experiment of Example 1, d = 0.5, g = 0.894, D = 1557. Compute the RT60 at 1 kHz and 8 kHz by hand (using the formula in README Section 2.3) and compare with the example output.
 
-Hints: $g = 10^{-3D/(\mathrm{RT60}\,f_s)}$, $\mathrm{RT60} = -3D / (f_s\log_{10} g)$, $|\mathrm{LP}(e^{j\omega})| = (1-d)/\sqrt{1 - 2d\cos\omega + d^2}$.
+Hints: $`g = 10^{-3D/(\mathrm{RT60}\,f_s)}`$, $`\mathrm{RT60} = -3D / (f_s\log_{10} g)`$, $`|\mathrm{LP}(e^{j\omega})| = (1-d)/\sqrt{1 - 2d\cos\omega + d^2}`$.
 
 ---
 
@@ -69,12 +69,12 @@ Listen: with only the ER added, the sound becomes "closer" and gains a sense of 
 
 File: `exercises/starter/ex4_fdn_modulation.cpp` (target `l12_ex4_starter`).
 
-The starter code already contains the skeleton of a 4-line FDN, `Fdn4` (delays of roughly 23–47 ms, rounded to primes; Householder matrix; one-pole damping; $g_i = 10^{-3L_i/(\mathrm{RT60}f_s)}$).
+The starter code already contains the skeleton of a 4-line FDN, `Fdn4` (delays of roughly 23–47 ms, rounded to primes; Householder matrix; one-pole damping; $`g_i = 10^{-3L_i/(\mathrm{RT60}f_s)}`$).
 
 1. Complete `Fdn4::processSample()`:
-   - Advance the LFO phase; read the 4 lines $v_i$ = `lines_.readCubic(i, L_i − 1 + depth·sin(φ + i·π/2))` (read first, then write, hence the −1);
-   - Householder: $u_i = v_i - \frac{2}{N}\sum_j v_j$; apply damping where needed;
-   - Write back $g_i u_i + x$; output $v_0 - v_1 + v_2 - v_3$.
+   - Advance the LFO phase; read the 4 lines $`v_i`$ = `lines_.readCubic(i, L_i − 1 + depth·sin(φ + i·π/2))` (read first, then write, hence the −1);
+   - Householder: $`u_i = v_i - \frac{2}{N}\sum_j v_j`$; apply damping where needed;
+   - Write back $`g_i u_i + x`$; output $`v_0 - v_1 + v_2 - v_3`$.
 2. Complete `spectralRoughnessDb()`: take a 16384-point, Hann-windowed FFT of the tail (starting at 0.4 s), compute the magnitude (in dB) of each bin from 100 Hz to 6 kHz, and return the **standard deviation**. The more distinct the modes (the more metallic the sound), the "spikier" the spectrum and the larger the standard deviation.
 3. Compare modulation off vs. depth 1 ms / 1.3 Hz, and depth 4 ms.
 

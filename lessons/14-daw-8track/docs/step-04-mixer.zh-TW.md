@@ -35,22 +35,22 @@ g_L = 10^{\text{dB}/20}\cdot p_L, \qquad g_R = 10^{\text{dB}/20}\cdot p_R
 $$
 
 使用 constant-power law（第 01 章，`dsp::Panner::computeGains`）時：
-$\theta = \frac{\pi}{4}(p + 1)$，$p_L = \cos\theta$，$p_R = \sin\theta$，所以 $p_L^2 + p_R^2 = 1$：
+$`\theta = \frac{\pi}{4}(p + 1)`$，$`p_L = \cos\theta`$，$`p_R = \sin\theta`$，所以 $`p_L^2 + p_R^2 = 1`$：
 無論你把 source pan 到哪裡，它都保持相同的感知響度。代價是中央會有 -3.01 dB。
-linear law（$p_L = (1-p)/2$）在中央是 -6.02 dB，並且響度會凹下去；-4.5 dB law 則是
+linear law（$`p_L = (1-p)/2`$）在中央是 -6.02 dB，並且響度會凹下去；-4.5 dB law 則是
 兩者的幾何平均。
 
-| pan law | 中央每側的 gain | 中央的總功率（$p_L^2 + p_R^2$） | 中央的 mono 加總（$p_L + p_R$） |
+| pan law | 中央每側的 gain | 中央的總功率（$`p_L^2 + p_R^2`$） | 中央的 mono 加總（$`p_L + p_R`$） |
 |---|---|---|---|
 | Linear | 0.5 (-6.02 dB) | 0.5 (-3.01 dB：中間較小聲) | 1 (0 dB) |
 | ConstantPower（預設） | 0.7071 (-3.01 dB) | 1 (0 dB：維持恆定) | 1.414 (+3.01 dB) |
 | Minus4_5dB | 0.5946 (-4.52 dB) | 0.707 (-1.5 dB) | 1.189 (+1.5 dB) |
 
-（在 $p = \pm 1$ 時，每種 law 都是一側為 1、另一側為 0。）沒有任何一種 law 能同時適用於 stereo
+（在 $`p = \pm 1`$ 時，每種 law 都是一側為 1、另一側為 0。）沒有任何一種 law 能同時適用於 stereo
 播放（功率相加）與 mono 播放（振幅相加）；-4.5 dB 是兩者的折衷。
 
 Bus 與 master 是 stereo strip；對它們而言，「pan」是 **balance** 控制：中央 = unity，
-$p_L = \min(1, 1-p)$，$p_R = \min(1, 1+p)$（`PanMode::Balance`）。預設狀態的 master 不能
+$`p_L = \min(1, 1-p)`$，$`p_R = \min(1, 1+p)`$（`PanMode::Balance`）。預設狀態的 master 不能
 讓 mix 掉 3 dB。
 
 ### Smoothing：沒有 zipper noise，沒有 click
@@ -87,7 +87,7 @@ converter 在乎 - 因此要把 fader 放在 0 dB 以下，並在 master 上放�
 每個 strip 都把它的輸出餵給第 11 章的 `dsp::LevelMeter`（帶 hold 的 ballistic peak、300 ms
 RMS）與 `dsp::LoudnessMeter`（BS.1770 的 momentary / short-term / integrated LUFS），它們的 getter 是
 UI 可以 poll 的 atomic。為了 offline 報告，strip 也會保留自上次
-reset 以來的精確統計值 - 最高的 $|x|$ 與所有 sample 的 RMS - 以 `StripStats` 提供。
+reset 以來的精確統計值 - 最高的 $`|x|`$ 與所有 sample 的 RMS - 以 `StripStats` 提供。
 
 ## 程式碼
 
@@ -135,7 +135,7 @@ smoother、`beginBlock`、`applyMuteSolo`、`applyFaderAndPan`、peak meter）�
 
 | | |
 |---|---|
-| 你要寫的 | `ChannelStrip::computeStripGains()`（透過 `dsp::Panner::computeGains` 的 pan law、balance 模式、fader gain、$-\infty$）、`Mixer::isTrackAudible()`（solo 規則）、`Mixer::processTrack()`（clip -> `beginBlock` -> mute/solo -> fader x pan -> meter -> sum） |
+| 你要寫的 | `ChannelStrip::computeStripGains()`（透過 `dsp::Panner::computeGains` 的 pan law、balance 模式、fader gain、$`-\infty`$）、`Mixer::isTrackAudible()`（solo 規則）、`Mixer::processTrack()`（clip -> `beginBlock` -> mute/solo -> fader x pan -> meter -> sum） |
 | 檔案 | `steps/step04-mixer/starter/step04.cpp` |
 | 執行 | `l14_step04_starter`；在你完成之前它會印出 `[FAIL] l14_step04 (21 of 27 checks failed)` |
 | Solution | `steps/step04-mixer/solution/step04.cpp`（ctest `l14_step04_solution`） |
@@ -154,7 +154,7 @@ Step 4: the mixer (build-along)
 ```
 
 它也檢查了 linear law、master fader、master 的 balance 控制，以及 fader 在最底部
-（-100 dB）代表靜音，而不是 $10^{-5}$。
+（-100 dB）代表靜音，而不是 $`10^{-5}`$。
 
 ## Verify（參考路線）
 

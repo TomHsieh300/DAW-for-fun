@@ -48,7 +48,7 @@ Limiter 第 4 步要在 lookahead 視窗（L + 1 個值）內取最小值。暴�
 
 起始碼：`starter/ex4_true_peak_meter.cpp`
 
-ITU-R BS.1770 量 true peak 的做法是把訊號升頻 4 倍再量 sample peak。windowed-sinc 與 polyphase 的完整理論要到第 06 章 2.6 節才教，所以動手之前先讀 README 2.8 節的「升頻 4 倍怎麼做？（直覺版）」：零插入 → image → lowpass 插值 → polyphase 只算非零項。讀完應該能回答：為什麼要乘 4？為什麼 lowpass 是 $\operatorname{sinc}(n/4)$？為什麼 phase p 用的是 `h[4j + p]`？請完成 `TruePeakMeter`：
+ITU-R BS.1770 量 true peak 的做法是把訊號升頻 4 倍再量 sample peak。windowed-sinc 與 polyphase 的完整理論要到第 06 章 2.6 節才教，所以動手之前先讀 README 2.8 節的「升頻 4 倍怎麼做？（直覺版）」：零插入 → image → lowpass 插值 → polyphase 只算非零項。讀完應該能回答：為什麼要乘 4？為什麼 lowpass 是 $`\mathrm{sinc}(n/4)`$？為什麼 phase p 用的是 `h[4j + p]`？請完成 `TruePeakMeter`：
 
 1. `designFilter()`：設計 64 個 tap 的 windowed-sinc lowpass（cutoff = 原本的 fs/2、Hann window、總和正規化成 4），並做 polyphase 分解：phase p 的第 j 個 tap 是 `h[4j + p]`。
 2. `process()`：每個輸入 sample 只算 4 個內積 `y[4n + p] = Σ_j h[4j + p] · x[n − j]`，更新 `truePeak_`。
@@ -68,10 +68,10 @@ Self-check (1)～(4) 會驗證：1 kHz 正弦波的 true peak ≈ sample peak；
 完成 `softClip(x, t)`：
 
 $$
-y = \begin{cases} x & |x| \le t \\ \operatorname{sign}(x)\,\bigl[\,t + (1-t)\tanh\!\frac{|x|-t}{1-t}\,\bigr] & |x| > t \end{cases}
+y = \begin{cases} x & |x| \le t \\ \mathrm{sign}(x)\,\bigl[\,t + (1-t)\tanh\!\frac{|x|-t}{1-t}\,\bigr] & |x| > t \end{cases}
 $$
 
-要求：線性區完全不動、在 $t$ 處連續且斜率連續（C¹）、$|y| \le 1$、奇對稱、單調遞增。起始碼會用 1 kHz +6 dBFS 的正弦波比較 clipper 與 limiter 的 THD 與諧波（H2–H5），再用 drum loop +12 dB 比較 peak / RMS，輸出 WAV 給你聽。
+要求：線性區完全不動、在 $`t`$ 處連續且斜率連續（C¹）、$`|y| \le 1`$、奇對稱、單調遞增。起始碼會用 1 kHz +6 dBFS 的正弦波比較 clipper 與 limiter 的 THD 與諧波（H2–H5），再用 drum loop +12 dB 比較 peak / RMS，輸出 WAV 給你聽。
 
 思考：為什麼 clipper 的 H2、H4 幾乎是 -100 dB？limiter 的 THD 為什麼接近 0？
 

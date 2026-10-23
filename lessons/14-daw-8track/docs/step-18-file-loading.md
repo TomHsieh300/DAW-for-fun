@@ -37,31 +37,31 @@ crossing; Step 3 explains the click) and names the track after the file.
 ### Resampling: band-limited interpolation
 
 A 44.1 kHz file played by a 48 kHz engine would be 8.8 % too fast and 1.5 semitones too high
-($12\log_2(48000/44100) = 1.47$). It must be converted. Output sample $m$ lies at the input
-position $t_m = m \cdot f_{\text{in}} / f_{\text{out}}$, between two input samples. The ideal
+($`12\log_2(48000/44100) = 1.47`$). It must be converted. Output sample $`m`$ lies at the input
+position $`t_m = m \cdot f_{\text{in}} / f_{\text{out}}`$, between two input samples. The ideal
 reconstruction of a band-limited signal (sampling theorem) is a sum of sinc functions; we
-evaluate it at $t_m$ with a windowed, low-passed sinc kernel:
+evaluate it at $`t_m`$ with a windowed, low-passed sinc kernel:
 
 $$
 y[m] = \sum_k x[k]\; g(t_m - k), \qquad
-g(x) = 2f_c\,\operatorname{sinc}(2 f_c x)\; w\!\left(\frac{x}{W}\right), \qquad
-\operatorname{sinc}(u) = \frac{\sin \pi u}{\pi u}
+g(x) = 2f_c\,\mathrm{sinc}(2 f_c x)\; w\!\left(\frac{x}{W}\right), \qquad
+\mathrm{sinc}(u) = \frac{\sin \pi u}{\pi u}
 $$
 
-- $f_c$ is the cutoff in cycles per input sample, $f_c = 0.5 \cdot \min(1, f_{\text{out}}/f_{\text{in}}) \cdot 0.92$:
-  just below the *lower* of the two Nyquist frequencies. When downsampling ($f_{\text{out}} < f_{\text{in}}$)
+- $`f_c`$ is the cutoff in cycles per input sample, $`f_c = 0.5 \cdot \min(1, f_{\text{out}}/f_{\text{in}}) \cdot 0.92`$:
+  just below the *lower* of the two Nyquist frequencies. When downsampling ($`f_{\text{out}} < f_{\text{in}}`$)
   this removes what would alias; when upsampling it removes the spectral images. "Removes" is
-  approximate: the windowed kernel has a transition band of about $5.5 / (2W) = 0.23 f_c$ around
-  $f_c$, so its stopband starts near $1.115 f_c = 0.513 f_{\text{out}}$, just above the output's
-  Nyquist frequency. A component between $0.5$ and $0.513 f_{\text{out}}$ (22.05-22.6 kHz for a
+  approximate: the windowed kernel has a transition band of about $`5.5 / (2W) = 0.23 f_c`$ around
+  $`f_c`$, so its stopband starts near $`1.115 f_c = 0.513 f_{\text{out}}`$, just above the output's
+  Nyquist frequency. A component between $`0.5`$ and $`0.513 f_{\text{out}}`$ (22.05-22.6 kHz for a
   44.1 kHz output) still folds back, into 21.5-22.05 kHz (the top 2.6 % of the band), at least about 54 dB down
   (README section 3.10 derives the numbers).
-- $W = Z / (2 f_c)$ is the half-width in input samples, with $Z = 24$ zero crossings of the
-  sinc on each side; $w$ is a Blackman window on $[-1, 1]$.
-- $2 f_c$ normalizes the kernel's DC gain to 1.
+- $`W = Z / (2 f_c)`$ is the half-width in input samples, with $`Z = 24`$ zero crossings of the
+  sinc on each side; $`w`$ is a Blackman window on $`[-1, 1]`$.
+- $`2 f_c`$ normalizes the kernel's DC gain to 1.
 
 The kernel is tabulated once (512 points per zero crossing, linear interpolation between them);
-each output sample costs about $2W \approx 52$ multiply-adds when going from 44.1 to 48 kHz. That is
+each output sample costs about $`2W \approx 52`$ multiply-adds when going from 44.1 to 48 kHz. That is
 too slow for the audio thread and irrelevant on the loader thread. (This is a teaching resampler;
 production libraries use polyphase filters - same mathematics, different bookkeeping.)
 
@@ -107,10 +107,10 @@ audio at the old rate would end up in the project and play at the wrong pitch fo
 - 1 s at 44.1 kHz becomes exactly 48 000 samples, and a 1 kHz sine keeps its amplitude
   (passband error < 0.05 dB).
 - A 20 kHz sine cannot exist at 22.05 kHz (Nyquist 11.025 kHz). Without the lowpass it would fold
-  to $22050 - 20000 = 2050$ Hz; measured with Goertzel at 2050 Hz it is 122 dB below the input
+  to $`22050 - 20000 = 2050`$ Hz; measured with Goertzel at 2050 Hz it is 122 dB below the input
   (the check requires more than 60 dB).
 - 22.3 kHz converted from 48 to 44.1 kHz lies in the kernel's transition band, just above the new
-  Nyquist frequency of 22.05 kHz: it folds to $44100 - 22300 = 21800$ Hz at -54.3 dB. That is the
+  Nyquist frequency of 22.05 kHz: it folds to $`44100 - 22300 = 21800`$ Hz at -54.3 dB. That is the
   honest limit of this kernel (the check requires -50 to -80 dB, so a change of the kernel shows up).
 - `MediaLoader::readAudioFile()` - the loader thread's function - reads a mono 44.1 kHz WAV (written
   by the test) and returns a stereo buffer of exactly 48 000 samples at 48 kHz with the tone intact.
@@ -122,7 +122,7 @@ unknown parameter names, mix latency 752 samples - the same numbers as `l14_rend
 
 | | |
 |---|---|
-| You write | `resampleBuffer()` in `app/Source/MediaLoader.cpp`: output length, the cutoff $f_c = 0.46 \min(1, f_{\text{out}}/f_{\text{in}})$, the windowed-sinc kernel of "Resampling: band-limited interpolation" (keep `ResamplerSettings::kZeroCrossings` and `kCutoffScale` from `MediaLoader.h`) |
+| You write | `resampleBuffer()` in `app/Source/MediaLoader.cpp`: output length, the cutoff $`f_c = 0.46 \min(1, f_{\text{out}}/f_{\text{in}})`$, the windowed-sinc kernel of "Resampling: band-limited interpolation" (keep `ResamplerSettings::kZeroCrossings` and `kCutoffScale` from `MediaLoader.h`) |
 | Build + check | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test` (`l14_app_smoke_test`) |
 | Expected | section 1 prints the four resampler lines of this page: 1 kHz amplitude 0.5000 and length 48 000, the 20 kHz alias more than 60 dB (author: 122.2 dB) down, the 22.3 kHz transition-band alias between -50 and -80 dB (author: -54.3 dB); `[PASS] l14_app_smoke_test` |
 

@@ -48,7 +48,7 @@ Engine 直接 render 到 driver 的記憶體裡。輸出多於兩個 channel 的
 
 如果 sample rate 或 buffer size 沒有改變（例如 export 重新 attach engine 時，Step 19），`prepareInternal()` 會跳過 `Engine::prepare()`：重新 prepare 會重置每個 effect，並無謂地切斷 reverb tail。
 
-當 device *確實*以另一個 sample rate 回來時，所有以 sample 為單位量測的東西都會出錯：clip 的位置與長度、fade、loop range——還有 clip audio 本身，它現在會以錯誤的速度與音高播放（48 -> 44.1 kHz：慢 8 %，低 1.47 個半音）。每個 clip source 都必須 resample 一次（共用的 buffer 仍維持共用），每個位置都要乘上 $f_{\text{new}} / f_{\text{old}}$。Resampling 很慢——即使在 Release build，一個 3 分鐘的 stereo 檔案也要幾秒——所以它既不能跑在 message thread 上（GUI 會凍結），也不能讓 engine 在這段時間繼續播放舊的 clip：
+當 device *確實*以另一個 sample rate 回來時，所有以 sample 為單位量測的東西都會出錯：clip 的位置與長度、fade、loop range——還有 clip audio 本身，它現在會以錯誤的速度與音高播放（48 -> 44.1 kHz：慢 8 %，低 1.47 個半音）。每個 clip source 都必須 resample 一次（共用的 buffer 仍維持共用），每個位置都要乘上 $`f_{\text{new}} / f_{\text{old}}`$。Resampling 很慢——即使在 Release build，一個 3 分鐘的 stereo 檔案也要幾秒——所以它既不能跑在 message thread 上（GUI 會凍結），也不能讓 engine 在這段時間繼續播放舊的 clip：
 
 ```
 device thread (audioDeviceAboutToStart)      message thread                     loader thread
@@ -143,7 +143,7 @@ if (mode_ == Mode::Offline || deviceError.isNotEmpty())
     converted in 5010 ms with 457 message-loop turns meanwhile, playback resumed: yes, status "Sample rate changed to 44100 Hz: clips converted"
 ```
 
-從 bar 2 開始的 clip 仍然從 bar 2 開始（$96000 \cdot 44100 / 48000 = 88200$），它 1 秒長的 source buffer 現在有 44 100 個 sample，轉換後的 song render 結果沒有 NaN。Transport 在 device 重新啟動的瞬間停止，並在轉換完成後再度開始；message loop 全程持續運轉（turn 的次數與毫秒數取決於機器；這是一個 Debug build，在轉換 demo song 的 28 個 buffer）。
+從 bar 2 開始的 clip 仍然從 bar 2 開始（$`96000 \cdot 44100 / 48000 = 88200`$），它 1 秒長的 source buffer 現在有 44 100 個 sample，轉換後的 song render 結果沒有 NaN。Transport 在 device 重新啟動的瞬間停止，並在轉換完成後再度開始；message loop 全程持續運轉（turn 的次數與毫秒數取決於機器；這是一個 Debug build，在轉換 demo song 的 28 個 buffer）。
 
 想聽聽看：啟動 `DawLab 8.exe`（不帶參數），按下 Space。
 

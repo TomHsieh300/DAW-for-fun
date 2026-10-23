@@ -28,11 +28,11 @@ DawLabCompressor's parameter ranges are as follows (`plugin/compressor/Compresso
 | Attack | 0.1 … 200 ms | `setSkewForCentre(10)` |
 | Release | 5 … 2000 ms | `setSkewForCentre(100)` |
 
-JUCE's conversion formulas: $n = \left(\dfrac{v - s}{e - s}\right)^{k}$, $v = s + (e - s)\, n^{1/k}$.
+JUCE's conversion formulas: $`n = \left(\dfrac{v - s}{e - s}\right)^{k}`$, $`v = s + (e - s)\, n^{1/k}`$.
 
 1. The host wants to set Threshold to −24 dB and Ratio to 8:1. What normalized value must it send for each?
-2. `setSkewForCentre(c)` makes $n = 0.5$ land exactly on $v = c$. Derive the formula for the skew $k$, and compute $k$ for Attack and for Release.
-3. The user turns the Release knob to the 1/4 position ($n = 0.25$). How many ms is that actually? (Hint: $0.25 = 0.5^2$; the answer has a very neat closed form.)
+2. `setSkewForCentre(c)` makes $`n = 0.5`$ land exactly on $`v = c`$. Derive the formula for the skew $`k`$, and compute $`k`$ for Attack and for Release.
+3. The user turns the Release knob to the 1/4 position ($`n = 0.25`$). How many ms is that actually? (Hint: $`0.25 = 0.5^2`$; the answer has a very neat closed form.)
 4. Why does VST3 require the host and the plugin to exchange only values in 0..1, rather than passing "−24 dB" directly?
 
 ## Exercise 2 ★★☆ (concepts): threads, scanning and crashes
@@ -53,7 +53,7 @@ A 48 kHz project has three tracks feeding the master:
 
 1. What is each plugin's latency in samples and in ms?
 2. To line up the three tracks at the master, how many extra samples must the host delay each track by? What is the total latency of the whole project?
-3. If the host did no PDC, how many ms apart would the kick on Track A and the kick on Track C be? If two identical kicks are stacked but offset by 240 samples, at which frequencies do they cancel completely? (Hint: a comb filter, $f_k = \dfrac{(2k+1)\, f_s}{2D}$)
+3. If the host did no PDC, how many ms apart would the kick on Track A and the kick on Track C be? If two identical kicks are stacked but offset by 240 samples, at which frequencies do they cancel completely? (Hint: a comb filter, $`f_k = \dfrac{(2k+1)\, f_s}{2D}`$)
 4. What problem does PDC cause while recording (monitoring the input signal)? How do DAWs usually handle it?
 
 ## Exercise 4 ★★☆ (hands-on): host-side automation -- slicing into sub-blocks

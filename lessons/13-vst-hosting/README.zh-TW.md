@@ -122,7 +122,7 @@ VST3 的每個參數都有一個 `ParamID`（32-bit 整數），值一律是 **0
 
 - automation lane、MIDI learn、控制器硬體都可以用 **同一套** 0..1 的邏輯處理所有參數；
 - 參數的「意義」（範圍、曲線、單位）完全由 plugin 決定，plugin 改版時可以調整曲線而不破壞 host；
-- 離散參數（例如 waveform 選單）也用 0..1 表示：有 `stepCount = N` 個步的參數，值是 $k / N$。
+- 離散參數（例如 waveform 選單）也用 0..1 表示：有 `stepCount = N` 個步的參數，值是 $`k / N`$。
 
 換算由 plugin 負責。JUCE 的 `NormalisableRange<float>(start s, end e, interval, skew k)` 用的公式是：
 
@@ -130,9 +130,9 @@ $$
 n = \left(\frac{v - s}{e - s}\right)^{k}, \qquad v = s + (e - s)\, n^{1/k}
 $$
 
-$k = 1$ 是線性；$k < 1$ 讓滑桿前段分配給小數值——attack、release、ratio 這種「小值區域比較重要」的參數都該用 $k < 1$。
+$`k = 1`$ 是線性；$`k < 1`$ 讓滑桿前段分配給小數值——attack、release、ratio 這種「小值區域比較重要」的參數都該用 $`k < 1`$。
 
-**`setSkewForCentre(c)` 的推導**：我們想要旋鈕正中間（$n = 0.5$）剛好是 $v = c$：
+**`setSkewForCentre(c)` 的推導**：我們想要旋鈕正中間（$`n = 0.5`$）剛好是 $`v = c`$：
 
 $$
 0.5 = \left(\frac{c - s}{e - s}\right)^{k} \;\Longrightarrow\; k = \frac{\ln 0.5}{\ln\!\left(\dfrac{c - s}{e - s}\right)}
@@ -140,13 +140,13 @@ $$
 
 本章 plugin 的參數（`plugin/compressor/CompressorProcessor.cpp`）：
 
-| 參數 | 範圍 | skew $k$ | 預設值 → normalized |
+| 參數 | 範圍 | skew $`k`$ | 預設值 → normalized |
 |---|---|---|---|
 | Threshold | −60 … 0 dB | 1 | −20 dB → 0.6667 |
-| Ratio | 1 … 20 | 0.5 | 4 → $(3/19)^{0.5}$ = 0.3974 |
+| Ratio | 1 … 20 | 0.5 | 4 → $`(3/19)^{0.5}`$ = 0.3974 |
 | Knee | 0 … 24 dB | 1 | 6 dB → 0.25 |
-| Attack | 0.1 … 200 ms | centre 10 ms → $k$ = 0.23064 | 10 ms → 0.5 |
-| Release | 5 … 2000 ms | centre 100 ms → $k$ = 0.22767 | 100 ms → 0.5 |
+| Attack | 0.1 … 200 ms | centre 10 ms → $`k`$ = 0.23064 | 10 ms → 0.5 |
+| Release | 5 … 2000 ms | centre 100 ms → $`k`$ = 0.22767 | 100 ms → 0.5 |
 | Makeup | −12 … +24 dB | 1 | 0 dB → 0.3333 |
 | Mix | 0 … 100 % | 1 | 100 % → 1.0 |
 
@@ -169,9 +169,9 @@ plugin 可以選擇：(a) 每個 sample 都依 queue 內插（真正的 sample-a
 
 所以 **host 端** 想要更細的時間解析度時，最通用的做法是 **切 sub-block**：把 512 個 sample 切成 16 段 32 sample，每段開頭設一次參數（練習 4）。代價與誤差：
 
-- 時間誤差 ≤ sub-block 長度 $S$：$S = 32$、$f_s = 48$ kHz 時是 0.67 ms；
-- 參數斜率為 $r$（單位/秒）時，任一時刻的值誤差 ≤ $r \cdot S / f_s$；例如 threshold 在 8 秒內掉 40 dB（$r$ = 5 dB/s），誤差 ≤ 5 × 32 / 48000 ≈ 0.0033 dB；
-- 代價：plugin 被呼叫的次數變成 $512/S$ 倍，每次呼叫的固定開銷（函式呼叫、參數讀取、平滑器更新）跟著變多。
+- 時間誤差 ≤ sub-block 長度 $`S`$：$`S = 32`$、$`f_s = 48`$ kHz 時是 0.67 ms；
+- 參數斜率為 $`r`$（單位/秒）時，任一時刻的值誤差 ≤ $`r \cdot S / f_s`$；例如 threshold 在 8 秒內掉 40 dB（$`r`$ = 5 dB/s），誤差 ≤ 5 × 32 / 48000 ≈ 0.0033 dB；
+- 代價：plugin 被呼叫的次數變成 $`512/S`$ 倍，每次呼叫的固定開銷（函式呼叫、參數讀取、平滑器更新）跟著變多。
 
 #### 2.3.5 Editor：IPlugView
 
@@ -278,23 +278,23 @@ host 根據 track 的 channel 數提議 layout，plugin 不接受就退而求其
 
 #### 2.6.4 Latency 回報與 PDC
 
-lookahead limiter、linear-phase EQ、oversampling 都會讓輸出比輸入晚 $L$ 個 sample。plugin 必須回報 $L$，host 才能做 **PDC（plugin delay compensation）**：
+lookahead limiter、linear-phase EQ、oversampling 都會讓輸出比輸入晚 $`L`$ 個 sample。plugin 必須回報 $`L`$，host 才能做 **PDC（plugin delay compensation）**：
 
-設專案裡第 $i$ 條路徑（track + 它的 insert）總 latency 是 $L_i$，為了讓所有路徑在 mix bus 對齊，host 在第 $i$ 條路徑額外加上
+設專案裡第 $`i`$ 條路徑（track + 它的 insert）總 latency 是 $`L_i`$，為了讓所有路徑在 mix bus 對齊，host 在第 $`i`$ 條路徑額外加上
 
 $$
 d_i = L_{\max} - L_i, \qquad L_{\max} = \max_i L_i
 $$
 
-的延遲，整個專案的輸出比「理想」晚 $L_{\max}$。播放時 host 會把 timeline 提早 $L_{\max}$ 讀取，所以使用者聽到的仍然對準節拍。
+的延遲，整個專案的輸出比「理想」晚 $`L_{\max}`$。播放時 host 會把 timeline 提早 $`L_{\max}`$ 讀取，所以使用者聽到的仍然對準節拍。
 
-沒有 PDC 會怎樣？同一個 kick 出現在兩條 track、一條晚了 $D$ 個 sample，兩者相加就是一個 comb filter：
+沒有 PDC 會怎樣？同一個 kick 出現在兩條 track、一條晚了 $`D`$ 個 sample，兩者相加就是一個 comb filter：
 
 $$
 y[n] = x[n] + x[n - D] \;\Longrightarrow\; |H(f)| = 2\,\left|\cos\!\left(\frac{\pi f D}{f_s}\right)\right|
 $$
 
-在 $f_k = \dfrac{(2k+1) f_s}{2D}$ 完全抵消。$D = 240$（5 ms）、$f_s = 48$ kHz 時，100 Hz、300 Hz、500 Hz……全部被挖掉——kick 的低頻直接消失。練習 3 會算這個，練習 6 用 `AudioProcessorGraph`（它會自動做 PDC）量測整條鏈的 latency，練習 7 示範 bypass 時也要補償 latency——plugin 自己的 Bypass 參數也一樣：有 latency 的 plugin 必須 override `processBlockBypassed()`，bypass 時輸出延遲 $L$ 的原音（§3.2 的 DawLabLimiter），否則 bypass 一打開，這條 track 就比 PDC 預期的提早 $L$。
+在 $`f_k = \dfrac{(2k+1) f_s}{2D}`$ 完全抵消。$`D = 240`$（5 ms）、$`f_s = 48`$ kHz 時，100 Hz、300 Hz、500 Hz……全部被挖掉——kick 的低頻直接消失。練習 3 會算這個，練習 6 用 `AudioProcessorGraph`（它會自動做 PDC）量測整條鏈的 latency，練習 7 示範 bypass 時也要補償 latency——plugin 自己的 Bypass 參數也一樣：有 latency 的 plugin 必須 override `processBlockBypassed()`，bypass 時輸出延遲 $`L`$ 的原音（§3.2 的 DawLabLimiter），否則 bypass 一打開，這條 track 就比 PDC 預期的提早 $`L`$。
 
 #### 2.6.5 State 保存、editor 視窗
 
@@ -394,7 +394,7 @@ $$
 y[n] = (1 - m[n])\,x[n] + m[n]\,\text{wet}[n]
 $$
 
-$m$ 是 Mix（0..1，50 ms 線性平滑），$g_{\text{makeup}}$ 由第 01 章的 `Gain` 提供（自帶 50 ms ramp）。Mix 就是 **parallel compression**（又稱 New York compression）：把壓得很重的訊號跟原音混合，保留原音的 transient、又得到壓縮的密度。因為 compressor 沒有 lookahead（latency 0），dry 不需要延遲就能對齊；如果有 latency，dry 就要先延遲 $L$（練習 7 的延伸題）。`mix = 100 %` 而且沒在 ramp 時直接跳過混合，所以輸出與 `dsp::Compressor` **bit-exact**。
+$`m`$ 是 Mix（0..1，50 ms 線性平滑），$`g_{\text{makeup}}`$ 由第 01 章的 `Gain` 提供（自帶 50 ms ramp）。Mix 就是 **parallel compression**（又稱 New York compression）：把壓得很重的訊號跟原音混合，保留原音的 transient、又得到壓縮的密度。因為 compressor 沒有 lookahead（latency 0），dry 不需要延遲就能對齊；如果有 latency，dry 就要先延遲 $`L`$（練習 7 的延伸題）。`mix = 100 %` 而且沒在 ramp 時直接跳過混合，所以輸出與 `dsp::Compressor` **bit-exact**。
 
 **參數讀取**：建構時取得 `std::atomic<float>*`，`processBlock` 開頭呼叫 `updateDspParameters()` 一次。`Compressor::setAttackMs()` 等 setter 本來就設計成可以在 block 之間呼叫。
 
@@ -410,7 +410,7 @@ void CompressorProcessor::getStateInformation(juce::MemoryBlock& destData) {
 }
 ```
 
-**DawLabLimiter** 的不同處：(1) `prepareToPlay` 裡 `setLatencySamples(limiter_.getLatencySamples())`，lookahead 5 ms @ 48 kHz = 240 samples；播放中改 lookahead 也會更新 latency；(2) `hasEditor()` 回傳 false，host 會改用 `GenericAudioProcessorEditor`；(3) `getTailLengthSeconds()` 回報 lookahead 長度；(4) override `processBlockBypassed()`。VST3 wrapper 會自動加一個 Bypass 參數，打開時改呼叫 `processBlockBypassed()`，而 JUCE 的預設實作是直接 pass-through（延遲 0）——但 plugin 回報的 latency 仍是 240，host 的 PDC 也仍在補償 240，bypass 的訊號就會比其他 track 提早 240 個 sample。**有 latency 的 plugin 必須 override `processBlockBypassed()` 來維持延遲**：DawLabLimiter 在 bypass 時輸出延遲 $L$ 的原音（用 `dsp::DelayLine`，容量 = lookahead 上限 + maxBlockSize，在 `prepareToPlay` 配置），並用 10 ms crossfade 在 wet / dry 之間切換（練習 7 的同一招，只是做在 plugin 裡）；limiter 在 bypass 時照常運作，取消 bypass 時內部狀態已經是最新的，不會吐出舊的聲音。練習 7 的解答驗證了 Bypass = 1 時位置 1000 的 impulse 出現在 $1000 + 240$。
+**DawLabLimiter** 的不同處：(1) `prepareToPlay` 裡 `setLatencySamples(limiter_.getLatencySamples())`，lookahead 5 ms @ 48 kHz = 240 samples；播放中改 lookahead 也會更新 latency；(2) `hasEditor()` 回傳 false，host 會改用 `GenericAudioProcessorEditor`；(3) `getTailLengthSeconds()` 回報 lookahead 長度；(4) override `processBlockBypassed()`。VST3 wrapper 會自動加一個 Bypass 參數，打開時改呼叫 `processBlockBypassed()`，而 JUCE 的預設實作是直接 pass-through（延遲 0）——但 plugin 回報的 latency 仍是 240，host 的 PDC 也仍在補償 240，bypass 的訊號就會比其他 track 提早 240 個 sample。**有 latency 的 plugin 必須 override `processBlockBypassed()` 來維持延遲**：DawLabLimiter 在 bypass 時輸出延遲 $`L`$ 的原音（用 `dsp::DelayLine`，容量 = lookahead 上限 + maxBlockSize，在 `prepareToPlay` 配置），並用 10 ms crossfade 在 wet / dry 之間切換（練習 7 的同一招，只是做在 plugin 裡）；limiter 在 bypass 時照常運作，取消 bypass 時內部狀態已經是最新的，不會吐出舊的聲音。練習 7 的解答驗證了 Bypass = 1 時位置 1000 的 impulse 出現在 $`1000 + 240`$。
 
 ### 3.3 Host 函式庫：`dawlab_plugin_host`
 

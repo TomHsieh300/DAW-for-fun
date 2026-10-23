@@ -122,7 +122,7 @@ Every VST3 parameter has a `ParamID` (a 32-bit integer), and its value is always
 
 - Automation lanes, MIDI learn and controller hardware can all handle every parameter with **one and the same** 0..1 logic;
 - The "meaning" of a parameter (range, curve, unit) is decided entirely by the plugin, so a plugin can adjust its curves in a new version without breaking the host;
-- Discrete parameters (for example a waveform menu) are also expressed in 0..1: a parameter with `stepCount = N` steps has values $k / N$.
+- Discrete parameters (for example a waveform menu) are also expressed in 0..1: a parameter with `stepCount = N` steps has values $`k / N`$.
 
 The conversion is the plugin's job. The formula used by JUCE's `NormalisableRange<float>(start s, end e, interval, skew k)` is:
 
@@ -130,9 +130,9 @@ $$
 n = \left(\frac{v - s}{e - s}\right)^{k}, \qquad v = s + (e - s)\, n^{1/k}
 $$
 
-$k = 1$ is linear; $k < 1$ gives the first part of the slider to small values -- parameters such as attack, release and ratio, where "the small-value region matters more", should use $k < 1$.
+$`k = 1`$ is linear; $`k < 1`$ gives the first part of the slider to small values -- parameters such as attack, release and ratio, where "the small-value region matters more", should use $`k < 1`$.
 
-**Derivation of `setSkewForCentre(c)`**: we want the exact middle of the knob ($n = 0.5$) to be $v = c$:
+**Derivation of `setSkewForCentre(c)`**: we want the exact middle of the knob ($`n = 0.5`$) to be $`v = c`$:
 
 $$
 0.5 = \left(\frac{c - s}{e - s}\right)^{k} \;\Longrightarrow\; k = \frac{\ln 0.5}{\ln\!\left(\dfrac{c - s}{e - s}\right)}
@@ -140,13 +140,13 @@ $$
 
 The parameters of this chapter's plugin (`plugin/compressor/CompressorProcessor.cpp`):
 
-| Parameter | Range | skew $k$ | Default → normalized |
+| Parameter | Range | skew $`k`$ | Default → normalized |
 |---|---|---|---|
 | Threshold | −60 … 0 dB | 1 | −20 dB → 0.6667 |
-| Ratio | 1 … 20 | 0.5 | 4 → $(3/19)^{0.5}$ = 0.3974 |
+| Ratio | 1 … 20 | 0.5 | 4 → $`(3/19)^{0.5}`$ = 0.3974 |
 | Knee | 0 … 24 dB | 1 | 6 dB → 0.25 |
-| Attack | 0.1 … 200 ms | centre 10 ms → $k$ = 0.23064 | 10 ms → 0.5 |
-| Release | 5 … 2000 ms | centre 100 ms → $k$ = 0.22767 | 100 ms → 0.5 |
+| Attack | 0.1 … 200 ms | centre 10 ms → $`k`$ = 0.23064 | 10 ms → 0.5 |
+| Release | 5 … 2000 ms | centre 100 ms → $`k`$ = 0.22767 | 100 ms → 0.5 |
 | Makeup | −12 … +24 dB | 1 | 0 dB → 0.3333 |
 | Mix | 0 … 100 % | 1 | 100 % → 1.0 |
 
@@ -169,9 +169,9 @@ A plugin may choose: (a) to interpolate along the queue for every sample (truly 
 
 So when the **host side** wants a finer time resolution, the most general method is to **slice into sub-blocks**: cut 512 samples into 16 segments of 32 samples and set the parameter at the start of each segment (exercise 4). The cost and the error:
 
-- Timing error ≤ the sub-block length $S$: with $S = 32$ and $f_s = 48$ kHz that is 0.67 ms;
-- With a parameter slope of $r$ (units/second), the value error at any moment is ≤ $r \cdot S / f_s$; for example, for a threshold falling 40 dB in 8 seconds ($r$ = 5 dB/s), the error is ≤ 5 × 32 / 48000 ≈ 0.0033 dB;
-- The cost: the plugin is called $512/S$ times as often, and the fixed overhead of every call (function call, parameter reads, smoother updates) grows accordingly.
+- Timing error ≤ the sub-block length $`S`$: with $`S = 32`$ and $`f_s = 48`$ kHz that is 0.67 ms;
+- With a parameter slope of $`r`$ (units/second), the value error at any moment is ≤ $`r \cdot S / f_s`$; for example, for a threshold falling 40 dB in 8 seconds ($`r`$ = 5 dB/s), the error is ≤ 5 × 32 / 48000 ≈ 0.0033 dB;
+- The cost: the plugin is called $`512/S`$ times as often, and the fixed overhead of every call (function call, parameter reads, smoother updates) grows accordingly.
 
 #### 2.3.5 The editor: IPlugView
 
@@ -279,23 +279,23 @@ The host proposes a layout based on the track's channel count, and the plugin fa
 
 #### 2.6.4 Latency reporting and PDC
 
-Lookahead limiters, linear-phase EQs and oversampling all make the output $L$ samples later than the input. The plugin must report $L$ so that the host can do **PDC (plugin delay compensation)**:
+Lookahead limiters, linear-phase EQs and oversampling all make the output $`L`$ samples later than the input. The plugin must report $`L`$ so that the host can do **PDC (plugin delay compensation)**:
 
-Let the total latency of the $i$-th path in the project (track + its inserts) be $L_i$. To align all the paths at the mix bus, the host adds to the $i$-th path an extra delay of
+Let the total latency of the $`i`$-th path in the project (track + its inserts) be $`L_i`$. To align all the paths at the mix bus, the host adds to the $`i`$-th path an extra delay of
 
 $$
 d_i = L_{\max} - L_i, \qquad L_{\max} = \max_i L_i
 $$
 
-and the output of the whole project is $L_{\max}$ later than the "ideal". During playback the host reads the timeline $L_{\max}$ early, so what the user hears is still on the beat.
+and the output of the whole project is $`L_{\max}`$ later than the "ideal". During playback the host reads the timeline $`L_{\max}`$ early, so what the user hears is still on the beat.
 
-What happens without PDC? The same kick appears on two tracks, one of them $D$ samples late, and adding the two gives a comb filter:
+What happens without PDC? The same kick appears on two tracks, one of them $`D`$ samples late, and adding the two gives a comb filter:
 
 $$
 y[n] = x[n] + x[n - D] \;\Longrightarrow\; |H(f)| = 2\,\left|\cos\!\left(\frac{\pi f D}{f_s}\right)\right|
 $$
 
-which cancels completely at $f_k = \dfrac{(2k+1) f_s}{2D}$. With $D = 240$ (5 ms) and $f_s = 48$ kHz, 100 Hz, 300 Hz, 500 Hz ... are all carved out -- the kick's low end simply disappears. Exercise 3 computes this, exercise 6 uses `AudioProcessorGraph` (which does PDC automatically) to measure the latency of a whole chain, and exercise 7 shows that bypass must compensate latency too -- and so must a plugin's own Bypass parameter: a plugin with latency must override `processBlockBypassed()` and output the original audio delayed by $L$ when bypassed (DawLabLimiter in §3.2); otherwise, the moment bypass is switched on, this track arrives $L$ earlier than PDC expects.
+which cancels completely at $`f_k = \dfrac{(2k+1) f_s}{2D}`$. With $`D = 240`$ (5 ms) and $`f_s = 48`$ kHz, 100 Hz, 300 Hz, 500 Hz ... are all carved out -- the kick's low end simply disappears. Exercise 3 computes this, exercise 6 uses `AudioProcessorGraph` (which does PDC automatically) to measure the latency of a whole chain, and exercise 7 shows that bypass must compensate latency too -- and so must a plugin's own Bypass parameter: a plugin with latency must override `processBlockBypassed()` and output the original audio delayed by $`L`$ when bypassed (DawLabLimiter in §3.2); otherwise, the moment bypass is switched on, this track arrives $`L`$ earlier than PDC expects.
 
 #### 2.6.5 Saving state, editor windows
 
@@ -395,7 +395,7 @@ $$
 y[n] = (1 - m[n])\,x[n] + m[n]\,\text{wet}[n]
 $$
 
-$m$ is Mix (0..1, with 50 ms linear smoothing), and $g_{\text{makeup}}$ comes from chapter 01's `Gain` (which has its own 50 ms ramp). Mix is **parallel compression** (also called New York compression): blend a heavily compressed signal with the original, keeping the original's transients while gaining the density of compression. Because the compressor has no lookahead (latency 0), dry is aligned without any delay; if there were latency, dry would first have to be delayed by $L$ (the extension question of exercise 7). When `mix = 100 %` and it is not ramping, the blend is skipped entirely, so the output is **bit-exact** with `dsp::Compressor`.
+$`m`$ is Mix (0..1, with 50 ms linear smoothing), and $`g_{\text{makeup}}`$ comes from chapter 01's `Gain` (which has its own 50 ms ramp). Mix is **parallel compression** (also called New York compression): blend a heavily compressed signal with the original, keeping the original's transients while gaining the density of compression. Because the compressor has no lookahead (latency 0), dry is aligned without any delay; if there were latency, dry would first have to be delayed by $`L`$ (the extension question of exercise 7). When `mix = 100 %` and it is not ramping, the blend is skipped entirely, so the output is **bit-exact** with `dsp::Compressor`.
 
 **Reading parameters**: the `std::atomic<float>*` pointers are obtained at construction, and `processBlock` calls `updateDspParameters()` once at its start. Setters such as `Compressor::setAttackMs()` were designed from the start to be callable between blocks.
 
@@ -411,7 +411,7 @@ void CompressorProcessor::getStateInformation(juce::MemoryBlock& destData) {
 }
 ```
 
-**What is different about DawLabLimiter**: (1) in `prepareToPlay` it calls `setLatencySamples(limiter_.getLatencySamples())`; a 5 ms lookahead @ 48 kHz = 240 samples, and changing the lookahead during playback also updates the latency; (2) `hasEditor()` returns false, so the host falls back to `GenericAudioProcessorEditor`; (3) `getTailLengthSeconds()` reports the lookahead length; (4) it overrides `processBlockBypassed()`. The VST3 wrapper automatically adds a Bypass parameter and calls `processBlockBypassed()` when it is on, while JUCE's default implementation is a plain pass-through (delay 0) -- but the latency the plugin reports is still 240 and the host's PDC still compensates 240, so the bypassed signal would arrive 240 samples earlier than the other tracks. **A plugin with latency must override `processBlockBypassed()` to keep the delay**: when bypassed, DawLabLimiter outputs the original audio delayed by $L$ (using `dsp::DelayLine`, with capacity = the lookahead upper bound + maxBlockSize, allocated in `prepareToPlay`) and switches between wet / dry with a 10 ms crossfade (exercise 7's same trick, only done inside the plugin); the limiter keeps running while bypassed, so when bypass is released its internal state is already up to date and no stale sound comes out. The solution to exercise 7 verifies that with Bypass = 1 an impulse at position 1000 appears at $1000 + 240$.
+**What is different about DawLabLimiter**: (1) in `prepareToPlay` it calls `setLatencySamples(limiter_.getLatencySamples())`; a 5 ms lookahead @ 48 kHz = 240 samples, and changing the lookahead during playback also updates the latency; (2) `hasEditor()` returns false, so the host falls back to `GenericAudioProcessorEditor`; (3) `getTailLengthSeconds()` reports the lookahead length; (4) it overrides `processBlockBypassed()`. The VST3 wrapper automatically adds a Bypass parameter and calls `processBlockBypassed()` when it is on, while JUCE's default implementation is a plain pass-through (delay 0) -- but the latency the plugin reports is still 240 and the host's PDC still compensates 240, so the bypassed signal would arrive 240 samples earlier than the other tracks. **A plugin with latency must override `processBlockBypassed()` to keep the delay**: when bypassed, DawLabLimiter outputs the original audio delayed by $`L`$ (using `dsp::DelayLine`, with capacity = the lookahead upper bound + maxBlockSize, allocated in `prepareToPlay`) and switches between wet / dry with a 10 ms crossfade (exercise 7's same trick, only done inside the plugin); the limiter keeps running while bypassed, so when bypass is released its internal state is already up to date and no stale sound comes out. The solution to exercise 7 verifies that with Bypass = 1 an impulse at position 1000 appears at $`1000 + 240`$.
 
 ### 3.3 The host library: `dawlab_plugin_host`
 

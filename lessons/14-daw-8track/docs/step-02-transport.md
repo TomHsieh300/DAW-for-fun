@@ -21,7 +21,7 @@ $$
 N_{\text{beat}} = \frac{60\, f_s}{B}, \qquad N_{\text{bar}} = n \cdot N_{\text{beat}}
 $$
 
-with tempo $B$ in beats per minute, sample rate $f_s$, numerator $n$. A beat is the note value
+with tempo $`B`$ in beats per minute, sample rate $`f_s`$, numerator $`n`$. A beat is the note value
 named by the denominator (in 7/8 a beat is an eighth note), which is what DAWs display.
 
 Positions are 1-based like on screen, with 960 ticks per beat (a common PPQ resolution; PPQ = pulses per quarter note, the number of
@@ -29,14 +29,14 @@ timing ticks a sequencer divides one beat into):
 
 $$
 \text{beats}(b, k, t) = (b-1)\,n + (k-1) + \frac{t}{960}, \qquad
-\text{samples} = \operatorname{round}\big(\text{beats} \cdot N_{\text{beat}}\big)
+\text{samples} = \mathrm{round}\big(\text{beats} \cdot N_{\text{beat}}\big)
 $$
 
-The inverse takes the floor of the beat count; a tiny epsilon ($10^{-9}$ beats) keeps exact grid
+The inverse takes the floor of the beat count; a tiny epsilon ($`10^{-9}`$ beats) keeps exact grid
 positions from becoming "tick 959 of the previous beat" through floating-point rounding.
 
 Worked example (120 BPM, 4/4, 48 kHz): bar 3, beat 2, tick 480 is
-$(2 \cdot 4 + 1 + 0.5) \cdot 24000 = 228\,000$ samples = 4.75 s.
+$`(2 \cdot 4 + 1 + 0.5) \cdot 24000 = 228\,000`$ samples = 4.75 s.
 
 ### Thread safety: atomics and a pending seek
 
@@ -139,7 +139,7 @@ positions. Three functions are only declared:
 The check covers only Step 2: the grid (including 7/8 and 96 BPM at 44.1 kHz, where a beat is
 27 562.5 samples), a stopped transport that still applies a seek, the loop split worked out above,
 a 10-sample loop that needs more than 8 segments, and two engine renders with a "ramp tape"
-(sample $i$ has the value $i$), so that every output sample says which timeline position was
+(sample $`i`$ has the value $`i`$), so that every output sample says which timeline position was
 played - 441-sample blocks across the loop end, and a 7-sample loop with random block sizes.
 Expected output (verified):
 

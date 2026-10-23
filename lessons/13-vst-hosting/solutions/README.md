@@ -13,33 +13,33 @@ All program output quoted below is real output (Debug build, 48 kHz).
 
 ## Exercise 1 (calculation): normalized parameter conversion
 
-Formulas: $n = \left(\dfrac{v - s}{e - s}\right)^{k}$, $v = s + (e - s)\,n^{1/k}$.
+Formulas: $`n = \left(\dfrac{v - s}{e - s}\right)^{k}`$, $`v = s + (e - s)\,n^{1/k}`$.
 
 **1. Threshold −24 dB, Ratio 8:1**
 
-- Threshold (linear, $k = 1$): $n = \dfrac{-24 - (-60)}{0 - (-60)} = \dfrac{36}{60} = 0.6$
-- Ratio ($k = 0.5$): $n = \left(\dfrac{8 - 1}{20 - 1}\right)^{0.5} = \sqrt{7/19} = \sqrt{0.36842} = 0.60698$
+- Threshold (linear, $`k = 1`$): $`n = \dfrac{-24 - (-60)}{0 - (-60)} = \dfrac{36}{60} = 0.6`$
+- Ratio ($`k = 0.5`$): $`n = \left(\dfrac{8 - 1}{20 - 1}\right)^{0.5} = \sqrt{7/19} = \sqrt{0.36842} = 0.60698`$
 
 **2. The skew of `setSkewForCentre(c)`**
 
-We require $v = c$ when $n = 0.5$:
+We require $`v = c`$ when $`n = 0.5`$:
 
 $$
 0.5 = \left(\frac{c - s}{e - s}\right)^{k} \;\Longrightarrow\; \ln 0.5 = k \ln\frac{c - s}{e - s} \;\Longrightarrow\; k = \frac{\ln 0.5}{\ln\!\left(\frac{c - s}{e - s}\right)}
 $$
 
-- Attack (0.1 … 200 ms, centre 10): $\dfrac{9.9}{199.9} = 0.049525$, $\ln = -3.00527$, $k = \dfrac{-0.693147}{-3.00527} = 0.23064$
-- Release (5 … 2000 ms, centre 100): $\dfrac{95}{1995} = 0.047619$, $\ln = -3.04452$, $k = 0.22767$
+- Attack (0.1 … 200 ms, centre 10): $`\dfrac{9.9}{199.9} = 0.049525`$, $`\ln = -3.00527`$, $`k = \dfrac{-0.693147}{-3.00527} = 0.23064`$
+- Release (5 … 2000 ms, centre 100): $`\dfrac{95}{1995} = 0.047619`$, $`\ln = -3.04452`$, $`k = 0.22767`$
 
-**3. Release turned to 1/4 ($n = 0.25$)**
+**3. Release turned to 1/4 ($`n = 0.25`$)**
 
-$n^{1/k} = (0.5^2)^{1/k} = \left(0.5^{1/k}\right)^2$, and by definition $0.5^{1/k} = \dfrac{c - s}{e - s}$, so
+$`n^{1/k} = (0.5^2)^{1/k} = \left(0.5^{1/k}\right)^2`$, and by definition $`0.5^{1/k} = \dfrac{c - s}{e - s}`$, so
 
 $$
 v = s + (e - s)\left(\frac{c - s}{e - s}\right)^2 = s + \frac{(c - s)^2}{e - s} = 5 + \frac{95^2}{1995} = 5 + 4.524 = 9.524\ \text{ms}
 $$
 
-Likewise, for $n = 0.5^m$, $v = s + (e - s)\left(\frac{c-s}{e-s}\right)^m$: every time the knob is "halved" toward the left, the real value (minus $s$) is multiplied by $\frac{c-s}{e-s} \approx 0.0476$ -- this is exactly how the skew widens the small-value region.
+Likewise, for $`n = 0.5^m`$, $`v = s + (e - s)\left(\frac{c-s}{e-s}\right)^m`$: every time the knob is "halved" toward the left, the real value (minus $`s`$) is multiplied by $`\frac{c-s}{e-s} \approx 0.0476`$ -- this is exactly how the skew widens the small-value region.
 
 **Verification**: `l13_state_roundtrip` asks the plugin itself to convert the normalized values to display text:
 
@@ -47,13 +47,13 @@ Likewise, for $n = 0.5^m$, $v = s + (e - s)\left(\frac{c-s}{e-s}\right)^m$: ever
 Exercise 1 check: Threshold 0.6 -> -24.0 dB, Ratio 0.60698 -> 8.00, Attack 0.4 -> 3.86 ms, Release 0.6 -> 216.6 ms, Release 0.25 -> 9.5 ms
 ```
 
-(Attack 0.4 → $0.1 + 199.9 \times 0.4^{1/0.23064} = 3.862$ ms; Release 0.6 → $5 + 1995 \times 0.6^{1/0.22767} = 216.6$ ms.) `l13_offline_host` also verifies the opposite direction: −30 dB → 0.5, 4:1 → 0.3974, 5 ms → 0.4251, 80 ms → 0.4738, and the texts the plugin displays are −30.0 dB, 4.00 : 1, 5.00 ms, 80.0 ms respectively.
+(Attack 0.4 → $`0.1 + 199.9 \times 0.4^{1/0.23064} = 3.862`$ ms; Release 0.6 → $`5 + 1995 \times 0.6^{1/0.22767} = 216.6`$ ms.) `l13_offline_host` also verifies the opposite direction: −30 dB → 0.5, 4:1 → 0.3974, 5 ms → 0.4251, 80 ms → 0.4738, and the texts the plugin displays are −30.0 dB, 4.00 : 1, 5.00 ms, 80.0 ms respectively.
 
 **4. Why only 0..1 is passed**
 
 - The host does not need to understand the meaning of any parameter: automation lanes, MIDI learn, controllers, undo, and "draw a parameter as a curve" can all be handled by one body of code for every parameter of every plugin.
 - The curve (linear, logarithmic, skew) and the unit are the plugin's design decisions and can be adjusted in a new version without breaking old projects (as long as the meaning of the normalized value stays compatible).
-- Discrete parameters (menus, switches) can be represented uniformly too ($k / N$).
+- Discrete parameters (menus, switches) can be represented uniformly too ($`k / N`$).
 - The value range is bounded, so the host does not need to know the upper and lower limits when drawing automation; interpolation is also well defined (linear interpolation between 0 and 1, converted on the plugin side, so the "linearity" of automation on a skewed parameter is really linearity in knob position, which is also what the user sees on screen).
 
 ---
@@ -106,11 +106,11 @@ The editor (`AudioProcessorEditor`) holds a reference to the processor; its dest
 
 ## Exercise 3 (calculation): latency and PDC
 
-**1.** DawLabLimiter: $5\ \text{ms} \times 48\ \text{kHz} = 240$ samples. The linear-phase EQ: 1024 samples = $1024 / 48000 = 21.33$ ms. Track C: 0.
+**1.** DawLabLimiter: $`5\ \text{ms} \times 48\ \text{kHz} = 240`$ samples. The linear-phase EQ: 1024 samples = $`1024 / 48000 = 21.33`$ ms. Track C: 0.
 
-**2.** $L_{\max} = 1024$, $d_i = L_{\max} - L_i$:
+**2.** $`L_{\max} = 1024`$, $`d_i = L_{\max} - L_i`$:
 
-| track | plugin latency $L_i$ | extra delay $d_i$ from the host |
+| track | plugin latency $`L_i`$ | extra delay $`d_i`$ from the host |
 |---|---|---|
 | A | 240 | 784 samples (16.33 ms) |
 | B | 1024 | 0 |
@@ -118,7 +118,7 @@ The editor (`AudioProcessorEditor`) holds a reference to the processor; its dest
 
 The total latency of the whole project = 1024 samples = 21.33 ms (during playback the host reads the timeline 21.33 ms early, so it still sounds on the beat).
 
-**3.** Without PDC: Track A is 240 samples = 5 ms later than C. Adding two identical kicks: $y[n] = x[n] + x[n - D]$, $|H(f)| = 2\left|\cos\!\left(\dfrac{\pi f D}{f_s}\right)\right|$, with zeros at $\dfrac{\pi f D}{f_s} = \dfrac{\pi}{2} + k\pi$, that is,
+**3.** Without PDC: Track A is 240 samples = 5 ms later than C. Adding two identical kicks: $`y[n] = x[n] + x[n - D]`$, $`|H(f)| = 2\left|\cos\!\left(\dfrac{\pi f D}{f_s}\right)\right|`$, with zeros at $`\dfrac{\pi f D}{f_s} = \dfrac{\pi}{2} + k\pi`$, that is,
 
 $$
 f_k = \frac{(2k+1) f_s}{2D} = \frac{(2k+1) \times 48000}{480} = 100,\ 300,\ 500,\ \dots\ \text{Hz}
@@ -126,7 +126,7 @@ $$
 
 The kick's fundamental (about 45–120 Hz, see `makeDrumLoop`) lands right around the 100 Hz zero: the low end is largely cancelled and the kick gets thin. (Exercise 6 measures DawLabLimiter's 240 samples with an impulse.)
 
-**4.** While recording, when the input signal is monitored through a plugin with latency, the headphones carry yourself delayed by $L_{\max}$ (plus the audio device's buffer latency), and anything beyond 21 ms clearly disturbs playing. What DAWs do: tracks that are recording / being monitored go through a "low-latency mode" (Cubase's Constrain Delay Compensation, Logic's Low Latency Mode, etc.), temporarily bypassing the plugins that would cause a large latency, or not applying PDC on the monitoring path; and the recorded audio must be shifted back in time by the latency so that it lines up with the other tracks.
+**4.** While recording, when the input signal is monitored through a plugin with latency, the headphones carry yourself delayed by $`L_{\max}`$ (plus the audio device's buffer latency), and anything beyond 21 ms clearly disturbs playing. What DAWs do: tracks that are recording / being monitored go through a "low-latency mode" (Cubase's Constrain Delay Compensation, Logic's Low Latency Mode, etc.), temporarily bypassing the plugins that would cause a large latency, or not applying PDC on the monitoring path; and the recorded audio must be shifted back in time by the latency so that it lines up with the other tracks.
 
 ---
 
@@ -244,7 +244,7 @@ void process(dawlab::AudioBlock block, dawlab::host::HostedPlugin& plugin) noexc
 
 Why both are needed:
 
-- Crossfade only, without delaying dry: during the fade $x[n]$ and $x[n-L]$ are added together, which is exactly exercise 3's comb filter (within the 10 ms you hear a "whoosh" of tone change), and after bypass the whole track is $L$ samples early;
+- Crossfade only, without delaying dry: during the fade $`x[n]`$ and $`x[n-L]`$ are added together, which is exactly exercise 3's comb filter (within the 10 ms you hear a "whoosh" of tone change), and after bypass the whole track is $`L`$ samples early;
 - Delay only, without a crossfade: the timing is aligned, but wet (squashed to 0.1 by the limiter) and dry (0.3) have different amplitudes, so the instantaneous switch is still a discontinuity.
 
 Actual output:
@@ -258,8 +258,8 @@ plugin Bypass parameter: impulse 1000 -> 1240 (0.2500), reported latency 240; ma
 [PASS] l13_ex7_bypass_crossfade (11 checks passed)
 ```
 
-The crossfade version's maximum jump = the sine's own maximum slope $0.3 \times 2\pi \times 440 / 48000 = 0.0173$ -- that is, the switch introduces no additional discontinuity. The hard bypass's 0.268 is almost the sine's amplitude (0.3), more than 15 times the sine's own maximum slope of 0.0173, and you hear a very clear "click" (`l13_ex7_hard.wav` every 0.5 s; `l13_ex7_crossfade.wav` has none).
+The crossfade version's maximum jump = the sine's own maximum slope $`0.3 \times 2\pi \times 440 / 48000 = 0.0173`$ -- that is, the switch introduces no additional discontinuity. The hard bypass's 0.268 is almost the sine's amplitude (0.3), more than 15 times the sine's own maximum slope of 0.0173, and you hear a very clear "click" (`l13_ex7_hard.wav` every 0.5 s; `l13_ex7_crossfade.wav` has none).
 
-**The plugin's own Bypass parameter must obey the same rule**: JUCE's VST3 wrapper automatically adds a `Bypass` parameter to a plugin, and when it is on, `processBlockBypassed()` is called instead. Its default implementation is a plain pass-through (delay 0), but the latency the plugin reports is still $L$ and the host's PDC still compensates $L$ -- so the bypassed signal would come $L$ samples early and be misaligned with the other tracks. That is why DawLabLimiter overrides `processBlockBypassed()` and does this exercise's same trick inside the plugin (dry delayed by $L$ + 10 ms crossfade, see `plugin/limiter/LimiterProcessor.cpp`). The last part of the solution verifies it: with Bypass = 1, the impulse at position 1000 comes out at $1000 + 240 = 1240$ and is the original audio 0.25; toggling the Bypass parameter every 0.5 s during playback, the maximum jump is still 0.0173.
+**The plugin's own Bypass parameter must obey the same rule**: JUCE's VST3 wrapper automatically adds a `Bypass` parameter to a plugin, and when it is on, `processBlockBypassed()` is called instead. Its default implementation is a plain pass-through (delay 0), but the latency the plugin reports is still $`L`$ and the host's PDC still compensates $`L`$ -- so the bypassed signal would come $`L`$ samples early and be misaligned with the other tracks. That is why DawLabLimiter overrides `processBlockBypassed()` and does this exercise's same trick inside the plugin (dry delayed by $`L`$ + 10 ms crossfade, see `plugin/limiter/LimiterProcessor.cpp`). The last part of the solution verifies it: with Bypass = 1, the impulse at position 1000 comes out at $`1000 + 240 = 1240`$ and is the original audio 0.25; toggling the Bypass parameter every 0.5 s during playback, the maximum jump is still 0.0173.
 
-**Extension question**: DawLabCompressor's Mix is the same formula $y = (1-m)\,x + m\,\text{wet}$. The compressor has no lookahead, so wet and dry are naturally aligned and Mix does not need to delay dry. If the compressor gained $L$ samples of lookahead, Mix would have to delay dry by $L$ first (like this exercise's `DelayLine`); otherwise Mix would produce a comb filter at every position between 0 and 100 %; the plugin would also have to report it with `setLatencySamples(L)` so the host can do PDC.
+**Extension question**: DawLabCompressor's Mix is the same formula $`y = (1-m)\,x + m\,\text{wet}`$. The compressor has no lookahead, so wet and dry are naturally aligned and Mix does not need to delay dry. If the compressor gained $`L`$ samples of lookahead, Mix would have to delay dry by $`L`$ first (like this exercise's `DelayLine`); otherwise Mix would produce a comb filter at every position between 0 and 100 %; the plugin would also have to report it with `setLatencySamples(L)` so the host can do PDC.

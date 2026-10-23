@@ -12,7 +12,7 @@
 
 ### 單一座標系統
 
-View 從 `viewStart`（以 sample 計）開始顯示 timeline，每個 pixel 對應 `samplesPerPixel` 個 sample，位於寬度 $H$ = 132 像素的 lane header 右側：
+View 從 `viewStart`（以 sample 計）開始顯示 timeline，每個 pixel 對應 `samplesPerPixel` 個 sample，位於寬度 $`H`$ = 132 像素的 lane header 右側：
 
 $$
 x(s) = H + \frac{s - s_{\text{view}}}{\text{spp}}, \qquad
@@ -25,13 +25,13 @@ $$
 s_m = s(x_m), \qquad \text{spp}' = \text{spp} / \text{factor}, \qquad s'_{\text{view}} = s_m - (x_m - H)\,\text{spp}'
 $$
 
-`zoomToFit()` 選擇 spp，使整首 song（至少 4 bar）再加一個 bar 剛好填滿寬度。對於 120 BPM / 48 kHz、1400 像素視窗中的 8 bar demo song：$9 \cdot 96000 / 1268 \approx 681$ 個 sample 每 pixel，一個 beat = 35 像素。
+`zoomToFit()` 選擇 spp，使整首 song（至少 4 bar）再加一個 bar 剛好填滿寬度。對於 120 BPM / 48 kHz、1400 像素視窗中的 8 bar demo song：$`9 \cdot 96000 / 1268 \approx 681`$ 個 sample 每 pixel，一個 beat = 35 像素。
 
-Snapping 取最近的 beat，$\hat s = \operatorname{round}(s / N_{\text{beat}})\,N_{\text{beat}}$（按住 **Alt** 會停用它）。Exercise 8 重複使用 `sampleToX`、`xToSample` 與 `snapToBeat`，來繪製 arrangement 下方的 automation lane。
+Snapping 取最近的 beat，$`\hat s = \mathrm{round}(s / N_{\text{beat}})\,N_{\text{beat}}`$（按住 **Alt** 會停用它）。Exercise 8 重複使用 `sampleToX`、`xToSample` 與 `snapToBeat`，來繪製 arrangement 下方的 automation lane。
 
 ### Waveform thumbnail：peak cache
 
-一個 12 秒的 clip 每個 channel 有 576 000 個 sample；以每 pixel 681 個 sample 計，天真的 `paint()` 每次重繪都得讀過每個 sample。每個 DAW 都會保留一份縮減過的副本（"peak file"）。`WaveformCache` 對每個 source buffer 只計算一次：每一段 `kSamplesPerBucket = 128` 個 sample 的最小值與最大值（跨所有 channel）。繪製一個 pixel 欄時，只需合併 $\lceil \text{spp} / 128 \rceil$ 個 bucket——預設 zoom 下約 6 個——並畫出一條從最小值到最大值的垂直線，再乘上 clip gain。由於 clip 共用 buffer（drum loop 是一個被四個 clip 使用的 buffer；96 個 shaker hit 使用兩個 buffer），cache 以 buffer pointer 為 key：demo song 的 140 個 clip 需要 28 個 cache entry。當 session 改變時，不再被任何 clip 使用其 buffer 的 entry 會被丟棄（`prune`）。
+一個 12 秒的 clip 每個 channel 有 576 000 個 sample；以每 pixel 681 個 sample 計，天真的 `paint()` 每次重繪都得讀過每個 sample。每個 DAW 都會保留一份縮減過的副本（"peak file"）。`WaveformCache` 對每個 source buffer 只計算一次：每一段 `kSamplesPerBucket = 128` 個 sample 的最小值與最大值（跨所有 channel）。繪製一個 pixel 欄時，只需合併 $`\lceil \text{spp} / 128 \rceil`$ 個 bucket——預設 zoom 下約 6 個——並畫出一條從最小值到最大值的垂直線，再乘上 clip gain。由於 clip 共用 buffer（drum loop 是一個被四個 clip 使用的 buffer；96 個 shaker hit 使用兩個 buffer），cache 以 buffer pointer 為 key：demo song 的 140 個 clip 需要 28 個 cache entry。當 session 改變時，不再被任何 clip 使用其 buffer 的 entry 會被丟棄（`prune`）。
 
 ### Playhead 不必整個重繪
 

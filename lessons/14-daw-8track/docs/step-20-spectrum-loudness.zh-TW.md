@@ -22,7 +22,7 @@ Chapter 11 的規則：audio thread 只*寫入*（sample 寫進 lock-free FIFO�
 
 ### Spectrum：推入 mono sample，在 GUI 端計算
 
-`Engine::processBlock()` 之後，device callback 在 device buffer 裡就有 master 輸出。`AudioHost::render()` 在預先配置好的 scratch buffer 中形成 mono 總和 $m[n] = \tfrac12(L[n] + R[n])$，並呼叫 `SpectrumAnalyzer::pushSamples(m, n)`——複製進 analyzer 的 ring buffer。在 message thread 上，`SpectrumView::update()` 呼叫 `computeSpectrum(magnitudesDb)`，它對最新的 4096 個 sample 加窗、執行 chapter 11 的 FFT，並回傳以 dB 表示的 $N/2 + 1 = 2049$ 個 bin（若沒有新資料抵達則回傳 `false`，所以停止的 transport 不花任何成本）。以 `prepare(sampleRate, 12)`，FFT 有 $2^{12} = 4096$ 個點：bin 間距為 $f_s / N = 48000 / 4096 = 11.7$ Hz，足以區分 bass 音符（A1 = 55 Hz、F1 = 43.7 Hz）。
+`Engine::processBlock()` 之後，device callback 在 device buffer 裡就有 master 輸出。`AudioHost::render()` 在預先配置好的 scratch buffer 中形成 mono 總和 $`m[n] = \tfrac12(L[n] + R[n])`$，並呼叫 `SpectrumAnalyzer::pushSamples(m, n)`——複製進 analyzer 的 ring buffer。在 message thread 上，`SpectrumView::update()` 呼叫 `computeSpectrum(magnitudesDb)`，它對最新的 4096 個 sample 加窗、執行 chapter 11 的 FFT，並回傳以 dB 表示的 $`N/2 + 1 = 2049`$ 個 bin（若沒有新資料抵達則回傳 `false`，所以停止的 transport 不花任何成本）。以 `prepare(sampleRate, 12)`，FFT 有 $`2^{12} = 4096`$ 個點：bin 間距為 $`f_s / N = 48000 / 4096 = 11.7`$ Hz，足以區分 bass 音符（A1 = 55 Hz、F1 = 43.7 Hz）。
 
 ### 在對數軸上繪製
 
@@ -50,7 +50,7 @@ Master strip 的 `dsp::LoudnessMeter`（BS.1770 K-weighting、400 ms momentary�
 
 ## 驗證
 
-- `l14_app_smoke_test` 的第 8 節以數字檢查顯示路徑：一個剛好落在 4096 點 FFT 的 bin 85 上的 sine（$85 \cdot 48000 / 4096 = 996.09$ Hz），振幅 0.5，必須在 `SpectrumView` 中出現在該頻率，且為 $20 \log_{10} 0.5 = -6.02$ dBFS（analyzer 除以 window 的 coherent gain，chapter 11），而對數軸必須把兩端的幾何平均 $\sqrt{20 \cdot 20000} = 632.5$ Hz 剛好放在正中央：
+- `l14_app_smoke_test` 的第 8 節以數字檢查顯示路徑：一個剛好落在 4096 點 FFT 的 bin 85 上的 sine（$`85 \cdot 48000 / 4096 = 996.09`$ Hz），振幅 0.5，必須在 `SpectrumView` 中出現在該頻率，且為 $`20 \log_{10} 0.5 = -6.02`$ dBFS（analyzer 除以 window 的 coherent gain，chapter 11），而對數軸必須把兩端的幾何平均 $`\sqrt{20 \cdot 20000} = 632.5`$ Hz 剛好放在正中央：
 
   ```
   8. spectrum view: 996.09 Hz sine at 0.5 -> peak at 996.09 Hz, -6.02 dBFS (-6.02 expected); 632.5 Hz at x = 0.500

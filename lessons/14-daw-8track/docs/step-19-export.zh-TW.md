@@ -68,7 +68,7 @@ audioHost_.setEngineAttached(false);   // AudioDeviceManager::removeAudioCallbac
    rendered in 14.0 s while the message loop kept running; status line "Exported ..."
 ```
 
-檢查項目：在 `exportMixdown()` 之後立刻，job 正在執行，且編輯 command 回報自己被停用；之後 WAV 檔 `dawlab_output/l14_app_export.wav` 剛好有 $19 \cdot 48000 = 912\,000$ 個 stereo frame（16 秒的 song = 120 BPM 下的 8 bar，加上 3 秒 tail），peak 位於 limiter 的 ceiling，被移除的 latency 等於 `Engine::getLatencySamples()`，狀態列以 "Exported" 開頭，且 transport 回到 0、停止。-15.5 LUFS 與 stage 1 的 mix report（Step 9）相同：GUI export *就是* engine 的 bounce。Render 時間（Debug build）隨機器而異。
+檢查項目：在 `exportMixdown()` 之後立刻，job 正在執行，且編輯 command 回報自己被停用；之後 WAV 檔 `dawlab_output/l14_app_export.wav` 剛好有 $`19 \cdot 48000 = 912\,000`$ 個 stereo frame（16 秒的 song = 120 BPM 下的 8 bar，加上 3 秒 tail），peak 位於 limiter 的 ceiling，被移除的 latency 等於 `Engine::getLatencySamples()`，狀態列以 "Exported" 開頭，且 transport 回到 0、停止。-15.5 LUFS 與 stage 1 的 mix report（Step 9）相同：GUI export *就是* engine 的 bounce。Render 時間（Debug build）隨機器而異。
 
 ## 換你動手
 

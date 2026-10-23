@@ -33,7 +33,7 @@ fs = 48 kHz。
 2. Freeverb 在 44.1 kHz 時，最短的 comb 是 1116 samples、最長的是 1617 samples。roomsize 設定讓 g = 0.84 時，這兩個 comb 的 RT60 各是多少？這說明了 Freeverb 的 roomsize 和 RT60 的關係有什麼問題？
 3. 範例 1 的 damping 實驗中，d = 0.5、g = 0.894、D = 1557。手算 1 kHz 與 8 kHz 的 RT60（用 README 2.3 節的公式），和範例輸出比較。
 
-提示：$g = 10^{-3D/(\mathrm{RT60}\,f_s)}$、$\mathrm{RT60} = -3D / (f_s\log_{10} g)$、$|\mathrm{LP}(e^{j\omega})| = (1-d)/\sqrt{1 - 2d\cos\omega + d^2}$。
+提示：$`g = 10^{-3D/(\mathrm{RT60}\,f_s)}`$、$`\mathrm{RT60} = -3D / (f_s\log_{10} g)`$、$`|\mathrm{LP}(e^{j\omega})| = (1-d)/\sqrt{1 - 2d\cos\omega + d^2}`$。
 
 ---
 
@@ -69,12 +69,12 @@ Self-check：最早的反射（地板）在 169 samples、gain 0.570；最晚的
 
 檔案：`exercises/starter/ex4_fdn_modulation.cpp`（target `l12_ex4_starter`）。
 
-起始碼已經寫好一個 4 線 FDN 的骨架 `Fdn4`（delay 約 23–47 ms，取質數；Householder 矩陣；one-pole damping；$g_i = 10^{-3L_i/(\mathrm{RT60}f_s)}$）。
+起始碼已經寫好一個 4 線 FDN 的骨架 `Fdn4`（delay 約 23–47 ms，取質數；Householder 矩陣；one-pole damping；$`g_i = 10^{-3L_i/(\mathrm{RT60}f_s)}`$）。
 
 1. 完成 `Fdn4::processSample()`：
-   - LFO 相位前進；讀 4 條線 $v_i$ = `lines_.readCubic(i, L_i − 1 + depth·sin(φ + i·π/2))`（先讀後寫，所以 −1）；
-   - Householder：$u_i = v_i - \frac{2}{N}\sum_j v_j$；需要時過 damping；
-   - 寫回 $g_i u_i + x$；輸出 $v_0 - v_1 + v_2 - v_3$。
+   - LFO 相位前進；讀 4 條線 $`v_i`$ = `lines_.readCubic(i, L_i − 1 + depth·sin(φ + i·π/2))`（先讀後寫，所以 −1）；
+   - Householder：$`u_i = v_i - \frac{2}{N}\sum_j v_j`$；需要時過 damping；
+   - 寫回 $`g_i u_i + x`$；輸出 $`v_0 - v_1 + v_2 - v_3`$。
 2. 完成 `spectralRoughnessDb()`：對尾巴（0.4 s 起）取 16384 點、Hann window 的 FFT，算 100 Hz – 6 kHz 各 bin 的 magnitude（dB）的**標準差**。mode 越分明（metallic），頻譜越「尖」，標準差越大。
 3. 比較 modulation 關閉 vs depth 1 ms / 1.3 Hz，以及 depth 4 ms。
 

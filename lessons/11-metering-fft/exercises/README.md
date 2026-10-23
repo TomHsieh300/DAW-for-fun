@@ -27,7 +27,7 @@ Solutions and explanations: [`../solutions/README.md`](../solutions/README.md).
 4. At 44.1 kHz and N = 4096: what are the bin width and the frame length?
 5. A spectrum analyzer should update 30 times per second (30 fps), with fs = 48 kHz and N = 4096. How many samples is the hop? What is the overlap in %?
 
-Hint: bin width $\Delta f = f_s / N$; frame length $N / f_s$; overlap $= 1 - \text{hop}/N$.
+Hint: bin width $`\Delta f = f_s / N`$; frame length $`N / f_s`$; overlap $`= 1 - \text{hop}/N`$.
 
 ## Exercise 2 (concept) ★☆☆　Why a window? Where does leakage come from?
 
@@ -64,7 +64,7 @@ Questions:
 1. In the phase sweep table, at which "peak positions" does the Oversampler measure accurately, and at which does the windowed-sinc? Explain using where the two interpolation points
    fall between the original samples (README section 2.5). Why is the worst-case error the same size for both?
 2. At 22 kHz, Chapter 06 says the first halfband stage attenuates 0.65 dB in a single pass, so why does the Oversampler's reading show almost no error?
-   (Hint: the "Passband edge" paragraph of Chapter 06 section 2.6, $|H(f)| + |H(f_s - f)| = 1$.) Why doesn't the windowed-sinc have this property?
+   (Hint: the "Passband edge" paragraph of Chapter 06 section 2.6, $`|H(f)| + |H(f_s - f)| = 1`$.) Why doesn't the windowed-sinc have this property?
 3. The multiplication counts differ only 56 vs 64 (about 14%), yet the measured times differ by several times. Compare the inner loops: is accumulation in float or double?
    How is the history buffer accessed (contiguous memory from a mirrored ring buffer vs checking for wraparound on every tap)? Which style is easier for the compiler to vectorize?
 4. If you wanted to display true peak in real time on a DAW's master bus, which would you choose? If you were building the true-peak limiter described in Chapter 05 section 2.8
@@ -100,7 +100,7 @@ The self-check verifies EBU Tech 3342-style test signals: sines at two levels, t
 
 Starter code: `exercises/starter/ex6_fft_convolution.cpp` (target `l11_ex6_starter`)
 
-The convolution theorem: convolution in time = multiplication in frequency. Zero-pad each input block to $N \ge B + L - 1$, take the FFT, multiply by the IR's spectrum, take the IFFT,
+The convolution theorem: convolution in time = multiplication in frequency. Zero-pad each input block to $`N \ge B + L - 1`$, take the FFT, multiply by the IR's spectrum, take the IFFT,
 and add the tail that extends beyond the block onto the next block (overlap-add). Complete `OverlapAddConvolver::process()`.
 
 The self-check verifies: the error against direct convolution is < 1e-5 (it must also be right when block lengths vary), the output for an impulse equals the IR itself,

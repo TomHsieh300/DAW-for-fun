@@ -231,18 +231,18 @@ app `DawLab8`（`juce_add_gui_app`，產品名稱 "DawLab 8"），以及 `l14_da
 
 audio device 數的是 **sample**；音樂家數的是**小節、拍與 tick**。engine 以整數個 sample 保存
 位置（`int64_t`：`int32_t` 在
-2^31 / 48000 s = 12.4 小時後就會溢位），並從 tempo $B$（每分鐘拍數）、sample
-rate $f_s$ 與拍號分子 $n$ 推導出音樂時間：
+2^31 / 48000 s = 12.4 小時後就會溢位），並從 tempo $`B`$（每分鐘拍數）、sample
+rate $`f_s`$ 與拍號分子 $`n`$ 推導出音樂時間：
 
 $$
 N_{\text{beat}} = \frac{60\,f_s}{B}, \qquad N_{\text{bar}} = n\,N_{\text{beat}}
 $$
 
 在 120 BPM、48 kHz 下，一拍是 24 000 個 sample，一個 4/4 小節是 96 000 個 sample。位置
-「第 $b$ 小節、第 $k$ 拍、tick $t$」（小節與拍從 1 起算，每拍 960 tick）為
+「第 $`b`$ 小節、第 $`k`$ 拍、tick $`t`$」（小節與拍從 1 起算，每拍 960 tick）為
 
 $$
-\text{samples} = \operatorname{round}\Big( \big[(b-1)\,n + (k-1) + t/960\big]\, N_{\text{beat}} \Big)
+\text{samples} = \mathrm{round}\Big( \big[(b-1)\,n + (k-1) + t/960\big]\, N_{\text{beat}} \Big)
 $$
 
 在網格上往返轉換是精確的（`l14_transport_clips` 會印出一張表）。在 96 BPM / 44.1 kHz 下，一
@@ -251,16 +251,16 @@ $$
 
 ### 3.2 Sample 精度的 clip
 
-clip 是 source buffer 的一個視窗，放在 timeline 的 sample $S$ 處，長度為 $L$，source
-offset 為 $O$。一個 block 涵蓋 timeline 範圍 $[T_0, T_0 + N)$。要 render 的部分是
+clip 是 source buffer 的一個視窗，放在 timeline 的 sample $`S`$ 處，長度為 $`L`$，source
+offset 為 $`O`$。一個 block 涵蓋 timeline 範圍 $`[T_0, T_0 + N)`$。要 render 的部分是
 兩者的交集
 
 $$
 \text{from} = \max(T_0, S), \qquad \text{to} = \min(T_0 + N, S + L)
 $$
 
-而 timeline sample $T \in [\text{from}, \text{to})$ 會寫到 block 索引 $T - T_0$，並讀取 source
-索引 $O + (T - S)$。一切都是整數運算，所以起點在 sample 12 345 的 clip 在*任何* block size 下
+而 timeline sample $`T \in [\text{from}, \text{to})`$ 會寫到 block 索引 $`T - T_0`$，並讀取 source
+索引 $`O + (T - S)`$。一切都是整數運算，所以起點在 sample 12 345 的 clip 在*任何* block size 下
 都會落在輸出 sample 12 345（`tests/test_timeline.cpp` 檢查了 block size 1、64、512
 與 1000）。Fade 把每個 sample 乘上
 
@@ -270,27 +270,27 @@ g_{\text{out}}(i) = \text{shape}\Big(\frac{L-i}{F_{\text{out}}+1}\Big), \quad
 \text{shape}(x) = x \ \text{or}\ \sin\big(\tfrac{\pi}{2}x\big)
 $$
 
-這樣選的目的是讓長度同為 $F$ 且重疊的 fade-out 與 fade-in 永遠滿足
-$x_{\text{in}} + x_{\text{out}} = 1$ - 這是 crossfade 的基礎（Exercise 5）。
+這樣選的目的是讓長度同為 $`F`$ 且重疊的 fade-out 與 fade-in 永遠滿足
+$`x_{\text{in}} + x_{\text{out}} = 1`$ - 這是 crossfade 的基礎（Exercise 5）。
 
 ### 3.3 Fader、pan law、balance
 
-以 dB 表示的 fader 會變成線性 gain $g = 10^{\,\text{dB}/20}$（-6.02 dB = x0.5）。對於
-放在 stereo 聲場中、pan 為 $p \in [-1, 1]$ 的 mono source，**constant-power law** 使用角度
-$\theta = \frac{\pi}{4}(p+1)$：
+以 dB 表示的 fader 會變成線性 gain $`g = 10^{\,\text{dB}/20}`$（-6.02 dB = x0.5）。對於
+放在 stereo 聲場中、pan 為 $`p \in [-1, 1]`$ 的 mono source，**constant-power law** 使用角度
+$`\theta = \frac{\pi}{4}(p+1)`$：
 
 $$
 g_L = \cos\theta, \qquad g_R = \sin\theta, \qquad g_L^2 + g_R^2 = 1
 $$
 
 pan 的過程中聲學功率保持不變；在中央時每一側得到
-$\cos(\pi/4) = 0.7071$（-3.01 dB）。第 01 章的 `dsp::Panner::computeGains` 也提供
+$`\cos(\pi/4) = 0.7071`$（-3.01 dB）。第 01 章的 `dsp::Panner::computeGains` 也提供
 **linear** law（中央 -6.02 dB，響度會凹下去）與 **-4.5 dB** 的折衷方案。Track 使用
 pan law；bus 與 master 承載的已經是 stereo mix，所以它們使用 **balance**：中央 = unity，
-往右轉只會衰減左側，$g_L = \min(1, 1-p)$、$g_R = \min(1, 1+p)$。否則
+往右轉只會衰減左側，$`g_L = \min(1, 1-p)`$、$`g_R = \min(1, 1+p)`$。否則
 master 在預設設定下就會把整個 mix 壓低 3 dB。
 
-| 設定 | $g_L$ | $g_R$ |
+| 設定 | $`g_L`$ | $`g_R`$ |
 |---|---|---|
 | fader 0 dB、pan 置中、constant power | 0.7071 (-3.01 dB) | 0.7071 |
 | fader -6.02 dB、pan 置中 | 0.3536 | 0.3536 |
@@ -300,8 +300,8 @@ master 在預設設定下就會把整個 mix 壓低 3 dB。
 
 ### 3.4 加總、mute 與 solo
 
-master 是一個加總器。$N$ 個相同（coherent）的訊號以振幅相加，$+20\log_{10}N$ dB
-（兩軌：+6.02 dB）；$N$ 個互相獨立的訊號以功率相加，$+10\log_{10}N$ dB（兩軌：
+master 是一個加總器。$`N`$ 個相同（coherent）的訊號以振幅相加，$`+20\log_{10}N`$ dB
+（兩軌：+6.02 dB）；$`N`$ 個互相獨立的訊號以功率相加，$`+10\log_{10}N`$ dB（兩軌：
 +3.01 dB）。這就是為什麼 mix 需要 headroom，也是 master 最後要接 limiter 的原因。
 Solo 是一條涵蓋整個 mixer 的規則：
 
@@ -314,7 +314,7 @@ Bus 是 *solo-safe* 的（它們只有 mute），所以被 solo 的人聲仍然�
 
 ### 3.5 Send
 
-send 把一個 track 以自己的 gain $s$ 複製到一條 bus。**Post-fader** send 在 fader 與
+send 把一個 track 以自己的 gain $`s`$ 複製到一條 bus。**Post-fader** send 在 fader 與
 pan 之後取樣（把 track 推低時，它的 reverb 也跟著變小 - 這是通常的選擇）；**pre-fader** send 則在
 它們之前取樣（耳機 mix，或是在你把 dry 訊號 fade out 時仍然保留的 reverb）：
 
@@ -328,15 +328,15 @@ Mute/solo 位於兩種取樣點*之前*：被 mute 的 track 什麼也不送。
 ### 3.6 Latency 與 plugin delay compensation
 
 lookahead limiter（第 05 章）、oversampled saturator（第 06 章）或 partitioned
-convolution（第 12 章）在看到 input $n + D$ 之前，無法產生 output sample $n$：它把
-訊號延遲 $D$ 個 sample，並透過 `getLatencySamples()` 回報 $D$。如果 track 1 有一個 240-sample
+convolution（第 12 章）在看到 input $`n + D`$ 之前，無法產生 output sample $`n`$：它把
+訊號延遲 $`D`$ 個 sample，並透過 `getLatencySamples()` 回報 $`D`$。如果 track 1 有一個 240-sample
 的 limiter 而 track 2 什麼都沒有，它們的和是
 
 $$
 y[n] = x[n] + x[n - D] \quad\Rightarrow\quad |H(f)| = 2\,\big|\cos(\pi f D / f_s)\big|
 $$
 
-這是一個 **comb filter**，notch 位於 $f = (2k+1)\,f_s / (2D)$：在 48 kHz、$D = 240$ 時，位於 100、300、
+這是一個 **comb filter**，notch 位於 $`f = (2k+1)\,f_s / (2D)`$：在 48 kHz、$`D = 240`$ 時，位於 100、300、
 500 Hz ……，再加上每一下鼓擊都會出現 flam。PDC 會延遲所有其他路徑，讓所有路徑
 都一樣晚：
 
@@ -345,15 +345,15 @@ c_t = \max_u L_u - L_t, \qquad c_b = \max_v L_v - L_b, \qquad
 L_{\text{total}} = \max_u L_u + \max_v L_v + L_{\text{master}}
 $$
 
-（track $t$，bus $b$；乾的 track sum 要為最慢的 bus 等待 $\max_v L_v$。）`l14_pdc_demo`
+（track $`t`$，bus $`b`$；乾的 track sum 要為最慢的 bus 等待 $`\max_v L_v`$。）`l14_pdc_demo`
 會量測它，並讓你聽到兩種版本。每個補償用的 delay 最多容納
-$C = 16\,384$ 個 sample（`kDefaultMaxPdcSamples`）；一串高 latency 的 VST3 plugin 可能超過
-這個值。此時 mixer 會以 $\min(\max L, C)$ 對齊、回報它實際套用的 latency，並設定
+$`C = 16\,384`$ 個 sample（`kDefaultMaxPdcSamples`）；一串高 latency 的 VST3 plugin 可能超過
+這個值。此時 mixer 會以 $`\min(\max L, C)`$ 對齊、回報它實際套用的 latency，並設定
 `Engine::hasPdcOverflow()`，app 會把它顯示在 mix latency 旁邊（Step 8）。
 
 ### 3.7 Real time
 
-audio thread 每個 block 只有 $N / f_s$ 秒，而且不能 block：不能 `new` / `delete` /
+audio thread 每個 block 只有 $`N / f_s`$ 秒，而且不能 block：不能 `new` / `delete` /
 `malloc`、不能用 mutex、不能做檔案或 console I/O、不能丟 exception、不能有無上限的迴圈、不能等待
 另一條 thread。engine 遵循的規則是「在 `prepare()` 配置、透過
 atomic 與 wait-free queue 溝通、在 UI thread 釋放」。`tests/test_realtime_safety.cpp` 的證明方式是：
@@ -366,7 +366,7 @@ host 每次呼叫我們時用的可能是 64、441、512，或每次都不一樣
 都逐 sample 前進，clip 與 automation 是 timeline 的函數，PDC 是整數 delay，
 而 effect 在呼叫之間會保留狀態 - 所以輸出不能取決於串流是怎麼切的。
 `tests/test_block_invariance.cpp` 以 block size 512、64 與隨機大小
-1..1500 render 一個專案，並要求最大差異維持在 $10^{-5}$ 以下（實測差異：恰好為 0）。
+1..1500 render 一個專案，並要求最大差異維持在 $`10^{-5}`$ 以下（實測差異：恰好為 0）。
 
 ### 3.9 GUI 這一側：polling、fader law、meter
 
@@ -374,53 +374,53 @@ GUI 從不接收來自 audio thread 的訊息。一個 30 Hz 的 timer 讀取 at
 peak、LUFS、CPU 負載）- 對眼睛來說夠快，最差只落後一個 block，對 audio
 thread 沒有任何成本。控制項寫入 atomic；engine 會對每一個變更做 ramp。
 
-fader 位置 $p \in [0, 1]$ 以平方律對應到 gain，讓大部分行程都落在
+fader 位置 $`p \in [0, 1]`$ 以平方律對應到 gain，讓大部分行程都落在
 0 dB 附近（Step 15）：
 
 $$
 \text{dB}(p) = 12 - 72\,(1 - p)^2, \qquad p(\text{dB}) = 1 - \sqrt{(12 - \text{dB}) / 72}
 $$
 
-0 dB 位於 $p = 0.592$，-6 dB 恰好在 0.5，最底部代表 $-\infty$。Meter 在 -60 .. +6 dBFS 範圍內對 dB 呈線性：
-$\text{position} = (\text{dB} + 60) / 66$。
+0 dB 位於 $`p = 0.592`$，-6 dB 恰好在 0.5，最底部代表 $`-\infty`$。Meter 在 -60 .. +6 dBFS 範圍內對 dB 呈線性：
+$`\text{position} = (\text{dB} + 60) / 66`$。
 
 ### 3.10 對檔案做 resampling
 
 44.1 kHz 的檔案放進 48 kHz 的專案時必須轉換，否則它會高 1.47 個半音
-（$12 \log_2 (48000/44100)$）。輸出 sample $m$ 位於 input 位置 $t_m = m\,f_{\text{in}}/f_{\text{out}}$；
+（$`12 \log_2 (48000/44100)`$）。輸出 sample $`m`$ 位於 input 位置 $`t_m = m\,f_{\text{in}}/f_{\text{out}}`$；
 頻寬受限的 interpolation 計算（Step 18）
 
 $$
-y[m] = \sum_k x[k]\,g(t_m - k), \qquad g(x) = 2 f_c\, \operatorname{sinc}(2 f_c x)\, w(x / W),
+y[m] = \sum_k x[k]\,g(t_m - k), \qquad g(x) = 2 f_c\, \mathrm{sinc}(2 f_c x)\, w(x / W),
 \qquad f_c = 0.46 \min\!\Big(1, \frac{f_{\text{out}}}{f_{\text{in}}}\Big)
 $$
 
-其中 $w$ 是涵蓋 $W = 24 / (2 f_c)$ 個 input sample 的 Blackman window。cutoff 跟隨*較低*的
-Nyquist 頻率，並留有餘裕（downsampling 時用 $0.46 f_{\text{out}}$ 而不是 $0.5 f_{\text{out}}$）。
-不過 windowed sinc 並不是 brick wall。kernel 長 $N = 2W = 24 / f_c$
-個 input sample，Blackman window 給出的 transition band 寬度約為 $5.5 / N = 0.23 f_c$，
-以 $f_c$ 為中心；它在 $1.115 \cdot 0.46 f_{\text{out}} = 0.513 f_{\text{out}}$ 附近結束，比輸出的 Nyquist 頻率稍微
-*高一點*。所以 aliasing 並非不可能，只是被限制住了：介於 $0.5$ 與 $0.513 f_{\text{out}}$ 之間的內容
+其中 $`w`$ 是涵蓋 $`W = 24 / (2 f_c)`$ 個 input sample 的 Blackman window。cutoff 跟隨*較低*的
+Nyquist 頻率，並留有餘裕（downsampling 時用 $`0.46 f_{\text{out}}`$ 而不是 $`0.5 f_{\text{out}}`$）。
+不過 windowed sinc 並不是 brick wall。kernel 長 $`N = 2W = 24 / f_c`$
+個 input sample，Blackman window 給出的 transition band 寬度約為 $`5.5 / N = 0.23 f_c`$，
+以 $`f_c`$ 為中心；它在 $`1.115 \cdot 0.46 f_{\text{out}} = 0.513 f_{\text{out}}`$ 附近結束，比輸出的 Nyquist 頻率稍微
+*高一點*。所以 aliasing 並非不可能，只是被限制住了：介於 $`0.5`$ 與 $`0.513 f_{\text{out}}`$ 之間的內容
 （轉成 44.1 kHz 時為 22.05-22.6 kHz）會折回
-$0.487$-$0.5 f_{\text{out}}$（21.5-22.05 kHz），並被衰減至少約 54 dB；
+$`0.487`$-$`0.5 f_{\text{out}}`$（21.5-22.05 kHz），並被衰減至少約 54 dB；
 更高的一切都落在 stopband。smoke test 量測了兩端：一個 20 kHz 的 tone 轉成
 22.05 kHz 後，落在 -122 dB，而不是折回到 2050 Hz；一個 22.3 kHz 的 tone 從
 48 轉成 44.1 kHz 時，折回到 21.8 kHz，大小為 -54 dB。若要一個完全不會產生 alias 的轉換器，可以把
-`kCutoffScale` 降到約 0.88（stopband 邊緣在 $0.49 f_{\text{out}}$，高音損失稍多），或把 `kZeroCrossings`
+`kCutoffScale` 降到約 0.88（stopband 邊緣在 $`0.49 f_{\text{out}}`$，高音損失稍多），或把 `kZeroCrossings`
 加倍（transition 寬度減半，CPU 時間加倍）。
 
 ### 3.11 對數軸上的 spectrum
 
-master spectrum 是 4096 點的 FFT（第 11 章）：在 48 kHz 下，每個 bin 相距 $f_s / N = 11.7$ Hz。
-顯示時把頻率對應到 $x = \ln(f/20) / \ln(1000)$，並且對每一條像素欄，取落在其中的各 bin 的
-**最大值**。在寬 $W$ 像素的 view 中，頻率 $f$ 處的像素
-涵蓋 $f\,(1000^{1/W} - 1)$ Hz，所以在
+master spectrum 是 4096 點的 FFT（第 11 章）：在 48 kHz 下，每個 bin 相距 $`f_s / N = 11.7`$ Hz。
+顯示時把頻率對應到 $`x = \ln(f/20) / \ln(1000)`$，並且對每一條像素欄，取落在其中的各 bin 的
+**最大值**。在寬 $`W`$ 像素的 view 中，頻率 $`f`$ 處的像素
+涵蓋 $`f\,(1000^{1/W} - 1)`$ Hz，所以在
 
 $$
 f < \frac{f_s / N}{1000^{1/W} - 1}
 $$
 
-以下，一個像素不到一個 bin：以 snapshot 285 像素寬的 view 來說約為 480 Hz（$W = 300$ 時為
+以下，一個像素不到一個 bin：以 snapshot 285 像素寬的 view 來說約為 480 Hz（$`W = 300`$ 時為
 500 Hz）。在 10 kHz，同樣一個像素涵蓋約 20 個 bin（Step 20）。
 
 ## 4. 二十一個 step

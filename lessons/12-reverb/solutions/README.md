@@ -25,38 +25,38 @@ $$
 g = 10^{-3\cdot1557/(2.0\cdot48000)} = 10^{-0.048656} = 0.89401
 $$
 
-For RT60 = 0.5 s: $g = 10^{-3\cdot1557/24000} = 10^{-0.194625} = 0.63881$.
+For RT60 = 0.5 s: $`g = 10^{-3\cdot1557/24000} = 10^{-0.194625} = 0.63881`$.
 
-Both values agree with the g printed by Example 1 (`l12_comb_rt60`). Shortening RT60 to 1/4 multiplies the exponent by 4: $0.63881 = 0.89401^4$.
+Both values agree with the g printed by Example 1 (`l12_comb_rt60`). Shortening RT60 to 1/4 multiplies the exponent by 4: $`0.63881 = 0.89401^4`$.
 
-**2.** 44.1 kHz, g = 0.84, $\log_{10}0.84 = -0.075721$:
+**2.** 44.1 kHz, g = 0.84, $`\log_{10}0.84 = -0.075721`$:
 
 $$
 \mathrm{RT60}_{1116} = \frac{-3\cdot1116}{44100\cdot(-0.075721)} = 1.003\ \text{s},\qquad
 \mathrm{RT60}_{1617} = \frac{-3\cdot1617}{44100\cdot(-0.075721)} = 1.453\ \text{s}
 $$
 
-For the same g, RT60 is proportional to D: the longest comb decays 45% longer than the shortest. So Freeverb's roomsize is merely a "feedback amount", not a strict RT60: the early part of the overall decay is determined by all the combs together, while the later part is dominated by the longest (slowest-decaying) ones, so the decay curve bends slightly "downward" (fast at first, slow later). To give every comb the same RT60 you need a separate $g_i = 10^{-3D_i/(\mathrm{RT60}f_s)}$ for each, which is exactly what the FDN (`Reverb.h`) does.
+For the same g, RT60 is proportional to D: the longest comb decays 45% longer than the shortest. So Freeverb's roomsize is merely a "feedback amount", not a strict RT60: the early part of the overall decay is determined by all the combs together, while the later part is dominated by the longest (slowest-decaying) ones, so the decay curve bends slightly "downward" (fast at first, slow later). To give every comb the same RT60 you need a separate $`g_i = 10^{-3D_i/(\mathrm{RT60}f_s)}`$ for each, which is exactly what the FDN (`Reverb.h`) does.
 
-**3.** $\omega = 2\pi f/f_s$, $|\mathrm{LP}| = 0.5/\sqrt{1.25 - \cos\omega}$, $\mathrm{RT60} = -3\cdot1557 / (48000\log_{10}(0.89401\,|\mathrm{LP}|))$:
+**3.** $`\omega = 2\pi f/f_s`$, $`|\mathrm{LP}| = 0.5/\sqrt{1.25 - \cos\omega}`$, $`\mathrm{RT60} = -3\cdot1557 / (48000\log_{10}(0.89401\,|\mathrm{LP}|))`$:
 
-| f | ω | $\lvert\mathrm{LP}\rvert$ | $g\lvert\mathrm{LP}\rvert$ | RT60 by hand | Measured in the example |
+| f | ω | $`\lvert\mathrm{LP}\rvert`$ | $`g\lvert\mathrm{LP}\rvert`$ | RT60 by hand | Measured in the example |
 |---|---|---|---|---|---|
 | 986.5 Hz | 0.1291 | 0.9838 | 0.8795 | 1.745 s | 1.745 s |
 | 4007.7 Hz | 0.5246 | 0.8063 | 0.7209 | 0.685 s | 0.685 s |
 | 8015.4 Hz | 1.0492 | 0.5767 | 0.5156 | 0.338 s | 0.339 s |
 
-(The example uses the comb harmonic $k\cdot f_s/D$ closest to 1 k / 4 k / 8 kHz, to avoid landing on a notch.) At 8 kHz the d = 0.5 one-pole is down to 0.58×, and this factor is applied on every trip around the loop, so the RT60 at high frequencies drops to 1/6 of that at low frequencies.
+(The example uses the comb harmonic $`k\cdot f_s/D`$ closest to 1 k / 4 k / 8 kHz, to avoid landing on a notch.) At 8 kHz the d = 0.5 one-pole is down to 0.58×, and this factor is applied on every trip around the loop, so the RT60 at high frequencies drops to 1/6 of that at low frequencies.
 
 ---
 
 ## Exercise 2: Why delay lengths should be mutually prime
 
-**1.** For the 1500-sample comb, the modes are at integer multiples of $48000/1500 = 32$ Hz; for the 2000-sample comb, at integer multiples of 24 Hz. The frequencies common to both are the integer multiples of lcm(32, 24) = 96 Hz, which is $f_s/\gcd(1500, 2000) = 48000/500$. At 96, 192, 288 Hz, ... both combs resonate at the same time.
+**1.** For the 1500-sample comb, the modes are at integer multiples of $`48000/1500 = 32`$ Hz; for the 2000-sample comb, at integer multiples of 24 Hz. The frequencies common to both are the integer multiples of lcm(32, 24) = 96 Hz, which is $`f_s/\gcd(1500, 2000) = 48000/500`$. At 96, 192, 288 Hz, ... both combs resonate at the same time.
 
 In the time domain, the echoes of the first comb arrive at multiples of 1500 and those of the second at multiples of 2000, so they coincide at multiples of lcm(1500, 2000) = 6000 samples (125 ms): every 125 ms there is an echo of double size, which gives a regular flutter.
 
-**2.** 1427 and 1783 are coprime: the only common frequencies are multiples of $f_s/\gcd = 48000$ Hz, that is DC (and its periodic copies at fs), so no modes overlap within the audio band. The echoes coincide with a period of 1427 × 1783 = 2,544,341 samples ≈ 53 seconds, far longer than any RT60, so effectively it never happens.
+**2.** 1427 and 1783 are coprime: the only common frequencies are multiples of $`f_s/\gcd = 48000`$ Hz, that is DC (and its periodic copies at fs), so no modes overlap within the audio band. The echoes coincide with a period of 1427 × 1783 = 2,544,341 samples ≈ 53 seconds, far longer than any RT60, so effectively it never happens.
 
 **3.** Overlapping modes mean that two (or more) paths resonate at the same time: the peak at that frequency is higher than at other modes, and they decay together, so a "pitched tone" emerges in the long tail. The ear is very sensitive to such narrow-band, slowly decaying resonances, which sound like striking a metal pipe (metallic ringing). Other ways to reduce it:
 - Increase the number of delay lines or their total length → higher mode density, so individual modes stand out less;
@@ -73,17 +73,17 @@ In the time domain, the echoes of the first comb arrive at multiples of 1500 and
 
 **Key ideas**
 
-1. **Image source**: mirroring about the wall x = 0 gives $x \to -x$, and about x = Lx gives $x \to 2L_x - x$; the other axes are analogous. The first-order reflections are 6 images.
-2. **Relative to the direct sound**: a tap's delay is "extra path length / c", and its gain is $\sqrt{1-\alpha}$ (energy absorption α → amplitude reflection coefficient) times the distance ratio (1/r attenuation). The benefit of working relative to the direct sound is that the ER module does not need to know the absolute delay of the direct sound.
+1. **Image source**: mirroring about the wall x = 0 gives $`x \to -x`$, and about x = Lx gives $`x \to 2L_x - x`$; the other axes are analogous. The first-order reflections are 6 images.
+2. **Relative to the direct sound**: a tap's delay is "extra path length / c", and its gain is $`\sqrt{1-\alpha}`$ (energy absorption α → amplitude reflection coefficient) times the distance ratio (1/r attenuation). The benefit of working relative to the direct sound is that the ER module does not need to know the absolute delay of the direct sound.
 3. **Stereo**: compute a separate set of taps for each ear (16 cm apart). The time differences between the two sets are the interaural time differences, which give the ER a sense of direction.
 4. **ER + late**: set the pre-delay of the late reverb to the latest ER across both ears (`er.getMaxDelaySamples()`: the x = 0 wall for the right ear, 538 samples ≈ 11.2 ms; for a single listener position it is 536), so that the tail starts right after the ER.
 
 **Floor reflection by hand** (listener (4.3, 2.6, 1.2), source (2, 1.5, 1.6)):
 
-- Direct: $\sqrt{2.3^2 + 1.1^2 + 0.4^2} = \sqrt{6.66} = 2.5807$ m
-- Floor image (2, 1.5, −1.6): $\sqrt{2.3^2 + 1.1^2 + 2.8^2} = \sqrt{14.34} = 3.7868$ m
+- Direct: $`\sqrt{2.3^2 + 1.1^2 + 0.4^2} = \sqrt{6.66} = 2.5807`$ m
+- Floor image (2, 1.5, −1.6): $`\sqrt{2.3^2 + 1.1^2 + 2.8^2} = \sqrt{14.34} = 3.7868`$ m
 - delay = (3.7868 − 2.5807) / 343 = 3.516 ms → × 48 = 168.8 → **169 samples**
-- gain = $\sqrt{0.7}\times 2.5807/3.7868 = 0.8367\times0.6815 =$ **0.570**
+- gain = $`\sqrt{0.7}\times 2.5807/3.7868 = 0.8367\times0.6815 =`$ **0.570**
 
 All 6 (sorted by delay; consistent with the program output):
 
@@ -125,7 +125,7 @@ RMS: dry 0.1034, dry+ER 0.1538, dry+ER+late 0.1615 (peak 0.991)
 
 **Key ideas**
 
-1. **The −1 for read-before-write**: the convention of `FractionalDelayLine` is that, after a push, `read(0)` is the value just written. In `processSample()` we read first and push last, so reading `L − 1` gives the value written L samples ago; the loop length is then exactly L, and only then is the $g_i$ formula exact.
+1. **The −1 for read-before-write**: the convention of `FractionalDelayLine` is that, after a push, `read(0)` is the value just written. In `processSample()` we read first and push last, so reading `L − 1` gives the value written L samples ago; the loop length is then exactly L, and only then is the $`g_i`$ formula exact.
 2. **Modulation**: the LFO phases of the lines are 90° apart (`i·π/2`), which avoids all 4 lines "stretching together" and wobbling the overall pitch; using `readCubic` loses less high-frequency content at non-integer delays than linear interpolation.
 3. **Damping must be truly switchable off**: even with cutoff = 20 kHz, the one-pole is still −1.3 dB at Nyquist, applied on every trip around the loop, which noticeably shortens the high-frequency RT60. So `setDampingHz(≥ 20000)` bypasses it directly. Without the bypass, this 4-line FDN measures an RT60 of only about 1.66 s instead of 2 s.
 4. **Roughness metric**: a spectrum with distinct modes looks like a row of spikes (large peak-to-valley differences) and has a large dB standard deviation; once the modes are smoothed out the spectrum looks like noise, and the dB standard deviation approaches the theoretical dB value for the magnitude of white noise (Rayleigh distribution), about 5.6 dB.
@@ -146,8 +146,8 @@ depth 4 ms: spectrum std. dev. 5.60 dB (flatter, but the maximum pitch deviation
 **Discussion questions**
 
 - The mode density of the 4-line FDN = (1123 + 1567 + 1949 + 2251) / 48000 = 0.14 modes/Hz (on average one mode every 7 Hz); the 8-line `Reverb` has 0.41 modes/Hz (one every 2.5 Hz). The sparser the modes, the easier it is to hear each one individually. By the Schroeder and Logan rule of thumb "mode density ≥ 0.15 × RT60" (see README Section 2.6), RT60 = 2 s needs at least 0.3 modes/Hz, so the 4-line version is clearly insufficient, and modulation compensates for exactly this.
-- The lossless test shows that the Householder matrix is orthogonal: with no $g_i$ and no damping, the system energy stays exactly constant for 1.5 seconds. If the matrix were written wrongly (for example 1/N instead of 2/N), this test would immediately show the RMS steadily rising or falling.
-- Modulating the delay causes a Doppler-like pitch change: the instantaneous frequency ratio is $f'/f = 1 - dL/dt$ (L in seconds), and for sinusoidal modulation $L(t) = L_0 + D\sin(2\pi f_{\mathrm{LFO}}t)$ the maximum deviation is $2\pi f_{\mathrm{LFO}}D$. Depth 1 ms, 1.3 Hz → 0.82% (about 14 cents, nearly inaudible); depth 4 ms → 3.3% (about 56 cents, more than a quarter tone), and the tail sounds "wobbly", like a chorus set too deep. Modulation is a trade-off between "smoothing out the ringing" and "not hearing the pitch wobble"; common values are 0.3–1 ms and 0.3–2 Hz.
+- The lossless test shows that the Householder matrix is orthogonal: with no $`g_i`$ and no damping, the system energy stays exactly constant for 1.5 seconds. If the matrix were written wrongly (for example 1/N instead of 2/N), this test would immediately show the RMS steadily rising or falling.
+- Modulating the delay causes a Doppler-like pitch change: the instantaneous frequency ratio is $`f'/f = 1 - dL/dt`$ (L in seconds), and for sinusoidal modulation $`L(t) = L_0 + D\sin(2\pi f_{\mathrm{LFO}}t)`$ the maximum deviation is $`2\pi f_{\mathrm{LFO}}D`$. Depth 1 ms, 1.3 Hz → 0.82% (about 14 cents, nearly inaudible); depth 4 ms → 3.3% (about 56 cents, more than a quarter tone), and the tail sounds "wobbly", like a chorus set too deep. Modulation is a trade-off between "smoothing out the ringing" and "not hearing the pitch wobble"; common values are 0.3–1 ms and 0.3–2 Hz.
 - Modulation makes the measured RT60 slightly shorter (1.86 s). One possible reason is that cubic interpolation has a little high-frequency loss at non-integer positions (at integer positions it is completely lossless), accumulating on every trip around the loop; in addition, an RT60 measurement from a single IR itself fluctuates by a few percent. This is also why some reverb designs modulate only a few of the lines, or use allpass interpolation instead.
 
 ---
@@ -193,7 +193,7 @@ for (int i = n - 1; i >= 0; --i) {   // accumulate from the tail backwards: EDC[
 
 Regression: take only the points where EDC_dB is within [−25, −5] dB; the least-squares slope = (nΣty − ΣtΣy) / (nΣt² − (Σt)²), and RT60 = −60 / slope.
 
-**Why the EDC is a straight line**: if $h(t) = A e^{-kt}\cdot w(t)$ (w is unit-power noise or a sinusoid), the mean of $h^2$ is $A^2 e^{-2kt}$, so
+**Why the EDC is a straight line**: if $`h(t) = A e^{-kt}\cdot w(t)`$ (w is unit-power noise or a sinusoid), the mean of $`h^2`$ is $`A^2 e^{-2kt}`$, so
 
 $$
 \mathrm{EDC}(t) = \int_t^\infty A^2 e^{-2k\tau}d\tau = \frac{A^2}{2k}e^{-2kt}
@@ -201,7 +201,7 @@ $$
 \mathrm{EDC}_{\mathrm{dB}}(t) = 10\log_{10}e^{-2kt} = -\frac{20k}{\ln 10}t
 $$
 
-The definition of RT60, $e^{-k\cdot\mathrm{RT60}} = 10^{-3}$, gives $k = 3\ln10/\mathrm{RT60}$; substituting yields $\mathrm{EDC}_{\mathrm{dB}}(t) = -60\,t/\mathrm{RT60}$: the slope is exactly −60/RT60, the same as the dB slope of the amplitude envelope, but **much smoother**. Schroeder proved that this integral equals the result of "averaging infinitely many interrupted-noise measurements in the same room", so a single IR gives you the ensemble average.
+The definition of RT60, $`e^{-k\cdot\mathrm{RT60}} = 10^{-3}`$, gives $`k = 3\ln10/\mathrm{RT60}`$; substituting yields $`\mathrm{EDC}_{\mathrm{dB}}(t) = -60\,t/\mathrm{RT60}`$: the slope is exactly −60/RT60, the same as the dB slope of the amplitude envelope, but **much smoother**. Schroeder proved that this integral equals the result of "averaging infinitely many interrupted-noise measurements in the same room", so a single IR gives you the ensemble average.
 
 **Actual output**
 
@@ -227,7 +227,7 @@ EDC of the FDN IR (every 0.25 s):
 
 T20 and T30 are both Schroeder backward-integration results; they differ only in the regression range (−5..−25 dB versus −5..−35 dB). From 0.25 s on, the EDC of the FDN drops about 7.5 dB every 0.25 s (= 60 dB / 2 s × 0.25 s), a nice straight line; the first 0–0.25 s drops only 6.2 dB, because the echoes are still building up and the energy has not yet started its "pure decay".
 
-**Effect of background noise**: the tail of a real recorded IR ends in a constant-level noise floor that no longer decays. Backward integration also integrates the energy of this noise, so the end of the EDC "curls up" and flattens, and if the regression range extends into it the RT60 is overestimated. The practical remedy (the ISO 3382 series and the method of Lundeby et al.): first estimate the noise floor, then truncate the upper limit of the integral at the time when the IR reaches the noise floor (and compensate for the truncated energy), or subtract the noise power from $h^2$ before the regression. This is also why T20 / T30 are commonly used instead of measuring all the way to −60 dB.
+**Effect of background noise**: the tail of a real recorded IR ends in a constant-level noise floor that no longer decays. Backward integration also integrates the energy of this noise, so the end of the EDC "curls up" and flattens, and if the regression range extends into it the RT60 is overestimated. The practical remedy (the ISO 3382 series and the method of Lundeby et al.): first estimate the noise floor, then truncate the upper limit of the integral at the time when the IR reaches the noise floor (and compensate for the truncated energy), or subtract the noise power from $`h^2`$ before the regression. This is also why T20 / T30 are commonly used instead of measuring all the way to −60 dB.
 
 ---
 
@@ -235,7 +235,7 @@ T20 and T30 are both Schroeder backward-integration results; they differ only in
 
 fs = 48 kHz, M = 3.0 × 48000 = 144000 samples.
 
-**1.** P = 512: $K = \lceil 144000/512\rceil = \lceil 281.25\rceil = 282$. N = 1024, so each spectrum has N/2 + 1 = 513 bins.
+**1.** P = 512: $`K = \lceil 144000/512\rceil = \lceil 281.25\rceil = 282`$. N = 1024, so each spectrum has N/2 + 1 = 513 bins.
 IR spectrum: 282 × 513 × 8 = 1,157,328 bytes ≈ **1.10 MiB** (the time-domain IR would need only 576,000 bytes: storing it as spectra takes about twice as much, because of the zero-padding to 2P). The FDL of one channel is also 282 spectra, again 1.10 MiB, for a total of about 2.21 MiB.
 
 **2.** For every P = 512 output samples we do K × 513 complex multiply-accumulates: 282 × 513 / 512 ≈ **282.6 complex MACs per sample** (≈ 1130 real multiplications). In addition, every 512 samples we do two 1024-point FFTs; radix-2 needs about (N/2)·log₂N = 5120 butterflies, which amortizes to about 20 butterflies per sample, relatively small.

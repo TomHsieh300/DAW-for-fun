@@ -27,7 +27,7 @@ cd build
 4. 44.1 kHz、N = 4096：bin 寬與 frame 長度？
 5. spectrum analyzer 想要每秒更新 30 次（30 fps），fs = 48 kHz、N = 4096。hop 是多少 sample？overlap 是多少 %？
 
-提示：bin 寬 $\Delta f = f_s / N$；frame 長度 $N / f_s$；overlap $= 1 - \text{hop}/N$。
+提示：bin 寬 $`\Delta f = f_s / N`$；frame 長度 $`N / f_s`$；overlap $`= 1 - \text{hop}/N`$。
 
 ## 練習 2（觀念）★☆☆　為什麼要 window？leakage 是怎麼來的？
 
@@ -64,7 +64,7 @@ self-check 會驗證：
 1. 相位掃描的表格裡，Oversampler 在哪些「峰值位置」量得準、windowed-sinc 在哪些位置量得準？用兩者的插值點
    落在原始 sample 之間的哪裡（README 2.5 節）解釋。為什麼兩者的最差誤差一樣大？
 2. 22 kHz 時第 06 章說第 1 級 halfband 單趟衰減 0.65 dB，為什麼 Oversampler 的讀數幾乎沒有誤差？
-   （提示：第 06 章 2.6 節「Passband 邊緣」那一段的 $|H(f)| + |H(f_s - f)| = 1$。）windowed-sinc 為什麼沒有這個性質？
+   （提示：第 06 章 2.6 節「Passband 邊緣」那一段的 $`|H(f)| + |H(f_s - f)| = 1`$。）windowed-sinc 為什麼沒有這個性質？
 3. 乘法數只差 56 對 64（約 14%），實際計時卻差好幾倍。比較兩者的內迴圈：累加用 float 還是 double？
    歷史緩衝怎麼取值（鏡像 ring buffer 的連續記憶體 vs 每個 tap 都要判斷繞回）？哪一種寫法編譯器比較容易向量化？
 4. 如果你要在 DAW 的 master bus 上即時顯示 true peak，會選哪一個？如果要做第 05 章 2.8 節說的 true-peak limiter
@@ -100,7 +100,7 @@ self-check 會驗證 EBU Tech 3342 風格的測試訊號：前 20 s / 後 20 s �
 
 起始碼：`exercises/starter/ex6_fft_convolution.cpp`（target `l11_ex6_starter`）
 
-卷積定理：時域卷積 = 頻域相乘。把每個輸入 block 補 0 到 $N \ge B + L - 1$，做 FFT、乘上 IR 的頻譜、IFFT，
+卷積定理：時域卷積 = 頻域相乘。把每個輸入 block 補 0 到 $`N \ge B + L - 1`$，做 FFT、乘上 IR 的頻譜、IFFT，
 再把超出 block 的尾巴疊加到下一個 block（overlap-add）。完成 `OverlapAddConvolver::process()`。
 
 self-check 會驗證：與直接卷積的誤差 < 1e-5（block 長度不固定也要對）、impulse 的輸出 = IR 本身、

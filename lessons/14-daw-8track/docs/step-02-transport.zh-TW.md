@@ -20,7 +20,7 @@ $$
 N_{\text{beat}} = \frac{60\, f_s}{B}, \qquad N_{\text{bar}} = n \cdot N_{\text{beat}}
 $$
 
-其中 tempo $B$ 以每分鐘拍數計，sample rate 為 $f_s$，分子為 $n$。一拍是
+其中 tempo $`B`$ 以每分鐘拍數計，sample rate 為 $`f_s`$，分子為 $`n`$。一拍是
 分母所指的音符時值（在 7/8 中，一拍是八分音符），這也是 DAW 顯示的方式。
 
 位置和螢幕上一樣從 1 起算，每拍 960 個 tick（常見的 PPQ 解析度；PPQ = pulses per quarter note，也就是
@@ -28,14 +28,14 @@ sequencer 把一拍切成的 timing tick 數）：
 
 $$
 \text{beats}(b, k, t) = (b-1)\,n + (k-1) + \frac{t}{960}, \qquad
-\text{samples} = \operatorname{round}\big(\text{beats} \cdot N_{\text{beat}}\big)
+\text{samples} = \mathrm{round}\big(\text{beats} \cdot N_{\text{beat}}\big)
 $$
 
-反向轉換時對拍數取 floor；一個很小的 epsilon（$10^{-9}$ 拍）可避免剛好落在網格上的
+反向轉換時對拍數取 floor；一個很小的 epsilon（$`10^{-9}`$ 拍）可避免剛好落在網格上的
 位置因為浮點數捨入而變成「前一拍的 tick 959」。
 
 範例（120 BPM、4/4、48 kHz）：第 3 小節、第 2 拍、tick 480 是
-$(2 \cdot 4 + 1 + 0.5) \cdot 24000 = 228\,000$ 個 sample = 4.75 秒。
+$`(2 \cdot 4 + 1 + 0.5) \cdot 24000 = 228\,000`$ 個 sample = 4.75 秒。
 
 ### Thread safety：atomic 與 pending seek
 
@@ -137,7 +137,7 @@ Step 1 engine（已解完）加上帶有 atomic 的 `Transport` class；engine �
 這個檢查只涵蓋 Step 2：網格（包含 7/8，以及 96 BPM 在 44.1 kHz 下一拍是
 27 562.5 個 sample 的情況）、仍會套用 seek 的停止中 transport、上面算過的 loop 切分、
 需要超過 8 個 segment 的 10-sample loop，以及兩次使用「ramp tape」的 engine render
-（sample $i$ 的值是 $i$，因此每個輸出 sample 都能說明播放的是哪個 timeline 位置）-
+（sample $`i`$ 的值是 $`i`$，因此每個輸出 sample 都能說明播放的是哪個 timeline 位置）-
 跨越 loop 結尾的 441-sample block，以及搭配隨機 block size 的 7-sample loop。
 預期輸出（已驗證）：
 

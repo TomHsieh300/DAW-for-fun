@@ -113,7 +113,7 @@ Linux 上只有 JUCE 章節（13、14）需要額外套件（ALSA、X11、freety
 
 強烈建議安裝免費的 [Audacity](https://www.audacityteam.org/)：
 
-- **波形**：直接拖 WAV 進去。用滑鼠滾輪 + Ctrl 放大到看得見一顆一顆的 sample——那就是 $x[n]$。
+- **波形**：直接拖 WAV 進去。用滑鼠滾輪 + Ctrl 放大到看得見一顆一顆的 sample——那就是 $`x[n]`$。
 - **頻譜圖**：音軌名稱旁的下拉選單 → 「Spectrogram」。正弦波是一條水平線、掃頻是往上彎的曲線、白雜訊是整片均勻的雜訊、脈衝是一條垂直線。
 - **單一時間點的頻譜**：選取一段 → 「分析 → 繪製頻譜」。看 `l00_clipped_sine.wav` 可以清楚看到 1、3、5 kHz 的奇次諧波。
 - **檢查 clip**：「View → Show Clipping」（中文介面的選單名稱依版本而異）會把 clip 的 sample 標成紅色。
@@ -125,9 +125,9 @@ Linux 上只有 JUCE 章節（13、14）需要額外套件（ALSA、X11、freety
 
 讀完這一章，你應該能：
 
-- 說明聲音如何變成一串數字：sampling、sample rate、bit depth，以及為什麼 DSP 程式裡一律用 `float` 且範圍是 $[-1, 1]$。
+- 說明聲音如何變成一串數字：sampling、sample rate、bit depth，以及為什麼 DSP 程式裡一律用 `float` 且範圍是 $`[-1, 1]`$。
 - 用 Nyquist 定理算出「某個頻率在某個 sample rate 下會 alias 到幾 Hz」，並解釋 aliasing 聽起來像什麼。
-- 熟練 dB 的數學：$20\log_{10}$、+6 dB ≈ 兩倍振幅、相同訊號相加 +6 dB vs 不相關訊號相加 +3 dB、quantization 的 SNR ≈ 6.02N + 1.76 dB。
+- 熟練 dB 的數學：$`20\log_{10}`$、+6 dB ≈ 兩倍振幅、相同訊號相加 +6 dB vs 不相關訊號相加 +3 dB、quantization 的 SNR ≈ 6.02N + 1.76 dB。
 - 分辨 peak、RMS、crest factor，知道 clipping 在數字上長什麼樣子。
 - 解釋 channel、interleaved / non-interleaved、buffer、block processing、audio callback、latency = blockSize / sampleRate。
 - 說出 real-time audio thread 的四大禁忌（allocation、lock、I/O、無界迴圈 / GC）以及**為什麼**。
@@ -140,12 +140,12 @@ Linux 上只有 JUCE 章節（13、14）需要額外套件（ALSA、X11、freety
 
 ### 2.1 聲波與取樣（sampling）
 
-聲音是空氣壓力隨時間的微小變化。麥克風把壓力變成電壓，電壓是一條**連續**的曲線 $x(t)$：任何時刻都有值，而且值可以是任意實數。電腦存不了連續的東西，所以 ADC（analog-to-digital converter）做兩件事：
+聲音是空氣壓力隨時間的微小變化。麥克風把壓力變成電壓，電壓是一條**連續**的曲線 $`x(t)`$：任何時刻都有值，而且值可以是任意實數。電腦存不了連續的東西，所以 ADC（analog-to-digital converter）做兩件事：
 
-1. **取樣（sampling）**：每隔固定的時間 $T$ 量一次電壓。$T$ 叫 sampling period，它的倒數 $f_s = 1/T$ 叫 **sample rate**（取樣率），單位 Hz。48000 Hz 代表每秒量 48000 次，每個 sample 相隔 $1/48000 \approx 20.8\ \mu s$。
+1. **取樣（sampling）**：每隔固定的時間 $`T`$ 量一次電壓。$`T`$ 叫 sampling period，它的倒數 $`f_s = 1/T`$ 叫 **sample rate**（取樣率），單位 Hz。48000 Hz 代表每秒量 48000 次，每個 sample 相隔 $`1/48000 \approx 20.8\ \mu s`$。
 2. **量化（quantization）**：把量到的電壓四捨五入到有限個刻度之一（見 2.3）。
 
-結果就是一串數字 $x[n] = x(nT)$，$n = 0, 1, 2, \ldots$。這一串數字就是「聲音在電腦裡的樣子」——沒有別的了。一秒鐘的立體聲 48 kHz 音訊就是 2 × 48000 = 96000 個數字。
+結果就是一串數字 $`x[n] = x(nT)`$，$`n = 0, 1, 2, \ldots`$。這一串數字就是「聲音在電腦裡的樣子」——沒有別的了。一秒鐘的立體聲 48 kHz 音訊就是 2 × 48000 = 96000 個數字。
 
 ```
 連續的聲波 x(t)                      取樣後的 x[n]（每格一個 sample）
@@ -158,9 +158,9 @@ Linux 上只有 JUCE 章節（13、14）需要額外套件（ALSA、X11、freety
                                  |←T→|   T = 1 / fs
 ```
 
-一個很常見的誤解：「sample 之間的聲音不見了，所以數位音訊是階梯狀的、有損的」。只要訊號裡沒有超過 $f_s/2$ 的成分，這些點**唯一地**決定了原本那條平滑曲線（這就是下一節的 Nyquist 定理）；DAC 輸出時會用一個 reconstruction filter 把平滑曲線還原回來，不是輸出階梯。
+一個很常見的誤解：「sample 之間的聲音不見了，所以數位音訊是階梯狀的、有損的」。只要訊號裡沒有超過 $`f_s/2`$ 的成分，這些點**唯一地**決定了原本那條平滑曲線（這就是下一節的 Nyquist 定理）；DAC 輸出時會用一個 reconstruction filter 把平滑曲線還原回來，不是輸出階梯。
 
-「超過 $f_s/2$ 的成分」是什麼意思？要回答這個問題，得先講清楚頻率、正弦波與頻譜。
+「超過 $`f_s/2`$ 的成分」是什麼意思？要回答這個問題，得先講清楚頻率、正弦波與頻譜。
 
 #### 頻率、正弦波與頻譜
 
@@ -172,7 +172,7 @@ $$
 x(t) = A \sin(2\pi f t)
 $$
 
-$A$ 是振幅（決定多大聲），$f$ 是頻率（決定音高）。取樣後就是 $x[n] = A\sin(2\pi f n / f_s)$——`Signals.h` 的 `makeSine()` 做的就是這件事。
+$`A`$ 是振幅（決定多大聲），$`f`$ 是頻率（決定音高）。取樣後就是 $`x[n] = A\sin(2\pi f n / f_s)`$——`Signals.h` 的 `makeSine()` 做的就是這件事。
 
 **任何聲音都可以拆成很多正弦波疊加**。這是 Fourier（傅立葉）的核心觀念：一把吉他、一句人聲、一個鼓聲，都等於「很多個不同頻率、不同振幅的正弦波加在一起」。把「每個頻率的正弦波有多大」畫成圖，就叫**頻譜（spectrum）**：橫軸是頻率，縱軸是振幅。
 
@@ -187,7 +187,7 @@ $A$ 是振幅（決定多大聲），$f$ 是頻率（決定音高）。取樣後
  正弦波：只有一根柱子                    撥弦（基頻 110 Hz）：一根基頻 + 一排諧波
 ```
 
-真實樂器的頻譜通常像右圖：最低的那根叫**基頻（fundamental）**，決定我們聽到的音高；上面一排頻率剛好是基頻**整數倍**（2、3、4…倍）的成分叫**諧波（harmonics）**，第 $k$ 次諧波的頻率是 $k \cdot f_0$。基頻本身算第 1 次諧波（H1），2 倍的是 H2，以此類推；頻率是基頻奇數倍的叫**奇次諧波**（H3、H5…），偶數倍的叫**偶次諧波**（H2、H4…）。
+真實樂器的頻譜通常像右圖：最低的那根叫**基頻（fundamental）**，決定我們聽到的音高；上面一排頻率剛好是基頻**整數倍**（2、3、4…倍）的成分叫**諧波（harmonics）**，第 $`k`$ 次諧波的頻率是 $`k \cdot f_0`$。基頻本身算第 1 次諧波（H1），2 倍的是 H2，以此類推；頻率是基頻奇數倍的叫**奇次諧波**（H3、H5…），偶數倍的叫**偶次諧波**（H2、H4…）。
 
 **諧波的組成決定音色（timbre）**：同樣是 110 Hz 的 A，鋼琴、吉他、小提琴聽起來不一樣，就是因為各次諧波的大小不同。之後談 clipping、saturation、distortion 時會一直說「產生了新的諧波」，意思就是：處理之後的頻譜多出了原本沒有的柱子，所以音色變了。
 
@@ -195,7 +195,7 @@ $A$ 是振幅（決定多大聲），$f$ 是頻率（決定音高）。取樣後
 
 ### 2.2 sample rate、Nyquist 定理與 aliasing
 
-**Nyquist–Shannon 取樣定理**：如果訊號最高頻率是 $f_{max}$，那麼只要 $f_s > 2 f_{max}$，就可以從 sample 完美重建原訊號。反過來說，在 sample rate $f_s$ 之下，能正確表示的最高頻率是
+**Nyquist–Shannon 取樣定理**：如果訊號最高頻率是 $`f_{max}`$，那麼只要 $`f_s > 2 f_{max}`$，就可以從 sample 完美重建原訊號。反過來說，在 sample rate $`f_s`$ 之下，能正確表示的最高頻率是
 
 $$
 f_{Nyquist} = \frac{f_s}{2}
@@ -205,13 +205,13 @@ $$
 
 **那超過 Nyquist 的頻率會怎樣？** 它不會消失，而是「偽裝」成一個較低的頻率——這叫 **aliasing**（混疊）。直覺：想像你每秒拍 48 張照片去記錄一個每秒轉 30 圈的風扇。每張照片之間風扇轉了 30/48 = 0.625 圈；但是「轉了 0.625 圈」和「倒轉了 0.375 圈」拍出來的照片一模一樣。所以你會看到風扇以每秒 18 圈倒轉。
 
-把它寫成公式：一個頻率 $f_{in}$ 的正弦波取樣後，和下列所有頻率產生**完全相同**的 sample：
+把它寫成公式：一個頻率 $`f_{in}`$ 的正弦波取樣後，和下列所有頻率產生**完全相同**的 sample：
 
 $$
 f_{alias} = \left| f_{in} - k \cdot f_s \right|,\quad k = 0, \pm 1, \pm 2, \ldots
 $$
 
-其中落在 $[0, f_s/2]$ 內的那一個，就是你會「聽到」的頻率。
+其中落在 $`[0, f_s/2]`$ 內的那一個，就是你會「聽到」的頻率。
 
 **計算：30 kHz 在 48 kHz 取樣下會變成幾 Hz？**
 
@@ -219,7 +219,7 @@ $$
 f_{alias} = |30000 - 1 \times 48000| = 18000\ \text{Hz}
 $$
 
-30 kHz 超過 Nyquist（24 kHz）6 kHz，就「折返」到 Nyquist 以下 6 kHz 的位置，也就是 18 kHz。可以用三角函數驗證（$n$ 是整數）：
+30 kHz 超過 Nyquist（24 kHz）6 kHz，就「折返」到 Nyquist 以下 6 kHz 的位置，也就是 18 kHz。可以用三角函數驗證（$`n`$ 是整數）：
 
 $$
 \sin\!\left(2\pi \tfrac{30000}{48000} n\right)
@@ -250,21 +250,21 @@ $$
 **為什麼要在乎？** 兩個地方會產生超過 Nyquist 的成分：
 
 1. **ADC 之前**：真實世界的聲音有超音波成分，所以 ADC 前面一定有 anti-aliasing lowpass filter 把它們濾掉。這是硬體的事，我們不用管。
-2. **我們自己的 DSP**：任何**非線性**處理（saturation、distortion、clipping，甚至 compressor 的快速 gain 變化）都會產生新的諧波。1.1 kHz 的訊號經過 hard clip 會產生 3.3、5.5、7.7、… kHz 的奇次諧波，一路到無限高；超過 24 kHz 的部分全部 alias 回來，例如第 23 次諧波 25.3 kHz 會折到 $|25300 - 48000| = 22.7$ kHz、第 25 次 27.5 kHz 折到 20.5 kHz——這些位置都**不是** 1.1 kHz 的整數倍，變成跟原本音高無關的刺耳雜音。（例外：如果 $f_s$ 剛好是基頻的整數倍，例如 1 kHz @ 48 kHz，alias 會剛好落回諧波的格點上，例如 25 kHz 折到 23 kHz = H23。這是巧合，一般的音高不會這樣。）這就是第 06 章要用 oversampling 的原因：先把 sample rate 升到 4 倍（192 kHz，Nyquist 96 kHz），做完非線性處理，濾掉 24 kHz 以上的成分，再降回來。
+2. **我們自己的 DSP**：任何**非線性**處理（saturation、distortion、clipping，甚至 compressor 的快速 gain 變化）都會產生新的諧波。1.1 kHz 的訊號經過 hard clip 會產生 3.3、5.5、7.7、… kHz 的奇次諧波，一路到無限高；超過 24 kHz 的部分全部 alias 回來，例如第 23 次諧波 25.3 kHz 會折到 $`|25300 - 48000| = 22.7`$ kHz、第 25 次 27.5 kHz 折到 20.5 kHz——這些位置都**不是** 1.1 kHz 的整數倍，變成跟原本音高無關的刺耳雜音。（例外：如果 $`f_s`$ 剛好是基頻的整數倍，例如 1 kHz @ 48 kHz，alias 會剛好落回諧波的格點上，例如 25 kHz 折到 23 kHz = H23。這是巧合，一般的音高不會這樣。）這就是第 06 章要用 oversampling 的原因：先把 sample rate 升到 4 倍（192 kHz，Nyquist 96 kHz），做完非線性處理，濾掉 24 kHz 以上的成分，再降回來。
 
 聽感上，aliasing 是「金屬感」、「數位感」、「音高往反方向跑」。`l00_db_math` 輸出的 `l00_aliasing_sweep.wav` 是一段從 20 Hz 掃到 40 kHz 的 sweep（刻意超過 Nyquist）：音高一路往上，碰到 24 kHz 之後反而往下掉，就是這個現象。
 
 ### 2.3 bit depth 與 quantization
 
-每個 sample 要用多少 bit 儲存，叫 **bit depth**。N bit 的整數 PCM 有 $2^N$ 個刻度：16 bit 有 65536 個（$-32768 \ldots 32767$），24 bit 有 16777216 個。注意正負不對稱：負端可以到 $-2^{N-1}$，正端最多只到 $2^{N-1}-1$。換成 $[-1, 1]$ 的 float 時除以 $2^{N-1}$，所以 16 bit 能存的最大正值是 $32767/32768 \approx 0.99997$，略小於 1.0；`l00_db_math` 的 `quantize()` 在四捨五入後會 clamp 到這個合法範圍。
+每個 sample 要用多少 bit 儲存，叫 **bit depth**。N bit 的整數 PCM 有 $`2^N`$ 個刻度：16 bit 有 65536 個（$`-32768 \ldots 32767`$），24 bit 有 16777216 個。注意正負不對稱：負端可以到 $`-2^{N-1}`$，正端最多只到 $`2^{N-1}-1`$。換成 $`[-1, 1]`$ 的 float 時除以 $`2^{N-1}`$，所以 16 bit 能存的最大正值是 $`32767/32768 \approx 0.99997`$，略小於 1.0；`l00_db_math` 的 `quantize()` 在四捨五入後會 clamp 到這個合法範圍。
 
-量化就是把真實的值四捨五入到最近的刻度，誤差 $e[n]$ 介於 $\pm \Delta/2$，$\Delta$ 是刻度間距。對大多數訊號，這個誤差像是均勻分布的隨機雜訊（quantization noise），功率是
+量化就是把真實的值四捨五入到最近的刻度，誤差 $`e[n]`$ 介於 $`\pm \Delta/2`$，$`\Delta`$ 是刻度間距。對大多數訊號，這個誤差像是均勻分布的隨機雜訊（quantization noise），功率是
 
 $$
 P_{noise} = \frac{\Delta^2}{12}
 $$
 
-（均勻分布在 $[-\Delta/2, \Delta/2]$ 的變異數。）把全幅（full-scale）正弦波的功率 $P_{signal} = A^2/2$ 除以它，就得到最好情況的 **SNR（signal-to-noise ratio）**。若刻度範圍是 $[-1, 1]$，則 $\Delta = 2 / 2^N = 2^{1-N}$，$A = 1$：
+（均勻分布在 $`[-\Delta/2, \Delta/2]`$ 的變異數。）把全幅（full-scale）正弦波的功率 $`P_{signal} = A^2/2`$ 除以它，就得到最好情況的 **SNR（signal-to-noise ratio）**。若刻度範圍是 $`[-1, 1]`$，則 $`\Delta = 2 / 2^N = 2^{1-N}`$，$`A = 1`$：
 
 $$
 \text{SNR} = 10\log_{10}\frac{1/2}{2^{2-2N}/12}
@@ -284,19 +284,19 @@ $$
     24    146.24 dB    146.24 dB
 ```
 
-8 bit 量到的值比公式低約 0.8 dB：0 dBFS 正弦波的正半週頂端超過了最大合法碼 $127/128$，被 clamp 住多了一點誤差；bit 數越多，這一階佔的比例越小，差異就消失了。
+8 bit 量到的值比公式低約 0.8 dB：0 dBFS 正弦波的正半週頂端超過了最大合法碼 $`127/128`$，被 clamp 住多了一點誤差；bit 數越多，這一階佔的比例越小，差異就消失了。
 
 注意 SNR 是以**全幅訊號**算的。訊號小 20 dB，SNR 也少 20 dB（同一個範例：8 bit 在 -20 dBFS 只剩 29.78 dB）。這就是為什麼錄音時要有足夠的位準。聽 `l00_quantized_8bit.wav`，正弦波底下有明顯的嘶嘶聲與失真；`l00_quantized_16bit.wav` 則幾乎聽不出來。16 bit 的底噪（最小刻度約 -90 dBFS）只有在極安靜的段落、而且把監聽音量開得很大時才可能察覺；這也是錄音和混音內部常用 24 bit / float 的原因。（把高解析度的音訊轉成 16 bit 時，實務上會先加一點極小的隨機雜訊再量化，叫 **dither**，讓量化誤差變成均勻的嘶聲，而不是跟訊號相關的失真；第 07 章 bitcrusher 會再提到。）
 
 ### 2.4 為什麼 DSP 用 float，以及 0 dBFS
 
-雖然檔案與硬體用整數，但 DSP 內部一律用 **32-bit float**，範圍約定為 $[-1.0, 1.0]$：
+雖然檔案與硬體用整數，但 DSP 內部一律用 **32-bit float**，範圍約定為 $`[-1.0, 1.0]`$：
 
 - **不用擔心溢位**：16 bit 整數相加兩次就可能 overflow（繞到負數，爆音），float 可以放心超過 1.0，最後再處理。
 - **動態範圍極大**：float 有 24 bit 的 mantissa，相對精度不隨音量改變。-60 dB 的小訊號還是有 24 bit 的精度；整數在 -60 dB 時只剩 6 bit（16 bit 的情況）。
 - **乘法自然**：gain 就是乘一個數，不用做定點數的 shift。
 
-$[-1, 1]$ 這個範圍對應整數 PCM 的「滿刻度」（full scale）。振幅剛好 1.0 的訊號叫 **0 dBFS**（dB relative to Full Scale）；所有以 dBFS 標示的位準都是負數（或 0），例如 -6 dBFS 的正弦波振幅是 0.5。這是 DAW meter 上看到的刻度。
+$`[-1, 1]`$ 這個範圍對應整數 PCM 的「滿刻度」（full scale）。振幅剛好 1.0 的訊號叫 **0 dBFS**（dB relative to Full Scale）；所有以 dBFS 標示的位準都是負數（或 0），例如 -6 dBFS 的正弦波振幅是 0.5。這是 DAW meter 上看到的刻度。
 
 float 可以超過 1.0 而不壞，但寫成整數 WAV 或送到 DAC 時，超過的部分會被**截斷**（clipping，見 2.7）。`WavFile.h` 寫 16/24-bit 時會 clamp 到 ±1；寫 32-bit float 時原樣保留。
 
@@ -308,7 +308,7 @@ $$
 L_{dB} = 20\log_{10}\frac{A}{A_{ref}} \qquad\Longleftrightarrow\qquad \frac{A}{A_{ref}} = 10^{L_{dB}/20}
 $$
 
-這是**振幅**（amplitude）的公式。如果比較的是**功率**（power，正比於振幅平方），係數是 10 而不是 20：$10\log_{10}(P/P_{ref}) = 10\log_{10}(A^2/A_{ref}^2) = 20\log_{10}(A/A_{ref})$。兩個公式算出來一樣，只是看你手上拿的是振幅還是功率。
+這是**振幅**（amplitude）的公式。如果比較的是**功率**（power，正比於振幅平方），係數是 10 而不是 20：$`10\log_{10}(P/P_{ref}) = 10\log_{10}(A^2/A_{ref}^2) = 20\log_{10}(A/A_{ref})`$。兩個公式算出來一樣，只是看你手上拿的是振幅還是功率。
 
 幾個一定要記住的數字（來自 `l00_db_math` 的輸出）：
 
@@ -330,8 +330,8 @@ $$
 
 **相加：+6 dB 還是 +3 dB？** 這是初學者最常搞混的地方，關鍵在「兩個訊號相關不相關」：
 
-- **完全相同的訊號**（例如同一軌複製兩份）：每個 sample 都是 $x + x = 2x$，振幅 ×2 → **+6.02 dB**。
-- **不相關的訊號**（例如兩段不同的雜訊、兩把不同的吉他）：每個 sample 有時同號有時異號，振幅不會直接相加；相加的是**功率**：$P = P_1 + P_2 = 2P_1$，振幅 ×√2 → **+3.01 dB**。
+- **完全相同的訊號**（例如同一軌複製兩份）：每個 sample 都是 $`x + x = 2x`$，振幅 ×2 → **+6.02 dB**。
+- **不相關的訊號**（例如兩段不同的雜訊、兩把不同的吉他）：每個 sample 有時同號有時異號，振幅不會直接相加；相加的是**功率**：$`P = P_1 + P_2 = 2P_1`$，振幅 ×√2 → **+3.01 dB**。
 
 ```
 == Summing two -12 dBFS signals ==
@@ -339,18 +339,18 @@ $$
   Uncorrelated white noise: RMS rises by +3.04 dB (power ×2, amplitude ×√2)
 ```
 
-推廣：$N$ 條相同的軌混在一起 +20log₁₀N dB，$N$ 條不相關的軌 +10log₁₀N dB。8 軌不相關的 -18 dBFS 訊號混起來約 -9 dBFS；但如果它們相同，就是 +18 dB → 剛好 0 dBFS，再多一點就 clip。這會直接影響你第 14 章 DAW 的 mix bus 要留多少 headroom。
+推廣：$`N`$ 條相同的軌混在一起 +20log₁₀N dB，$`N`$ 條不相關的軌 +10log₁₀N dB。8 軌不相關的 -18 dBFS 訊號混起來約 -9 dBFS；但如果它們相同，就是 +18 dB → 剛好 0 dBFS，再多一點就 clip。這會直接影響你第 14 章 DAW 的 mix bus 要留多少 headroom。
 
-`DspMath.h` 提供 `dbToGain()` 與 `gainToDb()`。低於 `kMinusInfinityDb`（-100 dB）一律視為靜音，避免 $\log_{10}(0) = -\infty$。
+`DspMath.h` 提供 `dbToGain()` 與 `gainToDb()`。低於 `kMinusInfinityDb`（-100 dB）一律視為靜音，避免 $`\log_{10}(0) = -\infty`$。
 
 ### 2.6 peak、RMS 與 crest factor
 
 一段訊號「多大聲」有兩種量法：
 
-- **Peak**：最大的 $|x[n]|$。它決定會不會 clip。
-- **RMS（root mean square）**：$\sqrt{\frac{1}{N}\sum x[n]^2}$，等於功率的平方根。它比較接近人耳感受到的「平均音量」。
+- **Peak**：最大的 $`|x[n]|`$。它決定會不會 clip。
+- **RMS（root mean square）**：$`\sqrt{\frac{1}{N}\sum x[n]^2}`$，等於功率的平方根。它比較接近人耳感受到的「平均音量」。
 
-兩者的比值叫 **crest factor**（波峰因數），通常用 dB 表示：$\text{crest} = 20\log_{10}(\text{peak}/\text{RMS})$。它告訴你訊號「尖不尖」：
+兩者的比值叫 **crest factor**（波峰因數），通常用 dB 表示：$`\text{crest} = 20\log_{10}(\text{peak}/\text{RMS})`$。它告訴你訊號「尖不尖」：
 
 | 波形 | peak / RMS | crest factor |
 |---|---|---|
@@ -360,7 +360,7 @@ $$
 | 單一脈衝（0.5 秒內 1 個 sample） | √24000 | 43.8 dB |
 | 鼓組 loop（本教材的合成鼓） | ≈ 5.3 | 14.5 dB |
 
-正弦波的推導：$x = A\sin\theta$，$\overline{x^2} = A^2 \cdot \overline{\sin^2\theta} = A^2/2$，所以 RMS = $A/\sqrt 2$。均勻分布在 $[-A, A]$ 的雜訊：$\overline{x^2} = \int_{-A}^{A} \frac{x^2}{2A}dx = A^2/3$，RMS = $A/\sqrt 3$。
+正弦波的推導：$`x = A\sin\theta`$，$`\overline{x^2} = A^2 \cdot \overline{\sin^2\theta} = A^2/2`$，所以 RMS = $`A/\sqrt 2`$。均勻分布在 $`[-A, A]`$ 的雜訊：$`\overline{x^2} = \int_{-A}^{A} \frac{x^2}{2A}dx = A^2/3`$，RMS = $`A/\sqrt 3`$。
 
 `l00_test_signals` 印出的 peak / RMS / crest 就是這些數字：
 
@@ -374,7 +374,7 @@ drum loop        ...  peak  -2.92 dBFS  RMS -17.43 dBFS  crest 14.51 dB
 
 ### 2.7 clipping
 
-當 $|x[n]| > 1.0$ 的訊號被轉成整數（寫 WAV、送到 DAC），超過的部分會被**硬切**在 ±1.0：
+當 $`|x[n]| > 1.0`$ 的訊號被轉成整數（寫 WAV、送到 DAC），超過的部分會被**硬切**在 ±1.0：
 
 $$
 y[n] = \begin{cases} 1 & x[n] > 1 \\ x[n] & -1 \le x[n] \le 1 \\ -1 & x[n] < -1 \end{cases}
@@ -401,7 +401,7 @@ $$
 \text{THD} = \frac{\sqrt{H_2^2 + H_3^2 + H_4^2 + \cdots}}{H_1} \times 100\%
 $$
 
-$H_k$ 是第 $k$ 次諧波的振幅。也就是「新增的諧波總共佔基頻多少比例」：0% 代表完全乾淨（只有原本的正弦波），數字越大失真越重。`Analysis.h` 的 `thdPercent()` 用 Goertzel 量 H2～H10（低於 Nyquist 的部分）再套這個公式。上面的 15.22% 主要來自 H3（-16.5 dB ≈ 0.15 倍）。
+$`H_k`$ 是第 $`k`$ 次諧波的振幅。也就是「新增的諧波總共佔基頻多少比例」：0% 代表完全乾淨（只有原本的正弦波），數字越大失真越重。`Analysis.h` 的 `thdPercent()` 用 Goertzel 量 H2～H10（低於 Nyquist 的部分）再套這個公式。上面的 15.22% 主要來自 H3（-16.5 dB ≈ 0.15 倍）。
 
 對稱的 clip 只產生**奇次**諧波（3、5、7…），偶次諧波為 0——這個規律第 06 章會再回來談。（這裡用 1 kHz @ 48 kHz 是為了讓 clip 的 sample 數是整齊的 26000；如 2.2 所說，這個頻率剛好讓 alias 回來的高次諧波也落在奇次諧波的位置上，所以 H2、H4 量起來是乾淨的 -100 dB。換成 1.1 kHz，alias 回來的成分會散落在各種非整數倍的位置，量 H2、H4 時可能會碰到一些 alias 的能量，但對稱 clip 本身仍然不產生偶次諧波。）數 clip 的 sample 數是練習 4 的題目之一。
 
@@ -545,21 +545,21 @@ dawlab::writeWav(dawlab::outputPath("out32.wav"), wav.buffer, wav.sampleRate, 32
 | `makeDrumLoop(sr, bars, bpm, amp, nch)` | 合成 kick / snare / hi-hat，crest factor 高。dynamics 章節的主要素材。 |
 | `makePluck(freq, sr, seconds, ...)` | Karplus-Strong 撥弦，諧波豐富且高頻隨時間衰減。EQ、saturation 用。 |
 | `makePluckSequence(sr, seconds, amp, nch)` | A 小調琶音，「像音樂」的素材。 |
-| `NoiseGenerator` | xorshift32，輸出 $[-1, 1)$，給你自己合成訊號用。 |
+| `NoiseGenerator` | xorshift32，輸出 $`[-1, 1)`$，給你自己合成訊號用。 |
 | `secondsToSamples(sec, sr)` | 秒 → sample 數（`DspMath.h` 另有 `msToSamples`、`samplesToMs`）。 |
 
 ### 3.4 `Analysis.h`：用數字驗證
 
 | 函式 | 用途 |
 |---|---|
-| `peakAbs(buffer)` / `peakAbs(ptr, n)` | 最大 $\|x\|$ |
+| `peakAbs(buffer)` / `peakAbs(ptr, n)` | 最大 $`\|x\|`$ |
 | `rms(buffer, ch)` / `rms(ptr, n)` | RMS |
 | `hasNanOrInf(buffer)` | 抓 DSP 寫錯造成的 NaN / Inf |
 | `goertzelAmplitude(ptr, n, freq, sr)` | 訊號中**單一頻率**的正弦振幅 |
 | `measureGainDb(processFn, freq, sr)` | 任何「一次一個 sample」的系統在某頻率的增益（dB） |
 | `harmonicLevelsDb(...)`、`thdPercent(...)` | 諧波分析、THD |
 
-**Goertzel 的直覺**：FFT 一次算出所有頻率，但如果你只想知道「這段訊號裡 1 kHz 有多大」，Goertzel 更便宜：它是一個刻意把共振頻率調在目標頻率的二階 IIR filter，把整段訊號餵過去，最後從 filter 的兩個狀態變數算出該頻率的振幅。餵進振幅 $A$ 的正弦波，回傳值 ≈ $A$。前面加了 Hann window，減少訊號頭尾不連續造成的洩漏（leakage）。IIR filter、window、leakage、FFT 這些名詞會在第 02 章（IIR filter）和第 11 章（FFT、window、leakage）詳談；現在只要知道：**給它一段訊號和一個頻率，它回傳那個頻率的正弦振幅**。
+**Goertzel 的直覺**：FFT 一次算出所有頻率，但如果你只想知道「這段訊號裡 1 kHz 有多大」，Goertzel 更便宜：它是一個刻意把共振頻率調在目標頻率的二階 IIR filter，把整段訊號餵過去，最後從 filter 的兩個狀態變數算出該頻率的振幅。餵進振幅 $`A`$ 的正弦波，回傳值 ≈ $`A`$。前面加了 Hann window，減少訊號頭尾不連續造成的洩漏（leakage）。IIR filter、window、leakage、FFT 這些名詞會在第 02 章（IIR filter）和第 11 章（FFT、window、leakage）詳談；現在只要知道：**給它一段訊號和一個頻率，它回傳那個頻率的正弦振幅**。
 
 `measureGainDb()` 是第 02、03 章驗證 filter 的主力：丟一個 lambda 進去，它自動送正弦波、跳過 transient、量輸出對輸入的比值。
 
@@ -601,7 +601,7 @@ pluck 110 Hz     2 ch    96000 samples (2.00 s)  peak  -6.03 dBFS  RMS -25.19 dB
 pluck sequence   2 ch   192000 samples (4.00 s)  peak  -5.18 dBFS  RMS -19.71 dBFS  crest 14.53 dB
 ```
 
-對照 2.5、2.6：振幅 0.5 = -6.02 dBFS；正弦波 RMS 比 peak 低 3.01 dB；白雜訊振幅 0.25 = -12.04 dBFS，crest 4.77 dB；脈衝 $\text{crest} = 10\log_{10}(24000) = 43.8$ dB。
+對照 2.5、2.6：振幅 0.5 = -6.02 dBFS；正弦波 RMS 比 peak 低 3.01 dB；白雜訊振幅 0.25 = -12.04 dBFS，crest 4.77 dB；脈衝 $`\text{crest} = 10\log_{10}(24000) = 43.8`$ dB。
 
 **該聽到什麼**：用 Audacity 開頻譜圖。sine 是一條水平線；sweep 是往上彎的曲線（對數掃頻在對數頻率軸上是直線）；white noise 整片均勻；impulse 是一條垂直線（所有頻率同時出現）；drum loop 看得到 kick 在低頻、hi-hat 在高頻。
 

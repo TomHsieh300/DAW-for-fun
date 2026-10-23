@@ -39,14 +39,14 @@ audio thread 不需任何同步就能讀取它。
 
 ### 重疊
 
-對於 timeline segment $[T_0, T_0 + N)$ 與 clip $[S, S + L)$：
+對於 timeline segment $`[T_0, T_0 + N)`$ 與 clip $`[S, S + L)`$：
 
 $$
 \text{from} = \max(T_0, S), \qquad \text{to} = \min(T_0 + N, S + L)
 $$
 
-如果 $\text{to} \le \text{from}$，這個 clip 就不在這個 block 中。否則，對於
-$T \in [\text{from}, \text{to})$：
+如果 $`\text{to} \le \text{from}`$，這個 clip 就不在這個 block 中。否則，對於
+$`T \in [\text{from}, \text{to})`$：
 
 $$
 \text{dest}[T - T_0] \mathrel{+}= \text{src}[O + T - S] \cdot g_{\text{clip}} \cdot g_{\text{fade}}(T - S)
@@ -57,7 +57,7 @@ channel；比 source 還長的 clip 則以靜音補足。
 
 ### Fade
 
-對於 clip 內部的索引 $i$ 與剩餘 sample 數 $r = L - 1 - i$：
+對於 clip 內部的索引 $`i`$ 與剩餘 sample 數 $`r = L - 1 - i`$：
 
 $$
 g_{\text{fade}}(i) = \underbrace{\text{shape}\Big(\frac{i+1}{F_{\text{in}}+1}\Big)}_{i < F_{\text{in}}}
@@ -65,11 +65,11 @@ g_{\text{fade}}(i) = \underbrace{\text{shape}\Big(\frac{i+1}{F_{\text{in}}+1}\Bi
 \qquad \text{shape}(x) = \begin{cases} x & \text{Linear} \\ \sin(\pi x / 2) & \text{EqualPower} \end{cases}
 $$
 
-分子與分母的 $+1$ 表示 fade 區域內部永遠不會出現恰好為 0 或恰好為 1 的值
+分子與分母的 $`+1`$ 表示 fade 區域內部永遠不會出現恰好為 0 或恰好為 1 的值
 （4-sample 的 fade-in 是 0.2、0.4、0.6、0.8），同時也讓相同長度的 fade-out 與 fade-in
-互補：在重疊索引 $k$ 處，兩個引數分別是 $\frac{F-k}{F+1}$ 與
-$\frac{k+1}{F+1}$，加起來為 1。因此 linear crossfade 的和恰好為 1，而 equal-power
-crossfade 滿足 $\cos^2 + \sin^2 = 1$（Exercise 5）。
+互補：在重疊索引 $`k`$ 處，兩個引數分別是 $`\frac{F-k}{F+1}`$ 與
+$`\frac{k+1}{F+1}`$，加起來為 1。因此 linear crossfade 的和恰好為 1，而 equal-power
+crossfade 滿足 $`\cos^2 + \sin^2 = 1`$（Exercise 5）。
 
 即使只有幾毫秒的 fade 也很重要：在波形中間開始或結束的 clip，訊號上就是一個
 階躍，而階躍包含所有頻率 - 也就是 click。
@@ -92,8 +92,8 @@ track 持有 `std::atomic<const std::vector<Clip>*>`。UI 從不就地編輯清�
 | 函式 | 用途 |
 |---|---|
 | `Clip::fromBuffer(buffer, start, name)` | 播放整個 buffer 的 clip |
-| `fadeGain(shape, t)` | $t$ 或 $\sin(\pi t/2)$ |
-| `clipFadeAt(clip, i)` | clip sample $i$ 的 fade gain |
+| `fadeGain(shape, t)` | $`t`$ 或 $`\sin(\pi t/2)`$ |
+| `clipFadeAt(clip, i)` | clip sample $`i`$ 的 fade gain |
 | `renderClip(clip, timelineStart, dest)` | 把重疊的部分加進 `dest`；real-time safe |
 
 ### `Track.h`
@@ -109,7 +109,7 @@ public:
 ```
 
 `renderClips()` 會走訪 Step 2 的 segment，並對每個 clip 呼叫 `renderClip()`，把
-segment 的 `timelineStart` 對應到相應的 sub-block。有 $C$ 個 clip 時，每個 block 的成本是 $O(C)$；
+segment 的 `timelineStart` 對應到相應的 sub-block。有 $`C`$ 個 clip 時，每個 block 的成本是 $`O(C)`$；
 有成千上萬個 clip 的真正 arranger 會讓清單保持排序，並用 binary search 找出第一個
 候選者。
 
@@ -146,8 +146,8 @@ Step 3: clips (build-along)
 [PASS] l14_step03 (27 checks passed)
 ```
 
-被修剪的 clip 是一個 ramp source（sample $i$ = $i/1000$），`sourceOffset = 100`、
-`length = 300`，clip gain 為 -6.02 dB：$0.100 \cdot 0.5$ 與 $0.399 \cdot 0.5$。這個檢查也
+被修剪的 clip 是一個 ramp source（sample $`i`$ = $`i/1000`$），`sourceOffset = 100`、
+`length = 300`，clip gain 為 -6.02 dB：$`0.100 \cdot 0.5`$ 與 $`0.399 \cdot 0.5`$。這個檢查也
 測試了 stereo source、比 source 還長的 clip、重疊的 clip，以及被 mute 的 clip。
 
 ## Verify（參考路線）
@@ -163,7 +163,7 @@ Step 3: clips (build-along)
 - fade：0.2、0.4、0.6、0.8、1；linear crossfade 的 gain 總和為 1，equal-power 的平方和為 1。
 
 `l14_transport_clips` 用 16 個 clip 建立一段兩小節的琶音（4 個共享的 pluck buffer、每個八分音符一個 clip、clip 長度 = 一個八分音符、25 ms 的 fade-out、除了第 1 拍之外都是 -6 dB），並檢查每個 clip 的
-起點：在它的起始 sample $S$ 處，輸出必須恰好等於 `source[0] x clipGain x 0.7071`
+起點：在它的起始 sample $`S`$ 處，輸出必須恰好等於 `source[0] x clipGain x 0.7071`
 （前一個 clip 剛結束，而 pluck 一開始是隨機 noise，所以只要有一個 clip 偏了一個 sample，
 就會顯示出不同的值）。已驗證的輸出：
 

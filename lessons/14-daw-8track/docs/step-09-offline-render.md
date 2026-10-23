@@ -33,14 +33,14 @@ restore the transport           the user's play position and loop survive the bo
 
 ### Length bookkeeping
 
-With song length $N_s$, tail $N_t = \operatorname{round}(T_{\text{tail}} f_s)$ and mix latency $L$:
+With song length $`N_s`$, tail $`N_t = \mathrm{round}(T_{\text{tail}} f_s)`$ and mix latency $`L`$:
 
 $$
 N_{\text{render}} = N_s + N_t + L, \qquad \text{file} = \text{render}[L,\; L + N_s + N_t)
 $$
 
-so file sample 0 is timeline sample `startSample`, and the file is exactly $N_s + N_t$ long.
-For the chapter's song: 8 bars at 120 BPM = $8 \cdot 96\,000 = 768\,000$ samples, 3 s tail = 144 000,
+so file sample 0 is timeline sample `startSample`, and the file is exactly $`N_s + N_t`$ long.
+For the chapter's song: 8 bars at 120 BPM = $`8 \cdot 96\,000 = 768\,000`$ samples, 3 s tail = 144 000,
 latency 752, so 912 752 samples are rendered and 912 000 written (19.00 s).
 
 ### Thread rules
@@ -164,7 +164,7 @@ Step 9: offline bounce of an 8-track song (8 bars at 120 BPM + 3 s tail)
 [PASS] l14_render_song (7 checks passed)
 ```
 
-The self-checks: no NaN; length exactly 768 000 + 144 000 samples; file peak $\le$ -0.95 dBFS (the
+The self-checks: no NaN; length exactly 768 000 + 144 000 samples; file peak $`\le`$ -0.95 dBFS (the
 limiter's ceiling); the song is not silent; the solo bounce silences the other strips.
 
 How to read the report: the bass has the highest loudness of the tracks (-16.8 LUFS) although its

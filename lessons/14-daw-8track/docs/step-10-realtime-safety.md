@@ -14,7 +14,7 @@ build when somebody breaks them.
 
 ### What real-time means here
 
-The audio device asks for $N$ samples every $N / f_s$ seconds (512 at 48 kHz: every 10.67 ms). If
+The audio device asks for $`N`$ samples every $`N / f_s`$ seconds (512 at 48 kHz: every 10.67 ms). If
 `processBlock()` is late *once*, the listener hears a click or a gap. Average speed is irrelevant;
 the **worst case** counts. Operations with unbounded or unpredictable duration are therefore banned
 on the audio thread:
@@ -71,7 +71,7 @@ atomics and queues are supposed to prevent. (The chapter's tests were run with M
 
 `test_block_invariance` renders a project (compressor, EQ, gate, delay bus, limiter, PDC, fades,
 sends, a clip deliberately starting at sample 777) with block size 512, 64 and two random sequences
-of sizes 1..1500, and requires the maximum difference to be below $10^{-5}$.
+of sizes 1..1500, and requires the maximum difference to be below $`10^{-5}`$.
 
 ### The simulated device
 

@@ -64,7 +64,7 @@ before the garbage collector deletes the plugin.
 
 The automated test cannot depend on a VST3 file. `createTestDelayPlugin(latency)` (SmokeTest.cpp)
 is an in-process `juce::AudioPluginInstance`: a stereo delay of `latency` samples with one
-parameter "Gain" (gain $= 2 \cdot$ value, default 0.5 = unity) and `setLatencySamples(latency)`.
+parameter "Gain" (gain $`= 2 \cdot`$ value, default 0.5 = unity) and `setLatencySamples(latency)`.
 Wrapped in `HostedPlugin` and `VstInsert`, it travels the same code path as a real plugin.
 
 When chapter 13 is built in the same tree (`build.ps1 -Only 13-vst-hosting,14-daw-8track -Juce`),
@@ -107,7 +107,7 @@ slot 4 (after the master limiter):
 - A 1-second bounce **with** the plugin at unity gain is bit-identical to the bounce **without**
   it: the renderer removes the whole mix latency (Step 9), so a pure delay is invisible.
 - Setting its parameter to 0.25 through `InsertEffect::setParameter()` lowers the output by
-  6.02 dB ($20\log_{10} 0.5$).
+  6.02 dB ($`20\log_{10} 0.5`$).
 - After `clearInsert()` + `collectGarbage()` no instance of the test plugin is alive, and the mix
   latency is back to 752.
 
@@ -126,9 +126,9 @@ deleted on the message thread. The limiter is the real PDC test - section 5 agai
 that computes and reports its own latency:
 
 - It goes into slot 4 of the track whose inserts already have the largest latency (track 8, the
-  convolution reverb: 512 samples), so that track's path becomes $512 + 240 = 752$ and every other
+  convolution reverb: 512 samples), so that track's path becomes $`512 + 240 = 752`$ and every other
   track must now be delayed 240 samples more. The mix latency must grow by exactly what the plugin
-  reports through `AudioProcessor::getLatencySamples()`: $752 \to 992$, $+240$.
+  reports through `AudioProcessor::getLatencySamples()`: $`752 \to 992`$, $`+240`$.
 - Its ceiling is set to 0 dB (normalized 1.0), above the level of that track, so for this signal
   the limiter is a pure delay of 240 samples. A 1-second bounce **with** it is then bit-identical
   to the bounce **without** it: PDC aligned all eight tracks, and the renderer removed the larger
@@ -139,14 +139,14 @@ that computes and reports its own latency:
 
 (105 = the 92 checks of the stand-alone build, which prints two "not built in this tree" lines for
 section 5b, plus 5 checks for the compressor and 8 for the limiter. The 192 process calls of the
-test plugin are two 1-second renders of $48\,000 + 852$ samples in 512-sample blocks,
-$2 \lceil 48\,852 / 512 \rceil = 2 \cdot 96$.)
+test plugin are two 1-second renders of $`48\,000 + 852`$ samples in 512-sample blocks,
+$`2 \lceil 48\,852 / 512 \rceil = 2 \cdot 96`$.)
 
 In the app: insert chapter 13's DawLab Compressor on the drums, open its editor, pull the
 threshold down - the meter in the plugin's own GUI moves with the song. Insert the DawLab Limiter
 on the Hits track and watch "Mix latency (PDC)" under the mixer: 752 -> 992 samples; turn its
 lookahead knob and the number follows within one block, while all tracks stay in time. (On the
-bass, whose inserts report 31 samples, $31 + 240 = 271$ stays below the 512 of the Hits track:
+bass, whose inserts report 31 samples, $`31 + 240 = 271`$ stays below the 512 of the Hits track:
 the bass is simply delayed less, and the mix latency does not change.)
 
 ## Your turn

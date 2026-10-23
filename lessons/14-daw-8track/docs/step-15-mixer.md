@@ -31,18 +31,18 @@ have no solo button (Step 6).
 ### The fader law
 
 A fader's travel should spend most of its length where mixing happens (-20 .. +6 dB), not on
--60 .. -40. The app maps a position $p \in [0, 1]$ to dB with a square law:
+-60 .. -40. The app maps a position $`p \in [0, 1]`$ to dB with a square law:
 
 $$
 \text{dB}(p) = 12 - 72\,(1 - p)^2, \qquad p(\text{dB}) = 1 - \sqrt{\frac{12 - \text{dB}}{72}}
 $$
 
-| dB | +12 | +6 | 0 | -6 | -12 | -30 | -60 (bottom = $-\infty$) |
+| dB | +12 | +6 | 0 | -6 | -12 | -30 | -60 (bottom = $`-\infty`$) |
 |---|---|---|---|---|---|---|---|
-| $p$ | 1.000 | 0.711 | 0.592 | 0.500 | 0.423 | 0.236 | 0 |
+| $`p`$ | 1.000 | 0.711 | 0.592 | 0.500 | 0.423 | 0.236 | 0 |
 
 So 0 dB sits at 59 % of the travel and -6 dB exactly in the middle; the bottom position means
-silence (`FaderLaw::toEngineDb` maps -60 to $-\infty$ = `kMinusInfinityDb`). The scale painted
+silence (`FaderLaw::toEngineDb` maps -60 to $`-\infty`$ = `kMinusInfinityDb`). The scale painted
 next to the fader uses `dbToPosition()` too, so the numbers line up with the cap. The fader writes
 `ChannelStrip::setGainDb()` - an atomic; the strip ramps to the new gain over 50 ms (Step 4), so
 dragging the fader never produces zipper noise, no matter how coarse the mouse events are.
@@ -106,7 +106,7 @@ send knobs (orange) where tracks feed the reverb and delay buses, meters with le
 
 | | |
 |---|---|
-| You write | `FaderLaw::positionToDb()` and `FaderLaw::dbToPosition()` in `app/Source/MixerView.cpp` (the square law of "The fader law"; a position at the bottom means $-\infty$) |
+| You write | `FaderLaw::positionToDb()` and `FaderLaw::dbToPosition()` in `app/Source/MixerView.cpp` (the square law of "The fader law"; a position at the bottom means $`-\infty`$) |
 | Build + check | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test` (`l14_app_smoke_test`) |
 | Expected | the fader checks of this page pass: `dbToPosition(0) = 0.5918`, `positionToDb(dbToPosition(-12)) = -12`, moving track 1's fader to the -6 dB position sets the engine to -6.00 dB; `[PASS] l14_app_smoke_test` |
 

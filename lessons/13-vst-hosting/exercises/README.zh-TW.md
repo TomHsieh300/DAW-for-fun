@@ -28,11 +28,11 @@ DawLabCompressor 的參數範圍如下（`plugin/compressor/CompressorProcessor.
 | Attack | 0.1 … 200 ms | `setSkewForCentre(10)` |
 | Release | 5 … 2000 ms | `setSkewForCentre(100)` |
 
-JUCE 的換算公式：$n = \left(\dfrac{v - s}{e - s}\right)^{k}$，$v = s + (e - s)\, n^{1/k}$。
+JUCE 的換算公式：$`n = \left(\dfrac{v - s}{e - s}\right)^{k}`$，$`v = s + (e - s)\, n^{1/k}`$。
 
 1. host 要把 Threshold 設成 −24 dB、Ratio 設成 8:1，各要送出多少 normalized value？
-2. `setSkewForCentre(c)` 讓 $n = 0.5$ 剛好對到 $v = c$。推導 skew $k$ 的公式，並算出 Attack 與 Release 的 $k$。
-3. 使用者把 Release 旋鈕轉到 1/4 的位置（$n = 0.25$），實際是幾 ms？（提示：$0.25 = 0.5^2$，答案有很漂亮的封閉形式。）
+2. `setSkewForCentre(c)` 讓 $`n = 0.5`$ 剛好對到 $`v = c`$。推導 skew $`k`$ 的公式，並算出 Attack 與 Release 的 $`k`$。
+3. 使用者把 Release 旋鈕轉到 1/4 的位置（$`n = 0.25`$），實際是幾 ms？（提示：$`0.25 = 0.5^2`$，答案有很漂亮的封閉形式。）
 4. 為什麼 VST3 規定 host 與 plugin 之間只傳 0..1 的值，而不是直接傳「−24 dB」？
 
 ## 練習 2 ★★☆（觀念）：thread、掃描與 crash
@@ -53,7 +53,7 @@ JUCE 的換算公式：$n = \left(\dfrac{v - s}{e - s}\right)^{k}$，$v = s + (e
 
 1. 每個 plugin 的 latency 是幾個 sample、幾 ms？
 2. 為了讓三條 track 在 master 對齊，host 要在每條 track 額外延遲多少 sample？整個專案的總 latency 是多少？
-3. 如果 host 沒做 PDC，Track A 的 kick 跟 Track C 的 kick 會差幾 ms？兩個相同的 kick 疊在一起、但差了 240 samples，在哪些頻率會完全抵消？（提示：comb filter，$f_k = \dfrac{(2k+1)\, f_s}{2D}$）
+3. 如果 host 沒做 PDC，Track A 的 kick 跟 Track C 的 kick 會差幾 ms？兩個相同的 kick 疊在一起、但差了 240 samples，在哪些頻率會完全抵消？（提示：comb filter，$`f_k = \dfrac{(2k+1)\, f_s}{2D}`$）
 4. 錄音時（monitoring 輸入訊號）PDC 會帶來什麼問題？DAW 通常怎麼處理？
 
 ## 練習 4 ★★☆（實作）：host 端的 automation —— 切 sub-block

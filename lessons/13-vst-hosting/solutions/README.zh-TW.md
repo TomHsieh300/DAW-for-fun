@@ -13,33 +13,33 @@
 
 ## 練習 1（計算）：normalized parameter 換算
 
-公式：$n = \left(\dfrac{v - s}{e - s}\right)^{k}$，$v = s + (e - s)\,n^{1/k}$。
+公式：$`n = \left(\dfrac{v - s}{e - s}\right)^{k}`$，$`v = s + (e - s)\,n^{1/k}`$。
 
 **1. Threshold −24 dB、Ratio 8:1**
 
-- Threshold（線性，$k = 1$）：$n = \dfrac{-24 - (-60)}{0 - (-60)} = \dfrac{36}{60} = 0.6$
-- Ratio（$k = 0.5$）：$n = \left(\dfrac{8 - 1}{20 - 1}\right)^{0.5} = \sqrt{7/19} = \sqrt{0.36842} = 0.60698$
+- Threshold（線性，$`k = 1`$）：$`n = \dfrac{-24 - (-60)}{0 - (-60)} = \dfrac{36}{60} = 0.6`$
+- Ratio（$`k = 0.5`$）：$`n = \left(\dfrac{8 - 1}{20 - 1}\right)^{0.5} = \sqrt{7/19} = \sqrt{0.36842} = 0.60698`$
 
 **2. `setSkewForCentre(c)` 的 skew**
 
-要求 $n = 0.5$ 時 $v = c$：
+要求 $`n = 0.5`$ 時 $`v = c`$：
 
 $$
 0.5 = \left(\frac{c - s}{e - s}\right)^{k} \;\Longrightarrow\; \ln 0.5 = k \ln\frac{c - s}{e - s} \;\Longrightarrow\; k = \frac{\ln 0.5}{\ln\!\left(\frac{c - s}{e - s}\right)}
 $$
 
-- Attack（0.1 … 200 ms，centre 10）：$\dfrac{9.9}{199.9} = 0.049525$，$\ln = -3.00527$，$k = \dfrac{-0.693147}{-3.00527} = 0.23064$
-- Release（5 … 2000 ms，centre 100）：$\dfrac{95}{1995} = 0.047619$，$\ln = -3.04452$，$k = 0.22767$
+- Attack（0.1 … 200 ms，centre 10）：$`\dfrac{9.9}{199.9} = 0.049525`$，$`\ln = -3.00527`$，$`k = \dfrac{-0.693147}{-3.00527} = 0.23064`$
+- Release（5 … 2000 ms，centre 100）：$`\dfrac{95}{1995} = 0.047619`$，$`\ln = -3.04452`$，$`k = 0.22767`$
 
-**3. Release 轉到 1/4（$n = 0.25$）**
+**3. Release 轉到 1/4（$`n = 0.25`$）**
 
-$n^{1/k} = (0.5^2)^{1/k} = \left(0.5^{1/k}\right)^2$，而由定義 $0.5^{1/k} = \dfrac{c - s}{e - s}$，所以
+$`n^{1/k} = (0.5^2)^{1/k} = \left(0.5^{1/k}\right)^2`$，而由定義 $`0.5^{1/k} = \dfrac{c - s}{e - s}`$，所以
 
 $$
 v = s + (e - s)\left(\frac{c - s}{e - s}\right)^2 = s + \frac{(c - s)^2}{e - s} = 5 + \frac{95^2}{1995} = 5 + 4.524 = 9.524\ \text{ms}
 $$
 
-同理，$n = 0.5^m$ 時 $v = s + (e - s)\left(\frac{c-s}{e-s}\right)^m$：旋鈕每往左「減半」，實際值（扣掉 $s$）就乘上 $\frac{c-s}{e-s} \approx 0.0476$——這就是 skew 讓小數值區域變寬的效果。
+同理，$`n = 0.5^m`$ 時 $`v = s + (e - s)\left(\frac{c-s}{e-s}\right)^m`$：旋鈕每往左「減半」，實際值（扣掉 $`s`$）就乘上 $`\frac{c-s}{e-s} \approx 0.0476`$——這就是 skew 讓小數值區域變寬的效果。
 
 **驗證**：`l13_state_roundtrip` 請 plugin 自己把 normalized 值轉成顯示文字：
 
@@ -47,13 +47,13 @@ $$
 Exercise 1 check: Threshold 0.6 -> -24.0 dB, Ratio 0.60698 -> 8.00, Attack 0.4 -> 3.86 ms, Release 0.6 -> 216.6 ms, Release 0.25 -> 9.5 ms
 ```
 
-（Attack 0.4 → $0.1 + 199.9 \times 0.4^{1/0.23064} = 3.862$ ms；Release 0.6 → $5 + 1995 \times 0.6^{1/0.22767} = 216.6$ ms。）`l13_offline_host` 也驗證了反方向：−30 dB → 0.5、4:1 → 0.3974、5 ms → 0.4251、80 ms → 0.4738，plugin 顯示的文字分別是 −30.0 dB、4.00 : 1、5.00 ms、80.0 ms。
+（Attack 0.4 → $`0.1 + 199.9 \times 0.4^{1/0.23064} = 3.862`$ ms；Release 0.6 → $`5 + 1995 \times 0.6^{1/0.22767} = 216.6`$ ms。）`l13_offline_host` 也驗證了反方向：−30 dB → 0.5、4:1 → 0.3974、5 ms → 0.4251、80 ms → 0.4738，plugin 顯示的文字分別是 −30.0 dB、4.00 : 1、5.00 ms、80.0 ms。
 
 **4. 為什麼只傳 0..1**
 
 - host 不需要理解任何參數的意義：automation lane、MIDI learn、控制器、undo、「把參數畫成曲線」都能用同一套程式處理所有 plugin 的所有參數。
 - 曲線（線性、對數、skew）與單位是 plugin 的設計決定，可以在新版本調整，而不破壞舊專案（只要 normalized 值的意義維持相容）。
-- 離散參數（選單、開關）也能統一表示（$k / N$）。
+- 離散參數（選單、開關）也能統一表示（$`k / N`$）。
 - 數值範圍有界，host 畫 automation 時不必知道上下限；插值也有定義（在 0..1 之間線性插值，plugin 端再換算，所以 automation 在 skew 參數上的「線性」其實是旋鈕位置的線性，這也是使用者在畫面上看到的）。
 
 ---
@@ -106,11 +106,11 @@ editor（`AudioProcessorEditor`）持有 processor 的參考；它的解構子�
 
 ## 練習 3（計算）：latency 與 PDC
 
-**1.** DawLabLimiter：$5\ \text{ms} \times 48\ \text{kHz} = 240$ samples。linear-phase EQ：1024 samples = $1024 / 48000 = 21.33$ ms。Track C：0。
+**1.** DawLabLimiter：$`5\ \text{ms} \times 48\ \text{kHz} = 240`$ samples。linear-phase EQ：1024 samples = $`1024 / 48000 = 21.33`$ ms。Track C：0。
 
-**2.** $L_{\max} = 1024$，$d_i = L_{\max} - L_i$：
+**2.** $`L_{\max} = 1024`$，$`d_i = L_{\max} - L_i`$：
 
-| track | plugin latency $L_i$ | host 額外延遲 $d_i$ |
+| track | plugin latency $`L_i`$ | host 額外延遲 $`d_i`$ |
 |---|---|---|
 | A | 240 | 784 samples（16.33 ms） |
 | B | 1024 | 0 |
@@ -118,7 +118,7 @@ editor（`AudioProcessorEditor`）持有 processor 的參考；它的解構子�
 
 整個專案的總 latency = 1024 samples = 21.33 ms（播放時 host 會提早 21.33 ms 讀取 timeline，所以聽起來仍然對拍）。
 
-**3.** 沒有 PDC：Track A 比 C 晚 240 samples = 5 ms。兩個相同的 kick 相加：$y[n] = x[n] + x[n - D]$，$|H(f)| = 2\left|\cos\!\left(\dfrac{\pi f D}{f_s}\right)\right|$，零點在 $\dfrac{\pi f D}{f_s} = \dfrac{\pi}{2} + k\pi$，即
+**3.** 沒有 PDC：Track A 比 C 晚 240 samples = 5 ms。兩個相同的 kick 相加：$`y[n] = x[n] + x[n - D]`$，$`|H(f)| = 2\left|\cos\!\left(\dfrac{\pi f D}{f_s}\right)\right|`$，零點在 $`\dfrac{\pi f D}{f_s} = \dfrac{\pi}{2} + k\pi`$，即
 
 $$
 f_k = \frac{(2k+1) f_s}{2D} = \frac{(2k+1) \times 48000}{480} = 100,\ 300,\ 500,\ \dots\ \text{Hz}
@@ -126,7 +126,7 @@ $$
 
 kick 的基頻（約 45–120 Hz，見 `makeDrumLoop`）正好落在 100 Hz 的零點附近：低頻被大量抵消，kick 變薄。（練習 6 用 impulse 實際量到 DawLabLimiter 的 240 samples。）
 
-**4.** 錄音時，輸入訊號經過有 latency 的 plugin 監聽（monitoring），耳機裡會聽到延遲 $L_{\max}$ 的自己（再加上音訊裝置的 buffer latency），21 ms 以上就明顯影響演奏。DAW 的做法：錄音 / 監聽中的 track 走「低 latency 模式」（Cubase 的 Constrain Delay Compensation、Logic 的 Low Latency Mode 等），暫時 bypass 會造成大 latency 的 plugin，或讓監聽路徑不套用 PDC；另外錄進來的音訊要依 latency 回推時間位置，才會跟其他 track 對齊。
+**4.** 錄音時，輸入訊號經過有 latency 的 plugin 監聽（monitoring），耳機裡會聽到延遲 $`L_{\max}`$ 的自己（再加上音訊裝置的 buffer latency），21 ms 以上就明顯影響演奏。DAW 的做法：錄音 / 監聽中的 track 走「低 latency 模式」（Cubase 的 Constrain Delay Compensation、Logic 的 Low Latency Mode 等），暫時 bypass 會造成大 latency 的 plugin，或讓監聽路徑不套用 PDC；另外錄進來的音訊要依 latency 回推時間位置，才會跟其他 track 對齊。
 
 ---
 
@@ -244,7 +244,7 @@ void process(dawlab::AudioBlock block, dawlab::host::HostedPlugin& plugin) noexc
 
 為什麼兩件事都要做：
 
-- 只有 crossfade、沒有延遲 dry：fade 的過程中把 $x[n]$ 與 $x[n-L]$ 相加，正是練習 3 的 comb filter（10 ms 內聽到一個「咻」的音色變化），而且 bypass 之後整條 track 提早 $L$ 個 sample；
+- 只有 crossfade、沒有延遲 dry：fade 的過程中把 $`x[n]`$ 與 $`x[n-L]`$ 相加，正是練習 3 的 comb filter（10 ms 內聽到一個「咻」的音色變化），而且 bypass 之後整條 track 提早 $`L`$ 個 sample；
 - 只有延遲、沒有 crossfade：時間對齊了，但 wet（被 limiter 壓到 0.1）與 dry（0.3）的振幅不同，瞬間切換仍是一個不連續點。
 
 實際輸出：
@@ -258,8 +258,8 @@ plugin Bypass parameter: impulse 1000 -> 1240 (0.2500), reported latency 240; ma
 [PASS] l13_ex7_bypass_crossfade (11 checks passed)
 ```
 
-crossfade 版的最大跳動 = 正弦波本身的最大斜率 $0.3 \times 2\pi \times 440 / 48000 = 0.0173$——也就是說切換過程沒有加入任何額外的不連續。hard bypass 的 0.268 幾乎等於正弦波的振幅（0.3），是正弦波本身最大斜率 0.0173 的 15 倍以上，聽得到很清楚的「喀」聲（`l13_ex7_hard.wav` 每 0.5 秒一次；`l13_ex7_crossfade.wav` 沒有）。
+crossfade 版的最大跳動 = 正弦波本身的最大斜率 $`0.3 \times 2\pi \times 440 / 48000 = 0.0173`$——也就是說切換過程沒有加入任何額外的不連續。hard bypass 的 0.268 幾乎等於正弦波的振幅（0.3），是正弦波本身最大斜率 0.0173 的 15 倍以上，聽得到很清楚的「喀」聲（`l13_ex7_hard.wav` 每 0.5 秒一次；`l13_ex7_crossfade.wav` 沒有）。
 
-**plugin 自己的 Bypass 參數也要遵守同一個規則**：JUCE 的 VST3 wrapper 會自動幫 plugin 加一個 `Bypass` 參數，打開時改呼叫 `processBlockBypassed()`。它的預設實作是直接 pass-through（延遲 0），可是 plugin 回報的 latency 仍是 $L$、host 的 PDC 也仍在補償 $L$——bypass 的訊號就會提早 $L$ 個 sample，跟其他 track 錯位。所以 DawLabLimiter override 了 `processBlockBypassed()`，在 plugin 內部做本題的同一招（dry 延遲 $L$ + 10 ms crossfade，見 `plugin/limiter/LimiterProcessor.cpp`）。解答的最後一段驗證它：Bypass = 1 時，位置 1000 的 impulse 在 $1000 + 240 = 1240$ 出來、而且就是原音 0.25；播放中每 0.5 秒切換 Bypass 參數，最大跳動仍是 0.0173。
+**plugin 自己的 Bypass 參數也要遵守同一個規則**：JUCE 的 VST3 wrapper 會自動幫 plugin 加一個 `Bypass` 參數，打開時改呼叫 `processBlockBypassed()`。它的預設實作是直接 pass-through（延遲 0），可是 plugin 回報的 latency 仍是 $`L`$、host 的 PDC 也仍在補償 $`L`$——bypass 的訊號就會提早 $`L`$ 個 sample，跟其他 track 錯位。所以 DawLabLimiter override 了 `processBlockBypassed()`，在 plugin 內部做本題的同一招（dry 延遲 $`L`$ + 10 ms crossfade，見 `plugin/limiter/LimiterProcessor.cpp`）。解答的最後一段驗證它：Bypass = 1 時，位置 1000 的 impulse 在 $`1000 + 240 = 1240`$ 出來、而且就是原音 0.25；播放中每 0.5 秒切換 Bypass 參數，最大跳動仍是 0.0173。
 
-**延伸題**：DawLabCompressor 的 Mix 是同一個公式 $y = (1-m)\,x + m\,\text{wet}$。compressor 沒有 lookahead，wet 與 dry 天生對齊，所以 Mix 不需要延遲 dry。如果 compressor 加了 $L$ samples 的 lookahead，Mix 就必須先把 dry 延遲 $L$（像本題的 `DelayLine`），否則 Mix 在 0..100 % 之間的每個位置都會產生 comb filter；plugin 也要用 `setLatencySamples(L)` 回報，讓 host 做 PDC。
+**延伸題**：DawLabCompressor 的 Mix 是同一個公式 $`y = (1-m)\,x + m\,\text{wet}`$。compressor 沒有 lookahead，wet 與 dry 天生對齊，所以 Mix 不需要延遲 dry。如果 compressor 加了 $`L`$ samples 的 lookahead，Mix 就必須先把 dry 延遲 $`L`$（像本題的 `DelayLine`），否則 Mix 在 0..100 % 之間的每個位置都會產生 comb filter；plugin 也要用 `setLatencySamples(L)` 回報，讓 host 做 PDC。

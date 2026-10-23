@@ -15,7 +15,7 @@ oversampled saturator（第 06 章）有 linear-phase filter，partitioned convo
 
 ### 沒有 PDC 會出什麼問題
 
-Track 1 與 track 2 播放同一個 snare；track 1 有一個 latency 為 $D$ 的 insert。master 得到
+Track 1 與 track 2 播放同一個 snare；track 1 有一個 latency 為 $`D`$ 的 insert。master 得到
 
 $$
 y[n] = x[n] + x[n - D]
@@ -23,14 +23,14 @@ y[n] = x[n] + x[n - D]
 H(e^{j\omega}) = 1 + e^{-j\omega D},\qquad |H| = 2\left|\cos\frac{\omega D}{2}\right| = 2\left|\cos\frac{\pi f D}{f_s}\right|
 $$
 
-這是一個 comb filter，notch 位於 $f_k = \frac{(2k+1) f_s}{2D}$。對於 5 ms 的 lookahead（48 kHz 下 $D = 240$），
+這是一個 comb filter，notch 位於 $`f_k = \frac{(2k+1) f_s}{2D}`$。對於 5 ms 的 lookahead（48 kHz 下 $`D = 240`$），
 notch 位於 100、300、500、…… Hz：kick 與 snare 失去厚度，每一下
 擊打都變成雙重（「flam」）。即使兩個 track 播放的是*不同*的聲部，節奏也會感覺鬆散 -
 對於緊湊的打擊樂，5 ms 是聽得出來的。
 
 ### 規則
 
-每個 insert 都回報它的 latency $L$；一條 chain 回報其中未被 bypass 的 insert 的總和
+每個 insert 都回報它的 latency $`L`$；一條 chain 回報其中未被 bypass 的 insert 的總和
 （串聯的 effect 會把它們的 delay 相加）。接著
 
 $$
@@ -51,9 +51,9 @@ bus b:   sends -> inserts (L_b) -> delay c_b -> fader --------------------------
 ```
 
 - 每個 track 的 compensator 位於*它的 insert 之後、send 之前*，所以所有 track 在抵達
-  dry sum 與 bus 時都已對齊（對齊在 $\max L_u$）。
-- bus 會加上它自己的 $L_b$；把每條 bus padding 到 $\max L_v$，會讓各個 return 彼此對齊。
-- dry sum 必須等待 return：它被延遲 $\max L_v$。
+  dry sum 與 bus 時都已對齊（對齊在 $`\max L_u`$）。
+- bus 會加上它自己的 $`L_b`$；把每條 bus padding 到 $`\max L_v`$，會讓各個 return 彼此對齊。
+- dry sum 必須等待 return：它被延遲 $`\max L_v`$。
 - master 的 latency 無法在 mix 內部補償（一切都會經過它）；它
   屬於回報的總 latency 的一部分，由 host（或 bounce，Step 9）在輸出端補償。
 
@@ -69,19 +69,19 @@ $$
 y[n] = x[n - c], \qquad 0 \le c \le 16\,384
 $$
 
-改變 $c$ 會讓輸出跳動（read position 會跳過或重複 sample）- 這是一個 click，但
+改變 $`c`$ 會讓輸出跳動（read position 會跳過或重複 sample）- 這是一個 click，但
 它只在 insert 被新增、移除、bypass 或改變其 latency 時才會發生。ring 在每個 block 都會被寫入，
-即使 $c = 0$ 時也是；否則當 $c$ 從 0 增加到 $D$ 時，會重播自 delay 上次被使用以來殘留的
-$D$ 個 sample 的舊音訊，而不是單純重複最近的 $D$
+即使 $`c = 0`$ 時也是；否則當 $`c`$ 從 0 增加到 $`D`$ 時，會重播自 delay 上次被使用以來殘留的
+$`D`$ 個 sample 的舊音訊，而不是單純重複最近的 $`D`$
 個 sample。專業的 DAW 會在這裡做 crossfade；這是個很好的延伸習題。
 
 ### 上限，以及超過上限時會發生什麼
 
-$C = 16\,384$ 個 sample（`kDefaultMaxPdcSamples`，在 48 kHz 下約 341 ms，在 96 kHz 下約 171 ms）是每個 compensator 的
+$`C = 16\,384`$ 個 sample（`kDefaultMaxPdcSamples`，在 48 kHz 下約 341 ms，在 96 kHz 下約 171 ms）是每個 compensator 的
 預設容量；`Engine::prepare(sampleRate, blockSize, maxPdcSamples)`
 可以接受其他數值。內建的 effect 遠低於這個值，但被 host 的 VST3（Step 17）可以回報
 任何數字：linear-phase EQ 與 look-ahead processor 常常回報數千個 sample，
-而在同一個 track 上串聯其中幾個就可能超過 $C$。compensator 無法延遲超過 $C$，所以
+而在同一個 track 上串聯其中幾個就可能超過 $`C`$。compensator 無法延遲超過 $`C`$，所以
 在這種情況下並非每條路徑都能對齊。此時 mixer 會對齊在上限而不是
 最大值：
 
@@ -91,9 +91,9 @@ T_{\text{bus}} = \min\!\big(\max_v L_v,\ C\big), \qquad
 c_t = \max(0,\ T_{\text{track}} - L_t)
 $$
 
-並回報 $L_{\text{total}} = T_{\text{track}} + T_{\text{bus}} + L_{\text{master}}$。每條
+並回報 $`L_{\text{total}} = T_{\text{track}} + T_{\text{bus}} + L_{\text{master}}`$。每條
 latency 不超過目標的路徑仍保持對齊，並恰好落在 bounce 所預期的位置；
-$L_t > T_{\text{track}}$ 的路徑會晚 $L_t - T_{\text{track}}$ 個 sample 抵達（聽得出來
+$`L_t > T_{\text{track}}`$ 的路徑會晚 $`L_t - T_{\text{track}}`$ 個 sample 抵達（聽得出來
 節奏不準，但仍在 bounce 範圍內）。這時 `Mixer::hasPdcOverflow()` / `Engine::hasPdcOverflow()` 會
 為 true，app 的 mixer 會在 mix latency 旁邊顯示「PDC limit exceeded, not aligned!」。解法
 是移除有問題的 plugin，或是用更大的 `maxPdcSamples` prepare engine。
@@ -165,7 +165,7 @@ latency 跟隨它的參數，就像 limiter 的 lookahead 一樣。
 | track 1：37 個 sample + send 到 bus A（250 個 sample）；track 2 send 到 bus B（0）；master 64 | 四條路徑全都落在 1000 + 351；總 latency 37 + 250 + 64 | pass |
 | 真正的 Limiter（5 ms）vs. dry | 對齊在 1000 + 240；lookahead 改成 2 ms -> 96 個 sample，仍然對齊；bypass -> 0 | pass |
 | device 變更 48 kHz -> 96 kHz | 同樣 5 ms 的 lookahead 重新 prepare = 480 個 sample，PDC 跟著改變 | pass |
-| track 1：3 x 8191 = 24 573 個 sample（超過 $C$ = 16 384），track 2 為 dry，經補償的 render | overflow 旗標被設定，回報的 latency 為 16 384；track 2 在 1000，track 1 在 1000 + 8189（晚了，但在檔案裡） | pass |
+| track 1：3 x 8191 = 24 573 個 sample（超過 $`C`$ = 16 384），track 2 為 dry，經補償的 render | overflow 旗標被設定，回報的 latency 為 16 384；track 2 在 1000，track 1 在 1000 + 8189（晚了，但在檔案裡） | pass |
 | 同上，engine 以 `maxPdcSamples` = 32 768 prepare | 沒有 overflow，latency 24 573，一個 impulse 在 1000 | pass |
 
 `l14_pdc_demo` 會量測並讓你聽到結果（已驗證的輸出）：

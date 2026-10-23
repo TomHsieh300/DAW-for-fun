@@ -16,18 +16,18 @@
 
 ## 練習 1：bin 解析度與需要的 N
 
-1. $\Delta f = 48000 / 2048 = 23.4375$ Hz；frame 長 $2048 / 48000 = 42.67$ ms；bin 100 = $100 \times 23.4375 = 2343.75$ Hz。
-2. $1000 / 23.4375 = 42.67$ → 落在 bin 42 與 43 之間（`l11_window_leakage` 開頭第二行就印了這個數字）。
-   要讓 $k \cdot f_s / N = 1000$，$N = 48 k$，最小的是 $N = 48$（bin 1）。
-   限定 2 的冪次：$N = 2^m$ 時 $k = 2^m / 48 = 2^{m-4}/3$，永遠不是整數 → **48 kHz 下任何 2 的冪次 FFT
+1. $`\Delta f = 48000 / 2048 = 23.4375`$ Hz；frame 長 $`2048 / 48000 = 42.67`$ ms；bin 100 = $`100 \times 23.4375 = 2343.75`$ Hz。
+2. $`1000 / 23.4375 = 42.67`$ → 落在 bin 42 與 43 之間（`l11_window_leakage` 開頭第二行就印了這個數字）。
+   要讓 $`k \cdot f_s / N = 1000`$，$`N = 48 k`$，最小的是 $`N = 48`$（bin 1）。
+   限定 2 的冪次：$`N = 2^m`$ 時 $`k = 2^m / 48 = 2^{m-4}/3`$，永遠不是整數 → **48 kHz 下任何 2 的冪次 FFT
    都不可能讓 1 kHz 落在 bin 中心**。這就是為什麼實際量測幾乎一定有 leakage，window 是必需品。
-3. 兩音相差 $43.65 - 41.20 = 2.45$ Hz，要相隔 2 個 bin → $\Delta f \le 1.225$ Hz →
-   $N \ge 48000 / 1.225 \approx 39184$ → 取 $N = 65536$（$2^{16}$），bin 寬 0.732 Hz、frame 長 **1.365 s**。
+3. 兩音相差 $`43.65 - 41.20 = 2.45`$ Hz，要相隔 2 個 bin → $`\Delta f \le 1.225`$ Hz →
+   $`N \ge 48000 / 1.225 \approx 39184`$ → 取 $`N = 65536`$（$`2^{16}`$），bin 寬 0.732 Hz、frame 長 **1.365 s**。
    問題：一個 frame 涵蓋 1.4 秒，裡面可能有好幾下鼓，頻譜是這 1.4 秒的「平均」，完全看不出 transient
    發生在什麼時候。這就是**時間–頻率解析度的取捨**（uncertainty principle）：頻率越細、時間越糊。
    專業工具會在低頻用長 frame、高頻用短 frame（multi-resolution / constant-Q）。
-4. $44100 / 4096 = 10.77$ Hz；$4096 / 44100 = 92.9$ ms。
-5. hop $= 48000 / 30 = 1600$ samples；overlap $= 1 - 1600/4096 = 60.9\%$。
+4. $`44100 / 4096 = 10.77`$ Hz；$`4096 / 44100 = 92.9`$ ms。
+5. hop $`= 48000 / 30 = 1600`$ samples；overlap $`= 1 - 1600/4096 = 60.9\%`$。
    （`SpectrumAnalyzer::setOverlap(0.61f)` 就會得到差不多的 hop。）
 
 ## 練習 2：為什麼要 window？leakage 是怎麼來的？
@@ -42,13 +42,13 @@
    bin 44 是 -200 dB）。但裙襬其實還在，只是剛好沒被取樣到；頻率稍微偏一點就全部出現（1000 Hz 偏 1/3 bin 時，
    rectangular 的 bin ±10 還有 -30 dB）。
 3. window 讓 frame 兩端漸漸變成 0（消除接縫的跳躍），代價是把訊號整體縮小了：bin 中心的正弦讀數乘上
-   $\text{CG} = \frac{1}{N}\sum w[n]$（coherent gain：Hann 0.5 = -6.02 dB、Hamming 0.54、Blackman-Harris 0.359）。
-   補償：振幅 $A = \dfrac{2\,|X[k]|}{N \cdot \text{CG}}$（DC 與 Nyquist 不乘 2）。`SpectrumAnalyzer` 就是這樣讓
+   $`\text{CG} = \frac{1}{N}\sum w[n]`$（coherent gain：Hann 0.5 = -6.02 dB、Hamming 0.54、Blackman-Harris 0.359）。
+   補償：振幅 $`A = \dfrac{2\,|X[k]|}{N \cdot \text{CG}}`$（DC 與 Nyquist 不乘 2）。`SpectrumAnalyzer` 就是這樣讓
    full-scale 正弦讀 0 dBFS。
 4. 找 -90 dB 的小訊號：需要 side lobe 夠低的 window → **Blackman-Harris**（最高 side lobe -92 dB；
    範例裡 bin±10 已經掉到 -99 dB，Hann 只有 -70 dB、rectangular -30 dB）。
    分辨 1000 / 1010 Hz：需要 main lobe 窄 → rectangular 或 Hann，而且 N 要夠大：相差 10 Hz，
-   rectangular 至少要 1 個 bin 以上的距離 → $N \ge 4800$ → 8192（bin 5.86 Hz，相距 1.7 bin）；
+   rectangular 至少要 1 個 bin 以上的距離 → $`N \ge 4800`$ → 8192（bin 5.86 Hz，相距 1.7 bin）；
    用 Hann 則建議 2 bin 以上 → 16384。這兩個需求互相衝突（side lobe 低 ⇔ main lobe 寬），沒有萬用的 window。
 5. **不能**。zero-padding 沒有增加任何新的資訊（觀察時間還是 N 個 sample），它只是把同一條 DTFT 曲線取樣得更密，
    讓峰值的位置和高度看得更準（內插），但兩個靠太近、main lobe 已經融在一起的峰不會因此分開。
@@ -70,7 +70,7 @@ for (int ch = 0; ch < nch; ++ch) {
 }
 ```
 
-**TODO 2：乘法數。** 第 $i$ 級的輸入取樣率是 $f_s \cdot 2^{i-1}$，每個輸入 sample 只算一次奇數 tap 的 FIR
+**TODO 2：乘法數。** 第 $`i`$ 級的輸入取樣率是 $`f_s \cdot 2^{i-1}`$，每個輸入 sample 只算一次奇數 tap 的 FIR
 （另一個輸出是純延遲，0 次乘法）：
 
 ```cpp
@@ -113,12 +113,12 @@ Release 約 20 ns 對 59 ns——windowed-sinc 慢 3 倍左右（確切數字依
 **問題 1：插值點的位置。** Oversampler 是兩級 2x halfband，每一級都有一個 phase 是純延遲（輸出就是輸入 sample），
 所以 4x 的點落在原始 sample 之間的 0、1/4、1/2、3/4；64 tap 的 FIR 是偶數長度，中心在 31.5，點落在
 1/8、3/8、5/8、7/8。峰值剛好在某個點上就量得準，落在兩個點正中間（離最近的點 1/8 sample）時最差：
-fs/4 的正弦每個 sample 轉 90°，1/8 sample = 11.25°，讀到 $\cos 11.25° = 0.981$ 倍，也就是 -0.17 dB。
+fs/4 的正弦每個 sample 轉 90°，1/8 sample = 11.25°，讀到 $`\cos 11.25° = 0.981`$ 倍，也就是 -0.17 dB。
 兩組點的間距都是 1/4 sample，所以**最差誤差一樣大**，只是發生在對方量得最準的相位。單看「fs/4、相位 45°」
 這一個例子會以為 halfband 比較準，那只是剛好選到它的點上（第 05 章 README 2.8 節表格的 -6.18 dBTP 也是同一件事）。
 
 **問題 2：Nyquist 附近。** 22 kHz 時第 1 級 halfband 單趟只有 0.928 倍（-0.65 dB），但它沒濾乾淨的 image 在
-$48 - 22 = 26$ kHz、振幅 0.072 倍。halfband 的對稱性 $|H(f)| + |H(f_s - f)| = 1$ 讓兩者加起來剛好是 1：
+$`48 - 22 = 26`$ kHz、振幅 0.072 倍。halfband 的對稱性 $`|H(f)| + |H(f_s - f)| = 1`$ 讓兩者加起來剛好是 1：
 峰值掃過所有位置時，總會碰到兩者同相疊加的那一刻，讀數就回到原本的振幅。這是「量峰值」才有的巧合——
 若要的是乾淨的 4x 訊號（例如 saturation），那個 26 kHz 的 image 是雜質而不是幫手。
 Hann windowed-sinc 沒有這種互補性，它的 transition band 又寬（64 tap 的 Hann 主瓣寬），18 kHz 起就有
@@ -147,7 +147,7 @@ Hann windowed-sinc 沒有這種互補性，它的 transition band 又寬（64 ta
 - hard clip 會產生大量高頻諧波，平頂的兩側在重建後會「彈」出去，inter-sample 過衝可達好幾 dB。
   只看 sample peak 的「0 dBFS 母帶」，轉成 AAC/MP3 或經過 DAC 之後就會 clip。
 - 4x 不是完美的：Nyquist 附近的正弦峰值可能剛好落在兩個 4x sample 中間，最多低估
-  $20\log_{10}\cos(\pi/8) = -0.69$ dB；filter 的 transition band 也會衰減接近 fs/2 的成分。
+  $`20\log_{10}\cos(\pi/8) = -0.69`$ dB；filter 的 transition band 也會衰減接近 fs/2 的成分。
   所以規範建議 ceiling 設 -1 dBTP。
 - polyphase halfband 的純延遲 phase 就是原始 sample，所以 Oversampler 版的 true peak 永遠 ≥ sample peak
   （self-check 有驗證）；windowed-sinc 版沒有這個保證（它的點全都不在原始 sample 上）。
@@ -164,17 +164,17 @@ inputScale_ = kPi / (2.0 * dbToGain(referenceDbfs_));             // 振幅 A �
 ```
 
 推導：
-- 過衝 $M_p = e^{-\pi\zeta/\sqrt{1-\zeta^2}}$；$\zeta = 0.82$ → 1.11%（規範 1~1.5%）。
-- 二階欠阻尼系統的步階響應（$u = \omega_n t$）：$y(u) = 1 - \dfrac{e^{-\zeta u}}{\sqrt{1-\zeta^2}}\sin\!\left(\sqrt{1-\zeta^2}\,u + \arccos\zeta\right)$。
-  用二分法解出 $y(u_{99}) = 0.99$ → $u_{99} = 4.128$，所以 $\omega_n = 4.128 / 0.3\text{ s} = 13.76$ rad/s（2.19 Hz）。
+- 過衝 $`M_p = e^{-\pi\zeta/\sqrt{1-\zeta^2}}`$；$`\zeta = 0.82`$ → 1.11%（規範 1~1.5%）。
+- 二階欠阻尼系統的步階響應（$`u = \omega_n t`$）：$`y(u) = 1 - \dfrac{e^{-\zeta u}}{\sqrt{1-\zeta^2}}\sin\!\left(\sqrt{1-\zeta^2}\,u + \arccos\zeta\right)`$。
+  用二分法解出 $`y(u_{99}) = 0.99`$ → $`u_{99} = 4.128`$，所以 $`\omega_n = 4.128 / 0.3\text{ s} = 13.76`$ rad/s（2.19 Hz）。
 - 為什麼用 semi-implicit Euler？顯式 Euler 對無阻尼振盪會讓能量越積越大；先更新速度再用新速度更新位置是
-  symplectic 的，穩定得多。$\omega_n T = 13.76/48000 \approx 3\times10^{-4}$，誤差可忽略。
+  symplectic 的，穩定得多。$`\omega_n T = 13.76/48000 \approx 3\times10^{-4}`$，誤差可忽略。
 
 實際輸出：最終讀數 0.9986（不是 1.0：48 kHz 下 1 kHz 一週期只有 48 點，取樣後的 |sin| 平均
-$= \cot(\pi/48)/24 = 0.63571$，比 $2/\pi$ 低 0.14%）；300 ms 時 = 最終讀數的 99.00%；過衝 1.11%；
+$`= \cot(\pi/48)/24 = 0.63571`$，比 $`2/\pi`$ 低 0.14%）；300 ms 時 = 最終讀數的 99.00%；過衝 1.11%；
 -24 dBFS → -6.01 VU、0 dBFS → +17.99 VU、改成 -20 dBFS = 0 VU 後 -24 dBFS → -4.01 VU；停止後 300 ms 指針只剩 0.0100。
 10 ms 的 0 VU burst 只把指針推到 0.0573（**-24.8 VU**）。注意要觀察夠久：指針有慣性，burst 結束後還會再往上走約 80 ms
-才到最高點（二階系統脈衝響應的峰值時間 $t = \arccos\zeta / (\omega_n\sqrt{1-\zeta^2}) \approx 77$ ms）。
+才到最高點（二階系統脈衝響應的峰值時間 $`t = \arccos\zeta / (\omega_n\sqrt{1-\zeta^2}) \approx 77`$ ms）。
 鼓組的 VU 在 -36.7 ~ +7.3 VU 之間擺動，最大值換算 -10.7 dBFS，比 sample peak（-2.92 dBFS）低約 8 dB。
 
 ## 練習 5：LRA
@@ -202,7 +202,7 @@ lra = percentile(0.95) - percentile(0.10);
 - **為什麼用百分位數不用 min/max**：一聲爆炸或一段淡出只佔很少的時間，不應該把「這首歌的動態範圍」撐大。
 - relative gate 是 **-20 LU**（integrated 是 -10 LU）：LRA 想保留比較安靜的段落，只排除接近靜音的部分。
   self-check 的「-20 dBFS 20 s → -50 dBFS 10 s」：short-term 值的功率平均約為
-  $10\log_{10}\frac{20P + 10\cdot 0.001P}{30} \approx -20 - 1.76 = -21.8$ LUFS（$P$ 是 -20 dBFS 段的功率），
+  $`10\log_{10}\frac{20P + 10\cdot 0.001P}{30} \approx -20 - 1.76 = -21.8`$ LUFS（$`P`$ 是 -20 dBFS 段的功率），
   -50 的那段（約 -50 LUFS）比平均低約 28 LU，遠低於 -20 LU 的 relative gate，所以被排除，LRA 只有 1.6 LU。
 - 直方圖讓 audio thread 不需要動態配置；EBU 的參考實作（例如 libebur128）也用類似的作法。
 - 限制：一次 `process()` 的長度不能超過 100 ms，否則會漏掉 short-term 的更新（程式開頭有說明）。
@@ -221,7 +221,7 @@ std::copy(overlap_.begin() + numSamples, overlap_.end(), overlap_.begin()); // 5
 std::fill(overlap_.end() - numSamples, overlap_.end(), 0.0f);
 ```
 
-為什麼 $N \ge B + L - 1$：長 B 與長 L 的線性卷積長 $B + L - 1$。DFT 的乘積是**循環卷積**，
+為什麼 $`N \ge B + L - 1`$：長 B 與長 L 的線性卷積長 $`B + L - 1`$。DFT 的乘積是**循環卷積**，
 超過 N 的部分會繞回開頭疊加（time-domain aliasing）；N 夠大就沒有東西會繞回來。
 
 實際輸出（Debug，IR 12000 taps、96000 samples；計時每次執行都不同，這裡列兩次執行的範圍）：
@@ -229,7 +229,7 @@ std::fill(overlap_.end() - numSamples, overlap_.end(), 0.0f);
 B = 4096（N 一樣 16384）320 ~ 650 ms，快 4 ~ 9 倍。兩種 block 長度的誤差都是 -100 dB（float 的精度）。
 self-check 只要求 B = 4096 時比直接卷積快一倍以上，以及 B = 4096 比 B = 512 快。
 為什麼 B = 512 這麼不划算？每 512 個 sample 就要做一次 16384 點的 forward + inverse FFT，
-換算每個 sample 約 $2 \cdot \frac{N}{2}\log_2 N / B \approx 448$ 次複數乘法，和直接卷積的 12000 次乘加同一個數量級
+換算每個 sample 約 $`2 \cdot \frac{N}{2}\log_2 N / B \approx 448`$ 次複數乘法，和直接卷積的 12000 次乘加同一個數量級
 （Debug 組態下 `std::complex` 的成本又特別高）；B = 4096 時降到約 56 次。
 **單一 partition 要 B 和 L 同一個數量級才划算**；但 audio callback 的 B 很小，而且 B 越大 latency 越大。
 第 12 章的 uniform partitioned convolution 把 IR 切成很多段長 B 的小段，每段各自乘、在頻域累加，同時解決這兩個問題。
@@ -244,14 +244,14 @@ const double denom = std::sqrt(ll_ * rr_);
 const double corr = denom > 1e-10 ? std::clamp(lr_ / denom, -1.0, 1.0) : 0.0;
 ```
 
-$a = 1 - e^{-1/(\tau f_s)}$ 是一階 lowpass 的係數（第 04 章 envelope follower 的同一個公式）。
+$`a = 1 - e^{-1/(\tau f_s)}`$ 是一階 lowpass 的係數（第 04 章 envelope follower 的同一個公式）。
 
 實際輸出：mono +1.000（S/M -100 dB = 完全沒有 side）、反相 -1.000、sin/cos -0.001（S/M 0.0 dB）、
 獨立雜訊 -0.008（S/M 0.1 dB）、共同 : 獨立 = 1 : 1 → 0.494
-（理論 $r = \frac{E[s^2]}{E[s^2]+E[n^2]} = 0.5$；S/M 能量 -4.7 dB，理論 $10\log_{10}\frac{1-r}{1+r} = -4.77$ dB）。
+（理論 $`r = \frac{E[s^2]}{E[s^2]+E[n^2]} = 0.5`$；S/M 能量 -4.7 dB，理論 $`10\log_{10}\frac{1-r}{1+r} = -4.77`$ dB）。
 
-反應時間：從 mono 切到反相，$E[LR]$ 從 $+P$ 指數地走向 $-P$：$m(t) = -P + 2P e^{-t/\tau}$，
-越過 0 的時間 $t = \tau\ln 2 = 208$ ms；實測 205 ms（block 粒度 10.7 ms）。
+反應時間：從 mono 切到反相，$`E[LR]`$ 從 $`+P`$ 指數地走向 $`-P`$：$`m(t) = -P + 2P e^{-t/\tau}`$，
+越過 0 的時間 $`t = \tau\ln 2 = 208`$ ms；實測 205 ms（block 粒度 10.7 ms）。
 
 聽感：`l11_ex7_out_of_phase.wav` 用耳機聽，聲音像是「從頭的兩側、甚至頭的後面」傳來，很不自然；
 切成 mono 時（L+R）完全抵消，什麼都聽不到。混音時 correlation 長時間在 0 以下就要小心。

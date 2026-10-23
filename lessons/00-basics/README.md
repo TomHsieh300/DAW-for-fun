@@ -113,7 +113,7 @@ Every program writes through `dawlab::outputPath("filename")` to `<build directo
 
 We strongly recommend installing the free [Audacity](https://www.audacityteam.org/):
 
-- **Waveform**: just drag the WAV in. Zoom in with Ctrl + mouse wheel until you can see individual samples; those are $x[n]$.
+- **Waveform**: just drag the WAV in. Zoom in with Ctrl + mouse wheel until you can see individual samples; those are $`x[n]`$.
 - **Spectrogram**: the drop-down menu next to the track name → "Spectrogram". A sine wave is a horizontal line, a sweep is an upward-curving line, white noise is a uniform wash of noise, and an impulse is a vertical line.
 - **Spectrum at a single moment**: select a region → "Analyze → Plot Spectrum". Look at `l00_clipped_sine.wav` and you can clearly see the odd harmonics at 1, 3 and 5 kHz.
 - **Checking for clipping**: "View → Show Clipping" (the menu name varies by version and language) marks clipped samples in red.
@@ -125,9 +125,9 @@ We strongly recommend installing the free [Audacity](https://www.audacityteam.or
 
 After this chapter you should be able to:
 
-- Explain how sound becomes a stream of numbers: sampling, sample rate and bit depth, and why DSP code always uses `float` with the range $[-1, 1]$.
+- Explain how sound becomes a stream of numbers: sampling, sample rate and bit depth, and why DSP code always uses `float` with the range $`[-1, 1]`$.
 - Use the Nyquist theorem to work out which frequency a given tone will alias to at a given sample rate, and explain what aliasing sounds like.
-- Be fluent in dB arithmetic: $20\log_{10}$, +6 dB ≈ twice the amplitude, summing identical signals (+6 dB) vs summing uncorrelated signals (+3 dB), and the quantization SNR ≈ 6.02N + 1.76 dB.
+- Be fluent in dB arithmetic: $`20\log_{10}`$, +6 dB ≈ twice the amplitude, summing identical signals (+6 dB) vs summing uncorrelated signals (+3 dB), and the quantization SNR ≈ 6.02N + 1.76 dB.
 - Tell peak, RMS and crest factor apart, and know what clipping looks like in numbers.
 - Explain channel, interleaved / non-interleaved, buffer, block processing, audio callback, and latency = blockSize / sampleRate.
 - Name the four cardinal sins of the real-time audio thread (allocation, locks, I/O, unbounded loops / GC) and **why** each is forbidden.
@@ -140,12 +140,12 @@ After this chapter you should be able to:
 
 ### 2.1 Sound waves and sampling
 
-Sound is a tiny variation of air pressure over time. A microphone turns the pressure into a voltage, and that voltage is a **continuous** curve $x(t)$: it has a value at every instant, and the value can be any real number. A computer cannot store anything continuous, so an ADC (analog-to-digital converter) does two things:
+Sound is a tiny variation of air pressure over time. A microphone turns the pressure into a voltage, and that voltage is a **continuous** curve $`x(t)`$: it has a value at every instant, and the value can be any real number. A computer cannot store anything continuous, so an ADC (analog-to-digital converter) does two things:
 
-1. **Sampling**: measure the voltage once every fixed interval $T$. $T$ is called the sampling period, and its reciprocal $f_s = 1/T$ is the **sample rate**, in Hz. 48000 Hz means 48000 measurements per second, with consecutive samples $1/48000 \approx 20.8\ \mu s$ apart.
+1. **Sampling**: measure the voltage once every fixed interval $`T`$. $`T`$ is called the sampling period, and its reciprocal $`f_s = 1/T`$ is the **sample rate**, in Hz. 48000 Hz means 48000 measurements per second, with consecutive samples $`1/48000 \approx 20.8\ \mu s`$ apart.
 2. **Quantization**: round each measured voltage to one of a finite set of levels (see 2.3).
 
-The result is a stream of numbers $x[n] = x(nT)$, $n = 0, 1, 2, \ldots$. That stream of numbers is "what sound looks like inside a computer"; there is nothing else. One second of 48 kHz stereo audio is 2 × 48000 = 96000 numbers.
+The result is a stream of numbers $`x[n] = x(nT)`$, $`n = 0, 1, 2, \ldots`$. That stream of numbers is "what sound looks like inside a computer"; there is nothing else. One second of 48 kHz stereo audio is 2 × 48000 = 96000 numbers.
 
 ```
 Continuous sound wave x(t)           Sampled x[n] (one dot per sample)
@@ -158,9 +158,9 @@ Continuous sound wave x(t)           Sampled x[n] (one dot per sample)
                                  |←T→|   T = 1 / fs
 ```
 
-A very common misconception: "the sound between the samples is lost, so digital audio is stair-stepped and lossy". As long as the signal contains no component above $f_s/2$, these points determine the original smooth curve **uniquely** (this is the Nyquist theorem of the next section); on output the DAC uses a reconstruction filter to recover the smooth curve, not a staircase.
+A very common misconception: "the sound between the samples is lost, so digital audio is stair-stepped and lossy". As long as the signal contains no component above $`f_s/2`$, these points determine the original smooth curve **uniquely** (this is the Nyquist theorem of the next section); on output the DAC uses a reconstruction filter to recover the smooth curve, not a staircase.
 
-What does "a component above $f_s/2$" mean? To answer that, we first have to be clear about frequency, sine waves and spectra.
+What does "a component above $`f_s/2`$" mean? To answer that, we first have to be clear about frequency, sine waves and spectra.
 
 #### Frequency, sine waves and the spectrum
 
@@ -172,7 +172,7 @@ $$
 x(t) = A \sin(2\pi f t)
 $$
 
-$A$ is the amplitude (how loud) and $f$ is the frequency (what pitch). After sampling it becomes $x[n] = A\sin(2\pi f n / f_s)$, which is exactly what `makeSine()` in `Signals.h` computes.
+$`A`$ is the amplitude (how loud) and $`f`$ is the frequency (what pitch). After sampling it becomes $`x[n] = A\sin(2\pi f n / f_s)`$, which is exactly what `makeSine()` in `Signals.h` computes.
 
 **Any sound can be decomposed into a sum of many sine waves.** This is the core idea of Fourier analysis: a guitar, a human voice or a drum hit is equivalent to "many sine waves of different frequencies and amplitudes added together". Plotting "how large the sine wave at each frequency is" gives the **spectrum**: frequency on the horizontal axis, amplitude on the vertical axis.
 
@@ -187,7 +187,7 @@ Amplitude                               Amplitude
  Sine wave: a single bar                 Pluck (fundamental 110 Hz): a fundamental plus a row of harmonics
 ```
 
-The spectrum of a real instrument usually looks like the right-hand plot: the lowest bar is the **fundamental**, which determines the pitch we hear; the row of components above it whose frequencies are exactly **integer multiples** (2×, 3×, 4×, ...) of the fundamental are the **harmonics**, and the $k$-th harmonic has frequency $k \cdot f_0$. The fundamental itself counts as the first harmonic (H1), the 2× component is H2, and so on; components at odd multiples of the fundamental are **odd harmonics** (H3, H5, ...), and those at even multiples are **even harmonics** (H2, H4, ...).
+The spectrum of a real instrument usually looks like the right-hand plot: the lowest bar is the **fundamental**, which determines the pitch we hear; the row of components above it whose frequencies are exactly **integer multiples** (2×, 3×, 4×, ...) of the fundamental are the **harmonics**, and the $`k`$-th harmonic has frequency $`k \cdot f_0`$. The fundamental itself counts as the first harmonic (H1), the 2× component is H2, and so on; components at odd multiples of the fundamental are **odd harmonics** (H3, H5, ...), and those at even multiples are **even harmonics** (H2, H4, ...).
 
 **The make-up of the harmonics determines the timbre**: a piano, a guitar and a violin playing the same 110 Hz A sound different because the harmonics have different sizes. When we later talk about clipping, saturation and distortion and keep saying "new harmonics are generated", it means that the processed spectrum has bars that were not there before, so the timbre has changed.
 
@@ -195,7 +195,7 @@ To hear the difference: `l00_sine_440.wav`, written by `l00_test_signals`, is a 
 
 ### 2.2 Sample rate, the Nyquist theorem and aliasing
 
-**The Nyquist–Shannon sampling theorem**: if the highest frequency in a signal is $f_{max}$, then as long as $f_s > 2 f_{max}$, the original signal can be reconstructed perfectly from the samples. Put the other way round, at sample rate $f_s$ the highest frequency that can be represented correctly is
+**The Nyquist–Shannon sampling theorem**: if the highest frequency in a signal is $`f_{max}`$, then as long as $`f_s > 2 f_{max}`$, the original signal can be reconstructed perfectly from the samples. Put the other way round, at sample rate $`f_s`$ the highest frequency that can be represented correctly is
 
 $$
 f_{Nyquist} = \frac{f_s}{2}
@@ -205,13 +205,13 @@ The upper limit of human hearing is about 20 kHz, so CDs use 44.1 kHz (Nyquist 2
 
 **So what happens to frequencies above Nyquist?** They do not disappear; they "masquerade" as a lower frequency. This is called **aliasing**. Intuition: imagine photographing a fan that spins 30 times per second at 48 pictures per second. Between pictures the fan turns 30/48 = 0.625 revolutions, but "turned 0.625 revolutions forward" and "turned 0.375 revolutions backward" produce identical pictures. So you see the fan spinning backward at 18 revolutions per second.
 
-As a formula: a sine wave of frequency $f_{in}$, once sampled, produces **exactly the same** samples as all of the following frequencies:
+As a formula: a sine wave of frequency $`f_{in}`$, once sampled, produces **exactly the same** samples as all of the following frequencies:
 
 $$
 f_{alias} = \left| f_{in} - k \cdot f_s \right|,\quad k = 0, \pm 1, \pm 2, \ldots
 $$
 
-The one that falls within $[0, f_s/2]$ is the frequency you will "hear".
+The one that falls within $`[0, f_s/2]`$ is the frequency you will "hear".
 
 **Calculation: what does 30 kHz become when sampled at 48 kHz?**
 
@@ -219,7 +219,7 @@ $$
 f_{alias} = |30000 - 1 \times 48000| = 18000\ \text{Hz}
 $$
 
-30 kHz is 6 kHz above Nyquist (24 kHz), so it "folds back" to 6 kHz below Nyquist, which is 18 kHz. You can verify this with trigonometry ($n$ is an integer):
+30 kHz is 6 kHz above Nyquist (24 kHz), so it "folds back" to 6 kHz below Nyquist, which is 18 kHz. You can verify this with trigonometry ($`n`$ is an integer):
 
 $$
 \sin\!\left(2\pi \tfrac{30000}{48000} n\right)
@@ -250,21 +250,21 @@ Amplitude
 **Why should you care?** There are two places where components above Nyquist can be created:
 
 1. **Before the ADC**: real-world sound contains ultrasonic components, so there is always an anti-aliasing lowpass filter in front of an ADC to remove them. That is the hardware's business; we do not need to worry about it.
-2. **In our own DSP**: any **nonlinear** processing (saturation, distortion, clipping, even the fast gain changes of a compressor) creates new harmonics. A 1.1 kHz signal through a hard clip produces odd harmonics at 3.3, 5.5, 7.7, ... kHz, all the way up to infinity; everything above 24 kHz aliases back. For example the 23rd harmonic at 25.3 kHz folds to $|25300 - 48000| = 22.7$ kHz, and the 25th harmonic at 27.5 kHz folds to 20.5 kHz. These positions are **not** integer multiples of 1.1 kHz, so they turn into harsh noise unrelated to the original pitch. (The exception: if $f_s$ happens to be an integer multiple of the fundamental, e.g. 1 kHz @ 48 kHz, the aliases land back exactly on harmonic grid positions, e.g. 25 kHz folds to 23 kHz = H23. That is a coincidence; ordinary pitches do not do this.) This is why chapter 06 uses oversampling: first raise the sample rate to 4× (192 kHz, Nyquist 96 kHz), do the nonlinear processing, filter out everything above 24 kHz, and then come back down.
+2. **In our own DSP**: any **nonlinear** processing (saturation, distortion, clipping, even the fast gain changes of a compressor) creates new harmonics. A 1.1 kHz signal through a hard clip produces odd harmonics at 3.3, 5.5, 7.7, ... kHz, all the way up to infinity; everything above 24 kHz aliases back. For example the 23rd harmonic at 25.3 kHz folds to $`|25300 - 48000| = 22.7`$ kHz, and the 25th harmonic at 27.5 kHz folds to 20.5 kHz. These positions are **not** integer multiples of 1.1 kHz, so they turn into harsh noise unrelated to the original pitch. (The exception: if $`f_s`$ happens to be an integer multiple of the fundamental, e.g. 1 kHz @ 48 kHz, the aliases land back exactly on harmonic grid positions, e.g. 25 kHz folds to 23 kHz = H23. That is a coincidence; ordinary pitches do not do this.) This is why chapter 06 uses oversampling: first raise the sample rate to 4× (192 kHz, Nyquist 96 kHz), do the nonlinear processing, filter out everything above 24 kHz, and then come back down.
 
 Perceptually, aliasing is "metallic", "digital", "the pitch running in the opposite direction". `l00_aliasing_sweep.wav`, written by `l00_db_math`, is a sweep from 20 Hz to 40 kHz (deliberately exceeding Nyquist): the pitch climbs all the way up, then after 24 kHz it falls instead. That is this phenomenon.
 
 ### 2.3 Bit depth and quantization
 
-The number of bits used to store each sample is the **bit depth**. N-bit integer PCM has $2^N$ levels: 16 bit has 65536 ($-32768 \ldots 32767$), and 24 bit has 16777216. Note the asymmetry between positive and negative: the negative end reaches $-2^{N-1}$, but the positive end only reaches $2^{N-1}-1$. When converting to float in $[-1, 1]$ we divide by $2^{N-1}$, so the largest positive value 16 bit can store is $32767/32768 \approx 0.99997$, slightly below 1.0; the `quantize()` in `l00_db_math` clamps to this valid range after rounding.
+The number of bits used to store each sample is the **bit depth**. N-bit integer PCM has $`2^N`$ levels: 16 bit has 65536 ($`-32768 \ldots 32767`$), and 24 bit has 16777216. Note the asymmetry between positive and negative: the negative end reaches $`-2^{N-1}`$, but the positive end only reaches $`2^{N-1}-1`$. When converting to float in $`[-1, 1]`$ we divide by $`2^{N-1}`$, so the largest positive value 16 bit can store is $`32767/32768 \approx 0.99997`$, slightly below 1.0; the `quantize()` in `l00_db_math` clamps to this valid range after rounding.
 
-Quantization means rounding the true value to the nearest level; the error $e[n]$ lies within $\pm \Delta/2$, where $\Delta$ is the level spacing. For most signals this error behaves like uniformly distributed random noise (quantization noise), with power
+Quantization means rounding the true value to the nearest level; the error $`e[n]`$ lies within $`\pm \Delta/2`$, where $`\Delta`$ is the level spacing. For most signals this error behaves like uniformly distributed random noise (quantization noise), with power
 
 $$
 P_{noise} = \frac{\Delta^2}{12}
 $$
 
-(the variance of a uniform distribution on $[-\Delta/2, \Delta/2]$). Dividing the power of a full-scale sine wave, $P_{signal} = A^2/2$, by it gives the best-case **SNR (signal-to-noise ratio)**. If the range of levels is $[-1, 1]$, then $\Delta = 2 / 2^N = 2^{1-N}$ and $A = 1$:
+(the variance of a uniform distribution on $`[-\Delta/2, \Delta/2]`$). Dividing the power of a full-scale sine wave, $`P_{signal} = A^2/2`$, by it gives the best-case **SNR (signal-to-noise ratio)**. If the range of levels is $`[-1, 1]`$, then $`\Delta = 2 / 2^N = 2^{1-N}`$ and $`A = 1`$:
 
 $$
 \text{SNR} = 10\log_{10}\frac{1/2}{2^{2-2N}/12}
@@ -284,19 +284,19 @@ $$
     24    146.24 dB    146.24 dB
 ```
 
-The 8-bit measurement is about 0.8 dB below the formula: the tops of the positive half-cycles of a 0 dBFS sine wave exceed the largest valid code $127/128$ and get clamped, adding a little extra error; the more bits there are, the smaller the share of that one step, and the difference vanishes.
+The 8-bit measurement is about 0.8 dB below the formula: the tops of the positive half-cycles of a 0 dBFS sine wave exceed the largest valid code $`127/128`$ and get clamped, adding a little extra error; the more bits there are, the smaller the share of that one step, and the difference vanishes.
 
 Note that the SNR is computed for a **full-scale signal**. If the signal is 20 dB lower, the SNR is 20 dB lower as well (same example: 8 bit at -20 dBFS has only 29.78 dB left). This is why you need enough level when recording. Listen to `l00_quantized_8bit.wav`: there is obvious hiss and distortion under the sine wave; `l00_quantized_16bit.wav` is almost indistinguishable from a clean one. The noise floor of 16 bit (smallest step about -90 dBFS) can only be noticed in extremely quiet passages with the monitoring level turned very high; this is also why recording and mixing internally commonly use 24 bit / float. (When converting high-resolution audio to 16 bit, in practice a tiny amount of random noise is added before quantizing. This is called **dither**; it turns the quantization error into an even hiss instead of distortion correlated with the signal. The bitcrusher in chapter 07 returns to this.)
 
 ### 2.4 Why DSP uses float, and 0 dBFS
 
-Although files and hardware use integers, DSP internally always uses **32-bit float**, with the range by convention $[-1.0, 1.0]$:
+Although files and hardware use integers, DSP internally always uses **32-bit float**, with the range by convention $`[-1.0, 1.0]`$:
 
 - **No worrying about overflow**: adding two 16-bit integers can already overflow (wrap around to negative, causing a loud pop). A float can safely exceed 1.0, and you deal with it at the end.
 - **Huge dynamic range**: a float has a 24-bit mantissa, and the relative precision does not change with level. A small -60 dB signal still has 24 bits of precision; an integer at -60 dB is left with only 6 bits (in the 16-bit case).
 - **Natural multiplication**: gain is just multiplying by a number, with no fixed-point shifts.
 
-The range $[-1, 1]$ corresponds to the "full scale" of integer PCM. A signal with amplitude exactly 1.0 is at **0 dBFS** (dB relative to Full Scale); every level quoted in dBFS is negative (or 0), for example a -6 dBFS sine wave has amplitude 0.5. This is the scale you see on a DAW meter.
+The range $`[-1, 1]`$ corresponds to the "full scale" of integer PCM. A signal with amplitude exactly 1.0 is at **0 dBFS** (dB relative to Full Scale); every level quoted in dBFS is negative (or 0), for example a -6 dBFS sine wave has amplitude 0.5. This is the scale you see on a DAW meter.
 
 A float can exceed 1.0 without breaking, but when it is written to an integer WAV or sent to a DAC, the excess is **cut off** (clipping, see 2.7). `WavFile.h` clamps to ±1 when writing 16/24-bit and keeps values as they are when writing 32-bit float.
 
@@ -308,7 +308,7 @@ $$
 L_{dB} = 20\log_{10}\frac{A}{A_{ref}} \qquad\Longleftrightarrow\qquad \frac{A}{A_{ref}} = 10^{L_{dB}/20}
 $$
 
-This is the formula for **amplitude**. If you are comparing **power** (proportional to amplitude squared), the factor is 10 instead of 20: $10\log_{10}(P/P_{ref}) = 10\log_{10}(A^2/A_{ref}^2) = 20\log_{10}(A/A_{ref})$. The two formulas give the same answer; which one you use only depends on whether you are holding an amplitude or a power.
+This is the formula for **amplitude**. If you are comparing **power** (proportional to amplitude squared), the factor is 10 instead of 20: $`10\log_{10}(P/P_{ref}) = 10\log_{10}(A^2/A_{ref}^2) = 20\log_{10}(A/A_{ref})`$. The two formulas give the same answer; which one you use only depends on whether you are holding an amplitude or a power.
 
 A few numbers you must memorize (from the output of `l00_db_math`):
 
@@ -330,8 +330,8 @@ Exact values: ×2 = +6.0206 dB and √2 = +3.0103 dB. The course text writes 6.0
 
 **Summing: +6 dB or +3 dB?** This is where beginners mix things up most often, and the key is whether the two signals are correlated:
 
-- **Perfectly identical signals** (for example the same track duplicated): every sample is $x + x = 2x$, so the amplitude is ×2 → **+6.02 dB**.
-- **Uncorrelated signals** (for example two different noise signals, or two different guitars): the samples sometimes have the same sign and sometimes opposite signs, so the amplitudes do not add directly; it is the **power** that adds: $P = P_1 + P_2 = 2P_1$, so the amplitude is ×√2 → **+3.01 dB**.
+- **Perfectly identical signals** (for example the same track duplicated): every sample is $`x + x = 2x`$, so the amplitude is ×2 → **+6.02 dB**.
+- **Uncorrelated signals** (for example two different noise signals, or two different guitars): the samples sometimes have the same sign and sometimes opposite signs, so the amplitudes do not add directly; it is the **power** that adds: $`P = P_1 + P_2 = 2P_1`$, so the amplitude is ×√2 → **+3.01 dB**.
 
 ```
 == Summing two -12 dBFS signals ==
@@ -339,18 +339,18 @@ Exact values: ×2 = +6.0206 dB and √2 = +3.0103 dB. The course text writes 6.0
   Uncorrelated white noise: RMS rises by +3.04 dB (power ×2, amplitude ×√2)
 ```
 
-Generalizing: mixing $N$ identical tracks gives +20log₁₀N dB, and $N$ uncorrelated tracks gives +10log₁₀N dB. Mixing 8 uncorrelated -18 dBFS signals gives about -9 dBFS; but if they are identical it is +18 dB → exactly 0 dBFS, and any more would clip. This directly affects how much headroom the mix bus of your chapter 14 DAW needs.
+Generalizing: mixing $`N`$ identical tracks gives +20log₁₀N dB, and $`N`$ uncorrelated tracks gives +10log₁₀N dB. Mixing 8 uncorrelated -18 dBFS signals gives about -9 dBFS; but if they are identical it is +18 dB → exactly 0 dBFS, and any more would clip. This directly affects how much headroom the mix bus of your chapter 14 DAW needs.
 
-`DspMath.h` provides `dbToGain()` and `gainToDb()`. Anything below `kMinusInfinityDb` (-100 dB) is treated as silence, to avoid $\log_{10}(0) = -\infty$.
+`DspMath.h` provides `dbToGain()` and `gainToDb()`. Anything below `kMinusInfinityDb` (-100 dB) is treated as silence, to avoid $`\log_{10}(0) = -\infty`$.
 
 ### 2.6 Peak, RMS and crest factor
 
 There are two ways to measure "how loud" a signal is:
 
-- **Peak**: the largest $|x[n]|$. It decides whether the signal clips.
-- **RMS (root mean square)**: $\sqrt{\frac{1}{N}\sum x[n]^2}$, which is the square root of the power. It is closer to the "average loudness" that the ear perceives.
+- **Peak**: the largest $`|x[n]|`$. It decides whether the signal clips.
+- **RMS (root mean square)**: $`\sqrt{\frac{1}{N}\sum x[n]^2}`$, which is the square root of the power. It is closer to the "average loudness" that the ear perceives.
 
-The ratio of the two is the **crest factor**, usually expressed in dB: $\text{crest} = 20\log_{10}(\text{peak}/\text{RMS})$. It tells you how "spiky" the signal is:
+The ratio of the two is the **crest factor**, usually expressed in dB: $`\text{crest} = 20\log_{10}(\text{peak}/\text{RMS})`$. It tells you how "spiky" the signal is:
 
 | Waveform | peak / RMS | crest factor |
 |---|---|---|
@@ -360,7 +360,7 @@ The ratio of the two is the **crest factor**, usually expressed in dB: $\text{cr
 | Single impulse (1 sample in 0.5 s) | √24000 | 43.8 dB |
 | Drum loop (this course's synthesized drums) | ≈ 5.3 | 14.5 dB |
 
-Derivation for the sine wave: $x = A\sin\theta$, $\overline{x^2} = A^2 \cdot \overline{\sin^2\theta} = A^2/2$, so RMS = $A/\sqrt 2$. For noise uniformly distributed on $[-A, A]$: $\overline{x^2} = \int_{-A}^{A} \frac{x^2}{2A}dx = A^2/3$, so RMS = $A/\sqrt 3$.
+Derivation for the sine wave: $`x = A\sin\theta`$, $`\overline{x^2} = A^2 \cdot \overline{\sin^2\theta} = A^2/2`$, so RMS = $`A/\sqrt 2`$. For noise uniformly distributed on $`[-A, A]`$: $`\overline{x^2} = \int_{-A}^{A} \frac{x^2}{2A}dx = A^2/3`$, so RMS = $`A/\sqrt 3`$.
 
 The peak / RMS / crest printed by `l00_test_signals` are exactly these numbers:
 
@@ -374,7 +374,7 @@ The drum loop's peak is only -2.9 dBFS, yet its RMS is just -17.4 dBFS: the ener
 
 ### 2.7 Clipping
 
-When a signal with $|x[n]| > 1.0$ is converted to integers (written to a WAV, sent to a DAC), the excess is **hard-cut** at ±1.0:
+When a signal with $`|x[n]| > 1.0`$ is converted to integers (written to a WAV, sent to a DAC), the excess is **hard-cut** at ±1.0:
 
 $$
 y[n] = \begin{cases} 1 & x[n] > 1 \\ x[n] & -1 \le x[n] \le 1 \\ -1 & x[n] < -1 \end{cases}
@@ -401,7 +401,7 @@ $$
 \text{THD} = \frac{\sqrt{H_2^2 + H_3^2 + H_4^2 + \cdots}}{H_1} \times 100\%
 $$
 
-$H_k$ is the amplitude of the $k$-th harmonic. In other words, it is "the total of the added harmonics as a fraction of the fundamental": 0% means perfectly clean (only the original sine wave), and the larger the number, the heavier the distortion. `thdPercent()` in `Analysis.h` uses Goertzel to measure H2 to H10 (the ones below Nyquist) and then applies this formula. The 15.22% above comes mainly from H3 (-16.5 dB ≈ 0.15×).
+$`H_k`$ is the amplitude of the $`k`$-th harmonic. In other words, it is "the total of the added harmonics as a fraction of the fundamental": 0% means perfectly clean (only the original sine wave), and the larger the number, the heavier the distortion. `thdPercent()` in `Analysis.h` uses Goertzel to measure H2 to H10 (the ones below Nyquist) and then applies this formula. The 15.22% above comes mainly from H3 (-16.5 dB ≈ 0.15×).
 
 Symmetric clipping produces only **odd** harmonics (3, 5, 7, ...) and the even harmonics are 0; chapter 06 returns to this pattern. (We use 1 kHz @ 48 kHz here so that the number of clipped samples is a tidy 26000; as noted in 2.2, this frequency happens to make the high harmonics that alias back land on odd-harmonic positions as well, which is why H2 and H4 measure a clean -100 dB. With 1.1 kHz, the aliased components scatter to all sorts of non-integer-multiple positions, and measuring H2 and H4 might pick up some alias energy, but symmetric clipping itself still produces no even harmonics.) Counting the clipped samples is one of the problems in Exercise 4.
 
@@ -545,21 +545,21 @@ Every chapter uses these deterministic signals (same parameters → same result)
 | `makeDrumLoop(sr, bars, bpm, amp, nch)` | Synthesized kick / snare / hi-hat with a high crest factor. The main material of the dynamics chapters. |
 | `makePluck(freq, sr, seconds, ...)` | Karplus-Strong pluck, rich in harmonics with the highs decaying over time. Used for EQ and saturation. |
 | `makePluckSequence(sr, seconds, amp, nch)` | An A-minor arpeggio, "musical" material. |
-| `NoiseGenerator` | xorshift32, outputs $[-1, 1)$, for synthesizing your own signals. |
+| `NoiseGenerator` | xorshift32, outputs $`[-1, 1)`$, for synthesizing your own signals. |
 | `secondsToSamples(sec, sr)` | Seconds → number of samples (`DspMath.h` also has `msToSamples` and `samplesToMs`). |
 
 ### 3.4 `Analysis.h`: verifying with numbers
 
 | Function | Purpose |
 |---|---|
-| `peakAbs(buffer)` / `peakAbs(ptr, n)` | The largest $\|x\|$ |
+| `peakAbs(buffer)` / `peakAbs(ptr, n)` | The largest $`\|x\|`$ |
 | `rms(buffer, ch)` / `rms(ptr, n)` | RMS |
 | `hasNanOrInf(buffer)` | Catches NaN / Inf caused by DSP bugs |
 | `goertzelAmplitude(ptr, n, freq, sr)` | The sine amplitude of a **single frequency** in the signal |
 | `measureGainDb(processFn, freq, sr)` | The gain (dB) at a given frequency of any "one sample at a time" system |
 | `harmonicLevelsDb(...)`, `thdPercent(...)` | Harmonic analysis, THD |
 
-**Intuition for Goertzel**: an FFT computes all frequencies at once, but if you only want to know "how large is 1 kHz in this signal", Goertzel is cheaper: it is a second-order IIR filter whose resonance is deliberately tuned to the target frequency; you feed the whole signal through it and finally compute the amplitude at that frequency from the filter's two state variables. Feed in a sine wave of amplitude $A$ and the return value ≈ $A$. A Hann window is applied first, to reduce the leakage caused by discontinuities at the start and end of the signal. Terms such as IIR filter, window, leakage and FFT are covered in detail in chapter 02 (IIR filters) and chapter 11 (FFT, window, leakage); for now all you need to know is: **give it a signal and a frequency, and it returns the sine amplitude at that frequency**.
+**Intuition for Goertzel**: an FFT computes all frequencies at once, but if you only want to know "how large is 1 kHz in this signal", Goertzel is cheaper: it is a second-order IIR filter whose resonance is deliberately tuned to the target frequency; you feed the whole signal through it and finally compute the amplitude at that frequency from the filter's two state variables. Feed in a sine wave of amplitude $`A`$ and the return value ≈ $`A`$. A Hann window is applied first, to reduce the leakage caused by discontinuities at the start and end of the signal. Terms such as IIR filter, window, leakage and FFT are covered in detail in chapter 02 (IIR filters) and chapter 11 (FFT, window, leakage); for now all you need to know is: **give it a signal and a frequency, and it returns the sine amplitude at that frequency**.
 
 `measureGainDb()` is the workhorse for verifying filters in chapters 02 and 03: pass in a lambda, and it automatically feeds a sine wave, skips the transient, and measures the ratio of output to input.
 
@@ -601,7 +601,7 @@ pluck 110 Hz     2 ch    96000 samples (2.00 s)  peak  -6.03 dBFS  RMS -25.19 dB
 pluck sequence   2 ch   192000 samples (4.00 s)  peak  -5.18 dBFS  RMS -19.71 dBFS  crest 14.53 dB
 ```
 
-Compare with 2.5 and 2.6: amplitude 0.5 = -6.02 dBFS; the RMS of a sine wave is 3.01 dB below its peak; white noise of amplitude 0.25 = -12.04 dBFS with a crest of 4.77 dB; and for the impulse $\text{crest} = 10\log_{10}(24000) = 43.8$ dB.
+Compare with 2.5 and 2.6: amplitude 0.5 = -6.02 dBFS; the RMS of a sine wave is 3.01 dB below its peak; white noise of amplitude 0.25 = -12.04 dBFS with a crest of 4.77 dB; and for the impulse $`\text{crest} = 10\log_{10}(24000) = 43.8`$ dB.
 
 **What you should see and hear**: open the spectrogram in Audacity. The sine is a horizontal line; the sweep is an upward-curving line (a logarithmic sweep is a straight line on a logarithmic frequency axis); the white noise is uniform throughout; the impulse is a vertical line (all frequencies appear at once); in the drum loop you can see the kick in the low frequencies and the hi-hat in the highs.
 

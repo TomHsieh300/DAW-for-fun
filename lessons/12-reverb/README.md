@@ -48,7 +48,7 @@ Imagine standing in a room with someone clapping in front of you. Sound spreads 
 
 1. **Direct sound**: the sound travelling in a straight line from the source to the ear. It is the earliest and the loudest, and it determines "which direction the sound comes from".
 2. **Early reflections**: sound that reaches the ear after one or two bounces off a wall, the floor or the ceiling. They are sparse and can be told apart from one another (but they are usually not heard as "echoes"; the brain fuses them into the direct sound), and they provide cues about "the size and shape of the room and how far you are from the walls".
-3. **Late reverb (diffuse tail)**: sound that has been reflected many times. As the number of reflections grows, the arrival times get denser and denser: in a room of volume V, the number of reflections arriving per second around time t is roughly proportional to $t^2$ ($\approx 4\pi c^3 t^2 / V$). After some point the reflections are so dense that they sound like a clump of noise, and the energy decays **exponentially**.
+3. **Late reverb (diffuse tail)**: sound that has been reflected many times. As the number of reflections grows, the arrival times get denser and denser: in a room of volume V, the number of reflections arriving per second around time t is roughly proportional to $`t^2`$ ($`\approx 4\pi c^3 t^2 / V`$). After some point the reflections are so dense that they sound like a clump of noise, and the energy decays **exponentially**.
 
 The time gap between the direct sound and the first reflection is called the **pre-delay**. In a large space the walls are farther away, so the pre-delay is longer, which is an important cue the brain uses to judge "a large space".
 
@@ -64,7 +64,7 @@ L(t) = L_0 - 60\cdot\frac{t}{\mathrm{RT60}}\ \ \text{dB}
 a(t) = a_0\cdot 10^{-3t/\mathrm{RT60}} = a_0\, e^{-\ln(1000)\,t/\mathrm{RT60}}
 $$
 
-(An amplitude drop of 60 dB means dropping to 1/1000, so $a(\mathrm{RT60}) = a_0/1000$.)
+(An amplitude drop of 60 dB means dropping to 1/1000, so $`a(\mathrm{RT60}) = a_0/1000`$.)
 
 In real measurements you rarely wait until -60 dB (the background noise swamps it first). Instead you measure the slope over the range from -5 to -25 dB (T20) or from -5 to -35 dB (T30) and extrapolate to 60 dB. This chapter's `measureRt60()` and exercise 6 both do this.
 
@@ -80,7 +80,7 @@ Absorption coefficients usually rise with frequency (carpets, curtains and the a
 
 ### 2.2 The impulse-response view
 
-If we treat the room (source position -> listener position) as an LTI (linear time-invariant) system, it is completely described by its **impulse response** $h[n]$: what you record after a clap (≈ an impulse) is $h$, and the result of any sound $x$ passing through this room is the convolution:
+If we treat the room (source position -> listener position) as an LTI (linear time-invariant) system, it is completely described by its **impulse response** $`h[n]`$: what you record after a clap (≈ an impulse) is $`h`$, and the result of any sound $`x`$ passing through this room is the convolution:
 
 $$
 y[n] = (h * x)[n] = \sum_{k=0}^{M-1} h[k]\,x[n-k]
@@ -90,7 +90,7 @@ This gives two routes:
 
 | | Convolution reverb | Algorithmic reverb |
 |---|---|---|
-| Approach | Convolve directly with a measured (or synthesized) $h$ | Build a recursive system out of delays + feedback whose IR "statistically resembles a room" |
+| Approach | Convolve directly with a measured (or synthesized) $`h`$ | Build a recursive system out of delays + feedback whose IR "statistically resembles a room" |
 | Realism | It is that space (at that source/listener position) | It sounds "like" some kind of space, depending on the design |
 | Parameters | The IR can only be fixed afterwards (truncate, EQ, reshape the envelope) | decay, size, damping, modulation and freeze can all be changed in real time |
 | Cost | Proportional to the IR length (needs the FFT) | Independent of the RT60; a few dozen delay lines are enough |
@@ -113,11 +113,11 @@ y[n] = x[n-D] + g\,y[n-D]
 H(z) = \frac{z^{-D}}{1 - g\,z^{-D}}
 $$
 
-Feed in an impulse and the output is $\delta[n-D] + g\,\delta[n-2D] + g^2\,\delta[n-3D] + \dots$: **each trip around the loop (D samples) multiplies the amplitude by g**.
+Feed in an impulse and the output is $`\delta[n-D] + g\,\delta[n-2D] + g^2\,\delta[n-3D] + \dots`$: **each trip around the loop (D samples) multiplies the amplitude by g**.
 
 #### Derivation: RT60 and g
 
-After t seconds the signal has made $t\cdot f_s / D$ trips and the amplitude is $g^{t f_s / D}$. We require the amplitude at t = RT60 to be $10^{-60/20} = 10^{-3}$:
+After t seconds the signal has made $`t\cdot f_s / D`$ trips and the amplitude is $`g^{t f_s / D}`$. We require the amplitude at t = RT60 to be $`10^{-60/20} = 10^{-3}`$:
 
 $$
 g^{\mathrm{RT60}\cdot f_s / D} = 10^{-3}
@@ -129,13 +129,13 @@ g^{\mathrm{RT60}\cdot f_s / D} = 10^{-3}
 \boxed{\,\mathrm{RT60} = \frac{-3D}{f_s\log_{10} g}\,}
 $$
 
-Example: D = 1557 samples, fs = 48 kHz, RT60 = 2 s -> $g = 10^{-3\cdot1557/96000} = 10^{-0.04866} = 0.89401$. The example `l12_comb_rt60` feeds an impulse through the comb with this g: counting from the first echo (at t = D/fs, amplitude 1, taken as the 0 dB reference), the decay to below -60 dB takes 62 trips = 2.011 s (quantized to an integer multiple of D/fs = 32.4 ms, hence slightly above 2.000 s).
+Example: D = 1557 samples, fs = 48 kHz, RT60 = 2 s -> $`g = 10^{-3\cdot1557/96000} = 10^{-0.04866} = 0.89401`$. The example `l12_comb_rt60` feeds an impulse through the comb with this g: counting from the first echo (at t = D/fs, amplitude 1, taken as the 0 dB reference), the decay to below -60 dB takes 62 trips = 2.011 s (quantized to an integer multiple of D/fs = 32.4 ms, hence slightly above 2.000 s).
 
 Note that g depends on D: **for the same RT60, the longer the loop, the more each trip has to attenuate** (the smaller g is). This is why every line of an FDN computes its own g_i.
 
 #### Frequency response: why it is called a comb
 
-$|H(e^{j\omega})| = 1/|1 - g e^{-j\omega D}|$. When $\omega D = 2\pi k$ (the frequency is an integer multiple of $f_s/D$) the denominator is at its smallest -> peak $= 1/(1-g)$; at half-integer multiples the denominator is at its largest -> notch $= 1/(1+g)$. With g = 0.894 the peak is +19.49 dB and the notch is -5.55 dB, a difference of 25 dB, and the spectrum looks like a comb:
+$`|H(e^{j\omega})| = 1/|1 - g e^{-j\omega D}|`$. When $`\omega D = 2\pi k`$ (the frequency is an integer multiple of $`f_s/D`$) the denominator is at its smallest -> peak $`= 1/(1-g)`$; at half-integer multiples the denominator is at its largest -> notch $`= 1/(1+g)`$. With g = 0.894 the peak is +19.49 dB and the notch is -5.55 dB, a difference of 25 dB, and the spectrum looks like a comb:
 
 ```
  dB
@@ -161,14 +161,14 @@ y[n] = x[n-D] + g\cdot \mathrm{LP}\{y\}[n-D],\qquad
 \mathrm{LP}(z) = \frac{1-d}{1-d\,z^{-1}}
 $$
 
-Now the gain per trip becomes frequency dependent: $g\,|\mathrm{LP}(e^{j\omega})|$. Substituting this into the RT60 formula:
+Now the gain per trip becomes frequency dependent: $`g\,|\mathrm{LP}(e^{j\omega})|`$. Substituting this into the RT60 formula:
 
 $$
 \mathrm{RT60}(\omega) = \frac{-3D}{f_s\log_{10}\!\big(g\,|\mathrm{LP}(e^{j\omega})|\big)},\qquad
 |\mathrm{LP}(e^{j\omega})| = \frac{1-d}{\sqrt{1 - 2d\cos\omega + d^2}}
 $$
 
-At DC $|\mathrm{LP}| = 1$ (the RT60 of the low frequencies is unchanged), and at Nyquist $|\mathrm{LP}| = (1-d)/(1+d)$. Plugging in d = 0.5, g = 0.894, D = 1557 at 4008 Hz (ω = 0.5246): $|\mathrm{LP}| = 0.5/\sqrt{1.25 - \cos 0.5246} = 0.806$, RT60 = 0.685 s. The example measures 0.685 s.
+At DC $`|\mathrm{LP}| = 1`$ (the RT60 of the low frequencies is unchanged), and at Nyquist $`|\mathrm{LP}| = (1-d)/(1+d)`$. Plugging in d = 0.5, g = 0.894, D = 1557 at 4008 Hz (ω = 0.5246): $`|\mathrm{LP}| = 0.5/\sqrt{1.25 - \cos 0.5246} = 0.806`$, RT60 = 0.685 s. The example measures 0.685 s.
 
 ### 2.4 The Schroeder allpass: scatter without coloring
 
@@ -188,9 +188,9 @@ v[n] = x[n] + g\,v[n-D],\qquad y[n] = -g\,v[n] + v[n-D]
 H(z) = \frac{-g + z^{-D}}{1 - g\,z^{-D}}
 $$
 
-**Why |H| = 1**: let $u = e^{-j\omega D}$ ($|u| = 1$). The numerator is $u - g = u\,(1 - g\,\bar u)$, so $|u - g| = |1 - g\bar u| = |\overline{1 - g u}| = |1 - g u|$, and the numerator and denominator have the same magnitude. The magnitude response is 0 dB at every frequency (the example measures it for you: ±0.00 dB from 100 Hz to 12 kHz).
+**Why |H| = 1**: let $`u = e^{-j\omega D}`$ ($`|u| = 1`$). The numerator is $`u - g = u\,(1 - g\,\bar u)`$, so $`|u - g| = |1 - g\bar u| = |\overline{1 - g u}| = |1 - g u|`$, and the numerator and denominator have the same magnitude. The magnitude response is 0 dB at every frequency (the example measures it for you: ±0.00 dB from 100 Hz to 12 kHz).
 
-So what does it do? **It scrambles the phase**: an impulse goes in, and out comes a train of echoes $-g, 0,\dots,0, (1-g^2), 0,\dots, (1-g^2)g, \dots$. Cascading several allpasses of different lengths, each stage splits every echo into a train of its own and the densities multiply -- a click goes in and a clump of "hiss" comes out, yet the long-term spectrum is still flat. This is called **diffusion**.
+So what does it do? **It scrambles the phase**: an impulse goes in, and out comes a train of echoes $`-g, 0,\dots,0, (1-g^2), 0,\dots, (1-g^2)g, \dots`$. Cascading several allpasses of different lengths, each stage splits every echo into a train of its own and the densities multiply -- a click goes in and a clump of "hiss" comes out, yet the long-term spectrum is still flat. This is called **diffusion**.
 
 > Note: an allpass is non-coloring only on a long-time average. Over a short time (say a 20 ms window) its echoes still carry some coloration, and with a large g or a long D you hear "buzzing" or a "spring" quality. That is why the D of a diffuser is usually very short (a few ms) and g is between 0.5 and 0.7.
 
@@ -206,7 +206,7 @@ Schroeder (1962) combined the two:
         parallel combs: produce the "density" of modes and the decay       series allpasses: raise echo density (diffusion)
 ```
 
-- **Parallel combs**: the mode spacing of each comb is $f_s/D_i$, and stacking 4 combs of different lengths quadruples the number of modes; each comb uses its own $g_i = 10^{-3D_i/(\mathrm{RT60}f_s)}$, so they all decay with the same RT60.
+- **Parallel combs**: the mode spacing of each comb is $`f_s/D_i`$, and stacking 4 combs of different lengths quadruples the number of modes; each comb uses its own $`g_i = 10^{-3D_i/(\mathrm{RT60}f_s)}`$, so they all decay with the same RT60.
 - **Series allpasses**: they scatter the regular echoes coming out of the combs into a dense, noise-like tail without changing the overall spectrum.
 
 **Freeverb** (by Jezar at Dreampoint, released as public domain in 2000) is the most widely circulated version of this architecture:
@@ -224,9 +224,9 @@ Schroeder (1962) combined the two:
 ```
 
 - **8 lowpass-feedback combs (LBCF) in parallel**: the one-pole lowpass in the loop is the damping of section 2.3. Freeverb's implementation is `filterstore = output·(1−damp) + filterstore·damp`, `buffer = input + filterstore·feedback` -- this chapter's `CombFilter` is written the same way.
-- **4 allpasses in series**, with g = 0.5. A detail: Freeverb's allpass code is `output = bufout − input`, `buffer = input + bufout·g`, i.e. $v[n] = x[n] + g\,v[n-D]$, $y[n] = v[n-D] - x[n]$, with transfer function
+- **4 allpasses in series**, with g = 0.5. A detail: Freeverb's allpass code is `output = bufout − input`, `buffer = input + bufout·g`, i.e. $`v[n] = x[n] + g\,v[n-D]`$, $`y[n] = v[n-D] - x[n]`$, with transfer function
   $$H(z) = \frac{-1 + (1+g)\,z^{-D}}{1 - g\,z^{-D}}$$
-  For this to be an allpass, the numerator coefficients must be a multiple of the denominator coefficients reversed: $[-1,\ 1+g] = c\,[-g,\ 1]$ => $c = 1/g$, $1 + g = 1/g$ => $g^2 + g - 1 = 0$ => $g = (\sqrt5 - 1)/2 \approx 0.618$. Freeverb uses g = 0.5, so it is **not** a strict allpass (it is 0 dB at integer multiples of $f_s/D$ and has a ripple of $2.5/1.5$ -> +4.4 dB at half-integer multiples); in practice it "sounds right", but do not take it as the definition of an allpass (the section "Freeverb Allpass Approximation" in J. O. Smith's *Physical Audio Signal Processing* gives the same analysis). Our `AllpassDiffuser` uses the standard form of section 2.4.
+  For this to be an allpass, the numerator coefficients must be a multiple of the denominator coefficients reversed: $`[-1,\ 1+g] = c\,[-g,\ 1]`$ => $`c = 1/g`$, $`1 + g = 1/g`$ => $`g^2 + g - 1 = 0`$ => $`g = (\sqrt5 - 1)/2 \approx 0.618`$. Freeverb uses g = 0.5, so it is **not** a strict allpass (it is 0 dB at integer multiples of $`f_s/D`$ and has a ripple of $`2.5/1.5`$ -> +4.4 dB at half-integer multiples); in practice it "sounds right", but do not take it as the definition of an allpass (the section "Freeverb Allpass Approximation" in J. O. Smith's *Physical Audio Signal Processing* gives the same analysis). Our `AllpassDiffuser` uses the standard form of section 2.4.
 - **Stereo spread**: every delay of the right channel is 23 samples longer than that of the left channel, so the reverbs of the two channels are decorrelated and sound wide.
 - **Parameter mapping**: `roomsize` 0..1 -> feedback = roomsize·0.28 + 0.7 (0.7–0.98), `damp` 0..1 -> damping coefficient = damp·0.4. Note that Freeverb's roomsize controls the feedback directly and is **not** the RT60: the 8 combs share one g, so the longer combs decay a little more slowly than the shorter ones and the RT60 differs from comb to comb (e.g. for g = 0.84, the 1116-sample comb has an RT60 of 1.00 s and the 1617-sample one has 1.45 s).
 - **Freeze**: feedback = 1, damping = 0, input gain = 0 -> the tail is extended indefinitely.
@@ -250,7 +250,7 @@ The combs in a Schroeder structure are independent of one another. If the output
    └──────── g_i ◄── LP_i ◄── [ feedback matrix A (N×N) ] ◄───────┘
 ```
 
-The state equations (N lines, line i has length $L_i$):
+The state equations (N lines, line i has length $`L_i`$):
 
 $$
 v_i[n] = s_i[n - L_i],\qquad
@@ -258,27 +258,27 @@ v_i[n] = s_i[n - L_i],\qquad
 y[n] = \mathbf c^{\mathsf T}\mathbf v[n]
 $$
 
-$\boldsymbol\Gamma = \mathrm{diag}(g_0,\dots,g_{N-1})$ is the per-line attenuation (damping is added after it).
+$`\boldsymbol\Gamma = \mathrm{diag}(g_0,\dots,g_{N-1})`$ is the per-line attenuation (damping is added after it).
 
 #### Why an orthogonal matrix => lossless
 
-First consider the case $\boldsymbol\Gamma = \mathbf I$ with no input. The "energy" of the whole system is the sum of squares of all the samples stored in the delay lines, $E[n]$. With every sample that passes, each line emits one $v_i$ and takes in one $s_i$:
+First consider the case $`\boldsymbol\Gamma = \mathbf I`$ with no input. The "energy" of the whole system is the sum of squares of all the samples stored in the delay lines, $`E[n]`$. With every sample that passes, each line emits one $`v_i`$ and takes in one $`s_i`$:
 
 $$
 E[n+1] - E[n] = \sum_i s_i^2 - \sum_i v_i^2 = \|\mathbf A\mathbf v\|^2 - \|\mathbf v\|^2
 $$
 
-If $\mathbf A$ is an **orthogonal matrix** ($\mathbf A^{\mathsf T}\mathbf A = \mathbf I$), then $\|\mathbf A\mathbf v\|^2 = \mathbf v^{\mathsf T}\mathbf A^{\mathsf T}\mathbf A\mathbf v = \|\mathbf v\|^2$, and the energy is **completely unchanged**: the system neither blows up nor decays by itself, which makes it a "lossless" prototype. All the decay is then controlled by the $g_i$ and the damping that we add deliberately. Exercise 4 verifies this: with g = 1 the RMS at 1.0 s and at 2.5 s differs by only 0.01 dB.
+If $`\mathbf A`$ is an **orthogonal matrix** ($`\mathbf A^{\mathsf T}\mathbf A = \mathbf I`$), then $`\|\mathbf A\mathbf v\|^2 = \mathbf v^{\mathsf T}\mathbf A^{\mathsf T}\mathbf A\mathbf v = \|\mathbf v\|^2`$, and the energy is **completely unchanged**: the system neither blows up nor decays by itself, which makes it a "lossless" prototype. All the decay is then controlled by the $`g_i`$ and the damping that we add deliberately. Exercise 4 verifies this: with g = 1 the RMS at 1.0 s and at 2.5 s differs by only 0.01 dB.
 
 Commonly used orthogonal matrices:
 
-- **Householder**: $\mathbf A = \mathbf I - \frac{2}{N}\mathbf 1\mathbf 1^{\mathsf T}$. Check: $\mathbf A^{\mathsf T}\mathbf A = \mathbf I - \frac4N\mathbf 1\mathbf 1^{\mathsf T} + \frac{4}{N^2}\mathbf 1(\mathbf 1^{\mathsf T}\mathbf 1)\mathbf 1^{\mathsf T} = \mathbf I - \frac4N\mathbf 1\mathbf 1^{\mathsf T} + \frac4N\mathbf 1\mathbf 1^{\mathsf T} = \mathbf I$. It costs only O(N) to apply: first compute the sum $S = \sum v_j$, then $u_i = v_i - \frac2N S$. For N = 8 the diagonal entries are 0.75 and the off-diagonal entries are -0.25: each line keeps 75% for itself and spreads the rest evenly over the others. (For N = 4 the diagonal is 0.5, a more "even" mix.)
-- **Hadamard**: $\mathbf H_2 = \frac{1}{\sqrt2}\begin{bmatrix}1&1\\1&-1\end{bmatrix}$, $\mathbf H_{2N} = \mathbf H_2\otimes\mathbf H_N$ (N a power of 2). All entries have magnitude $1/\sqrt N$ -- it mixes the most thoroughly, and it can be computed in O(N log N) with an FFT-like butterfly.
+- **Householder**: $`\mathbf A = \mathbf I - \frac{2}{N}\mathbf 1\mathbf 1^{\mathsf T}`$. Check: $`\mathbf A^{\mathsf T}\mathbf A = \mathbf I - \frac4N\mathbf 1\mathbf 1^{\mathsf T} + \frac{4}{N^2}\mathbf 1(\mathbf 1^{\mathsf T}\mathbf 1)\mathbf 1^{\mathsf T} = \mathbf I - \frac4N\mathbf 1\mathbf 1^{\mathsf T} + \frac4N\mathbf 1\mathbf 1^{\mathsf T} = \mathbf I`$. It costs only O(N) to apply: first compute the sum $`S = \sum v_j`$, then $`u_i = v_i - \frac2N S`$. For N = 8 the diagonal entries are 0.75 and the off-diagonal entries are -0.25: each line keeps 75% for itself and spreads the rest evenly over the others. (For N = 4 the diagonal is 0.5, a more "even" mix.)
+- **Hadamard**: $`\mathbf H_2 = \frac{1}{\sqrt2}\begin{bmatrix}1&1\\1&-1\end{bmatrix}`$, $`\mathbf H_{2N} = \mathbf H_2\otimes\mathbf H_N`$ (N a power of 2). All entries have magnitude $`1/\sqrt N`$ -- it mixes the most thoroughly, and it can be computed in O(N log N) with an FFT-like butterfly.
 - Any rotation matrix, or a random orthogonal matrix (generated by a QR decomposition), also works.
 
 This chapter's `Reverb.h` uses the Householder matrix (simple, cheap, and the diffusion is already sufficient for N = 8).
 
-#### Making all modes decay at the same rate: $g_i = \gamma^{L_i}$
+#### Making all modes decay at the same rate: $`g_i = \gamma^{L_i}`$
 
 We want every frequency to decay with the same RT60. Jot's approach: make the attenuation of each line proportional to its length -- in dB, every "single sample" attenuates by the same amount:
 
@@ -288,27 +288,27 @@ g_i = \gamma^{L_i},\qquad \gamma = 10^{-3/(\mathrm{RT60}\cdot f_s)}
 g_i = 10^{-3L_i/(\mathrm{RT60}\cdot f_s)}
 $$
 
-Why this is right: replacing every $z^{-1}$ of the lossless system by $\gamma z^{-1}$ multiplies each delay $z^{-L_i}$ by $\gamma^{L_i}$ -- exactly the $g_i$ we added. And the effect of "$z^{-1} \to \gamma z^{-1}$" is to multiply the radius of all the system's poles by γ: the poles of the lossless system all lie on the unit circle, and now they all lie on a circle of radius γ, so **every mode decays by a factor of γ per sample** and the RT60 is the same for all of them. This has the same form as the comb formula, except that now each line plugs in its own $L_i$.
+Why this is right: replacing every $`z^{-1}`$ of the lossless system by $`\gamma z^{-1}`$ multiplies each delay $`z^{-L_i}`$ by $`\gamma^{L_i}`$ -- exactly the $`g_i`$ we added. And the effect of "$`z^{-1} \to \gamma z^{-1}`$" is to multiply the radius of all the system's poles by γ: the poles of the lossless system all lie on the unit circle, and now they all lie on a circle of radius γ, so **every mode decays by a factor of γ per sample** and the RT60 is the same for all of them. This has the same form as the comb formula, except that now each line plugs in its own $`L_i`$.
 
 #### Damping: a frequency-dependent RT60
 
-Replace each line's $g_i$ by a filter $G_i(z)$ whose magnitude is $|G_i(e^{j\omega})| = 10^{-3L_i/(\mathrm{RT60}(\omega) f_s)}$, and different frequencies can have different RT60 values (Jot's absorptive filter). An exact design needs shelving filters; this chapter uses a simplified version: put the chapter 02 `OnePole` lowpass (cutoff = `setDampingHz`) in each line and then multiply by $g_i$. The result is an RT60 ≈ the set value at low frequencies and increasingly shorter at high frequencies, which matches the trend of real rooms (example 2 measures the RT60 of each frequency band).
+Replace each line's $`g_i`$ by a filter $`G_i(z)`$ whose magnitude is $`|G_i(e^{j\omega})| = 10^{-3L_i/(\mathrm{RT60}(\omega) f_s)}`$, and different frequencies can have different RT60 values (Jot's absorptive filter). An exact design needs shelving filters; this chapter uses a simplified version: put the chapter 02 `OnePole` lowpass (cutoff = `setDampingHz`) in each line and then multiply by $`g_i`$. The result is an RT60 ≈ the set value at low frequencies and increasingly shorter at high frequencies, which matches the trend of real rooms (example 2 measures the RT60 of each frequency band).
 
 #### Input and output vectors
 
 - **b**: which lines the input is fed into. We feed the left channel into the even lines and the right channel into the odd lines.
-- **c**: which lines are taken as output and with what signs. We take $y_L = v_0 - v_2 + v_4 - v_6$ and $y_R = v_1 - v_3 + v_5 - v_7$. Alternating signs cancel part of the "all lines in phase" component that the Householder matrix produces, and using different lines for left and right -> decorrelated left/right channels (a wide stereo image).
+- **c**: which lines are taken as output and with what signs. We take $`y_L = v_0 - v_2 + v_4 - v_6`$ and $`y_R = v_1 - v_3 + v_5 - v_7`$. Alternating signs cancel part of the "all lines in phase" component that the Householder matrix produces, and using different lines for left and right -> decorrelated left/right channels (a wide stereo image).
 
 #### Echo density and mode density
 
 - Time domain: on the next trip every echo splits into N echoes (matrix mixing), so the echo density fills up very quickly. Example 2 prints the number of non-zero samples in each 10 ms: 0, 0, 1, 6, 27, 71, 145, 231, 319, 398 (out of a possible 480), nearly full within 100 ms.
-- Frequency domain: the total number of modes of an FDN equals the sum of all the delay lengths $\sum L_i$, so the average **mode density = $\sum L_i / f_s$ modes per Hz**. The 8 lines of this chapter total 19502 samples -> 0.41 modes/Hz (on average one mode every 2.5 Hz). The 4-line FDN of exercise 4 has only 0.14 modes/Hz (one every 7 Hz), and its tail already sounds pitched. A frequently quoted rule of thumb comes from Schroeder and Logan: for RT60 = 1 s a mode density of about 0.15 modes/Hz is enough, and the required density is proportional to RT60; that is, the mode density (modes/Hz, equal to the total delay length in seconds) should be at least about 0.15 × RT60, which in terms of total delay length is $\sum L_i \ge 0.15\cdot\mathrm{RT60}\cdot f_s$ (the section "Mode Density Requirement" in J. O. Smith's *Physical Audio Signal Processing*). If it is not enough, a long decay sounds like a bunch of separate resonances (ringing tones). The 0.41 of this chapter is sufficient for RT60 = 2 s (which needs 0.3); at RT60 = 4 s (which needs 0.6) it is no longer quite enough -- increasing size or adding modulation helps then.
+- Frequency domain: the total number of modes of an FDN equals the sum of all the delay lengths $`\sum L_i`$, so the average **mode density = $`\sum L_i / f_s`$ modes per Hz**. The 8 lines of this chapter total 19502 samples -> 0.41 modes/Hz (on average one mode every 2.5 Hz). The 4-line FDN of exercise 4 has only 0.14 modes/Hz (one every 7 Hz), and its tail already sounds pitched. A frequently quoted rule of thumb comes from Schroeder and Logan: for RT60 = 1 s a mode density of about 0.15 modes/Hz is enough, and the required density is proportional to RT60; that is, the mode density (modes/Hz, equal to the total delay length in seconds) should be at least about 0.15 × RT60, which in terms of total delay length is $`\sum L_i \ge 0.15\cdot\mathrm{RT60}\cdot f_s`$ (the section "Mode Density Requirement" in J. O. Smith's *Physical Audio Signal Processing*). If it is not enough, a long decay sounds like a bunch of separate resonances (ringing tones). The 0.41 of this chapter is sufficient for RT60 = 2 s (which needs 0.3); at RT60 = 4 s (which needs 0.6) it is no longer quite enough -- increasing size or adding modulation helps then.
 
 ### 2.7 Why the delay lengths should be mutually coprime
 
 Suppose two lines have lengths 1500 and 2000 samples (gcd = 500):
 
-- **Frequency domain**: the modes of the first lie at integer multiples of $f_s/1500 = 32$ Hz and those of the second at integer multiples of 24 Hz. They **overlap** at integer multiples of $f_s/500 = 96$ Hz -- those frequencies are resonated by both lines at once, so they carry particularly large energy and decay particularly slowly, and they sound "metallic" (metallic ringing).
+- **Frequency domain**: the modes of the first lie at integer multiples of $`f_s/1500 = 32`$ Hz and those of the second at integer multiples of 24 Hz. They **overlap** at integer multiples of $`f_s/500 = 96`$ Hz -- those frequencies are resonated by both lines at once, so they carry particularly large energy and decay particularly slowly, and they sound "metallic" (metallic ringing).
 - **Time domain**: the echoes of the two lines **arrive together** once every lcm(1500, 2000) = 6000 samples (125 ms), forming a regular flutter.
 
 If the lengths are coprime (say 1427 and 1783, both prime), then apart from DC there are no common modes, and the period at which echoes arrive together is lcm = 1427·1783 = 2,544,341 samples (53 seconds), which in practice means it never repeats.
@@ -319,7 +319,7 @@ That is why `Reverb.h` converts each line's length to samples and then applies `
 
 Even with coprime delays, a long decay (several seconds) still leaves a tail made of thousands of resonances at fixed frequencies. The ear is very sensitive to "stationary, slowly decaying narrowband resonances" and hears a faint pitch or ringing. The fix: **modulate the delay lengths slowly** (e.g. an LFO of ±0.5–2 ms at 0.5–2 Hz, with a different phase for every line).
 
-- The mode frequency is ≈ $k f_s / L_i$; as $L_i$ moves, the modes drift back and forth along the frequency axis.
+- The mode frequency is ≈ $`k f_s / L_i`$; as $`L_i`$ moves, the modes drift back and forth along the frequency axis.
 - Averaged over time, the energy is smeared into the neighboring frequencies, the spectrum becomes smooth, and the ringing disappears.
 - The cost: modulating a delay is a tiny vibrato (the principle of the chorus in chapter 10); too large a depth produces audible pitch wobble, which is obvious on sustained sounds such as a piano.
 
@@ -327,7 +327,7 @@ Exercise 4 quantifies this: the standard deviation of the tail spectrum (in dB) 
 
 > A modulated delay has to read samples at "non-integer positions", so it uses chapter 09's `FractionalDelayLine` (linear or cubic interpolation). This is also why `Reverb.h` does not use the integer `DelayLine`: `setSize()` also needs smoothly varying non-integer lengths when it changes the delay lengths.
 >
-> One cost: linear interpolation at a non-integer position is itself a mild lowpass (with a fractional part of 0.5 it goes straight to zero at Nyquist), and inside the loop that means a little extra loss on every trip. Normally this small loss is mixed into the attenuation of $g_i$ and is inaudible, but freeze requires the loop to be **strictly lossless**, so `Reverb` fades the modulation out while frozen so that the read positions return to integer lengths (section 3.2).
+> One cost: linear interpolation at a non-integer position is itself a mild lowpass (with a fractional part of 0.5 it goes straight to zero at Nyquist), and inside the loop that means a little extra loss on every trip. Normally this small loss is mixed into the attenuation of $`g_i`$ and is inaudible, but freeze requires the loop to be **strictly lossless**, so `Reverb` fades the modulation out while frozen so that the read positions return to integer lengths (section 3.2).
 
 ### 2.9 Pre-delay and early reflections
 
@@ -345,7 +345,7 @@ d_k = \frac{|\mathbf r_{\mathrm{img},k} - \mathbf r_{\mathrm{listener}}| - |\mat
 a_k = \sqrt{1-\alpha}\cdot\frac{|\mathbf r_{\mathrm{src}} - \mathbf r_{\mathrm{listener}}|}{|\mathbf r_{\mathrm{img},k} - \mathbf r_{\mathrm{listener}}|}
 $$
 
-(the delay and gain relative to the direct sound; $\sqrt{1-\alpha}$ is the wall's amplitude reflection coefficient and the distance ratio is the 1/r spherical spreading.) Exercise 3 implements this and connects the ER to the FDN (pre-delay = the latest ER) to form a complete "ER + late" reverb.
+(the delay and gain relative to the direct sound; $`\sqrt{1-\alpha}`$ is the wall's amplitude reflection coefficient and the distance ratio is the 1/r spherical spreading.) Exercise 3 implements this and connects the ER to the FDN (pre-delay = the latest ER) to form a complete "ER + late" reverb.
 
 A complete algorithmic reverb looks roughly like this:
 
@@ -367,7 +367,7 @@ flowchart LR
 
 #### The cost of direct convolution
 
-$y[n] = \sum_{k=0}^{M-1} h[k]x[n-k]$: every output sample needs M multiply-adds. A 2-second IR at 48 kHz has M = 96000, and in stereo that is 2 × 48000 × 96000 ≈ 9.2 × 10⁹ multiply-adds per second -- a single core of an ordinary CPU cannot do it in real time. Example 3 processes 1 second of audio with a 0.33-second IR (15840 samples), and direct convolution takes about 0.9 seconds in a Release build (measured on this machine; several seconds in a Debug build).
+$`y[n] = \sum_{k=0}^{M-1} h[k]x[n-k]`$: every output sample needs M multiply-adds. A 2-second IR at 48 kHz has M = 96000, and in stereo that is 2 × 48000 × 96000 ≈ 9.2 × 10⁹ multiply-adds per second -- a single core of an ordinary CPU cannot do it in real time. Example 3 processes 1 second of audio with a 0.33-second IR (15840 samples), and direct convolution takes about 0.9 seconds in a Release build (measured on this machine; several seconds in a Debug build).
 
 #### Fast convolution with the FFT
 
@@ -375,14 +375,14 @@ The convolution theorem: **convolution in the time domain = multiplication in th
 
 For an infinitely long input, cut the input into blocks of length B and process them one at a time. There are two standard ways:
 
-**Overlap-add (OLA)**: zero-pad each input block $x_j$ (length B) to N ≥ B + M − 1, FFT, multiply by $H$, IFFT, and obtain a result of length B + M − 1; the results of adjacent blocks overlap by M − 1 samples, and the overlapping parts are **added**.
+**Overlap-add (OLA)**: zero-pad each input block $`x_j`$ (length B) to N ≥ B + M − 1, FFT, multiply by $`H`$, IFFT, and obtain a result of length B + M − 1; the results of adjacent blocks overlap by M − 1 samples, and the overlapping parts are **added**.
 
 ```
  x_j  zero-pad → FFT → ×H → IFFT → [ B + M − 1 output samples ]
                                  └─ the tail's M−1 samples are added to the start of the next block ─┘
 ```
 
-**Overlap-save (OLS)**: each time take N input samples (B new ones + the previous N − B old ones), FFT, multiply by $H$, IFFT; the first M − 1 samples of the result are contaminated by the circular convolution "wrapping around" (wrap-around) and are **discarded**, and only the last B correct output samples are kept.
+**Overlap-save (OLS)**: each time take N input samples (B new ones + the previous N − B old ones), FFT, multiply by $`H`$, IFFT; the first M − 1 samples of the result are contaminated by the circular convolution "wrapping around" (wrap-around) and are **discarded**, and only the last B correct output samples are kept.
 
 ```
  frame = [ old N−B | new B ] → FFT → ×H → IFFT → [ first N−B: wrap, discard | last B: correct output ]
@@ -404,7 +404,7 @@ $$
 y = h * x = \sum_{k=0}^{K-1} \big(h_k * x\big)\ \text{delayed by } kP
 $$
 
-Each piece $h_k$ is only P long, and paired with an input block of length P an FFT with N = 2P is enough (overlap-save: frame = [previous P | this P]). The key observation: "delay by kP and then convolve with $h_k$" is, in the frequency domain, "**the input spectrum from k blocks ago** $X_{j-k}$ multiplied by $H_k$". So if we store the spectrum of every input block (a **frequency-domain delay line, FDL**), each output block is:
+Each piece $`h_k`$ is only P long, and paired with an input block of length P an FFT with N = 2P is enough (overlap-save: frame = [previous P | this P]). The key observation: "delay by kP and then convolve with $`h_k`$" is, in the frequency domain, "**the input spectrum from k blocks ago** $`X_{j-k}`$ multiplied by $`H_k`$". So if we store the spectrum of every input block (a **frequency-domain delay line, FDL**), each output block is:
 
 $$
 Y_j = \sum_{k=0}^{K-1} H_k \cdot X_{j-k}
@@ -420,7 +420,7 @@ $$
                                                                   IFFT ◄───────┘ → take the last P → output block j
 ```
 
-One FFT, K spectrum multiply-accumulates and one IFFT produce P output samples. The IR spectra $H_k$ are precomputed in `setImpulseResponse()`.
+One FFT, K spectrum multiply-accumulates and one IFFT produce P output samples. The IR spectra $`H_k`$ are precomputed in `setImpulseResponse()`.
 
 #### Where the latency comes from
 
@@ -453,7 +453,7 @@ If you want low latency without high CPU: use small partitions for the **beginni
 
 - **Recording a real space**: play an **exponential sine sweep** through a loudspeaker in the space, record it, and deconvolve with an inverse filter to obtain the IR (Farina 2000, the mainstream method today, which can separate out the loudspeaker's harmonic distortion); some people also use near-impulsive sources such as a starter pistol or a bursting balloon (simple, but with worse SNR and bandwidth). The recorded IR also contains the timbre of the loudspeaker and microphone.
 - **Sampling hardware units**: feed a classic plate, spring or digital reverb a sweep to get their IRs (this only captures "the LTI part"; time-varying effects such as modulation cannot be captured).
-- **Synthesis**: the simplest synthetic IR is **exponentially decaying noise**: $h[n] = w[n]\cdot e^{-\ln(1000)\,n/(\mathrm{RT60}\,f_s)}$, where $w$ is white noise (a lowpass can be added to make the highs decay). This is exactly the statistical model of late reverb. `ConvolutionReverb::makeSyntheticImpulseResponse()` does exactly this: each channel uses a different seed (stereo decorrelation), an 8 kHz one-pole lowpass, a linear fade-out over the last 10% to avoid truncation, and normalization to unit energy $\sum h^2 = 1$ (so that input and output have roughly the same loudness).
+- **Synthesis**: the simplest synthetic IR is **exponentially decaying noise**: $`h[n] = w[n]\cdot e^{-\ln(1000)\,n/(\mathrm{RT60}\,f_s)}`$, where $`w`$ is white noise (a lowpass can be added to make the highs decay). This is exactly the statistical model of late reverb. `ConvolutionReverb::makeSyntheticImpulseResponse()` does exactly this: each channel uses a different seed (stereo decorrelation), an 8 kHz one-pole lowpass, a linear fade-out over the last 10% to avoid truncation, and normalization to unit energy $`\sum h^2 = 1`$ (so that input and output have roughly the same loudness).
 - You can also record an IR from an algorithmic reverb (example 2's `l12_fdn_ir_2s.wav`) and use it as the IR of a convolution.
 
 ### 2.11 The character of plate, hall and room
@@ -518,11 +518,11 @@ float processSample(float x) noexcept {
 
 Note `read(delay_ - 1)`: the convention of the internal ring buffer is that "after a push, `read(0)` is the value just written", but here we **read first and write afterwards**, so the value pushed last time is already one sample old, and reading D − 1 gives "the value written D samples ago", making the loop length exactly D. This kind of off-by-one is the most common mistake in reverb code (it causes small deviations in the RT60 and the mode frequencies).
 
-The two static functions correspond to the formulas of section 2.3: `feedbackForRt60(D, RT60, fs)` returns $10^{-3D/(\mathrm{RT60} f_s)}$ and `rt60ForFeedback(D, g, fs)` returns $-3D/(f_s\log_{10}g)$.
+The two static functions correspond to the formulas of section 2.3: `feedbackForRt60(D, RT60, fs)` returns $`10^{-3D/(\mathrm{RT60} f_s)}`$ and `rt60ForFeedback(D, g, fs)` returns $`-3D/(f_s\log_{10}g)`$.
 
 **`AllpassDiffuser`**: the standard Schroeder allpass of section 2.4, `v = x + g·v[n−D]`, `y = v[n−D] − g·v`.
 
-**`TappedDelay`**: `setTaps(std::vector<Tap>)` (allocates; call it only during the preparation phase), and `processSample()` returns $\sum a_k x[n-d_k]$.
+**`TappedDelay`**: `setTaps(std::vector<Tap>)` (allocates; call it only during the preparation phase), and `processSample()` returns $`\sum a_k x[n-d_k]`$.
 
 **`measureRt60(x, n, fs, windowMs, fitStartDb, fitEndDb)`**: computes an RMS envelope (in dB) in units of windowMs, and runs a linear regression from the first point after the peak that falls below -5 dB down to -35 dB; RT60 = −60 / slope. The window must be longer than the echo spacing (the comb has D = 32 ms, so example 1 uses 40 ms), otherwise it would measure the zeros between echoes. Exercise 6 implements the more standard Schroeder backward integration.
 
@@ -546,8 +546,8 @@ Signal flow (per sample, compare with section 2.6):
 A few design points:
 
 - **Delay lengths**: the base lengths are 29.7–73.1 ms (`kBaseDelaysMs`), multiplied by the factor 0.5 + size (0.5–1.5) given by `size`, converted to samples and passed through `nextPrime()`. At size = 0.5 and 48 kHz they are 1427, 1783, 1973, 2099, 2579, 2879, 3251, 3511 (all prime).
-- **`setDecaySeconds()`** recomputes $g_i$ immediately; **`setSize()`** changes the target lengths, and the actual lengths glide there with a time constant of about 30 ms (a jump in delay length clicks, whereas a smooth glide is only a brief pitch change), and it recomputes $g_i$ at the same time.
-- **`setFreeze(true)`**: $g_i = 1$, damping is skipped, the input gain is 0, and the modulation fades out to 0 with a time constant of about 30 ms. The Householder matrix is lossless, so the tail never decays (example 2: after freezing, the RMS differs by only +0.02 dB over 1.1 seconds). The modulation must stop: reading a delay line at a fractional position (linear interpolation) amounts to an extra lowpass on every trip; with 1 ms modulation left on, a freeze of 28 seconds loses about 4 dB and gets steadily darker, while with it stopped the difference over 28 seconds is only 0.03 dB. Likewise, the smoothing of the delay lengths snaps straight to the integer length when it gets close to the target (the delay length is a float of a few thousand samples; when the gap is below about 0.1–0.2 sample, the smoothing increment is smaller than half a ulp and cannot be added, so it would stay on a fractional value forever). When the freeze is released the modulation fades back in.
+- **`setDecaySeconds()`** recomputes $`g_i`$ immediately; **`setSize()`** changes the target lengths, and the actual lengths glide there with a time constant of about 30 ms (a jump in delay length clicks, whereas a smooth glide is only a brief pitch change), and it recomputes $`g_i`$ at the same time.
+- **`setFreeze(true)`**: $`g_i = 1`$, damping is skipped, the input gain is 0, and the modulation fades out to 0 with a time constant of about 30 ms. The Householder matrix is lossless, so the tail never decays (example 2: after freezing, the RMS differs by only +0.02 dB over 1.1 seconds). The modulation must stop: reading a delay line at a fractional position (linear interpolation) amounts to an extra lowpass on every trip; with 1 ms modulation left on, a freeze of 28 seconds loses about 4 dB and gets steadily darker, while with it stopped the difference over 28 seconds is only 0.03 dB. Likewise, the smoothing of the delay lengths snaps straight to the integer length when it gets close to the target (the delay length is a float of a few thousand samples; when the gap is below about 0.1–0.2 sample, the smoothing increment is smaller than half a ulp and cannot be added, so it would stay on a fractional value forever). When the freeze is released the modulation fades back in.
 - **`setWidth()`**: mid/side on the wet signal, side × width. width = 0 -> the wet signal becomes mono.
 - **`setMix()`**: a linear dry/wet, `out = dry·(1−mix) + wet·mix`, smoothed.
 - **NaN parameters**: every float setter begins with `if (std::isnan(x)) return;`, so a NaN keeps the previous valid value (see section 4 for the reason).
@@ -555,13 +555,13 @@ A few design points:
 - **Mono**: when the block has only 1 channel, the same signal is used for both left and right inputs, and only the left wet output is produced.
 - **`processSampleStereo(inL, inR, wetL, wetR)`**: computes only the wet signal (no width / mix), for those who want to assemble their own.
 
-**Why an FDN rather than Freeverb**: for the same number of delays, the FDN has energy exchange (the echo density grows over time), and $g_i$ makes all modes follow strictly one RT60 (example 2 measures errors < 1%), whereas Freeverb's roomsize is merely a feedback amount. Freeverb's components (`CombFilter`, `AllpassDiffuser`) are all in `ReverbBuildingBlocks.h`, so you can assemble one yourself and compare.
+**Why an FDN rather than Freeverb**: for the same number of delays, the FDN has energy exchange (the echo density grows over time), and $`g_i`$ makes all modes follow strictly one RT60 (example 2 measures errors < 1%), whereas Freeverb's roomsize is merely a feedback amount. Freeverb's components (`CombFilter`, `AllpassDiffuser`) are all in `ReverbBuildingBlocks.h`, so you can assemble one yourself and compare.
 
 ### 3.3 `ConvolutionReverb.h`
 
 - `prepare(sr, maxBlockSize, nch)`: partition size P = the smallest power of 2 that is ≥ maxBlockSize (at least 64), FFT size N = 2P; it creates chapter 11's `Fft(order)` and the FIFOs, frame and FDL of each channel.
-- `setImpulseResponse(ir)`: **not on the audio thread**. It cuts the IR into K pieces, puts the IR in the first half of each and zero-pads the second half to N, and `forwardReal` gives $H_k$ (N/2 + 1 bins). The IR may have 1 channel (shared by all channels) or at least as many channels as are processed. It may be called before or after prepare.
-- `process(block)`: for each sample it first takes from the output FIFO the wet value "computed P samples ago" and then puts the input into the input FIFO; once P samples have been collected it calls `processPartition()`. The dry used in the dry/wet mix must also be P samples late; otherwise wet is P late and dry is not, and the two have different latencies: when the IR has a direct sound (every recorded IR does), dry summed with the direct sound that is P late becomes comb filtering with spacing fs/P (at 48 kHz, P = 512, one notch every 93.75 Hz), and after the host applies latency compensation based on `getLatencySamples()`, the dry of this track would actually be P earlier than the other tracks. Fortunately no extra delay line is needed: before it is overwritten, slot `fifoPos` of the input FIFO holds exactly the input from P samples ago, $x[n-P]$:
+- `setImpulseResponse(ir)`: **not on the audio thread**. It cuts the IR into K pieces, puts the IR in the first half of each and zero-pads the second half to N, and `forwardReal` gives $`H_k`$ (N/2 + 1 bins). The IR may have 1 channel (shared by all channels) or at least as many channels as are processed. It may be called before or after prepare.
+- `process(block)`: for each sample it first takes from the output FIFO the wet value "computed P samples ago" and then puts the input into the input FIFO; once P samples have been collected it calls `processPartition()`. The dry used in the dry/wet mix must also be P samples late; otherwise wet is P late and dry is not, and the two have different latencies: when the IR has a direct sound (every recorded IR does), dry summed with the direct sound that is P late becomes comb filtering with spacing fs/P (at 48 kHz, P = 512, one notch every 93.75 Hz), and after the host applies latency compensation based on `getLatencySamples()`, the dry of this track would actually be P earlier than the other tracks. Fortunately no extra delay line is needed: before it is overwritten, slot `fifoPos` of the input FIFO holds exactly the input from P samples ago, $`x[n-P]`$:
 
 ```cpp
 const float dryDelayed = inputFifo[fifoPos];   // x[n-P] (not yet overwritten)
@@ -633,13 +633,13 @@ Theoretical peak = 1/(1-g) = +19.49 dB, notch = 1/(1+g) = -5.55 dB
     8015.4        1.999        0.339
 ```
 
-- The "-60dB time" is counted from the first echo (t = D/fs, amplitude 1): the amplitude of the k-th echo is $g^{k-1}$; find the first echo whose amplitude is ≤ 10⁻³, and the decay time = the number of trips (k − 1) × D/fs. For RT60 = 2 s, k − 1 = ⌈61.65⌉ = 62 trips -> 2.011 s, quantized to an integer multiple of D/fs = 32.4 ms, hence slightly above the set value. In absolute time that echo (the 63rd) appears at 63 × D/fs = 2.044 s; the extra D/fs is the propagation delay of the first echo itself and does not count as decay.
+- The "-60dB time" is counted from the first echo (t = D/fs, amplitude 1): the amplitude of the k-th echo is $`g^{k-1}`$; find the first echo whose amplitude is ≤ 10⁻³, and the decay time = the number of trips (k − 1) × D/fs. For RT60 = 2 s, k − 1 = ⌈61.65⌉ = 62 trips -> 2.011 s, quantized to an integer multiple of D/fs = 32.4 ms, hence slightly above the set value. In absolute time that echo (the 63rd) appears at 63 × D/fs = 2.044 s; the extra D/fs is the propagation delay of the first echo itself and does not count as decay.
 - With damp = 0.5 the RT60 at 4 kHz is 0.685 s, which agrees with the hand calculation in section 2.3.
 - It writes `l12_comb_ir.wav` (the comb IR for RT60 2 s: a train of clicks every 32 ms, each one quieter, like a flutter echo) and `l12_comb_damped_ir.wav` (the clicks get duller and duller).
 
 #### Example 2: `l12_reverb_impulse` (`examples/reverb_impulse.cpp`)
 
-Feeds an impulse into `Reverb` (mix = 1, damping off) and prints the lengths and $g_i$ of the 8 lines, the set vs measured RT60, an ASCII decay curve, the echo density, and the effects of damping and freeze. Actual output (excerpt):
+Feeds an impulse into `Reverb` (mix = 1, damping off) and prints the lengths and $`g_i`$ of the 8 lines, the set vs measured RT60, an ASCII decay curve, the echo density, and the effects of damping and freeze. Actual output (excerpt):
 
 ```
 --- RT60 verification (no damping; windowed-RMS regression over the -5 .. -35 dB range) ---
@@ -729,8 +729,8 @@ It writes `l12_send_dry.wav`, `l12_send_mix.wav` (dry + return) and `l12_send_pr
 - **Parameter smoothing**: `setMix()`, `setWidth()`, `setPreDelayMs()` and `setSize()` are all smoothed (about a 30 ms time constant). A change of `setSize()` or the pre-delay is essentially a delay length sliding -> a brief pitch change (Doppler), which is far better than a click, but do not use it for fast automation. `setDecaySeconds()` takes effect immediately (it only changes the decay rate and does not click).
 - **`reset()` makes the smoothed values jump straight to their targets**: after a reset there is no sound inside, so the jump cannot click. The usual order for offline processing is therefore `prepare()` -> the various setters -> `reset()`, and the parameters are in place from the first sample (otherwise the first ~0.1 s would glide in from the defaults, e.g. mix gliding from 0.3 to 1 and leaking the dry signal).
 - **Latency reporting**: `ConvolutionReverb::getLatencySamples()` = P. The built-in dry/wet mix already delays the dry signal by P as well (section 3.3), so whatever the mix, the latency of the whole output is uniformly P; but the host must still apply latency compensation, otherwise this path would be P samples late when mixed in parallel with other tracks or with the dry signal of a send/return. `Reverb` (the FDN) has no latency.
-- **NaN parameters**: `std::clamp(NaN, lo, hi)` returns the NaN unchanged. If a setter relies on clamp alone, a single NaN parameter (e.g. a faulty host automation) turns $g_i$ or mix into NaN, the output becomes NaN permanently, and even `reset()` cannot rescue it (reset just sets the smoothed values to a target that is already NaN). All setters in this chapter, like those of `OnePole` and `Delay`, start with `if (std::isnan(x)) return;`.
-- **Safety of freeze**: with freeze, $g_i = 1$, which only avoids divergence if the matrix is strictly orthogonal. Do not enable gains other than damping while frozen (or swap A for a non-orthogonal matrix); float errors can also accumulate slowly -- in practice you can make the frozen g 0.99999 instead of 1.
+- **NaN parameters**: `std::clamp(NaN, lo, hi)` returns the NaN unchanged. If a setter relies on clamp alone, a single NaN parameter (e.g. a faulty host automation) turns $`g_i`$ or mix into NaN, the output becomes NaN permanently, and even `reset()` cannot rescue it (reset just sets the smoothed values to a target that is already NaN). All setters in this chapter, like those of `OnePole` and `Delay`, start with `if (std::isnan(x)) return;`.
+- **Safety of freeze**: with freeze, $`g_i = 1`$, which only avoids divergence if the matrix is strictly orthogonal. Do not enable gains other than damping while frozen (or swap A for a non-orthogonal matrix); float errors can also accumulate slowly -- in practice you can make the frozen g 0.99999 instead of 1.
 
 ---
 
@@ -764,7 +764,7 @@ See [exercises/README.md](exercises/README.md). There are 7 in total: comb feedb
 
 - M. R. Schroeder, "Natural Sounding Artificial Reverberation," *Journal of the Audio Engineering Society*, vol. 10, no. 3, 1962. -- the original paper on the comb + allpass architecture.
 - M. R. Schroeder, "New Method of Measuring Reverberation Time," *Journal of the Acoustical Society of America*, vol. 37, 1965. -- backward integration (exercise 6).
-- J.-M. Jot and A. Chaigne, "Digital Delay Networks for Designing Artificial Reverberators," AES 90th Convention, 1991. -- the systematic design of FDNs, $g_i = \gamma^{L_i}$, absorptive filters.
+- J.-M. Jot and A. Chaigne, "Digital Delay Networks for Designing Artificial Reverberators," AES 90th Convention, 1991. -- the systematic design of FDNs, $`g_i = \gamma^{L_i}`$, absorptive filters.
 - J. Dattorro, "Effect Design, Part 1: Reverberator and Other Filters," *JAES*, vol. 45, no. 9, 1997. -- the classic plate reverb topology (this chapter's input diffuser lengths are taken from here).
 - V. Välimäki, J. D. Parker, L. Savioja, J. O. Smith, J. S. Abel, "Fifty Years of Artificial Reverberation," *IEEE Transactions on Audio, Speech, and Language Processing*, vol. 20, no. 5, 2012. -- an excellent survey.
 - Julius O. Smith III, *Physical Audio Signal Processing* (CCRMA online book) -- chapters on the Schroeder reverb, Freeverb and FDNs, with detailed derivations.

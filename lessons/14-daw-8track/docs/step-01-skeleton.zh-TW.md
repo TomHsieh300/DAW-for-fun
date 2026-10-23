@@ -201,7 +201,7 @@ Step 1: hello engine
 ```
 
 同樣是 235 次呼叫；peak 比你的 Step 1 engine 低 3.01 dB，因為 track 會用 constant-power law
-把它的訊號 pan 到中央（每側 $\cos(\pi/4) = 0.7071$）- 你會在
+把它的訊號 pan 到中央（每側 $`\cos(\pi/4) = 0.7071`$）- 你會在
 Step 4 親手做出來。
 
 ## 你學到了什麼

@@ -59,7 +59,7 @@ juce::NormalisableRange<double> range(info.min, info.max,
     [info](double, double, double v) { return info.clamp((float) v); });           // snap (Int)
 ```
 
-因此頻率旋鈕（log taper：$n = \ln(v/v_{\min}) / \ln(v_{\max}/v_{\min})$）會把 1 kHz 放在 20 Hz .. 20 kHz 的中間附近，與 engine 的 `getParameterNormalized()` 完全一致。文字來自 `formatParameterValue()`（stage 1），雙擊會回到 `defaultValue`，範圍跨越零的旋鈕會從中心畫出弧線。對於有 30 個參數的 EQ，面板使用 5 欄——每列一個 band，就像硬體 EQ。帶有 meter 的 effect（`hasMeter()`：compressor、limiter、gate、expander、de-esser）會在標頭中得到一條 gain-reduction bar；標頭也顯示 effect 的 latency——以 `getReportedLatencySamples()` 讀取，也就是 atomic 副本，因為 `getLatencySamples()` 屬於 audio thread（Step 5）。
+因此頻率旋鈕（log taper：$`n = \ln(v/v_{\min}) / \ln(v_{\max}/v_{\min})`$）會把 1 kHz 放在 20 Hz .. 20 kHz 的中間附近，與 engine 的 `getParameterNormalized()` 完全一致。文字來自 `formatParameterValue()`（stage 1），雙擊會回到 `defaultValue`，範圍跨越零的旋鈕會從中心畫出弧線。對於有 30 個參數的 EQ，面板使用 5 欄——每列一個 band，就像硬體 EQ。帶有 meter 的 effect（`hasMeter()`：compressor、limiter、gate、expander、de-esser）會在標頭中得到一條 gain-reduction bar；標頭也顯示 effect 的 latency——以 `getReportedLatencySamples()` 讀取，也就是 atomic 副本，因為 `getLatencySamples()` 屬於 audio thread（Step 5）。
 
 Threading：`setParameter()` 可以從任何 thread 呼叫（一次 atomic store 加上一個 dirty bit，由 audio thread 在下一個 block 套用）。一個 15 Hz 的 timer 讀回 `getParameter()`，所以面板會跟隨其他地方所做的變更——同一個 effect 上的第二個面板、automation lane（Exercise 8）、project load。
 

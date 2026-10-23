@@ -33,14 +33,14 @@ restore the transport           the user's play position and loop survive the bo
 
 ### 長度的計算
 
-歌曲長度為 $N_s$，尾巴 $N_t = \operatorname{round}(T_{\text{tail}} f_s)$，mix latency 為 $L$：
+歌曲長度為 $`N_s`$，尾巴 $`N_t = \mathrm{round}(T_{\text{tail}} f_s)`$，mix latency 為 $`L`$：
 
 $$
 N_{\text{render}} = N_s + N_t + L, \qquad \text{file} = \text{render}[L,\; L + N_s + N_t)
 $$
 
-所以檔案的 sample 0 就是 timeline 的 sample `startSample`，檔案長度恰好是 $N_s + N_t$。
-以本章的歌曲為例：120 BPM 下 8 個小節 = $8 \cdot 96\,000 = 768\,000$ 個 sample，3 秒的尾巴 = 144 000，
+所以檔案的 sample 0 就是 timeline 的 sample `startSample`，檔案長度恰好是 $`N_s + N_t`$。
+以本章的歌曲為例：120 BPM 下 8 個小節 = $`8 \cdot 96\,000 = 768\,000`$ 個 sample，3 秒的尾巴 = 144 000，
 latency 752，所以 render 了 912 752 個 sample，寫出 912 000 個（19.00 秒）。
 
 ### Thread 規則
@@ -164,7 +164,7 @@ Step 9: offline bounce of an 8-track song (8 bars at 120 BPM + 3 s tail)
 [PASS] l14_render_song (7 checks passed)
 ```
 
-自我檢查：沒有 NaN；長度恰好是 768 000 + 144 000 個 sample；檔案 peak $\le$ -0.95 dBFS（limiter
+自我檢查：沒有 NaN；長度恰好是 768 000 + 144 000 個 sample；檔案 peak $`\le`$ -0.95 dBFS（limiter
 的天花板）；歌曲不是靜音；solo 的 bounce 會讓其他 strip 靜音。
 
 如何閱讀這份報告：bass 在各 track 中擁有最高的 loudness（-16.8 LUFS），儘管它的

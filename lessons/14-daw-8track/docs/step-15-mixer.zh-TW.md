@@ -24,17 +24,17 @@
 
 ### Fader law
 
-Fader 的行程應該把大部分長度花在混音真正發生的區間（-20 .. +6 dB），而不是 -60 .. -40。App 以平方律把位置 $p \in [0, 1]$ 對應到 dB：
+Fader 的行程應該把大部分長度花在混音真正發生的區間（-20 .. +6 dB），而不是 -60 .. -40。App 以平方律把位置 $`p \in [0, 1]`$ 對應到 dB：
 
 $$
 \text{dB}(p) = 12 - 72\,(1 - p)^2, \qquad p(\text{dB}) = 1 - \sqrt{\frac{12 - \text{dB}}{72}}
 $$
 
-| dB | +12 | +6 | 0 | -6 | -12 | -30 | -60（最底端 = $-\infty$） |
+| dB | +12 | +6 | 0 | -6 | -12 | -30 | -60（最底端 = $`-\infty`$） |
 |---|---|---|---|---|---|---|---|
-| $p$ | 1.000 | 0.711 | 0.592 | 0.500 | 0.423 | 0.236 | 0 |
+| $`p`$ | 1.000 | 0.711 | 0.592 | 0.500 | 0.423 | 0.236 | 0 |
 
-所以 0 dB 位於行程的 59 % 處，-6 dB 剛好在正中間；最底端的位置代表靜音（`FaderLaw::toEngineDb` 把 -60 對應到 $-\infty$ = `kMinusInfinityDb`）。畫在 fader 旁的刻度也使用 `dbToPosition()`，所以數字與 cap 對得上。Fader 寫入 `ChannelStrip::setGainDb()`——一個 atomic；strip 會在 50 ms 內 ramp 到新的 gain（Step 4），所以不論滑鼠事件多粗糙，拖曳 fader 都不會產生 zipper noise。
+所以 0 dB 位於行程的 59 % 處，-6 dB 剛好在正中間；最底端的位置代表靜音（`FaderLaw::toEngineDb` 把 -60 對應到 $`-\infty`$ = `kMinusInfinityDb`）。畫在 fader 旁的刻度也使用 `dbToPosition()`，所以數字與 cap 對得上。Fader 寫入 `ChannelStrip::setGainDb()`——一個 atomic；strip 會在 50 ms 內 ramp 到新的 gain（Step 4），所以不論滑鼠事件多粗糙，拖曳 fader 都不會產生 zipper noise。
 
 ### 跟隨 engine 的控制項
 
@@ -81,7 +81,7 @@ Snapshot 顯示 demo song 的混音：fader 位於 song 的設定值（drum -2 d
 
 | | |
 |---|---|
-| 你要寫 | `app/Source/MixerView.cpp` 中的 `FaderLaw::positionToDb()` 與 `FaderLaw::dbToPosition()`（「Fader law」的平方律；位於最底端的 position 代表 $-\infty$） |
+| 你要寫 | `app/Source/MixerView.cpp` 中的 `FaderLaw::positionToDb()` 與 `FaderLaw::dbToPosition()`（「Fader law」的平方律；位於最底端的 position 代表 $`-\infty`$） |
 | 建置 + 檢查 | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test`（`l14_app_smoke_test`） |
 | 預期 | 本頁的 fader 檢查通過：`dbToPosition(0) = 0.5918`、`positionToDb(dbToPosition(-12)) = -12`、把 track 1 的 fader 移到 -6 dB 位置會讓 engine 設為 -6.00 dB；`[PASS] l14_app_smoke_test` |
 

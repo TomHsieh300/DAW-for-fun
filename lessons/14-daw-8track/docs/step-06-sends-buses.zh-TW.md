@@ -31,7 +31,7 @@ $$
 - **Pre-fader**：send 忽略 fader。用於 monitor / 耳機 mix，或是在把 dry
   訊號 fade out 後只留下它的 reverb。
 
-send level $s_{t,b}$ 和 fader 一樣會做 ramp（50 ms）。-100 dB（`kMinusInfinityDb`）代表關閉 -
+send level $`s_{t,b}`$ 和 fader 一樣會做 ramp（50 ms）。-100 dB（`kMinusInfinityDb`）代表關閉 -
 這是每個 send 的預設值 - 而且不花成本：當 send gain 為 0 且沒有在 ramp 時，
 `addFrom` 會被略過。
 
@@ -111,7 +111,7 @@ Step 6: sends and buses (build-along)
 ## Verify（參考路線）
 
 `l14_test_mixer`，`testSends()`（已驗證）。Track 1：DC 0.5，以 -6.02 dB 做 post-fader send 到 bus A。
-Track 2：DC 0.25，fader 在 $-\infty$，以 0 dB 做 pre-fader send 到 bus A。其中 $g = 0.7071$（track
+Track 2：DC 0.25，fader 在 $`-\infty`$，以 0 dB 做 pre-fader send 到 bus A。其中 $`g = 0.7071`$（track
 置中 pan），bus / master 為 unity balance：
 
 $$

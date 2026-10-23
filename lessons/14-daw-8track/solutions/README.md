@@ -51,20 +51,20 @@ Every one ends with `[PASS] l14_exN (... checks passed)`.
 
 ## Exercise 2 - Timing and latency by hand
 
-**(a)** $N_{\text{beat}} = 60 f_s / B = 60 \cdot 44100 / 96 = 27\,562.5$ samples;
-$N_{\text{bar}} = 3 \cdot 27\,562.5 = 82\,687.5$ samples.
-Bar 5, beat 2: $(5-1)\cdot 3 + (2-1) = 13$ beats $= 13 \cdot 27\,562.5 = 358\,312.5$ samples, which
-rounds to **358 313** (round half away from zero, as `std::llround`), i.e. $13 \cdot 0.625 = 8.125$ s.
-Sample 1 000 000: $1\,000\,000 / 27\,562.5 = 36.2812$ beats; 36 whole beats = 12 full bars, so bar
+**(a)** $`N_{\text{beat}} = 60 f_s / B = 60 \cdot 44100 / 96 = 27\,562.5`$ samples;
+$`N_{\text{bar}} = 3 \cdot 27\,562.5 = 82\,687.5`$ samples.
+Bar 5, beat 2: $`(5-1)\cdot 3 + (2-1) = 13`$ beats $`= 13 \cdot 27\,562.5 = 358\,312.5`$ samples, which
+rounds to **358 313** (round half away from zero, as `std::llround`), i.e. $`13 \cdot 0.625 = 8.125`$ s.
+Sample 1 000 000: $`1\,000\,000 / 27\,562.5 = 36.2812`$ beats; 36 whole beats = 12 full bars, so bar
 **13**, beat $36 \bmod 3 + 1 = $ **1**, tick $\lfloor 0.2812 \cdot 960 \rfloor = $ **269**.
 
-**(b)** A quarter note lasts $60\,000 / 96 = 625$ ms; a dotted eighth is $0.75$ of it:
+**(b)** A quarter note lasts $`60\,000 / 96 = 625`$ ms; a dotted eighth is $`0.75`$ of it:
 **468.75 ms** = $0.46875 \cdot 44100 = $ **20 671.875 samples** (a fractional delay - chapter 09's
 `FractionalDelayLine` handles the .875). One cycle per quarter note: $96 / 60 = $ **1.6 Hz**.
 
-**(c)** $\max_t L_t = 1024$, $\max_b L_b = 512$:
+**(c)** $`\max_t L_t = 1024`$, $`\max_b L_b = 512`$:
 
-| path | latency $L$ | compensation |
+| path | latency $`L`$ | compensation |
 |---|---|---|
 | track 1 | 0 | 1024 - 0 = **1024** |
 | track 2 | 64 | **960** |
@@ -73,12 +73,12 @@ Sample 1 000 000: $1\,000\,000 / 27\,562.5 = 36.2812$ beats; 36 whole beats = 12
 | tracks 5-8 | 0 | **1024** each |
 | bus A | 0 | 512 - 0 = **512** |
 | bus B | 512 | **0** |
-| track sum | - | $\max_b L_b$ = **512** |
+| track sum | - | $`\max_b L_b`$ = **512** |
 
 Total latency $= 1024 + 512 + 240 = $ **1776 samples** $= 1776 / 48 = $ **37.0 ms**.
 
-**(d)** Constant power: $\theta = \frac{\pi}{4}(p+1) = \frac{3\pi}{8} = 67.5°$;
-$\cos 67.5° = 0.38268$, $\sin 67.5° = 0.92388$; fader $10^{-6/20} = 0.50119$.
+**(d)** Constant power: $`\theta = \frac{\pi}{4}(p+1) = \frac{3\pi}{8} = 67.5°`$;
+$`\cos 67.5° = 0.38268`$, $`\sin 67.5° = 0.92388`$; fader $`10^{-6/20} = 0.50119`$.
 $g_L = 0.50119 \cdot 0.38268 = $ **0.19180** $= -6 + 20\log_{10} 0.38268 = -6 - 8.34 = $ **-14.34 dB**;
 $g_R = 0.50119 \cdot 0.92388 = $ **0.46304** $= -6 - 0.69 = $ **-6.69 dB**.
 Balance mode: $g_L = 0.50119 \cdot \min(1, 1 - 0.5) = $ **0.25059 (-12.02 dB)**,
@@ -109,18 +109,18 @@ Verified output:
 Solution: `solutions/ex3_automation.cpp` [`l14_ex3_solution`].
 
 - **`valueAt(t)`**: handle the empty lane and the two ends, then
-  `std::upper_bound` finds the first point with time $> t$; with its predecessor $(t_k, v_k)$:
-  $v = v_k + (v_{k+1} - v_k)\,\frac{t - t_k}{t_{k+1} - t_k}$ (computed in `double` - timeline
+  `std::upper_bound` finds the first point with time $`> t`$; with its predecessor $`(t_k, v_k)`$:
+  $`v = v_k + (v_{k+1} - v_k)\,\frac{t - t_k}{t_{k+1} - t_k}`$ (computed in `double` - timeline
   positions are large numbers).
 - **`render(start, out, n)`**: one `upper_bound` for `start`, then for each sample advance the
-  iterator while its time $\le t$. Cost $O(\log P + n + P_{\text{block}})$ instead of $O(n \log P)$,
+  iterator while its time $`\le t`$. Cost $`O(\log P + n + P_{\text{block}})`$ instead of $`O(n \log P)`$,
   and no allocation - safe on the audio thread. The self-check compares it with `valueAt` for 5000
   samples across all segments.
 - **Sample accuracy**: the effect does not count samples itself. The Mixer passes the block's
   timeline segments (`PlayHead`), so the gain is a pure function of the timeline: block size 512 and
   37 give identical output, and the second pass of a loop equals the first (both differences are
   exactly 0). When the transport stops, the last value is held.
-- **Why dB**: a linear-gain ramp from 1 to 0.063 is still at $0.53$ (-5.5 dB) halfway: the fade seems
+- **Why dB**: a linear-gain ramp from 1 to 0.063 is still at $`0.53`$ (-5.5 dB) halfway: the fade seems
   to do nothing and then drops at the end. A ramp in dB is perceptually even: -12 dB halfway. The
   self-check prints:
 
@@ -138,17 +138,17 @@ Exercise 3: volume automation 0 dB @0.5 s -> -24 dB @1.5 s
   pan sweep: max deviation of L^2 + R^2 from 0.25 = 2.98e-08 (constant power)
 ```
 
-- **Pan**: `PanAutomationEffect` uses `dsp::Panner::computeGains` per sample; $L^2 + R^2$ stays at
-  $0.5^2$ throughout the sweep (constant power).
+- **Pan**: `PanAutomationEffect` uses `dsp::Panner::computeGains` per sample; $`L^2 + R^2`$ stays at
+  $`0.5^2`$ throughout the sweep (constant power).
 - **Editing a lane while playing**: the lane is immutable inside the engine. Build a new lane, a new
   effect, and swap it in with `Engine::replaceInsert()` (one block boundary, no lock). A production
   design would keep automation in the track (not as an insert) and send new lanes through the
   command queue exactly like clip lists.
 - **Control-rate alternative**: setting the strip fader from outside before every block also
   "works", but the fader's 50 ms smoother then behaves like a lag. Each block the ramp restarts and
-  covers $\Delta/T$ of the remaining distance ($\Delta$ = block length, $T$ = 50 ms), while the
-  envelope moves $r\Delta$ ($r$ = 24 dB/s); in equilibrium the distance $d$ satisfies
-  $d\,\Delta/T = r\Delta$, so $d = rT = 24 \cdot 0.05 = 1.2$ dB - independent of the block size. The
+  covers $`\Delta/T`$ of the remaining distance ($`\Delta`$ = block length, $`T`$ = 50 ms), while the
+  envelope moves $`r\Delta`$ ($`r`$ = 24 dB/s); in equilibrium the distance $`d`$ satisfies
+  $`d\,\Delta/T = r\Delta`$, so $`d = rT = 24 \cdot 0.05 = 1.2`$ dB - independent of the block size. The
   solution measures it with the real engine (fader set once per 512-sample block):
 
   ```
@@ -210,14 +210,14 @@ keep the convolution IR file name in the effect state.
 
 Solution: `solutions/ex5_clip_crossfade.cpp` [`l14_ex5_solution`].
 
-- **Snap**: $\text{round}(x / G) \cdot G$ with $G = N_{\text{beat}} \cdot \text{gridBeats}$
-  (1/16 at 120 BPM: $G = 6000$): 25 000 -> 24 000, 27 001 -> 30 000. Snap in `double`, convert once.
+- **Snap**: $`\text{round}(x / G) \cdot G`$ with $`G = N_{\text{beat}} \cdot \text{gridBeats}`$
+  (1/16 at 120 BPM: $`G = 6000`$): 25 000 -> 24 000, 27 001 -> 30 000. Snap in `double`, convert once.
 - **Move**: copy the clip, erase it, clamp/snap the start, insert at `std::upper_bound` by start
   (stable for equal starts). The engine does not need sorted clips, but an arranger view and a
   project file do. Send the new list with `setTrackClips()`.
 - **Crossfade**: `b.start = a.end() - F`, `a.fadeOutSamples = b.fadeInSamples = F`, same shape on
-  both. Thanks to Clip.h's fade definition the two fade arguments at overlap index $k$ are
-  $\frac{F-k}{F+1}$ and $\frac{k+1}{F+1}$ - they sum to 1 at every sample.
+  both. Thanks to Clip.h's fade definition the two fade arguments at overlap index $`k`$ are
+  $`\frac{F-k}{F+1}`$ and $`\frac{k+1}{F+1}`$ - they sum to 1 at every sample.
 
 Predictions and measurements (verified output):
 
@@ -230,8 +230,8 @@ Predictions and measurements (verified output):
 
 | | same (correlated) audio | independent audio |
 |---|---|---|
-| Linear ($g_a + g_b = 1$) | amplitudes add: $0.5 + 0.5 = 1$ -> **0 dB**, perfect | powers add: $0.5^2 + 0.5^2 = 0.5$ -> **-3 dB** hole |
-| EqualPower ($g_a^2 + g_b^2 = 1$) | $2 \sin(\pi/4) = 1.414$ -> **+3 dB** bump | power constant -> **0 dB**, perfect |
+| Linear ($`g_a + g_b = 1`$) | amplitudes add: $`0.5 + 0.5 = 1`$ -> **0 dB**, perfect | powers add: $`0.5^2 + 0.5^2 = 0.5`$ -> **-3 dB** hole |
+| EqualPower ($`g_a^2 + g_b^2 = 1`$) | $`2 \sin(\pi/4) = 1.414`$ -> **+3 dB** bump | power constant -> **0 dB**, perfect |
 
 So: Linear for crossfading a clip with (a part of) itself or with a time-aligned take of the same
 source (comping), EqualPower for unrelated material. Many DAWs offer both - now you know why.
@@ -248,12 +248,12 @@ A design that fits this engine:
    appends to the WAV file and to an in-memory buffer that grows on *its* thread. When recording
    stops, that thread builds an immutable `AudioBuffer`, wraps it in a `shared_ptr`, and the UI
    creates the clip and sends a new clip list with `setTrackClips()`.
-3. **Placement.** What the musician heard at timeline position $T$ left the speakers
-   $L_{\text{pdc}} + L_{\text{out}}$ samples after the engine rendered $T$; their playing reaches the
-   engine $L_{\text{in}}$ later. So the input sample that arrives while the engine renders position
-   $P$ belongs to timeline position
+3. **Placement.** What the musician heard at timeline position $`T`$ left the speakers
+   $`L_{\text{pdc}} + L_{\text{out}}`$ samples after the engine rendered $`T`$; their playing reaches the
+   engine $`L_{\text{in}}`$ later. So the input sample that arrives while the engine renders position
+   $`P`$ belongs to timeline position
    $$T = P - (L_{\text{in}} + L_{\text{out}} + L_{\text{pdc}})$$
-   i.e. the recorded clip must be placed $L_{\text{in}} + L_{\text{out}} + L_{\text{pdc}}$ samples
+   i.e. the recorded clip must be placed $`L_{\text{in}} + L_{\text{out}} + L_{\text{pdc}}`$ samples
    *earlier* than the playhead position at which recording started (JUCE reports the device latencies
    via `AudioIODevice::getInputLatencyInSamples()` / `getOutputLatencyInSamples()`). Verify it with a
    loop-back cable: record the metronome and check that the clicks land on the grid.
@@ -274,9 +274,9 @@ A design that fits this engine:
    be musical; a voice-over, a sound effect synced to video, or a live recording with free timing
    should stay absolute. On a tempo change the engine recomputes the sample positions of musical
    clips (start = beatsToSamples(startBeats)) and the required stretch ratio
-   $r = \frac{\text{sourceTempo}}{\text{projectTempo}}$ (duration factor).
-2. **Resampling** changes duration *and* pitch together ($r = 1.2$ also transposes by
-   $12 \log_2 1.2 = 3.2$ semitones) - fine for a "vari-speed" effect, wrong for music that must stay in
+   $`r = \frac{\text{sourceTempo}}{\text{projectTempo}}`$ (duration factor).
+2. **Resampling** changes duration *and* pitch together ($`r = 1.2`$ also transposes by
+   $`12 \log_2 1.2 = 3.2`$ semitones) - fine for a "vari-speed" effect, wrong for music that must stay in
    key. **Time-stretching** changes duration only, by cutting the signal into short overlapping
    grains and re-spacing them: **time-domain** methods (OLA / **WSOLA**: overlap-add, with the
    grain position chosen by cross-correlation so the waveforms match) - good on speech and
@@ -292,12 +292,12 @@ A design that fits this engine:
    then switches at a block boundary with a short crossfade. Offline bounces simply wait for the
    high-quality render.
 4. **Tempo map.** Store tempo segments sorted by time:
-   $(t_i^{\text{samples}}, \text{beat}_i, \text{bpm}_i)$ for each change. For a timeline sample $t$:
-   binary-search the last segment with $t_i \le t$, then
-   $\text{beat} = \text{beat}_i + (t - t_i) \cdot \text{bpm}_i / (60 f_s)$ (constant tempo inside a
+   $`(t_i^{\text{samples}}, \text{beat}_i, \text{bpm}_i)`$ for each change. For a timeline sample $`t`$:
+   binary-search the last segment with $`t_i \le t`$, then
+   $`\text{beat} = \text{beat}_i + (t - t_i) \cdot \text{bpm}_i / (60 f_s)`$ (constant tempo inside a
    segment; ramps integrate the tempo instead). The inverse is the same search on the `beat` column.
-   A sorted `std::vector` + `std::upper_bound` is $O(\log n)$, and because the playhead moves forward,
-   a cursor cached between blocks makes it $O(1)$ - the same trick as Exercise 3's `render()`.
+   A sorted `std::vector` + `std::upper_bound` is $`O(\log n)`$, and because the playhead moves forward,
+   a cursor cached between blocks makes it $`O(1)`$ - the same trick as Exercise 3's `render()`.
 
 ---
 
@@ -311,18 +311,18 @@ Outputs below are from the author's Debug build.
 
 Solution: [`solutions/ex8_automation_lane.cpp`](ex8_automation_lane.cpp) (`l14_ex8_solution`).
 
-- **Mapping.** $y(v) = (1 - p)\,h$ with $p = (v - v_{\min}) / (v_{\max} - v_{\min})$, and the
-  inverse $v(y) = v_{\max} - (y/h)(v_{\max} - v_{\min})$. The x axis is *not* the lane's own: the
+- **Mapping.** $`y(v) = (1 - p)\,h`$ with $`p = (v - v_{\min}) / (v_{\max} - v_{\min})`$, and the
+  inverse $`v(y) = v_{\max} - (y/h)(v_{\max} - v_{\min})`$. The x axis is *not* the lane's own: the
   lane sits under the arrangement and uses `ArrangementView::xToSample()` / `sampleToX()` /
   `snapToBeat()`, so a point drawn at a bar line is on that bar line in the audio.
 - **Gestures.** A click first hit-tests (distance to each point's centre at most 6 px); a hit only
   selects. Otherwise the new point is inserted at `std::upper_bound` - the list stays sorted, so
-  `valueAt()` can binary-search it. Dragging clamps the time into $[t_{k-1}, t_{k+1}]$: re-sorting
+  `valueAt()` can binary-search it. Dragging clamps the time into $`[t_{k-1}, t_{k+1}]`$: re-sorting
   while dragging would make the selected index jump to another point under the user's mouse, and
   the "move" would turn into "push other points around". Every edit publishes a new immutable
   `AutomationLaneData`.
 - **Audio.** `valueAt()` interpolates linearly *in dB* between breakpoints, so halfway between 0 and
-  -24 dB the gain is exactly $10^{-12/20}$. The effect evaluates it per sample from
+  -24 dB the gain is exactly $`10^{-12/20}`$. The effect evaluates it per sample from
   `segment.timelineStart + i`, so loops and seeks need no special code.
 - **Hand-over.** The UI exchanges the new lane into `pending_` and deletes whatever it got back
   (the audio thread never saw it). The audio thread exchanges `pending_` with `nullptr`, retires its
@@ -350,8 +350,8 @@ Solution: [`solutions/ex9_recording.cpp`](ex9_recording.cpp) (`l14_ex9_solution`
   `start2`, then `finishedWrite(size1 + size2)`. Checking `getFreeSpace() < n` first makes the
   decision all-or-nothing: a partial block would put a gap *inside* a block, a dropped block at
   least keeps the take aligned in whole blocks (and the overrun counter tells the user). An
-  `AbstractFifo` of size $N$ holds $N - 1$ samples, so a 12 000-sample FIFO takes 46 blocks of 256;
-  the remaining $282 - 46 = 236$ pushes are overruns - the test checks exactly that.
+  `AbstractFifo` of size $`N`$ holds $`N - 1`$ samples, so a 12 000-sample FIFO takes 46 blocks of 256;
+  the remaining $`282 - 46 = 236`$ pushes are overruns - the test checks exactly that.
 - `drain()`: `prepareToRead(getNumReady(), ...)`, append both regions to the take (a
   `std::vector` that may grow - on the disk thread), `finishedRead()`.
 - The **timeline position** of the first recorded sample is captured on the audio thread, from the
@@ -377,14 +377,14 @@ A complete recorder would write the take to a WAV file on the disk thread as it 
 Solution: [`solutions/ex10_midi_synth.cpp`](ex10_midi_synth.cpp) (`l14_ex10_solution`).
 
 - `notesFromMidi()`: after `updateMatchedPairs()` every note-on knows its note-off
-  (`noteOffObject`). Ticks to samples: $s = \operatorname{round}(\text{ticks} / 960 \cdot N_{\text{beat}})$,
+  (`noteOffObject`). Ticks to samples: $`s = \mathrm{round}(\text{ticks} / 960 \cdot N_{\text{beat}})`$,
   rounded once, at the end (stage 1, Step 2). A note on beat 2 at 120 BPM / 48 kHz starts at
   24 000.
 - `noteOn()`: the first voice in stage Off; if none, the voice with the smallest start (the oldest)
   is stolen. A stolen voice restarts at phase 0 and level 0 (a real synth would fade it out over a
   few ms to avoid a click).
-- `envelope()`: attack step $1 / (t_A f_s)$, decay step $(1 - S) / (t_D f_s)$, release step
-  $\ell / (t_R f_s)$ computed from the level $\ell$ at note-off, so a release always lasts $t_R$.
+- `envelope()`: attack step $`1 / (t_A f_s)`$, decay step $`(1 - S) / (t_D f_s)`$, release step
+  $`\ell / (t_R f_s)`$ computed from the level $`\ell`$ at note-off, so a release always lasts $`t_R`$.
 - Sample accuracy: `processDsp()` renders up to the next note start inside each PlayHead segment,
   starts the note(s) at exactly that sample and continues. A voice releases when the timeline
   sample reaches its note-off time.
@@ -465,7 +465,7 @@ sends off: master peak -100.0 dBFS
 [PASS] l14_ex12 (13 checks passed)
 ```
 
-With the Pad and Lead faders at $-\infty$ their own strips are silent (-100 dBFS is the meter's
+With the Pad and Lead faders at $`-\infty`$ their own strips are silent (-100 dBFS is the meter's
 floor), yet bus C carries about -32 dBFS RMS: the sends tap *before* the fader. With the sends off,
 the master is exactly 0. `dawlab_output/l14_ex12_third_bus.png` shows the 12-strip mixer.
 
@@ -473,10 +473,10 @@ the master is exactly 0. `dawlab_output/l14_ex12_third_bus.png` shows the 12-str
 
 Solution: [`solutions/ex13_shortcut_map.cpp`](ex13_shortcut_map.cpp) (`l14_ex13_solution`).
 
-- `findConflicts()`: for each pair $(i < j)$ and each key of command $i$, check whether command $j$
-  has it - $O(n^2 k)$ for $n = 28$ commands, instant.
-- The nudge goes to the previous / next beat *line*: $\lfloor b \rfloor + 1$ forward,
-  $\lceil b \rceil - 1$ back, with $b$ the position in beats (a tiny epsilon keeps a position
+- `findConflicts()`: for each pair $`(i < j)`$ and each key of command $`i`$, check whether command $`j`$
+  has it - $`O(n^2 k)`$ for $`n = 28`$ commands, instant.
+- The nudge goes to the previous / next beat *line*: $`\lfloor b \rfloor + 1`$ forward,
+  $`\lceil b \rceil - 1`$ back, with $`b`$ the position in beats (a tiny epsilon keeps a position
   exactly on a line from counting as "between"). From 30 000 samples (1.25 beats) forward is 48 000;
   back twice from there is 0.
 - `createXml(true)` writes only the differences from the defaults - a `MAPPING` for P and an

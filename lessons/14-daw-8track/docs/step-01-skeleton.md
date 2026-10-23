@@ -202,7 +202,7 @@ Step 1: hello engine
 ```
 
 The same 235 calls; the peak is 3.01 dB lower than in your Step 1 engine because a track pans its
-signal to the centre with the constant-power law ($\cos(\pi/4) = 0.7071$ per side) - you will
+signal to the centre with the constant-power law ($`\cos(\pi/4) = 0.7071`$ per side) - you will
 build that in Step 4.
 
 ## What you learned

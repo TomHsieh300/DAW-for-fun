@@ -63,7 +63,7 @@ When the device *does* come back at another sample rate, everything measured in 
 clip positions and lengths, fades, the loop range - and the clip audio itself, which now plays at
 the wrong speed and pitch (48 -> 44.1 kHz: 8 % slower, 1.47 semitones lower). Every clip source must
 be resampled once (shared buffers stay shared) and every position scaled by
-$f_{\text{new}} / f_{\text{old}}$. Resampling is slow - a few seconds for a 3-minute stereo file,
+$`f_{\text{new}} / f_{\text{old}}`$. Resampling is slow - a few seconds for a 3-minute stereo file,
 even in a Release build - so it must neither run on the message thread (the GUI would freeze) nor
 leave the engine playing the old clips meanwhile:
 
@@ -185,7 +185,7 @@ Section 10 does the same through the application's own wiring, while the transpo
     converted in 5010 ms with 457 message-loop turns meanwhile, playback resumed: yes, status "Sample rate changed to 44100 Hz: clips converted"
 ```
 
-The clip that started at bar 2 still starts at bar 2 ($96000 \cdot 44100 / 48000 = 88200$), its
+The clip that started at bar 2 still starts at bar 2 ($`96000 \cdot 44100 / 48000 = 88200`$), its
 1-second source buffer now has 44 100 samples, and the converted song renders without NaN. The
 transport stopped the moment the device restarted and started again after the conversion; the
 message loop kept running all the time (the number of turns and the milliseconds depend on the

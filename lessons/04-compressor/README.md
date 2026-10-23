@@ -12,7 +12,7 @@ After this chapter you should be able to:
 
 - Say what each of the compressor's four blocks (detector → gain computer → attack/release smoothing → makeup gain) does, and why they are arranged this way.
 - Derive the static curve (transfer curve) formulas for the hard knee and the soft knee, and calculate by hand the output dB and gain reduction for any threshold / ratio / knee.
-- Derive the one-pole smoother coefficient $\alpha = e^{-1/(\tau f_s)}$, and convert it into the times to "63.2%", "90%" and "99%".
+- Derive the one-pole smoother coefficient $`\alpha = e^{-1/(\tau f_s)}`$, and convert it into the times to "63.2%", "90%" and "99%".
 - Explain the differences between peak and RMS detectors, linear and log (dB) domain smoothing, branching and decoupled smoothing, and feedforward and feedback topologies, and how each of them **sounds** different.
 - Use `dawlab::dsp::Compressor` to compress a stereo signal in a block loop, read the gain reduction meter, connect an external sidechain, and do stereo link and parallel compression.
 - Know what a compressor cannot do (it cannot catch peaks only a few samples wide), and why the next chapter needs a lookahead limiter.
@@ -51,7 +51,7 @@ Each of the four blocks answers one question:
 
 | Block | Question | Implementation in this chapter |
 |---|---|---|
-| Detector | "How loud is it right now?" | `DetectorMode::Peak` (instantaneous $\lvert x \rvert$) or `DetectorMode::Rms` ($\sqrt{\overline{x^2}}$) |
+| Detector | "How loud is it right now?" | `DetectorMode::Peak` (instantaneous $`\lvert x \rvert`$) or `DetectorMode::Rms` ($`\sqrt{\overline{x^2}}`$) |
 | Gain computer | "At this loudness, how many dB should be squashed?" | `Compressor::computeOutputDb()`, a pure function with no state |
 | Attack / release | "How fast should it clamp down, and how fast should it let go?" | `AttackReleaseFilter`, smoothing the GR in the dB domain |
 | Makeup gain | "It got quieter after compression, so make it up" | A fixed dB amount, smoothed internally with a 10 ms one-pole to avoid zipper noise |
@@ -60,7 +60,7 @@ The path that controls the gain is called the **sidechain**. Normally the sidech
 
 ### 2.3 Gain computer: threshold, ratio, knee
 
-Let the input level be $x$ (dB), the threshold $T$ (dB) and the ratio $R$. The static curve of a **hard knee** is a piecewise-linear line:
+Let the input level be $`x`$ (dB), the threshold $`T`$ (dB) and the ratio $`R`$. The static curve of a **hard knee** is a piecewise-linear line:
 
 $$
 y_{\text{hard}}(x) =
@@ -70,23 +70,23 @@ T + \dfrac{x - T}{R}, & x > T
 \end{cases}
 $$
 
-Above the threshold, every extra 1 dB of input yields only $1/R$ dB of extra output. $R = 1$ is a straight line (no compression), and with $R = \infty$ the output is pinned at $T$ (this is the static curve of a limiter). **Gain reduction** (GR; this course always uses a **positive value**) is the difference between input and output:
+Above the threshold, every extra 1 dB of input yields only $`1/R`$ dB of extra output. $`R = 1`$ is a straight line (no compression), and with $`R = \infty`$ the output is pinned at $`T`$ (this is the static curve of a limiter). **Gain reduction** (GR; this course always uses a **positive value**) is the difference between input and output:
 
 $$
 \text{GR}(x) = x - y(x) = \left(1 - \frac{1}{R}\right)(x - T) \quad (x > T)
 $$
 
-For example, with $T = -20$, $R = 4$, $x = -10$: $y = -20 + (-10 + 20)/4 = -17.5$ dB, so GR = 7.5 dB. Example 1 prints this line.
+For example, with $`T = -20`$, $`R = 4`$, $`x = -10`$: $`y = -20 + (-10 + 20)/4 = -17.5`$ dB, so GR = 7.5 dB. Example 1 prints this line.
 
-The polyline has a "corner" at $T$, so when the signal moves in and out of the threshold, the compression "starts abruptly". A **soft knee** rounds that corner with a quadratic section $W$ dB wide. The derivation requires that at both ends of the knee ($x = T \pm W/2$) the curve have the **same value and the same slope** as the two straight lines ($C^1$ continuity).
+The polyline has a "corner" at $`T`$, so when the signal moves in and out of the threshold, the compression "starts abruptly". A **soft knee** rounds that corner with a quadratic section $`W`$ dB wide. The derivation requires that at both ends of the knee ($`x = T \pm W/2`$) the curve have the **same value and the same slope** as the two straight lines ($`C^1`$ continuity).
 
-Let the curve inside the knee be $y(x) = x + a\,(x - T + W/2)^2$ (at the lower edge of the knee, $x = T - W/2$, the second term is 0, so both value and slope agree with $y = x$). At the upper edge $x = T + W/2$, the slope must equal $1/R$:
+Let the curve inside the knee be $`y(x) = x + a\,(x - T + W/2)^2`$ (at the lower edge of the knee, $`x = T - W/2`$, the second term is 0, so both value and slope agree with $`y = x`$). At the upper edge $`x = T + W/2`$, the slope must equal $`1/R`$:
 
 $$
 y'(x) = 1 + 2a\,(x - T + W/2) \;\Rightarrow\; 1 + 2aW = \frac{1}{R} \;\Rightarrow\; a = \frac{1/R - 1}{2W}
 $$
 
-Substitute $a$ back and check the value at the upper edge: $y = T + W/2 + \frac{1/R - 1}{2W}W^2 = T + \frac{W}{2R}$, and the straight line $T + (x - T)/R$ at $x = T + W/2$ also has the value $T + \frac{W}{2R}$, so they do join. Written as three pieces (in the form of Giannoulis, Massberg & Reiss 2012):
+Substitute $`a`$ back and check the value at the upper edge: $`y = T + W/2 + \frac{1/R - 1}{2W}W^2 = T + \frac{W}{2R}`$, and the straight line $`T + (x - T)/R`$ at $`x = T + W/2`$ also has the value $`T + \frac{W}{2R}`$, so they do join. Written as three pieces (in the form of Giannoulis, Massberg & Reiss 2012):
 
 $$
 y_{\text{soft}}(x) =
@@ -97,13 +97,13 @@ T + \dfrac{x - T}{R}, & 2(x - T) > W
 \end{cases}
 $$
 
-$W = 0$ degenerates to the hard knee. A handy reference point: at the threshold itself, $x = T$, the soft knee is already compressing:
+$`W = 0`$ degenerates to the hard knee. A handy reference point: at the threshold itself, $`x = T`$, the soft knee is already compressing:
 
 $$
 y_{\text{soft}}(T) = T + \frac{(1/R - 1)\,W}{8}
 $$
 
-With $T = -20$, $R = 4$, $W = 10$: $y = -20 + (-0.75)(10/8) = -20.9375$ dB, i.e. there is already 0.94 dB of GR at the threshold.
+With $`T = -20`$, $`R = 4`$, $`W = 10`$: $`y = -20 + (-0.75)(10/8) = -20.9375`$ dB, i.e. there is already 0.94 dB of GR at the threshold.
 
 Plotted (an excerpt of example 1's output; the full version has one row per 2 dB. `#` = hard knee, `o` = soft knee, `.` = 1:1 reference line, `*` = the two overlap):
 
@@ -129,7 +129,7 @@ Plotted (an excerpt of example 1's output; the full version has one row per 2 dB
 
 #### For comparison: expander and gate
 
-A compressor squashes what is **above the threshold**; an **expander** does the opposite and pushes the signal **below the threshold** even lower (every 1 dB below becomes $R$ dB lower), and a **gate** is an expander with a very large ratio (below the threshold it simply shuts off). Their static curves bend downward below the threshold:
+A compressor squashes what is **above the threshold**; an **expander** does the opposite and pushes the signal **below the threshold** even lower (every 1 dB below becomes $`R`$ dB lower), and a **gate** is an expander with a very large ratio (below the threshold it simply shuts off). Their static curves bend downward below the threshold:
 
 ```
  In dB   | compressor(T=-20,R=4) | expander(T=-40,R=2) | gate(T=-40,R=20)
@@ -143,12 +143,12 @@ Chapter 08 implements them in full; for now just know that they use the same det
 
 ### 2.4 Detector: peak vs RMS
 
-A **peak detector** looks at the instantaneous $\lvert x[n] \rvert$. It reacts fastest and responds immediately to the spike of a drum hit, which suits catching transients and building a limiter.
+A **peak detector** looks at the instantaneous $`\lvert x[n] \rvert`$. It reacts fastest and responds immediately to the spike of a drum hit, which suits catching transients and building a limiter.
 
-An **RMS detector** looks at the average energy over a stretch of time, $\sqrt{\overline{x^2}}$, which is closer to the "loudness" the ear perceives. It is smoothed by nature, so its attack can never be faster than the window length, but it is less prone to pumping (the "breathing" feel of the whole volume sucking in and releasing with the drum hits; sections 2.9 and exercise 7 come back to this) and sounds more "musical". Two commonly used facts:
+An **RMS detector** looks at the average energy over a stretch of time, $`\sqrt{\overline{x^2}}`$, which is closer to the "loudness" the ear perceives. It is smoothed by nature, so its attack can never be faster than the window length, but it is less prone to pumping (the "breathing" feel of the whole volume sucking in and releasing with the drum hits; sections 2.9 and exercise 7 come back to this) and sounds more "musical". Two commonly used facts:
 
-- The RMS of a sine wave is $20\log_{10}\sqrt{2} = 3.01$ dB below its peak. So with the same threshold, RMS mode compresses $0.75 \times 3.01 \approx 2.26$ dB less (for $R = 4$). B3 in example 2 prints 5.29 dB versus 7.49 dB.
-- The RMS in this chapter uses a one-pole to take a moving average of $x^2$ (rather than a real window of length N); `setRmsWindowMs()` sets the time constant of that one-pole. Note that attack / release act on $x^2$: when $x^2$ reaches 63.2%, the amplitude is only at $\sqrt{0.632} = 79.5\%$.
+- The RMS of a sine wave is $`20\log_{10}\sqrt{2} = 3.01`$ dB below its peak. So with the same threshold, RMS mode compresses $`0.75 \times 3.01 \approx 2.26`$ dB less (for $`R = 4`$). B3 in example 2 prints 5.29 dB versus 7.49 dB.
+- The RMS in this chapter uses a one-pole to take a moving average of $`x^2`$ (rather than a real window of length N); `setRmsWindowMs()` sets the time constant of that one-pole. Note that attack / release act on $`x^2`$: when $`x^2`$ reaches 63.2%, the amplitude is only at $`\sqrt{0.632} = 79.5\%`$.
 
 ### 2.5 Attack / release: one-pole smoothing and time constants
 
@@ -158,28 +158,28 @@ $$
 y[n] = \alpha\, y[n-1] + (1 - \alpha)\, x[n]
 $$
 
-For a step input ($x$ jumps from 0 to 1), the analytic solution is $y[n] = 1 - \alpha^n$. We want "$\tau$ seconds elapsed" = "$\tau f_s$ samples elapsed" to be the point where $y$ reaches $1 - e^{-1} = 63.2\%$, so we require $\alpha^{\tau f_s} = e^{-1}$:
+For a step input ($`x`$ jumps from 0 to 1), the analytic solution is $`y[n] = 1 - \alpha^n`$. We want "$`\tau`$ seconds elapsed" = "$`\tau f_s`$ samples elapsed" to be the point where $`y`$ reaches $`1 - e^{-1} = 63.2\%`$, so we require $`\alpha^{\tau f_s} = e^{-1}`$:
 
 $$
 \alpha = \exp\!\left(-\frac{1}{\tau f_s}\right)
 $$
 
-This is `attackReleaseCoefficient()`. With $\tau = 10$ ms and $f_s = 48$ kHz: $\alpha = e^{-1/480} = 0.997919$.
+This is `attackReleaseCoefficient()`. With $`\tau = 10`$ ms and $`f_s = 48`$ kHz: $`\alpha = e^{-1/480} = 0.997919`$.
 
-**Converting time constants**: the time needed to reach a fraction $p$ is $t_p = -\tau \ln(1 - p)$:
+**Converting time constants**: the time needed to reach a fraction $`p`$ is $`t_p = -\tau \ln(1 - p)`$:
 
 | Reaches | Time |
 |---|---|
-| 63.2% | $1.00\,\tau$ (by definition) |
-| 90% | $\ln 10 \cdot \tau = 2.303\,\tau$ |
-| 95% | $3.00\,\tau$ |
-| 99% | $4.605\,\tau$ |
+| 63.2% | $`1.00\,\tau`$ (by definition) |
+| 90% | $`\ln 10 \cdot \tau = 2.303\,\tau`$ |
+| 95% | $`3.00\,\tau`$ |
+| 99% | $`4.605\,\tau`$ |
 
-**Notation**: this chapter uses $t_{63}$ / $t_{90}$ (written t63 / t90 in the program output) for the time it takes the GR to complete 63.2% / 90% of its travel during attack; for release it uses $t_{37}$ / $t_{10}$ for the time it takes the GR to fall to just 36.8% / 10% of its starting value. For a plain one-pole, $t_{63} = t_{37} = 1\,\tau$ and $t_{90} = t_{10} = 2.303\,\tau$.
+**Notation**: this chapter uses $`t_{63}`$ / $`t_{90}`$ (written t63 / t90 in the program output) for the time it takes the GR to complete 63.2% / 90% of its travel during attack; for release it uses $`t_{37}`$ / $`t_{10}`$ for the time it takes the GR to fall to just 36.8% / 10% of its starting value. For a plain one-pole, $`t_{63} = t_{37} = 1\,\tau`$ and $`t_{90} = t_{10} = 2.303\,\tau`$.
 
 So "attack 10 ms" under this course's definition means 10 ms to 63.2% and 23 ms to 90%. **Different manufacturers define it differently** (some use time to 90%, some 10%→90%, and analog units can even be program-dependent), so two compressors that both say 10 ms can sound very different; this is why this chapter measures with numbers instead of trusting the text on the panel. (A) in example 2 measures t63 = 9.98 ms and t90 = 23.02 ms.
 
-Attack and release use different $\alpha$: when the target is **higher** than the current state (more compression is needed) $\alpha_A$ is used, and when it is lower (letting go) $\alpha_R$ is used.
+Attack and release use different $`\alpha`$: when the target is **higher** than the current state (more compression is needed) $`\alpha_A`$ is used, and when it is lower (letting go) $`\alpha_R`$ is used.
 
 #### Branching vs decoupled
 
@@ -194,20 +194,20 @@ y[n] &= \alpha_A\, y[n-1] + (1 - \alpha_A)\, y_1[n]
 \end{aligned}
 $$
 
-The peak-hold fills in the ripple of the periodic signal, so the steady-state GR equals the static curve exactly (B1 measures 7.49 dB), and the attack curve is exactly $1 - e^{-t/\tau_A}$. The price is that release becomes two stages in cascade (first the peak-hold decay, then the attack filter), and the measured release time is about $\tau_R + \tau_A$ (B1: 110.8 ms against the nominal 100 ms). `Compressor` uses decoupled by default; `EnvelopeFollower` defaults to branching (for the chapter 08 gate, which does not care about ripple and actually wants the level to "really fall").
+The peak-hold fills in the ripple of the periodic signal, so the steady-state GR equals the static curve exactly (B1 measures 7.49 dB), and the attack curve is exactly $`1 - e^{-t/\tau_A}`$. The price is that release becomes two stages in cascade (first the peak-hold decay, then the attack filter), and the measured release time is about $`\tau_R + \tau_A`$ (B1: 110.8 ms against the nominal 100 ms). `Compressor` uses decoupled by default; `EnvelopeFollower` defaults to branching (for the chapter 08 gate, which does not care about ripple and actually wants the level to "really fall").
 
 #### Linear domain vs log (dB) domain
 
 Smoothing can be placed in two different places:
 
-- **Linear domain**: first smooth $\lvert x \rvert$ to get an envelope, then feed it into the static curve. This is the `EnvelopeFollower` → `computeOutputDb()` path (B4 in example 2).
+- **Linear domain**: first smooth $`\lvert x \rvert`$ to get an envelope, then feed it into the static curve. This is the `EnvelopeFollower` → `computeOutputDb()` path (B4 in example 2).
 - **Log domain**: first feed the instantaneous level into the static curve to get the GR target (dB), then smooth the GR. This is what `Compressor` does, and it is also the structure recommended by Giannoulis et al.
 
-The difference is in the shape of the release. In the linear domain the envelope decays exponentially, which in dB is a **constant-rate fall**: $20\log_{10} e = 8.686$ dB per $\tau$ ($\tau_R = 100$ ms → 86.9 dB/s), and the GR falls in a straight line until it hits 0 and stops. In the log domain the GR itself decays exponentially, with a long tail that slowly settles to 0, which sounds more natural and more like analog gear; moreover the attack / release times are independent of the threshold and ratio (in the linear domain the shape of the GR curve changes with how far the signal exceeds the threshold). B4 in example 2 prints the two release curves side by side.
+The difference is in the shape of the release. In the linear domain the envelope decays exponentially, which in dB is a **constant-rate fall**: $`20\log_{10} e = 8.686`$ dB per $`\tau`$ ($`\tau_R = 100`$ ms → 86.9 dB/s), and the GR falls in a straight line until it hits 0 and stops. In the log domain the GR itself decays exponentially, with a long tail that slowly settles to 0, which sounds more natural and more like analog gear; moreover the attack / release times are independent of the threshold and ratio (in the linear domain the shape of the GR curve changes with how far the signal exceeds the threshold). B4 in example 2 prints the two release curves side by side.
 
 #### Illustration: the release curves of three kinds of smoothing
 
-The figure below is the ASCII chart printed at the end of example 2 ($T = -20$, $R = 4$, attack 10 ms, release 100 ms; $t = 0$ is the moment a 1 kHz sine drops from -10 dBFS back to -30 dBFS). Each column is 10 ms and each row is 0.5 dB; `1` = B1 decoupled (log domain, the `Compressor` default), `2` = B2 branching, `4` = B4 linear domain, `*` = two or more overlapping; the `-` row is 36.8% (2.76 dB) of B1's steady-state GR of 7.49 dB, i.e. where the curve should be "after one time constant":
+The figure below is the ASCII chart printed at the end of example 2 ($`T = -20`$, $`R = 4`$, attack 10 ms, release 100 ms; $`t = 0`$ is the moment a 1 kHz sine drops from -10 dBFS back to -30 dBFS). Each column is 10 ms and each row is 0.5 dB; `1` = B1 decoupled (log domain, the `Compressor` default), `2` = B2 branching, `4` = B4 linear domain, `*` = two or more overlapping; the `-` row is 36.8% (2.76 dB) of B1's steady-state GR of 7.49 dB, i.e. where the curve should be "after one time constant":
 
 ```
    8.0 |
@@ -233,20 +233,20 @@ The figure below is the ASCII chart printed at the end of example 2 ($T = -20$, 
 Three things can be seen at a glance:
 
 - **B2 (branching) starts from a lower place**: its steady state is only 6.47 dB (the ripple is pulled down by the release), whereas B1 is 7.49 dB.
-- **B1 crosses the 36.8% line at about 110 ms**: decoupled's release is about $\tau_R + \tau_A$ (the price mentioned in "Branching vs decoupled" above). B1 and B2 both decay exponentially, falling more slowly the closer they get to 0, with a tail that drags on past 400 ms.
+- **B1 crosses the 36.8% line at about 110 ms**: decoupled's release is about $`\tau_R + \tau_A`$ (the price mentioned in "Branching vs decoupled" above). B1 and B2 both decay exponentially, falling more slowly the closer they get to 0, with a tail that drags on past 400 ms.
 - **B4 (linear domain) is a straight line** that hits 0 and stops at about 150 ms: a constant-rate fall in dB, with no "slow finish". This is why the log domain sounds more natural.
 
 ### 2.6 Feedforward vs feedback
 
 The block diagram above is **feedforward**: the detector looks at the input. A **feedback** topology lets the detector look at the **output** (the already-compressed signal), which was the natural approach in the analog era (the detection circuit is connected to the output).
 
-Take a steady-state analysis of the hard knee: let the slope of the gain computer be $s$ (GR increases by $s$ dB for every 1 dB above the threshold; for feedforward $s = 1 - 1/R$). With feedback, $Y = X - \text{GR}$ and $\text{GR} = s\,(Y - T)$:
+Take a steady-state analysis of the hard knee: let the slope of the gain computer be $`s`$ (GR increases by $`s`$ dB for every 1 dB above the threshold; for feedforward $`s = 1 - 1/R`$). With feedback, $`Y = X - \text{GR}`$ and $`\text{GR} = s\,(Y - T)`$:
 
 $$
 \text{GR} = s\,(X - \text{GR} - T) \;\Rightarrow\; \text{GR} = \frac{s}{1 + s}(X - T) \;\Rightarrow\; Y - T = \frac{X - T}{1 + s}
 $$
 
-So the **effective ratio of feedback is $1 + s$**. Moving a feedforward 4:1 setting ($s = 0.75$) straight to feedback gives only 1.75:1; to really get 4:1 you must set the slope to 3 (greater than 1, meaning that for every 1 dB over, the detector wants to squash 3 dB, converging to 0.75 through the loop). Behaviorally, the feedback detector at first sees a large output that has "not yet been squashed", so the GR target is initially far larger than at steady state → the early part of the attack is especially fast and then slowly converges (**program-dependent attack**); exercise 6 measures t63 shrinking from 10.8 ms to 2.8 ms. This is one reason feedback machines "sound smoother"; the price is that lookahead is impossible (the output has not been computed yet) and the ratio cannot be infinite.
+So the **effective ratio of feedback is $`1 + s`$**. Moving a feedforward 4:1 setting ($`s = 0.75`$) straight to feedback gives only 1.75:1; to really get 4:1 you must set the slope to 3 (greater than 1, meaning that for every 1 dB over, the detector wants to squash 3 dB, converging to 0.75 through the loop). Behaviorally, the feedback detector at first sees a large output that has "not yet been squashed", so the GR target is initially far larger than at steady state → the early part of the attack is especially fast and then slowly converges (**program-dependent attack**); exercise 6 measures t63 shrinking from 10.8 ms to 2.8 ms. This is one reason feedback machines "sound smoother"; the price is that lookahead is impossible (the output has not been computed yet) and the ratio cannot be infinite.
 
 ### 2.7 Stereo link
 
@@ -260,7 +260,7 @@ $$
 \text{makeup} = -\,y(0) = -\,\text{computeOutputDb}(0, T, R, W)
 $$
 
-With $T = -20$, $R = 4$, hard knee: $y(0) = -20 + 20/4 = -15$ → makeup = 15 dB. Many plugins make up only half, because real music rarely sits at 0 dBFS all the time and full makeup would be too loud. Exercise 5 verifies this formula, and runs a 0 dBFS sine through a real `Compressor` to confirm that the output returns to 0.01 dBFS.
+With $`T = -20`$, $`R = 4`$, hard knee: $`y(0) = -20 + 20/4 = -15`$ → makeup = 15 dB. Many plugins make up only half, because real music rarely sits at 0 dBFS all the time and full makeup would be too loud. Exercise 5 verifies this formula, and runs a 0 dBFS sine through a real `Compressor` to confirm that the output returns to 0.01 dBFS.
 
 ### 2.9 Sidechain HPF
 
@@ -294,7 +294,7 @@ inline float  attackReleaseCoefficient(double timeMs, double sampleRate) noexcep
 inline double coefficientToTimeMs(double alpha, double sampleRate) noexcept;       // inverts it to get τ
 ```
 
-**`AttackReleaseFilter`** is a one-pole smoother that "uses the attack coefficient when rising and the release coefficient when falling". It does not care whether the input is linear amplitude, $x^2$ or dB, so `Compressor` uses it to smooth the GR in the dB domain, and `EnvelopeFollower` uses it to smooth $\lvert x \rvert$ in the linear domain:
+**`AttackReleaseFilter`** is a one-pole smoother that "uses the attack coefficient when rising and the release coefficient when falling". It does not care whether the input is linear amplitude, $`x^2`$ or dB, so `Compressor` uses it to smooth the GR in the dB domain, and `EnvelopeFollower` uses it to smooth $`\lvert x \rvert`$ in the linear domain:
 
 ```cpp
 float process(float target) noexcept {
@@ -311,7 +311,7 @@ float process(float target) noexcept {
 }
 ```
 
-**`EnvelopeFollower`** takes raw samples and returns a linear-amplitude envelope (always ≥ 0): Peak mode smooths $\lvert x \rvert$, RMS mode smooths $x^2$ and then takes the square root. The input first passes through a guard: Inf / NaN are treated as 0, and everything else is clamped to within ±$10^6$ (+120 dBFS) so that $x^2$ cannot overflow to Inf ($x^2$ exceeds the float range once $\lvert x \rvert$ is above about $1.8 \times 10^{19}$). The `Gate`, `Expander`, `DeEsser` and `TransientShaper` of chapter 08 reuse it directly.
+**`EnvelopeFollower`** takes raw samples and returns a linear-amplitude envelope (always ≥ 0): Peak mode smooths $`\lvert x \rvert`$, RMS mode smooths $`x^2`$ and then takes the square root. The input first passes through a guard: Inf / NaN are treated as 0, and everything else is clamped to within ±$`10^6`$ (+120 dBFS) so that $`x^2`$ cannot overflow to Inf ($`x^2`$ exceeds the float range once $`\lvert x \rvert`$ is above about $`1.8 \times 10^{19}`$). The `Gate`, `Expander`, `DeEsser` and `TransientShaper` of chapter 08 reuse it directly.
 
 ### 3.2 `dsp/include/dawlab/dsp/Compressor.h`
 
@@ -351,7 +351,7 @@ cd build; .\bin\Debug\l04_transfer_curve.exe     # run a single example by hand
 
 #### Example 1: `l04_transfer_curve` (`examples/transfer_curve.cpp`)
 
-Prints the static curves of the hard knee and the soft knee (10 dB) at $T = -20$, $R = 4$, the hand-calculated check points (-22 → -22.3375, -20 → -20.9375, -18 → -19.8375), a ratio comparison from 1:1 to 1000:1, an ASCII plot, and a comparison of the expander / gate curves. There is no WAV output.
+Prints the static curves of the hard knee and the soft knee (10 dB) at $`T = -20`$, $`R = 4`$, the hand-calculated check points (-22 → -22.3375, -20 → -20.9375, -18 → -19.8375), a ratio comparison from 1:1 to 1000:1, an ASCII plot, and a comparison of the expander / gate curves. There is no WAV output.
 
 What to look for: the soft knee's GR starts "early and gradually" from -25 dB (0.04 dB at -24 dB), and above -15 dB the two curves coincide; at a ratio of 1000:1 a 0 dBFS input is pinned at -19.98 dB.
 
@@ -365,7 +365,7 @@ Branching attack: t63 =   9.98 ms (theory τ = 10), t90 =  23.02 ms (theory ln10
 Decoupled attack: t63 =   9.98 ms (theory τ = 10), t90 =  23.02 ms (theory ln10·τ = 23.03) | release: t37 = 110.48 ms (theory 100), t10 = 240.77 ms (theory 230.26)
 ```
 
-(B) Feed 1 kHz tone bursts (-30 → -10 → -30 dBFS, 0.5 seconds each) into the `Compressor` ($T = -20$, $R = 4$, attack 10 ms, release 100 ms), recover the GR timeline from the peak ratio of the input / output over 1 ms windows, and print four comparison groups:
+(B) Feed 1 kHz tone bursts (-30 → -10 → -30 dBFS, 0.5 seconds each) into the `Compressor` ($`T = -20`$, $`R = 4`$, attack 10 ms, release 100 ms), recover the GR timeline from the peak ratio of the input / output over 1 ms windows, and print four comparison groups:
 
 | Group | Setting | Steady-state GR | attack t63 | release t37 |
 |---|---|---|---|---|
@@ -386,7 +386,7 @@ Uses the 2-bar drum loop from `makeDrumLoop()` (peak -2.92 dBFS, RMS -17.43 dBFS
 | attack 30 ms (lets the transients through) | 9.67 dB | 19.52 dB | -5.01 dB |
 | heavy compression T -26 / 10:1 / attack 0.02 ms | 20.77 dB | 9.95 dB | +4.56 dB |
 
-The attack sweep ($T = -20$, $R = 4$, knee 6, release 80 ms):
+The attack sweep ($`T = -20`$, $`R = 4`$, knee 6, release 80 ms):
 
 ```
 attack(ms) | max GR | peak ↓ | RMS ↓ | crest(dB) | RMS vs dry after makeup
@@ -402,7 +402,7 @@ It writes `l04_drums_dry.wav`, `l04_drums_compressed.wav` (0.02 ms) and `l04_dru
 
 #### Example 4: `l04_stereo_link` (`examples/stereo_link.cpp`)
 
-A 1 kHz sine with L at -6 dBFS and R at -30 dBFS, $T = -20$, $R = 4$, hard knee:
+A 1 kHz sine with L at -6 dBFS and R at -30 dBFS, $`T = -20`$, $`R = 4`$, hard knee:
 
 ```
 stereo link = OFF: L -16.48, R -30.00, L-R difference 13.52 dB (the input is 24.00 dB)   GR 10.48 dB
@@ -410,7 +410,7 @@ stereo link = ON : L -16.48, R -40.48, L-R difference 24.00 dB                  
 External sidechain (mono -10 dBFS): GR = 7.48 dB, output L -13.48 / R -37.48 dBFS
 ```
 
-The theoretical GR is $(-6 + 20)(1 - 1/4) = 10.5$ dB; the measured 10.48 is because decoupled's peak-hold decays with the release by 0.5 ms between two crests. It writes `l04_stereo_unlinked.wav` and `l04_stereo_linked.wav`; the unlinked version's image shifts to the right and narrows.
+The theoretical GR is $`(-6 + 20)(1 - 1/4) = 10.5`$ dB; the measured 10.48 is because decoupled's peak-hold decays with the release by 0.5 ms between two crests. It writes `l04_stereo_unlinked.wav` and `l04_stereo_linked.wav`; the unlinked version's image shifts to the right and narrows.
 
 #### Example 5: `l04_robustness` (`examples/robustness.cpp`)
 
@@ -445,9 +445,9 @@ On switching to linked, L catches up with R's 15 dB at the attack speed (about 0
 ## 4. Real-time considerations
 
 - **`process()` does not allocate**: `prepare()` is the only place that allocates memory (`channels_.resize`). The sidechain buffers in the examples and exercises are also allocated once, outside the loop.
-- **Denormals**: during release, the state of `AttackReleaseFilter` decays exponentially to a tiny value, and `process()` flushes $\lvert y \rvert < 10^{-15}$ to 0; `reset()` zeroes all the state. Without this, CPU usage suddenly spikes after a stretch of quiet.
-- **Zipper noise**: changing threshold / ratio / knee directly is safe, because they affect only the **target** of the GR, and the GR itself is always smoothed by attack / release, so turning a knob produces no clicks. Makeup gain is multiplied onto the output, so it is smoothed internally with a 10 ms one-pole. Changing attack / release just swaps $\alpha$ and leaves the state unchanged, which is also safe. Toggling stereo link is safe too: when linked every channel still runs its own smoother (just on the same target), and at the instant of switching each side moves smoothly from its current GR (example 5 (B)).
-- **Bad input (Inf / NaN)**: as soon as the state of a recursive filter becomes NaN it never comes back (any operation involving NaN yields NaN), and only `reset()` helps. If a bug upstream (for example a division by 0) sends in one Inf, the compressor may go silent or stop compressing from then on. So `AttackReleaseFilter` treats non-finite input as 0 and zeroes its state if it overflows; `EnvelopeFollower` clamps the input to ±$10^6$ before squaring; `Compressor` treats a non-finite level as 0. These checks add only a few comparisons per sample and have almost no effect on CPU (example 5 (A)).
+- **Denormals**: during release, the state of `AttackReleaseFilter` decays exponentially to a tiny value, and `process()` flushes $`\lvert y \rvert < 10^{-15}`$ to 0; `reset()` zeroes all the state. Without this, CPU usage suddenly spikes after a stretch of quiet.
+- **Zipper noise**: changing threshold / ratio / knee directly is safe, because they affect only the **target** of the GR, and the GR itself is always smoothed by attack / release, so turning a knob produces no clicks. Makeup gain is multiplied onto the output, so it is smoothed internally with a 10 ms one-pole. Changing attack / release just swaps $`\alpha`$ and leaves the state unchanged, which is also safe. Toggling stereo link is safe too: when linked every channel still runs its own smoother (just on the same target), and at the instant of switching each side moves smoothly from its current GR (example 5 (B)).
+- **Bad input (Inf / NaN)**: as soon as the state of a recursive filter becomes NaN it never comes back (any operation involving NaN yields NaN), and only `reset()` helps. If a bug upstream (for example a division by 0) sends in one Inf, the compressor may go silent or stop compressing from then on. So `AttackReleaseFilter` treats non-finite input as 0 and zeroes its state if it overflows; `EnvelopeFollower` clamps the input to ±$`10^6`$ before squaring; `Compressor` treats a non-finite level as 0. These checks add only a few comparisons per sample and have almost no effect on CPU (example 5 (A)).
 - **Thread safety**: `getGainReductionDb()` uses `std::atomic<float>` with relaxed ordering, so the UI thread can read it at any time; the setters are single float writes, which are practically safe on x86/ARM, but if the UI changes several parameters at once and needs them to be consistent, take a parameter snapshot at the host level (chapter 13).
 - **Zero latency**: feedforward has no lookahead, and `getLatencySamples()` returns 0, so the host needs no compensation.
 - **Independent of block size**: all state is updated sample by sample, so however the blocks are cut, the output samples are identical (the examples use 512). The only thing that depends on block size is `getGainReductionDb()`: it stores the "largest GR within this block", so the larger the block, the more the meter reading resembles a peak-hold.
@@ -459,14 +459,14 @@ On switching to linked, L catches up with R's 15 dB at the attack speed (about 0
 | GR is always 0 | The threshold is too high (remember dBFS is negative, so -20 not 20); or the detector is getting silence (the sidechain is wired wrongly). |
 | GR blows up to 100 dB and the output becomes 0 | `gainToDb(0)` returns -100; if your static curve does not correctly "return 0 below the threshold", -100 dB is treated as "over". |
 | Steady-state GR is 1 dB less than the hand calculation | Branching smoothing was used: the ripple of a periodic signal is pulled down by the release (section 2.5). Switch to decoupled, or accept it as a "sounds looser" trait. |
-| Attack set to 1 ms but the peaks still jump out | This is normal (example 3). The first sample of a one-pole rises only by $1 - \alpha$; to catch a single-sample peak you need lookahead (chapter 05). |
+| Attack set to 1 ms but the peaks still jump out | This is normal (example 3). The first sample of a one-pole rises only by $`1 - \alpha`$; to catch a single-sample peak you need lookahead (chapter 05). |
 | The output has "clicks" | Makeup changes the linear value directly without smoothing; or attack is 0 with a large ratio, so the GR jumps with the waveform every sample (this is really waveshaping and produces harmonic distortion). |
 | The stereo image wanders left and right | Stereo link is off. |
 | A "click" at the instant stereo link is toggled | In linked mode only one channel's smoother is updated, the other channels' state is frozen at the old value, and the gain jumps instantly when switching back. Every channel must keep updating its smoother (example 5 (B)). |
 | From some moment on the output is silent forever, or never compresses again, while the GR meter keeps showing 0 | An Inf / NaN (or a huge value that overflows when squared) entered the detector or smoother, and the recursive state is stuck at NaN for good: `dbToGain(NaN)` returns 0 → silence; `sqrt(max(0, NaN))` returns 0 → the level is always -100 dB → no compression. One occurrence jams it permanently, and only `reset()` recovers it. The fix is to block non-finite values at the entry of the recursive filter (section 3.1, example 5 (A)) and to check upstream with `hasNanOrInf()`. |
 | In RMS mode the attack is slow however you adjust it | The RMS window is itself a layer of lowpass, so the attack cannot be faster than the window length; to be faster, shorten `setRmsWindowMs()` or switch to Peak. |
 | CPU spikes when it is quiet | Denormals. Make sure flush-to-zero is in place; in a plugin you can also turn on the CPU's FTZ/DAZ flags (chapter 13). |
-| Output locks up or oscillates when running a feedback topology | A loop with slope $s > 1$ is stable only thanks to attack smoothing; attack = 0 makes it jump back and forth every sample. Exercise 6 fixes the attack at 10 ms. |
+| Output locks up or oscillates when running a feedback topology | A loop with slope $`s > 1`$ is stable only thanks to attack smoothing; attack = 0 makes it jump back and forth every sample. Exercise 6 fixes the attack at 10 ms. |
 
 ## 6. Exercises
 

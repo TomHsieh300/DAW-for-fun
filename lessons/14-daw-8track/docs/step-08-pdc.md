@@ -15,7 +15,7 @@ that tracks stay in time with each other no matter which effects they use.
 
 ### What goes wrong without PDC
 
-Track 1 and track 2 play the same snare; track 1 has an insert with latency $D$. The master gets
+Track 1 and track 2 play the same snare; track 1 has an insert with latency $`D`$. The master gets
 
 $$
 y[n] = x[n] + x[n - D]
@@ -23,14 +23,14 @@ y[n] = x[n] + x[n - D]
 H(e^{j\omega}) = 1 + e^{-j\omega D},\qquad |H| = 2\left|\cos\frac{\omega D}{2}\right| = 2\left|\cos\frac{\pi f D}{f_s}\right|
 $$
 
-a comb filter with notches at $f_k = \frac{(2k+1) f_s}{2D}$. For a 5 ms lookahead ($D = 240$ at
+a comb filter with notches at $`f_k = \frac{(2k+1) f_s}{2D}`$. For a 5 ms lookahead ($`D = 240`$ at
 48 kHz) the notches are at 100, 300, 500, ... Hz: the kick and snare lose their body and every
 hit is doubled ("flam"). Even when the two tracks play *different* parts, rhythm feels sloppy -
 5 ms is audible for tight percussion.
 
 ### The rule
 
-Every insert reports its latency $L$; a chain reports the sum of its non-bypassed inserts
+Every insert reports its latency $`L`$; a chain reports the sum of its non-bypassed inserts
 (effects in series add their delays). Then
 
 $$
@@ -51,9 +51,9 @@ bus b:   sends -> inserts (L_b) -> delay c_b -> fader --------------------------
 ```
 
 - Each track's compensator sits *after its inserts and before its sends*, so all tracks are
-  aligned (at $\max L_u$) when they reach both the dry sum and the buses.
-- A bus adds its own $L_b$; padding each bus to $\max L_v$ aligns the returns with each other.
-- The dry sum must wait for the returns: it is delayed by $\max L_v$.
+  aligned (at $`\max L_u`$) when they reach both the dry sum and the buses.
+- A bus adds its own $`L_b`$; padding each bus to $`\max L_v`$ aligns the returns with each other.
+- The dry sum must wait for the returns: it is delayed by $`\max L_v`$.
 - The master's latency cannot be compensated inside the mix (everything passes through it); it is
   part of the reported total, which the host (or the bounce, Step 9) compensates at the output.
 
@@ -69,19 +69,19 @@ $$
 y[n] = x[n - c], \qquad 0 \le c \le 16\,384
 $$
 
-Changing $c$ makes the output jump (the read position skips or repeats samples) - a click, but it
+Changing $`c`$ makes the output jump (the read position skips or repeats samples) - a click, but it
 only happens when an insert is added, removed, bypassed or changes its latency. The ring is written
-on every block, also while $c = 0$; otherwise growing $c$ from 0 to $D$ would replay $D$ samples of
-stale audio from whenever the delay was last in use, instead of just repeating the most recent $D$
+on every block, also while $`c = 0`$; otherwise growing $`c`$ from 0 to $`D`$ would replay $`D`$ samples of
+stale audio from whenever the delay was last in use, instead of just repeating the most recent $`D`$
 samples. Professional DAWs crossfade here; that is a good extension exercise.
 
 ### The limit, and what happens beyond it
 
-$C = 16\,384$ samples (`kDefaultMaxPdcSamples`, about 341 ms at 48 kHz, 171 ms at 96 kHz) is the
+$`C = 16\,384`$ samples (`kDefaultMaxPdcSamples`, about 341 ms at 48 kHz, 171 ms at 96 kHz) is the
 default capacity of every compensator; `Engine::prepare(sampleRate, blockSize, maxPdcSamples)`
 takes another value. Built-in effects stay far below it, but a hosted VST3 (Step 17) can report
 anything: linear-phase EQs and look-ahead processors often report several thousand samples, and a
-few of them in series on one track can exceed $C$. A compensator cannot delay by more than $C$, so
+few of them in series on one track can exceed $`C`$. A compensator cannot delay by more than $`C`$, so
 in that case not every path can be aligned. The mixer then aligns on the limit instead of the
 maximum:
 
@@ -91,9 +91,9 @@ T_{\text{bus}} = \min\!\big(\max_v L_v,\ C\big), \qquad
 c_t = \max(0,\ T_{\text{track}} - L_t)
 $$
 
-and reports $L_{\text{total}} = T_{\text{track}} + T_{\text{bus}} + L_{\text{master}}$. Every path
+and reports $`L_{\text{total}} = T_{\text{track}} + T_{\text{bus}} + L_{\text{master}}`$. Every path
 whose latency is at most the target stays aligned and lands exactly where a bounce expects it; a
-path with $L_t > T_{\text{track}}$ arrives $L_t - T_{\text{track}}$ samples late (audibly out of
+path with $`L_t > T_{\text{track}}`$ arrives $`L_t - T_{\text{track}}`$ samples late (audibly out of
 time, but still inside the bounce). `Mixer::hasPdcOverflow()` / `Engine::hasPdcOverflow()` is then
 true, and the app's mixer shows "PDC limit exceeded, not aligned!" next to the mix latency. The cure
 is to remove the offending plugin or to prepare the engine with a larger `maxPdcSamples`.
@@ -166,7 +166,7 @@ latency follows its parameter, like a limiter's lookahead.
 | track 1: 37 samples + send to bus A (250 samples); track 2 sends to bus B (0); master 64 | all four paths land on 1000 + 351; total latency 37 + 250 + 64 | pass |
 | real Limiter (5 ms) vs dry | aligned at 1000 + 240; lookahead changed to 2 ms -> 96 samples, still aligned; bypass -> 0 | pass |
 | device change 48 kHz -> 96 kHz | the same 5 ms lookahead re-prepared = 480 samples, PDC follows | pass |
-| track 1: 3 x 8191 = 24 573 samples (more than $C$ = 16 384), track 2 dry, compensated render | overflow flag set, reported latency 16 384; track 2 at 1000, track 1 at 1000 + 8189 (late, but in the file) | pass |
+| track 1: 3 x 8191 = 24 573 samples (more than $`C`$ = 16 384), track 2 dry, compensated render | overflow flag set, reported latency 16 384; track 2 at 1000, track 1 at 1000 + 8189 (late, but in the file) | pass |
 | same, engine prepared with `maxPdcSamples` = 32 768 | no overflow, latency 24 573, one impulse at 1000 | pass |
 
 `l14_pdc_demo` measures and lets you hear it (verified output):

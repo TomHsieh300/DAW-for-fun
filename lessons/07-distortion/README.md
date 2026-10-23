@@ -13,9 +13,9 @@ These effects are the signature sounds of electric guitar, industrial electronic
 After reading this chapter and doing the exercises, you should be able to:
 
 - State the difference between saturation and distortion: the **hardness of the knee** determines how fast the harmonics decay, and therefore whether it sounds "warm" or "harsh".
-- Derive that hard clip approaches a square wave as drive → ∞ with THD → $\sqrt{\pi^2/8 - 1} \approx 48.3\%$, and explain why a symmetric curve produces only odd harmonics.
+- Derive that hard clip approaches a square wave as drive → ∞ with THD → $`\sqrt{\pi^2/8 - 1} \approx 48.3\%`$, and explain why a symmetric curve produces only odd harmonics.
 - Write the transfer curves of foldback (wavefolding), fuzz (asymmetric + dead zone), and full-wave / half-wave rectify, and predict their spectra (for example, why full-wave rectify goes **up an octave**).
-- Derive the quantization step $\Delta = 2/2^N$ and the SNR formula $6.02N + 1.76$ dB, and understand where the aliasing of sample & hold lands and why its level is set by the sinc of the ZOH.
+- Derive the quantization step $`\Delta = 2/2^N`$ and the SNR formula $`6.02N + 1.76`$ dB, and understand where the aliasing of sample & hold lands and why its level is set by the sinc of the ZOH.
 - Decide which effects need oversampling (hard clip does, bitcrush does not) and compute the frequency an alias folds to.
 - Design tone shaping: pre-emphasis / de-emphasis and a post lowpass (the tone knob).
 - Use this chapter's `dawlab::dsp::Distortion` and `dawlab::dsp::AmpChain`, and understand the role of each stage of the guitar amp chain "input HPF → pre-EQ → drive → tone stack → power amp → cabinet" and why the order matters.
@@ -25,7 +25,7 @@ After reading this chapter and doing the exercises, you should be able to:
 
 ### 2.1 Saturation vs. distortion: how hard is the knee?
 
-Mathematically, Chapter 06 and this chapter do exactly the same thing: every sample is fed through a **memoryless transfer curve** $y = f(u)$, where $u = g \cdot x$ is the input multiplied by the drive gain $g$. The difference is the **shape** of the curve:
+Mathematically, Chapter 06 and this chapter do exactly the same thing: every sample is fed through a **memoryless transfer curve** $`y = f(u)`$, where $`u = g \cdot x`$ is the input multiplied by the drive gain $`g`$. The difference is the **shape** of the curve:
 
 ```
  y                                    y
@@ -46,10 +46,10 @@ Three aspects distinguish "saturation" from "distortion":
 | Knee hardness | Smooth everywhere (tanh, arctan) | Has "corners" (hard clip, the fold points of foldback), even discontinuities (the steps of a quantizer) |
 | Number of harmonics | Few, decaying quickly | Many, decaying slowly, extending beyond Nyquist |
 
-**Why does the hardness of the knee determine how fast the harmonics decay?** This is a basic fact of Fourier analysis: if a periodic function and its first $k-1$ derivatives are continuous but its $k$-th derivative has a jump, its Fourier coefficients decay roughly as $1/n^{k+1}$.
+**Why does the hardness of the knee determine how fast the harmonics decay?** This is a basic fact of Fourier analysis: if a periodic function and its first $`k-1`$ derivatives are continuous but its $`k`$-th derivative has a jump, its Fourier coefficients decay roughly as $`1/n^{k+1}`$.
 
-- Square wave (the function itself has a jump, $k = 0$): harmonics ∝ $1/n$.
-- A sine flattened by hard clip: the function is continuous, but at the clip point the slope suddenly goes from $\cos$ to 0 ($k = 1$): harmonics ∝ $1/n^2$ (the larger the drive, the steeper the clip point, and the closer to the square wave's $1/n$).
+- Square wave (the function itself has a jump, $`k = 0`$): harmonics ∝ $`1/n`$.
+- A sine flattened by hard clip: the function is continuous, but at the clip point the slope suddenly goes from $`\cos`$ to 0 ($`k = 1`$): harmonics ∝ $`1/n^2`$ (the larger the drive, the steeper the clip point, and the closer to the square wave's $`1/n`$).
 - A sine rounded by tanh: all derivatives are continuous: the harmonics decay **exponentially**, and the high harmonics quickly vanish into the noise.
 
 That is why soft clip sounds "round" and hard clip sounds "harsh" -- the harshness comes from that long string of slowly decaying high harmonics. It also directly determines how severe the aliasing is (Section 2.8).
@@ -57,28 +57,28 @@ That is why soft clip sounds "round" and hard clip sounds "harsh" -- the harshne
 ### 2.2 Hard clipping and its spectrum
 
 $$
-y = \operatorname{clip}(u) = \begin{cases} 1, & u > 1 \\ u, & |u| \le 1 \\ -1, & u < -1 \end{cases}
+y = \mathrm{clip}(u) = \begin{cases} 1, & u > 1 \\ u, & |u| \le 1 \\ -1, & u < -1 \end{cases}
 $$
 
 In code this is simply `std::clamp(u, -1.0f, 1.0f)`.
 
-**Only odd harmonics.** Clip is an odd function: $f(-u) = -f(u)$. Feed it a sine $x(t) = A\sin\omega t$; since $x(t + T/2) = -x(t)$, the output also satisfies $y(t + T/2) = -y(t)$ (half-wave symmetry). For the $n$-th harmonic $\sin(n\omega t)$, shifting by half a period multiplies it by $(-1)^n$; the symmetry holds only when $n$ is odd, so the coefficients of the even harmonics must be 0.
+**Only odd harmonics.** Clip is an odd function: $`f(-u) = -f(u)`$. Feed it a sine $`x(t) = A\sin\omega t`$; since $`x(t + T/2) = -x(t)`$, the output also satisfies $`y(t + T/2) = -y(t)`$ (half-wave symmetry). For the $`n`$-th harmonic $`\sin(n\omega t)`$, shifting by half a period multiplies it by $`(-1)^n`$; the symmetry holds only when $`n`$ is odd, so the coefficients of the even harmonics must be 0.
 
-**As drive → ∞ it approaches a square wave.** Multiply a sine by a very large $g$ and clip, and almost the whole period is stuck at ±1 -- a square wave:
+**As drive → ∞ it approaches a square wave.** Multiply a sine by a very large $`g`$ and clip, and almost the whole period is stuck at ±1 -- a square wave:
 
 $$
 \text{square}(t) = \frac{4}{\pi}\sum_{n = 1, 3, 5, \dots} \frac{\sin(n\omega t)}{n}
 $$
 
-The fundamental amplitude is $4/\pi \approx 1.273$ (+2.1 dBFS -- larger than the clip limit of 1!), and the $n$-th harmonic is $1/n$ of the fundamental: H3 = −9.5 dB, H5 = −14.0 dB, H7 = −16.9 dB (relative to the fundamental).
+The fundamental amplitude is $`4/\pi \approx 1.273`$ (+2.1 dBFS -- larger than the clip limit of 1!), and the $`n`$-th harmonic is $`1/n`$ of the fundamental: H3 = −9.5 dB, H5 = −14.0 dB, H7 = −16.9 dB (relative to the fundamental).
 
-THD is fastest to compute with Parseval's theorem. Parseval's theorem says: **the total power of a signal (RMS²) equals the sum of the powers of its frequency components**, and a sine of amplitude $a$ has power $a^2/2$. So "the total power of all harmonics = total power − fundamental power", and there is no need to add infinitely many harmonics one by one. The square wave has RMS = 1 (power = 1) and the fundamental's power is $(4/\pi)^2 / 2 = 8/\pi^2$, so
+THD is fastest to compute with Parseval's theorem. Parseval's theorem says: **the total power of a signal (RMS²) equals the sum of the powers of its frequency components**, and a sine of amplitude $`a`$ has power $`a^2/2`$. So "the total power of all harmonics = total power − fundamental power", and there is no need to add infinitely many harmonics one by one. The square wave has RMS = 1 (power = 1) and the fundamental's power is $`(4/\pi)^2 / 2 = 8/\pi^2`$, so
 
 $$
 \text{THD} = \sqrt{\frac{P_\text{total} - P_1}{P_1}} = \sqrt{\frac{1 - 8/\pi^2}{8/\pi^2}} = \sqrt{\frac{\pi^2}{8} - 1} \approx 0.483 = 48.3\%
 $$
 
-If we sum only up to the 50th harmonic (the example's `thdPercent(..., 50)`), we must subtract the tail $\sum_{n \text{ odd} \ge 51} 1/n^2 \approx 0.01$ for $n \ge 51$, giving $\sqrt{(\pi^2/8 - 1 - 0.01)} \approx 47.3\%$. What Example 1 measured (220 Hz, −6 dBFS sine):
+If we sum only up to the 50th harmonic (the example's `thdPercent(..., 50)`), we must subtract the tail $`\sum_{n \text{ odd} \ge 51} 1/n^2 \approx 0.01`$ for $`n \ge 51`$, giving $`\sqrt{(\pi^2/8 - 1 - 0.01)} \approx 47.3\%`$. What Example 1 measured (220 Hz, −6 dBFS sine):
 
 | drive | H1 (dBFS) | H3 | H5 | H7 | THD |
 |---|---|---|---|---|---|
@@ -86,7 +86,7 @@ If we sum only up to the 50th harmonic (the example's `thdPercent(..., 50)`), we
 | 20 dB | 2.0 | −8.0 | −13.4 | −17.9 | 37.9% |
 | 40 dB | 2.1 | −7.4 | −11.9 | −14.8 | 47.0% |
 
-At drive 40 dB, H1 = 2.1 dBFS (= $4/\pi$), H3 − H1 = −9.5 dB, and THD is 47.0%, nearly the same as the square wave's theoretical values; the even harmonics are all unmeasurable (−100 dB = the floor of Analysis.h). The self-check in Example 1 verifies each item: H1 within 0.3 dB of $20\log_{10}(4/\pi) = 2.10$ dB, H3 − H1 within 0.5 dB of −9.54 dB, THD between 44% and 48.3%, and all even harmonics below −80 dB.
+At drive 40 dB, H1 = 2.1 dBFS (= $`4/\pi`$), H3 − H1 = −9.5 dB, and THD is 47.0%, nearly the same as the square wave's theoretical values; the even harmonics are all unmeasurable (−100 dB = the floor of Analysis.h). The self-check in Example 1 verifies each item: H1 within 0.3 dB of $`20\log_{10}(4/\pi) = 2.10`$ dB, H3 − H1 within 0.5 dB of −9.54 dB, THD between 44% and 48.3%, and all even harmonics below −80 dB.
 
 **What it sounds like**: at low drive only the note onsets are clipped, like a "preamp pushed too hard"; at high drive every note becomes a square wave with very long sustain (because the tail of the note is pushed into clipping too), and the tone is bright and harsh, like an 8-bit game console or an 80s distortion pedal.
 
@@ -104,14 +104,14 @@ Where hard clip "cuts off" anything beyond ±1, foldback "folds it back", like l
    -1   1    3    5    7
 ```
 
-Mathematically, $u$ is mapped onto a triangle wave of period $4$:
+Mathematically, $`u`$ is mapped onto a triangle wave of period $`4`$:
 
 $$
 t = (u + 1) \bmod 4 \in [0, 4), \qquad
 y = \begin{cases} t - 1, & t < 2 \\ 3 - t, & t \ge 2 \end{cases}
 $$
 
-For $|u| \le 1$, $y = u$ (perfectly transparent); for $u \in [1, 3]$, $y = 2 - u$; for $u \in [3, 5]$, $y = u - 4$ ... no matter how large $u$ is it folds correctly many times, which is more robust than the one-fold `if (u > 1) u = 2 - u;` (Exercise 3 generalizes this to an arbitrary threshold).
+For $`|u| \le 1`$, $`y = u`$ (perfectly transparent); for $`u \in [1, 3]`$, $`y = 2 - u`$; for $`u \in [3, 5]`$, $`y = u - 4`$ ... no matter how large $`u`$ is it folds correctly many times, which is more robust than the one-fold `if (u > 1) u = 2 - u;` (Exercise 3 generalizes this to an arbitrary threshold).
 
 **Spectral character**: every extra fold adds two more "corners" to the waveform, so as drive increases the harmonics do not simply get more numerous; instead **energy moves among the harmonics** -- at some drive H3 is even larger than H1 (Example 1: at Foldback 12 dB, H1 = −7.0 dBFS and H3 = −5.2 dBFS, THD 127%; the self-check confirms H3 > H1). This is the signature of West Coast synthesizers (Buchla, Serge): drive the fold amount with an LFO or envelope and the overtones "sweep", a bit like a filter sweep but more metallic.
 
@@ -140,8 +140,8 @@ $$
 ```
 
 1. **High gain**: drive is usually 30 dB or more, so it is clipping almost all the time, close to a square wave.
-2. **Asymmetric**: the positive half-cycle reaches at most +1.0 and the negative at least −0.6. $f(-u) \ne -f(u)$, half-wave symmetry is broken, and **even harmonics appear**; the average of the output is no longer 0 (**DC offset**). DC eats headroom and fools the next stage (a compressor, another distortion), so for Fuzz and Rectify `Distortion` adds a 10 Hz one-pole highpass after the shaper (a DC blocker, the `OnePole` from Chapter 02).
-3. **Dead zone → gating**: the output is 0 while $|u| \le d$. When a note decays until its amplitude after the drive is below $d$, the sound suddenly "cuts off" instead of fading slowly -- the **gating / sputter** characteristic of fuzz (the "putt-putt" broken-up note tail). At drive $G$ dB, an input peak below $20\log_{10} d - G = -20 - G$ dBFS is shut off; at drive 30 dB the threshold is −50 dBFS. Some people love this effect (the "popcorn" sound of a Fuzz Face when you turn the guitar volume down), while others consider it a flaw. The dead zone also produces crossover distortion: a piece of the waveform around every zero crossing is eaten.
+2. **Asymmetric**: the positive half-cycle reaches at most +1.0 and the negative at least −0.6. $`f(-u) \ne -f(u)`$, half-wave symmetry is broken, and **even harmonics appear**; the average of the output is no longer 0 (**DC offset**). DC eats headroom and fools the next stage (a compressor, another distortion), so for Fuzz and Rectify `Distortion` adds a 10 Hz one-pole highpass after the shaper (a DC blocker, the `OnePole` from Chapter 02).
+3. **Dead zone → gating**: the output is 0 while $`|u| \le d`$. When a note decays until its amplitude after the drive is below $`d`$, the sound suddenly "cuts off" instead of fading slowly -- the **gating / sputter** characteristic of fuzz (the "putt-putt" broken-up note tail). At drive $`G`$ dB, an input peak below $`20\log_{10} d - G = -20 - G`$ dBFS is shut off; at drive 30 dB the threshold is −50 dBFS. Some people love this effect (the "popcorn" sound of a Fuzz Face when you turn the guitar volume down), while others consider it a flaw. The dead zone also produces crossover distortion: a piece of the waveform around every zero crossing is eaten.
 
 Section (2b) of Example 1 measures this threshold directly (Fuzz, drive 30 dB, 220 Hz sine, output peak):
 
@@ -149,7 +149,7 @@ Section (2b) of Example 1 measures this threshold directly (Fuzz, drive 30 dB, 2
 |---|---|---|---|---|
 | Output peak | 0 (completely silent) | 0 (completely silent) | 0.041 | 0.216 |
 
-Below the threshold is a **digital zero**, not "very quiet" -- the self-check requires the peak below the threshold to be exactly 0 and above the threshold to be audible. At −47 dBFS the peak of $u$ is $10^{-17/20} \approx 0.141$; subtracting the dead zone 0.1 leaves 0.041, exactly the measured value (the oversampler's filter only makes it differ by a hair).
+Below the threshold is a **digital zero**, not "very quiet" -- the self-check requires the peak below the threshold to be exactly 0 and above the threshold to be audible. At −47 dBFS the peak of $`u`$ is $`10^{-17/20} \approx 0.141`$; subtracting the dead zone 0.1 leaves 0.041, exactly the measured value (the oversampler's filter only makes it differ by a hair).
 
 Example 1's measurements (220 Hz, −6 dBFS):
 
@@ -164,19 +164,19 @@ Example 1's measurements (220 Hz, −6 dBFS):
 
 Rectification comes from power-supply circuits: turning AC into DC. In audio there are two kinds:
 
-- **full-wave**: $y = |u|$
-- **half-wave**: $y = \max(u, 0)$
+- **full-wave**: $`y = |u|`$
+- **half-wave**: $`y = \max(u, 0)`$
 
-**Why does full-wave rectify raise the pitch an octave?** Intuition: after the negative half-cycle of $|\sin\omega t|$ is flipped up, the waveform **repeats every half-cycle**; the period goes from $T$ to $T/2$ and the frequency doubles = an octave up. Written more precisely with a Fourier series:
+**Why does full-wave rectify raise the pitch an octave?** Intuition: after the negative half-cycle of $`|\sin\omega t|`$ is flipped up, the waveform **repeats every half-cycle**; the period goes from $`T`$ to $`T/2`$ and the frequency doubles = an octave up. Written more precisely with a Fourier series:
 
 $$
 |\sin\omega t| = \frac{2}{\pi} - \frac{4}{\pi}\sum_{k=1}^{\infty} \frac{\cos(2k\omega t)}{4k^2 - 1}
 = \frac{2}{\pi} - \frac{4}{3\pi}\cos 2\omega t - \frac{4}{15\pi}\cos 4\omega t - \cdots
 $$
 
-Only DC and the **even** harmonics ($2\omega, 4\omega, 6\omega, \dots$) remain, and the fundamental $\omega$ disappears completely. The pitch the ear hears is determined by the "common divisor of the harmonics": the common divisor of $2\omega, 4\omega, 6\omega$ is $2\omega$, so it sounds an octave above the original.
+Only DC and the **even** harmonics ($`2\omega, 4\omega, 6\omega, \dots`$) remain, and the fundamental $`\omega`$ disappears completely. The pitch the ear hears is determined by the "common divisor of the harmonics": the common divisor of $`2\omega, 4\omega, 6\omega`$ is $`2\omega`$, so it sounds an octave above the original.
 
-Measurement (Example 1, drive 6.02 dB so that a −6 dBFS sine just reaches a peak of 1): H1 = −100 dB (unmeasurable), H2 = −7.4 dBFS, H4 = −21.4 dBFS. Theory: $4/(3\pi) = 0.424 \to -7.44$ dB, $4/(15\pi) = 0.085 \to -21.42$ dB, in perfect agreement (the self-check allows ±0.3 dB and requires H1 < −60 dB). There is also DC of $2/\pi \approx 0.64$, which the DC blocker removes.
+Measurement (Example 1, drive 6.02 dB so that a −6 dBFS sine just reaches a peak of 1): H1 = −100 dB (unmeasurable), H2 = −7.4 dBFS, H4 = −21.4 dBFS. Theory: $`4/(3\pi) = 0.424 \to -7.44`$ dB, $`4/(15\pi) = 0.085 \to -21.42`$ dB, in perfect agreement (the self-check allows ±0.3 dB and requires H1 < −60 dB). There is also DC of $`2/\pi \approx 0.64`$, which the DC blocker removes.
 
 **Half-wave** is
 
@@ -186,7 +186,7 @@ $$
 
 The fundamental is still there (amplitude 1/2), plus the even harmonics and DC: the pitch is unchanged, but the sound becomes "hollow, like a square wave with a nasal quality". `Distortion` switches with `setRectifyMode(RectifyMode::HalfWave)`.
 
-When you full-wave rectify a **chord**, besides every note going up an octave, intermodulation components such as $f_1 \pm f_2$ appear between any two frequencies $f_1, f_2$ -- which is why octave fuzz (for example Octavia-type pedals) sounds ugly on chords but charming on single-note solos.
+When you full-wave rectify a **chord**, besides every note going up an octave, intermodulation components such as $`f_1 \pm f_2`$ appear between any two frequencies $`f_1, f_2`$ -- which is why octave fuzz (for example Octavia-type pedals) sounds ugly on chords but charming on single-note solos.
 
 ### 2.6 Bitcrusher: quantization and sample-rate reduction
 
@@ -194,29 +194,29 @@ A bitcrusher deliberately cuts down the two "resolutions" of digital audio: **am
 
 #### 2.6.1 Quantization: step and SNR
 
-A signed $N$-bit integer has $2^N$ codes, mapped onto the amplitude range $[-1, 1)$, so the size of each step is
+A signed $`N`$-bit integer has $`2^N`$ codes, mapped onto the amplitude range $`[-1, 1)`$, so the size of each step is
 
 $$
 \Delta = \frac{2}{2^N} = 2^{1-N}
 $$
 
-8 bit: $\Delta = 2/256 = 0.0078$; 16 bit: $\Delta = 2/65536 \approx 3.05 \times 10^{-5}$. Quantization is "rounding to the nearest step" (a mid-tread quantizer):
+8 bit: $`\Delta = 2/256 = 0.0078`$; 16 bit: $`\Delta = 2/65536 \approx 3.05 \times 10^{-5}`$. Quantization is "rounding to the nearest step" (a mid-tread quantizer):
 
 $$
-Q(u) = \Delta \cdot \operatorname{clamp}\!\left(\left\lfloor \frac{u}{\Delta} + \frac{1}{2} \right\rfloor,\; -M,\; M - 1\right), \qquad M = \left\lfloor 2^{N-1} \right\rfloor
+Q(u) = \Delta \cdot \mathrm{clamp}\!\left(\left\lfloor \frac{u}{\Delta} + \frac{1}{2} \right\rfloor,\; -M,\; M - 1\right), \qquad M = \left\lfloor 2^{N-1} \right\rfloor
 $$
 
-Note that the upper limit is $M - 1$: just like real 16-bit PCM (−32768 ... 32767), the largest positive value is $1 - \Delta$, not 1. When $N$ is an integer, $M = 2^{N-1}$; when $N$ is fractional (allowed by `setBitDepth()`, for example 5.5 bit), $M$ takes the integer part (5.5 bit: $2^{4.5} = 22.6 \to M = 22$, codes −22 ... 21), so the output always lands on integer multiples of $\Delta$, with a maximum positive value of $21\Delta = 0.928$ and a minimum of $-22\Delta = -0.972$.
+Note that the upper limit is $`M - 1`$: just like real 16-bit PCM (−32768 ... 32767), the largest positive value is $`1 - \Delta`$, not 1. When $`N`$ is an integer, $`M = 2^{N-1}`$; when $`N`$ is fractional (allowed by `setBitDepth()`, for example 5.5 bit), $`M`$ takes the integer part (5.5 bit: $`2^{4.5} = 22.6 \to M = 22`$, codes −22 ... 21), so the output always lands on integer multiples of $`\Delta`$, with a maximum positive value of $`21\Delta = 0.928`$ and a minimum of $`-22\Delta = -0.972`$.
 
-**Very low bit counts ($N < 2$)**: $M = 1$ and the only codes left are −1 and 0 -- the whole positive half-cycle becomes 0, leaving only negative square pulses, and the output is asymmetric and carries a large DC (true 1-bit two's complement behaves the same way). The Bitcrush path has no DC blocker (the reason is in Section 3.1), so at such low bit counts it is best to follow it with a highpass, or simply set the lower limit of the bit-depth knob to 2.
+**Very low bit counts ($`N < 2`$)**: $`M = 1`$ and the only codes left are −1 and 0 -- the whole positive half-cycle becomes 0, leaving only negative square pulses, and the output is asymmetric and carries a large DC (true 1-bit two's complement behaves the same way). The Bitcrush path has no DC blocker (the reason is in Section 3.1), so at such low bit counts it is best to follow it with a highpass, or simply set the lower limit of the bit-depth knob to 2.
 
-**Deriving the SNR formula.** Treat the quantization error $e = Q(u) - u$ as noise uniformly distributed over $[-\Delta/2, \Delta/2]$ (valid when the signal is large and "busy" enough); its power (variance) is
+**Deriving the SNR formula.** Treat the quantization error $`e = Q(u) - u`$ as noise uniformly distributed over $`[-\Delta/2, \Delta/2]`$ (valid when the signal is large and "busy" enough); its power (variance) is
 
 $$
 \sigma_e^2 = \frac{1}{\Delta}\int_{-\Delta/2}^{\Delta/2} e^2\, de = \frac{\Delta^2}{12}
 $$
 
-A sine of amplitude $A$ has power $A^2/2$. So
+A sine of amplitude $`A`$ has power $`A^2/2`$. So
 
 $$
 \text{SNR} = 10\log_{10}\frac{A^2/2}{\Delta^2/12} = 10\log_{10}\frac{6A^2}{\Delta^2}
@@ -236,7 +236,7 @@ Each extra bit adds 6.02 dB of SNR; every 20 dB the signal gets quieter, SNR als
 | 12 | 0.000488 | 73.80 | 74.01 | 53.97 | 54.01 |
 | 16 | 3.05e-5 | 98.06 | 98.09 | 78.07 | 78.09 |
 
-From 8 → 16 bit the measurement gives 6.12 / 6.04 dB per bit. The deviation at low bit counts has two causes: (1) the positive peak at 0 dBFS exceeds the quantizer's upper limit $1 - \Delta$ and is cut off (at 4 bit, 0.125 is cut off!), adding clipping distortion; (2) with only a few levels the error is highly correlated with the signal and does not behave like uniform noise. And at −20 dBFS with 2 and 3 bit: the signal amplitude 0.1 is smaller than $\Delta/2$, the whole thing is quantized to 0, and SNR = 0 dB -- **the tail simply disappears**, which is why a bitcrusher makes a reverb tail "cut off".
+From 8 → 16 bit the measurement gives 6.12 / 6.04 dB per bit. The deviation at low bit counts has two causes: (1) the positive peak at 0 dBFS exceeds the quantizer's upper limit $`1 - \Delta`$ and is cut off (at 4 bit, 0.125 is cut off!), adding clipping distortion; (2) with only a few levels the error is highly correlated with the signal and does not behave like uniform noise. And at −20 dBFS with 2 and 3 bit: the signal amplitude 0.1 is smaller than $`\Delta/2`$, the whole thing is quantized to 0, and SNR = 0 dB -- **the tail simply disappears**, which is why a bitcrusher makes a reverb tail "cut off".
 
 > Why 997 Hz and not 1000 Hz? 48000 / 1000 = 48 is an integer, so every period samples exactly the same points and the quantization error repeats every period → it becomes **harmonics** instead of noise. 997 is prime, so the error looks "random", matching the assumption of the derivation. This also explains why bitcrush on a quiet pure tone sounds like "distortion" rather than "hiss".
 
@@ -244,7 +244,7 @@ From 8 → 16 bit the measurement gives 6.12 / 6.04 dB per bit. The deviation at
 
 #### 2.6.2 Sample-rate reduction: sample & hold and deliberate aliasing
 
-The "correct" way to reduce the sample rate is to lowpass first and then drop samples (the Oversampler of Chapter 06 does the reverse). A bitcrusher deliberately does not: it "looks" at the input only once every $D$ samples and holds the previous value the rest of the time (**sample & hold**, S&H):
+The "correct" way to reduce the sample rate is to lowpass first and then drop samples (the Oversampler of Chapter 06 does the reverse). A bitcrusher deliberately does not: it "looks" at the input only once every $`D`$ samples and holds the previous value the rest of the time (**sample & hold**, S&H):
 
 ```
 x:   ●  ●  ●  ●  ●  ●  ●  ●  ●     original 48 kHz
@@ -252,10 +252,10 @@ y:   ●──●──●──●  ●──●──●──●  ●     D =
      └ hold ─┘   └ hold ─┘
 ```
 
-The effective sample rate is $f_s' = f_s / D$. In the world of $f_s'$, any frequency above $f_s'/2$ aliases:
+The effective sample rate is $`f_s' = f_s / D`$. In the world of $`f_s'`$, any frequency above $`f_s'/2`$ aliases:
 
 $$
-f_\text{alias} = |f - k f_s'|, \quad k = \operatorname{round}(f / f_s')
+f_\text{alias} = |f - k f_s'|, \quad k = \mathrm{round}(f / f_s')
 $$
 
 The hold action itself is a zero-order hold (ZOH), whose frequency response is a sinc:
@@ -264,13 +264,13 @@ $$
 |H_\text{ZOH}(f)| = \left|\frac{\sin(\pi f / f_s')}{\pi f / f_s'}\right|
 $$
 
-So the level of each component = its original level × the ZOH value at that frequency. (Strictly speaking, in discrete time the response of "holding for $D$ samples" is the Dirichlet kernel $\left|\frac{\sin(\pi f D / f_s)}{D \sin(\pi f / f_s)}\right|$; for large $D$ and $f \ll f_s$ it approaches the sinc above. The example uses the sinc as the theoretical value, with an error within 0.3 dB.) Example 3's measurement: a 5 kHz, −6 dBFS sine, $D = 8$ ($f_s' = 6$ kHz):
+So the level of each component = its original level × the ZOH value at that frequency. (Strictly speaking, in discrete time the response of "holding for $`D`$ samples" is the Dirichlet kernel $`\left|\frac{\sin(\pi f D / f_s)}{D \sin(\pi f / f_s)}\right|`$; for large $`D`$ and $`f \ll f_s`$ it approaches the sinc above. The example uses the sinc as the theoretical value, with an error within 0.3 dB.) Example 3's measurement: a 5 kHz, −6 dBFS sine, $`D = 8`$ ($`f_s' = 6`$ kHz):
 
 | Frequency | Measured | Theory |
 |---|---|---|
 | 5000 Hz (original) | −20.2 dBFS | −6 + (−14.4) = −20.4 |
-| **1000 Hz (alias, $|5000 - 6000|$)** | **−6.4 dBFS** | −6 + (−0.4) = −6.4 |
-| 11000 Hz (image, $f_s' + f$) | −26.5 dBFS | — |
+| **1000 Hz (alias, $`|5000 - 6000|`$)** | **−6.4 dBFS** | −6 + (−0.4) = −6.4 |
+| 11000 Hz (image, $`f_s' + f`$) | −26.5 dBFS | — |
 
 A 1 kHz that did not exist before, with no harmonic relationship to 5 kHz at all, appears -- and it is 14 dB louder than the original 5 kHz. These **frequencies unrelated to the pitch** are the bitcrusher's "metallic" and "robotic" character; when you play a melody, the aliases move in the opposite direction to the notes, which is very recognizable. This is **deliberate** aliasing -- it is the effect itself.
 
@@ -285,20 +285,20 @@ flowchart LR
 
 The classic approach for guitar overdrive (for example the mid hump of many "green pedals"):
 
-- **Cut the lows before the drive** (input HPF): low frequencies carry a lot of energy, and after entering the nonlinearity they produce **intermodulation** with the high notes -- two frequencies $f_1, f_2$ through a term like $u^3$ produce $2f_1 - f_2$, $2f_2 - f_1$, and other frequencies unrelated to the musical scale. The expansion of $(\cos a + \cos b)^3$ contains terms such as $\tfrac{3}{4}\cos(2a - b)$, so the lower and louder the two notes, the more "mud" is produced. Removing everything below 80 Hz first keeps a chord on the low strings from smearing into a blob.
+- **Cut the lows before the drive** (input HPF): low frequencies carry a lot of energy, and after entering the nonlinearity they produce **intermodulation** with the high notes -- two frequencies $`f_1, f_2`$ through a term like $`u^3`$ produce $`2f_1 - f_2`$, $`2f_2 - f_1`$, and other frequencies unrelated to the musical scale. The expansion of $`(\cos a + \cos b)^3`$ contains terms such as $`\tfrac{3}{4}\cos(2a - b)`$, so the lower and louder the two notes, the more "mud" is produced. Removing everything below 80 Hz first keeps a chord on the low strings from smearing into a blob.
 - **Push the mids before the drive** (pre-EQ peak, around 800 Hz): let the band that gives the guitar the most "character" enter the distortion first.
 - **A lowpass after the drive** (the tone knob): the high harmonics of hard clip decay slowly (Section 2.1), and keeping all of them sounds like "mosquitoes". `Distortion::setToneHz()` is a 2nd-order Butterworth lowpass with Q = 0.7071 (the `Biquad` from Chapter 02), completely bypassed at ≥ 20 kHz.
 
-**Order matters**: "EQ → distortion" and "distortion → EQ" are not the same thing. Linear systems can be reordered ($H_1 H_2 = H_2 H_1$), but as soon as a nonlinearity $f$ is sandwiched in between, $H_2 \cdot f(H_1 x) \ne H_1 \cdot f(H_2 x)$. Exercise 7 has you design an amp chain from this angle.
+**Order matters**: "EQ → distortion" and "distortion → EQ" are not the same thing. Linear systems can be reordered ($`H_1 H_2 = H_2 H_1`$), but as soon as a nonlinearity $`f`$ is sandwiched in between, $`H_2 \cdot f(H_1 x) \ne H_1 \cdot f(H_2 x)`$. Exercise 7 has you design an amp chain from this angle.
 
 ### 2.8 When is oversampling needed?
 
-Chapter 06 already explained that a nonlinearity generates new frequencies, and the part beyond Nyquist ($f_s/2$) aliases back into the audible band. The key question is: **how high do the newly generated frequencies reach?**
+Chapter 06 already explained that a nonlinearity generates new frequencies, and the part beyond Nyquist ($`f_s/2`$) aliases back into the audible band. The key question is: **how high do the newly generated frequencies reach?**
 
-- Polynomial $u^k$: multiplies the frequency of a sine by at most $k$. As long as the oversampling factor is $\ge k$, in theory there is no aliasing (the case of the cubic curve in Chapter 06).
-- hard clip, foldback, fuzz, rectify: the curve has "corners", which is equivalent to an **infinite-degree polynomial**; the harmonics extend without limit, decaying only about as $1/n$ (close to a square wave). Oversampling cannot eliminate the aliasing; it can only make the harmonics that "fold back" much smaller.
+- Polynomial $`u^k`$: multiplies the frequency of a sine by at most $`k`$. As long as the oversampling factor is $`\ge k`$, in theory there is no aliasing (the case of the cubic curve in Chapter 06).
+- hard clip, foldback, fuzz, rectify: the curve has "corners", which is equivalent to an **infinite-degree polynomial**; the harmonics extend without limit, decaying only about as $`1/n`$ (close to a square wave). Oversampling cannot eliminate the aliasing; it can only make the harmonics that "fold back" much smaller.
 
-Take a 5 kHz sine through hard clip at 48 kHz: the odd harmonics 15k, 25k, 35k, 45k, 55k ... only 15k is within Nyquist, and the rest fold back according to $|f - k f_s|$:
+Take a 5 kHz sine through hard clip at 48 kHz: the odd harmonics 15k, 25k, 35k, 45k, 55k ... only 15k is within Nyquist, and the rest fold back according to $`|f - k f_s|`$:
 
 ```
  harmonic:  5k   15k   25k   35k   45k   55k   65k ...
@@ -319,7 +319,7 @@ Measurements from Example 4 (`l07_oversampling_aliasing`, drive 20 dB) in dBFS:
 The true harmonics (H columns) are completely unaffected; the aliases (A columns) drop by 19-31 dB at 4x and by another 24-31 dB at 8x. Three details:
 
 1. **The 23 kHz column barely drops**: the 25 kHz harmonic lies in the **transition band** of the Chapter 06 halfband filter (centered on 24 kHz) and is attenuated only slightly. But 23 kHz is inaudible anyway, so it does not matter.
-2. **2x and 4x are almost the same, and only 8x improves things substantially.** In the oversampled world (sample rate $L f_s$), the $n$-th harmonic folds to $|n f_0 - k L f_s|$; only the components that "have already folded back into 0-24 kHz at the high sample rate" cannot be blocked by the downsampling filter. Find the lowest harmonic number that folds back to 3 kHz / 7 kHz (Example 4 prints this table):
+2. **2x and 4x are almost the same, and only 8x improves things substantially.** In the oversampled world (sample rate $`L f_s`$), the $`n`$-th harmonic folds to $`|n f_0 - k L f_s|`$; only the components that "have already folded back into 0-24 kHz at the high sample rate" cannot be blocked by the downsampling filter. Find the lowest harmonic number that folds back to 3 kHz / 7 kHz (Example 4 prints this table):
 
    | OS | High sample rate | Lowest harmonic folding to 3 kHz | Lowest harmonic folding to 7 kHz |
    |---|---|---|---|
@@ -328,14 +328,14 @@ The true harmonics (H columns) are completely unaffected; the aliases (A columns
    | 4x | 192 kHz | 39th (195 kHz = 192 + 3) | 37th (185 kHz = 192 − 7) |
    | 8x | 384 kHz | 153rd (765 kHz) | 155th (775 kHz) |
 
-   Twice 96 kHz is exactly 192 kHz, so 2x and 4x are folded back by the **same set of harmonics**, and the aliases differ by only 2-4 dB; at 8x the folding starts only at the 150th harmonic or above, another 24-31 dB smaller. The 39th harmonic of an ideal square wave is $1/39$ of the fundamental (−31.8 dB); but the clipped waveform at drive 20 dB is really a "trapezoid" (the rising edge has a finite slope), so the high harmonics decay faster than $1/n$ (closer to $1/n^2$, see Section 2.1), and the aliases actually measured (about −46 to −49 dB relative to H1) are smaller still. This also shows that the size of the aliasing **depends on the input frequency**: with a different fundamental, the gap between 2x and 4x would be different.
-3. **Where the latency comes from.** In the Chapter 06 Oversampler, each halfband stage has $2K_i$ odd-numbered taps (32, 12, and 8 for the three stages), and the group delay of upsampling + downsampling is $2(2K_i - 1)$ samples "at that stage's high sample rate". Converted back to the original sample rate and truncated to an integer:
+   Twice 96 kHz is exactly 192 kHz, so 2x and 4x are folded back by the **same set of harmonics**, and the aliases differ by only 2-4 dB; at 8x the folding starts only at the 150th harmonic or above, another 24-31 dB smaller. The 39th harmonic of an ideal square wave is $`1/39`$ of the fundamental (−31.8 dB); but the clipped waveform at drive 20 dB is really a "trapezoid" (the rising edge has a finite slope), so the high harmonics decay faster than $`1/n`$ (closer to $`1/n^2`$, see Section 2.1), and the aliases actually measured (about −46 to −49 dB relative to H1) are smaller still. This also shows that the size of the aliasing **depends on the input frequency**: with a different fundamental, the gap between 2x and 4x would be different.
+3. **Where the latency comes from.** In the Chapter 06 Oversampler, each halfband stage has $`2K_i`$ odd-numbered taps (32, 12, and 8 for the three stages), and the group delay of upsampling + downsampling is $`2(2K_i - 1)`$ samples "at that stage's high sample rate". Converted back to the original sample rate and truncated to an integer:
 
    $$
    \text{latency} = \left\lfloor \frac{1}{2^S}\sum_{i=1}^{S} 2(2K_i - 1)\, 2^{S-i} \right\rfloor
    $$
 
-   2x: $62/2 = 31$; 4x: $(124 + 22)/4 = 36.5 \to 36$; 8x: $(248 + 44 + 14)/8 = 38.25 \to 38$. Doubling the factor adds only a few samples of latency, because the later stages work at ever higher sample rates and their filters get ever shorter. The self-check of Example 4 recomputes this formula with `Oversampler::kOddTapsStage1..3` and compares it with `Distortion::getLatencySamples()`.
+   2x: $`62/2 = 31`$; 4x: $`(124 + 22)/4 = 36.5 \to 36`$; 8x: $`(248 + 44 + 14)/8 = 38.25 \to 38`$. Doubling the factor adds only a few samples of latency, because the later stages work at ever higher sample rates and their filters get ever shorter. The self-check of Example 4 recomputes this formula with `Oversampler::kOddTapsStage1..3` and compares it with `Distortion::getLatencySamples()`.
 
 The other self-checks of Example 4: 4x is more than 20 dB below 1x at 3 kHz (more than 15 dB at 7 kHz), 8x is another 20 dB or more below 4x, 2x and 4x differ by less than 6 dB, and the true harmonics at 5 kHz and 15 kHz are unchanged at every factor.
 
@@ -396,7 +396,7 @@ flowchart LR
 | power amp | Power tubes + output transformer | This chapter's `Distortion` (HardClip) | Hard clipping and a compressed feel when pushed hard |
 | cabinet | 12-inch speaker + enclosure | Two Butterworth LPFs forming an LR4 + one peak | The speaker simply cannot reproduce anything above 5 kHz; this stage cuts the harsh high harmonics |
 
-(LR4 = 4th-order **Linkwitz-Riley** lowpass: two 2nd-order Butterworth lowpass filters with Q = $1/\sqrt{2}$ in cascade, −6 dB at the cutoff and 24 dB/oct beyond it; details below. The name comes from Siegfried Linkwitz and Russ Riley, and it was originally a loudspeaker crossover design.)
+(LR4 = 4th-order **Linkwitz-Riley** lowpass: two 2nd-order Butterworth lowpass filters with Q = $`1/\sqrt{2}`$ in cascade, −6 dB at the cutoff and 24 dB/oct beyond it; details below. The name comes from Siegfried Linkwitz and Russ Riley, and it was originally a loudspeaker crossover design.)
 
 **The cabinet is the most underrated stage.** Example 2 runs a 110 Hz sine through the Lead preset and measures the harmonic difference between cabinet on and off:
 
@@ -412,7 +412,7 @@ flowchart LR
 
 The "Difference" column **equals the cabinet's frequency response item by item**: the cabinet is the last stage of the whole chain and is linear, so it only "multiplies each harmonic by its own gain at that frequency" and creates no new frequencies. The self-check of Example 2 checks exactly this (±0.5 dB for every measurable harmonic), and also requires the harmonics above 8 kHz to be cut by 15 dB or more. (The even harmonics sit at the −100 dB measurement floor: the hard clip of the power amp and the tanh of the preamp are both symmetric curves.)
 
-The LR4 (two 2nd-order Butterworth lowpass filters with Q = $1/\sqrt{2}$ in cascade) is $2 \times (-3.01) = -6.02$ dB at the cutoff and has a slope of 24 dB/oct away from it. The Lead without a cabinet (`l07_amp_lead_nocab.wav`) sounds like "mosquitoes" precisely because of these high harmonics. In practice, a real cab sim uses convolution with an impulse response recorded through a microphone (Chapter 12); this chapter's biquad version is the cheapest approximation (Exercise 4).
+The LR4 (two 2nd-order Butterworth lowpass filters with Q = $`1/\sqrt{2}`$ in cascade) is $`2 \times (-3.01) = -6.02`$ dB at the cutoff and has a slope of 24 dB/oct away from it. The Lead without a cabinet (`l07_amp_lead_nocab.wav`) sounds like "mosquitoes" precisely because of these high harmonics. In practice, a real cab sim uses convolution with an impulse response recorded through a microphone (Chapter 12); this chapter's biquad version is the cheapest approximation (Exercise 4).
 
 **Order is tone.** With the same five components, if you move the tone stack in front of the preamp, the bass knob becomes "controls how much the low end distorts" instead of "controls the level of the low end"; if you move the cabinet in front of the power amp, nobody blocks the new high harmonics that the power amp generates. Exercise 7 asks you to analyze this carefully.
 
@@ -469,7 +469,7 @@ public:
 
 Going through it piece by piece:
 
-- **Static curves**: `hardClip` = `std::clamp(u, -1, 1)` (Section 2.2); `foldback` implements $t = (u+1) \bmod 4$ of Section 2.3 with `std::fmod`, adding 4 for negative values; `fuzz` follows the piecewise function of Section 2.4, with the constants `kFuzzDeadZone = 0.1`, `kFuzzPositiveCeiling = 1.0`, `kFuzzNegativeCeiling = 0.6`; `rectify` follows Section 2.5 with the output limited to [0, 1]; `quantize` follows Section 2.6.1, rounding with `std::floor(u / step + 0.5)` and then clamping to $[-M, M-1]$, $M = \lfloor 2^{N-1} \rfloor$ (`std::floor(levels * 0.5f)`, so that the code is an integer for fractional bit depths). These are all `static` and memoryless, so exercises and tests can call them directly.
+- **Static curves**: `hardClip` = `std::clamp(u, -1, 1)` (Section 2.2); `foldback` implements $`t = (u+1) \bmod 4`$ of Section 2.3 with `std::fmod`, adding 4 for negative values; `fuzz` follows the piecewise function of Section 2.4, with the constants `kFuzzDeadZone = 0.1`, `kFuzzPositiveCeiling = 1.0`, `kFuzzNegativeCeiling = 0.6`; `rectify` follows Section 2.5 with the output limited to [0, 1]; `quantize` follows Section 2.6.1, rounding with `std::floor(u / step + 0.5)` and then clamping to $`[-M, M-1]`$, $`M = \lfloor 2^{N-1} \rfloor`$ (`std::floor(levels * 0.5f)`, so that the code is an integer for fractional bit depths). These are all `static` and memoryless, so exercises and tests can call them directly.
 - **sample & hold** (`crush()`, private): one `holdCounter_` and `holdValue_` per channel. When the counter is 0 the hold value is updated, then the counter is incremented and wraps to 0 at `downsampleFactor_`. Hold first, then quantize.
 - **Two paths, one latency**: HardClip / Foldback / Fuzz / Rectify go through `Oversampler::upsample()` → shaper → `downsample()`; Bitcrush is processed at the original sample rate and then passes through a `FixedDelay` that adds the same latency as the oversampler. The dry signal gets the same delay. So `getLatencySamples()` is the same value whatever the type (36 samples at 4x); the host needs only one fixed latency compensation, and **the latency does not change when the type is switched**.
 - **Both paths run on every block**: this is the key to switching types without trouble. If each block ran only "the path of the current type", the state of the other path (the oversampler's FIR history, the bitcrush delay line) would freeze at the moment it was last used; switch back after 5 seconds and the first block would spit out **audio from 5 seconds ago** unchanged (about 36-72 samples at 4x). So `processChunk()` first runs the bitcrush path whatever the type (writing into `crushBuffer_`, which is cheap), then runs the oversampled shaper path (while Bitcrush is active it idles on "the last non-Bitcrush type"), and only at the end decides by type which one to use. The cost is that the oversampler also does wasted work when Bitcrush is selected.
@@ -515,11 +515,11 @@ public:
 
 Demonstrates the 5 `DistortionType`s:
 
-1. Prints the transfer curve table ($u$ from −3 to +3 in steps of 0.25). You can see Foldback fold back to 0 at $u = 2$, Fuzz output 0.15 at $u = 0.25$ (the dead zone eats 0.1), the negative half-cycle stop at −0.6, and the maximum of Bitcrush (8 bit) be 0.9922 = $1 - \Delta$.
-2. A 220 Hz, −6 dBFS sine through each type, printing H1-H8 in dBFS and THD (the tables in Sections 2.2, 2.4, and 2.5 come from here). Self-check: the THD of HardClip 40 dB is between 44% and 48.3%, H1 = $4/\pi$, H3 − H1 = −9.54 dB; HardClip and Foldback have no even harmonics; the H3 of Foldback 12 dB is greater than H1; the H2 of Fuzz is larger at 12 dB than at 30 dB; the H1 of Rectify vanishes and H2 / H4 match $4/(3\pi)$, $4/(15\pi)$.
+1. Prints the transfer curve table ($`u`$ from −3 to +3 in steps of 0.25). You can see Foldback fold back to 0 at $`u = 2`$, Fuzz output 0.15 at $`u = 0.25`$ (the dead zone eats 0.1), the negative half-cycle stop at −0.6, and the maximum of Bitcrush (8 bit) be 0.9922 = $`1 - \Delta`$.
+2. A 220 Hz, −6 dBFS sine through each type, printing H1-H8 in dBFS and THD (the tables in Sections 2.2, 2.4, and 2.5 come from here). Self-check: the THD of HardClip 40 dB is between 44% and 48.3%, H1 = $`4/\pi`$, H3 − H1 = −9.54 dB; HardClip and Foldback have no even harmonics; the H3 of Foldback 12 dB is greater than H1; the H2 of Fuzz is larger at 12 dB than at 30 dB; the H1 of Rectify vanishes and H2 / H4 match $`4/(3\pi)`$, $`4/(15\pi)`$.
    (2b) The gating threshold of Fuzz at drive 30 dB (the table in Section 2.4). Self-check: the output is exactly 0 below −50 dBFS and audible above.
 3. The pluck sequence through each type, written to WAV after RMS match, printing peak, RMS, compensation, and latency (the table in Section 2.9). Self-check: no NaN / Inf.
-4. **Measuring the latency for real**: `getLatencySamples()` is only a claim; this part runs white noise (amplitude 0.3, drive 0 dB, Bitcrush at 24 bit, Rectify in half-wave) through each type and uses the cross-correlation $r(\ell) = \sum_n y[n]\,x[n-\ell]$ to find the true delay $\ell$ of the output relative to the input. The result is 36 samples for all five types, equal to `getLatencySamples()` -- that is, the oversampled path and the "bitcrush + `FixedDelay`" path really are aligned. It also compares the gain at 15 kHz for mix 50% vs. 100%: HardClip / Foldback −0.001 dB, Bitcrush 0.000 dB (if dry and wet were misaligned, a comb-filter notch would show up here). Self-check: measured delay = `getLatencySamples()` = 36, and the gain difference < 0.1 dB.
+4. **Measuring the latency for real**: `getLatencySamples()` is only a claim; this part runs white noise (amplitude 0.3, drive 0 dB, Bitcrush at 24 bit, Rectify in half-wave) through each type and uses the cross-correlation $`r(\ell) = \sum_n y[n]\,x[n-\ell]`$ to find the true delay $`\ell`$ of the output relative to the input. The result is 36 samples for all five types, equal to `getLatencySamples()` -- that is, the oversampled path and the "bitcrush + `FixedDelay`" path really are aligned. It also compares the gain at 15 kHz for mix 50% vs. 100%: HardClip / Foldback −0.001 dB, Bitcrush 0.000 dB (if dry and wet were misaligned, a comb-filter notch would show up here). Self-check: measured delay = `getLatencySamples()` = 36, and the gain difference < 0.1 dB.
 
 To run (build from the project root, then go into the build directory):
 
@@ -553,7 +553,7 @@ What to listen for: Clean is just a bit thicker; Crunch has grit and cleans up w
 
 ### 3.5 Example 3: `l07_bitcrusher_sweep` (`examples/bitcrusher_sweep.cpp`)
 
-1. A 0 dBFS 997 Hz sine with bit depth 2 → 16, measuring SNR = $20\log_{10}(\text{rms}(x) / \text{rms}(y - x))$ and comparing with `Distortion::theoreticalSnrDb()` (the table in Section 2.6.1). Self-check: for ≥ 6 bit the measurement is within 2 dB of theory; from 8 → 16 bit each bit gives 6.02 ± 0.3 dB.
+1. A 0 dBFS 997 Hz sine with bit depth 2 → 16, measuring SNR = $`20\log_{10}(\text{rms}(x) / \text{rms}(y - x))`$ and comparing with `Distortion::theoreticalSnrDb()` (the table in Section 2.6.1). Self-check: for ≥ 6 bit the measurement is within 2 dB of theory; from 8 → 16 bit each bit gives 6.02 ± 0.3 dB.
 2. The same thing with a −20 dBFS signal.
 3. The SNR for downsample factor 1 → 16 (16 bit): 1 → 98.06, 2 → 20.70, 4 → 12.29, 8 → 5.46, 16 → −0.32 dB (self-check: the larger the factor, the lower the SNR; factor 2 already drops below 30 dB). Also the alias measurement of a 5 kHz sine at factor 8 (the table in Section 2.6.2). Self-check: the levels of both the original frequency and the alias are within 1 dB of the ZOH sinc theory.
 4. The pluck sequence at five settings: `l07_bitcrush_dry.wav`, `l07_bitcrush_12bit.wav`, `l07_bitcrush_8bit.wav`, `l07_bitcrush_4bit.wav`, `l07_bitcrush_ds8.wav` (16 bit, ×8), `l07_bitcrush_lofi.wav` (8 bit, ×4).
@@ -566,7 +566,7 @@ This example uses `setOversamplingFactorLog2(0)`, so latency = 0 and the error c
 2. Control group: the noise of Bitcrush 8 bit is exactly the same at 1x and 4x (self-check: the difference < 0.01 dB).
 3. A log sweep (100 Hz → 10 kHz) is hard-clipped and written as `l07_alias_sweep_1x.wav` and `l07_alias_sweep_4x.wav`.
 
-What to listen for: in the 1x version, once the sweep passes 2-3 kHz, several **downward-sweeping** whistles appear in the background (the alias frequency $|kf_s - nf|$ falls as $f$ rises); the 4x version has almost none.
+What to listen for: in the 1x version, once the sweep passes 2-3 kHz, several **downward-sweeping** whistles appear in the background (the alias frequency $`|kf_s - nf|`$ falls as $`f`$ rises); the 4x version has almost none.
 
 ## 4. Real-Time Considerations
 
@@ -577,7 +577,7 @@ What to listen for: in the 1x version, once the sweep passes 2-3 kHz, several **
 - **Denormals**: `Biquad` and `OnePole` already flush tiny values to 0 internally; S&H and the quantizer have no recursive state and cannot produce denormals.
 - **Run the unused path too**: once a "stateful but temporarily unused" component (the other path's oversampler, the delay line, the DC blocker, a bypassed tone filter) stops running, its state stays at a point long ago; the moment it is re-enabled it spits out old audio. `Distortion`'s approach is to let both paths and the DC blocker run on every block (at the cost of a bit of CPU), and to `reset()` the tone filter when it comes back from bypass. The alternative is to `reset()` a path when it is re-enabled, but that leaves a latency-length gap of silence and still needs a crossfade to avoid a click.
 - **Thread safety**: the setters are plain member-variable writes, designed to be called from the audio thread "between blocks" (for example the host reading the UI parameters at the start of `processBlock`). If the UI thread will call the setters directly, use `std::atomic<float>` as the go-between, as the plugin in Chapter 13 does.
-- **The output can exceed 0 dBFS**: the fundamental of HardClip can reach $4/\pi$ (+2.1 dBFS), and Foldback / Fuzz plus the overshoot of the tone filter can also exceed 1. Always follow with an output gain (or the limiter from Chapter 05); do not send it straight to a 16-bit output.
+- **The output can exceed 0 dBFS**: the fundamental of HardClip can reach $`4/\pi`$ (+2.1 dBFS), and Foldback / Fuzz plus the overshoot of the tone filter can also exceed 1. Always follow with an output gain (or the limiter from Chapter 05); do not send it straight to a 16-bit output.
 
 ## 5. Common Mistakes and Debugging
 
@@ -587,7 +587,7 @@ What to listen for: in the 1x version, once the sweep passes 2-3 kHz, several **
 | At mix 50% the sound gets thin, like a flanger | The dry signal is not delayed by latency samples and is misaligned with wet → comb filtering | The dry must go through the same delay (`Distortion` already does this; take care when writing your own parallel chain) |
 | The compressor keeps squashing after fuzz / rectify, with a "thump" on fade-out | DC offset | Add a DC blocker (10-20 Hz highpass) |
 | After quantization the whole signal is shifted down by half a step | Truncating with `floor(u / Δ)` instead of rounding; the error averages −Δ/2 | Use `floor(u / Δ + 0.5)` (mid-tread) |
-| The positive peak of 8 bit is slightly smaller than the negative peak | Normal: the upper limit is $1 - \Delta$ (127/128) | This is the behavior of real integer PCM, not a bug |
+| The positive peak of 8 bit is slightly smaller than the negative peak | Normal: the upper limit is $`1 - \Delta`$ (127/128) | This is the behavior of real integer PCM, not a bug |
 | Foldback output blows up at very high drive | Folding only once with `if (u > 1) u = 2 - u` | Use the periodic `fmod` formulation (Section 2.3) |
 | The fuzz tail suddenly vanishes and you think it is a bug | Gating caused by the dead zone | This is a hallmark of fuzz; if you don't want it, lower the drive or make the dead zone smaller |
 | Every time you turn up the drive it seems "more is better" | The illusion of a louder level | Compare after RMS match / auto gain (Exercise 5) |
@@ -609,7 +609,7 @@ See [`exercises/README.md`](exercises/README.md). 7 problems: calculation (the q
 - Fabián Esqueda, Stefan Bilbao, Vesa Välimäki, "Aliasing reduction in clipped signals", *IEEE Transactions on Signal Processing*, 2016 -- uses BLAMP to correct the aliasing at the corners of hard clip without relying on oversampling.
 - Julian Parker, Vadim Zavalishin, Efflam Le Bivic, "Reducing the aliasing of nonlinear waveshaping using continuous-time convolution", *Proc. DAFx-16*, 2016 -- antiderivative anti-aliasing (ADAA), another route besides oversampling.
 - Fabián Esqueda, Henri Pöntynen, Julian Parker, Stefan Bilbao, "Virtual analog models of the Lockhart and Serge wavefolders", *Applied Sciences*, 7(12), 1328, 2017 -- digital models of real wavefolder circuits.
-- W. R. Bennett, "Spectra of quantized signals", *Bell System Technical Journal*, 1948 -- the original paper for the $\Delta^2/12$ quantization noise model.
+- W. R. Bennett, "Spectra of quantized signals", *Bell System Technical Journal*, 1948 -- the original paper for the $`\Delta^2/12`$ quantization noise model.
 - Stanley P. Lipshitz, Robert A. Wannamaker, John Vanderkooy, "Quantization and dither: a theoretical survey", *Journal of the Audio Engineering Society*, 1992 -- when quantization noise "behaves like noise" and when it becomes distortion, and the theory of dither.
 
 ## 8. Next Chapter

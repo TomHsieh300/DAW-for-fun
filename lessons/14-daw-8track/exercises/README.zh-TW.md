@@ -38,7 +38,7 @@
 
 - `AutomationLane::valueAt(t)`：已排序的 breakpoint 之間做 linear interpolation；第一個點之前 / 最後一個點之後維持第一個 / 最後一個值；空的 lane 回傳它的預設值。
 - `AutomationLane::render(start, out, n)`：對整個 block 做同樣的事，但只做一次 binary search，之後使用向前移動的 cursor，而不是每個 sample 搜尋一次。
-- `VolumeAutomationEffect::processDsp()`：lane 的值是 dB；把每個 channel 乘以 $10^{v/20}$。（Effect 透過 `setPlayHead()` 接收 block 的 timeline segment；base class 已經把它們轉成每個 sample 一個值，所以 loop 也能運作。）
+- `VolumeAutomationEffect::processDsp()`：lane 的值是 dB；把每個 channel 乘以 $`10^{v/20}`$。（Effect 透過 `setPlayHead()` 接收 block 的 timeline segment；base class 已經把它們轉成每個 sample 一個值，所以 loop 也能運作。）
 
 Self-check 讓一個 DC clip 經過一個從 0 dB（0.5 s）到 -24 dB（1.5 s）的 fade，並要求在 1.0 s 時剛好是 -12.00 dB、block size 512 與 37 的輸出相同、第二次 loop pass 相同，以及一個 constant-power pan sweep。
 
@@ -71,7 +71,7 @@ Self-check 透過 engine 量測四種 crossfade。在執行之前先預測：對
 
 1. Input audio 從哪裡進入 `processBlock()`，以及當長度未知的 take 持續增長時，你如何避免 allocate？
 2. 哪個 thread 寫 WAV 檔，audio 如何在沒有 lock 的情況下抵達它？
-3. Interface 有 input latency $L_{\text{in}}$ 與 output latency $L_{\text{out}}$，而 mix 有 PDC latency $L_{\text{pdc}}$。音樂人是跟著他聽到的東西演奏的。錄下的 clip 必須放在 timeline 的哪個位置？
+3. Interface 有 input latency $`L_{\text{in}}`$ 與 output latency $`L_{\text{out}}`$，而 mix 有 PDC latency $`L_{\text{pdc}}`$。音樂人是跟著他聽到的東西演奏的。錄下的 clip 必須放在 timeline 的哪個位置？
 4. 如果磁碟在一段時間內太慢，audio thread 上會發生什麼？
 5. Input monitoring（透過 track 的 insert 聽到自己）如何與 PDC 互動？
 
@@ -146,7 +146,7 @@ Bus 的數量是 compile-time 常數 `engine::kNumBuses`（`-DDAWLAB_ENGINE_NUM_
 1. （概念）列出 engine 與 GUI 中每一個大小跟隨 `kNumBuses` 的地方（提示：`ChannelStrip`、`Mixer`、`Engine::allChannels`、`Session`、`MixerView`、`DemoSong`）。為什麼 compile-time 常數對一個不得在 audio thread 上 allocate 的 engine 是合理的選擇？Run-time 的 bus 數量會需要什麼？
 2. （實作）`configureThirdBus()`：把 bus C 做成 "Doubler"——100 % wet 的 Chorus 加上一個 low-cut EQ——由 Pad 與 Lead 透過 -6 dB 的 **pre-fader** send 餵入。
 
-Self-check 計算 12 個 strip 與每個 track 3 個 send 旋鈕，移動 C 旋鈕並讀取 engine，mute 除了 doubler 路徑以外的一切，把 Pad 與 Lead 的 fader 拉到 $-\infty$ 卻仍聽得到 bus C（pre-fader！），然後關閉 send 並要求完全靜音。
+Self-check 計算 12 個 strip 與每個 track 3 個 send 旋鈕，移動 C 旋鈕並讀取 engine，mute 除了 doubler 路徑以外的一切，把 Pad 與 Lead 的 fader 拉到 $`-\infty`$ 卻仍聽得到 bus C（pre-fader！），然後關閉 send 並要求完全靜音。
 
 ## Exercise 13 - 鍵盤快捷鍵 map ★☆☆（實作）
 

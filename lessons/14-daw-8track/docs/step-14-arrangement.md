@@ -14,7 +14,7 @@ to move it - snapped to the beat grid - and hear the result immediately.
 ### One coordinate system
 
 The view shows the timeline from `viewStart` (in samples) with `samplesPerPixel` samples per
-pixel, to the right of a 132-pixel lane header $H$:
+pixel, to the right of a 132-pixel lane header $`H`$:
 
 $$
 x(s) = H + \frac{s - s_{\text{view}}}{\text{spp}}, \qquad
@@ -28,10 +28,10 @@ s_m = s(x_m), \qquad \text{spp}' = \text{spp} / \text{factor}, \qquad s'_{\text{
 $$
 
 `zoomToFit()` chooses spp so that the song (at least 4 bars) plus one bar fills the width. For
-the 8-bar demo song at 120 BPM / 48 kHz in a 1400-pixel window: $9 \cdot 96000 / 1268 \approx 681$
+the 8-bar demo song at 120 BPM / 48 kHz in a 1400-pixel window: $`9 \cdot 96000 / 1268 \approx 681`$
 samples per pixel, one beat = 35 pixels.
 
-Snapping rounds to the nearest beat, $\hat s = \operatorname{round}(s / N_{\text{beat}})\,N_{\text{beat}}$
+Snapping rounds to the nearest beat, $`\hat s = \mathrm{round}(s / N_{\text{beat}})\,N_{\text{beat}}`$
 (holding **Alt** disables it). Exercise 8 reuses `sampleToX`, `xToSample` and `snapToBeat` for an
 automation lane drawn under the arrangement.
 
@@ -41,7 +41,7 @@ A 12-second clip has 576 000 samples per channel; at 681 samples per pixel, a na
 read every sample on every repaint. Every DAW keeps a reduced copy ("peak file"). `WaveformCache`
 computes, once per source buffer, the minimum and maximum over each run of
 `kSamplesPerBucket = 128` samples (over all channels). Painting one pixel column then combines
-$\lceil \text{spp} / 128 \rceil$ buckets - about 6 at the default zoom - and draws one vertical line
+$`\lceil \text{spp} / 128 \rceil`$ buckets - about 6 at the default zoom - and draws one vertical line
 from the minimum to the maximum, scaled by the clip gain. Because clips share buffers (the drum
 loop is one buffer used by four clips; the 96 shaker hits use two buffers), the cache is keyed by
 the buffer pointer: the demo song needs 28 cache entries for 140 clips. Entries whose buffer is

@@ -27,7 +27,7 @@ $$
 y_{\text{dB}} = \begin{cases} x_{\text{dB}} & x_{\text{dB}} \le T \\ T + \dfrac{x_{\text{dB}} - T}{R} & x_{\text{dB}} > T \end{cases}
 $$
 
-$R \to \infty$ 時第二條變成 $y_{\text{dB}} = T$：threshold 以上的輸入不管多大，輸出都停在 $T$。這條水平線就是「ceiling」。以線性值寫，輸入 $|x|$ 超過 ceiling $c$ 時需要的 gain 是
+$`R \to \infty`$ 時第二條變成 $`y_{\text{dB}} = T`$：threshold 以上的輸入不管多大，輸出都停在 $`T`$。這條水平線就是「ceiling」。以線性值寫，輸入 $`|x|`$ 超過 ceiling $`c`$ 時需要的 gain 是
 
 $$
 g = \min\!\Bigl(1,\ \frac{c}{|x|}\Bigr)
@@ -53,9 +53,9 @@ $$
 
 拿第 04 章的 `Compressor` 盡量模擬 limiter：threshold -20 dB、ratio 100:1、hard knee、attack 1 ms。輸入是 1 kHz 的 tone burst，-30 dBFS 持續 0.4 秒後突然跳到 -6 dBFS。
 
-目標 gain reduction：輸入 -6 dB 時輸出 $= -20 + 14/100 = -19.86$ dB，所以 $GR_\infty = 13.86$ dB。Compressor 的 attack 是 one-pole 平滑器（在 dB 上平滑 gain reduction），gain reduction 依 $GR(t) = GR_\infty\,(1 - e^{-t/\tau})$ 上升，$\tau = 1$ ms。1 kHz 正弦波從 0 相位開始變大，第一個波峰在 $t = 0.25$ ms 才出現，之後每 0.5 ms 一個；每個 1 ms 視窗裡最大的輸出是「該視窗的第一個波峰」（$t = k + 0.25$ ms，此時 gain 降得最少）：
+目標 gain reduction：輸入 -6 dB 時輸出 $`= -20 + 14/100 = -19.86`$ dB，所以 $`GR_\infty = 13.86`$ dB。Compressor 的 attack 是 one-pole 平滑器（在 dB 上平滑 gain reduction），gain reduction 依 $`GR(t) = GR_\infty\,(1 - e^{-t/\tau})`$ 上升，$`\tau = 1`$ ms。1 kHz 正弦波從 0 相位開始變大，第一個波峰在 $`t = 0.25`$ ms 才出現，之後每 0.5 ms 一個；每個 1 ms 視窗裡最大的輸出是「該視窗的第一個波峰」（$`t = k + 0.25`$ ms，此時 gain 降得最少）：
 
-| 視窗 | 波峰時間 $t$ | $1 - e^{-t/\tau}$ | 理論 GR | 理論輸出 peak |
+| 視窗 | 波峰時間 $`t`$ | $`1 - e^{-t/\tau}`$ | 理論 GR | 理論輸出 peak |
 |---|---|---|---|---|
 | 0–1 ms | 0.25 ms | 0.221 | 3.07 dB | **-9.07 dBFS** |
 | 1–2 ms | 1.25 ms | 0.713 | 9.89 dB | -15.89 dBFS |
@@ -80,11 +80,11 @@ Overshoot relative to threshold/ceiling within 20 ms after the jump: Compressor 
 
 （節錄；程式還會印出 12、20 ms 兩列，以及整段輸出的 peak 與 safety clamp 觸發次數。）
 
-Compressor 在第一毫秒就讓 **12 dB 的 overshoot** 通過（-7.99 dBFS 比 threshold 高 12.01 dB），之後幾毫秒才慢慢壓到 -19.85 dB 的穩態。實測比上表的理論值「壓得少一點」（例如 -7.99 對 -9.07），因為第 04 章用的是 peak detector：$|x|$ 只有在波峰附近才到 -6 dB，其餘時間 gain reduction 的目標比 $GR_\infty$ 小，attack 等於只有一部分時間在「往下推」。那把 attack 設成 0 呢？第 04 章的 compressor 是 feedforward、detector 與 gain 作用在同一個 sample，attack = 0 時就不會再有 overshoot，輸出只比 threshold 高 $(x-T)/R$（這裡 $14/100 = 0.14$ dB，ratio → ∞ 時才剛好等於 threshold）——但 gain 會在**一個 sample 之內**從 0 dB 跳到 -13.86 dB，等於在波形上剪一刀：不連續的 gain 跳變就是 click；release 也很短的話，gain 還會跟著每個波形週期上下，行為退化成 clipper（2.9 節），產生諧波失真。我們要的是「gain 平滑地下降」**而且**「峰值到的時候已經降好」，也就是 gain 必須在峰值抵達**之前**就開始動。這不是第 04 章的實作有問題，而是**因果律**：沒有延遲的系統在時間 $n$ 只看得到 $x[0..n]$，不可能為還沒看到的峰值提前準備。
+Compressor 在第一毫秒就讓 **12 dB 的 overshoot** 通過（-7.99 dBFS 比 threshold 高 12.01 dB），之後幾毫秒才慢慢壓到 -19.85 dB 的穩態。實測比上表的理論值「壓得少一點」（例如 -7.99 對 -9.07），因為第 04 章用的是 peak detector：$`|x|`$ 只有在波峰附近才到 -6 dB，其餘時間 gain reduction 的目標比 $`GR_\infty`$ 小，attack 等於只有一部分時間在「往下推」。那把 attack 設成 0 呢？第 04 章的 compressor 是 feedforward、detector 與 gain 作用在同一個 sample，attack = 0 時就不會再有 overshoot，輸出只比 threshold 高 $`(x-T)/R`$（這裡 $`14/100 = 0.14`$ dB，ratio → ∞ 時才剛好等於 threshold）——但 gain 會在**一個 sample 之內**從 0 dB 跳到 -13.86 dB，等於在波形上剪一刀：不連續的 gain 跳變就是 click；release 也很短的話，gain 還會跟著每個波形週期上下，行為退化成 clipper（2.9 節），產生諧波失真。我們要的是「gain 平滑地下降」**而且**「峰值到的時候已經降好」，也就是 gain 必須在峰值抵達**之前**就開始動。這不是第 04 章的實作有問題，而是**因果律**：沒有延遲的系統在時間 $`n`$ 只看得到 $`x[0..n]`$，不可能為還沒看到的峰值提前準備。
 
 ### 2.3 Brickwall 的要求與 lookahead
 
-「brickwall」的意思是：對**任何**輸入，輸出的每一個 sample 都滿足 $|y[n]| \le c$。要同時做到「平滑的 gain 曲線」（不然會有失真）與「絕對不超過」，gain 必須在峰值抵達輸出之前就降到 $\le c/|x|$。既然在時間 $n$ 看不到未來，那就**把音訊延後**：
+「brickwall」的意思是：對**任何**輸入，輸出的每一個 sample 都滿足 $`|y[n]| \le c`$。要同時做到「平滑的 gain 曲線」（不然會有失真）與「絕對不超過」，gain 必須在峰值抵達輸出之前就降到 $`\le c/|x|`$。既然在時間 $`n`$ 看不到未來，那就**把音訊延後**：
 
 ```
                     ┌──────────────────────┐
@@ -96,20 +96,20 @@ Compressor 在第一毫秒就讓 **12 dB 的 overshoot** 通過（-7.99 dBFS 比
              └──────────┘  └──────────┘  └─────────┘
 ```
 
-音訊走的那條路晚了 $L$ 個 sample，gain 那條路沒有延遲——相對於音訊，gain「提前」了 $L$ 個 sample，有 $L$ 個 sample 的時間可以慢慢降下來。這就是 lookahead。$L$ 由 `setLookaheadMs()` 決定：$L = \operatorname{round}(\text{ms}\cdot f_s / 1000)$，5 ms @ 48 kHz 就是 240 個 sample。
+音訊走的那條路晚了 $`L`$ 個 sample，gain 那條路沒有延遲——相對於音訊，gain「提前」了 $`L`$ 個 sample，有 $`L`$ 個 sample 的時間可以慢慢降下來。這就是 lookahead。$`L`$ 由 `setLookaheadMs()` 決定：$`L = \mathrm{round}(\text{ms}\cdot f_s / 1000)`$，5 ms @ 48 kHz 就是 240 個 sample。
 
 ### 2.4 演算法：每個 sample 六個步驟
 
-令 $x_s[n] = x[n]\cdot g_{\text{in}}$（input gain 之後的訊號），$c$ 是 ceiling 的線性值，$L$ 是 lookahead 的 sample 數。stereo 時所有 channel 共用同一個 gain（stereo link），$|x_s[n]|$ 取各 channel 的最大值。
+令 $`x_s[n] = x[n]\cdot g_{\text{in}}`$（input gain 之後的訊號），$`c`$ 是 ceiling 的線性值，$`L`$ 是 lookahead 的 sample 數。stereo 時所有 channel 共用同一個 gain（stereo link），$`|x_s[n]|`$ 取各 channel 的最大值。
 
-1. **需要的 gain**：$g[n] = \min\!\bigl(1,\ c / |x_s[n]|\bigr)$。只看這一個 sample，它需要多小的 gain 才不會超過 ceiling。
-2. **release**：$gr[n] = \min\!\bigl(g[n],\ gr[n-1] + (1 - gr[n-1])\,c_{\text{rel}}\bigr)$，$c_{\text{rel}} = 1 - e^{-1/(\tau f_s)}$。gain 往下可以瞬間跟上（取 min），往上只能以 one-pole 的速度慢慢回到 1。
-3. **視窗最小值**：$m[n] = \min\bigl(gr[n-L],\ \dots,\ gr[n]\bigr)$——長度 $L+1$ 的 sliding window minimum。
-4. **移動平均**：$s[n] = \dfrac{1}{L+1}\sum_{k=0}^{L} m[n-k]$——長度 $L+1$ 的 box filter。
-5. **輸出**：$y[n] = x_s[n-L]\cdot s[n]$。
-6. **safety clamp**：$y[n] \leftarrow \operatorname{clamp}(y[n], -c, c)$。理論上永遠不會動作（下一節證明），它只是為了浮點捨入與「播放中改參數」這類例外，並且會計數讓你除錯。
+1. **需要的 gain**：$`g[n] = \min\!\bigl(1,\ c / |x_s[n]|\bigr)`$。只看這一個 sample，它需要多小的 gain 才不會超過 ceiling。
+2. **release**：$`gr[n] = \min\!\bigl(g[n],\ gr[n-1] + (1 - gr[n-1])\,c_{\text{rel}}\bigr)`$，$`c_{\text{rel}} = 1 - e^{-1/(\tau f_s)}`$。gain 往下可以瞬間跟上（取 min），往上只能以 one-pole 的速度慢慢回到 1。
+3. **視窗最小值**：$`m[n] = \min\bigl(gr[n-L],\ \dots,\ gr[n]\bigr)`$——長度 $`L+1`$ 的 sliding window minimum。
+4. **移動平均**：$`s[n] = \dfrac{1}{L+1}\sum_{k=0}^{L} m[n-k]`$——長度 $`L+1`$ 的 box filter。
+5. **輸出**：$`y[n] = x_s[n-L]\cdot s[n]`$。
+6. **safety clamp**：$`y[n] \leftarrow \mathrm{clamp}(y[n], -c, c)`$。理論上永遠不會動作（下一節證明），它只是為了浮點捨入與「播放中改參數」這類例外，並且會計數讓你除錯。
 
-為什麼是「min 再 average」，而不是直接 average？看時間軸。假設 $gr$ 在 $n_0$ 突然從 1 掉到 $g$：
+為什麼是「min 再 average」，而不是直接 average？看時間軸。假設 $`gr`$ 在 $`n_0`$ 突然從 1 掉到 $`g`$：
 
 ```
  index:        n0-L        n0          n0+L        n0+2L
@@ -125,41 +125,41 @@ Compressor 在第一毫秒就讓 **12 dB 的 overshoot** 通過（-7.99 dBFS 比
  音訊          ...x[n0-L]...│...........│x[n0] 在 n0+L 才從 delay line 出來 ←┘ 這時 s 剛好 = g
 ```
 
-- 移動平均把「瞬間下降」變成「長度 $L+1$ 的線性 ramp」：這就是 attack，而且 ramp 長度剛好等於 lookahead——峰值 $x[n_0]$ 在 $n_0 + L$ 抵達輸出時，$s$ 剛好降到 $g$，不早不晚。
-- 如果沒有 min、直接對 $gr$ 做平均，當 $gr$ 只有一個 sample 很低（一個尖峰）時，平均會把它「稀釋」掉：$s[n_0+L] = (L\cdot 1 + g)/(L+1) \gg g$，峰值就超過 ceiling 了。min 讓那個很低的值在視窗內「撐」滿 $L+1$ 個 sample，平均起來才會真的到 $g$。
-- 為什麼視窗是 $L+1$ 而不是 $L$？因為平均的 $L+1$ 項要**全部**都 $\le g[n_0]$，而這些項對應到 $m[n_0], \dots, m[n_0+L]$；$m[n_0+L]$ 的視窗是 $[n_0, n_0+L]$，剛好還包含 $n_0$。少一個就會差一個 sample（典型的 off-by-one，fuzz test 會抓到）。
+- 移動平均把「瞬間下降」變成「長度 $`L+1`$ 的線性 ramp」：這就是 attack，而且 ramp 長度剛好等於 lookahead——峰值 $`x[n_0]`$ 在 $`n_0 + L`$ 抵達輸出時，$`s`$ 剛好降到 $`g`$，不早不晚。
+- 如果沒有 min、直接對 $`gr`$ 做平均，當 $`gr`$ 只有一個 sample 很低（一個尖峰）時，平均會把它「稀釋」掉：$`s[n_0+L] = (L\cdot 1 + g)/(L+1) \gg g`$，峰值就超過 ceiling 了。min 讓那個很低的值在視窗內「撐」滿 $`L+1`$ 個 sample，平均起來才會真的到 $`g`$。
+- 為什麼視窗是 $`L+1`$ 而不是 $`L`$？因為平均的 $`L+1`$ 項要**全部**都 $`\le g[n_0]`$，而這些項對應到 $`m[n_0], \dots, m[n_0+L]`$；$`m[n_0+L]`$ 的視窗是 $`[n_0, n_0+L]`$，剛好還包含 $`n_0`$。少一個就會差一個 sample（典型的 off-by-one，fuzz test 會抓到）。
 
 ### 2.5 證明：輸出永遠不超過 ceiling
 
-固定任意時間 $n$。
+固定任意時間 $`n`$。
 
-1. 由第 2 步，對所有 $k$：$gr[k] \le g[k]$（min 的結果不會比其中一項大）。
-2. 由第 3 步，$m[n-k]$ 是 $\{gr[n-k-L], \dots, gr[n-k]\}$ 的最小值。對 $k = 0, 1, \dots, L$，這個範圍都包含 index $n-L$（因為 $n-k-L \le n-L \le n-k$）。所以
+1. 由第 2 步，對所有 $`k`$：$`gr[k] \le g[k]`$（min 的結果不會比其中一項大）。
+2. 由第 3 步，$`m[n-k]`$ 是 $`\{gr[n-k-L], \dots, gr[n-k]\}`$ 的最小值。對 $`k = 0, 1, \dots, L`$，這個範圍都包含 index $`n-L`$（因為 $`n-k-L \le n-L \le n-k`$）。所以
    $$m[n-k] \le gr[n-L] \le g[n-L],\qquad k = 0,\dots,L.$$
-3. 由第 4 步，$s[n]$ 是這 $L+1$ 個 $m$ 的平均，每一項都 $\le g[n-L]$，所以 $s[n] \le g[n-L]$。又每一項都在 $[0, 1]$，所以 $0 \le s[n] \le 1$。
-4. 由第 5 步，$|y[n]| = |x_s[n-L]|\cdot s[n] \le |x_s[n-L]|\cdot g[n-L]$。
-   - 若 $|x_s[n-L]| > c$：$g[n-L] = c/|x_s[n-L]|$，乘起來 $= c$。
-   - 若 $|x_s[n-L]| \le c$：$g[n-L] = 1$，乘起來 $= |x_s[n-L]| \le c$。
+3. 由第 4 步，$`s[n]`$ 是這 $`L+1`$ 個 $`m`$ 的平均，每一項都 $`\le g[n-L]`$，所以 $`s[n] \le g[n-L]`$。又每一項都在 $`[0, 1]`$，所以 $`0 \le s[n] \le 1`$。
+4. 由第 5 步，$`|y[n]| = |x_s[n-L]|\cdot s[n] \le |x_s[n-L]|\cdot g[n-L]`$。
+   - 若 $`|x_s[n-L]| > c`$：$`g[n-L] = c/|x_s[n-L]|`$，乘起來 $`= c`$。
+   - 若 $`|x_s[n-L]| \le c`$：$`g[n-L] = 1`$，乘起來 $`= |x_s[n-L]| \le c`$。
 
-兩種情況都得到 $|y[n]| \le c$。∎
+兩種情況都得到 $`|y[n]| \le c`$。∎
 
-注意證明**沒有用到** release 的時間常數、也沒有用到 input gain 怎麼變——所以這兩個參數可以在播放中隨意改（練習 6 的 fuzz test 第 (2) 段驗證了這件事）。證明用到的是：$gr \le g$、視窗長度 $= L+1$、平均長度 $= L+1$、音訊延遲 $= L$。這四個數字任何一個錯了，保證就破了。
+注意證明**沒有用到** release 的時間常數、也沒有用到 input gain 怎麼變——所以這兩個參數可以在播放中隨意改（練習 6 的 fuzz test 第 (2) 段驗證了這件事）。證明用到的是：$`gr \le g`$、視窗長度 $`= L+1`$、平均長度 $`= L+1`$、音訊延遲 $`= L`$。這四個數字任何一個錯了，保證就破了。
 
-至於浮點：$c/|x| \cdot |x|$ 在 float 下可能比 $c$ 大 1 個 ulp（unit in the last place：在這個數值附近，float 能表示的兩個相鄰數字的間距），移動平均用 running sum 也會累積捨入誤差。所以程式碼把平均 clamp 在 $[0, 1]$、最後再加一道 safety clamp；只有「明顯」超過（相對誤差 $> 10^{-6}$）才會被計數為異常。running sum 用 `double` 累積，誤差遠小於這個容差，正常使用下 safety clamp 的計數永遠是 0。
+至於浮點：$`c/|x| \cdot |x|`$ 在 float 下可能比 $`c`$ 大 1 個 ulp（unit in the last place：在這個數值附近，float 能表示的兩個相鄰數字的間距），移動平均用 running sum 也會累積捨入誤差。所以程式碼把平均 clamp 在 $`[0, 1]`$、最後再加一道 safety clamp；只有「明顯」超過（相對誤差 $`> 10^{-6}`$）才會被計數為異常。running sum 用 `double` 累積，誤差遠小於這個容差，正常使用下 safety clamp 的計數永遠是 0。
 
-注意 clamp 的下限是 0 而不是 $m[n]$。直覺上「平均不會小於視窗最小值」，但這裡平均的是 $m[n-L..n]$ 這 $L+1$ 個**不同時間**的視窗最小值，不是同一個視窗裡的值。release 期間 $gr$ 一路往上，$m[n] = gr[n-L]$，而較舊的 $m[n-L..n-1]$ 都比它小，所以平均 $< m[n]$。若把下限設成 $m[n]$，算出來的就變成 $\max(\text{平均}, m[n])$：保證仍然成立（因為 $m[n] \le gr[n-L] \le g[n-L]$），但 release 那一側的 box 平滑等於被拿掉，release 很短時 gain 會在一個 sample 內跳回去（click）。
+注意 clamp 的下限是 0 而不是 $`m[n]`$。直覺上「平均不會小於視窗最小值」，但這裡平均的是 $`m[n-L..n]`$ 這 $`L+1`$ 個**不同時間**的視窗最小值，不是同一個視窗裡的值。release 期間 $`gr`$ 一路往上，$`m[n] = gr[n-L]`$，而較舊的 $`m[n-L..n-1]`$ 都比它小，所以平均 $`< m[n]`$。若把下限設成 $`m[n]`$，算出來的就變成 $`\max(\text{平均}, m[n])`$：保證仍然成立（因為 $`m[n] \le gr[n-L] \le g[n-L]`$），但 release 那一側的 box 平滑等於被拿掉，release 很短時 gain 會在一個 sample 內跳回去（click）。
 
 ### 2.6 Release：gain 怎麼回來
 
-峰值過去之後，$g[n]$ 回到 1，但 $gr[n]$ 只能以 one-pole 的速度回去：
+峰值過去之後，$`g[n]`$ 回到 1，但 $`gr[n]`$ 只能以 one-pole 的速度回去：
 
 $$
 gr[n] = gr[n-1] + (1 - gr[n-1])\,c_{\text{rel}},\qquad c_{\text{rel}} = 1 - e^{-1/(\tau f_s)}
 $$
 
-$\tau$ 就是 `setReleaseMs()`：gain 在 $\tau$ 之後回復了「剩餘距離」的 63.2 %，$2.3\tau$ 之後 90 %。本章在**線性 gain** 上做 one-pole（第 04 章的 compressor 是在 dB 上做），好處是簡單、而且 $gr \le g$ 的不等式一眼就看得出來。
+$`\tau`$ 就是 `setReleaseMs()`：gain 在 $`\tau`$ 之後回復了「剩餘距離」的 63.2 %，$`2.3\tau`$ 之後 90 %。本章在**線性 gain** 上做 one-pole（第 04 章的 compressor 是在 dB 上做），好處是簡單、而且 $`gr \le g`$ 的不等式一眼就看得出來。
 
-回升的 $gr$ 一樣會經過第 3、4 步的 min 與長度 $L+1$ 的移動平均，所以就算 release 設成 0（$gr$ 一個 sample 就跳回 1），$s$ 也是用 $L+1$ 個 sample 的線性 ramp 回到 1，不會瞬間跳回去。
+回升的 $`gr`$ 一樣會經過第 3、4 步的 min 與長度 $`L+1`$ 的移動平均，所以就算 release 設成 0（$`gr`$ 一個 sample 就跳回 1），$`s`$ 也是用 $`L+1`$ 個 sample 的線性 ramp 回到 1，不會瞬間跳回去。
 
 聽感：
 - release 太短（< 10 ms）：gain 會跟著低頻波形的每個週期上下——gain 以音訊速率調變，等於把訊號乘上一個週期性的波形 → 產生 intermodulation 失真，bass 會變「毛」。
@@ -168,7 +168,7 @@ $\tau$ 就是 `setReleaseMs()`：gain 在 $\tau$ 之後回復了「剩餘距離�
 
 ### 2.7 Latency 與 plugin delay compensation
 
-`getLatencySamples()` 回傳 $L$。範例 `l05_latency_impulse` 用 impulse 驗證：
+`getLatencySamples()` 回傳 $`L`$。範例 `l05_latency_impulse` 用 impulse 驗證：
 
 ```
 sampleRate    lookahead  getLatencySamples       impulse at     match?
@@ -179,7 +179,7 @@ sampleRate    lookahead  getLatencySamples       impulse at     match?
 
 （節錄；程式會印出 1.5 / 5 / 10 ms × 3 種 sample rate 共 9 列。44.1 kHz × 5 ms = 220.5，`std::lround` 進位成 221。）
 
-同一支範例的 null test：把低於 ceiling 的訊號（不需要動作）送進 limiter，輸出往前移 240 個 sample 後與輸入相減，殘差 = 0——limiter 不動作時是**完全透明**的，只是晚了 $L$ 個 sample。
+同一支範例的 null test：把低於 ceiling 的訊號（不需要動作）送進 limiter，輸出往前移 240 個 sample 後與輸入相減，殘差 = 0——limiter 不動作時是**完全透明**的，只是晚了 $`L`$ 個 sample。
 
 DAW 怎麼處理這個延遲？Plugin 透過 host API 回報 latency（JUCE 是 `AudioProcessor::setLatencySamples()`，VST3 是 `IAudioProcessor::getLatencySamples()`），host 做 **plugin delay compensation（PDC）**：
 
@@ -201,7 +201,7 @@ $$
 
 ### 2.8 True peak、inter-sample peak 與 dBTP
 
-Sample peak ≤ ceiling 只保證「這些取樣點」不超過。DAC 重建出來的連續波形在兩個 sample 之間可能更高——**inter-sample peak**。極端例子：頻率 $f_s/4$ 的正弦波，每個週期只有 4 個取樣點，如果相位偏 45°，每個 sample 都落在 $\pm 0.707A$：
+Sample peak ≤ ceiling 只保證「這些取樣點」不超過。DAC 重建出來的連續波形在兩個 sample 之間可能更高——**inter-sample peak**。極端例子：頻率 $`f_s/4`$ 的正弦波，每個週期只有 4 個取樣點，如果相位偏 45°，每個 sample 都落在 $`\pm 0.707A`$：
 
 ```
   真正的波形           取樣點（都在 ±0.707A）
@@ -219,7 +219,7 @@ ITU-R BS.1770-4 定義的 **true peak** 是把訊號升頻 4 倍（48 kHz → 19
 
 這一小節只給做練習 4 需要的直覺；完整理論（halfband filter、Kaiser window、latency、多級升頻）在[第 06 章 2.6 節](../06-saturation/README.zh-TW.md)，到那裡再推導一次。整件事分四步：
 
-**(1) 零插入。** 在每兩個 sample 之間插 3 個 0，sample rate 變成 $4f_s$：
+**(1) 零插入。** 在每兩個 sample 之間插 3 個 0，sample rate 變成 $`4f_s`$：
 
 ```
  原始（fs）        x[0]            x[1]            x[2]
@@ -229,29 +229,29 @@ ITU-R BS.1770-4 定義的 **true peak** 是把訊號升頻 4 倍（48 kHz → 19
 
 我們要的是最後一列：原始 sample 不動，中間三格填上「DAC 重建出來的連續波形」在那些時間點的值。零插入只是先把格子空出來。
 
-**(2) image。** 把「想要的」4x 訊號記成 $v[m]$。零插入的結果 $u[m]$ 其實就是 $v[m]$ 乘上一串「1, 0, 0, 0, 1, 0, 0, 0, …」的脈衝 $p[m]$（在 4 的倍數位置 $v = x$，其他位置被乘成 0）。這串脈衝可以寫成幾個餘弦的和：
+**(2) image。** 把「想要的」4x 訊號記成 $`v[m]`$。零插入的結果 $`u[m]`$ 其實就是 $`v[m]`$ 乘上一串「1, 0, 0, 0, 1, 0, 0, 0, …」的脈衝 $`p[m]`$（在 4 的倍數位置 $`v = x`$，其他位置被乘成 0）。這串脈衝可以寫成幾個餘弦的和：
 
 $$
 p[m] = \tfrac14\bigl[\,1 + 2\cos(\tfrac{\pi}{2}m) + \cos(\pi m)\,\bigr]
 $$
 
-（代入 $m = 0, 1, 2, 3$ 驗算：1、0、0、0。）在 $4f_s$ 的取樣率下，$\cos(\tfrac{\pi}{2}m)$ 是頻率 $f_s$ 的餘弦、$\cos(\pi m)$ 是 $2f_s$。所以
+（代入 $`m = 0, 1, 2, 3`$ 驗算：1、0、0、0。）在 $`4f_s`$ 的取樣率下，$`\cos(\tfrac{\pi}{2}m)`$ 是頻率 $`f_s`$ 的餘弦、$`\cos(\pi m)`$ 是 $`2f_s`$。所以
 
 $$
 u = v\cdot p = \tfrac14 v + \tfrac12 v\cos(2\pi f_s t) + \tfrac14 v\cos(2\pi\cdot 2f_s t)
 $$
 
-乘上一個餘弦等於把頻譜搬到那個頻率的兩側（和第 06 章「非線性產生新頻率」的三角恆等式是同一件事）。結果：$u$ 裡有一份振幅只剩 **1/4** 的 $v$（baseband），外加在 $f_s$、$2f_s$ 兩側的複本——**image**。例如 48 kHz 的 10 kHz 正弦，零插入之後在 192 kHz 下同時出現 10、38、58、86 kHz（$48 \mp 10$、$96 - 10$）。零插入那種「尖刺 + 一堆 0」的波形，就是這些高頻 image 疊出來的。
+乘上一個餘弦等於把頻譜搬到那個頻率的兩側（和第 06 章「非線性產生新頻率」的三角恆等式是同一件事）。結果：$`u`$ 裡有一份振幅只剩 **1/4** 的 $`v`$（baseband），外加在 $`f_s`$、$`2f_s`$ 兩側的複本——**image**。例如 48 kHz 的 10 kHz 正弦，零插入之後在 192 kHz 下同時出現 10、38、58、86 kHz（$`48 \mp 10`$、$`96 - 10`$）。零插入那種「尖刺 + 一堆 0」的波形，就是這些高頻 image 疊出來的。
 
-**(3) lowpass 插值。** 既然 $u = \tfrac14 v + \text{image}$，只要用一個 cutoff 在原本 $f_s/2$（新取樣率的 1/8）的 lowpass 把 image 濾掉、再乘 4，就得到 $v$。理想 lowpass 的 impulse response 是 sinc；把 cutoff 與增益 4 代進去，剛好是
+**(3) lowpass 插值。** 既然 $`u = \tfrac14 v + \text{image}`$，只要用一個 cutoff 在原本 $`f_s/2`$（新取樣率的 1/8）的 lowpass 把 image 濾掉、再乘 4，就得到 $`v`$。理想 lowpass 的 impulse response 是 sinc；把 cutoff 與增益 4 代進去，剛好是
 
 $$
-h[n] = \operatorname{sinc}\!\Bigl(\frac{n}{4}\Bigr) = \frac{\sin(\pi n/4)}{\pi n/4}
+h[n] = \mathrm{sinc}\!\Bigl(\frac{n}{4}\Bigr) = \frac{\sin(\pi n/4)}{\pi n/4}
 $$
 
-它在 $n = \pm 4, \pm 8, \dots$ 時是 0：每個原始 sample 經過濾波後，在**其他原始 sample 的位置**貢獻 0、在中間的空格貢獻一點點——也就是「原始 sample 不動、只把 0 填起來」，這正是插值。理想 sinc 無限長，實作時只取 64 個 tap，並乘上 Hann window 讓截斷的邊緣變平滑（不然頻率響應會有漣波；window 的取捨在第 11 章 2.9 節）。
+它在 $`n = \pm 4, \pm 8, \dots`$ 時是 0：每個原始 sample 經過濾波後，在**其他原始 sample 的位置**貢獻 0、在中間的空格貢獻一點點——也就是「原始 sample 不動、只把 0 填起來」，這正是插值。理想 sinc 無限長，實作時只取 64 個 tap，並乘上 Hann window 讓截斷的邊緣變平滑（不然頻率響應會有漣波；window 的取捨在第 11 章 2.9 節）。
 
-**(4) polyphase：只算非零項。** 直接在 $4f_s$ 下跑 64 tap FIR，每個輸出要 64 次乘法、每個原始 sample 有 4 個輸出，共 256 次——但 $u$ 有 3/4 是 0，絕大部分乘法都是「× 0」。輸出寫成 $m = 4n + p$（$p = 0..3$），只有 $u[m-k]$ 落在 4 的倍數的項會留下，也就是 $k = 4j + p$：
+**(4) polyphase：只算非零項。** 直接在 $`4f_s`$ 下跑 64 tap FIR，每個輸出要 64 次乘法、每個原始 sample 有 4 個輸出，共 256 次——但 $`u`$ 有 3/4 是 0，絕大部分乘法都是「× 0」。輸出寫成 $`m = 4n + p`$（$`p = 0..3`$），只有 $`u[m-k]`$ 落在 4 的倍數的項會留下，也就是 $`k = 4j + p`$：
 
 $$
 y[4n+p] = \sum_j h[4j+p]\; x[n-j]
@@ -259,12 +259,12 @@ $$
 
 | 輸出 | 用到的 tap | 乘上的輸入 |
 |---|---|---|
-| $y[4n+0]$ | $h[0], h[4], h[8], \dots, h[60]$ | $x[n], x[n-1], \dots, x[n-15]$ |
-| $y[4n+1]$ | $h[1], h[5], h[9], \dots, h[61]$ | 同上 |
-| $y[4n+2]$ | $h[2], h[6], h[10], \dots, h[62]$ | 同上 |
-| $y[4n+3]$ | $h[3], h[7], h[11], \dots, h[63]$ | 同上 |
+| $`y[4n+0]`$ | $`h[0], h[4], h[8], \dots, h[60]`$ | $`x[n], x[n-1], \dots, x[n-15]`$ |
+| $`y[4n+1]`$ | $`h[1], h[5], h[9], \dots, h[61]`$ | 同上 |
+| $`y[4n+2]`$ | $`h[2], h[6], h[10], \dots, h[62]`$ | 同上 |
+| $`y[4n+3]`$ | $`h[3], h[7], h[11], \dots, h[63]`$ | 同上 |
 
-64 tap 的原型被拆成 4 個 16 tap 的子濾波器（**phase**），4 個 phase 吃同一段最近 16 個原始輸入。每個原始 sample 只要 $4 \times 16 = 64$ 次乘法，而且完全不必真的做出 4 倍長的零插入 buffer。每個 phase 的係數總和約為 1（輸入是常數時，4 個插值點都要等於那個常數），所以整個原型的總和是 4——這就是 (2) 的「乘 4」。
+64 tap 的原型被拆成 4 個 16 tap 的子濾波器（**phase**），4 個 phase 吃同一段最近 16 個原始輸入。每個原始 sample 只要 $`4 \times 16 = 64`$ 次乘法，而且完全不必真的做出 4 倍長的零插入 buffer。每個 phase 的係數總和約為 1（輸入是常數時，4 個插值點都要等於那個常數），所以整個原型的總和是 4——這就是 (2) 的「乘 4」。
 
 這就是練習 4 要實作的全部。第 06 章會用另一種設計（每次只升 2 倍的 halfband filter，串兩級得到 4 倍）做出 `Oversampler`；第 11 章練習 3 會直接重用它來做 true-peak meter，並和練習 4 這一版比較讀數誤差與 CPU 成本。
 
@@ -281,12 +281,12 @@ $$
 為什麼要在意？因為訊號離開你的 DAW 之後還會被重建：DAC 的 reconstruction filter（DAC 把離散 sample 還原成連續波形時用的 lowpass）、sample rate conversion、MP3 / AAC 編碼都會把那些 inter-sample peak「還原」出來，接著在只有 0 dBFS headroom 的整數路徑上 clip。所以 EBU R128 建議節目的 true peak 不超過 **-1 dBTP**，串流平台多半也要求 -1 dBTP（有些建議 -2 dBTP 給 lossy codec 留餘地）。實務上：
 
 - 用 sample-peak limiter（本章）時把 ceiling 再往下留 1–2 dB；
-- 或者做 **true-peak limiter**：sidechain 裡先升頻 4 倍再算 $g$（練習 4 的濾波器放進第 1 步就是了）；
+- 或者做 **true-peak limiter**：sidechain 裡先升頻 4 倍再算 $`g`$（練習 4 的濾波器放進第 1 步就是了）；
 - 不管用哪種，最後用 true-peak meter 確認。
 
 ### 2.9 Clipper vs limiter
 
-Clipper 是最簡單的「保證不超過」：$y = \operatorname{clamp}(x, -c, c)$（hard）或一條平滑曲線（soft）。它零延遲、無狀態，但它改的是**波形**而不是增益——正弦波的頂被削平 → 產生諧波。練習 5 的實測（1 kHz +6 dBFS）：soft clipper THD 20.9 %（H3 -13.8 dB、H5 -27.6 dB，奇對稱曲線只有奇次諧波）；limiter THD 0.0000 %——穩態下整段乘同一個 gain，波形不變。
+Clipper 是最簡單的「保證不超過」：$`y = \mathrm{clamp}(x, -c, c)`$（hard）或一條平滑曲線（soft）。它零延遲、無狀態，但它改的是**波形**而不是增益——正弦波的頂被削平 → 產生諧波。練習 5 的實測（1 kHz +6 dBFS）：soft clipper THD 20.9 %（H3 -13.8 dB、H5 -27.6 dB，奇對稱曲線只有奇次諧波）；limiter THD 0.0000 %——穩態下整段乘同一個 gain，波形不變。
 
 | | Clipper | Limiter |
 |---|---|---|
@@ -299,7 +299,7 @@ Clipper 是最簡單的「保證不超過」：$y = \operatorname{clamp}(x, -c, 
 
 ### 2.10 Loudness（LUFS）簡介
 
-Peak 只告訴你「最大的那一個 sample」，跟人耳感受的「大聲」關係不大。EBU R128 / ITU-R BS.1770 用 **LUFS**（Loudness Units relative to Full Scale）量 loudness：訊號先經過 K-weighting（一個高頻 shelf 加一個 highpass，模擬人耳），取 400 ms 視窗的均方值，$L_K = -0.691 + 10\log_{10}\sum_i G_i\,z_i$，再做 gating（-70 LUFS 絕對門檻、相對門檻 -10 LU）得到 integrated loudness。廣播的目標是 -23 LUFS，串流平台多半把節目正規化到 -14 LUFS 左右——這表示「把 limiter 推到爆」在串流上只會被轉小聲、白白損失動態。第 11 章會實作 `LoudnessMeter`。
+Peak 只告訴你「最大的那一個 sample」，跟人耳感受的「大聲」關係不大。EBU R128 / ITU-R BS.1770 用 **LUFS**（Loudness Units relative to Full Scale）量 loudness：訊號先經過 K-weighting（一個高頻 shelf 加一個 highpass，模擬人耳），取 400 ms 視窗的均方值，$`L_K = -0.691 + 10\log_{10}\sum_i G_i\,z_i`$，再做 gating（-70 LUFS 絕對門檻、相對門檻 -10 LU）得到 integrated loudness。廣播的目標是 -23 LUFS，串流平台多半把節目正規化到 -14 LUFS 左右——這表示「把 limiter 推到爆」在串流上只會被轉小聲、白白損失動態。第 11 章會實作 `LoudnessMeter`。
 
 本章範例 `l05_drum_limiting` 用 RMS 當作 loudness 的粗略代理：input gain +12 dB → ceiling -1 dBFS，peak 被釘在 ceiling（只從 dry 的 -2.92 升到 -1.00 dBFS，多 1.92 dB），RMS 卻增加 7.2 dB，crest factor 從 14.51 dB 縮小到 9.25 dB（少了約 5.3 dB）。這就是 limiter「變大聲」的原理：**降低 crest factor**（peak 與 RMS 的距離）。
 
@@ -317,7 +317,7 @@ Limiter 幾乎永遠是最後一個（dither 除外；dither 是降低位元深�
 
 ### 3.1 `DelayLine.h`：circular buffer
 
-延遲 $D$ 個 sample 就是 $y[n] = x[n-D]$，需要記住最近 $D$ 個輸入。Circular buffer 讓 push 與 read 都是 O(1)、不搬資料：
+延遲 $`D`$ 個 sample 就是 $`y[n] = x[n-D]`$，需要記住最近 $`D`$ 個輸入。Circular buffer 讓 push 與 read 都是 O(1)、不搬資料：
 
 ```cpp
 void push(int channel, float x) noexcept {
@@ -338,7 +338,7 @@ float read(int channel, int delaySamples) const noexcept {
 
 ### 3.2 `SlidingWindowMin`：monotonic deque
 
-第 3 步要每個 sample 都算「最近 $L+1$ 個值的最小值」。暴力法每個 sample 掃一遍是 O(L)（10 ms @ 96 kHz = 961 次比較 / sample）。Monotonic deque 的想法：deque 裡只保留「還有機會成為最小值」的 (value, index)，由舊到新 value 嚴格遞增。
+第 3 步要每個 sample 都算「最近 $`L+1`$ 個值的最小值」。暴力法每個 sample 掃一遍是 O(L)（10 ms @ 96 kHz = 961 次比較 / sample）。Monotonic deque 的想法：deque 裡只保留「還有機會成為最小值」的 (value, index)，由舊到新 value 嚴格遞增。
 
 ```cpp
 float push(float v) noexcept {
@@ -391,11 +391,11 @@ void process(AudioBlock block) noexcept {
 
 幾個設計細節：
 
-- **移動平均用 running sum**：每個 sample 只做一加一減，O(1)。sum 用 `double` 累積，再 clamp 到 $[0, 1]$ 擋掉捨入漂移（下限不能用 $m$，理由見 2.5 節最後一段）。
+- **移動平均用 running sum**：每個 sample 只做一加一減，O(1)。sum 用 `double` 累積，再 clamp 到 $`[0, 1]`$ 擋掉捨入漂移（下限不能用 $`m`$，理由見 2.5 節最後一段）。
 - **channel 數**：`process()` 收到的 block 的 channel 數不可超過 `prepare()` 時的 `numChannels`。多出來的 channel 沒有 delay line、也沒參與 peak 偵測，Debug 建置會 assert；Release 建置把它們清成 0（寧可靜音，也不讓沒被限制的訊號通過）。沒呼叫 `prepare()` 就 `process()` 也一樣：Debug 會 assert，Release 輸出全 0。
 - **safety clamp 用 `!(|y| <= ceiling)`** 而不是 `|y| > ceiling`：NaN 的任何比較都是 false，這樣寫 NaN 也會被攔住換成 0。
 - **input gain 用約 20 ms 的線性 ramp**（`setInputGainDb()`），避免轉旋鈕時的 zipper noise；`reset()` 會讓它直接就位。
-- **lookahead 的上限在 `prepare()` 決定**：`setMaxLookaheadMs()`（預設 20 ms）要在 `prepare()` 之前呼叫，`prepare()` 依它配置 delay line、deque 與平均環。`setLookaheadMs()` 只記住你要求的值，生效的值是 $\min(\text{要求}, \text{上限})$，所以兩個 setter 的呼叫順序不影響結果；`getLookaheadMs()` 回傳生效的值，prepare 之後永遠與 `getLatencySamples()` 一致。
+- **lookahead 的上限在 `prepare()` 決定**：`setMaxLookaheadMs()`（預設 20 ms）要在 `prepare()` 之前呼叫，`prepare()` 依它配置 delay line、deque 與平均環。`setLookaheadMs()` 只記住你要求的值，生效的值是 $`\min(\text{要求}, \text{上限})`$，所以兩個 setter 的呼叫順序不影響結果；`getLookaheadMs()` 回傳生效的值，prepare 之後永遠與 `getLatencySamples()` 一致。
 - **`getGainReductionDb()`** 回傳上一個 block 內最大的 gain reduction（正值 dB），`std::atomic<float>` relaxed，UI thread 可以直接讀。
 - **`getSafetyClipCount()`** 是除錯用的計數器：正常使用下永遠是 0；只有播放中把 ceiling 調低、或輸入含 NaN / Inf 才會增加。
 
@@ -457,7 +457,7 @@ input gain      in peak     out peak      out RMS     RMS gain       max GR
            +240 samples        -6.00          -6.00
 ```
 
-（節錄；程式還會印出 -480、-180、-60 等位置。）線性 gain 在 241 個 sample 內從 1 線性降到 0.5：理論上 -240 處是 $(240 + 0.5)/241 = 0.998$（-0.02 dB），-120 處是 0.75（-2.50 dB）。表中的數字略低（-0.12、-2.63 dB），是因為範例用「0.5 ms（24 個 sample）視窗內的輸出 peak ÷ 輸入 peak」來量 gain，而 gain 在這 24 個 sample 內還在繼續往下掉。
+（節錄；程式還會印出 -480、-180、-60 等位置。）線性 gain 在 241 個 sample 內從 1 線性降到 0.5：理論上 -240 處是 $`(240 + 0.5)/241 = 0.998`$（-0.02 dB），-120 處是 0.75（-2.50 dB）。表中的數字略低（-0.12、-2.63 dB），是因為範例用「0.5 ms（24 個 sample）視窗內的輸出 peak ÷ 輸入 peak」來量 gain，而 gain 在這 24 個 sample 內還在繼續往下掉。
 
 ## 4. Real-time 注意事項
 

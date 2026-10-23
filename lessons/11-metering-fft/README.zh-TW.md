@@ -24,8 +24,8 @@ master 上有 loudness meter，EQ 外掛背後有一片即時的頻譜。這些�
 - 把「decay 24 dB/s」換算成每個 sample 的乘法係數；實作含 peak hold 的 peak meter 與滑動視窗 RMS。
 - 依 ITU-R BS.1770-4 實作 loudness meter：K-weighting（兩級 biquad，含其他 sample rate 的重新設計）、
   channel 加權、400 ms block / 75% overlap、momentary / short-term / integrated、absolute 與 relative gating。
-- 從定義推導 DFT 的直覺（「和每個頻率的正弦做相關」），推導 radix-2 Cooley-Tukey FFT 並說明為什麼是 $O(N \log N)$。
-- 解釋 bin 解析度 $f_s/N$、spectral leakage、window 的 main lobe / side lobe 取捨、coherent gain 正規化。
+- 從定義推導 DFT 的直覺（「和每個頻率的正弦做相關」），推導 radix-2 Cooley-Tukey FFT 並說明為什麼是 $`O(N \log N)`$。
+- 解釋 bin 解析度 $`f_s/N`$、spectral leakage、window 的 main lobe / side lobe 取捨、coherent gain 正規化。
 - 用 exponential averaging 平滑頻譜、用對數頻率軸顯示。
 - 用 single-producer / single-consumer 的 lock-free ring buffer 把資料從 audio thread 送到 UI thread。
 
@@ -37,9 +37,9 @@ master 上有 loudness meter，EQ 外掛背後有一片即時的頻譜。這些�
 
 | Meter | 量什麼 | 反應速度（ballistics） | 單位 | 用途 |
 |---|---|---|---|---|
-| **Sample peak** | 每個 sample 的 $\lvert x[n]\rvert$ 的最大值 | 瞬間上升；下降速度自訂（dB/s） | dBFS | 防止數位 clipping（DAW 混音台的預設） |
+| **Sample peak** | 每個 sample 的 $`\lvert x[n]\rvert`$ 的最大值 | 瞬間上升；下降速度自訂（dB/s） | dBFS | 防止數位 clipping（DAW 混音台的預設） |
 | **True peak** | 重建後連續波形的峰值（4x oversampling 估計） | 同上 | dBTP | 母帶、串流交付規範（例如 ≤ -1 dBTP） |
-| **RMS** | 一段視窗內的均方根 $\sqrt{\frac{1}{W}\sum x^2}$ | 視窗長度決定（常見 300 ms） | dBFS | 「平均能量」，比 peak 接近聽感 |
+| **RMS** | 一段視窗內的均方根 $`\sqrt{\frac{1}{W}\sum x^2}`$ | 視窗長度決定（常見 300 ms） | dBFS | 「平均能量」，比 peak 接近聽感 |
 | **VU** | 整流後的平均，經過有質量的指針 | 300 ms 到 99%，過衝 1~1.5% | VU | 類比時代的「音量感」，類比模擬外掛常用 |
 | **PPM** | 準峰值（quasi-peak） | 積分時間約 5~10 ms；下降很慢（約 20 dB / 1.5 s 或 24 dB / 2.8 s，依 Type） | dB | 廣播（歐洲傳統） |
 | **LUFS** | K-weighting 後的均方值，含 gating | momentary 400 ms / short-term 3 s / integrated 整段 | LUFS / LU | 響度標準（廣播、串流平台） |
@@ -47,7 +47,7 @@ master 上有 loudness meter，EQ 外掛背後有一片即時的頻譜。這些�
 幾個要先釐清的觀念：
 
 - **dBFS**（dB relative to Full Scale）：0 dBFS = 數位系統能表示的最大值（float 裡的 ±1.0）。
-  一個振幅 1.0 的正弦，peak 是 0 dBFS，RMS 是 $1/\sqrt{2}$ = **-3.01 dBFS**。
+  一個振幅 1.0 的正弦，peak 是 0 dBFS，RMS 是 $`1/\sqrt{2}`$ = **-3.01 dBFS**。
   （注意：有些 meter 依 AES17 把正弦的 RMS 也標成 0 dB，也就是 RMS 讀數 +3.01 dB；本章不做這個偏移。）
 - **crest factor** = peak / RMS（以 dB 表示就是兩者的差）。正弦 3.01 dB，鼓組常常 15~20 dB，
   被 limiter 壓扁的流行歌可能只剩 6~8 dB。
@@ -79,15 +79,15 @@ dB
 
 #### 數學：dB/s → 每個 sample 的係數
 
-在 dB 域「每秒下降 $D$ dB」是一條直線；換回線性域就是**每個 sample 乘上同一個係數 $g$**：
+在 dB 域「每秒下降 $`D`$ dB」是一條直線；換回線性域就是**每個 sample 乘上同一個係數 $`g`$**：
 
 $$
 20\log_{10}\left(g^{f_s}\right) = -D \quad\Longrightarrow\quad g = 10^{-D / (20 f_s)}
 $$
 
-$D = 24$ dB/s、$f_s = 48$ kHz → $g = 10^{-24/960000} \approx 0.9999424$（精確一點是 0.9999424370；
-`LevelMeter` 用 float 存，所以 `l11_level_meter` 第一段印出的 float 值是 0.99994242——float 在 1 附近的間距約 $6\times10^{-8}$）。
-這比「每個 block 減 $D \cdot B / f_s$ dB」好：與 block size 無關，而且不需要每個 sample 做 log。
+$`D = 24`$ dB/s、$`f_s = 48`$ kHz → $`g = 10^{-24/960000} \approx 0.9999424`$（精確一點是 0.9999424370；
+`LevelMeter` 用 float 存，所以 `l11_level_meter` 第一段印出的 float 值是 0.99994242——float 在 1 附近的間距約 $`6\times10^{-8}`$）。
+這比「每個 block 減 $`D \cdot B / f_s`$ dB」好：與 block size 無關，而且不需要每個 sample 做 log。
 
 hold 的邏輯：
 
@@ -103,15 +103,15 @@ $$
 \text{RMS}[n] = \sqrt{\frac{1}{W}\sum_{i=0}^{W-1} x[n-i]^2}
 $$
 
-- 視窗 $W$ 太短（例如 10 ms）：低頻正弦的一個週期都裝不滿，讀數會跟著波形抖動。
-  經驗法則：$W$ 至少要涵蓋最低關心頻率的好幾個週期。
+- 視窗 $`W`$ 太短（例如 10 ms）：低頻正弦的一個週期都裝不滿，讀數會跟著波形抖動。
+  經驗法則：$`W`$ 至少要涵蓋最低關心頻率的好幾個週期。
 - 視窗太長（例如 3 s）：反應太慢。音樂 meter 常用 **300 ms**（和 VU 的時間常數同一個數量級，接近人耳對「音量」的積分時間）。
 
-**實作**：每來一個 sample 就重新加總 $W$ 個平方值是 $O(W)$。用 ring buffer 存最近 $W$ 個 $x^2$，
-維護一個「視窗內的總和」：加上新的、減掉被擠出去的，每個 sample 只要 $O(1)$。
-浮點的加加減減會累積誤差，所以每繞 ring 一圈就重新精確加總一次（攤平後仍是 $O(1)$）。
+**實作**：每來一個 sample 就重新加總 $`W`$ 個平方值是 $`O(W)`$。用 ring buffer 存最近 $`W`$ 個 $`x^2`$，
+維護一個「視窗內的總和」：加上新的、減掉被擠出去的，每個 sample 只要 $`O(1)`$。
+浮點的加加減減會累積誤差，所以每繞 ring 一圈就重新精確加總一次（攤平後仍是 $`O(1)`$）。
 
-另一種常見做法是 exponential moving average（一階 lowpass）估計 $E[x^2]$，記憶體只要一個數字，
+另一種常見做法是 exponential moving average（一階 lowpass）估計 $`E[x^2]`$，記憶體只要一個數字，
 但它的「視窗」是指數衰減的、沒有明確的長度。本章的 `LevelMeter` 用真的滑動視窗；練習 7 的 correlation meter 用 EMA。
 
 ### 2.4 VU 與 PPM：有「質量」的 meter
@@ -124,7 +124,7 @@ $$
 \ddot p + 2\zeta\omega_n \dot p + \omega_n^2\,p = \omega_n^2\,u(t)
 $$
 
-$\zeta$ 決定過衝（$M_p = e^{-\pi\zeta/\sqrt{1-\zeta^2}}$，$\zeta = 0.82$ → 1.11%），$\omega_n$ 決定快慢。
+$`\zeta`$ 決定過衝（$`M_p = e^{-\pi\zeta/\sqrt{1-\zeta^2}}`$，$`\zeta = 0.82`$ → 1.11%），$`\omega_n`$ 決定快慢。
 練習 4 會把它做出來。0 VU 在數位系統裡通常校準成 **-18 dBFS**（EBU R68）或 -20 dBFS 的正弦。
 
 聽感上：VU 對鼓的每一下幾乎沒反應（10 ms 的 0 VU burst 只能把指針推到 −24.8 VU，練習 4 驗證；
@@ -141,7 +141,7 @@ PPM（peak programme meter）則是廣播用的「準峰值」：積分時間只
 > 用同一段訊號比較兩者的讀數誤差與 CPU 成本。
 
 數位訊號只是連續波形的取樣，DAC 會用（近似）sinc 內插把 sample 之間補起來。**真正的峰值可能落在兩個 sample 之間**。
-經典例子：$f_s/4$ 的正弦、相位 45°，每個 sample 都是 $\pm 0.707$（sample peak -3.01 dBFS），但連續波形的峰值是 1.0（0 dBTP）：
+經典例子：$`f_s/4`$ 的正弦、相位 45°，每個 sample 都是 $`\pm 0.707`$（sample peak -3.01 dBFS），但連續波形的峰值是 1.0（0 dBTP）：
 
 ```
 振幅（x[n] = sin(π n/2 + π/4)，fs/4 的正弦，每 4 個 sample 一個週期；o = sample，* = 連續波形的峰值）
@@ -154,16 +154,16 @@ PPM（peak programme meter）則是廣播用的「準峰值」：積分時間只
 ```
 
 ITU-R BS.1770-4 Annex 2 的作法：把訊號 **4x oversampling**（48 kHz → 192 kHz，用 FIR 內插 filter），
-在高取樣率下取 $|x|$ 最大值，單位 **dBTP**。4x 仍可能錯過一點點：Nyquist 附近的正弦，峰值可能剛好在兩個 4x sample 中間，
-最多低估 $20\log_{10}\cos(\pi/8) = 0.69$ dB。所以串流平台與 EBU R128 都要求 true peak ≤ -1 dBTP 留餘裕。
+在高取樣率下取 $`|x|`$ 最大值，單位 **dBTP**。4x 仍可能錯過一點點：Nyquist 附近的正弦，峰值可能剛好在兩個 4x sample 中間，
+最多低估 $`20\log_{10}\cos(\pi/8) = 0.69`$ dB。所以串流平台與 EBU R128 都要求 true peak ≤ -1 dBTP 留餘裕。
 
 練習 3 用本章的 meter 驗證了這個例子：sample peak −3.010 dBFS、4x true peak 0.000 dBTP，誤差是 0。
 第 05 章練習 4 量同一種訊號（振幅 0.5）卻得到 −6.18 dBTP，比真正的 −6.02 低約 0.17 dB。差別在**插值點落在哪裡**：
 
 - 第 06 章的 `Oversampler` 是兩級 2x halfband。halfband 升頻時有一個 phase 是純延遲（輸出就是原始 sample），
-  所以兩級之後的 4 個點剛好落在原始 sample 之間的 0、1/4、1/2、3/4 處——1/2 正好踩到這個 $f_s/4$ 正弦的峰值。
+  所以兩級之後的 4 個點剛好落在原始 sample 之間的 0、1/4、1/2、3/4 處——1/2 正好踩到這個 $`f_s/4`$ 正弦的峰值。
 - 第 05 章的 64 tap FIR 是偶數長度，中心不在整數上，4 個插值點落在 1/8、3/8、5/8、7/8 處，
-  離峰值最近也差 1/8 sample（相位 11.25°），所以讀到 $\cos 11.25° = 0.981$ 倍（−0.17 dB）。
+  離峰值最近也差 1/8 sample（相位 11.25°），所以讀到 $`\cos 11.25° = 0.981`$ 倍（−0.17 dB）。
 
 這不代表 halfband 版本「比較準」：換一個峰值落在 1/8 處的訊號，結果就反過來。練習 3 把 fs/4 正弦的相位從 0° 掃到 90°，
 兩種 meter 的最差誤差都是 -0.17 dB，只是出現在對方量得最準的相位。真正的差別在別處（數字都來自練習 3，同一段訊號同時餵兩種 meter）：
@@ -211,46 +211,46 @@ flowchart LR
 | 1. pre-filter | high shelf，中點約 1.7 kHz，高頻 +4 dB | 模擬頭部（一個「球」）對高頻的聲學增益 |
 | 2. RLB filter | 二階 highpass，約 38 Hz（-6 dB 點）| 「revised low-frequency B-curve」，去掉耳朵不太敏感的極低頻 |
 
-規範只給 **48 kHz** 的係數（$a_0$ 正規化為 1）：
+規範只給 **48 kHz** 的係數（$`a_0`$ 正規化為 1）：
 
-| | $b_0$ | $b_1$ | $b_2$ | $a_1$ | $a_2$ |
+| | $`b_0`$ | $`b_1`$ | $`b_2`$ | $`a_1`$ | $`a_2`$ |
 |---|---|---|---|---|---|
 | stage 1 | 1.53512485958697 | −2.69169618940638 | 1.19839281085285 | −1.69065929318241 | 0.73248077421585 |
 | stage 2 | 1.0 | −2.0 | 1.0 | −1.99004745483398 | 0.99007225036621 |
 
-**其他 sample rate 不能直接用這組係數**（數位 filter 的頻率是相對於 $f_s$ 的，44.1 kHz 套 48 kHz 的係數，整條曲線會往低頻移 8%）。
+**其他 sample rate 不能直接用這組係數**（數位 filter 的頻率是相對於 $`f_s`$ 的，44.1 kHz 套 48 kHz 的係數，整條曲線會往低頻移 8%）。
 `l11_loudness` 印了這個反例：44.1 kHz 誤用 48 kHz 係數表時，997 Hz 的增益變成 +0.900 dB（正確是 +0.694 dB）、
 2 kHz 變成 +3.30 dB（正確 +3.08 dB）——量出來的 LUFS 會偏高約 0.2 LU，剛好是 EBU 允許誤差的量級，很難察覺。
 要回到類比原型重新做 bilinear transform。把上表反推回類比參數（libebur128 等開源實作也用同一組）。
-stage 1 的類比原型是一個二階 high shelf（$s$ 已對 $\omega_0 = 2\pi f_0$ 正規化）：
+stage 1 的類比原型是一個二階 high shelf（$`s`$ 已對 $`\omega_0 = 2\pi f_0`$ 正規化）：
 
 $$
 H_1(s) = \frac{V_h\, s^2 + V_b\, s/Q + 1}{s^2 + s/Q + 1}
 $$
 
-- $s \to 0$（DC）時 $H_1 = 1$（0 dB）；$s \to \infty$（高頻）時 $H_1 = V_h$。所以 **$V_h$ 是高頻端的線性增益**：
-  $V_h = 10^{G/20}$，$G = 3.99984$ dB（約 +4 dB）。
-- **$V_b$ 是分子中間項的係數，決定過渡帶（$f_0$ 附近）的增益**：$V_b = V_h^{0.49967}$，指數約 0.5，
-  也就是 $V_b \approx \sqrt{V_h}$——以 dB 計大約是高頻增益的一半（+2.00 dB），讓 shelf 從 0 dB 平順地爬到 +4 dB。
-  （在 $f_0$ 處實際的增益是 $|H_1(j)| = \sqrt{V_b^2 + Q^2(V_h-1)^2}$ = +2.44 dB，因為分母的 $Q$ 也會影響過渡帶的形狀。）
-- $f_0 = 1681.974$ Hz、$Q = 0.70718$。
+- $`s \to 0`$（DC）時 $`H_1 = 1`$（0 dB）；$`s \to \infty`$（高頻）時 $`H_1 = V_h`$。所以 **$`V_h`$ 是高頻端的線性增益**：
+  $`V_h = 10^{G/20}`$，$`G = 3.99984`$ dB（約 +4 dB）。
+- **$`V_b`$ 是分子中間項的係數，決定過渡帶（$`f_0`$ 附近）的增益**：$`V_b = V_h^{0.49967}`$，指數約 0.5，
+  也就是 $`V_b \approx \sqrt{V_h}`$——以 dB 計大約是高頻增益的一半（+2.00 dB），讓 shelf 從 0 dB 平順地爬到 +4 dB。
+  （在 $`f_0`$ 處實際的增益是 $`|H_1(j)| = \sqrt{V_b^2 + Q^2(V_h-1)^2}`$ = +2.44 dB，因為分母的 $`Q`$ 也會影響過渡帶的形狀。）
+- $`f_0 = 1681.974`$ Hz、$`Q = 0.70718`$。
 
 這些數字（包括 0.49967 這個指數）都是從規範的 48 kHz 係數反推出來的，不是額外的設計選擇——我們只是找一組類比參數，
 讓它在 48 kHz 做完 bilinear transform 剛好還原出規範的表，然後在其他 sample rate 用同一組參數重新轉換。
 
-bilinear transform 用 $s = \frac{1}{K}\cdot\frac{1 - z^{-1}}{1 + z^{-1}}$、$K = \tan(\pi f_0 / f_s)$（這個 $K$ 讓 $f_0$ 剛好映射到 $f_0$）。
-代入 $H_1(s)$、上下同乘 $K^2(1+z^{-1})^2$，展開成 $z^{-1}$ 的多項式就得到：
+bilinear transform 用 $`s = \frac{1}{K}\cdot\frac{1 - z^{-1}}{1 + z^{-1}}`$、$`K = \tan(\pi f_0 / f_s)`$（這個 $`K`$ 讓 $`f_0`$ 剛好映射到 $`f_0`$）。
+代入 $`H_1(s)`$、上下同乘 $`K^2(1+z^{-1})^2`$，展開成 $`z^{-1}`$ 的多項式就得到：
 
 $$
 b_0 = \frac{V_h + V_b K/Q + K^2}{a_0},\quad b_1 = \frac{2(K^2 - V_h)}{a_0},\quad b_2 = \frac{V_h - V_b K/Q + K^2}{a_0},\quad
 a_1 = \frac{2(K^2-1)}{a_0},\quad a_2 = \frac{1 - K/Q + K^2}{a_0}
 $$
 
-其中 $a_0 = 1 + K/Q + K^2$。
+其中 $`a_0 = 1 + K/Q + K^2`$。
 
-- stage 2：二階 highpass $H_2(s) = \dfrac{s^2}{s^2 + s/Q + 1}$，$f_0 = 38.135$ Hz、$Q = 0.50033$，分子固定 $1, -2, 1$（規範的表就是這樣，沒有除以 $a_0$），分母同上式。
+- stage 2：二階 highpass $`H_2(s) = \dfrac{s^2}{s^2 + s/Q + 1}`$，$`f_0 = 38.135`$ Hz、$`Q = 0.50033`$，分子固定 $`1, -2, 1`$（規範的表就是這樣，沒有除以 $`a_0`$），分母同上式。
 
-`l11_loudness` 會印出兩組係數並驗證差異只有 $8.9\times10^{-16}$，再列出 44.1 / 48 / 96 kHz 的頻率響應——三條曲線幾乎一致：
+`l11_loudness` 會印出兩組係數並驗證差異只有 $`8.9\times10^{-16}`$，再列出 44.1 / 48 / 96 kHz 的頻率響應——三條曲線幾乎一致：
 
 | 頻率 | 20 Hz | 38 Hz | 100 Hz | 997 Hz | 2 kHz | 5 kHz | 16 kHz |
 |---|---|---|---|---|---|---|---|
@@ -259,14 +259,14 @@ $$
 | 重新設計 @ 96 kHz | −13.30 dB | −6.02 dB | −1.16 dB | +0.674 dB | +3.05 dB | +3.99 dB | +4.02 dB |
 
 （三條曲線相差 < 0.03 dB，`l11_loudness` 用 `DAWLAB_CHECK` 驗證 < 0.05 dB。剩下的一點差異來自 bilinear transform
-的頻率扭曲在不同 $f_s$ 下不完全相同，以及規範的 48 kHz 係數本身只有有限位數。）
+的頻率扭曲在不同 $`f_s`$ 下不完全相同，以及規範的 48 kHz 係數本身只有有限位數。）
 
-注意 stage 1 **不是** RBJ cookbook 的 high shelf：RBJ 的 shelf「corner」定義在增益一半的地方，而且分子分母的 $Q$ 用法不同，
-不能直接把 $f_0$、$Q$、gain 丟進第 02 章的 `makeHighShelf()`。我們仍然用第 02 章的 `Biquad`（TDF-II）來跑這組係數。
+注意 stage 1 **不是** RBJ cookbook 的 high shelf：RBJ 的 shelf「corner」定義在增益一半的地方，而且分子分母的 $`Q`$ 用法不同，
+不能直接把 $`f_0`$、$`Q`$、gain 丟進第 02 章的 `makeHighShelf()`。我們仍然用第 02 章的 `Biquad`（TDF-II）來跑這組係數。
 
 #### 從 mean square 到 LUFS
 
-對每個 channel $i$，在一段時間 $T$ 內算 K-weighted 訊號 $y_i$ 的 mean square：
+對每個 channel $`i`$，在一段時間 $`T`$ 內算 K-weighted 訊號 $`y_i`$ 的 mean square：
 
 $$
 z_i = \frac{1}{T}\int_0^T y_i^2(t)\,dt \;\approx\; \frac{1}{N}\sum_n y_i[n]^2
@@ -278,12 +278,12 @@ $$
 L_K = -0.691 + 10\log_{10}\sum_i G_i\, z_i \quad \text{[LUFS]}
 $$
 
-- **$G_i$**：L、R、C = 1.0；左右環繞 Ls、Rs = 1.41（約 +1.5 dB，後方的聲音聽起來比較大聲）；LFE 不計。
-- **為什麼是 $10\log_{10}$ 而不是 $20\log_{10}$**：$z$ 已經是「平方」（功率）了。
+- **$`G_i`$**：L、R、C = 1.0；左右環繞 Ls、Rs = 1.41（約 +1.5 dB，後方的聲音聽起來比較大聲）；LFE 不計。
+- **為什麼是 $`10\log_{10}`$ 而不是 $`20\log_{10}`$**：$`z`$ 已經是「平方」（功率）了。
 - **−0.691 從哪來**：K-weighting 在 997 Hz 的增益是 +0.691 dB。減掉它，讓「0 dBFS 的 997 Hz 正弦送進單一聲道」
-  正好讀 $10\log_{10}(0.5) = -3.01$ LUFS（正弦的 mean square = $A^2/2$）。
+  正好讀 $`10\log_{10}(0.5) = -3.01`$ LUFS（正弦的 mean square = $`A^2/2`$）。
   所以 **-20 dBFS 的 997 Hz 正弦 → −23.01 LUFS**，這是規範的驗證條件，也是 `l11_loudness` 第 2 段量到的數字。
-- **兩聲道送同一個訊號**：$\sum G_i z_i$ 變成兩倍 → **+3.01 LU** → −20.00 LUFS（`l11_loudness` 第 3 段）。
+- **兩聲道送同一個訊號**：$`\sum G_i z_i`$ 變成兩倍 → **+3.01 LU** → −20.00 LUFS（`l11_loudness` 第 3 段）。
   聽起來確實比單一聲道大聲——兩個喇叭都在響。
 - **LU**（loudness unit）是 LUFS 的「差值」單位，1 LU = 1 dB。
 
@@ -309,7 +309,7 @@ momentary = 最近 4 個子區塊、short-term = 最近 30 個子區塊的平均
 如果一首歌中間有 10 秒的靜音，直接平均會把 integrated 拉低，但聽眾不會覺得「這首歌比較小聲」。BS.1770-4 用兩道 gate：
 
 1. **absolute gate**：丟掉 loudness < **−70 LUFS** 的 block（幾乎是靜音）。
-2. **relative gate**：算出通過第一道的 block 的平均 $\bar L$（**在功率域平均**），丟掉 < $\bar L - 10$ LU 的 block。
+2. **relative gate**：算出通過第一道的 block 的平均 $`\bar L`$（**在功率域平均**），丟掉 < $`\bar L - 10`$ LU 的 block。
 3. integrated = 通過兩道 gate 的 block 的功率平均：
 
 $$
@@ -317,13 +317,13 @@ $$
 L_{\text{int}} = -0.691 + 10\log_{10}\Big(\frac{1}{|J_g|}\sum_{j\in J_g}\sum_i G_i z_{ij}\Big)
 $$
 
-$J_a$ 是通過 absolute gate 的 block，$J_g$ 是兩道都通過的。`l11_loudness` 第 4 段：3 s 的 −20 dBFS → 3 s 靜音 → 3 s 的 −50 dBFS：
+$`J_a`$ 是通過 absolute gate 的 block，$`J_g`$ 是兩道都通過的。`l11_loudness` 第 4 段：3 s 的 −20 dBFS → 3 s 靜音 → 3 s 的 −50 dBFS：
 
 | | 數值 |
 |---|---|
 | 不 gating，直接平均 9 s 的功率 | −27.78 LUFS（被靜音稀釋） |
 | gating 後的 integrated（實測） | **−23.23 LUFS** |
-| 理論值 | 27 個完整 block（功率 $P$）+ 跨邊界的 3 個 block（$\tfrac34P, \tfrac24P, \tfrac14P$）→ $-23.01 + 10\log_{10}(28.5/30) = -23.23$ |
+| 理論值 | 27 個完整 block（功率 $`P`$）+ 跨邊界的 3 個 block（$`\tfrac34P, \tfrac24P, \tfrac14P`$）→ $`-23.01 + 10\log_{10}(28.5/30) = -23.23`$ |
 
 靜音 block 被 absolute gate 擋掉；−53 LUFS 的 block 低於 relative gate（約 −36 LUFS）也被擋掉。
 
@@ -356,25 +356,25 @@ sample peak 會到 −0.24 dBFS，已經超過 −1 dBTP——這時候就需要
 
 #### 直覺
 
-想知道訊號 $x[n]$ 裡「有多少 440 Hz」？拿一個 440 Hz 的正弦 $s[n]$ 和它逐點相乘再加總：$\sum x[n]\,s[n]$。
-如果 $x$ 裡有 440 Hz 而且相位對齊，乘積大多是正的，總和很大；如果沒有，正負互相抵消，總和接近 0。
-這就是**相關**（correlation）。問題是相位：如果 $x$ 的 440 Hz 是 cos 而我們拿 sin 去比，總和也會是 0。
-解法是同時跟 cos 和 sin 比——用複數 $e^{-j\omega n} = \cos\omega n - j\sin\omega n$ 一次做完：
+想知道訊號 $`x[n]`$ 裡「有多少 440 Hz」？拿一個 440 Hz 的正弦 $`s[n]`$ 和它逐點相乘再加總：$`\sum x[n]\,s[n]`$。
+如果 $`x`$ 裡有 440 Hz 而且相位對齊，乘積大多是正的，總和很大；如果沒有，正負互相抵消，總和接近 0。
+這就是**相關**（correlation）。問題是相位：如果 $`x`$ 的 440 Hz 是 cos 而我們拿 sin 去比，總和也會是 0。
+解法是同時跟 cos 和 sin 比——用複數 $`e^{-j\omega n} = \cos\omega n - j\sin\omega n`$ 一次做完：
 
 $$
 X[k] = \sum_{n=0}^{N-1} x[n]\, e^{-j 2\pi k n / N},\qquad k = 0, 1, \dots, N-1
 $$
 
-$|X[k]|$ 是「第 $k$ 個頻率有多少」，$\arg X[k]$ 是它的相位。第 $k$ 個 bin 的頻率是
+$`|X[k]|`$ 是「第 $`k`$ 個頻率有多少」，$`\arg X[k]`$ 是它的相位。第 $`k`$ 個 bin 的頻率是
 
 $$
 f_k = k \cdot \frac{f_s}{N}
 $$
 
-所以 **bin 寬（頻率解析度）$\Delta f = f_s / N$**。48 kHz、N = 2048 → 23.4375 Hz。想要更細的解析度，只能加大 N，
+所以 **bin 寬（頻率解析度）$`\Delta f = f_s / N`$**。48 kHz、N = 2048 → 23.4375 Hz。想要更細的解析度，只能加大 N，
 也就是**看更長的一段時間**——頻率解析度和時間解析度是一個蹺蹺板。
 
-逆轉換（IDFT）幾乎一模一樣，只差旋轉方向與 $1/N$：
+逆轉換（IDFT）幾乎一模一樣，只差旋轉方向與 $`1/N`$：
 
 $$
 x[n] = \frac{1}{N}\sum_{k=0}^{N-1} X[k]\, e^{+j 2\pi k n / N}
@@ -382,44 +382,44 @@ $$
 
 #### 實數訊號的對稱性
 
-音訊是實數。把 $k$ 換成 $N-k$：$e^{-j2\pi(N-k)n/N} = e^{+j2\pi kn/N}$，所以
+音訊是實數。把 $`k`$ 換成 $`N-k`$：$`e^{-j2\pi(N-k)n/N} = e^{+j2\pi kn/N}`$，所以
 
 $$
 X[N-k] = \overline{X[k]}\qquad(\text{共軛對稱})
 $$
 
-後半段完全是前半段的鏡像，**只需要保留 $k = 0 \dots N/2$，共 $N/2 + 1$ 個 bin**：bin 0 是 DC，bin $N/2$ 是 Nyquist（$f_s/2$），
-這兩個是實數。`Fft::forwardReal()` 只輸出這 $N/2+1$ 個 bin，`inverseReal()` 用對稱性把另一半補回來。
+後半段完全是前半段的鏡像，**只需要保留 $`k = 0 \dots N/2`$，共 $`N/2 + 1`$ 個 bin**：bin 0 是 DC，bin $`N/2`$ 是 Nyquist（$`f_s/2`$），
+這兩個是實數。`Fft::forwardReal()` 只輸出這 $`N/2+1`$ 個 bin，`inverseReal()` 用對稱性把另一半補回來。
 
 #### 振幅與 dB
 
-一個振幅 $A$、正好落在 bin $k$ 中心的正弦 $A\cos(2\pi k n/N)$，能量平分在 bin $k$ 與 bin $N-k$，每邊 $|X[k]| = AN/2$。所以
+一個振幅 $`A`$、正好落在 bin $`k`$ 中心的正弦 $`A\cos(2\pi k n/N)`$，能量平分在 bin $`k`$ 與 bin $`N-k`$，每邊 $`|X[k]| = AN/2`$。所以
 
 $$
 A = \frac{2\,|X[k]|}{N} \qquad(\text{DC 與 Nyquist 沒有鏡像，係數是 } 1/N)
 $$
 
-加了 window 之後還要再除以 coherent gain（2.9 節）。換成 dB：$20\log_{10} A$（振幅）或 $10\log_{10}|X|^2$（功率），兩者相同。
+加了 window 之後還要再除以 coherent gain（2.9 節）。換成 dB：$`20\log_{10} A`$（振幅）或 $`10\log_{10}|X|^2`$（功率），兩者相同。
 
 ### 2.8 FFT：radix-2 Cooley-Tukey
 
-直接照定義算 DFT：N 個輸出、每個加總 N 項 → $O(N^2)$。N = 4096 時是 1600 萬次複數乘加，一秒要做 30 次就很吃力。
+直接照定義算 DFT：N 個輸出、每個加總 N 項 → $`O(N^2)`$。N = 4096 時是 1600 萬次複數乘加，一秒要做 30 次就很吃力。
 
 #### 推導
 
-令 $W_N = e^{-j2\pi/N}$（旋轉因子，twiddle factor）。把 $x[n]$ 拆成偶數項與奇數項（decimation in time）：
+令 $`W_N = e^{-j2\pi/N}`$（旋轉因子，twiddle factor）。把 $`x[n]`$ 拆成偶數項與奇數項（decimation in time）：
 
 $$
 X[k] = \sum_{m=0}^{N/2-1} x[2m]\,W_N^{2mk} + \sum_{m=0}^{N/2-1} x[2m+1]\,W_N^{(2m+1)k}
 $$
 
-因為 $W_N^{2mk} = W_{N/2}^{mk}$：
+因為 $`W_N^{2mk} = W_{N/2}^{mk}`$：
 
 $$
 X[k] = \underbrace{\sum_m x[2m]\,W_{N/2}^{mk}}_{E[k]\text{：偶數項的 } N/2 \text{ 點 DFT}} + W_N^k \underbrace{\sum_m x[2m+1]\,W_{N/2}^{mk}}_{O[k]\text{：奇數項的 } N/2 \text{ 點 DFT}}
 $$
 
-$E$、$O$ 以 $N/2$ 為週期，而且 $W_N^{k+N/2} = -W_N^k$，所以後半段不用重算：
+$`E`$、$`O`$ 以 $`N/2`$ 為週期，而且 $`W_N^{k+N/2} = -W_N^k`$，所以後半段不用重算：
 
 $$
 \boxed{X[k] = E[k] + W_N^k\,O[k],\qquad X[k + N/2] = E[k] - W_N^k\,O[k]},\qquad k = 0 \dots N/2-1
@@ -442,7 +442,7 @@ $$
 T(N) = 2\,T(N/2) + O(N) \;\Longrightarrow\; T(N) = O(N\log_2 N)
 $$
 
-總共 $\log_2 N$ 層、每層 $N/2$ 個 butterfly（各一次複數乘法）。N = 4096：$N^2 / (N\log_2 N) = 4096/12 \approx 341$ 倍的差距。
+總共 $`\log_2 N`$ 層、每層 $`N/2`$ 個 butterfly（各一次複數乘法）。N = 4096：$`N^2 / (N\log_2 N) = 4096/12 \approx 341`$ 倍的差距。
 
 #### 迭代寫法與 bit reversal
 
@@ -455,7 +455,7 @@ index:      0    1    2    3    4    5    6    7
 → 順序:     0    4    2    6    1    5    3    7
 ```
 
-所以 `Fft` 先做一次 bit-reversal 排列，再由小到大做 $\log_2 N$ 層 butterfly（長度 2、4、8……N）。
+所以 `Fft` 先做一次 bit-reversal 排列，再由小到大做 $`\log_2 N`$ 層 butterfly（長度 2、4、8……N）。
 twiddle factor 與 bit-reversal 表在建構時算好（會 allocate），之後的 `forward()` / `inverse()` 完全不配置記憶體。
 
 #### 驗證
@@ -468,7 +468,7 @@ twiddle factor 與 bit-reversal 表在建構時算好（會 allocate），之後
 | 1024 | 8.6e-6 | 3.6e-7 |
 | 4096 | 2.3e-5 | 4.8e-7 |
 
-（輸入是 $|x| \le 1$ 的亂數；forward 的輸出量級是 $\sqrt N$，所以絕對誤差隨 N 增加，相對誤差維持在 float 精度 $10^{-7}$ 左右。）
+（輸入是 $`|x| \le 1`$ 的亂數；forward 的輸出量級是 $`\sqrt N`$，所以絕對誤差隨 N 增加，相對誤差維持在 float 精度 $`10^{-7}`$ 左右。）
 並用 Goertzel（`Analysis.h`）交叉驗證單一頻率的振幅。
 
 計時（Debug 組態、作者機器上的某一次執行，只看趨勢；Release 會快很多，每次執行也會有 ±30% 以上的浮動）：
@@ -480,7 +480,7 @@ twiddle factor 與 bit-reversal 表在建構時算好（會 allocate），之後
 | 4096 | 1.2 ms | 448 ~ 488 ms | 375 ~ 415 |
 | 16384 | 5.4 ~ 9.3 ms | （略過） | |
 
-倍數隨 N 增加，與理論的 $N / \log_2 N$ 同一個數量級（4096 時理論 341）。self-check 只要求 N = 4096 時至少快 20 倍，
+倍數隨 N 增加，與理論的 $`N / \log_2 N`$ 同一個數量級（4096 時理論 341）。self-check 只要求 N = 4096 時至少快 20 倍，
 避免機器忙碌時誤判。
 
 ### 2.9 Window 與 spectral leakage
@@ -501,20 +501,20 @@ frame:   ╭─╮   ╭─╮   ╭─╮   ╭       ← 結尾停在半路
 
 #### window 的取捨
 
-在取樣之前先乘上一個兩端漸漸變 0 的函數 $w[n]$，消除接縫的跳躍。代價：main lobe 變寬（頻率分辨能力下降）。
+在取樣之前先乘上一個兩端漸漸變 0 的函數 $`w[n]`$，消除接縫的跳躍。代價：main lobe 變寬（頻率分辨能力下降）。
 
-| window | 公式（$t = 2\pi n/(N-1)$） | coherent gain | −3 dB 寬（bin） | 最高 side lobe | scalloping loss |
+| window | 公式（$`t = 2\pi n/(N-1)`$） | coherent gain | −3 dB 寬（bin） | 最高 side lobe | scalloping loss |
 |---|---|---|---|---|---|
-| Rectangular | $1$ | 1.00 | 0.88 | −13.3 dB | 3.92 dB |
-| Hann | $0.5 - 0.5\cos t$ | 0.50 | 1.44 | −31.5 dB | 1.42 dB |
-| Hamming | $0.54 - 0.46\cos t$ | 0.54 | 1.30 | −42.7 dB | 1.75 dB |
-| Blackman-Harris（4 項） | $0.35875 - 0.48829\cos t + 0.14128\cos 2t - 0.01168\cos 3t$ | 0.36 | 1.90 | −92.0 dB | 0.82 dB |
+| Rectangular | $`1`$ | 1.00 | 0.88 | −13.3 dB | 3.92 dB |
+| Hann | $`0.5 - 0.5\cos t`$ | 0.50 | 1.44 | −31.5 dB | 1.42 dB |
+| Hamming | $`0.54 - 0.46\cos t`$ | 0.54 | 1.30 | −42.7 dB | 1.75 dB |
+| Blackman-Harris（4 項） | $`0.35875 - 0.48829\cos t + 0.14128\cos 2t - 0.01168\cos 3t`$ | 0.36 | 1.90 | −92.0 dB | 0.82 dB |
 
 表中的數字全部是 `l11_window_leakage` 用 16 倍 zero-padding 把 window 的 DTFT 取樣得很密、實際量出來的
 （**scalloping loss** = 正弦剛好落在兩個 bin 正中間時，峰值讀數比在 bin 中心時低多少），並以 `DAWLAB_CHECK`
 和 Harris（1978）的理論值比對：0.89 / 1.44 / 1.30 / 1.90 bin、−13.3 / −31.5 / −42.7 / −92 dB、3.92 / 1.42 / 1.78 / 0.83 dB。
 唯一的差異是 Hamming 的 scalloping：Harris 的表寫 1.78 dB，直接代公式
-$\frac{0.54\,\text{sinc}(\frac12) + 0.23\,[\text{sinc}(\frac12) + \text{sinc}(\frac32)]}{0.54} = 0.8174$ → 1.75 dB，與實測一致。
+$`\frac{0.54\,\text{sinc}(\frac12) + 0.23\,[\text{sinc}(\frac12) + \text{sinc}(\frac32)]}{0.54} = 0.8174`$ → 1.75 dB，與實測一致。
 
 規則很簡單：**side lobe 越低，main lobe 越寬**。沒有萬用的 window：
 
@@ -559,9 +559,9 @@ ASCII 頻譜（實際輸出，0~5 kHz 線性軸，每欄 78 Hz，取欄內最大
 ```
 
 1 kHz 的讀數不是 0 dB，是因為 1000 Hz 不在 bin 中心（偏 0.33 bin），這叫 **scalloping loss**。理論值：
-rectangular 的響應是 $\text{sinc}(\delta)$，$\delta = 1/3$ → $\frac{\sin(\pi/3)}{\pi/3} = 0.827$ → **−1.65 dB**；
-Hann 是 $\frac{\text{sinc}(\delta)}{1-\delta^2} = 0.930$ → **−0.63 dB**。實測 −1.67 dB 與 −0.63 dB，吻合到 0.02 dB
-（`l11_window_leakage` 以 ±0.1 dB 檢查）。最壞情況是正弦落在兩個 bin 正中間（$\delta = 0.5$），損失就是上表的 scalloping loss。
+rectangular 的響應是 $`\text{sinc}(\delta)`$，$`\delta = 1/3`$ → $`\frac{\sin(\pi/3)}{\pi/3} = 0.827`$ → **−1.65 dB**；
+Hann 是 $`\frac{\text{sinc}(\delta)}{1-\delta^2} = 0.930`$ → **−0.63 dB**。實測 −1.67 dB 與 −0.63 dB，吻合到 0.02 dB
+（`l11_window_leakage` 以 ±0.1 dB 檢查）。最壞情況是正弦落在兩個 bin 正中間（$`\delta = 0.5`$），損失就是上表的 scalloping loss。
 
 #### 正好在 bin 中心時「看不到」leakage
 
@@ -569,12 +569,12 @@ Hann 是 $\frac{\text{sinc}(\delta)}{1-\delta^2} = 0.930$ → **−0.63 dB**。�
 因為 sinc 的零點剛好落在每一個 bin 上，FFT 只在零點取樣。裙襬其實還在，只是沒被取樣到。
 Hann 的 bin 44 是 −6 dB：那是 main lobe 本身比較寬（±2 bin），不是 leakage。
 
-> 小細節：本章的 `makeWindow()` 產生 **symmetric** window（分母 $N-1$）。頻譜分析有時用 **periodic** window（分母 $N$），
+> 小細節：本章的 `makeWindow()` 產生 **symmetric** window（分母 $`N-1`$）。頻譜分析有時用 **periodic** window（分母 $`N`$），
 > 它的零點剛好落在 bin 上（Hann 的 bin ±2 會是 −∞）。兩者差異很小；symmetric 版本在濾波器設計時比較常用。
 
 #### Coherent gain 與正規化
 
-window 把訊號整體縮小了：bin 中心正弦的讀數變成原本的 $\text{CG} = \frac1N\sum w[n]$ 倍（Hann 0.5 = −6.02 dB）。補償：
+window 把訊號整體縮小了：bin 中心正弦的讀數變成原本的 $`\text{CG} = \frac1N\sum w[n]`$ 倍（Hann 0.5 = −6.02 dB）。補償：
 
 $$
 A = \frac{2\,|X[k]|}{N \cdot \text{CG}}
@@ -594,13 +594,13 @@ flowchart LR
     E --> F["exponential averaging<br/>s = α·s + (1−α)·m"] --> G[20·log10] --> H[UI：對數頻率軸]
 ```
 
-- **overlap**：frame 之間重疊。hop = $N(1 - \text{overlap})$。overlap 50%、N = 4096 → 每 2048 個新 sample 算一次（48 kHz 時每秒 23 次）。
+- **overlap**：frame 之間重疊。hop = $`N(1 - \text{overlap})`$。overlap 50%、N = 4096 → 每 2048 個新 sample 算一次（48 kHz 時每秒 23 次）。
   overlap 越大更新越頻繁、越不會漏掉 frame 邊緣（window 兩端權重接近 0）的事件，代價是計算量。
-- **exponential averaging**：$s[k] \leftarrow \alpha\,s[k] + (1-\alpha)\,m[k]$，在**線性振幅**上做（在 dB 上平均會偏低）。
-  $\alpha = 0.8$、hop 2048 @ 48 kHz：每個 frame 衰減到 0.8 倍 = −1.94 dB，約 45 dB/s 的下降速度——跟 peak meter 的 decay 是同一個概念。
-  `l11_spectrum_analyzer` 最後的對照：440 Hz 突然停止時，$\alpha = 0$ 的靜音後第一個 frame 還含有一半的正弦（50% overlap），
-  讀 −18.7 dB，第二個 frame 就掉到 −100 dB；$\alpha = 0.8$ 每 43 ms 約掉 2 dB。
-  範例實測：靜音後每個 frame 下降 1.94 dB，與 $20\log_{10}0.8 = -1.94$ dB 相同（有 self-check）。
+- **exponential averaging**：$`s[k] \leftarrow \alpha\,s[k] + (1-\alpha)\,m[k]`$，在**線性振幅**上做（在 dB 上平均會偏低）。
+  $`\alpha = 0.8`$、hop 2048 @ 48 kHz：每個 frame 衰減到 0.8 倍 = −1.94 dB，約 45 dB/s 的下降速度——跟 peak meter 的 decay 是同一個概念。
+  `l11_spectrum_analyzer` 最後的對照：440 Hz 突然停止時，$`\alpha = 0`$ 的靜音後第一個 frame 還含有一半的正弦（50% overlap），
+  讀 −18.7 dB，第二個 frame 就掉到 −100 dB；$`\alpha = 0.8`$ 每 43 ms 約掉 2 dB。
+  範例實測：靜音後每個 frame 下降 1.94 dB，與 $`20\log_{10}0.8 = -1.94`$ dB 相同（有 self-check）。
   第一個 frame 直接採用（不從 0 開始平滑），否則剛開始的幾個 frame 會讀得太低。
 - **校準**：`l11_spectrum_analyzer` 也驗證了正規化——振幅 0.5（−6.02 dBFS）、正好在 bin 100 的正弦讀 **−6.02 dB**；
   頻率改成 bin 100.5（兩個 bin 正中間）時讀 −7.44 dB，少的 1.42 dB 正是 Hann 的 scalloping loss。
@@ -641,7 +641,7 @@ UI thread：computeSpectrum() 讀 writePos（acquire）→ 複製 [start, writeP
   保證「看到新的 writePos 時，之前寫的 sample 一定也看得到」。
 - **覆寫偵測要看 `writeEnd`，不能只看 `writePos`**。`writePos` 要等整個 push 寫完才更新；如果 consumer 複製到一半時，
   有一個**還沒結束**的 push 已經繞一圈蓋掉了 consumer 正在讀的格子，`writePos` 仍是舊值，「writePos − start > 容量」的檢查會放行，
-  frame 就變成新舊資料拼起來的。這在一次 push 的長度 $n > 3N$ 時一定可能發生（例如 N = 64、block 512），
+  frame 就變成新舊資料拼起來的。這在一次 push 的長度 $`n > 3N`$ 時一定可能發生（例如 N = 64、block 512），
   在一般的 block 大小下也可能發生（UI thread 複製到一半被作業系統暫停）。所以 producer 在寫 sample **之前**先把 `writeEnd`
   公告出去，再放一個 release fence；consumer 複製完放一個 acquire fence 再讀 `writeEnd`。只要 consumer 讀到任何一個被新 push
   蓋過的 sample，fence 的同步規則就保證它也看得到那次 push 的 `writeEnd`（這是 **seqlock** 的標準寫法）。
@@ -690,9 +690,9 @@ public:
 ```
 
 - `transform()` 是 2.8 節推導的直接翻譯：先 bit-reversal swap（只在 `j > i` 時交換，避免換回來），
-  再 `for (len = 2; len <= N; len <<= 1)` 一層一層做 butterfly。第 `len` 層需要的 $W_{len}^k = W_N^{k \cdot N/len}$，
-  所以只存一張 $W_N^k$ 的表、用 stride 取。
-- inverse 只是把 twiddle 取共軛（旋轉方向相反），最後乘 $1/N$。
+  再 `for (len = 2; len <= N; len <<= 1)` 一層一層做 butterfly。第 `len` 層需要的 $`W_{len}^k = W_N^{k \cdot N/len}`$，
+  所以只存一張 $`W_N^k`$ 的表、用 stride 取。
+- inverse 只是把 twiddle 取共軛（旋轉方向相反），最後乘 $`1/N`$。
 - twiddle 用 double 算 cos / sin 再轉 float，避免大 N 時角度誤差累積。
 - `forwardReal()` 目前的作法是把實數放進複數 buffer 做 N 點複數 FFT，再取前 N/2+1 個 bin。
   更快的作法是「把 N 個實數當成 N/2 個複數做 N/2 點 FFT，再用對稱性拆開」（快約一倍），留作延伸。
@@ -749,7 +749,7 @@ public:
 ```
 
 - peak / hold 的邏輯就是 2.2 節的虛擬碼，decay 用 `decayCoefficient()` 算好的每 sample 係數。
-- RMS 用 ring buffer 存 $x^2$（容量在 `prepare()` 依 `kMaxRmsWindowMs` 配置），所以之後改視窗長度不會 allocate；
+- RMS 用 ring buffer 存 $`x^2`$（容量在 `prepare()` 依 `kMaxRmsWindowMs` 配置），所以之後改視窗長度不會 allocate；
   改長度時 ring 會清空重新累積（讀數會暫時偏低）。
 - 每個 block 結束才把讀數寫進 `std::atomic<float>`：UI 每秒只讀 30 次，沒必要每個 sample 都寫。
 - `resetPeakHold()` 通常由 UI thread 呼叫（使用者點 meter），所以它不直接改 audio thread 的狀態，而是設一個 atomic flag。
@@ -810,7 +810,7 @@ public:
   加權相加放進 30 格的 ring，更新 momentary（最近 4 格）、short-term（最近 30 格），並把這個 400 ms block 放進 gating 直方圖。
 - 開始的前 400 ms（不到一個完整 block）momentary 用目前累積到的格數平均（讓 meter 一開始就有反應），但**不**放進 integrated 的直方圖，
   也**不**更新 max momentary；同理 short-term 的最大值只在滿 3 s 之後才更新。原因：不滿一個視窗時分母比較小，
-  一個落在開頭的 kick 只平均了 100 ms 而不是 400 ms，會被高估最多 6 dB（$10\log_{10}4$），而且結果會隨素材在串流中的位置改變。
+  一個落在開頭的 kick 只平均了 100 ms 而不是 400 ms，會被高估最多 6 dB（$`10\log_{10}4`$），而且結果會隨素材在串流中的位置改變。
   `l11_loudness` 的 drum loop 就是例子：第一個 100 ms（只有一下 kick）的 momentary 讀 −10.26 LUFS，
   但所有完整 400 ms block 裡最大的只有 −12.99 LUFS——max momentary 回報的是後者。
 - `computeIntegrated()` 每 100 ms 掃一次 800 格的直方圖（固定成本，約 1600 次加法），完全不 allocate。
@@ -860,7 +860,7 @@ public:
   寫 ring（relaxed）→ `endWrite()`（`writePos_.store(release)`）。一次推多長都可以。
 - `computeSpectrum()` 是 consumer：讀 `writePos_`（acquire）；沒累積滿 N 個、或新 sample 不到一個 hop 就回傳 false；
   否則複製最新 N 個 sample 並乘 window → acquire fence 後讀 `writeEnd_` 檢查有沒有被覆寫（含還在進行中的 push）
-  → `forwardReal` → 正規化 $2|X|/(N\cdot\text{CG})$ → 平滑 → dB。
+  → `forwardReal` → 正規化 $`2|X|/(N\cdot\text{CG})`$ → 平滑 → dB。
 - `magnitudesDb.resize()` 在 UI thread，可以 allocate；傳同一個 vector 進來就只會在第一次配置。
 - 所有 setter 與 `computeSpectrum()` 必須在**同一個**（UI）thread 呼叫；只有 `push*()` 在 audio thread。
 
@@ -872,7 +872,7 @@ public:
 
 N = 4096（bin 寬 11.72 Hz）、Hann、smoothing 0.8、overlap 50%。每 512 個 sample `pushBlock()` 一次（模擬 audio callback），
 之後立刻 `computeSpectrum()`（模擬 UI timer）：375 次呼叫中有 92 次拿到新 frame（每 4 個 block 一個；
-理論 $(192000 - 4096)/2048 + 1 = 92$，有 self-check）。
+理論 $`(192000 - 4096)/2048 + 1 = 92`$，有 self-check）。
 在 0.16 / 1.11 / 2.10 / 3.10 s 印出 20 Hz~20 kHz 對數軸的 ASCII 頻譜與最強的 bin（550.8、1652.3、328.1、996.1 Hz）。
 Karplus-Strong 撥弦的諧波分布由初始雜訊決定，所以最強的 bin 常常是某個諧波而不是基頻；而且前面幾個音還在響（每個音持續 1.5 s），
 例如 328.1 Hz 可能是 E4（329.6 Hz）的基頻，也可能是 A2（110 Hz）的三次諧波或 E3（164.8 Hz）的二次諧波——
@@ -921,11 +921,11 @@ Karplus-Strong 撥弦的諧波分布由初始雜訊決定，所以最強的 bin 
 | 症狀 | 可能原因 |
 |---|---|
 | 0 dBFS 正弦在頻譜上讀 −6 dB | 忘了乘 2（正負頻率各一半）；或用了 Hann 卻沒除以 coherent gain 0.5 |
-| 讀數差 3 dB | 振幅與功率混用：$10\log_{10}$ 用在振幅上、或 $20\log_{10}$ 用在 mean square 上 |
-| 頻譜的峰值在錯的頻率 | bin 頻率寫成 $k f_s / (N/2)$；或把全部 N 個 bin 都畫出來（後半段是鏡像） |
+| 讀數差 3 dB | 振幅與功率混用：$`10\log_{10}`$ 用在振幅上、或 $`20\log_{10}`$ 用在 mean square 上 |
+| 頻譜的峰值在錯的頻率 | bin 頻率寫成 $`k f_s / (N/2)`$；或把全部 N 個 bin 都畫出來（後半段是鏡像） |
 | 1 kHz 正弦的峰「很胖」、旁邊一大片 | spectral leakage：沒加 window（rectangular）；或 window 乘了兩次 |
 | 頻譜在低頻有一根很高的柱子 | 訊號有 DC offset；或 window 前沒處理 DC（Karplus-Strong 的雜訊激發本來就有 DC 成分） |
-| IFFT 之後振幅變成 N 倍 | 忘了 $1/N$；本章 `inverse()` / `inverseReal()` 已經內含 $1/N$，不要再除一次 |
+| IFFT 之後振幅變成 N 倍 | 忘了 $`1/N`$；本章 `inverse()` / `inverseReal()` 已經內含 $`1/N`$，不要再除一次 |
 | FFT 結果亂七八糟 | N 不是 2 的冪次；bit-reversal 時把每一對交換了兩次（要 `if (j > i)`） |
 | LUFS 比別的軟體差了零點幾 dB | 在 44.1 kHz 用了 48 kHz 的 K-weighting 係數；或 stage 2 的分子被正規化了（規範沒有） |
 | integrated 被靜音拉低 | 沒做 absolute gate；或在 dB 上平均（應在功率上平均再換 dB） |

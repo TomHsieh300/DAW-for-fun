@@ -29,10 +29,10 @@ $$
 y[n] = g \cdot x[n]
 $$
 
-$g$ is the linear gain: $g = 1$ leaves the signal unchanged, $g = 0.5$ halves the amplitude, $g = 0$ silences it, $g = 2$ doubles the amplitude, and $g < 0$ inverts the polarity.
+$`g`$ is the linear gain: $`g = 1`$ leaves the signal unchanged, $`g = 0.5`$ halves the amplitude, $`g = 0`$ silences it, $`g = 2`$ doubles the amplitude, and $`g < 0`$ inverts the polarity.
 Yet the fader scales you see in a DAW are never 0.5 and 2; they are −6 dB and +6 dB. There are two reasons: **the ear perceives loudness logarithmically** (section 2.2), and **multiplication becomes addition** -- when two gains are cascaded the factors multiply, while in dB you simply add.
 
-The dB (decibel) is defined on a *power ratio*: $10 \log_{10}(P / P_0)$. Audio processing deals with amplitudes (sample values), and power is proportional to the square of the amplitude, $P \propto A^2$, so
+The dB (decibel) is defined on a *power ratio*: $`10 \log_{10}(P / P_0)`$. Audio processing deals with amplitudes (sample values), and power is proportional to the square of the amplitude, $`P \propto A^2`$, so
 
 $$
 L_\text{dB} = 10 \log_{10}\frac{A^2}{A_0^2} = 20 \log_{10}\frac{A}{A_0}
@@ -44,7 +44,7 @@ This is exactly what `dawlab::gainToDb()` / `dawlab::dbToGain()` (`common/includ
 
 A few correspondences you must memorize:
 
-| dB | Amplitude factor $g$ | Power factor $g^2$ | Intuition |
+| dB | Amplitude factor $`g`$ | Power factor $`g^2`$ | Intuition |
 |---:|---:|---:|---|
 | +20 | 10 | 100 | |
 | +12 | 3.981 ≈ 4 | 15.85 | |
@@ -59,7 +59,7 @@ A few correspondences you must memorize:
 | −60 | 0.001 | 10⁻⁶ | fader "almost at the bottom" |
 | −∞ | 0 | 0 | true silence |
 
-**dBFS** (decibels relative to full scale) takes the largest value a digital system can represent, 1.0, as 0 dB. A sine wave of amplitude 0.5 has a peak of −6.02 dBFS; its RMS is $0.5/\sqrt{2} = 0.354$, which is −9.03 dBFS. The peak of a sine wave is always 3.01 dB above its RMS, and this 3 dB gap will keep showing up when we get to metering (chapter 11).
+**dBFS** (decibels relative to full scale) takes the largest value a digital system can represent, 1.0, as 0 dB. A sine wave of amplitude 0.5 has a peak of −6.02 dBFS; its RMS is $`0.5/\sqrt{2} = 0.354`$, which is −9.03 dBFS. The peak of a sine wave is always 3.01 dB above its RMS, and this 3 dB gap will keep showing up when we get to metering (chapter 11).
 
 `DspMath.h` treats any value below `kMinusInfinityDb = -100 dB` as −∞ (factor 0). This is a practical compromise: −100 dB is far below the noise floor of any system, and a true 0 lets a mute be completely silent and spares the CPU from processing tiny numbers (denormals: numbers smaller than the smallest normal float, ≈ 1.2e-38, which many CPUs process 10–100 times slower; section 4 says where this chapter can run into them).
 
@@ -76,7 +76,7 @@ In other words, **dB exists so that "one notch of the fader" corresponds to "abo
 
 ### 2.3 Fader taper: mapping a 0..1 fader position to dB
 
-The fader in a UI is always a position $p$ between 0 and 1 (wherever the mouse drags it). What happens if we use $p$ directly as the factor (a linear taper)?
+The fader in a UI is always a position $`p`$ between 0 and 1 (wherever the mouse drags it). What happens if we use $`p`$ directly as the factor (a linear taper)?
 
 ```
 position p   factor   dB
@@ -108,7 +108,7 @@ dB
      0  0.05   0.25      0.50         0.75     1.00
 ```
 
-| Position $p$ | dB | "Density" of this segment |
+| Position $`p`$ | dB | "Density" of this segment |
 |---:|---:|---|
 | 1.00 | +6 | 0.75..1.00: 6 dB / 0.25 = 24 dB per unit of travel |
 | 0.75 | 0 | 0.50..0.75: 12 dB / 0.25 = 48 dB per unit of travel |
@@ -117,11 +117,11 @@ dB
 | 0.05 | −60 | 0..0.05: the factor goes linearly from 0.001 to 0 |
 | 0.00 | −∞ | |
 
-Within a segment we interpolate linearly: when $p$ falls in $[p_i, p_{i+1}]$, $t = (p - p_i)/(p_{i+1} - p_i)$, $L_\text{dB} = \mathrm{lerp}(L_i, L_{i+1}, t)$, and then `dbToGain`. The inverse function (gain → position, used when the UI has to draw the fader) is the same thing done backwards. There is no standard answer for these numbers and every DAW differs, but the structure -- "dense at the top, sparse at the bottom, and a linear stretch down to 0 at the very bottom" -- is the same.
+Within a segment we interpolate linearly: when $`p`$ falls in $`[p_i, p_{i+1}]`$, $`t = (p - p_i)/(p_{i+1} - p_i)`$, $`L_\text{dB} = \mathrm{lerp}(L_i, L_{i+1}, t)`$, and then `dbToGain`. The inverse function (gain → position, used when the UI has to draw the fader) is the same thing done backwards. There is no standard answer for these numbers and every DAW differs, but the structure -- "dense at the top, sparse at the bottom, and a linear stretch down to 0 at the very bottom" -- is the same.
 
 ### 2.4 Why an instant gain change clicks: multiplying by a step function
 
-Suppose the gain changes instantly from $g_1$ to $g_2$ at sample $n_0$. This is equivalent to multiplying the signal by a **step function**:
+Suppose the gain changes instantly from $`g_1`$ to $`g_2`$ at sample $`n_0`$. This is equivalent to multiplying the signal by a **step function**:
 
 $$
 y[n] = x[n] \cdot g[n],\qquad g[n] = g_1 + (g_2 - g_1)\,u[n - n_0]
@@ -136,28 +136,28 @@ $$
                  n0
 ```
 
-**First, some intuition: amplitude modulation and sidebands.** Multiplying a sine wave by a "changing gain" modulates its amplitude. The simplest example lets the gain wobble slowly at frequency $f_m$:
+**First, some intuition: amplitude modulation and sidebands.** Multiplying a sine wave by a "changing gain" modulates its amplitude. The simplest example lets the gain wobble slowly at frequency $`f_m`$:
 
 $$
 \sin(2\pi f t)\cdot\bigl(1 + m\cos(2\pi f_m t)\bigr)
 = \sin(2\pi f t) + \frac{m}{2}\sin\bigl(2\pi (f + f_m) t\bigr) + \frac{m}{2}\sin\bigl(2\pi (f - f_m) t\bigr)
 $$
 
-(Expand it with the product-to-sum identity $\sin A\cos B = \tfrac{1}{2}[\sin(A+B) + \sin(A-B)]$.) The spectrum originally had a single bar at $f$; after multiplying by a changing gain, two new bars grow at $f \pm f_m$. The original bar at $f$ is called the **carrier**, and the bars that grow beside it are called **sidebands**. The faster the gain changes (the larger $f_m$), the farther the sidebands lie from the carrier; the more "violent" the change in gain (the more high-frequency content it has), the more and the wider the sidebands.
+(Expand it with the product-to-sum identity $`\sin A\cos B = \tfrac{1}{2}[\sin(A+B) + \sin(A-B)]`$.) The spectrum originally had a single bar at $`f`$; after multiplying by a changing gain, two new bars grow at $`f \pm f_m`$. The original bar at $`f`$ is called the **carrier**, and the bars that grow beside it are called **sidebands**. The faster the gain changes (the larger $`f_m`$), the farther the sidebands lie from the carrier; the more "violent" the change in gain (the more high-frequency content it has), the more and the wider the sidebands.
 
-Generalizing: any gain curve $g[n]$ can be decomposed into many sine components of different frequencies (the spectrum of chapter 00), and each component grows a pair of sidebands on either side of the carrier. This operation -- "copy the whole spectral shape of $G$ and shift it to the carrier's position" -- is mathematically called **convolution**: multiplication in the time domain is convolution in the frequency domain, $Y(f) = X(f) * G(f)$. All you need to remember here is the plain-language version: "multiplying by a gain curve = pasting the spectrum of the gain curve onto both sides of every frequency line of the signal". For the full derivation see Julius O. Smith, *Mathematics of the DFT*, in the further reading.
+Generalizing: any gain curve $`g[n]`$ can be decomposed into many sine components of different frequencies (the spectrum of chapter 00), and each component grows a pair of sidebands on either side of the carrier. This operation -- "copy the whole spectral shape of $`G`$ and shift it to the carrier's position" -- is mathematically called **convolution**: multiplication in the time domain is convolution in the frequency domain, $`Y(f) = X(f) * G(f)`$. All you need to remember here is the plain-language version: "multiplying by a gain curve = pasting the spectrum of the gain curve onto both sides of every frequency line of the signal". For the full derivation see Julius O. Smith, *Mathematics of the DFT*, in the further reading.
 
-Back to the step: the spectrum of a pure tone $x$ is a single line, and after convolution $Y$ becomes the shape of $G(f)$ shifted to that line. The spectrum $|G(f)|$ of a step falls off as $1/f$ (only 6 dB per octave) and is **broadband** -- so a signal that originally contained only 1 kHz suddenly has energy from 20 Hz to 20 kHz at the instant of the gain change, and what the ear hears is a "click".
+Back to the step: the spectrum of a pure tone $`x`$ is a single line, and after convolution $`Y`$ becomes the shape of $`G(f)`$ shifted to that line. The spectrum $`|G(f)|`$ of a step falls off as $`1/f`$ (only 6 dB per octave) and is **broadband** -- so a signal that originally contained only 1 kHz suddenly has energy from 20 Hz to 20 kHz at the instant of the gain change, and what the ear hears is a "click".
 
-The time-domain view is more direct: between two adjacent samples the signal shows an unwanted "steep slope". For a sine of amplitude $A$ and frequency $f$, the largest difference between adjacent samples is
+The time-domain view is more direct: between two adjacent samples the signal shows an unwanted "steep slope". For a sine of amplitude $`A`$ and frequency $`f`$, the largest difference between adjacent samples is
 
 $$
 \max |x[n] - x[n-1]| \approx A \cdot \frac{2\pi f}{f_s}
 $$
 
-(for $A = 0.5$, $f = 1$ kHz, $f_s = 48$ kHz it equals 0.0654). A jump produces a difference of $|x[n_0]|\cdot|g_2 - g_1|$, which can be many times larger than this value. Example 1 uses the "maximum first difference" to quantify a click: the more times it exceeds the sine's natural value, the more obvious the click.
+(for $`A = 0.5`$, $`f = 1`$ kHz, $`f_s = 48`$ kHz it equals 0.0654). A jump produces a difference of $`|x[n_0]|\cdot|g_2 - g_1|`$, which can be many times larger than this value. Example 1 uses the "maximum first difference" to quantify a click: the more times it exceeds the sine's natural value, the more obvious the click.
 
-**Zipper noise** is the continuous version of the same thing. When the user drags a fader, the UI sends a new gain value about once per audio block (in this course 512 samples ≈ 10.7 ms, an update rate of $f_b = 93.75$ Hz), so the gain becomes a **staircase**. A staircase = a smooth ramp + a sawtooth error of period $1/f_b$; this sawtooth is a periodic signal that can be decomposed into a sum of sine waves at frequencies $f_b, 2f_b, 3f_b, \dots$ (these are the "harmonics" of chapter 00; mathematically this is a Fourier series), and the amplitude of the $k$-th harmonic of a sawtooth is proportional to $1/k$. Applying the "amplitude modulation" intuition above, every harmonic $k f_b$ grows a pair of sidebands on either side of the carrier, so the output shows **sidebands** spaced $f_b$ apart on both sides of the carrier, dropping 6 dB per octave. These sidebands land 94 Hz, 188 Hz, 375 Hz... away from 1 kHz, and what you hear is the "zzzzz" of a zipper being pulled.
+**Zipper noise** is the continuous version of the same thing. When the user drags a fader, the UI sends a new gain value about once per audio block (in this course 512 samples ≈ 10.7 ms, an update rate of $`f_b = 93.75`$ Hz), so the gain becomes a **staircase**. A staircase = a smooth ramp + a sawtooth error of period $`1/f_b`$; this sawtooth is a periodic signal that can be decomposed into a sum of sine waves at frequencies $`f_b, 2f_b, 3f_b, \dots`$ (these are the "harmonics" of chapter 00; mathematically this is a Fourier series), and the amplitude of the $`k`$-th harmonic of a sawtooth is proportional to $`1/k`$. Applying the "amplitude modulation" intuition above, every harmonic $`k f_b`$ grows a pair of sidebands on either side of the carrier, so the output shows **sidebands** spaced $`f_b`$ apart on both sides of the carrier, dropping 6 dB per octave. These sidebands land 94 Hz, 188 Hz, 375 Hz... away from 1 kHz, and what you hear is the "zzzzz" of a zipper being pulled.
 
 ```
  stepped (one step per block)           smooth (one tiny step per sample)
@@ -171,25 +171,25 @@ $$
  spectrum: sidebands fall as 1/k (6 dB/oct)  spectrum: sidebands fall as 1/k² (12 dB/oct), and are about 40 dB smaller
 ```
 
-Why is it $1/k^2$ after smoothing? Because after a linear ramp the gain is **continuous** (only the slope is discontinuous), and the spectrum of a continuous piecewise-linear function falls off as $1/f^2$. The sideband table in example 1 lets you see these two slopes for yourself (−6 dB per octave for the stepped version, −12 dB per octave for the smoothed one).
+Why is it $`1/k^2`$ after smoothing? Because after a linear ramp the gain is **continuous** (only the slope is discontinuous), and the spectrum of a continuous piecewise-linear function falls off as $`1/f^2`$. The sideband table in example 1 lets you see these two slopes for yourself (−6 dB per octave for the stepped version, −12 dB per octave for the smoothed one).
 
-> An interesting exception: if the jump happens exactly at a zero crossing of the signal ($x[n_0] = 0$), then $x \cdot g_1 = x \cdot g_2 = 0$ and there is no click at all. If example 1 placed the jump on the block boundary at sample 47616 (≈ 0.992 s), then since 47616 / 48 = 992 is a whole number of 1 kHz periods, $x = 0$ there -- and you would hear nothing. So the example deliberately moves the jump to sample 48128 (signal value −0.433). A DAW's "edit at zero crossings" exploits this property; but when adjusting a fader in real time you cannot count on luck, so you smooth.
+> An interesting exception: if the jump happens exactly at a zero crossing of the signal ($`x[n_0] = 0`$), then $`x \cdot g_1 = x \cdot g_2 = 0`$ and there is no click at all. If example 1 placed the jump on the block boundary at sample 47616 (≈ 0.992 s), then since 47616 / 48 = 992 is a whole number of 1 kHz periods, $`x = 0`$ there -- and you would hear nothing. So the example deliberately moves the jump to sample 48128 (signal value −0.433). A DAW's "edit at zero crossings" exploits this property; but when adjusting a fader in real time you cannot count on luck, so you smooth.
 
 ### 2.5 Parameter smoothing: linear ramp vs. one-pole exponential smoothing
 
-The fix is not to let $g[n]$ jump, but to let it "walk" to the target over a period of time. The two most common ways of walking:
+The fix is not to let $`g[n]`$ jump, but to let it "walk" to the target over a period of time. The two most common ways of walking:
 
-**(a) Linear ramp** -- finishes in a fixed $N$ samples, advancing by a fixed step per sample:
+**(a) Linear ramp** -- finishes in a fixed $`N`$ samples, advancing by a fixed step per sample:
 
 $$
 g[n] = g[n-1] + \frac{g_\text{target} - g_\text{start}}{N},\qquad N = \mathrm{round}(T_\text{ramp} \cdot f_s)
 $$
 
 - Advantages: predictable (50 ms is 50 ms), it always reaches the target, and the implementation is a single addition.
-- Disadvantage: the slope is discontinuous at the start and end (spectrum $1/f^2$, which in practice is already clean enough).
+- Disadvantage: the slope is discontinuous at the start and end (spectrum $`1/f^2`$, which in practice is already clean enough).
 - This is what this chapter's `SmoothedValue` does, and also what JUCE's `SmoothedValue<float, ValueSmoothingTypes::Linear>` does.
 
-**(b) One-pole exponential smoothing** -- each sample covers a fixed fraction $a$ of the "remaining distance":
+**(b) One-pole exponential smoothing** -- each sample covers a fixed fraction $`a`$ of the "remaining distance":
 
 $$
 g[n] = g[n-1] + a\,(g_\text{target} - g[n-1]) = (1-a)\,g[n-1] + a\,g_\text{target}
@@ -201,17 +201,17 @@ $$
 g[n] = 1 - (1-a)^n = 1 - e^{-n/(\tau f_s)},\qquad a = 1 - e^{-1/(\tau f_s)} \approx \frac{1}{\tau f_s}
 $$
 
-$\tau$ is the **time constant**: the time needed to cover 63.2% ($1 - e^{-1}$) of the distance. Handy milestones:
+$`\tau`$ is the **time constant**: the time needed to cover 63.2% ($`1 - e^{-1}`$) of the distance. Handy milestones:
 
 | Time | Fraction reached | Remaining error |
 |---|---|---|
-| $1\tau$ | 63.2% | −8.7 dB |
-| $2.3\tau$ ($\ln 10$) | 90% | −20 dB |
-| $4.6\tau$ ($\ln 100$) | 99% | −40 dB |
-| $6.9\tau$ ($\ln 1000$) | 99.9% | −60 dB |
+| $`1\tau`$ | 63.2% | −8.7 dB |
+| $`2.3\tau`$ ($`\ln 10`$) | 90% | −20 dB |
+| $`4.6\tau`$ ($`\ln 100`$) | 99% | −40 dB |
+| $`6.9\tau`$ ($`\ln 1000`$) | 99.9% | −60 dB |
 
-- Advantages: it moves fast at first and slows down near the target, like a capacitor charging or an analog fader, which sounds "more natural"; and it has a slope corner only at the start (the moment the target changes, the slope jumps from 0 to $a\cdot(g_\text{target} - g)$), while the end is asymptotic with no corner (a linear ramp has one at each end).
-- Disadvantages: in theory it never reaches the target, so an implementation must "snap" to the target once the error is small enough; otherwise `isSmoothing()` is true forever and the tiny residual values become denormals. There is also a precision trap: when the state is stored as a float, the increment $a\cdot d$ near the target becomes smaller than half an ulp (unit in the last place: the spacing between two adjacent representable floats near that value; near 1.0 it is $\varepsilon = 2^{-23} \approx 1.19 \times 10^{-7}$, and just below 1 it is half of that), and the state gets "stuck" about $\varepsilon/(4a)$ short of the target (about $1.4 \times 10^{-5}$ for $\tau$ = 10 ms) -- exercise 3 makes you step on this yourself and fix it.
+- Advantages: it moves fast at first and slows down near the target, like a capacitor charging or an analog fader, which sounds "more natural"; and it has a slope corner only at the start (the moment the target changes, the slope jumps from 0 to $`a\cdot(g_\text{target} - g)`$), while the end is asymptotic with no corner (a linear ramp has one at each end).
+- Disadvantages: in theory it never reaches the target, so an implementation must "snap" to the target once the error is small enough; otherwise `isSmoothing()` is true forever and the tiny residual values become denormals. There is also a precision trap: when the state is stored as a float, the increment $`a\cdot d`$ near the target becomes smaller than half an ulp (unit in the last place: the spacing between two adjacent representable floats near that value; near 1.0 it is $`\varepsilon = 2^{-23} \approx 1.19 \times 10^{-7}`$, and just below 1 it is half of that), and the state gets "stuck" about $`\varepsilon/(4a)`$ short of the target (about $`1.4 \times 10^{-5}`$ for $`\tau`$ = 10 ms) -- exercise 3 makes you step on this yourself and fix it.
 
 ```
  g
@@ -229,7 +229,7 @@ $\tau$ is the **time constant**: the time needed to cover 63.2% ($1 - e^{-1}$) o
 
 **Key points in the design of `SmoothedValue`** (corresponding to `dsp/include/dawlab/dsp/SmoothedValue.h`):
 
-1. `reset(sampleRate, rampSeconds)` decides $N$ during the prepare stage; after that nothing allocates on the audio thread.
+1. `reset(sampleRate, rampSeconds)` decides $`N`$ during the prepare stage; after that nothing allocates on the audio thread.
 2. `setTargetValue()` always **restarts from the current value** (not from the previous target), so there is no jump back while a fader is moving continuously.
 3. When the target equals the current value no ramp is started and `isSmoothing()` returns false, so `process()` can take the "multiply the whole block by one number" fast path.
 4. No accumulation (`current += step`): every step is computed directly as `current = target − step·countdown`. With the accumulating form, in long ramps and with large values (for example the delay times in samples, in the tens of thousands, of chapter 09) the float rounding error of every step accumulates, the ramp overshoots the target, and the last sample jumps back; computing directly keeps the error of every step within one ulp, and when `countdown` reaches 0 the value is exactly `target`. (The multiplication in the header is done in double.)
@@ -240,16 +240,16 @@ $\tau$ is the **time constant**: the time needed to cover 63.2% ($1 - e^{-1}$) o
 
 ### 2.6 Polarity invert (Ø)
 
-"Inverting" is $g = -1$: $y[n] = -x[n]$. Note that it equals a "180° phase shift" only for a pure sine; for a general signal, inverting **flips the waveform upside down**, it is not a time delay. Uses:
+"Inverting" is $`g = -1`$: $`y[n] = -x[n]`$. Note that it equals a "180° phase shift" only for a pure sine; for a general signal, inverting **flips the waveform upside down**, it is not a time delay. Uses:
 
 - When several microphones capture the same source (for example top and bottom of a snare, or two mics on a guitar cabinet), if one mic has the opposite polarity, summing them cancels and thins the sound; pressing the Ø button fixes it.
 - **Null test**: sum the signal before and after processing (or the outputs of two plugins) with one of them inverted; if the result is 0 (−∞ dB), the two are identical. This is the most powerful tool for verifying a DSP implementation, demonstrated in example 3 (D).
 
-In this chapter's `Gain`, inverting is not a separate multiplication by −1; instead the SmoothedValue's target is set to $-g$. When you toggle, the gain walks smoothly from $+g$ through 0 to $-g$, so **pressing the Ø button does not click either**.
+In this chapter's `Gain`, inverting is not a separate multiplication by −1; instead the SmoothedValue's target is set to $`-g`$. When you toggle, the gain walks smoothly from $`+g`$ through 0 to $`-g`$, so **pressing the Ø button does not click either**.
 
 ### 2.7 Mixing and headroom: how big does the peak get after summing N tracks?
 
-The core of a mixer is addition: $y = \sum_i g_i x_i$. The question is whether the sum exceeds 1.0 (0 dBFS). The answer depends on how **correlated** (coherent) the tracks are:
+The core of a mixer is addition: $`y = \sum_i g_i x_i`$. The question is whether the sum exceeds 1.0 (0 dBFS). The answer depends on how **correlated** (coherent) the tracks are:
 
 **Fully correlated** (N identical tracks, for example the same signal copied N times): the amplitudes add directly
 
@@ -257,7 +257,7 @@ $$
 A_\text{sum} = N \cdot A \quad\Rightarrow\quad +20\log_{10} N\ \text{dB}\qquad(N = 2: +6.02,\ N = 8: +18.06)
 $$
 
-**Fully uncorrelated** (N independent noises, or different instruments): the powers add and the amplitude grows as $\sqrt{N}$
+**Fully uncorrelated** (N independent noises, or different instruments): the powers add and the amplitude grows as $`\sqrt{N}`$
 
 $$
 P_\text{sum} = N \cdot P \quad\Rightarrow\quad A_\text{rms,sum} = \sqrt{N}\,A_\text{rms} \quad\Rightarrow\quad +10\log_{10} N\ \text{dB}\qquad(N = 8: +9.03)
@@ -289,7 +289,7 @@ Every track has three switches: **mute**, **solo**, and **solo-safe** (some DAWs
 2. Mute always takes effect: solo + mute → silent (mute wins).
 3. A solo-safe track still sounds in solo mode, but is silent when muted itself.
 
-Condensed into one expression ($S$ = whether any track is soloed):
+Condensed into one expression ($`S`$ = whether any track is soloed):
 
 $$
 \text{audible}_i = \neg\text{mute}_i \land (\neg S \lor \text{solo}_i \lor \text{soloSafe}_i)
@@ -307,7 +307,7 @@ The key point: **after resolving "should it sound", do not set the samples direc
 
 ### 2.9 Pan law
 
-The job of a pan: distribute a mono signal between the left and right speakers, with two gains $g_L, g_R$ expressing the image position. Let the pan position be $p \in [-1, 1]$ (−1 hard left, 0 center, +1 hard right) and define $\theta = (p + 1)/2 \in [0, 1]$. Three common laws:
+The job of a pan: distribute a mono signal between the left and right speakers, with two gains $`g_L, g_R`$ expressing the image position. Let the pan position be $`p \in [-1, 1]`$ (−1 hard left, 0 center, +1 hard right) and define $`\theta = (p + 1)/2 \in [0, 1]`$. Three common laws:
 
 **Linear**
 
@@ -315,9 +315,9 @@ $$
 g_L = 1 - \theta,\qquad g_R = \theta
 $$
 
-- Center: $g_L = g_R = 0.5$ → **−6.02 dB**.
-- The amplitude sum $g_L + g_R = 1$ always holds → when left and right are summed to mono the level does not change (**mono compatible**).
-- The power sum $g_L^2 + g_R^2 = 1 - 2\theta + 2\theta^2$, equal to 0.5 at the center → **−3.01 dB**: listening with two speakers in a room (left and right add uncorrelated, i.e. their powers add), sweeping through the center sounds like the level "dips".
+- Center: $`g_L = g_R = 0.5`$ → **−6.02 dB**.
+- The amplitude sum $`g_L + g_R = 1`$ always holds → when left and right are summed to mono the level does not change (**mono compatible**).
+- The power sum $`g_L^2 + g_R^2 = 1 - 2\theta + 2\theta^2`$, equal to 0.5 at the center → **−3.01 dB**: listening with two speakers in a room (left and right add uncorrelated, i.e. their powers add), sweeping through the center sounds like the level "dips".
 
 **Constant power**
 
@@ -325,9 +325,9 @@ $$
 g_L = \cos\!\left(\theta\frac{\pi}{2}\right),\qquad g_R = \sin\!\left(\theta\frac{\pi}{2}\right)
 $$
 
-- The power sum $g_L^2 + g_R^2 = \cos^2 + \sin^2 = 1$ **always holds** (which is why it is called constant power) → when listening on speakers the level stays steady during a sweep.
-- Center: $g_L = g_R = \cos(\pi/4) = 1/\sqrt{2} = 0.7071$ → **−3.01 dB**.
-- The amplitude sum at the center is $\sqrt{2}$ → when summed to mono, a signal at the center is **+3.01 dB** louder than at the edges (not mono compatible).
+- The power sum $`g_L^2 + g_R^2 = \cos^2 + \sin^2 = 1`$ **always holds** (which is why it is called constant power) → when listening on speakers the level stays steady during a sweep.
+- Center: $`g_L = g_R = \cos(\pi/4) = 1/\sqrt{2} = 0.7071`$ → **−3.01 dB**.
+- The amplitude sum at the center is $`\sqrt{2}`$ → when summed to mono, a signal at the center is **+3.01 dB** louder than at the edges (not mono compatible).
 
 **−4.5 dB (the compromise)**
 
@@ -335,11 +335,11 @@ $$
 g_L = \sqrt{(1-\theta)\cos\!\left(\theta\tfrac{\pi}{2}\right)},\qquad g_R = \sqrt{\theta\,\sin\!\left(\theta\tfrac{\pi}{2}\right)}
 $$
 
-This takes the **geometric mean** of the two laws, so its dB value is exactly the arithmetic mean of the two: at the center $\sqrt{0.5 \times 0.7071} = 0.5946$ → **−4.52 dB** (= (−6.02 − 3.01)/2). The power sum at the center is $2 \times 0.5 \times 0.7071 = 0.7071$ → −1.51 dB; the amplitude sum at the center is 1.189 → +1.51 dB. On speakers it dips 1.5 dB and in mono it bulges 1.5 dB, each side giving up one step. DAWs such as Cubase, Pro Tools and Reaper all offer −4.5 dB as one of their pan law options (the default differs from DAW to DAW and changes with versions, so go by the version you use), and large analog consoles such as the SSL use similar values.
+This takes the **geometric mean** of the two laws, so its dB value is exactly the arithmetic mean of the two: at the center $`\sqrt{0.5 \times 0.7071} = 0.5946`$ → **−4.52 dB** (= (−6.02 − 3.01)/2). The power sum at the center is $`2 \times 0.5 \times 0.7071 = 0.7071`$ → −1.51 dB; the amplitude sum at the center is 1.189 → +1.51 dB. On speakers it dips 1.5 dB and in mono it bulges 1.5 dB, each side giving up one step. DAWs such as Cubase, Pro Tools and Reaper all offer −4.5 dB as one of their pan law options (the default differs from DAW to DAW and changes with versions, so go by the version you use), and large analog consoles such as the SSL use similar values.
 
 Putting the numbers of the three laws at the center side by side:
 
-| Pan law | Center $g_L = g_R$ | Center dB | $g_L^2 + g_R^2$ (speakers) | $g_L + g_R$ (mono sum) |
+| Pan law | Center $`g_L = g_R`$ | Center dB | $`g_L^2 + g_R^2`$ (speakers) | $`g_L + g_R`$ (mono sum) |
 |---|---:|---:|---|---|
 | Linear | 0.5 | −6.02 | 0.5 (−3.01 dB, dips) | 1 (0 dB, flat) |
 | Constant power | 0.7071 | −3.01 | 1 (0 dB, flat) | 1.414 (+3.01 dB, bulges) |
@@ -361,10 +361,10 @@ Putting the numbers of the three laws at the center side by side:
 
 **Mono pan vs. stereo balance** -- this is where beginners confuse things most often:
 
-- **Pan** (mono input → stereo output): one signal is "distributed" between left and right, $L = g_L x$, $R = g_R x$. At hard right the left speaker is completely silent, but all the content is on the right.
-- **Balance** (stereo input → stereo output): the left and right channels are each multiplied by a gain, $L' = g_L L$, $R' = g_R R$. Turning to hard right switches off the left channel, and **the original content of the left channel disappears**; it is not moved to the right.
+- **Pan** (mono input → stereo output): one signal is "distributed" between left and right, $`L = g_L x`$, $`R = g_R x`$. At hard right the left speaker is completely silent, but all the content is on the right.
+- **Balance** (stereo input → stereo output): the left and right channels are each multiplied by a gain, $`L' = g_L L`$, $`R' = g_R R`$. Turning to hard right switches off the left channel, and **the original content of the left channel disappears**; it is not moved to the right.
 
-What this chapter's `Panner::process(block)` does to a stereo block is the second kind (channel 0 times $g_L$, channel 1 times $g_R$); when the two channels of the block hold the same content (mono copied to two channels) it is equivalent to the first kind. For a true "mono → stereo" use `processMonoToStereo()`. Example 2 (C) uses uncorrelated left and right noise to show that `process()` is only a balance. Note that the pan law is still applied at the center: with constant power, a stereo block at pan = 0 is −3 dB on both sides. A bus or master that is already stereo usually wants a **balance law** with "0 dB at the center, and only the other side attenuated when turned to one side" (the chapter 14 mixer does its own balance mode with `Panner::computeGains()`). To "really shift a stereo signal to the right" you need M/S or more elaborate processing (the stereo width of exercise 7 is one such tool).
+What this chapter's `Panner::process(block)` does to a stereo block is the second kind (channel 0 times $`g_L`$, channel 1 times $`g_R`$); when the two channels of the block hold the same content (mono copied to two channels) it is equivalent to the first kind. For a true "mono → stereo" use `processMonoToStereo()`. Example 2 (C) uses uncorrelated left and right noise to show that `process()` is only a balance. Note that the pan law is still applied at the center: with constant power, a stereo block at pan = 0 is −3 dB on both sides. A bus or master that is already stereo usually wants a **balance law** with "0 dB at the center, and only the other side attenuated when turned to one side" (the chapter 14 mixer does its own balance mode with `Panner::computeGains()`). To "really shift a stereo signal to the right" you need M/S or more elaborate processing (the stereo width of exercise 7 is one such tool).
 
 ```mermaid
 flowchart LR
@@ -482,7 +482,7 @@ const float cpR = std::sin(theta * halfPi);           // ConstantPower
 left = std::sqrt(linL * cpL);  right = std::sqrt(linR * cpR);
 ```
 
-Why isn't `cpL` simply written as `std::cos(theta * halfPi)`? Because `float(kPi)` is slightly larger than the true π, so at hard right (θ = 1) `cos(float(π)/2)` yields −4.37e-8: not 0, and moreover **negative**, so the left channel would keep a tiny inverted-polarity residue, which contradicts "at hard right the left speaker is completely silent". Rewriting it as $\sin((1-\theta)\pi/2)$ is mathematically identical, but both ends become $\sin(0) = 0$ (exact), and it is symmetric between left and right and never negative. Example 2 (D) uses a self-check to verify that for all three laws the opposite side's gain is `== 0.0f` at pan = ±1. In addition, `setPan()` ignores NaN / inf (keeping the previous value), and `computeGains()` treats them as the center -- once a NaN flows into the audio, everything after it turns into NaN.
+Why isn't `cpL` simply written as `std::cos(theta * halfPi)`? Because `float(kPi)` is slightly larger than the true π, so at hard right (θ = 1) `cos(float(π)/2)` yields −4.37e-8: not 0, and moreover **negative**, so the left channel would keep a tiny inverted-polarity residue, which contradicts "at hard right the left speaker is completely silent". Rewriting it as $`\sin((1-\theta)\pi/2)`$ is mathematically identical, but both ends become $`\sin(0) = 0`$ (exact), and it is symmetric between left and right and never negative. Example 2 (D) uses a self-check to verify that for all three laws the opposite side's gain is `== 0.0f` at pan = ±1. In addition, `setPan()` ignores NaN / inf (keeping the previous value), and `computeGains()` treats them as the center -- once a NaN flows into the audio, everything after it turns into NaN.
 
 The left and right gains each use a `SmoothedValue`, so a pan sweep does not zipper. `process()` does nothing for a mono block (there is no second channel to pan); for a mono input use `processMonoToStereo()`.
 
@@ -530,7 +530,7 @@ SmoothedValue: the 50 ms ramp at 48000 Hz took 2400 samples (expected 2400), fin
 How to read these numbers:
 
 - (A) The first difference of the instant jump is **5.4 times** the natural value of the sine (0.3534 vs. 0.0654) -- that is the click. After smoothing it is back to 1.00 times.
-- (B) The sidebands of the stepped version drop **6 dB** per octave (−34.7 → −40.8 → −46.8 → −52.8 → −58.8), exactly the $1/k$ of section 2.4; the smoothed version drops **12 dB** per octave (−74.4 → −86.4 → −98.5), which is $1/k^2$, and is about 40 dB lower overall (the first sideband differs by 39.7 dB, and the higher orders by even more; −100 dB is the measurement floor).
+- (B) The sidebands of the stepped version drop **6 dB** per octave (−34.7 → −40.8 → −46.8 → −52.8 → −58.8), exactly the $`1/k`$ of section 2.4; the smoothed version drops **12 dB** per octave (−74.4 → −86.4 → −98.5), which is $`1/k^2`$, and is about 40 dB lower overall (the first sideband differs by 39.7 dB, and the higher orders by even more; −100 dB is the measurement floor).
 - 2400 = 0.05 × 48000: the ramp length is exact.
 
 ### 3.5 Example 2: `l01_pan_law` (`examples/pan_law.cpp`)
@@ -574,7 +574,7 @@ The pan law tables printed (excerpt: the center and ±0.5):
 
 - Every column of the table matches the derivation in section 2.9: for Linear `gL+gR` is always 0 dB, for ConstantPower `gL²+gR²` is always 0 dB, and −4.5 dB dips / bulges by 1.51 dB at the center.
 - (B) is measured over 0.1 s during the sweep, and in that time the pan moves from −0.025 to +0.025, which is why left and right differ by about 0.2 dB; the average of the two (−6.02, −3.01, −4.52) is exactly the theoretical value.
-- (C) The left channel dropped by exactly $g_L$'s 8.34 dB and the right channel by $g_R$'s 0.69 dB -- the left content was not "moved" to the right; this is a balance.
+- (C) The left channel dropped by exactly $`g_L`$'s 8.34 dB and the right channel by $`g_R`$'s 0.69 dB -- the left content was not "moved" to the right; this is a balance.
 - (D) For all three laws the opposite side is exactly 0 at both ends (see section 3.3 for why `cpL` has to be written with sin); an invalid pan value does not let NaN flow into the audio.
 
 ### 3.6 Example 3: `l01_mixing_headroom` (`examples/mixing_headroom.cpp`)
@@ -615,7 +615,7 @@ bin\Debug\l01_mixing_headroom.exe
     Peak after 1.2 s = -100.0 dBFS (completely silent)
 ```
 
-- (A) Correlated signals: +18.06 dB, in exact agreement with $20\log_{10} 8$.
+- (A) Correlated signals: +18.06 dB, in exact agreement with $`20\log_{10} 8`$.
 - (B) Uncorrelated signals: RMS +9.10 dB (theory +9.03), peak +17.5 dB -- the peaks of white noise really can "line up", so **you cannot judge whether it will clip from the RMS alone**.
 - (C) Working backwards from the linear sum of the per-track peaks, 11.72 dBFS: to guarantee 6 dB of headroom even in the worst case, "per-track + master" together must come down by 17.7 dB → −18 dB per track and 0 dB on the master, giving a worst-case peak of 11.72 − 18 = −6.28 dBFS; the actual mix peaks at −8.75 dBFS (the track peaks do not occur at the same time, so it is another 2.5 dB lower than the worst case). The gain of **every stage** of the signal chain has to be counted: if the master then adds +3 dB, the overall reduction is only 15 dB and the worst case has just 3.3 dB of headroom left. That is how gain staging is computed -- it is not a rule of thumb like "−12 dB".
 - (C) The last two lines: for the same mix, the peak of the 24-bit version was clipped to 0 dBFS (the distortion is already "burned" into the file), while the 32-bit float version reads back as +9.25 dBFS -- the data is intact and can be rescued simply by turning the level down afterwards.
@@ -636,12 +636,12 @@ bin\Debug\l01_mixing_headroom.exe
 
 | Symptom | Likely cause | How to check |
 |---|---|---|
-| A "click" when a parameter changes | The new value is multiplied in directly with no ramp; or the ramp length is 0 (forgot `prepare()` / `reset(sr, ramp)`) | Print `isSmoothing()` and `getRampSamples()`; compute the maximum first difference (`maxFirstDifference` in example 1) and see whether it is much larger than $A\cdot 2\pi f/f_s$ |
-| "Zzzz" while dragging a fader | One step per block with no smoothing | Measure the sidebands at $k \cdot f_b$ around the carrier with a Goertzel filter (example 1 (B)) |
+| A "click" when a parameter changes | The new value is multiplied in directly with no ramp; or the ramp length is 0 (forgot `prepare()` / `reset(sr, ramp)`) | Print `isSmoothing()` and `getRampSamples()`; compute the maximum first difference (`maxFirstDifference` in example 1) and see whether it is much larger than $`A\cdot 2\pi f/f_s`$ |
+| "Zzzz" while dragging a fader | One step per block with no smoothing | Measure the sidebands at $`k \cdot f_b`$ around the carrier with a Goertzel filter (example 1 (B)) |
 | The level changes "half a beat late", mute trails on | The ramp is too long (> 100 ms); or the exponential smoother's τ is too large (remember 99% takes 4.6τ) | Set the ramp to 10–50 ms |
 | A plugin fades in when loaded | No `setCurrentAndTargetValue()`, so it ramps up from 0 | Align current with target inside `prepare()` |
 | Left and right levels change out of sync / the ramp runs too fast | `getNextValue()` is called once per channel | Use `applyGain(AudioBlock)`, or follow the convention that "channel 0 advances the ramp" |
-| `isSmoothing()` is always true, the CPU occasionally spikes | The exponential smoother does not snap; the float state is stuck about $\varepsilon/(4a)$ from the target; denormals | Keep the state in a double and set a snap threshold (exercise 3) |
+| `isSmoothing()` is always true, the CPU occasionally spikes | The exponential smoother does not snap; the float state is stuck about $`\varepsilon/(4a)`$ from the target; denormals | Keep the state in a double and set a snap threshold (exercise 3) |
 | The mix distorts but the DAW's meter is not red | Internal float is fine; it clips only when exported to an integer WAV / sent to a DAC | Look at the mix bus peak (`peakAbs`); gain staging |
 | The level drops when panned to the center | This is normal behavior of the linear pan law (−6 dB) | Switch to constant power or −4.5 dB; decide whether you are listening on speakers or care about mono compatibility |
 | After panning a stereo track hard right, the stuff on the left "vanishes" | `Panner::process()` is a balance for stereo, not a pan | To move content, first sum to mono and then use `processMonoToStereo()`, or use M/S (exercise 7) |

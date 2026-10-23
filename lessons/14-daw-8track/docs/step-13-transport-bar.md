@@ -66,24 +66,24 @@ reaches the speakers later:
 engine renders sample P ──> PDC delays every path by L_mix ──> device buffers, driver, DAC: L_device ──> ear
 ```
 
-- $L_{\text{mix}}$ = `Engine::getLatencySamples()`, the plugin delay compensation of Step 8. The
+- $`L_{\text{mix}}`$ = `Engine::getLatencySamples()`, the plugin delay compensation of Step 8. The
   bounce removes it (Step 9); live playback cannot: it is real delay. In the demo song it is 752
   samples (512 for the convolution reverb on track 8 + 240 for the master limiter) = 15.7 ms.
-- $L_{\text{device}}$ = what the driver reports for the open device
+- $`L_{\text{device}}`$ = what the driver reports for the open device
   (`juce::AudioIODevice::getOutputLatencyInSamples()`, read in `audioDeviceAboutToStart()`),
   typically 5..30 ms; 0 without a device.
 
-A position display that ignores them runs ahead of the sound by $L_{\text{mix}} + L_{\text{device}}$.
+A position display that ignores them runs ahead of the sound by $`L_{\text{mix}} + L_{\text{device}}`$.
 `AudioHost::getAudiblePosition()` corrects it, and both the counters here and the playhead
 (Step 14) use it:
 
 $$\text{shown} = \begin{cases}\max(0,\ P - L_{\text{mix}} - L_{\text{device}}) & \text{playing}\\ P & \text{stopped}\end{cases}$$
 
 When the transport is stopped nothing sounds, so the display shows where playback will start (the
-moment you press Stop it therefore jumps forward by $L_{\text{mix}} + L_{\text{device}}$). The
+moment you press Stop it therefore jumps forward by $`L_{\text{mix}} + L_{\text{device}}`$). The
 formula is a static function, `AudioHost::compensatePosition(position, playing, mixLatency,
 deviceLatency)`, so the smoke test can check it with any latencies. (At a loop wrap the display
-briefly shows a position just before the loop start - for $L$ samples, about half a frame of the
+briefly shows a position just before the loop start - for $`L`$ samples, about half a frame of the
 30 Hz display.)
 
 ### The icons

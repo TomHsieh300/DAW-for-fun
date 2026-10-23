@@ -12,7 +12,7 @@
 
 - 說出 compressor 的四個方塊（detector → gain computer → attack/release 平滑 → makeup gain）各自在做什麼，以及為什麼要這樣排。
 - 推導 hard knee 與 soft knee 的靜態曲線（transfer curve）公式，手算任意 threshold / ratio / knee 下的輸出 dB 與 gain reduction。
-- 推導 one-pole 平滑器的係數 $\alpha = e^{-1/(\tau f_s)}$，並換算「到 63.2%」、「到 90%」、「到 99%」的時間。
+- 推導 one-pole 平滑器的係數 $`\alpha = e^{-1/(\tau f_s)}`$，並換算「到 63.2%」、「到 90%」、「到 99%」的時間。
 - 解釋 peak 與 RMS detector、linear 與 log（dB）domain 平滑、branching 與 decoupled 平滑、feedforward 與 feedback 拓樸的差別，以及它們分別**聽起來**有什麼不同。
 - 用 `dawlab::dsp::Compressor` 在 block 迴圈裡壓縮立體聲訊號、讀取 gain reduction meter、接外部 sidechain、做 stereo link 與 parallel compression。
 - 知道 compressor 做不到什麼（抓不到幾個 sample 寬的尖峰），為什麼下一章需要 lookahead limiter。
@@ -51,7 +51,7 @@ flowchart LR
 
 | 方塊 | 問題 | 本章的實作 |
 |---|---|---|
-| Detector | 「現在多大聲？」 | `DetectorMode::Peak`（瞬間 $\lvert x \rvert$）或 `DetectorMode::Rms`（$\sqrt{\overline{x^2}}$） |
+| Detector | 「現在多大聲？」 | `DetectorMode::Peak`（瞬間 $`\lvert x \rvert`$）或 `DetectorMode::Rms`（$`\sqrt{\overline{x^2}}`$） |
 | Gain computer | 「這麼大聲的話，該壓幾 dB？」 | `Compressor::computeOutputDb()`，純函式，沒有狀態 |
 | Attack / release | 「要多快壓下去、多快放開？」 | `AttackReleaseFilter`，在 dB domain 平滑 GR |
 | Makeup gain | 「壓完變小聲了，補回來」 | 固定 dB，內部用 10 ms one-pole 平滑避免 zipper noise |
@@ -60,7 +60,7 @@ flowchart LR
 
 ### 2.3 Gain computer：threshold、ratio、knee
 
-令輸入 level 為 $x$（dB）、threshold 為 $T$（dB）、ratio 為 $R$。**Hard knee** 的靜態曲線是一條折線：
+令輸入 level 為 $`x`$（dB）、threshold 為 $`T`$（dB）、ratio 為 $`R`$。**Hard knee** 的靜態曲線是一條折線：
 
 $$
 y_{\text{hard}}(x) =
@@ -70,23 +70,23 @@ T + \dfrac{x - T}{R}, & x > T
 \end{cases}
 $$
 
-threshold 以上，輸入每多 1 dB，輸出只多 $1/R$ dB。$R = 1$ 是直線（不壓縮），$R = \infty$ 時輸出被釘在 $T$（這就是 limiter 的靜態曲線）。**Gain reduction**（GR，本教材一律用**正值**）是輸入與輸出的差：
+threshold 以上，輸入每多 1 dB，輸出只多 $`1/R`$ dB。$`R = 1`$ 是直線（不壓縮），$`R = \infty`$ 時輸出被釘在 $`T`$（這就是 limiter 的靜態曲線）。**Gain reduction**（GR，本教材一律用**正值**）是輸入與輸出的差：
 
 $$
 \text{GR}(x) = x - y(x) = \left(1 - \frac{1}{R}\right)(x - T) \quad (x > T)
 $$
 
-例如 $T = -20$、$R = 4$、$x = -10$：$y = -20 + (-10 + 20)/4 = -17.5$ dB，GR = 7.5 dB。範例 1 會印出這一行。
+例如 $`T = -20`$、$`R = 4`$、$`x = -10`$：$`y = -20 + (-10 + 20)/4 = -17.5`$ dB，GR = 7.5 dB。範例 1 會印出這一行。
 
-折線在 $T$ 處有一個「轉角」，訊號在 threshold 附近進進出出時，壓縮會「突然開始」。**Soft knee** 用一段寬 $W$ dB 的二次曲線把轉角磨圓。推導的要求是：曲線在 knee 兩端（$x = T \pm W/2$）要跟兩條直線**值相等、斜率也相等**（$C^1$ 連續）。
+折線在 $`T`$ 處有一個「轉角」，訊號在 threshold 附近進進出出時，壓縮會「突然開始」。**Soft knee** 用一段寬 $`W`$ dB 的二次曲線把轉角磨圓。推導的要求是：曲線在 knee 兩端（$`x = T \pm W/2`$）要跟兩條直線**值相等、斜率也相等**（$`C^1`$ 連續）。
 
-設 knee 內的曲線為 $y(x) = x + a\,(x - T + W/2)^2$（knee 下緣 $x = T - W/2$ 時，第二項為 0，值與斜率都跟 $y = x$ 一致）。在上緣 $x = T + W/2$，斜率要等於 $1/R$：
+設 knee 內的曲線為 $`y(x) = x + a\,(x - T + W/2)^2`$（knee 下緣 $`x = T - W/2`$ 時，第二項為 0，值與斜率都跟 $`y = x`$ 一致）。在上緣 $`x = T + W/2`$，斜率要等於 $`1/R`$：
 
 $$
 y'(x) = 1 + 2a\,(x - T + W/2) \;\Rightarrow\; 1 + 2aW = \frac{1}{R} \;\Rightarrow\; a = \frac{1/R - 1}{2W}
 $$
 
-把 $a$ 代回去檢查上緣的值：$y = T + W/2 + \frac{1/R - 1}{2W}W^2 = T + \frac{W}{2R}$，而直線 $T + (x - T)/R$ 在 $x = T + W/2$ 的值也是 $T + \frac{W}{2R}$，確實接上。整理成三段（Giannoulis, Massberg & Reiss 2012 的寫法）：
+把 $`a`$ 代回去檢查上緣的值：$`y = T + W/2 + \frac{1/R - 1}{2W}W^2 = T + \frac{W}{2R}`$，而直線 $`T + (x - T)/R`$ 在 $`x = T + W/2`$ 的值也是 $`T + \frac{W}{2R}`$，確實接上。整理成三段（Giannoulis, Massberg & Reiss 2012 的寫法）：
 
 $$
 y_{\text{soft}}(x) =
@@ -97,13 +97,13 @@ T + \dfrac{x - T}{R}, & 2(x - T) > W
 \end{cases}
 $$
 
-$W = 0$ 就退化成 hard knee。一個好記的對照點：在 threshold 本身 $x = T$，soft knee 已經在壓了：
+$`W = 0`$ 就退化成 hard knee。一個好記的對照點：在 threshold 本身 $`x = T`$，soft knee 已經在壓了：
 
 $$
 y_{\text{soft}}(T) = T + \frac{(1/R - 1)\,W}{8}
 $$
 
-$T = -20$、$R = 4$、$W = 10$：$y = -20 + (-0.75)(10/8) = -20.9375$ dB，也就是 threshold 處已經有 0.94 dB 的 GR。
+$`T = -20`$、$`R = 4`$、$`W = 10`$：$`y = -20 + (-0.75)(10/8) = -20.9375`$ dB，也就是 threshold 處已經有 0.94 dB 的 GR。
 
 把它畫出來（節錄自範例 1 的輸出；完整版每 2 dB 一列。`#` = hard knee、`o` = soft knee、`.` = 1:1 參考線、`*` = 兩者重疊）：
 
@@ -129,7 +129,7 @@ $T = -20$、$R = 4$、$W = 10$：$y = -20 + (-0.75)(10/8) = -20.9375$ dB，也�
 
 #### 對照：expander 與 gate
 
-Compressor 壓的是 **threshold 以上**；**expander** 反過來，把 threshold **以下**的訊號推得更小（每低 1 dB 變成低 $R$ dB），**gate** 是 ratio 極大的 expander（低於門檻直接關掉）。它們的靜態曲線在 threshold 以下彎向下方：
+Compressor 壓的是 **threshold 以上**；**expander** 反過來，把 threshold **以下**的訊號推得更小（每低 1 dB 變成低 $`R`$ dB），**gate** 是 ratio 極大的 expander（低於門檻直接關掉）。它們的靜態曲線在 threshold 以下彎向下方：
 
 ```
  輸入 dB | compressor(T=-20,R=4) | expander(T=-40,R=2) | gate(T=-40,R=20)
@@ -143,12 +143,12 @@ Compressor 壓的是 **threshold 以上**；**expander** 反過來，把 thresho
 
 ### 2.4 Detector：peak vs RMS
 
-**Peak detector** 看瞬間的 $\lvert x[n] \rvert$。反應最快，對一聲鼓的尖峰立刻有感，適合抓 transient、做 limiter。
+**Peak detector** 看瞬間的 $`\lvert x[n] \rvert`$。反應最快，對一聲鼓的尖峰立刻有感，適合抓 transient、做 limiter。
 
-**RMS detector** 看一段時間內的平均能量 $\sqrt{\overline{x^2}}$，比較接近人耳感受到的「響度」。它天生就是平滑過的，所以 attack 不可能比視窗長度快，但比較不容易產生 pumping（整體音量跟著鼓點一吸一放的「呼吸」感，2.9 節與練習 7 會再談）、聽起來比較「音樂」。兩個常用的事實：
+**RMS detector** 看一段時間內的平均能量 $`\sqrt{\overline{x^2}}`$，比較接近人耳感受到的「響度」。它天生就是平滑過的，所以 attack 不可能比視窗長度快，但比較不容易產生 pumping（整體音量跟著鼓點一吸一放的「呼吸」感，2.9 節與練習 7 會再談）、聽起來比較「音樂」。兩個常用的事實：
 
-- 正弦波的 RMS 比 peak 低 $20\log_{10}\sqrt{2} = 3.01$ dB。所以同樣的 threshold，RMS 模式會少壓 $0.75 \times 3.01 \approx 2.26$ dB（$R = 4$ 時）。範例 2 的 B3 會印出 5.29 dB 對 7.49 dB。
-- 本章的 RMS 用 one-pole 對 $x^2$ 做移動平均（而不是真的開一個長度 N 的視窗），`setRmsWindowMs()` 設定的就是這個 one-pole 的時間常數。注意 attack / release 作用在 $x^2$ 上：$x^2$ 到 63.2% 時，振幅只到 $\sqrt{0.632} = 79.5\%$。
+- 正弦波的 RMS 比 peak 低 $`20\log_{10}\sqrt{2} = 3.01`$ dB。所以同樣的 threshold，RMS 模式會少壓 $`0.75 \times 3.01 \approx 2.26`$ dB（$`R = 4`$ 時）。範例 2 的 B3 會印出 5.29 dB 對 7.49 dB。
+- 本章的 RMS 用 one-pole 對 $`x^2`$ 做移動平均（而不是真的開一個長度 N 的視窗），`setRmsWindowMs()` 設定的就是這個 one-pole 的時間常數。注意 attack / release 作用在 $`x^2`$ 上：$`x^2`$ 到 63.2% 時，振幅只到 $`\sqrt{0.632} = 79.5\%`$。
 
 ### 2.5 Attack / release：one-pole 平滑與時間常數
 
@@ -158,28 +158,28 @@ $$
 y[n] = \alpha\, y[n-1] + (1 - \alpha)\, x[n]
 $$
 
-對一個 step 輸入（$x$ 從 0 跳到 1），解析解是 $y[n] = 1 - \alpha^n$。我們希望「經過 $\tau$ 秒」等於「經過 $\tau f_s$ 個 sample」時，$y$ 到達 $1 - e^{-1} = 63.2\%$，所以要求 $\alpha^{\tau f_s} = e^{-1}$：
+對一個 step 輸入（$`x`$ 從 0 跳到 1），解析解是 $`y[n] = 1 - \alpha^n`$。我們希望「經過 $`\tau`$ 秒」等於「經過 $`\tau f_s`$ 個 sample」時，$`y`$ 到達 $`1 - e^{-1} = 63.2\%`$，所以要求 $`\alpha^{\tau f_s} = e^{-1}`$：
 
 $$
 \alpha = \exp\!\left(-\frac{1}{\tau f_s}\right)
 $$
 
-這就是 `attackReleaseCoefficient()`。$\tau = 10$ ms、$f_s = 48$ kHz：$\alpha = e^{-1/480} = 0.997919$。
+這就是 `attackReleaseCoefficient()`。$`\tau = 10`$ ms、$`f_s = 48`$ kHz：$`\alpha = e^{-1/480} = 0.997919`$。
 
-**時間常數的換算**：到達比例 $p$ 所需的時間是 $t_p = -\tau \ln(1 - p)$：
+**時間常數的換算**：到達比例 $`p`$ 所需的時間是 $`t_p = -\tau \ln(1 - p)`$：
 
 | 到達 | 時間 |
 |---|---|
-| 63.2% | $1.00\,\tau$（定義） |
-| 90% | $\ln 10 \cdot \tau = 2.303\,\tau$ |
-| 95% | $3.00\,\tau$ |
-| 99% | $4.605\,\tau$ |
+| 63.2% | $`1.00\,\tau`$（定義） |
+| 90% | $`\ln 10 \cdot \tau = 2.303\,\tau`$ |
+| 95% | $`3.00\,\tau`$ |
+| 99% | $`4.605\,\tau`$ |
 
-**記號**：本章用 $t_{63}$ / $t_{90}$（程式輸出同樣寫成 t63 / t90）表示 attack 時 GR 走完 63.2% / 90% 所需的時間；release 用 $t_{37}$ / $t_{10}$ 表示 GR 降到只剩 36.8% / 10% 所需的時間。對單純的 one-pole 來說，$t_{63} = t_{37} = 1\,\tau$、$t_{90} = t_{10} = 2.303\,\tau$。
+**記號**：本章用 $`t_{63}`$ / $`t_{90}`$（程式輸出同樣寫成 t63 / t90）表示 attack 時 GR 走完 63.2% / 90% 所需的時間；release 用 $`t_{37}`$ / $`t_{10}`$ 表示 GR 降到只剩 36.8% / 10% 所需的時間。對單純的 one-pole 來說，$`t_{63} = t_{37} = 1\,\tau`$、$`t_{90} = t_{10} = 2.303\,\tau`$。
 
 所以「attack 10 ms」在本教材的定義下，是 10 ms 到 63.2%、23 ms 到 90%。**不同廠商定義不同**（有的用到 90%、有的用 10%→90%、類比機器還有 program-dependent 的），同樣寫 10 ms 的兩台 compressor 聽起來可以差很多——這是為什麼本章要用數字量測，而不是相信面板上的字。範例 2 的 (A) 會量出 t63 = 9.98 ms、t90 = 23.02 ms。
 
-Attack 與 release 用不同的 $\alpha$：目標值比目前狀態**高**（要壓更多）時用 $\alpha_A$，比較低（放開）時用 $\alpha_R$。
+Attack 與 release 用不同的 $`\alpha`$：目標值比目前狀態**高**（要壓更多）時用 $`\alpha_A`$，比較低（放開）時用 $`\alpha_R`$。
 
 #### Branching vs decoupled
 
@@ -194,20 +194,20 @@ y[n] &= \alpha_A\, y[n-1] + (1 - \alpha_A)\, y_1[n]
 \end{aligned}
 $$
 
-peak-hold 把週期訊號的 ripple 填平，所以穩態 GR 精確等於靜態曲線（B1 量到 7.49 dB），attack 曲線也精確是 $1 - e^{-t/\tau_A}$。代價是 release 變成兩級串聯（先 peak-hold 衰減、再過 attack 濾波器），量到的 release 時間約是 $\tau_R + \tau_A$（B1：110.8 ms 對標稱 100 ms）。`Compressor` 預設用 decoupled；`EnvelopeFollower` 預設 branching（給第 08 章 gate 用，gate 不在乎 ripple，反而要「真的掉下去」）。
+peak-hold 把週期訊號的 ripple 填平，所以穩態 GR 精確等於靜態曲線（B1 量到 7.49 dB），attack 曲線也精確是 $`1 - e^{-t/\tau_A}`$。代價是 release 變成兩級串聯（先 peak-hold 衰減、再過 attack 濾波器），量到的 release 時間約是 $`\tau_R + \tau_A`$（B1：110.8 ms 對標稱 100 ms）。`Compressor` 預設用 decoupled；`EnvelopeFollower` 預設 branching（給第 08 章 gate 用，gate 不在乎 ripple，反而要「真的掉下去」）。
 
 #### Linear domain vs log（dB）domain
 
 平滑可以放在兩個地方：
 
-- **Linear domain**：先平滑 $\lvert x \rvert$ 得到 envelope，再丟進靜態曲線。這是 `EnvelopeFollower` → `computeOutputDb()` 的路徑（範例 2 的 B4）。
+- **Linear domain**：先平滑 $`\lvert x \rvert`$ 得到 envelope，再丟進靜態曲線。這是 `EnvelopeFollower` → `computeOutputDb()` 的路徑（範例 2 的 B4）。
 - **Log domain**：先把瞬間 level 丟進靜態曲線得到 GR 目標值（dB），再平滑 GR。這是 `Compressor` 的做法，也是 Giannoulis 等人建議的結構。
 
-差別在 release 的形狀。Linear domain 的 envelope 指數衰減，換成 dB 是**等速下降**：每 $\tau$ 掉 $20\log_{10} e = 8.686$ dB（$\tau_R = 100$ ms → 86.9 dB/s），GR 直線掉到 0 就停住。Log domain 的 GR 本身指數衰減，尾巴拖得長、慢慢收到 0，聽起來比較自然、比較像類比機器；而且 attack / release 時間與 threshold、ratio 無關（linear domain 的 GR 曲線形狀會隨訊號超過 threshold 多少而變）。範例 2 的 B4 會把兩條 release 曲線並排印出來。
+差別在 release 的形狀。Linear domain 的 envelope 指數衰減，換成 dB 是**等速下降**：每 $`\tau`$ 掉 $`20\log_{10} e = 8.686`$ dB（$`\tau_R = 100`$ ms → 86.9 dB/s），GR 直線掉到 0 就停住。Log domain 的 GR 本身指數衰減，尾巴拖得長、慢慢收到 0，聽起來比較自然、比較像類比機器；而且 attack / release 時間與 threshold、ratio 無關（linear domain 的 GR 曲線形狀會隨訊號超過 threshold 多少而變）。範例 2 的 B4 會把兩條 release 曲線並排印出來。
 
 #### 圖解：三種平滑的 release 曲線
 
-下圖是範例 2 最後印出的 ASCII 圖（$T = -20$、$R = 4$、attack 10 ms、release 100 ms，1 kHz 正弦波從 -10 dBFS 掉回 -30 dBFS 的那一刻是 $t = 0$）。橫軸每格 10 ms，縱軸每列 0.5 dB；`1` = B1 decoupled（log domain，`Compressor` 預設）、`2` = B2 branching、`4` = B4 linear domain、`*` = 兩條以上重疊；`-` 那一列是 B1 穩態 GR 7.49 dB 的 36.8%（2.76 dB），也就是「經過一個時間常數」該到的位置：
+下圖是範例 2 最後印出的 ASCII 圖（$`T = -20`$、$`R = 4`$、attack 10 ms、release 100 ms，1 kHz 正弦波從 -10 dBFS 掉回 -30 dBFS 的那一刻是 $`t = 0`$）。橫軸每格 10 ms，縱軸每列 0.5 dB；`1` = B1 decoupled（log domain，`Compressor` 預設）、`2` = B2 branching、`4` = B4 linear domain、`*` = 兩條以上重疊；`-` 那一列是 B1 穩態 GR 7.49 dB 的 36.8%（2.76 dB），也就是「經過一個時間常數」該到的位置：
 
 ```
    8.0 |
@@ -233,20 +233,20 @@ peak-hold 把週期訊號的 ripple 填平，所以穩態 GR 精確等於靜態�
 三件事一眼可以看出來：
 
 - **B2（branching）從比較低的地方出發**：穩態只有 6.47 dB（ripple 被 release 拉低），B1 是 7.49 dB。
-- **B1 大約在 110 ms 穿過 36.8% 線**：decoupled 的 release 是 $\tau_R + \tau_A$ 左右（前面「Branching vs decoupled」講的代價）。B1、B2 都是指數衰減，越接近 0 掉得越慢，尾巴一直拖到 400 ms 以後。
+- **B1 大約在 110 ms 穿過 36.8% 線**：decoupled 的 release 是 $`\tau_R + \tau_A`$ 左右（前面「Branching vs decoupled」講的代價）。B1、B2 都是指數衰減，越接近 0 掉得越慢，尾巴一直拖到 400 ms 以後。
 - **B4（linear domain）是一條直線**，約 150 ms 就直接撞到 0 停住——在 dB 上等速下降，沒有「慢慢收尾」。這就是 log domain 聽起來比較自然的原因。
 
 ### 2.6 Feedforward vs feedback
 
 上面的方塊圖是 **feedforward**：detector 看輸入。**Feedback** 拓樸讓 detector 看**輸出**（壓完的訊號），這是類比時代的自然做法（偵測電路接在輸出端）。
 
-用 hard knee 的穩態分析：令 gain computer 的斜率為 $s$（GR 每超過 threshold 1 dB 增加 $s$ dB；feedforward 時 $s = 1 - 1/R$）。Feedback 時 $Y = X - \text{GR}$ 且 $\text{GR} = s\,(Y - T)$：
+用 hard knee 的穩態分析：令 gain computer 的斜率為 $`s`$（GR 每超過 threshold 1 dB 增加 $`s`$ dB；feedforward 時 $`s = 1 - 1/R`$）。Feedback 時 $`Y = X - \text{GR}`$ 且 $`\text{GR} = s\,(Y - T)`$：
 
 $$
 \text{GR} = s\,(X - \text{GR} - T) \;\Rightarrow\; \text{GR} = \frac{s}{1 + s}(X - T) \;\Rightarrow\; Y - T = \frac{X - T}{1 + s}
 $$
 
-所以 feedback 的**有效 ratio 是 $1 + s$**。把 feedforward 的 4:1 設定（$s = 0.75$）直接搬到 feedback 只有 1.75:1；要真的 4:1 得把斜率設成 3（比 1 還大，意思是 detector 看到超過 1 dB 就想壓 3 dB，靠迴路收斂到 0.75）。行為上，feedback 的 detector 一開始看到「還沒被壓」的大輸出，GR 目標值一開始遠大於穩態 → attack 前段特別快、之後慢慢收斂（**program-dependent attack**）；練習 6 會量到 t63 從 10.8 ms 縮到 2.8 ms。這是 feedback 機器「聽起來比較順」的原因之一；代價是無法做 lookahead（輸出還沒算出來）、ratio 無法無限大。
+所以 feedback 的**有效 ratio 是 $`1 + s`$**。把 feedforward 的 4:1 設定（$`s = 0.75`$）直接搬到 feedback 只有 1.75:1；要真的 4:1 得把斜率設成 3（比 1 還大，意思是 detector 看到超過 1 dB 就想壓 3 dB，靠迴路收斂到 0.75）。行為上，feedback 的 detector 一開始看到「還沒被壓」的大輸出，GR 目標值一開始遠大於穩態 → attack 前段特別快、之後慢慢收斂（**program-dependent attack**）；練習 6 會量到 t63 從 10.8 ms 縮到 2.8 ms。這是 feedback 機器「聽起來比較順」的原因之一；代價是無法做 lookahead（輸出還沒算出來）、ratio 無法無限大。
 
 ### 2.7 Stereo link
 
@@ -260,7 +260,7 @@ $$
 \text{makeup} = -\,y(0) = -\,\text{computeOutputDb}(0, T, R, W)
 $$
 
-$T = -20$、$R = 4$、hard knee：$y(0) = -20 + 20/4 = -15$ → makeup = 15 dB。很多 plugin 只補一半，因為真實音樂很少一直頂在 0 dBFS，補滿會太大聲。練習 5 會驗證這個公式，並用真的 `Compressor` 跑 0 dBFS 正弦波確認輸出回到 0.01 dBFS。
+$`T = -20`$、$`R = 4`$、hard knee：$`y(0) = -20 + 20/4 = -15`$ → makeup = 15 dB。很多 plugin 只補一半，因為真實音樂很少一直頂在 0 dBFS，補滿會太大聲。練習 5 會驗證這個公式，並用真的 `Compressor` 跑 0 dBFS 正弦波確認輸出回到 0.01 dBFS。
 
 ### 2.9 Sidechain HPF
 
@@ -294,7 +294,7 @@ inline float  attackReleaseCoefficient(double timeMs, double sampleRate) noexcep
 inline double coefficientToTimeMs(double alpha, double sampleRate) noexcept;       // 反推 τ
 ```
 
-**`AttackReleaseFilter`** 是「上升用 attack 係數、下降用 release 係數」的 one-pole 平滑器。它不在乎輸入是線性振幅、$x^2$ 還是 dB，所以 `Compressor` 拿它在 dB domain 平滑 GR，`EnvelopeFollower` 拿它在 linear domain 平滑 $\lvert x \rvert$：
+**`AttackReleaseFilter`** 是「上升用 attack 係數、下降用 release 係數」的 one-pole 平滑器。它不在乎輸入是線性振幅、$`x^2`$ 還是 dB，所以 `Compressor` 拿它在 dB domain 平滑 GR，`EnvelopeFollower` 拿它在 linear domain 平滑 $`\lvert x \rvert`$：
 
 ```cpp
 float process(float target) noexcept {
@@ -311,7 +311,7 @@ float process(float target) noexcept {
 }
 ```
 
-**`EnvelopeFollower`** 吃原始 sample、回傳線性振幅 envelope（永遠 ≥ 0）：Peak 模式平滑 $\lvert x \rvert$，RMS 模式平滑 $x^2$ 再開根號。輸入先經過防護：Inf / NaN 當成 0，其餘夾在 ±$10^6$（+120 dBFS）以內，避免 $x^2$ 溢位成 Inf（$\lvert x \rvert$ 超過約 $1.8 \times 10^{19}$ 時 $x^2$ 就超出 float 範圍）。第 08 章的 `Gate`、`Expander`、`DeEsser`、`TransientShaper` 直接重用它。
+**`EnvelopeFollower`** 吃原始 sample、回傳線性振幅 envelope（永遠 ≥ 0）：Peak 模式平滑 $`\lvert x \rvert`$，RMS 模式平滑 $`x^2`$ 再開根號。輸入先經過防護：Inf / NaN 當成 0，其餘夾在 ±$`10^6`$（+120 dBFS）以內，避免 $`x^2`$ 溢位成 Inf（$`\lvert x \rvert`$ 超過約 $`1.8 \times 10^{19}`$ 時 $`x^2`$ 就超出 float 範圍）。第 08 章的 `Gate`、`Expander`、`DeEsser`、`TransientShaper` 直接重用它。
 
 ### 3.2 `dsp/include/dawlab/dsp/Compressor.h`
 
@@ -351,7 +351,7 @@ cd build; .\bin\Debug\l04_transfer_curve.exe     # 手動執行單一範例
 
 #### 範例 1：`l04_transfer_curve`（`examples/transfer_curve.cpp`）
 
-印出 $T = -20$、$R = 4$ 下 hard knee 與 soft knee（10 dB）的靜態曲線表、手算對照點（-22 → -22.3375、-20 → -20.9375、-18 → -19.8375）、ratio 從 1:1 到 1000:1 的比較、ASCII 圖，以及 expander / gate 的曲線對照。沒有 WAV 輸出。
+印出 $`T = -20`$、$`R = 4`$ 下 hard knee 與 soft knee（10 dB）的靜態曲線表、手算對照點（-22 → -22.3375、-20 → -20.9375、-18 → -19.8375）、ratio 從 1:1 到 1000:1 的比較、ASCII 圖，以及 expander / gate 的曲線對照。沒有 WAV 輸出。
 
 該看到：soft knee 的 GR 從 -25 dB 就「提早、慢慢」開始（-24 dB 時 0.04 dB），-15 dB 之後兩條曲線重合；ratio 1000:1 時 0 dBFS 的輸入被釘在 -19.98 dB。
 
@@ -365,7 +365,7 @@ Branching attack: t63 =   9.98 ms (theory τ = 10), t90 =  23.02 ms (theory ln10
 Decoupled attack: t63 =   9.98 ms (theory τ = 10), t90 =  23.02 ms (theory ln10·τ = 23.03) | release: t37 = 110.48 ms (theory 100), t10 = 240.77 ms (theory 230.26)
 ```
 
-(B) 把 1 kHz tone bursts（-30 → -10 → -30 dBFS，各 0.5 秒）餵進 `Compressor`（$T = -20$、$R = 4$、attack 10 ms、release 100 ms），由輸入 / 輸出每 1 ms 視窗的 peak 比反推 GR 時間軸，印四組比較：
+(B) 把 1 kHz tone bursts（-30 → -10 → -30 dBFS，各 0.5 秒）餵進 `Compressor`（$`T = -20`$、$`R = 4`$、attack 10 ms、release 100 ms），由輸入 / 輸出每 1 ms 視窗的 peak 比反推 GR 時間軸，印四組比較：
 
 | 組 | 設定 | 穩態 GR | attack t63 | release t37 |
 |---|---|---|---|---|
@@ -386,7 +386,7 @@ Decoupled attack: t63 =   9.98 ms (theory τ = 10), t90 =  23.02 ms (theory ln10
 | attack 30 ms（放過 transient） | 9.67 dB | 19.52 dB | -5.01 dB |
 | 重壓 T -26 / 10:1 / attack 0.02 ms | 20.77 dB | 9.95 dB | +4.56 dB |
 
-attack 掃描（$T = -20$、$R = 4$、knee 6、release 80 ms）：
+attack 掃描（$`T = -20`$、$`R = 4`$、knee 6、release 80 ms）：
 
 ```
 attack(ms) | max GR | peak ↓ | RMS ↓ | crest(dB) | RMS vs dry after makeup
@@ -402,7 +402,7 @@ attack(ms) | max GR | peak ↓ | RMS ↓ | crest(dB) | RMS vs dry after makeup
 
 #### 範例 4：`l04_stereo_link`（`examples/stereo_link.cpp`）
 
-L -6 dBFS、R -30 dBFS 的 1 kHz 正弦波，$T = -20$、$R = 4$、hard knee：
+L -6 dBFS、R -30 dBFS 的 1 kHz 正弦波，$`T = -20`$、$`R = 4`$、hard knee：
 
 ```
 stereo link = OFF: L -16.48, R -30.00, L-R difference 13.52 dB (the input is 24.00 dB)   GR 10.48 dB
@@ -410,7 +410,7 @@ stereo link = ON : L -16.48, R -40.48, L-R difference 24.00 dB                  
 External sidechain (mono -10 dBFS): GR = 7.48 dB, output L -13.48 / R -37.48 dBFS
 ```
 
-GR 理論值 $(-6 + 20)(1 - 1/4) = 10.5$ dB；量到 10.48 是因為 decoupled 的 peak-hold 在兩個波峰之間以 release 衰減了 0.5 ms。輸出 `l04_stereo_unlinked.wav`、`l04_stereo_linked.wav`，unlinked 版聲像往右偏、變窄。
+GR 理論值 $`(-6 + 20)(1 - 1/4) = 10.5`$ dB；量到 10.48 是因為 decoupled 的 peak-hold 在兩個波峰之間以 release 衰減了 0.5 ms。輸出 `l04_stereo_unlinked.wav`、`l04_stereo_linked.wav`，unlinked 版聲像往右偏、變窄。
 
 #### 範例 5：`l04_robustness`（`examples/robustness.cpp`）
 
@@ -445,9 +445,9 @@ GR 理論值 $(-6 + 20)(1 - 1/4) = 10.5$ dB；量到 10.48 是因為 decoupled �
 ## 4. Real-time 注意事項
 
 - **`process()` 不 allocate**：`prepare()` 是唯一配置記憶體的地方（`channels_.resize`）。範例與練習裡的 sidechain buffer 也都在迴圈外配置一次。
-- **Denormal**：`AttackReleaseFilter` 的狀態在 release 時會指數衰減到極小，`process()` 把 $\lvert y \rvert < 10^{-15}$ flush 成 0；`reset()` 把所有狀態歸零。沒做這件事，安靜一段時間後 CPU 使用率會突然飆高。
-- **Zipper noise**：threshold / ratio / knee 直接改值是安全的——它們只影響 GR 的**目標值**，而 GR 本身永遠經過 attack / release 平滑，所以轉旋鈕不會有 click。Makeup gain 是乘在輸出上的，所以內部用 10 ms one-pole 平滑。Attack / release 改變只是換 $\alpha$，狀態不變，也安全。Stereo link 切換也安全：linked 時每個 channel 仍跑自己的 smoother（只是吃同一個目標值），切換瞬間每一邊都從目前的 GR 平滑過渡（範例 5 (B)）。
-- **壞輸入（Inf / NaN）**：遞迴濾波器的狀態只要變成 NaN 就永遠回不來（NaN 參與的運算結果都是 NaN），只能 `reset()`。上游一個 bug（例如除以 0）送進一個 Inf，compressor 就可能從此靜音或從此不壓縮。所以 `AttackReleaseFilter` 把 non-finite 的輸入當成 0、狀態若溢位也歸零；`EnvelopeFollower` 先把輸入夾在 ±$10^6$ 再平方；`Compressor` 把 non-finite 的 level 當成 0。這些檢查每個 sample 只多幾次比較，對 CPU 幾乎沒有影響（範例 5 (A)）。
+- **Denormal**：`AttackReleaseFilter` 的狀態在 release 時會指數衰減到極小，`process()` 把 $`\lvert y \rvert < 10^{-15}`$ flush 成 0；`reset()` 把所有狀態歸零。沒做這件事，安靜一段時間後 CPU 使用率會突然飆高。
+- **Zipper noise**：threshold / ratio / knee 直接改值是安全的——它們只影響 GR 的**目標值**，而 GR 本身永遠經過 attack / release 平滑，所以轉旋鈕不會有 click。Makeup gain 是乘在輸出上的，所以內部用 10 ms one-pole 平滑。Attack / release 改變只是換 $`\alpha`$，狀態不變，也安全。Stereo link 切換也安全：linked 時每個 channel 仍跑自己的 smoother（只是吃同一個目標值），切換瞬間每一邊都從目前的 GR 平滑過渡（範例 5 (B)）。
+- **壞輸入（Inf / NaN）**：遞迴濾波器的狀態只要變成 NaN 就永遠回不來（NaN 參與的運算結果都是 NaN），只能 `reset()`。上游一個 bug（例如除以 0）送進一個 Inf，compressor 就可能從此靜音或從此不壓縮。所以 `AttackReleaseFilter` 把 non-finite 的輸入當成 0、狀態若溢位也歸零；`EnvelopeFollower` 先把輸入夾在 ±$`10^6`$ 再平方；`Compressor` 把 non-finite 的 level 當成 0。這些檢查每個 sample 只多幾次比較，對 CPU 幾乎沒有影響（範例 5 (A)）。
 - **Thread safety**：`getGainReductionDb()` 用 `std::atomic<float>` + relaxed ordering，UI thread 隨時可以讀；setter 是單一 float 寫入，在 x86/ARM 上實務安全，但如果 UI 會一次改多個參數並要求一致性，要在 host 層做參數快照（第 13 章）。
 - **零延遲**：feedforward 無 lookahead，`getLatencySamples()` 回傳 0，host 不需要補償。
 - **Block 大小無關**：所有狀態都是逐 sample 更新，block 怎麼切，輸出的 sample 都一樣（範例用 512）。唯一和 block 大小有關的是 `getGainReductionDb()`：它存的是「這個 block 內的最大 GR」，block 越大，meter 讀數越像 peak-hold。
@@ -459,14 +459,14 @@ GR 理論值 $(-6 + 20)(1 - 1/4) = 10.5$ dB；量到 10.48 是因為 decoupled �
 | GR 永遠是 0 | threshold 太高（記得 dBFS 是負的，-20 不是 20）；或 detector 吃到的是 silence（sidechain 接錯）。 |
 | GR 爆到 100 dB、輸出變 0 | `gainToDb(0)` 回傳 -100，如果你的靜態曲線沒有正確處理「低於 threshold 回傳 0」，-100 dB 會被當成「超過」。 |
 | 穩態 GR 比手算少 1 dB | 用了 branching 平滑：週期訊號的 ripple 被 release 拉下來（2.5 節）。換 decoupled，或接受這是「聽起來比較鬆」的特色。 |
-| attack 設 1 ms 但尖峰還是衝出來 | 這是正常的（範例 3）。One-pole 第一個 sample 只升 $1 - \alpha$；要抓單 sample 尖峰得用 lookahead（第 05 章）。 |
+| attack 設 1 ms 但尖峰還是衝出來 | 這是正常的（範例 3）。One-pole 第一個 sample 只升 $`1 - \alpha`$；要抓單 sample 尖峰得用 lookahead（第 05 章）。 |
 | 輸出有「喀」聲 | makeup 直接改線性值沒有平滑；或 attack 設 0 且 ratio 很大，GR 每個 sample 跟著波形跳（這其實是 waveshaping，會產生諧波失真）。 |
 | 左右聲像亂飄 | stereo link 關了。 |
 | 切換 stereo link 的瞬間有「喀」聲 | linked 模式只更新其中一個 channel 的 smoother，其他 channel 的狀態凍結在舊值，切回來時 gain 瞬間跳變。每個 channel 都要持續更新 smoother（範例 5 (B)）。 |
 | 某一刻之後輸出永遠靜音，或永遠不再壓縮，GR meter 卻一直顯示 0 | 有一個 Inf / NaN（或平方後溢位的超大值）進了 detector 或 smoother，遞迴狀態永久卡在 NaN：`dbToGain(NaN)` 回傳 0 → 靜音；`sqrt(max(0, NaN))` 回傳 0 → level 永遠是 -100 dB → 不壓縮。一次就永久卡死，只有 `reset()` 救得回來。解法是在遞迴濾波器入口擋掉 non-finite（3.1 節、範例 5 (A)），並用 `hasNanOrInf()` 檢查上游。 |
 | RMS 模式 attack 怎麼調都慢 | RMS 視窗本身就是一層 lowpass，attack 不可能快過視窗長度；要快就縮短 `setRmsWindowMs()` 或改 Peak。 |
 | 安靜時 CPU 飆高 | denormal。確認 flush-to-zero 有做；在 plugin 裡也可以開 CPU 的 FTZ/DAZ flag（第 13 章）。 |
-| 跑 feedback 拓樸時輸出鎖死或震盪 | 斜率 $s > 1$ 的迴路靠 attack 平滑才穩定，attack = 0 會每個 sample 來回跳。練習 6 固定 attack 10 ms。 |
+| 跑 feedback 拓樸時輸出鎖死或震盪 | 斜率 $`s > 1`$ 的迴路靠 attack 平滑才穩定，attack = 0 會每個 sample 來回跳。練習 6 固定 attack 10 ms。 |
 
 ## 6. 練習題
 

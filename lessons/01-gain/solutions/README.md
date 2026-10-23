@@ -8,29 +8,29 @@ The problems are in [`../exercises/README.md`](../exercises/README.md). The comp
 
 ## Exercise 1: dB mental math
 
-1. $20\log_{10} 0.25 = 20 \times (-2 \times 0.301) = -12.04$ dB. An amplitude factor of 4 is $+12.04$ dB (the opposite sign).
-2. Amplitude factor $10^{10/20} = 10^{0.5} = \sqrt{10} \approx 3.162$; power factor $10^{10/10} = 10$. (+10 dB is the rule of thumb for "sounds twice as loud"; it is neither an amplitude doubling, +6 dB, nor a power doubling, +3 dB.)
-3. dB values simply add: $-3 + 8 - 11 = -6$ dB. The amplitude factor is $10^{-6/20} = 10^{-0.3} \approx 0.5$ (exact value 0.501). This is the benefit of using dB: when several stages are cascaded, multiplication becomes addition.
-4. Peak: $20\log_{10} 0.5 = -6.02$ dBFS. The RMS of a sine is $1/\sqrt{2}$ of its peak: $0.5 / 1.414 = 0.354$, and $20\log_{10} 0.354 = -6.02 - 3.01 = -9.03$ dBFS. The peak of a sine is always 3.01 dB above its RMS (crest factor $\sqrt{2}$).
-5. Identical signals: the amplitudes add → $2 \times 0.5 = 1.0$ → **0 dBFS** (+6.02 dB). Uncorrelated noise: the powers add → the RMS is multiplied by $\sqrt{2}$ → $-6 + 3.01 = $ **−2.99 dBFS** (≈ −3 dBFS, +3.01 dB).
+1. $`20\log_{10} 0.25 = 20 \times (-2 \times 0.301) = -12.04`$ dB. An amplitude factor of 4 is $`+12.04`$ dB (the opposite sign).
+2. Amplitude factor $`10^{10/20} = 10^{0.5} = \sqrt{10} \approx 3.162`$; power factor $`10^{10/10} = 10`$. (+10 dB is the rule of thumb for "sounds twice as loud"; it is neither an amplitude doubling, +6 dB, nor a power doubling, +3 dB.)
+3. dB values simply add: $`-3 + 8 - 11 = -6`$ dB. The amplitude factor is $`10^{-6/20} = 10^{-0.3} \approx 0.5`$ (exact value 0.501). This is the benefit of using dB: when several stages are cascaded, multiplication becomes addition.
+4. Peak: $`20\log_{10} 0.5 = -6.02`$ dBFS. The RMS of a sine is $`1/\sqrt{2}`$ of its peak: $`0.5 / 1.414 = 0.354`$, and $`20\log_{10} 0.354 = -6.02 - 3.01 = -9.03`$ dBFS. The peak of a sine is always 3.01 dB above its RMS (crest factor $`\sqrt{2}`$).
+5. Identical signals: the amplitudes add → $`2 \times 0.5 = 1.0`$ → **0 dBFS** (+6.02 dB). Uncorrelated noise: the powers add → the RMS is multiplied by $`\sqrt{2}`$ → $-6 + 3.01 = $ **−2.99 dBFS** (≈ −3 dBFS, +3.01 dB).
 6. RMS: $-20 + 10\log_{10} 16 = -20 + 12.04 = $ **−7.96 dBFS**. In the worst case (the peaks of all 16 tracks occurring at the same time) the peak can be higher by $20\log_{10} 16 = $ **+24.08 dB**. The actual peak usually lies between +12.04 and +24.08. Compare example 3 (B): for 8 tracks the theoretical range is +9.03 to +18.06 dB, and the measured value is +17.5 dB.
-7. $20\log_{10}(1/32768) = -20 \times 15 \times 0.301 = $ **−90.3 dBFS** ($32768 = 2^{15}$). The commonly heard "the dynamic range of 16-bit is about 96 dB" is $20\log_{10}(2^{16}) = 6.02 \times 16 = 96.3$ dB: it counts all 65536 quantization levels from −32768..32767, corresponding to a peak-to-peak range of 2; whereas $1/32768$ is the step size with peak = 1.0 taken as 0 dBFS, and uses only $2^{15}$. The two differ by exactly one bit, i.e. $20\log_{10} 2 = 6.02$ dB (96.3 − 90.3). If you instead compute "the RMS of a full-scale sine ÷ the RMS of the quantization noise ($\Delta/\sqrt{12}$)", you get a different formula, SQNR $= 6.02N + 1.76 \approx 98.1$ dB (chapter 00); that +1.76 dB is what comes from the RMS and the crest factor of the sine.
+7. $20\log_{10}(1/32768) = -20 \times 15 \times 0.301 = $ **−90.3 dBFS** ($`32768 = 2^{15}`$). The commonly heard "the dynamic range of 16-bit is about 96 dB" is $`20\log_{10}(2^{16}) = 6.02 \times 16 = 96.3`$ dB: it counts all 65536 quantization levels from −32768..32767, corresponding to a peak-to-peak range of 2; whereas $`1/32768`$ is the step size with peak = 1.0 taken as 0 dBFS, and uses only $`2^{15}`$. The two differ by exactly one bit, i.e. $`20\log_{10} 2 = 6.02`$ dB (96.3 − 90.3). If you instead compute "the RMS of a full-scale sine ÷ the RMS of the quantization noise ($`\Delta/\sqrt{12}`$)", you get a different formula, SQNR $`= 6.02N + 1.76 \approx 98.1`$ dB (chapter 00); that +1.76 dB is what comes from the RMS and the crest factor of the sine.
 
 ## Exercise 2: Parameter smoothing and pan law
 
-1. $y[n] = x[n]\,g[n]$, and multiplication in the time domain equals convolution in the frequency domain, $Y(f) = X(f) * G(f)$. $g[n]$ is a step function whose spectrum $|G(f)| \propto 1/f$ extends from DC all the way to Nyquist (falling by only 6 dB per octave). The pure tone $X(f)$ is a single line, and after convolution the whole shape of $G(f)$ is "pasted" onto the position of that line -- a signal that originally had only 1 kHz suddenly has energy at all frequencies, and the ear hears a broadband "click". After smoothing, $g[n]$ is continuous (piecewise linear), the spectrum is $\propto 1/f^2$ (12 dB per octave), and it is much smaller overall. The sideband table of example 1 (B): stepped −34.7 / −40.8 / −46.8 dB (6 dB per octave), smoothed −74.4 / −86.4 / −98.5 dB (12 dB per octave).
-2. $N = 0.05 \times 44100 = 2205$ samples. Each step is $(0.1 - 1.0) / 2205 = -4.08 \times 10^{-4}$.
-3. $\tau f_s = 0.02 \times 44100 = 882$; $a = 1 - e^{-1/882} = 1 - 0.998867 = 1.133 \times 10^{-3}$ (approximately $1/882 = 1.134 \times 10^{-3}$). To 99%: $n = \ln(100) \times 882 = 4.605 \times 882 \approx 4062$ samples ≈ **92.1 ms**. Note that a smoother with "τ = 20 ms" actually needs 92 ms to reach 99%, much slower than a linear ramp labeled with the same 20 ms -- when choosing τ remember to multiply by 4.6.
-4. At the center $\theta = 0.5$:
+1. $`y[n] = x[n]\,g[n]`$, and multiplication in the time domain equals convolution in the frequency domain, $`Y(f) = X(f) * G(f)`$. $`g[n]`$ is a step function whose spectrum $`|G(f)| \propto 1/f`$ extends from DC all the way to Nyquist (falling by only 6 dB per octave). The pure tone $`X(f)`$ is a single line, and after convolution the whole shape of $`G(f)`$ is "pasted" onto the position of that line -- a signal that originally had only 1 kHz suddenly has energy at all frequencies, and the ear hears a broadband "click". After smoothing, $`g[n]`$ is continuous (piecewise linear), the spectrum is $`\propto 1/f^2`$ (12 dB per octave), and it is much smaller overall. The sideband table of example 1 (B): stepped −34.7 / −40.8 / −46.8 dB (6 dB per octave), smoothed −74.4 / −86.4 / −98.5 dB (12 dB per octave).
+2. $`N = 0.05 \times 44100 = 2205`$ samples. Each step is $`(0.1 - 1.0) / 2205 = -4.08 \times 10^{-4}`$.
+3. $`\tau f_s = 0.02 \times 44100 = 882`$; $`a = 1 - e^{-1/882} = 1 - 0.998867 = 1.133 \times 10^{-3}`$ (approximately $`1/882 = 1.134 \times 10^{-3}`$). To 99%: $`n = \ln(100) \times 882 = 4.605 \times 882 \approx 4062`$ samples ≈ **92.1 ms**. Note that a smoother with "τ = 20 ms" actually needs 92 ms to reach 99%, much slower than a linear ramp labeled with the same 20 ms -- when choosing τ remember to multiply by 4.6.
+4. At the center $`\theta = 0.5`$:
 
-   | | $g_L = g_R$ | dB | $g_L^2 + g_R^2$ | $g_L + g_R$ |
+   | | $`g_L = g_R`$ | dB | $`g_L^2 + g_R^2`$ | $`g_L + g_R`$ |
    |---|---:|---:|---:|---:|
-   | Linear | $1 - 0.5 = 0.5$ | −6.02 | $0.25 + 0.25 = 0.5$ (−3.01 dB) | 1 (0 dB) |
-   | Constant power | $\cos(\pi/4) = 0.7071$ | −3.01 | $0.5 + 0.5 = 1$ (0 dB) | 1.414 (+3.01 dB) |
+   | Linear | $`1 - 0.5 = 0.5`$ | −6.02 | $`0.25 + 0.25 = 0.5`$ (−3.01 dB) | 1 (0 dB) |
+   | Constant power | $`\cos(\pi/4) = 0.7071`$ | −3.01 | $`0.5 + 0.5 = 1`$ (0 dB) | 1.414 (+3.01 dB) |
 
    Broadcast / film content is often downmixed to mono (TV speakers, telephones, public address). With constant power, when summed to mono the center material (dialogue, lead vocal) is 3 dB louder than at the edges and the overall balance goes off; the amplitude sum of linear is always 1, so nothing changes in mono; −4.5 dB is the compromise in which each side gives up 1.5 dB. Music production monitors on speakers and rarely downmixes, so it prefers constant power.
-5. A mono pan "distributes one signal to two outputs, left and right" ($L = g_L x$, $R = g_R x$; all the content is kept and only its position moves); a stereo balance "multiplies two existing signals, left and right, by a gain each" ($L' = g_L L$, $R' = g_R R$; when turned to one side the content of the other side disappears and is not moved over). What `Panner::process()` does to a stereo block is a **balance** (channel 0 times $g_L$, channel 1 times $g_R$); it equals a mono pan only when the two channels hold the same content. For a true mono pan use `processMonoToStereo()`.
-6. Multiplying directly by −1 would make the gain jump instantly from $+g$ to $-g$, a jump of $2g$ -- a step even larger than a mute, so it would definitely click. After setting the target to $-g$, the SmoothedValue walks linearly from $+g$ to $-g$ and **passes through 0** on the way (right in the middle of the ramp); the whole process is continuous, so toggling Ø makes no sound. The price is that during the 50 ms of the toggle the level first drops to 0 and then comes back ($|g|$ forms a V shape, smaller than $g$ everywhere except the two end points), which sounds like a brief dip.
+5. A mono pan "distributes one signal to two outputs, left and right" ($`L = g_L x`$, $`R = g_R x`$; all the content is kept and only its position moves); a stereo balance "multiplies two existing signals, left and right, by a gain each" ($`L' = g_L L`$, $`R' = g_R R`$; when turned to one side the content of the other side disappears and is not moved over). What `Panner::process()` does to a stereo block is a **balance** (channel 0 times $`g_L`$, channel 1 times $`g_R`$); it equals a mono pan only when the two channels hold the same content. For a true mono pan use `processMonoToStereo()`.
+6. Multiplying directly by −1 would make the gain jump instantly from $`+g`$ to $`-g`$, a jump of $`2g`$ -- a step even larger than a mute, so it would definitely click. After setting the target to $`-g`$, the SmoothedValue walks linearly from $`+g`$ to $`-g`$ and **passes through 0** on the way (right in the middle of the ramp); the whole process is continuous, so toggling Ø makes no sound. The price is that during the 50 ms of the toggle the level first drops to 0 and then comes back ($`|g|`$ forms a V shape, smaller than $`g`$ everywhere except the two end points), which sounds like a brief dip.
 
 ## Exercise 3: The one-pole exponential smoother (`ex3_exp_smoother.cpp`)
 
@@ -61,11 +61,11 @@ After 50 ms: linear ramp = 1.000, exponential (tau = 50 ms) = 0.632
 
 The last line is worth remembering: for the same "50 ms", the linear ramp reaches exactly 1.000 at 50 ms, while the exponential (τ = 50 ms) has only reached 0.632.
 
-**Why must the state be a double?** This is the trap the exercise hint makes you step on. If `current_` is a float, once the remaining distance $d = t - y$ becomes so small that $a \cdot d$ is below half an ulp of $y$, `current_ += a·d` adds nothing -- the state gets stuck. When $y$ approaches 1 from below (in $[0.5, 1)$), the ulp is $2^{-24} \approx 6 \times 10^{-8}$ and half an ulp is $\approx 3 \times 10^{-8}$, so it gets stuck at $d \approx 3 \times 10^{-8} / a = \varepsilon/(4a) \approx 3 \times 10^{-8} / 0.0021 \approx 1.4 \times 10^{-5}$ ($\varepsilon = 2^{-23} \approx 1.19 \times 10^{-7}$ is the ulp of 1.0; the float version measured got stuck at $d = 1.43 \times 10^{-5}$, matching the derivation), never reaching the snap threshold of 1e-6. As a result `isSmoothing()` is true forever (the last two checks FAIL), and every block does pointless multiplications. With a double (ε ≈ 2.2 × 10⁻¹⁶) the place where it gets stuck is on the order of $10^{-14}$, far below the threshold. Another approach is to set the snap threshold larger than the stuck position (for example 1e-4 ≈ −80 dB), but then the threshold would have to change with τ, which is less clean than simply using a double.
+**Why must the state be a double?** This is the trap the exercise hint makes you step on. If `current_` is a float, once the remaining distance $`d = t - y`$ becomes so small that $`a \cdot d`$ is below half an ulp of $`y`$, `current_ += a·d` adds nothing -- the state gets stuck. When $`y`$ approaches 1 from below (in $`[0.5, 1)`$), the ulp is $`2^{-24} \approx 6 \times 10^{-8}`$ and half an ulp is $`\approx 3 \times 10^{-8}`$, so it gets stuck at $`d \approx 3 \times 10^{-8} / a = \varepsilon/(4a) \approx 3 \times 10^{-8} / 0.0021 \approx 1.4 \times 10^{-5}`$ ($`\varepsilon = 2^{-23} \approx 1.19 \times 10^{-7}`$ is the ulp of 1.0; the float version measured got stuck at $`d = 1.43 \times 10^{-5}`$, matching the derivation), never reaching the snap threshold of 1e-6. As a result `isSmoothing()` is true forever (the last two checks FAIL), and every block does pointless multiplications. With a double (ε ≈ 2.2 × 10⁻¹⁶) the place where it gets stuck is on the order of $`10^{-14}`$, far below the threshold. Another approach is to set the snap threshold larger than the stuck position (for example 1e-4 ≈ −80 dB), but then the threshold would have to change with τ, which is less clean than simply using a double.
 
 ## Exercise 4: Fader taper (`ex4_fader_taper.cpp`)
 
-The key idea: in the bottom segment $p \le 0.05$ the factor is linear, `dbToGain(-60) * (p / 0.05)` (which gives exactly 0 at $p = 0$); for the other segments, find which two breakpoints $p$ falls between, `lerp` in **dB**, and finally apply `dbToGain`. The inverse function does exactly the same: for a factor at or below the −60 dB factor it inverts in factor, otherwise it first applies `gainToDb` and then inverts the position in dB.
+The key idea: in the bottom segment $`p \le 0.05`$ the factor is linear, `dbToGain(-60) * (p / 0.05)` (which gives exactly 0 at $`p = 0`$); for the other segments, find which two breakpoints $`p`$ falls between, `lerp` in **dB**, and finally apply `dbToGain`. The inverse function does exactly the same: for a factor at or below the −60 dB factor it inverts in factor, otherwise it first applies `gainToDb` and then inverts the position in dB.
 
 ```cpp
 for (int i = 1; i < kNumPoints; ++i)
@@ -119,10 +119,10 @@ Wrote dawlab_output/l01_ex5_multiplicative_ramp.wav (first half: linear fade-out
 [PASS] l01_ex5 (17 checks passed)
 ```
 
-- $r = 0.001^{1/4800} = e^{\ln(0.001)/4800} = 0.998562$, and $20\log_{10} r = -60/4800 = -0.0125$ dB.
-- Halfway through, the linear ramp's factor is still $1 - 0.999/2 = 0.5005$ (−6.01 dB), and it takes until $(1 - 0.1)/0.999 = 90.1\%$ of the time to fall below −20 dB; the remaining less than 10% of the time has to cover −20 → −60 dB, and in the last few samples each step drops 1.4 dB. That is the reason for "loud the whole time and then suddenly gone". The multiplicative ramp reaches −20 dB at exactly 1/3 of the way, with every step 0.0125 dB.
+- $`r = 0.001^{1/4800} = e^{\ln(0.001)/4800} = 0.998562`$, and $`20\log_{10} r = -60/4800 = -0.0125`$ dB.
+- Halfway through, the linear ramp's factor is still $`1 - 0.999/2 = 0.5005`$ (−6.01 dB), and it takes until $`(1 - 0.1)/0.999 = 90.1\%`$ of the time to fall below −20 dB; the remaining less than 10% of the time has to cover −20 → −60 dB, and in the last few samples each step drops 1.4 dB. That is the reason for "loud the whole time and then suddenly gone". The multiplicative ramp reaches −20 dB at exactly 1/3 of the way, with every step 0.0125 dB.
 - A side effect of the floor: for a mute the dB line goes 0 → −100 dB and is already at −50 dB halfway; for an unmute the first half is spent below −50 dB, which sounds as if "it waited a moment before fading in". So the multiplicative ramp suits long fades and automation of dB parameters, while for short mutes / unmutes (the 50 ms of this chapter's `Gain`, the 10 ms of the chapter 14 `ChannelStrip`) a linear ramp is actually more natural -- this answers the first and second "think about it" questions.
-- Why `double`: with 4800 successive multiplications, each float rounding contributes a relative error of about $6\times10^{-8}$, and accumulated it reaches the order of $10^{-4}$ (about 0.001 dB), and the longer the ramp the worse it gets; a double stays at the order of $10^{-13}$. The snap on the last step keeps the end independent of the accumulated error (a mute stops at an exact 0).
+- Why `double`: with 4800 successive multiplications, each float rounding contributes a relative error of about $`6\times10^{-8}`$, and accumulated it reaches the order of $`10^{-4}`$ (about 0.001 dB), and the longer the ramp the worse it gets; a double stays at the order of $`10^{-13}`$. The snap on the last step keeps the end independent of the accumulated error (a mute stops at an exact 0).
 
 ## Exercise 6: Mute / solo resolution (`ex6_mute_solo.cpp`)
 
@@ -158,7 +158,7 @@ The chapter 14 mixer does the same thing, only split across two places: at the s
 
 ## Exercise 7: M/S stereo width and balance (`ex7_stereo_width.cpp`)
 
-The key idea: compute $M$ and $S$ sample by sample, multiply $S$ by $w$, then decode:
+The key idea: compute $`M`$ and $`S`$ sample by sample, multiply $`S`$ by $`w`$, then decode:
 
 ```cpp
 const float mid  = 0.5f * (l[i] + r[i]);
@@ -167,7 +167,7 @@ l[i] = mid + side;
 r[i] = mid - side;
 ```
 
-Because $(L' + R')/2 = M$ is independent of $w$, any width processing "disappears" in a mono downmix -- this is the most important property of M/S processing (mono compatibility), and the self-check verifies it for all three values of $w$.
+Because $`(L' + R')/2 = M`$ is independent of $`w`$, any width processing "disappears" in a mono downmix -- this is the most important property of M/S processing (mono compatibility), and the self-check verifies it for all three values of $`w`$.
 
 The output of a run:
 
@@ -179,6 +179,6 @@ Wrote dawlab_output/l01_ex7_width.wav (width 0 -> 1 -> 2, 2 seconds each)
 [PASS] l01_ex7 (17 checks passed)
 ```
 
-- With left = sine and right = 0, $M = S = L/2$. At $w = 2$: $L' = M + 2S = 1.5L$ (peak 0.75) and $R' = M - 2S = -0.5L$ (an inverted-polarity signal appears on the right, peak 0.25). This answers the first "think about it" question: $w > 1$ makes the peak larger (here +3.5 dB), so headroom must be checked again after width processing.
-- For true mono ($L = R$), $S = 0$, and multiplying by any $w$ still gives 0, so there is no effect -- width can only amplify a left/right difference that "already exists", it cannot create one from nothing.
+- With left = sine and right = 0, $`M = S = L/2`$. At $`w = 2`$: $`L' = M + 2S = 1.5L`$ (peak 0.75) and $`R' = M - 2S = -0.5L`$ (an inverted-polarity signal appears on the right, peak 0.25). This answers the first "think about it" question: $`w > 1`$ makes the peak larger (here +3.5 dB), so headroom must be checked again after width processing.
+- For true mono ($`L = R`$), $`S = 0`$, and multiplying by any $`w`$ still gives 0, so there is no effect -- width can only amplify a left/right difference that "already exists", it cannot create one from nothing.
 - Balance multiplies each channel by its own gain: at +1 the left channel is exactly 0 and not one sample of the right channel has changed, which proves it does not move the left content to the right (consistent with the conclusion of example 2 (C)).

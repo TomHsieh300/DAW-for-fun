@@ -4,7 +4,7 @@
 > [Course home](../../README.md)　｜　Previous: [02 Filter](../02-filter/README.md)　｜　Next: [04 Compressor](../04-compressor/README.md)
 
 In Chapter 02 we got the biquad and the RBJ cookbook: give it a cutoff and a Q, and you get five coefficients that make some frequencies louder and others quieter.
-An EQ (equalizer) is simply several of these biquads chained together, plus a convenient interface: each band has a frequency, a Q, and a gain. That sounds like mere packaging, but turning it into a component that can live inside a DAW raises a lot of questions that need clear answers. How do you convert Q to "how many octaves wide"? Why must the RBJ gain parameter be written as $A = 10^{\text{dB}/40}$ and not $/20$? How do you draw the curve of six stacked bands? Why does the sound go "tick-tick-tick" when the user turns the frequency knob during playback? Does an EQ only change the volume -- why does everyone keep talking about phase?
+An EQ (equalizer) is simply several of these biquads chained together, plus a convenient interface: each band has a frequency, a Q, and a gain. That sounds like mere packaging, but turning it into a component that can live inside a DAW raises a lot of questions that need clear answers. How do you convert Q to "how many octaves wide"? Why must the RBJ gain parameter be written as $`A = 10^{\text{dB}/40}`$ and not $`/20`$? How do you draw the curve of six stacked bands? Why does the sound go "tick-tick-tick" when the user turns the frequency knob during playback? Does an EQ only change the volume -- why does everyone keep talking about phase?
 
 This chapter answers all of these in one go, and ends by building a 6-band `dawlab::dsp::ParametricEq`. The EQ insert of the Chapter 14 DAW uses it directly (the plugin in Chapter 13 only uses `Compressor`, `Limiter`, `Gain`, `SmoothedValue` and `DelayLine`, and contains no EQ).
 
@@ -15,7 +15,7 @@ After reading this chapter and doing the exercises, you should be able to:
 - Name the two uses of EQ in a mix (corrective vs creative), and the difference between a graphic EQ and a parametric EQ.
 - Recognize the curve shapes of the six band types (peak / bell, low / high shelf, low / high cut, notch) and describe how each sounds.
 - **Derive** the conversion formulas between Q and bandwidth (in octaves), and convert in your head between Q = 0.707, 1, 1.414 and 4.32 and the corresponding bandwidths.
-- Starting from the analog prototype of the RBJ peak, explain why the gain parameter is $A = 10^{\text{dB}/40}$ (center gain $A^2$, gain $A$ at the bandwidth edges), and why a boost and a cut with the same parameters cancel exactly.
+- Starting from the analog prototype of the RBJ peak, explain why the gain parameter is $`A = 10^{\text{dB}/40}`$ (center gain $`A^2`$, gain $`A`$ at the bandwidth edges), and why a boost and a cut with the same parameters cancel exactly.
 - Explain the relationship between a shelf's slope parameter S and Q, and the meaning of "transition frequency = midpoint gain".
 - Prove that the dB responses add when several bands are cascaded, and write `getMagnitudeDb()` to draw the whole EQ curve.
 - Explain the cause of clicks / zipper noise when parameters change live, compare "smooth the parameters and recompute the coefficients every N samples" with "interpolate the coefficients directly", and know the pitfalls of the latter.
@@ -27,7 +27,7 @@ After reading this chapter and doing the exercises, you should be able to:
 
 ### 2.1 What is an EQ? Corrective vs creative
 
-An EQ can be described in one sentence: **it applies a different gain to different frequencies**. Mathematically it is an LTI (linear time-invariant) system, and the magnitude of its frequency response $H(e^{j\omega})$ is "how much to multiply each frequency by".
+An EQ can be described in one sentence: **it applies a different gain to different frequencies**. Mathematically it is an LTI (linear time-invariant) system, and the magnitude of its frequency response $`H(e^{j\omega})`$ is "how much to multiply each frequency by".
 
 Mixing engineers use EQ for roughly two kinds of reasons:
 
@@ -85,15 +85,15 @@ This chapter's `EqBandType` has six values, all of them RBJ factories of the Cha
 | `HighCut` | `makeLowpass` | The −3 dB point | Same as above | None | Removes hiss, pushes a synth pad further back |
 | `Notch` | `makeNotch` | The frequency being carved out | The −3 dB bandwidth = f0/Q | None | Removes 50 / 60 Hz hum, a particular ring of a drum head |
 
-**The slope of LowCut / HighCut.** Far from the cutoff, a 2nd-order highpass / lowpass behaves as $|H| \propto (f/f_c)^{\pm 2}$, i.e. it changes by $20\log_{10} 2^2 \approx 12$ dB per octave, hence "12 dB/oct". To get 24 dB/oct you need 4th order. The intuitive approach is "cascade two sections with Q = 0.707", but that gives −6 dB at $f_c$ and the corner becomes rounded. The correct approach is a **4th-order Butterworth**: its 4 poles are evenly distributed on the left half of a circle in the s-plane (one every 45°), and split into two conjugate pairs; the Q values of the two biquads are
+**The slope of LowCut / HighCut.** Far from the cutoff, a 2nd-order highpass / lowpass behaves as $`|H| \propto (f/f_c)^{\pm 2}`$, i.e. it changes by $`20\log_{10} 2^2 \approx 12`$ dB per octave, hence "12 dB/oct". To get 24 dB/oct you need 4th order. The intuitive approach is "cascade two sections with Q = 0.707", but that gives −6 dB at $`f_c`$ and the corner becomes rounded. The correct approach is a **4th-order Butterworth**: its 4 poles are evenly distributed on the left half of a circle in the s-plane (one every 45°), and split into two conjugate pairs; the Q values of the two biquads are
 
 $$
 Q_k = \frac{1}{2\cos\left(\frac{(2k+1)\pi}{2N}\right)},\quad N = 4:\ Q_0 = 0.5412,\ Q_1 = 1.3066
 $$
 
-(Chapter 02's `butterworthQ(order, stage)`). Neither section is −3 dB at $f_c$ -- the Q = 0.5412 section gives −5.33 dB and the Q = 1.3066 section gives +2.32 dB -- but together they come to exactly −3.01 dB (the output of Exercise 6). `ParametricEq` selects this mode with `EqSlope::Db24`, and the band's `q` is then ignored.
+(Chapter 02's `butterworthQ(order, stage)`). Neither section is −3 dB at $`f_c`$ -- the Q = 0.5412 section gives −5.33 dB and the Q = 1.3066 section gives +2.32 dB -- but together they come to exactly −3.01 dB (the output of Exercise 6). `ParametricEq` selects this mode with `EqSlope::Db24`, and the band's `q` is then ignored.
 
-**Notch vs a deep peak cut.** The zeros of a notch lie exactly on the unit circle, so at $f_0$ it is a true $-\infty$ dB; a −30 dB peak is merely "very deep". A notch is suited to removing one exact frequency (hum), but it is easy to overdo on material whose pitch varies.
+**Notch vs a deep peak cut.** The zeros of a notch lie exactly on the unit circle, so at $`f_0`$ it is a true $`-\infty`$ dB; a −30 dB peak is merely "very deep". A notch is suited to removing one exact frequency (hum), but it is easy to overdo on material whose pitch varies.
 
 ### 2.4 Q and bandwidth: the derivation
 
@@ -101,7 +101,7 @@ Mixing engineers say "1/3 octave wide", while the DSP formulas use Q. How do you
 
 **Definition of bandwidth.** For a bandpass / notch, the bandwidth is measured between the two −3 dB points; for a peak, RBJ defines it at the "**midpoint gain**" -- the two frequencies where the dB value is exactly half of the center value (for a +12 dB peak, look at the two points at +6 dB). The next section proves that the two definitions land on the same pair of frequencies.
 
-**Analog prototype.** Write the normalized frequency as $\Omega = f/f_0$; the 2nd-order bandpass prototype is
+**Analog prototype.** Write the normalized frequency as $`\Omega = f/f_0`$; the 2nd-order bandpass prototype is
 
 $$
 H_{BP}(s) = \frac{s/Q}{s^2 + s/Q + 1},\qquad s = j\Omega
@@ -111,7 +111,7 @@ $$
 |H_{BP}(j\Omega)|^2 = \frac{(\Omega/Q)^2}{(1-\Omega^2)^2 + (\Omega/Q)^2}
 $$
 
-The −3 dB condition ($|H|^2 = 1/2$) is $(1-\Omega^2)^2 = (\Omega/Q)^2$, i.e. $|\Omega - 1/\Omega| = 1/Q$. Solving this quadratic:
+The −3 dB condition ($`|H|^2 = 1/2`$) is $`(1-\Omega^2)^2 = (\Omega/Q)^2`$, i.e. $`|\Omega - 1/\Omega| = 1/Q`$. Solving this quadratic:
 
 $$
 \Omega^2 \mp \frac{\Omega}{Q} - 1 = 0 \quad\Rightarrow\quad \Omega_{1,2} = \sqrt{1 + \frac{1}{4Q^2}} \mp \frac{1}{2Q}
@@ -123,7 +123,7 @@ $$
 \Omega_1 \Omega_2 = 1 \quad(\text{geometric symmetry: } f_1 f_2 = f_0^2),\qquad \Omega_2 - \Omega_1 = \frac{1}{Q} \quad(f_2 - f_1 = f_0/Q)
 $$
 
-**Converting to octaves.** A bandwidth of $N$ octaves means $f_2/f_1 = 2^N$. By the geometric symmetry, $\Omega_2 = 2^{N/2}$ and $\Omega_1 = 2^{-N/2}$; substituting into $\Omega_2 - \Omega_1 = 1/Q$:
+**Converting to octaves.** A bandwidth of $`N`$ octaves means $`f_2/f_1 = 2^N`$. By the geometric symmetry, $`\Omega_2 = 2^{N/2}`$ and $`\Omega_1 = 2^{-N/2}`$; substituting into $`\Omega_2 - \Omega_1 = 1/Q`$:
 
 $$
 \frac{1}{Q} = 2^{N/2} - 2^{-N/2} = 2\sinh\left(\frac{N\ln 2}{2}\right)
@@ -133,7 +133,7 @@ so
 
 $$
 \boxed{Q = \frac{1}{2\sinh(N\ln 2 / 2)} = \frac{2^{N/2}}{2^N - 1}}\qquad
-\boxed{N = \frac{2}{\ln 2}\,\operatorname{asinh}\left(\frac{1}{2Q}\right)}
+\boxed{N = \frac{2}{\ln 2}\,\mathrm{asinh}\left(\frac{1}{2Q}\right)}
 $$
 
 Common values (the output of Exercise 2):
@@ -142,11 +142,11 @@ Common values (the output of Exercise 2):
 |---|---|---|---|---|---|---|---|
 | bandwidth (octaves) | 2.54 | 1.90 | 1.39 | **1.00** | 0.71 | **1/3** | 1/6 |
 
-Remembering two anchor points is enough: **Q = √2 ≈ 1.41 is 1 octave, and Q ≈ 4.32 is 1/3 octave**. Doubling Q roughly halves the bandwidth (for large Q, $\operatorname{asinh}(x) \approx x$ and $N \approx 1.44/Q$).
+Remembering two anchor points is enough: **Q = √2 ≈ 1.41 is 1 octave, and Q ≈ 4.32 is 1/3 octave**. Doubling Q roughly halves the bandwidth (for large Q, $`\mathrm{asinh}(x) \approx x`$ and $`N \approx 1.44/Q`$).
 
-> Note: this is the relationship for the analog prototype. The bilinear transform "warps" the frequency axis, so at high frequencies the actual bandwidth is slightly narrower than the formula says (the digital RBJ cookbook formulas have an extra correction term $\omega_0/\sin\omega_0$). At 1 kHz and 48 kHz the difference is only about 0.02 dB (Exercise 2: a Q = √2, +12 dB peak measures +5.989 / +5.978 dB at 707.1 / 1414.2 Hz, against an ideal of +6). `ParametricEq::qToBandwidthOctaves()` / `bandwidthOctavesToQ()` / `bandEdges()` are exactly these three formulas.
+> Note: this is the relationship for the analog prototype. The bilinear transform "warps" the frequency axis, so at high frequencies the actual bandwidth is slightly narrower than the formula says (the digital RBJ cookbook formulas have an extra correction term $`\omega_0/\sin\omega_0`$). At 1 kHz and 48 kHz the difference is only about 0.02 dB (Exercise 2: a Q = √2, +12 dB peak measures +5.989 / +5.978 dB at 707.1 / 1414.2 Hz, against an ideal of +6). `ParametricEq::qToBandwidthOctaves()` / `bandwidthOctavesToQ()` / `bandEdges()` are exactly these three formulas.
 
-### 2.5 The RBJ peak: why $A = 10^{\text{dB}/40}$?
+### 2.5 The RBJ peak: why $`A = 10^{\text{dB}/40}`$?
 
 The analog prototype of the RBJ cookbook's peaking EQ is
 
@@ -156,31 +156,31 @@ $$
 
 Look at three places in turn:
 
-1. **Far from the center** ($s \to 0$ or $s \to \infty$): the numerator and denominator both approach 1 or $s^2$, so $|H| \to 1$, i.e. 0 dB. ✔
-2. **The center** $s = j$: $s^2 + 1 = 0$, which leaves $\dfrac{jA/Q}{j/(AQ)} = A^2$. So **the linear gain at the center is $A^2$**. For the center to be $g$ dB we need $20\log_{10}A^2 = g$, that is
+1. **Far from the center** ($`s \to 0`$ or $`s \to \infty`$): the numerator and denominator both approach 1 or $`s^2`$, so $`|H| \to 1`$, i.e. 0 dB. ✔
+2. **The center** $`s = j`$: $`s^2 + 1 = 0`$, which leaves $`\dfrac{jA/Q}{j/(AQ)} = A^2`$. So **the linear gain at the center is $`A^2`$**. For the center to be $`g`$ dB we need $`20\log_{10}A^2 = g`$, that is
 
 $$
 A = 10^{g/40}
 $$
 
-   This is where the $/40$ comes from: $A$ is "the square root of the center gain".
-3. **The bandwidth edges** (the previous section's $|1-\Omega^2| = \Omega/Q$):
+   This is where the $`/40`$ comes from: $`A`$ is "the square root of the center gain".
+3. **The bandwidth edges** (the previous section's $`|1-\Omega^2| = \Omega/Q`$):
 
 $$
 |H|^2 = \frac{(1-\Omega^2)^2 + (\Omega A/Q)^2}{(1-\Omega^2)^2 + (\Omega/(AQ))^2} = \frac{(\Omega/Q)^2(1 + A^2)}{(\Omega/Q)^2(1 + A^{-2})} = A^2
 $$
 
-   So the gain at the edges is $|H| = A$, **exactly half the center in dB**. This is the "midpoint gain" bandwidth mentioned in section 2.4 -- it is the same pair of frequencies as the −3 dB points of a bandpass.
+   So the gain at the edges is $`|H| = A`$, **exactly half the center in dB**. This is the "midpoint gain" bandwidth mentioned in section 2.4 -- it is the same pair of frequencies as the −3 dB points of a bandpass.
 
-Why parameterize it this way? Look at the numerator and denominator: the damping terms are $A/Q$ and $1/(AQ)$ respectively. Replace $g$ with $-g$ ($A \to 1/A$) and the numerator and denominator **swap exactly**:
+Why parameterize it this way? Look at the numerator and denominator: the damping terms are $`A/Q`$ and $`1/(AQ)`$ respectively. Replace $`g`$ with $`-g`$ ($`A \to 1/A`$) and the numerator and denominator **swap exactly**:
 
 $$
 H_{-g}(s) = \frac{1}{H_{+g}(s)}
 $$
 
-That is, **+6 dB and −6 dB (same frequency, same Q) in cascade cancel perfectly** -- not just the magnitude, the phase is restored too. This is a symmetric, convenient property: the boost and cut curves are mirror images. Exercise 3 verifies it with numbers: +6 dB and −6 dB @ 1 kHz, Q = 1 in cascade have a maximum deviation of $10^{-13}$ dB over 20 Hz–20 kHz.
+That is, **+6 dB and −6 dB (same frequency, same Q) in cascade cancel perfectly** -- not just the magnitude, the phase is restored too. This is a symmetric, convenient property: the boost and cut curves are mirror images. Exercise 3 verifies it with numbers: +6 dB and −6 dB @ 1 kHz, Q = 1 in cascade have a maximum deviation of $`10^{-13}`$ dB over 20 Hz–20 kHz.
 
-**Digitization.** Chapter 02 explained that RBJ uses the bilinear transform ($s \leftarrow \frac{1}{\tan(\omega_0/2)}\cdot\frac{1-z^{-1}}{1+z^{-1}}$, prewarped at $\omega_0$); after simplification this gives
+**Digitization.** Chapter 02 explained that RBJ uses the bilinear transform ($`s \leftarrow \frac{1}{\tan(\omega_0/2)}\cdot\frac{1-z^{-1}}{1+z^{-1}}`$, prewarped at $`\omega_0`$); after simplification this gives
 
 $$
 \begin{aligned}
@@ -190,7 +190,7 @@ a_0 &= 1 + \alpha / A,\quad a_1 = -2\cos\omega_0,\quad a_2 = 1 - \alpha / A
 \end{aligned}
 $$
 
-(all divided by $a_0$ to normalize; `BiquadCoefficients::makePeak` is exactly these lines). A worked example (Exercise 1): $f_s = 48$ kHz, $f_0 = 12$ kHz ($\omega_0 = \pi/2$, $\cos = 0$, $\sin = 1$), Q = 1, +6 dB: $\alpha = 0.5$, $A = 1.4125$, and after normalization $b_0 = 1.26019$, $b_2 = 0.21694$, $a_2 = 0.47713$, $b_1 = a_1 = 0$.
+(all divided by $`a_0`$ to normalize; `BiquadCoefficients::makePeak` is exactly these lines). A worked example (Exercise 1): $`f_s = 48`$ kHz, $`f_0 = 12`$ kHz ($`\omega_0 = \pi/2`$, $`\cos = 0`$, $`\sin = 1`$), Q = 1, +6 dB: $`\alpha = 0.5`$, $`A = 1.4125`$, and after normalization $`b_0 = 1.26019`$, $`b_2 = 0.21694`$, $`a_2 = 0.47713`$, $`b_1 = a_1 = 0`$.
 
 ### 2.6 Shelves: the transition midpoint and the slope parameter S
 
@@ -200,11 +200,11 @@ $$
 H_{LS}(s) = A\,\frac{s^2 + \dfrac{\sqrt{A}}{Q}s + A}{A s^2 + \dfrac{\sqrt{A}}{Q}s + 1}
 $$
 
-- $s \to 0$ (DC): $A \cdot A / 1 = A^2$ → gain at the low end = $g$ dB.
-- $s \to \infty$: $A \cdot s^2 / (A s^2) = 1$ → 0 dB at the high end.
-- $s = j$ ($f = f_0$): the numerator is $A(A - 1 + j\sqrt{A}/Q)$ and the denominator is $(1 - A) + j\sqrt{A}/Q$; apart from the leading $A$ the two have the same magnitude, so $|H(j)| = A$ -- **at the transition frequency $f_0$ the gain is exactly $g/2$ dB**.
+- $`s \to 0`$ (DC): $`A \cdot A / 1 = A^2`$ → gain at the low end = $`g`$ dB.
+- $`s \to \infty`$: $`A \cdot s^2 / (A s^2) = 1`$ → 0 dB at the high end.
+- $`s = j`$ ($`f = f_0`$): the numerator is $`A(A - 1 + j\sqrt{A}/Q)`$ and the denominator is $`(1 - A) + j\sqrt{A}/Q`$; apart from the leading $`A`$ the two have the same magnitude, so $`|H(j)| = A`$ -- **at the transition frequency $`f_0`$ the gain is exactly $`g/2`$ dB**.
 
-The high shelf replaces $s$ with $1/s$ (swapping high and low frequencies), with the same conclusion. This "midpoint" property matters: the tilt EQ of Exercise 5 relies on it, placing a low shelf of $-t/2$ and a high shelf of $+t/2$ at the same pivot, so that at the pivot $-t/4 + t/4 = 0$ dB.
+The high shelf replaces $`s`$ with $`1/s`$ (swapping high and low frequencies), with the same conclusion. This "midpoint" property matters: the tilt EQ of Exercise 5 relies on it, placing a low shelf of $`-t/2`$ and a high shelf of $`+t/2`$ at the same pivot, so that at the pivot $`-t/4 + t/4 = 0`$ dB.
 
 **The slope parameter S.** The cookbook does not always use Q as the third parameter of a shelf; it can use the "shelf slope" S instead:
 
@@ -212,7 +212,7 @@ $$
 \frac{1}{Q} = \sqrt{\left(A + \frac{1}{A}\right)\left(\frac{1}{S} - 1\right) + 2}
 $$
 
-With S = 1 you get $Q = 1/\sqrt{2}$ regardless of the gain -- the cookbook describes this as "the steepest slope that still stays monotonic (no overshoot)". An S below 1 makes the transition more gradual; a Q above 0.707 (equivalent to S > 1) produces a small opposite dip and overshoot near the transition (some analog EQs deliberately keep this "bump" as part of their character). `ParametricEq::shelfSlopeToQ(S, gainDb)` is exactly this formula; the shelves in this chapter default to Q = 0.707 (S = 1).
+With S = 1 you get $`Q = 1/\sqrt{2}`$ regardless of the gain -- the cookbook describes this as "the steepest slope that still stays monotonic (no overshoot)". An S below 1 makes the transition more gradual; a Q above 0.707 (equivalent to S > 1) produces a small opposite dip and overshoot near the transition (some analog EQs deliberately keep this "bump" as part of their character). `ParametricEq::shelfSlopeToQ(S, gainDb)` is exactly this formula; the shelves in this chapter default to Q = 0.707 (S = 1).
 
 The last table of Example 1 sweeps a +6 dB @ 1 kHz low shelf over 10 Hz–23 kHz with different Q values and measures the highest and lowest points of the curve:
 
@@ -225,7 +225,7 @@ The last table of Example 1 sweeps a +6 dB @ 1 kHz low shelf over 10 Hz–23 kHz
    2.000     5.72        +3.00         +8.86          -2.86     ← overshoot 2.86 dB, dip 2.86 dB
 ```
 
-Three things to see at once: (1) whatever the Q, $f_0$ is at +3.00 dB (the midpoint property); (2) for Q ≤ 0.707 the curve stays within 0..+6 dB; (3) as Q grows, the overshoot and the dip are **equally large**. The reason: replace $s$ with $1/s$ in the $H_{LS}(s)$ above and simplify to get $H_{LS}(1/s) = A^2 / H_{LS}(s)$, so $\text{dB}(f_0 \cdot 2^k) + \text{dB}(f_0 \cdot 2^{-k}) = g$ -- on a log frequency axis the curve is symmetric about the point $(f_0,\ g/2)$, so however far it rises above $g$ on one side, it dips below 0 dB by the same amount on the other.
+Three things to see at once: (1) whatever the Q, $`f_0`$ is at +3.00 dB (the midpoint property); (2) for Q ≤ 0.707 the curve stays within 0..+6 dB; (3) as Q grows, the overshoot and the dip are **equally large**. The reason: replace $`s`$ with $`1/s`$ in the $`H_{LS}(s)`$ above and simplify to get $`H_{LS}(1/s) = A^2 / H_{LS}(s)`$, so $`\text{dB}(f_0 \cdot 2^k) + \text{dB}(f_0 \cdot 2^{-k}) = g`$ -- on a log frequency axis the curve is symmetric about the point $`(f_0,\ g/2)`$, so however far it rises above $`g`$ on one side, it dips below 0 dB by the same amount on the other.
 
 ### 2.7 Cascade = dB addition; drawing the EQ curve
 
@@ -247,7 +247,7 @@ $$
 
 Because multiplication is commutative, **the order of the cascade does not affect the frequency response** (and in float the numerical difference is also tiny; see section 4). Note that "dB values add" is not "linear amplitudes add": two +6 dB stages (2x each) stacked make +12 dB (4x), not 2 + 2.
 
-So the implementation of `getMagnitudeDb(f)` simply adds up the `magnitudeDb(f, fs)` of every enabled band -- and each band's `magnitudeDb` substitutes $z = e^{j\omega}$ into $H(z)$:
+So the implementation of `getMagnitudeDb(f)` simply adds up the `magnitudeDb(f, fs)` of every enabled band -- and each band's `magnitudeDb` substitutes $`z = e^{j\omega}`$ into $`H(z)`$:
 
 $$
 H(e^{j\omega}) = \frac{b_0 + b_1 e^{-j\omega} + b_2 e^{-2j\omega}}{1 + a_1 e^{-j\omega} + a_2 e^{-2j\omega}},\qquad \omega = 2\pi f/f_s
@@ -273,14 +273,14 @@ Example 4 prints a peak of +6 dB @ 1 kHz, Q = 1:
 ```
 
 - At the center the phase = 0; below the center the phase leads (+), above it lags (−), by at most about ±18°, roughly at the bandwidth edges.
-- The group delay ($\tau = -d\phi/d\omega$) is noticeable only near the boost, about 10.8 samples (0.225 ms) at the center; on the skirts it is even negative (where the phase rises with frequency). This does not violate causality; it only means the envelope of that part of the signal is moved slightly "earlier".
+- The group delay ($`\tau = -d\phi/d\omega`$) is noticeable only near the boost, about 10.8 samples (0.225 ms) at the center; on the skirts it is even negative (where the phase rises with frequency). This does not violate causality; it only means the envelope of that part of the signal is moved slightly "earlier".
 - The phase of a cut has exactly the opposite sign (−6 dB at 707 Hz gives −18.39°), consistent with section 2.5's "a cut is the reciprocal of a boost".
 
 Audibly, the phase shift of a single band is almost inaudible; the problem arises in **parallel** use: when one copy of the signal goes through the EQ and another does not (for example several microphones capturing the same drum, or parallel processing) and the two are summed, the phase difference causes comb filtering (when two copies of a signal have a time or phase difference, some frequencies cancel when they are summed, and the frequency response shows a row of notches like the teeth of a comb).
 
 **Linear-phase EQ.** If you want to change the magnitude while giving every frequency the same delay (the phase is a linear function of frequency), you must use a symmetric FIR filter (usually designed from the desired magnitude via an FFT). The costs:
 
-1. **Latency**: the delay of a symmetric FIR is fixed at $(N-1)/2$ samples. Resolving low frequencies needs a very long FIR; for example 4097 taps → 2048 samples = 42.7 ms @ 48 kHz. A DAW has to do latency compensation (Chapter 14).
+1. **Latency**: the delay of a symmetric FIR is fixed at $`(N-1)/2`$ samples. Resolving low frequencies needs a very long FIR; for example 4097 taps → 2048 samples = 42.7 ms @ 48 kHz. A DAW has to do latency compensation (Chapter 14).
 2. **Pre-ringing**: a symmetric impulse response oscillates *before* the main peak. A narrow boost / cut puts an "inhale-like" pre-echo before the transients of a kick or snare, whereas minimum phase has only post-ringing (which is closer to natural resonance).
 3. **CPU**: a long FIR can only run with FFT convolution (Chapter 12).
 
@@ -291,7 +291,7 @@ So linear-phase EQs are mostly used in mastering, or wherever phase relationship
 Turning an EQ knob during playback makes the filter time-varying. If every time the UI sends a new parameter you **swap the coefficients directly**, there are two problems:
 
 1. **The parameter itself is a staircase**: a host / MIDI controller / automation may send parameters only once per block, or even once per 100 ms. The center frequency jumps one step at a time, and so does the output level → a regular "tick-tick-tick", which is zipper noise.
-2. **There is a transient at the moment the coefficients change**: the filter's state variables ($s_1, s_2$ in TDF-II) were accumulated with the old coefficients, and combining them with the new coefficients produces a short discontinuity. The bigger the jump and the higher the Q, the more obvious it is.
+2. **There is a transient at the moment the coefficients change**: the filter's state variables ($`s_1, s_2`$ in TDF-II) were accumulated with the old coefficients, and combining them with the new coefficients produces a short discontinuity. The bigger the jump and the higher the Q, the more obvious it is.
 
 Example 3 sweeps a +12 dB, Q = 6 peak logarithmically from 150 Hz to 6 kHz (4 seconds), with the host sending the frequency every 100 ms. The analysis signal is a 1 kHz sine wave, and we measure "the RMS jump per 1 ms":
 
@@ -306,28 +306,28 @@ Example 3 sweeps a +12 dB, Q = 6 peak logarithmically from 150 Hz to 6 kHz (4 se
 
 **Strategy: smooth the parameters, then recompute the coefficients.** What `ParametricEq` does:
 
-1. The three parameters that affect the coefficients are each given a linear ramp (default 20 ms) with Chapter 01's `SmoothedValue`. **Frequency is smoothed in the $\log_2$ domain** -- going from 100 Hz to 200 Hz is the same "one octave" as going from 1 kHz to 2 kHz, so a sweep moves at the same speed in every octave; gain is smoothed in the dB domain.
+1. The three parameters that affect the coefficients are each given a linear ramp (default 20 ms) with Chapter 01's `SmoothedValue`. **Frequency is smoothed in the $`\log_2`$ domain** -- going from 100 Hz to 200 Hz is the same "one octave" as going from 1 kHz to 2 kHz, so a sweep moves at the same speed in every octave; gain is smoothed in the dB domain.
 2. The RBJ coefficients are recomputed only every `kDefaultUpdateInterval` = 32 samples (0.67 ms at 48 kHz), and only for bands whose parameter values have changed. Each recomputation needs `sin`, `cos` and `pow`, so computing six bands at every sample would be wasteful; the table shows that recomputing every 32 samples is almost indistinguishable from recomputing at every sample (0.10 vs 0.10 dB/ms), and the difference only starts to show when recomputing every 512 samples (0.26).
 3. The ramp "chases" the target, so the smoothed version reaches the envelope peak about 90 ms later (the ramp length is set equal to the automation interval, 100 ms), which is inaudible.
 
 **Why not interpolate the biquad coefficients directly?** Another common idea is to compute the old and new coefficients and then interpolate linearly between them sample by sample (so there is no need to compute sin/cos every time). The problems:
 
-- **Frequency does not map linearly.** Section C of Example 4: for a +12 dB, Q = 2 peak, taking halfway between the coefficients at 100 Hz and at 10 kHz gives a filter whose maximum gain is at **6620 Hz** (+11.98 dB), not at the geometric midpoint of 1 kHz. The reason is that $a_1 = -2\cos\omega_0/(1+\alpha/A)$, so interpolating $a_1$ roughly interpolates $\cos\omega_0$, and $\cos\omega_0$ hardly moves at low frequencies (at 48 kHz, it is 0.99991 at 100 Hz and 0.9914 at 1 kHz) and only changes a lot at high frequencies (0.2588 at 10 kHz). So a "small step" in $\cos\omega_0$ covers several octaves of log frequency: when interpolating from 100 Hz toward 10 kHz, **the low-frequency octaves flash by and most of the time is spent at high frequencies** -- the sweep sounds like "it shoots up in an instant and then lingers at the high end".
-- **Second order by itself: frozen coefficients are still stable.** The stability region of a 2nd-order denominator is the triangle $|a_2| < 1,\ |a_1| < 1 + a_2$ in the $(a_1, a_2)$ plane, which is a **convex set**: every point on the segment between any two points inside the triangle is still inside the triangle, so linearly interpolating between two stable sets of biquad coefficients gives intermediate coefficients that are stable for each "frozen" state (Example 4 section C prints "stable").
-- **Higher-order polynomials: the poles can leave the unit circle midway.** For order 3 and above, the stable polynomials **do not form a convex set**. In section D1 of Example 4: take a 24 dB/oct high cut (a 4th-order Butterworth), and the midpoint between its 100 Hz and 10 kHz settings, taken on the "coefficients of the 4th-order polynomial obtained by multiplying the two biquads out", has a largest pole magnitude of **1.287** (0.995 and 0.678 at the two ends) -- the midpoint is already unstable, and its impulse response reaches $1.8\times10^{10}$ at n = 100. With the same two settings, **interpolating the two biquads separately** keeps both stable. This is another reason for "always split a high-order filter into a cascade of biquads" (Chapter 02 also gave a numerical-precision reason).
-- **"Stable at every instant" does not mean "the time-varying system is stable".** The definition of stability is for LTI systems. Section D2 of Example 4 uses the real `Biquad` from Chapter 02: at every sample it alternates between a 50 Hz and a 16 kHz lowpass (Q = 0.707, **each set stable on its own**) and feeds in an impulse; the output is 348 at n = 40 and $1.05\times10^{10}$ at n = 80 -- it diverges. Intuitively: each set of coefficients is stable alone, but when switching back and forth quickly, what the previous coefficients left in the state variables is amplified by the next set, and back and forth it can snowball. The control: the same back-and-forth between 50 Hz and 16 kHz, but with each leg a smooth 20 ms walk in log frequency, gives a peak output of only 0.599 for 1 second of white noise. Conclusion: **if the parameters change slowly enough relative to the filter's time constant**, the time-varying effects are small; it is when the coefficients "jump" or "flip back and forth quickly" that it becomes dangerous. Filters that need large, fast modulation (for example a synth's filter envelope) switch to structures that are more robust to modulation, such as a TPT (topology-preserving transform) state variable filter (`StateVariableFilter.h` in section 2.16 of Chapter 02; see Further reading for more).
+- **Frequency does not map linearly.** Section C of Example 4: for a +12 dB, Q = 2 peak, taking halfway between the coefficients at 100 Hz and at 10 kHz gives a filter whose maximum gain is at **6620 Hz** (+11.98 dB), not at the geometric midpoint of 1 kHz. The reason is that $`a_1 = -2\cos\omega_0/(1+\alpha/A)`$, so interpolating $`a_1`$ roughly interpolates $`\cos\omega_0`$, and $`\cos\omega_0`$ hardly moves at low frequencies (at 48 kHz, it is 0.99991 at 100 Hz and 0.9914 at 1 kHz) and only changes a lot at high frequencies (0.2588 at 10 kHz). So a "small step" in $`\cos\omega_0`$ covers several octaves of log frequency: when interpolating from 100 Hz toward 10 kHz, **the low-frequency octaves flash by and most of the time is spent at high frequencies** -- the sweep sounds like "it shoots up in an instant and then lingers at the high end".
+- **Second order by itself: frozen coefficients are still stable.** The stability region of a 2nd-order denominator is the triangle $`|a_2| < 1,\ |a_1| < 1 + a_2`$ in the $`(a_1, a_2)`$ plane, which is a **convex set**: every point on the segment between any two points inside the triangle is still inside the triangle, so linearly interpolating between two stable sets of biquad coefficients gives intermediate coefficients that are stable for each "frozen" state (Example 4 section C prints "stable").
+- **Higher-order polynomials: the poles can leave the unit circle midway.** For order 3 and above, the stable polynomials **do not form a convex set**. In section D1 of Example 4: take a 24 dB/oct high cut (a 4th-order Butterworth), and the midpoint between its 100 Hz and 10 kHz settings, taken on the "coefficients of the 4th-order polynomial obtained by multiplying the two biquads out", has a largest pole magnitude of **1.287** (0.995 and 0.678 at the two ends) -- the midpoint is already unstable, and its impulse response reaches $`1.8\times10^{10}`$ at n = 100. With the same two settings, **interpolating the two biquads separately** keeps both stable. This is another reason for "always split a high-order filter into a cascade of biquads" (Chapter 02 also gave a numerical-precision reason).
+- **"Stable at every instant" does not mean "the time-varying system is stable".** The definition of stability is for LTI systems. Section D2 of Example 4 uses the real `Biquad` from Chapter 02: at every sample it alternates between a 50 Hz and a 16 kHz lowpass (Q = 0.707, **each set stable on its own**) and feeds in an impulse; the output is 348 at n = 40 and $`1.05\times10^{10}`$ at n = 80 -- it diverges. Intuitively: each set of coefficients is stable alone, but when switching back and forth quickly, what the previous coefficients left in the state variables is amplified by the next set, and back and forth it can snowball. The control: the same back-and-forth between 50 Hz and 16 kHz, but with each leg a smooth 20 ms walk in log frequency, gives a peak output of only 0.599 for 1 second of white noise. Conclusion: **if the parameters change slowly enough relative to the filter's time constant**, the time-varying effects are small; it is when the coefficients "jump" or "flip back and forth quickly" that it becomes dangerous. Filters that need large, fast modulation (for example a synth's filter envelope) switch to structures that are more robust to modulation, such as a TPT (topology-preserving transform) state variable filter (`StateVariableFilter.h` in section 2.16 of Chapter 02; see Further reading for more).
 
-> **Advanced (may be skipped)**: the mathematical statement of D1 and D2. D1: the stability region of a 2nd-order denominator is a convex triangle, but the set of "stable polynomial coefficients" of order 4 and above is not convex, so the midpoint of two stable 4th-order polynomials can be unstable; Example 4 verifies this with a small Durand–Kerner iteration that finds the roots of the 4th-order polynomial. D2: in the language of state space, each sample step of TDF-II multiplies the state vector $(s_1, s_2)$ by the state-transition matrix $\begin{pmatrix}-a_1 & 1\\ -a_2 & 0\end{pmatrix}$. The eigenvalues of the matrices of the two coefficient sets are each inside the unit circle (= each is stable), but the eigenvalues of their **product** (the transition over two alternating steps) can be greater than 1, so the state is amplified once every two steps. This needs the concept of eigenvalues from linear algebra; not understanding it does not affect later chapters.
+> **Advanced (may be skipped)**: the mathematical statement of D1 and D2. D1: the stability region of a 2nd-order denominator is a convex triangle, but the set of "stable polynomial coefficients" of order 4 and above is not convex, so the midpoint of two stable 4th-order polynomials can be unstable; Example 4 verifies this with a small Durand–Kerner iteration that finds the roots of the 4th-order polynomial. D2: in the language of state space, each sample step of TDF-II multiplies the state vector $`(s_1, s_2)`$ by the state-transition matrix $`\begin{pmatrix}-a_1 & 1\\ -a_2 & 0\end{pmatrix}`$. The eigenvalues of the matrices of the two coefficient sets are each inside the unit circle (= each is stable), but the eigenvalues of their **product** (the transition over two alternating steps) can be greater than 1, so the state is amplified once every two steps. This needs the concept of eigenvalues from linear algebra; not understanding it does not affect later chapters.
 
 Therefore this chapter chooses: **smooth the parameters (in meaningful units: log frequency, dB) → recompute the coefficients from the formulas every N samples**. The coefficients are always the RBJ coefficients of some valid set of parameters (and therefore always stable), and the parameters walk slowly along a 20 ms ramp, so the rapid back-and-forth of case D2 never occurs.
 
 **Changes that cannot be interpolated: enabling / disabling a band, changing the type, changing the slope.** There is no "halfway" between a Peak and a Notch. For these changes `ParametricEq` uses a dry/wet crossfade:
 
-- Toggling `enabled`: each band has a `mix` (0 = bypass, 1 = fully on) that advances per sample along a 20 ms linear ramp: $y = x + m\,(H(x) - x)$.
+- Toggling `enabled`: each band has a `mix` (0 = bypass, 1 = fully on) that advances per sample along a 20 ms linear ramp: $`y = x + m\,(H(x) - x)`$.
 - Changing the type / slope: first fade the mix to 0 (the old type keeps running) → at the moment of complete bypass, swap the type, clear the filter memory and align the parameters directly to the targets → then fade in. About 40 ms in total.
 - Changing parameters while a band is fully bypassed: nobody can hear it, so the parameters jump straight to the target, and the fade-in is the final curve.
 
-The third part of Example 3 quantifies this: on a 1 kHz sine wave, a LowCut is switched on, changed to a Peak, and then switched off. It uses the "sine prediction residual" $r[n] = y[n] - 2\cos\omega\,y[n-1] + y[n-2]$ (for a pure sine $r = 0$, and a sudden jump makes $r$ large): the naive direct switching gives max|r| = 0.0325 (−17.7 dB, relative to an amplitude of 0.25), while `ParametricEq` gives 0.0021 (−41.4 dB). Event by event:
+The third part of Example 3 quantifies this: on a 1 kHz sine wave, a LowCut is switched on, changed to a Peak, and then switched off. It uses the "sine prediction residual" $`r[n] = y[n] - 2\cos\omega\,y[n-1] + y[n-2]`$ (for a pure sine $`r = 0`$, and a sudden jump makes $`r`$ large): the naive direct switching gives max|r| = 0.0325 (−17.7 dB, relative to an amplitude of 0.25), while `ParametricEq` gives 0.0021 (−41.4 dB). Event by event:
 
 ```
       time       naive      ParametricEq   event
@@ -340,7 +340,7 @@ For all three events the naive version has a sharp residual; `ParametricEq` is m
 
 ### 2.10 Cramping near Nyquist
 
-Section 2.14 of Chapter 02 looked at cramping (bilinear warping) of a lowpass near Nyquist; here we look at its effect on a peak. The bilinear transform squeezes the whole analog frequency axis $[0, \infty)$ into the digital $[0, f_s/2]$: the analog $\Omega = \infty$ maps to Nyquist. Prewarping guarantees that the **center frequency** lines up, but the right half of the bell is forced into the remaining space. For an RBJ peak we can verify directly at $z = -1$ (Nyquist):
+Section 2.14 of Chapter 02 looked at cramping (bilinear warping) of a lowpass near Nyquist; here we look at its effect on a peak. The bilinear transform squeezes the whole analog frequency axis $`[0, \infty)`$ into the digital $`[0, f_s/2]`$: the analog $`\Omega = \infty`$ maps to Nyquist. Prewarping guarantees that the **center frequency** lines up, but the right half of the bell is forced into the remaining space. For an RBJ peak we can verify directly at $`z = -1`$ (Nyquist):
 
 $$
 H(-1) = \frac{b_0 - b_1 + b_2}{a_0 - a_1 + a_2} = \frac{2 + 2\cos\omega_0}{2 + 2\cos\omega_0} = 1
@@ -359,7 +359,7 @@ $$
 The digital bell becomes asymmetric and narrower on the right; this is **cramping**. The "air" high-shelf band at high frequencies is affected too. Solutions:
 
 1. **Oversampling** (Chapter 06): run the EQ at 2x or 4x the sample rate, so that 10 kHz is far from Nyquist. The cost is CPU and the latency of the up/down-sampling filters.
-2. **Designs with a prescribed Nyquist gain**: Orfanidis (1997) derived a peak design in which the gain at Nyquist can be specified (for example set to the value of the analog prototype at $f_s/2$).
+2. **Designs with a prescribed Nyquist gain**: Orfanidis (1997) derived a peak design in which the gain at Nyquist can be specified (for example set to the value of the analog prototype at $`f_s/2`$).
 3. **Matched designs that fit the analog response**: for example Vicanek's "Matched Second Order Digital Filters", which make the digital response follow the analog prototype closely over the whole band.
 
 This chapter's `ParametricEq` stays with RBJ (simple, stable, consistent with Chapter 02); at 48 kHz the error for bands up to 10 kHz is not large, and you can switch designs when a more accurate high-frequency curve is needed.
@@ -368,7 +368,7 @@ This chapter's `ParametricEq` stays with RBJ (simple, stable, consistent with Ch
 
 A fixed-Q peak has a perceptual problem: at small gains (±2 dB) you want it a little wider and gentler; at large gains (±12 dB) you want it narrower, otherwise it affects too many neighboring frequencies. **Proportional Q** designs make the "effective bandwidth" vary with |gain|: wide at small gains and narrow at large gains. Many analog console EQs and graphic EQs behave like this, so "a small turn is very musical, a big turn is very precise".
 
-In implementation it is just a mapping $Q_{\text{eff}} = f(Q, |g|)$ placed before `setBand`. Each manufacturer's mapping curve is unpublished and different; an **illustrative** way to write it is $Q_{\text{eff}} = Q\cdot(1 + k|g|)$ ($k$ is a constant you choose, e.g. 0.1 means Q doubles at +10 dB). This is not the formula of any particular EQ, and this chapter does not implement it; it is only to show you the concept behind the knob. If you want to try it, adding one line before `ParametricEq::setBand()` is enough.
+In implementation it is just a mapping $`Q_{\text{eff}} = f(Q, |g|)`$ placed before `setBand`. Each manufacturer's mapping curve is unpublished and different; an **illustrative** way to write it is $`Q_{\text{eff}} = Q\cdot(1 + k|g|)`$ ($`k`$ is a constant you choose, e.g. 0.1 means Q doubles at +10 dB). This is not the formula of any particular EQ, and this chapter does not implement it; it is only to show you the concept behind the knob. If you want to try it, adding one line before `ParametricEq::setBand()` is enough.
 
 The opposite concept is the **constant-Q** of graphic EQs: however much you push, the bandwidth stays the same, so the interaction between neighboring bands is predictable. Exercise 4 shows this: a 10-band, Q = √2 graphic EQ with every band pushed +6 dB actually gives +8.80 dB at 1 kHz (the tails of the neighboring bands pile on top), and there is still about 1.9 dB of ripple between 125 Hz and 4 kHz -- the fader shape is not the curve.
 
@@ -539,9 +539,9 @@ Output: `l03_sweep_sine_naive.wav`, `l03_sweep_sine_smooth.wav`, `l03_sweep_saw_
 Console text only, in four sections:
 
 - **A**: magnitude / phase / group delay of +6 dB @ 1 kHz (the table in section 2.8).
-- **B**: analog vs digital response of +6 dB @ 10 kHz at 44.1 kHz, and the verification of $H(z=-1) = 1$ (section 2.10).
+- **B**: analog vs digital response of +6 dB @ 10 kHz at 44.1 kHz, and the verification of $`H(z=-1) = 1`$ (section 2.10).
 - **C**: coefficient interpolation vs parameter interpolation (section 2.9: the interpolated peak lands at 6620 Hz).
-- **D**: when coefficient interpolation becomes unstable (section 2.9). D1: interpolating the coefficients of a 4th-order polynomial, with max|pole| = 1.287 at the midpoint; D2: alternating every sample between two stable lowpass coefficient sets, with the output already at $10^{10}$ by n = 80. D1 needs to find the roots (poles) of a 4th-order polynomial, and the program uses a numerical iteration called Durand–Kerner; this is advanced material and may be skipped -- just look at whether the printed max|pole| is greater than 1, and read `maxPoleMagnitude()` if you are interested.
+- **D**: when coefficient interpolation becomes unstable (section 2.9). D1: interpolating the coefficients of a 4th-order polynomial, with max|pole| = 1.287 at the midpoint; D2: alternating every sample between two stable lowpass coefficient sets, with the output already at $`10^{10}`$ by n = 80. D1 needs to find the roots (poles) of a 4th-order polynomial, and the program uses a numerical iteration called Durand–Kerner; this is advanced material and may be skipped -- just look at whether the printed max|pole| is greater than 1, and read `maxPoleMagnitude()` if you are interested.
 
 ```
 [D] When coefficient interpolation becomes unstable
@@ -559,7 +559,7 @@ Console text only, in four sections:
 
 - **No allocation**: `process()` / `processSample()` only add, subtract, multiply and divide; all memory is allocated in `prepare()`. `setBand()` does not allocate either.
 - **Cost of recomputing coefficients**: every `makeCoefficients` call needs `sin`, `cos` and `pow` (shelves also `sqrt`). `ParametricEq` recomputes only "while a band is smoothing", once every 32 samples. If the CPU is tight, you can raise the interval with `setCoefficientUpdateInterval()` (see smooth/512 in Example 3 for the price).
-- **Denormals**: Chapter 02's `Biquad` flushes state variables smaller than $10^{-30}$ to 0, so after the EQ has processed silence it will not slow down the CPU.
+- **Denormals**: Chapter 02's `Biquad` flushes state variables smaller than $`10^{-30}`$ to 0, so after the EQ has processed silence it will not slow down the CPU.
 - **Thread safety**: `setBand()` and `process()` **must not** be called simultaneously from two threads -- they read and write the same set of smoothers. The correct usage is to call `setBand()` on the audio thread between two blocks (Chapters 13 and 14 pass the UI's parameters into the audio thread via atomics and apply them at the start of `process`). Resending the same parameters at the start of every block is safe: when the values have not changed, `setBand()` returns immediately and does not disturb a ramp in progress (section 3.1). When the UI wants to draw the curve, keep your own array of `EqBand` on the UI side and compute `magnitudeDb` with the static `ParametricEq::makeCoefficients()` (or with another `ParametricEq` instance dedicated to the UI); do not read the one on the audio thread directly.
 - **Headroom**: a boost makes the peak larger (Example 2: the drum bus goes from −2.92 to −1.58 dBFS). Internally float does not clip, but it matters when the final output goes to 16/24-bit or to the next effect with a threshold (a compressor, a limiter). Get into the habit of compensating with the output gain after the EQ when mixing.
 - **Cascade order**: in theory it does not affect the frequency response (Exercise 3 measures both orders and finds them the same). In float, if there is a large boost, putting the cut first keeps the intermediate signal smaller; with TDF-II and double state variables, the difference is negligible in practice.
@@ -571,9 +571,9 @@ Console text only, in four sections:
 |---|---|---|
 | "Tick-tick-tick" when turning the frequency knob | The coefficients are swapped as soon as a parameter arrives (zipper noise) | Smooth the parameters (log frequency, dB) and recompute the coefficients every N samples (section 2.9) |
 | A "click" when enabling / disabling a band or switching type | The output jumps instantly from wet to dry | Dry/wet crossfade; on a type change fade out first and then fade in |
-| When sweeping upward, "the low end flashes by and it lingers at the high end" | Smoothing in Hz instead of log frequency, or interpolating the coefficients directly (section 2.9) | Smooth the parameters in $\log_2 f$, then recompute the coefficients from the formulas |
+| When sweeping upward, "the low end flashes by and it lingers at the high end" | Smoothing in Hz instead of log frequency, or interpolating the coefficients directly (section 2.9) | Smooth the parameters in $`\log_2 f`$, then recompute the coefficients from the formulas |
 | Occasionally a huge burst of sound, even NaN, when changing parameters | A high-order filter multiplied into one big polynomial and then interpolated, or the coefficients flipping back and forth rapidly (section 2.9, Example 4 section D) | Always split a high-order filter into biquads; smooth the parameters instead of interpolating the coefficients |
-| The curve's gain is half or double the setting | `A` was computed with $10^{\text{dB}/20}$ | RBJ peak / shelf use $A = 10^{\text{dB}/40}$ (section 2.5) |
+| The curve's gain is half or double the setting | `A` was computed with $`10^{\text{dB}/20}`$ | RBJ peak / shelf use $`A = 10^{\text{dB}/40}`$ (section 2.5) |
 | A 24 dB/oct cut is −6 dB at the cutoff | Both sections use Q = 0.707 | 4th-order Butterworth: Q = 0.5412 and 1.3066 (section 2.3) |
 | A shelf has a bump / dip near the transition | The shelf's Q > 0.707 (S > 1) | Use Q = 0.707 or `shelfSlopeToQ(S, gain)` |
 | A boost above 10 kHz is weaker than expected | Nyquist cramping | Accept it, oversample, or switch to a Nyquist-matched design (section 2.10) |

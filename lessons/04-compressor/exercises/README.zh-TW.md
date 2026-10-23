@@ -30,10 +30,10 @@ cd build; .\bin\Debug\l04_ex3_starter.exe      # 你的版本
 
 不要寫程式，手算（可以用 `l04_transfer_curve` 的輸出對答案；`l04_ex2_solution` 會把解答的每個數字用程式驗算一遍）：
 
-1. $T = -24$ dB、$R = 3$、hard knee。輸入 -30、-24、-12、0 dB 時的輸出 dB 與 gain reduction 各是多少？
-2. 同樣的 $T$、$R$，改成 soft knee $W = 12$ dB。knee 的範圍是哪一段？輸入 -24 dB（threshold 本身）與 -20 dB 時的輸出各是多少？
-3. 用 2. 的公式驗證：在 knee 上緣 $x = T + W/2 = -18$ dB，二次曲線的值與 hard knee 直線的值相同。
-4. $f_s = 44.1$ kHz，attack 5 ms、release 200 ms。求 $\alpha_A$、$\alpha_R$（保留 6 位小數）。
+1. $`T = -24`$ dB、$`R = 3`$、hard knee。輸入 -30、-24、-12、0 dB 時的輸出 dB 與 gain reduction 各是多少？
+2. 同樣的 $`T`$、$`R`$，改成 soft knee $`W = 12`$ dB。knee 的範圍是哪一段？輸入 -24 dB（threshold 本身）與 -20 dB 時的輸出各是多少？
+3. 用 2. 的公式驗證：在 knee 上緣 $`x = T + W/2 = -18`$ dB，二次曲線的值與 hard knee 直線的值相同。
+4. $`f_s = 44.1`$ kHz，attack 5 ms、release 200 ms。求 $`\alpha_A`$、$`\alpha_R`$（保留 6 位小數）。
 5. 同上，attack 到 90% 與到 99% 各要幾 ms？release 到 10%（也就是衰減 90%）要幾 ms？
 6. 某台類比 compressor 的手冊說「attack 時間定義為到達最終值 90% 所需時間」，面板寫 10 ms。如果要用本章的 one-pole（63.2% 定義）模仿它，`setAttackMs()` 應該設多少？
 
@@ -45,7 +45,7 @@ cd build; .\bin\Debug\l04_ex3_starter.exe      # 你的版本
 
 1. 完成 `compressBlocks()`：逐 block（512 samples）呼叫 `Compressor::process()`，並記下整段最大的 `getGainReductionDb()`。
 2. 算出 makeup gain，讓 wet 的 peak 與 dry 的 peak 相同。
-3. 完成 `parallelMix()`：$y = (1 - \text{mix})\,\text{dry} + \text{mix}\,\text{wet}$，mix 要 clamp 到 0..1。
+3. 完成 `parallelMix()`：$`y = (1 - \text{mix})\,\text{dry} + \text{mix}\,\text{wet}`$，mix 要 clamp 到 0..1。
 4. 觀察不同 mix 下的 crest factor。
 
 提示：wet 用「極快 attack」（0.02 ms），原因見 README 範例 3 的 attack 掃描。Self-check 要求 mix = 0 時完全等於 dry、mix = 1 時完全等於 wet、mix = 0.5 的 crest factor 介於兩者之間。
@@ -56,7 +56,7 @@ cd build; .\bin\Debug\l04_ex3_starter.exe      # 你的版本
 
 起始碼：`starter/ex4_sidechain_hpf.cpp`（target `l04_ex4_starter`）
 
-1. 完成 `OnePoleHighpass`：$lp[n] = lp[n-1] + b\,(x[n] - lp[n-1])$，$b = 1 - e^{-2\pi f_c / f_s}$，$hp[n] = x[n] - lp[n]$。self-check 會用 `measureGainDb` 驗證 400 Hz 處約 -3 dB、50 Hz 處低於 -15 dB。
+1. 完成 `OnePoleHighpass`：$`lp[n] = lp[n-1] + b\,(x[n] - lp[n-1])`$，$`b = 1 - e^{-2\pi f_c / f_s}`$，$`hp[n] = x[n] - lp[n]`$。self-check 會用 `measureGainDb` 驗證 400 Hz 處約 -3 dB、50 Hz 處低於 -15 dB。
 2. 完成 `compressWithSidechainHpf()`：逐 block 把主訊號複製到預先配置的 sidechain buffer、過 HPF、再呼叫 `Compressor::process(block, sidechain)`。
 3. 用 50 Hz @ -6 dBFS + 3 kHz @ -24 dBFS 的訊號比較：沒有 HPF 時 3 kHz 被低音拖下去多少 dB？加了 400 Hz HPF 之後呢？
 
@@ -70,9 +70,9 @@ cd build; .\bin\Debug\l04_ex3_starter.exe      # 你的版本
 
 1. 完成 `autoMakeupDb()`：讓 0 dBFS 的輸入經過靜態曲線後回到 0 dBFS 所需的 makeup（dB）。
 2. 完成 `steadyOutputPeakDb()`：建立 `Compressor`（attack 1 ms、release 100 ms、`setMakeupGainDb()`），逐 block 跑 1 秒正弦波，回傳最後 200 ms 的 peak。
-3. 驗證：$T = -20$、$R = 4$ 時 makeup = 15 dB；0 dBFS 正弦進 → 約 0 dBFS 出；-6 dBFS 進 → -1.5 dBFS 出。
+3. 驗證：$`T = -20`$、$`R = 4`$ 時 makeup = 15 dB；0 dBFS 正弦進 → 約 0 dBFS 出；-6 dBFS 進 → -1.5 dBFS 出。
 
-想一想：$T = -6$、$R = 4$、$W = 20$ 時 0 dBFS 落在 knee 裡面，makeup 是多少？（先手算再跑。）
+想一想：$`T = -6`$、$`R = 4`$、$`W = 20`$ 時 0 dBFS 落在 knee 裡面，makeup 是多少？（先手算再跑。）
 
 ---
 
@@ -80,11 +80,11 @@ cd build; .\bin\Debug\l04_ex3_starter.exe      # 你的版本
 
 起始碼：`starter/ex6_feedback.cpp`（target `l04_ex6_starter`）
 
-1. 完成 `FeedbackCompressor::processSample()`：detector 看**上一個輸出 sample**（不是輸入），gain computer 用斜率 $s$ 參數化：$\text{GR}_{\text{target}} = \max(0,\; s\,(L_{\text{dB}} - T))$，經 `AttackReleaseFilter` 平滑後套用。
-2. 推導並填入理論穩態 GR：$\text{GR} = \frac{s}{1 + s}(X - T)$，有效 ratio $R_{\text{eff}} = 1 + s$。
-3. 用 tone bursts 比較 $s = 0.75, 3, 9$ 的穩態 GR，並確認 $s = 3$（$R_{\text{eff}} = 4$）的 attack t63 比 feedforward 4:1 快。
+1. 完成 `FeedbackCompressor::processSample()`：detector 看**上一個輸出 sample**（不是輸入），gain computer 用斜率 $`s`$ 參數化：$`\text{GR}_{\text{target}} = \max(0,\; s\,(L_{\text{dB}} - T))`$，經 `AttackReleaseFilter` 平滑後套用。
+2. 推導並填入理論穩態 GR：$`\text{GR} = \frac{s}{1 + s}(X - T)`$，有效 ratio $`R_{\text{eff}} = 1 + s`$。
+3. 用 tone bursts 比較 $`s = 0.75, 3, 9`$ 的穩態 GR，並確認 $`s = 3`$（$`R_{\text{eff}} = 4`$）的 attack t63 比 feedforward 4:1 快。
 
-提示：$s > 1$ 的迴路靠 attack 平滑才穩定，attack 固定 10 ms；attack 設 0 會震盪。
+提示：$`s > 1`$ 的迴路靠 attack 平滑才穩定，attack 固定 10 ms；attack 設 0 會震盪。
 
 ---
 

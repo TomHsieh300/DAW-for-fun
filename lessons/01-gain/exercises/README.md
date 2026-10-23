@@ -22,7 +22,7 @@ An exercise is done when all the self-checks of its starter pass and it prints `
 
 ## Exercise 1 ★☆☆ (calculation) dB mental math
 
-Do not use a calculator (at most these numbers: $\log_{10} 2 \approx 0.301$, $\log_{10} 3 \approx 0.477$, $\sqrt{2} \approx 1.414$, $\sqrt{10} \approx 3.162$) and answer:
+Do not use a calculator (at most these numbers: $`\log_{10} 2 \approx 0.301`$, $`\log_{10} 3 \approx 0.477`$, $`\sqrt{2} \approx 1.414`$, $`\sqrt{10} \approx 3.162`$) and answer:
 
 1. How many dB is an amplitude factor of 0.25? And an amplitude factor of 4?
 2. What amplitude factor does +10 dB correspond to? And what power factor?
@@ -30,14 +30,14 @@ Do not use a calculator (at most these numbers: $\log_{10} 2 \approx 0.301$, $\l
 4. A sine wave with a peak amplitude of 0.5: what is its peak in dBFS? What is its RMS in dBFS?
 5. Two **identical** tracks, each with a peak of −6 dBFS: what is the peak in dBFS after summing? If they are two **mutually uncorrelated** noises, each with an RMS of −6 dBFS, what is the RMS in dBFS after summing?
 6. 16 mutually uncorrelated noise tracks, each with an RMS of −20 dBFS, mixed together: what is the RMS in dBFS? In the worst case, how many dB higher than a single track's peak can the peak get?
-7. The smallest quantization step of 16-bit integer PCM is $1/32768$. How many dBFS is this step? (This is roughly the order of magnitude of the 16-bit noise floor.)
+7. The smallest quantization step of 16-bit integer PCM is $`1/32768`$. How many dBFS is this step? (This is roughly the order of magnitude of the 16-bit noise floor.)
 
 ## Exercise 2 ★★☆ (concepts + calculation) Parameter smoothing and pan law
 
 1. Using "multiplication in the time domain = convolution in the frequency domain" (first review the intuition of "amplitude modulation and sidebands" at the beginning of README section 2.4), explain why an instant jump of the gain from 1 to 0.1 produces a click, and why the click is broadband.
 2. At 44.1 kHz, a 50 ms linear ramp from gain 1.0 to 0.1: how many samples in total? How much does it advance per sample?
-3. A one-pole exponential smoother: $y[n] = y[n-1] + a\,(t - y[n-1])$. At 44.1 kHz with τ = 20 ms, what is $a$? How many samples, and how many ms, does the output need to reach 99% of the target?
-4. Write down $g_L$ and $g_R$ (linear and in dB) of the linear and the constant power pan laws at the **center**, as well as the values of $g_L^2 + g_R^2$ and $g_L + g_R$. Then answer: why does the broadcast / film industry prefer linear or −4.5 dB over pure constant power?
+3. A one-pole exponential smoother: $`y[n] = y[n-1] + a\,(t - y[n-1])`$. At 44.1 kHz with τ = 20 ms, what is $`a`$? How many samples, and how many ms, does the output need to reach 99% of the target?
+4. Write down $`g_L`$ and $`g_R`$ (linear and in dB) of the linear and the constant power pan laws at the **center**, as well as the values of $`g_L^2 + g_R^2`$ and $`g_L + g_R`$. Then answer: why does the broadcast / film industry prefer linear or −4.5 dB over pure constant power?
 5. Explain in one sentence the difference between **mono pan** and **stereo balance**; which of the two does `dawlab::dsp::Panner::process()` do to a stereo block?
 6. Why doesn't `Gain`'s polarity invert simply multiply by −1, and instead sets the SmoothedValue's target to −g? Which value does the gain pass through at the moment of toggling?
 
@@ -47,11 +47,11 @@ Starter: `starter/ex3_exp_smoother.cpp` Solution: `../solutions/ex3_exp_smoother
 
 Implement `ExpSmoother`:
 
-- `reset(sampleRate, timeConstantSeconds)`: compute $a = 1 - e^{-1/(\tau f_s)}$ ($a = 1$ when τ = 0), and snap current to target.
-- `getNextValue()`: apply the difference equation; when $|t - y| <$ `kSnapThreshold` (1e-6), set current directly to target (otherwise it is never reached, `isSmoothing()` stays true forever, and denormals appear).
+- `reset(sampleRate, timeConstantSeconds)`: compute $`a = 1 - e^{-1/(\tau f_s)}`$ ($`a = 1`$ when τ = 0), and snap current to target.
+- `getNextValue()`: apply the difference equation; when $`|t - y| <`$ `kSnapThreshold` (1e-6), set current directly to target (otherwise it is never reached, `isSmoothing()` stays true forever, and denormals appear).
 - `samplesToReach(s, fraction, maxSamples)`: on a 0 → 1 step, measure the index (counting from 1) of the first output sample ≥ fraction.
 
-The self-check verifies: the value of $a$; 63.2% at ≈ τ; 99% at ≈ 4.605 τ; 99.9% at ≈ 6.908 τ; the error against the closed form $1 - (1-a)^n$; monotonic increase; never exceeding the target; and that smoothing really stops after long enough.
+The self-check verifies: the value of $`a`$; 63.2% at ≈ τ; 99% at ≈ 4.605 τ; 99.9% at ≈ 6.908 τ; the error against the closed form $`1 - (1-a)^n`$; monotonic increase; never exceeding the target; and that smoothing really stops after long enough.
 
 Hint: the state in the starter code is deliberately a `double`. After finishing, try changing `current_` to `float`, see what happens to the last two checks (`!s.isSmoothing()`, `getCurrentValue() == 1.0f`), and think about why (the IIR filters of chapter 02 run into the same thing again).
 
@@ -117,9 +117,9 @@ $$
 
 Implement:
 
-- `applyStereoWidth(stereo, width)`: in place; $w = 0$ gives mono, $w = 1$ leaves it unchanged, and $w = 2$ doubles the left/right difference.
-- `applyBalance(stereo, balance)`: for $b > 0$ the left channel is multiplied by $(1 - b)$ and the right channel is untouched; for $b < 0$ the reverse.
+- `applyStereoWidth(stereo, width)`: in place; $`w = 0`$ gives mono, $`w = 1`$ leaves it unchanged, and $`w = 2`$ doubles the left/right difference.
+- `applyBalance(stereo, balance)`: for $`b > 0`$ the left channel is multiplied by $`(1 - b)`$ and the right channel is untouched; for $`b < 0`$ the reverse.
 
-The self-check verifies: for the extreme signal with left = sine and right = 0, the left/right peaks at $w$ = 0 / 1 / 2 are 0.25/0.25, 0.5/0 and 0.75/0.25 respectively (at $w = 2$ an inverted-polarity signal appears in the right channel); **for any $w$, $(L' + R')/2$ equals the original $M$** (mono compatibility); for uncorrelated noise at $w = 2$ the side rises by 6.02 dB and the mid is unchanged; at balance +1 the left channel is exactly 0 and not one sample of the right channel has changed; and at balance +0.5 the left is −6.02 dB and the right 0 dB.
+The self-check verifies: for the extreme signal with left = sine and right = 0, the left/right peaks at $`w`$ = 0 / 1 / 2 are 0.25/0.25, 0.5/0 and 0.75/0.25 respectively (at $`w = 2`$ an inverted-polarity signal appears in the right channel); **for any $`w`$, $`(L' + R')/2`$ equals the original $`M`$** (mono compatibility); for uncorrelated noise at $`w = 2`$ the side rises by 6.02 dB and the mid is unchanged; at balance +1 the left channel is exactly 0 and not one sample of the right channel has changed; and at balance +0.5 the left is −6.02 dB and the right 0 dB.
 
-Think about it: when $w > 1$, the peak of $L'$ can exceed the original peak (in the example above, 0.5 → 0.75); what does this mean for headroom? If the left and right channels are exactly identical (true mono), no $w$ has any effect -- why?
+Think about it: when $`w > 1`$, the peak of $`L'`$ can exceed the original peak (in the example above, 0.5 → 0.75); what does this mean for headroom? If the left and right channels are exactly identical (true mono), no $`w`$ has any effect -- why?

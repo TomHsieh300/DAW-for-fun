@@ -25,8 +25,8 @@ After this chapter you should be able to:
 - Convert "decay of 24 dB/s" into a per-sample multiplication coefficient; implement a peak meter with peak hold and a sliding-window RMS.
 - Implement a loudness meter according to ITU-R BS.1770-4: K-weighting (two biquad stages, including redesign for other sample rates),
   channel weighting, 400 ms blocks with 75% overlap, momentary / short-term / integrated loudness, and absolute and relative gating.
-- Derive the intuition of the DFT from its definition ("correlate with a sinusoid at every frequency"), derive the radix-2 Cooley-Tukey FFT, and explain why it is $O(N \log N)$.
-- Explain bin resolution $f_s/N$, spectral leakage, the main lobe / side lobe trade-off of windows, and coherent gain normalization.
+- Derive the intuition of the DFT from its definition ("correlate with a sinusoid at every frequency"), derive the radix-2 Cooley-Tukey FFT, and explain why it is $`O(N \log N)`$.
+- Explain bin resolution $`f_s/N`$, spectral leakage, the main lobe / side lobe trade-off of windows, and coherent gain normalization.
 - Smooth a spectrum with exponential averaging and display it on a logarithmic frequency axis.
 - Use a single-producer / single-consumer lock-free ring buffer to send data from the audio thread to the UI thread.
 
@@ -38,9 +38,9 @@ Every meter answers "how loud is the signal?", but "loud" has many definitions:
 
 | Meter | What it measures | Response speed (ballistics) | Unit | Use |
 |---|---|---|---|---|
-| **Sample peak** | The maximum of $\lvert x[n]\rvert$ over the samples | Instant rise; fall rate is configurable (dB/s) | dBFS | Preventing digital clipping (the default on DAW mixers) |
+| **Sample peak** | The maximum of $`\lvert x[n]\rvert`$ over the samples | Instant rise; fall rate is configurable (dB/s) | dBFS | Preventing digital clipping (the default on DAW mixers) |
 | **True peak** | The peak of the reconstructed continuous waveform (estimated with 4x oversampling) | Same as above | dBTP | Mastering and streaming delivery specs (e.g. ≤ -1 dBTP) |
-| **RMS** | The root mean square over a window, $\sqrt{\frac{1}{W}\sum x^2}$ | Set by the window length (300 ms is common) | dBFS | "Average energy"; closer to perceived loudness than peak |
+| **RMS** | The root mean square over a window, $`\sqrt{\frac{1}{W}\sum x^2}`$ | Set by the window length (300 ms is common) | dBFS | "Average energy"; closer to perceived loudness than peak |
 | **VU** | Rectified average passed through a needle with mass | 300 ms to reach 99%, overshoot 1–1.5% | VU | The analog-era sense of "volume"; common in analog-modeling plugins |
 | **PPM** | Quasi-peak | Integration time about 5–10 ms; very slow fall (about 20 dB / 1.5 s or 24 dB / 2.8 s depending on Type) | dB | Broadcast (traditional in Europe) |
 | **LUFS** | Mean square after K-weighting, with gating | momentary 400 ms / short-term 3 s / integrated over the whole programme | LUFS / LU | Loudness standards (broadcast, streaming platforms) |
@@ -48,7 +48,7 @@ Every meter answers "how loud is the signal?", but "loud" has many definitions:
 A few concepts to settle first:
 
 - **dBFS** (dB relative to Full Scale): 0 dBFS is the largest value a digital system can represent (±1.0 in float).
-  A sine of amplitude 1.0 has a peak of 0 dBFS and an RMS of $1/\sqrt{2}$ = **-3.01 dBFS**.
+  A sine of amplitude 1.0 has a peak of 0 dBFS and an RMS of $`1/\sqrt{2}`$ = **-3.01 dBFS**.
   (Note: some meters follow AES17 and label a sine's RMS as 0 dB too, i.e. the RMS reading is shifted by +3.01 dB; this chapter does not apply that offset.)
 - **Crest factor** = peak / RMS (in dB, the difference between the two). A sine has 3.01 dB, a drum kit often 15–20 dB,
   and a pop track squashed by a limiter may have only 6–8 dB.
@@ -80,15 +80,15 @@ dB
 
 #### Math: dB/s → per-sample coefficient
 
-In the dB domain, "falling $D$ dB per second" is a straight line; back in the linear domain it means **multiplying by the same coefficient $g$ every sample**:
+In the dB domain, "falling $`D`$ dB per second" is a straight line; back in the linear domain it means **multiplying by the same coefficient $`g`$ every sample**:
 
 $$
 20\log_{10}\left(g^{f_s}\right) = -D \quad\Longrightarrow\quad g = 10^{-D / (20 f_s)}
 $$
 
-With $D = 24$ dB/s and $f_s = 48$ kHz → $g = 10^{-24/960000} \approx 0.9999424$ (more precisely 0.9999424370;
-`LevelMeter` stores it as float, so the float value printed in the first section of `l11_level_meter` is 0.99994242, because the float spacing near 1 is about $6\times10^{-8}$).
-This is better than "subtract $D \cdot B / f_s$ dB per block": it is independent of the block size and needs no log per sample.
+With $`D = 24`$ dB/s and $`f_s = 48`$ kHz → $`g = 10^{-24/960000} \approx 0.9999424`$ (more precisely 0.9999424370;
+`LevelMeter` stores it as float, so the float value printed in the first section of `l11_level_meter` is 0.99994242, because the float spacing near 1 is about $`6\times10^{-8}`$).
+This is better than "subtract $`D \cdot B / f_s`$ dB per block": it is independent of the block size and needs no log per sample.
 
 The hold logic:
 
@@ -104,15 +104,15 @@ $$
 \text{RMS}[n] = \sqrt{\frac{1}{W}\sum_{i=0}^{W-1} x[n-i]^2}
 $$
 
-- If the window $W$ is too short (say 10 ms), it cannot even hold one period of a low-frequency sine, and the reading jitters with the waveform.
-  Rule of thumb: $W$ should cover several periods of the lowest frequency you care about.
+- If the window $`W`$ is too short (say 10 ms), it cannot even hold one period of a low-frequency sine, and the reading jitters with the waveform.
+  Rule of thumb: $`W`$ should cover several periods of the lowest frequency you care about.
 - If the window is too long (say 3 s), the response is too slow. Music meters commonly use **300 ms** (the same order of magnitude as the VU time constant, and close to the ear's integration time for "volume").
 
-**Implementation**: re-summing $W$ squared values for every sample is $O(W)$. Instead, keep the most recent $W$ values of $x^2$ in a ring buffer
-and maintain a running "sum over the window": add the new one, subtract the one pushed out, and each sample costs only $O(1)$.
-Floating-point adds and subtracts accumulate error, so every time the ring wraps around once we re-sum it exactly (still amortized $O(1)$).
+**Implementation**: re-summing $`W`$ squared values for every sample is $`O(W)`$. Instead, keep the most recent $`W`$ values of $`x^2`$ in a ring buffer
+and maintain a running "sum over the window": add the new one, subtract the one pushed out, and each sample costs only $`O(1)`$.
+Floating-point adds and subtracts accumulate error, so every time the ring wraps around once we re-sum it exactly (still amortized $`O(1)`$).
 
-Another common approach is to estimate $E[x^2]$ with an exponential moving average (a one-pole lowpass), which needs only one number of memory,
+Another common approach is to estimate $`E[x^2]`$ with an exponential moving average (a one-pole lowpass), which needs only one number of memory,
 but its "window" decays exponentially and has no definite length. The `LevelMeter` in this chapter uses a true sliding window; the correlation meter in Exercise 7 uses an EMA.
 
 ### 2.4 VU and PPM: meters with "mass"
@@ -125,7 +125,7 @@ $$
 \ddot p + 2\zeta\omega_n \dot p + \omega_n^2\,p = \omega_n^2\,u(t)
 $$
 
-$\zeta$ sets the overshoot ($M_p = e^{-\pi\zeta/\sqrt{1-\zeta^2}}$, $\zeta = 0.82$ → 1.11%) and $\omega_n$ sets the speed.
+$`\zeta`$ sets the overshoot ($`M_p = e^{-\pi\zeta/\sqrt{1-\zeta^2}}`$, $`\zeta = 0.82`$ → 1.11%) and $`\omega_n`$ sets the speed.
 Exercise 4 builds this. In a digital system 0 VU is usually calibrated to a sine at **-18 dBFS** (EBU R68) or -20 dBFS.
 
 Perceptually, a VU meter barely reacts to each drum hit (a 10 ms 0 VU burst only pushes the needle to −24.8 VU, verified in Exercise 4;
@@ -142,7 +142,7 @@ and it falls very slowly so that the operator can read the peaks clearly. This c
 > comparing the reading error and CPU cost of the two on the same signal.
 
 A digital signal is only samples of a continuous waveform, and the DAC fills in between samples with (approximately) sinc interpolation. **The true peak may fall between two samples.**
-The classic example: a sine at $f_s/4$ with 45° phase has every sample at $\pm 0.707$ (sample peak -3.01 dBFS), but the continuous waveform peaks at 1.0 (0 dBTP):
+The classic example: a sine at $`f_s/4`$ with 45° phase has every sample at $`\pm 0.707`$ (sample peak -3.01 dBFS), but the continuous waveform peaks at 1.0 (0 dBTP):
 
 ```
 Amplitude (x[n] = sin(π n/2 + π/4), a sine at fs/4, one period every 4 samples; o = sample, * = peak of the continuous waveform)
@@ -155,16 +155,16 @@ Amplitude (x[n] = sin(π n/2 + π/4), a sine at fs/4, one period every 4 samples
 ```
 
 The approach in ITU-R BS.1770-4 Annex 2: **oversample the signal 4x** (48 kHz → 192 kHz, using an FIR interpolation filter),
-take the maximum $|x|$ at the higher rate, and report it in **dBTP**. 4x can still miss a little: for a sine near Nyquist, the peak can fall exactly between two 4x samples,
-underestimating by at most $20\log_{10}\cos(\pi/8) = 0.69$ dB. That is why streaming platforms and EBU R128 require true peak ≤ -1 dBTP, to leave headroom.
+take the maximum $`|x|`$ at the higher rate, and report it in **dBTP**. 4x can still miss a little: for a sine near Nyquist, the peak can fall exactly between two 4x samples,
+underestimating by at most $`20\log_{10}\cos(\pi/8) = 0.69`$ dB. That is why streaming platforms and EBU R128 require true peak ≤ -1 dBTP, to leave headroom.
 
 Exercise 3 verifies this example with this chapter's meter: sample peak −3.010 dBFS, 4x true peak 0.000 dBTP, error 0.
 Chapter 05 Exercise 4 measures the same kind of signal (amplitude 0.5) but gets −6.18 dBTP, about 0.17 dB below the true −6.02. The difference is **where the interpolation points fall**:
 
 - The Chapter 06 `Oversampler` is two cascaded 2x halfband stages. When a halfband upsamples, one phase is a pure delay (the output is the original sample),
-  so after two stages the 4 points land exactly at 0, 1/4, 1/2, 3/4 between the original samples; the 1/2 point steps right onto the peak of this $f_s/4$ sine.
+  so after two stages the 4 points land exactly at 0, 1/4, 1/2, 3/4 between the original samples; the 1/2 point steps right onto the peak of this $`f_s/4`$ sine.
 - The Chapter 05 64-tap FIR has even length, so its center is not on an integer, and the 4 interpolation points land at 1/8, 3/8, 5/8, 7/8.
-  The nearest to the peak is still 1/8 sample away (phase 11.25°), so it reads $\cos 11.25° = 0.981$ times the peak (−0.17 dB).
+  The nearest to the peak is still 1/8 sample away (phase 11.25°), so it reads $`\cos 11.25° = 0.981`$ times the peak (−0.17 dB).
 
 This does not mean the halfband version is "more accurate": change to a signal whose peak falls at 1/8 and the result reverses. Exercise 3 sweeps the phase of the fs/4 sine from 0° to 90°,
 and the worst error of both meters is -0.17 dB; it just occurs at the phase where the other one is most accurate. The real differences lie elsewhere (all numbers come from Exercise 3, feeding the same signal to both meters):
@@ -212,46 +212,46 @@ flowchart LR
 | 1. pre-filter | High shelf, midpoint about 1.7 kHz, +4 dB at high frequencies | Models the acoustic gain of the head (a "sphere") at high frequencies |
 | 2. RLB filter | Second-order highpass, about 38 Hz (-6 dB point) | "Revised low-frequency B-curve"; removes the very low frequencies the ear is not very sensitive to |
 
-The standard gives coefficients only for **48 kHz** ($a_0$ normalized to 1):
+The standard gives coefficients only for **48 kHz** ($`a_0`$ normalized to 1):
 
-| | $b_0$ | $b_1$ | $b_2$ | $a_1$ | $a_2$ |
+| | $`b_0`$ | $`b_1`$ | $`b_2`$ | $`a_1`$ | $`a_2`$ |
 |---|---|---|---|---|---|
 | stage 1 | 1.53512485958697 | −2.69169618940638 | 1.19839281085285 | −1.69065929318241 | 0.73248077421585 |
 | stage 2 | 1.0 | −2.0 | 1.0 | −1.99004745483398 | 0.99007225036621 |
 
-**You cannot use these coefficients directly at other sample rates** (a digital filter's frequencies are relative to $f_s$; applying the 48 kHz coefficients at 44.1 kHz shifts the whole curve toward low frequencies by 8%).
+**You cannot use these coefficients directly at other sample rates** (a digital filter's frequencies are relative to $`f_s`$; applying the 48 kHz coefficients at 44.1 kHz shifts the whole curve toward low frequencies by 8%).
 `l11_loudness` prints this counter-example: when the 48 kHz coefficient table is misused at 44.1 kHz, the gain at 997 Hz becomes +0.900 dB (correct: +0.694 dB) and
 at 2 kHz becomes +3.30 dB (correct: +3.08 dB); the measured LUFS comes out about 0.2 LU too high, which is about the size of the EBU tolerance and hard to notice.
 You have to go back to the analog prototype and redo the bilinear transform. Work the table above backwards into analog parameters (open-source implementations such as libebur128 use the same set).
-The analog prototype of stage 1 is a second-order high shelf ($s$ normalized to $\omega_0 = 2\pi f_0$):
+The analog prototype of stage 1 is a second-order high shelf ($`s`$ normalized to $`\omega_0 = 2\pi f_0`$):
 
 $$
 H_1(s) = \frac{V_h\, s^2 + V_b\, s/Q + 1}{s^2 + s/Q + 1}
 $$
 
-- At $s \to 0$ (DC), $H_1 = 1$ (0 dB); at $s \to \infty$ (high frequency), $H_1 = V_h$. So **$V_h$ is the linear gain at the high end**:
-  $V_h = 10^{G/20}$, $G = 3.99984$ dB (about +4 dB).
-- **$V_b$ is the coefficient of the middle term of the numerator and sets the gain in the transition band (near $f_0$)**: $V_b = V_h^{0.49967}$, an exponent of about 0.5,
-  i.e. $V_b \approx \sqrt{V_h}$, which in dB is about half the high-frequency gain (+2.00 dB), letting the shelf climb smoothly from 0 dB to +4 dB.
-  (The actual gain at $f_0$ is $|H_1(j)| = \sqrt{V_b^2 + Q^2(V_h-1)^2}$ = +2.44 dB, because the $Q$ in the denominator also affects the shape of the transition band.)
-- $f_0 = 1681.974$ Hz, $Q = 0.70718$.
+- At $`s \to 0`$ (DC), $`H_1 = 1`$ (0 dB); at $`s \to \infty`$ (high frequency), $`H_1 = V_h`$. So **$`V_h`$ is the linear gain at the high end**:
+  $`V_h = 10^{G/20}`$, $`G = 3.99984`$ dB (about +4 dB).
+- **$`V_b`$ is the coefficient of the middle term of the numerator and sets the gain in the transition band (near $`f_0`$)**: $`V_b = V_h^{0.49967}`$, an exponent of about 0.5,
+  i.e. $`V_b \approx \sqrt{V_h}`$, which in dB is about half the high-frequency gain (+2.00 dB), letting the shelf climb smoothly from 0 dB to +4 dB.
+  (The actual gain at $`f_0`$ is $`|H_1(j)| = \sqrt{V_b^2 + Q^2(V_h-1)^2}`$ = +2.44 dB, because the $`Q`$ in the denominator also affects the shape of the transition band.)
+- $`f_0 = 1681.974`$ Hz, $`Q = 0.70718`$.
 
 These numbers (including the exponent 0.49967) are all back-derived from the standard's 48 kHz coefficients and are not additional design choices: we just look for a set of analog parameters
 that reproduces the standard's table exactly after a bilinear transform at 48 kHz, then use the same parameters to redo the transform at other sample rates.
 
-The bilinear transform uses $s = \frac{1}{K}\cdot\frac{1 - z^{-1}}{1 + z^{-1}}$ with $K = \tan(\pi f_0 / f_s)$ (this $K$ maps $f_0$ exactly to $f_0$).
-Substituting into $H_1(s)$, multiplying top and bottom by $K^2(1+z^{-1})^2$ and expanding into polynomials in $z^{-1}$ gives:
+The bilinear transform uses $`s = \frac{1}{K}\cdot\frac{1 - z^{-1}}{1 + z^{-1}}`$ with $`K = \tan(\pi f_0 / f_s)`$ (this $`K`$ maps $`f_0`$ exactly to $`f_0`$).
+Substituting into $`H_1(s)`$, multiplying top and bottom by $`K^2(1+z^{-1})^2`$ and expanding into polynomials in $`z^{-1}`$ gives:
 
 $$
 b_0 = \frac{V_h + V_b K/Q + K^2}{a_0},\quad b_1 = \frac{2(K^2 - V_h)}{a_0},\quad b_2 = \frac{V_h - V_b K/Q + K^2}{a_0},\quad
 a_1 = \frac{2(K^2-1)}{a_0},\quad a_2 = \frac{1 - K/Q + K^2}{a_0}
 $$
 
-where $a_0 = 1 + K/Q + K^2$.
+where $`a_0 = 1 + K/Q + K^2`$.
 
-- Stage 2: the second-order highpass $H_2(s) = \dfrac{s^2}{s^2 + s/Q + 1}$ with $f_0 = 38.135$ Hz and $Q = 0.50033$. The numerator is fixed at $1, -2, 1$ (that is how the standard's table is given, without dividing by $a_0$), and the denominator is as above.
+- Stage 2: the second-order highpass $`H_2(s) = \dfrac{s^2}{s^2 + s/Q + 1}`$ with $`f_0 = 38.135`$ Hz and $`Q = 0.50033`$. The numerator is fixed at $`1, -2, 1`$ (that is how the standard's table is given, without dividing by $`a_0`$), and the denominator is as above.
 
-`l11_loudness` prints both sets of coefficients, verifies that they differ by only $8.9\times10^{-16}$, and then lists the frequency responses at 44.1 / 48 / 96 kHz; the three curves are almost identical:
+`l11_loudness` prints both sets of coefficients, verifies that they differ by only $`8.9\times10^{-16}`$, and then lists the frequency responses at 44.1 / 48 / 96 kHz; the three curves are almost identical:
 
 | Frequency | 20 Hz | 38 Hz | 100 Hz | 997 Hz | 2 kHz | 5 kHz | 16 kHz |
 |---|---|---|---|---|---|---|---|
@@ -260,14 +260,14 @@ where $a_0 = 1 + K/Q + K^2$.
 | Redesigned @ 96 kHz | −13.30 dB | −6.02 dB | −1.16 dB | +0.674 dB | +3.05 dB | +3.99 dB | +4.02 dB |
 
 (The three curves differ by < 0.03 dB; `l11_loudness` verifies < 0.05 dB with `DAWLAB_CHECK`. The small remaining difference comes from the bilinear transform's
-frequency warping not being exactly the same at different $f_s$, and from the standard's 48 kHz coefficients themselves having finite digits.)
+frequency warping not being exactly the same at different $`f_s`$, and from the standard's 48 kHz coefficients themselves having finite digits.)
 
-Note that stage 1 is **not** the RBJ cookbook high shelf: RBJ defines the shelf "corner" at the half-gain point, and uses $Q$ differently in the numerator and denominator,
-so you cannot just throw $f_0$, $Q$ and gain into Chapter 02's `makeHighShelf()`. We still run this set of coefficients on Chapter 02's `Biquad` (TDF-II).
+Note that stage 1 is **not** the RBJ cookbook high shelf: RBJ defines the shelf "corner" at the half-gain point, and uses $`Q`$ differently in the numerator and denominator,
+so you cannot just throw $`f_0`$, $`Q`$ and gain into Chapter 02's `makeHighShelf()`. We still run this set of coefficients on Chapter 02's `Biquad` (TDF-II).
 
 #### From mean square to LUFS
 
-For each channel $i$, compute the mean square of the K-weighted signal $y_i$ over a period $T$:
+For each channel $`i`$, compute the mean square of the K-weighted signal $`y_i`$ over a period $`T`$:
 
 $$
 z_i = \frac{1}{T}\int_0^T y_i^2(t)\,dt \;\approx\; \frac{1}{N}\sum_n y_i[n]^2
@@ -279,12 +279,12 @@ $$
 L_K = -0.691 + 10\log_{10}\sum_i G_i\, z_i \quad \text{[LUFS]}
 $$
 
-- **$G_i$**: L, R, C = 1.0; left and right surround Ls, Rs = 1.41 (about +1.5 dB, since sounds from behind seem louder); LFE is not counted.
-- **Why $10\log_{10}$ and not $20\log_{10}$**: $z$ is already a "square" (power).
+- **$`G_i`$**: L, R, C = 1.0; left and right surround Ls, Rs = 1.41 (about +1.5 dB, since sounds from behind seem louder); LFE is not counted.
+- **Why $`10\log_{10}`$ and not $`20\log_{10}`$**: $`z`$ is already a "square" (power).
 - **Where −0.691 comes from**: the K-weighting gain at 997 Hz is +0.691 dB. Subtracting it makes "a 0 dBFS 997 Hz sine fed into a single channel"
-  read exactly $10\log_{10}(0.5) = -3.01$ LUFS (the mean square of a sine is $A^2/2$).
+  read exactly $`10\log_{10}(0.5) = -3.01`$ LUFS (the mean square of a sine is $`A^2/2`$).
   So **a -20 dBFS 997 Hz sine → −23.01 LUFS**, which is the standard's verification condition and the number measured in section 2 of `l11_loudness`.
-- **The same signal on both channels**: $\sum G_i z_i$ doubles → **+3.01 LU** → −20.00 LUFS (section 3 of `l11_loudness`).
+- **The same signal on both channels**: $`\sum G_i z_i`$ doubles → **+3.01 LU** → −20.00 LUFS (section 3 of `l11_loudness`).
   It does sound louder than a single channel, since both speakers are playing.
 - **LU** (loudness unit) is the "difference" unit of LUFS; 1 LU = 1 dB.
 
@@ -310,7 +310,7 @@ and momentary = the average of the latest 4 sub-blocks, short-term = the average
 If a song has 10 seconds of silence in the middle, plain averaging would pull the integrated value down, yet listeners would not feel that "this song is quieter". BS.1770-4 uses two gates:
 
 1. **absolute gate**: discard blocks whose loudness is < **−70 LUFS** (essentially silence).
-2. **relative gate**: compute the average $\bar L$ of the blocks that passed the first gate (**averaged in the power domain**), and discard blocks < $\bar L - 10$ LU.
+2. **relative gate**: compute the average $`\bar L`$ of the blocks that passed the first gate (**averaged in the power domain**), and discard blocks < $`\bar L - 10`$ LU.
 3. integrated = the power average of the blocks that passed both gates:
 
 $$
@@ -318,13 +318,13 @@ $$
 L_{\text{int}} = -0.691 + 10\log_{10}\Big(\frac{1}{|J_g|}\sum_{j\in J_g}\sum_i G_i z_{ij}\Big)
 $$
 
-$J_a$ is the set of blocks that pass the absolute gate and $J_g$ the set that pass both. Section 4 of `l11_loudness`: 3 s at −20 dBFS → 3 s of silence → 3 s at −50 dBFS:
+$`J_a`$ is the set of blocks that pass the absolute gate and $`J_g`$ the set that pass both. Section 4 of `l11_loudness`: 3 s at −20 dBFS → 3 s of silence → 3 s at −50 dBFS:
 
 | | Value |
 |---|---|
 | Without gating, averaging the power over 9 s | −27.78 LUFS (diluted by the silence) |
 | Integrated after gating (measured) | **−23.23 LUFS** |
-| Theoretical value | 27 full blocks (power $P$) + 3 blocks straddling the boundary ($\tfrac34P, \tfrac24P, \tfrac14P$) → $-23.01 + 10\log_{10}(28.5/30) = -23.23$ |
+| Theoretical value | 27 full blocks (power $`P`$) + 3 blocks straddling the boundary ($`\tfrac34P, \tfrac24P, \tfrac14P`$) → $`-23.01 + 10\log_{10}(28.5/30) = -23.23`$ |
 
 The silent blocks are blocked by the absolute gate; the −53 LUFS blocks are below the relative gate (about −36 LUFS) and are blocked too.
 
@@ -357,25 +357,25 @@ which puts the sample peak at −0.24 dBFS, already over −1 dBTP; this is when
 
 #### Intuition
 
-Want to know "how much 440 Hz is in" a signal $x[n]$? Take a 440 Hz sine $s[n]$, multiply it with $x$ point by point and sum: $\sum x[n]\,s[n]$.
-If $x$ contains 440 Hz with the phase aligned, the products are mostly positive and the sum is large; if not, positives and negatives cancel and the sum is near 0.
-That is **correlation**. The catch is phase: if the 440 Hz in $x$ is a cosine and we compare with a sine, the sum is also 0.
-The fix is to compare with both cos and sin at once, using the complex number $e^{-j\omega n} = \cos\omega n - j\sin\omega n$:
+Want to know "how much 440 Hz is in" a signal $`x[n]`$? Take a 440 Hz sine $`s[n]`$, multiply it with $`x`$ point by point and sum: $`\sum x[n]\,s[n]`$.
+If $`x`$ contains 440 Hz with the phase aligned, the products are mostly positive and the sum is large; if not, positives and negatives cancel and the sum is near 0.
+That is **correlation**. The catch is phase: if the 440 Hz in $`x`$ is a cosine and we compare with a sine, the sum is also 0.
+The fix is to compare with both cos and sin at once, using the complex number $`e^{-j\omega n} = \cos\omega n - j\sin\omega n`$:
 
 $$
 X[k] = \sum_{n=0}^{N-1} x[n]\, e^{-j 2\pi k n / N},\qquad k = 0, 1, \dots, N-1
 $$
 
-$|X[k]|$ is "how much of the $k$-th frequency", and $\arg X[k]$ is its phase. The frequency of bin $k$ is
+$`|X[k]|`$ is "how much of the $`k`$-th frequency", and $`\arg X[k]`$ is its phase. The frequency of bin $`k`$ is
 
 $$
 f_k = k \cdot \frac{f_s}{N}
 $$
 
-So the **bin width (frequency resolution) is $\Delta f = f_s / N$**. At 48 kHz with N = 2048 that is 23.4375 Hz. To get finer resolution you can only increase N,
+So the **bin width (frequency resolution) is $`\Delta f = f_s / N`$**. At 48 kHz with N = 2048 that is 23.4375 Hz. To get finer resolution you can only increase N,
 that is, **look at a longer stretch of time**; frequency resolution and time resolution are a seesaw.
 
-The inverse transform (IDFT) is almost identical, differing only in the rotation direction and $1/N$:
+The inverse transform (IDFT) is almost identical, differing only in the rotation direction and $`1/N`$:
 
 $$
 x[n] = \frac{1}{N}\sum_{k=0}^{N-1} X[k]\, e^{+j 2\pi k n / N}
@@ -383,44 +383,44 @@ $$
 
 #### Symmetry for real signals
 
-Audio is real. Replace $k$ by $N-k$: $e^{-j2\pi(N-k)n/N} = e^{+j2\pi kn/N}$, so
+Audio is real. Replace $`k`$ by $`N-k`$: $`e^{-j2\pi(N-k)n/N} = e^{+j2\pi kn/N}`$, so
 
 $$
 X[N-k] = \overline{X[k]}\qquad(\text{conjugate symmetry})
 $$
 
-The second half is entirely a mirror of the first, so **we only need to keep $k = 0 \dots N/2$, a total of $N/2 + 1$ bins**: bin 0 is DC and bin $N/2$ is Nyquist ($f_s/2$),
-and these two are real. `Fft::forwardReal()` outputs only these $N/2+1$ bins, and `inverseReal()` uses the symmetry to restore the other half.
+The second half is entirely a mirror of the first, so **we only need to keep $`k = 0 \dots N/2`$, a total of $`N/2 + 1`$ bins**: bin 0 is DC and bin $`N/2`$ is Nyquist ($`f_s/2`$),
+and these two are real. `Fft::forwardReal()` outputs only these $`N/2+1`$ bins, and `inverseReal()` uses the symmetry to restore the other half.
 
 #### Amplitude and dB
 
-A sine of amplitude $A$ centered exactly on bin $k$, $A\cos(2\pi k n/N)$, splits its energy evenly between bin $k$ and bin $N-k$, with $|X[k]| = AN/2$ on each side. So
+A sine of amplitude $`A`$ centered exactly on bin $`k`$, $`A\cos(2\pi k n/N)`$, splits its energy evenly between bin $`k`$ and bin $`N-k`$, with $`|X[k]| = AN/2`$ on each side. So
 
 $$
 A = \frac{2\,|X[k]|}{N} \qquad(\text{DC and Nyquist have no mirror image, so the factor is } 1/N)
 $$
 
-With a window applied you must also divide by the coherent gain (section 2.9). In dB: $20\log_{10} A$ (amplitude) or $10\log_{10}|X|^2$ (power); the two are the same.
+With a window applied you must also divide by the coherent gain (section 2.9). In dB: $`20\log_{10} A`$ (amplitude) or $`10\log_{10}|X|^2`$ (power); the two are the same.
 
 ### 2.8 FFT: radix-2 Cooley-Tukey
 
-Computing the DFT directly from the definition: N outputs, each a sum of N terms → $O(N^2)$. At N = 4096 that is 16 million complex multiply-adds, which is heavy to do 30 times per second.
+Computing the DFT directly from the definition: N outputs, each a sum of N terms → $`O(N^2)`$. At N = 4096 that is 16 million complex multiply-adds, which is heavy to do 30 times per second.
 
 #### Derivation
 
-Let $W_N = e^{-j2\pi/N}$ (the twiddle factor). Split $x[n]$ into even and odd terms (decimation in time):
+Let $`W_N = e^{-j2\pi/N}`$ (the twiddle factor). Split $`x[n]`$ into even and odd terms (decimation in time):
 
 $$
 X[k] = \sum_{m=0}^{N/2-1} x[2m]\,W_N^{2mk} + \sum_{m=0}^{N/2-1} x[2m+1]\,W_N^{(2m+1)k}
 $$
 
-Since $W_N^{2mk} = W_{N/2}^{mk}$:
+Since $`W_N^{2mk} = W_{N/2}^{mk}`$:
 
 $$
 X[k] = \underbrace{\sum_m x[2m]\,W_{N/2}^{mk}}_{E[k]\text{: the } N/2 \text{-point DFT of the even terms}} + W_N^k \underbrace{\sum_m x[2m+1]\,W_{N/2}^{mk}}_{O[k]\text{: the } N/2 \text{-point DFT of the odd terms}}
 $$
 
-$E$ and $O$ are periodic with period $N/2$, and $W_N^{k+N/2} = -W_N^k$, so the second half needs no recomputation:
+$`E`$ and $`O`$ are periodic with period $`N/2`$, and $`W_N^{k+N/2} = -W_N^k`$, so the second half needs no recomputation:
 
 $$
 \boxed{X[k] = E[k] + W_N^k\,O[k],\qquad X[k + N/2] = E[k] - W_N^k\,O[k]},\qquad k = 0 \dots N/2-1
@@ -443,7 +443,7 @@ $$
 T(N) = 2\,T(N/2) + O(N) \;\Longrightarrow\; T(N) = O(N\log_2 N)
 $$
 
-There are $\log_2 N$ layers in total, each with $N/2$ butterflies (one complex multiplication each). At N = 4096: $N^2 / (N\log_2 N) = 4096/12 \approx 341$ times fewer operations.
+There are $`\log_2 N`$ layers in total, each with $`N/2`$ butterflies (one complex multiplication each). At N = 4096: $`N^2 / (N\log_2 N) = 4096/12 \approx 341`$ times fewer operations.
 
 #### Iterative form and bit reversal
 
@@ -456,7 +456,7 @@ reversed:  000  100  010  110  001  101  011  111
 → order:    0    4    2    6    1    5    3    7
 ```
 
-So `Fft` first applies a bit-reversal permutation, then performs $\log_2 N$ layers of butterflies from small to large (lengths 2, 4, 8, ..., N).
+So `Fft` first applies a bit-reversal permutation, then performs $`\log_2 N`$ layers of butterflies from small to large (lengths 2, 4, 8, ..., N).
 The twiddle factors and the bit-reversal table are computed at construction (which allocates); afterwards `forward()` / `inverse()` allocate no memory at all.
 
 #### Verification
@@ -469,7 +469,7 @@ The twiddle factors and the bit-reversal table are computed at construction (whi
 | 1024 | 8.6e-6 | 3.6e-7 |
 | 4096 | 2.3e-5 | 4.8e-7 |
 
-(The input is random with $|x| \le 1$; the forward output has magnitude about $\sqrt N$, so the absolute error grows with N while the relative error stays at float precision, around $10^{-7}$.)
+(The input is random with $`|x| \le 1`$; the forward output has magnitude about $`\sqrt N`$, so the absolute error grows with N while the relative error stays at float precision, around $`10^{-7}`$.)
 It also cross-checks the amplitude at a single frequency using Goertzel (`Analysis.h`).
 
 Timing (Debug configuration, one run on the author's machine, look at the trend only; Release is much faster, and every run varies by ±30% or more):
@@ -481,7 +481,7 @@ Timing (Debug configuration, one run on the author's machine, look at the trend 
 | 4096 | 1.2 ms | 448 – 488 ms | 375 – 415 |
 | 16384 | 5.4 – 9.3 ms | (skipped) | |
 
-The ratio grows with N, on the same order of magnitude as the theoretical $N / \log_2 N$ (341 at 4096). The self-check only requires the FFT to be at least 20 times faster at N = 4096,
+The ratio grows with N, on the same order of magnitude as the theoretical $`N / \log_2 N`$ (341 at 4096). The self-check only requires the FFT to be at least 20 times faster at N = 4096,
 to avoid false failures when the machine is busy.
 
 ### 2.9 Windows and spectral leakage
@@ -502,20 +502,20 @@ So the true spectrum (a single line) is convolved with the spectrum of the recta
 
 #### The window trade-off
 
-Before the transform, multiply by a function $w[n]$ that tapers to 0 at both ends, removing the jump at the seam. The cost: the main lobe gets wider (less ability to resolve frequencies).
+Before the transform, multiply by a function $`w[n]`$ that tapers to 0 at both ends, removing the jump at the seam. The cost: the main lobe gets wider (less ability to resolve frequencies).
 
-| Window | Formula ($t = 2\pi n/(N-1)$) | Coherent gain | −3 dB width (bins) | Highest side lobe | Scalloping loss |
+| Window | Formula ($`t = 2\pi n/(N-1)`$) | Coherent gain | −3 dB width (bins) | Highest side lobe | Scalloping loss |
 |---|---|---|---|---|---|
-| Rectangular | $1$ | 1.00 | 0.88 | −13.3 dB | 3.92 dB |
-| Hann | $0.5 - 0.5\cos t$ | 0.50 | 1.44 | −31.5 dB | 1.42 dB |
-| Hamming | $0.54 - 0.46\cos t$ | 0.54 | 1.30 | −42.7 dB | 1.75 dB |
-| Blackman-Harris (4-term) | $0.35875 - 0.48829\cos t + 0.14128\cos 2t - 0.01168\cos 3t$ | 0.36 | 1.90 | −92.0 dB | 0.82 dB |
+| Rectangular | $`1`$ | 1.00 | 0.88 | −13.3 dB | 3.92 dB |
+| Hann | $`0.5 - 0.5\cos t`$ | 0.50 | 1.44 | −31.5 dB | 1.42 dB |
+| Hamming | $`0.54 - 0.46\cos t`$ | 0.54 | 1.30 | −42.7 dB | 1.75 dB |
+| Blackman-Harris (4-term) | $`0.35875 - 0.48829\cos t + 0.14128\cos 2t - 0.01168\cos 3t`$ | 0.36 | 1.90 | −92.0 dB | 0.82 dB |
 
 All the numbers in the table were measured by `l11_window_leakage`, which samples each window's DTFT very densely using 16x zero-padding
 (**scalloping loss** = how much lower the peak reading is when a sine lies exactly midway between two bins than when it is at a bin center), and compares them with `DAWLAB_CHECK`
 against the theoretical values of Harris (1978): 0.89 / 1.44 / 1.30 / 1.90 bins, −13.3 / −31.5 / −42.7 / −92 dB, 3.92 / 1.42 / 1.78 / 0.83 dB.
 The only difference is Hamming's scalloping: Harris's table says 1.78 dB, but plugging directly into the formula
-$\frac{0.54\,\text{sinc}(\frac12) + 0.23\,[\text{sinc}(\frac12) + \text{sinc}(\frac32)]}{0.54} = 0.8174$ gives 1.75 dB, matching the measurement.
+$`\frac{0.54\,\text{sinc}(\frac12) + 0.23\,[\text{sinc}(\frac12) + \text{sinc}(\frac32)]}{0.54} = 0.8174`$ gives 1.75 dB, matching the measurement.
 
 The rule is simple: **the lower the side lobes, the wider the main lobe**. There is no universal window:
 
@@ -560,9 +560,9 @@ ASCII spectrum (actual output, linear axis from 0 to 5 kHz, 78 Hz per column, ta
 ```
 
 The 1 kHz reading is not 0 dB because 1000 Hz is not at a bin center (it is 0.33 bin off); this is called **scalloping loss**. The theoretical values:
-the rectangular window's response is $\text{sinc}(\delta)$, and with $\delta = 1/3$ → $\frac{\sin(\pi/3)}{\pi/3} = 0.827$ → **−1.65 dB**;
-Hann is $\frac{\text{sinc}(\delta)}{1-\delta^2} = 0.930$ → **−0.63 dB**. The measured −1.67 dB and −0.63 dB agree to within 0.02 dB
-(`l11_window_leakage` checks with ±0.1 dB). The worst case is a sine exactly midway between two bins ($\delta = 0.5$), and the loss is the scalloping loss in the table above.
+the rectangular window's response is $`\text{sinc}(\delta)`$, and with $`\delta = 1/3`$ → $`\frac{\sin(\pi/3)}{\pi/3} = 0.827`$ → **−1.65 dB**;
+Hann is $`\frac{\text{sinc}(\delta)}{1-\delta^2} = 0.930`$ → **−0.63 dB**. The measured −1.67 dB and −0.63 dB agree to within 0.02 dB
+(`l11_window_leakage` checks with ±0.1 dB). The worst case is a sine exactly midway between two bins ($`\delta = 0.5`$), and the loss is the scalloping loss in the table above.
 
 #### Leakage is "invisible" when exactly on a bin center
 
@@ -570,12 +570,12 @@ The second table of the same example uses 1007.8125 Hz (exactly bin 43, a whole 
 because the zeros of the sinc fall exactly on every bin and the FFT samples only at the zeros. The skirt is still there; it just isn't sampled.
 Hann's bin 44 is −6 dB: that is the main lobe itself being wider (±2 bins), not leakage.
 
-> A small detail: this chapter's `makeWindow()` produces **symmetric** windows (denominator $N-1$). Spectrum analysis sometimes uses **periodic** windows (denominator $N$),
+> A small detail: this chapter's `makeWindow()` produces **symmetric** windows (denominator $`N-1`$). Spectrum analysis sometimes uses **periodic** windows (denominator $`N`$),
 > whose zeros fall exactly on bins (Hann's bins ±2 would be −∞). The difference is small; the symmetric version is more common in filter design.
 
 #### Coherent gain and normalization
 
-A window shrinks the signal overall: the reading of a bin-centered sine becomes $\text{CG} = \frac1N\sum w[n]$ times the original (Hann 0.5 = −6.02 dB). To compensate:
+A window shrinks the signal overall: the reading of a bin-centered sine becomes $`\text{CG} = \frac1N\sum w[n]`$ times the original (Hann 0.5 = −6.02 dB). To compensate:
 
 $$
 A = \frac{2\,|X[k]|}{N \cdot \text{CG}}
@@ -595,13 +595,13 @@ flowchart LR
     E --> F["exponential averaging<br/>s = α·s + (1−α)·m"] --> G[20·log10] --> H[UI: log frequency axis]
 ```
 
-- **Overlap**: frames overlap. hop = $N(1 - \text{overlap})$. With 50% overlap and N = 4096, a new spectrum is computed every 2048 new samples (23 times per second at 48 kHz).
+- **Overlap**: frames overlap. hop = $`N(1 - \text{overlap})`$. With 50% overlap and N = 4096, a new spectrum is computed every 2048 new samples (23 times per second at 48 kHz).
   The more overlap, the more frequent the updates and the less likely events near a frame's edges (where the window weight is close to 0) are missed, at the cost of computation.
-- **Exponential averaging**: $s[k] \leftarrow \alpha\,s[k] + (1-\alpha)\,m[k]$, done on the **linear amplitude** (averaging in dB reads low).
-  With $\alpha = 0.8$ and hop 2048 @ 48 kHz: each frame decays to 0.8x = −1.94 dB, a fall rate of about 45 dB/s, the same idea as the decay of a peak meter.
-  The comparison at the end of `l11_spectrum_analyzer`: when 440 Hz suddenly stops, with $\alpha = 0$ the first frame after silence still contains half of the sine (50% overlap)
-  and reads −18.7 dB, and the second frame drops to −100 dB; with $\alpha = 0.8$ it falls about 2 dB every 43 ms.
-  The measurement in the example: each frame after the silence drops 1.94 dB, the same as $20\log_{10}0.8 = -1.94$ dB (there is a self-check).
+- **Exponential averaging**: $`s[k] \leftarrow \alpha\,s[k] + (1-\alpha)\,m[k]`$, done on the **linear amplitude** (averaging in dB reads low).
+  With $`\alpha = 0.8`$ and hop 2048 @ 48 kHz: each frame decays to 0.8x = −1.94 dB, a fall rate of about 45 dB/s, the same idea as the decay of a peak meter.
+  The comparison at the end of `l11_spectrum_analyzer`: when 440 Hz suddenly stops, with $`\alpha = 0`$ the first frame after silence still contains half of the sine (50% overlap)
+  and reads −18.7 dB, and the second frame drops to −100 dB; with $`\alpha = 0.8`$ it falls about 2 dB every 43 ms.
+  The measurement in the example: each frame after the silence drops 1.94 dB, the same as $`20\log_{10}0.8 = -1.94`$ dB (there is a self-check).
   The first frame is used as is (smoothing does not start from 0), otherwise the first few frames would read too low.
 - **Calibration**: `l11_spectrum_analyzer` also verifies the normalization: a sine of amplitude 0.5 (−6.02 dBFS) exactly on bin 100 reads **−6.02 dB**;
   moving the frequency to bin 100.5 (midway between two bins) reads −7.44 dB, and the missing 1.42 dB is exactly Hann's scalloping loss.
@@ -642,7 +642,7 @@ Key details:
   guaranteeing that "when the new writePos is seen, the samples written before it are also visible".
 - **Overwrite detection must look at `writeEnd`, not just `writePos`.** `writePos` is updated only after the whole push has been written; if, while the consumer is partway through copying,
   a push that has **not yet finished** has already wrapped around and overwritten the slots the consumer is reading, `writePos` still holds the old value, the check "writePos − start > capacity" lets it pass,
-  and the frame becomes a patchwork of old and new data. This can certainly happen when one push has length $n > 3N$ (e.g. N = 64 with a block of 512),
+  and the frame becomes a patchwork of old and new data. This can certainly happen when one push has length $`n > 3N`$ (e.g. N = 64 with a block of 512),
   and it can also happen with ordinary block sizes (the UI thread gets suspended by the OS partway through copying). So the producer announces `writeEnd` **before** writing the samples,
   then issues a release fence; the consumer issues an acquire fence after copying and then reads `writeEnd`. As long as the consumer reads any sample overwritten by a new push,
   the fence synchronization rules guarantee it also sees that push's `writeEnd` (this is the standard **seqlock** pattern).
@@ -691,9 +691,9 @@ public:
 ```
 
 - `transform()` is a direct translation of the derivation in section 2.8: first a bit-reversal swap (swapping only when `j > i`, so pairs are not swapped back),
-  then `for (len = 2; len <= N; len <<= 1)` performs the butterflies layer by layer. The layer of length `len` needs $W_{len}^k = W_N^{k \cdot N/len}$,
-  so we store just one table of $W_N^k$ and read it with a stride.
-- inverse simply conjugates the twiddles (opposite rotation direction) and finally multiplies by $1/N$.
+  then `for (len = 2; len <= N; len <<= 1)` performs the butterflies layer by layer. The layer of length `len` needs $`W_{len}^k = W_N^{k \cdot N/len}`$,
+  so we store just one table of $`W_N^k`$ and read it with a stride.
+- inverse simply conjugates the twiddles (opposite rotation direction) and finally multiplies by $`1/N`$.
 - The twiddles are computed with cos / sin in double and then converted to float, so angle error does not accumulate for large N.
 - `forwardReal()` currently puts the real data into a complex buffer, performs an N-point complex FFT, and takes the first N/2+1 bins.
   A faster approach is to "treat the N real numbers as N/2 complex numbers, do an N/2-point FFT, then separate them using symmetry" (about twice as fast); this is left as an extension.
@@ -750,7 +750,7 @@ public:
 ```
 
 - The peak / hold logic is exactly the pseudocode of section 2.2, with decay using the per-sample coefficient computed by `decayCoefficient()`.
-- RMS keeps $x^2$ in a ring buffer (its capacity is allocated in `prepare()` according to `kMaxRmsWindowMs`), so changing the window length later does not allocate;
+- RMS keeps $`x^2`$ in a ring buffer (its capacity is allocated in `prepare()` according to `kMaxRmsWindowMs`), so changing the window length later does not allocate;
   when the length changes, the ring is cleared and accumulation starts over (the reading is temporarily low).
 - The readings are written into a `std::atomic<float>` only at the end of each block: the UI reads only 30 times a second, so there is no need to write on every sample.
 - `resetPeakHold()` is normally called from the UI thread (the user clicks the meter), so it does not modify the audio thread's state directly but sets an atomic flag.
@@ -811,7 +811,7 @@ public:
   the weighted sum goes into a 30-slot ring, momentary (latest 4 slots) and short-term (latest 30 slots) are updated, and this 400 ms block is put into the gating histogram.
 - During the first 400 ms (less than one complete block), momentary averages over the slots accumulated so far (so the meter reacts right from the start), but it is **not** put into the integrated histogram
   and does **not** update max momentary; likewise the short-term maximum is only updated after a full 3 s. The reason: with less than a full window the denominator is smaller,
-  so a kick at the very beginning averaged over only 100 ms instead of 400 ms would be overestimated by up to 6 dB ($10\log_{10}4$), and the result would change with where the material sits in the stream.
+  so a kick at the very beginning averaged over only 100 ms instead of 400 ms would be overestimated by up to 6 dB ($`10\log_{10}4`$), and the result would change with where the material sits in the stream.
   The drum loop in `l11_loudness` is an example: the momentary reading of the first 100 ms (containing only one kick) is −10.26 LUFS,
   but the largest of all complete 400 ms blocks is only −12.99 LUFS; max momentary reports the latter.
 - `computeIntegrated()` scans the 800-bin histogram every 100 ms (a fixed cost of about 1600 additions) and does not allocate at all.
@@ -861,7 +861,7 @@ public:
   write the ring (relaxed) → `endWrite()` (`writePos_.store(release)`). A push can be of any length.
 - `computeSpectrum()` is the consumer: it reads `writePos_` (acquire); if fewer than N samples have accumulated, or fewer than one hop of new samples has arrived, it returns false;
   otherwise it copies the latest N samples and multiplies by the window → after an acquire fence it reads `writeEnd_` to check whether anything was overwritten (including a push still in progress)
-  → `forwardReal` → normalizes by $2|X|/(N\cdot\text{CG})$ → smooths → dB.
+  → `forwardReal` → normalizes by $`2|X|/(N\cdot\text{CG})`$ → smooths → dB.
 - `magnitudesDb.resize()` happens on the UI thread, which may allocate; passing in the same vector each time means it allocates only the first time.
 - All setters and `computeSpectrum()` must be called from the **same** (UI) thread; only `push*()` runs on the audio thread.
 
@@ -873,7 +873,7 @@ public:
 
 N = 4096 (bin width 11.72 Hz), Hann, smoothing 0.8, overlap 50%. It calls `pushBlock()` every 512 samples (simulating the audio callback),
 then immediately `computeSpectrum()` (simulating the UI timer): of 375 calls, 92 get a new frame (one every 4 blocks;
-theory $(192000 - 4096)/2048 + 1 = 92$, with a self-check).
+theory $`(192000 - 4096)/2048 + 1 = 92`$, with a self-check).
 At 0.16 / 1.11 / 2.10 / 3.10 s it prints an ASCII spectrum on a 20 Hz–20 kHz log axis and the strongest bin (550.8, 1652.3, 328.1, 996.1 Hz).
 The harmonic distribution of a Karplus-Strong pluck is determined by the initial noise, so the strongest bin is often one of the harmonics rather than the fundamental; also the earlier notes are still ringing (each note lasts 1.5 s),
 so 328.1 Hz could be the fundamental of E4 (329.6 Hz), or the third harmonic of A2 (110 Hz), or the second harmonic of E3 (164.8 Hz):
@@ -922,11 +922,11 @@ It writes `dawlab_output/l11_spectrum_plucks.wav`.
 | Symptom | Likely cause |
 |---|---|
 | A 0 dBFS sine reads −6 dB on the spectrum | Forgot to multiply by 2 (positive and negative frequencies each hold half); or used Hann without dividing by the coherent gain 0.5 |
-| Readings off by 3 dB | Mixed up amplitude and power: $10\log_{10}$ applied to an amplitude, or $20\log_{10}$ applied to a mean square |
-| The spectrum peak is at the wrong frequency | Wrote the bin frequency as $k f_s / (N/2)$; or plotted all N bins (the second half is a mirror image) |
+| Readings off by 3 dB | Mixed up amplitude and power: $`10\log_{10}`$ applied to an amplitude, or $`20\log_{10}`$ applied to a mean square |
+| The spectrum peak is at the wrong frequency | Wrote the bin frequency as $`k f_s / (N/2)`$; or plotted all N bins (the second half is a mirror image) |
 | The 1 kHz sine's peak is "fat" with a wide skirt around it | Spectral leakage: no window (rectangular); or the window was applied twice |
 | A tall bar at low frequency in the spectrum | The signal has a DC offset; or DC was not handled before the window (Karplus-Strong's noise excitation naturally has a DC component) |
-| The amplitude is N times larger after the IFFT | Forgot the $1/N$; this chapter's `inverse()` / `inverseReal()` already include $1/N$, so don't divide again |
+| The amplitude is N times larger after the IFFT | Forgot the $`1/N`$; this chapter's `inverse()` / `inverseReal()` already include $`1/N`$, so don't divide again |
 | The FFT result is a mess | N is not a power of two; or bit-reversal swapped every pair twice (you need `if (j > i)`) |
 | LUFS differs from other software by a few tenths of a dB | Used the 48 kHz K-weighting coefficients at 44.1 kHz; or stage 2's numerator was normalized (the standard does not do that) |
 | Integrated is pulled down by silence | No absolute gate; or averaged in dB (average in power, then convert to dB) |

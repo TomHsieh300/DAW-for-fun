@@ -30,19 +30,19 @@ Loader 從不碰 session 或 engine；它只產生一個 immutable 的 buffer，
 
 ### Resampling：band-limited interpolation
 
-44.1 kHz 的檔案由 48 kHz 的 engine 播放，會快 8.8 %、高 1.5 個半音（$12\log_2(48000/44100) = 1.47$）。它必須被轉換。輸出 sample $m$ 位於輸入位置 $t_m = m \cdot f_{\text{in}} / f_{\text{out}}$，介於兩個輸入 sample 之間。Band-limited 訊號的理想重建（sampling theorem）是 sinc 函數之和；我們用加窗、低通過的 sinc kernel 在 $t_m$ 處求值：
+44.1 kHz 的檔案由 48 kHz 的 engine 播放，會快 8.8 %、高 1.5 個半音（$`12\log_2(48000/44100) = 1.47`$）。它必須被轉換。輸出 sample $`m`$ 位於輸入位置 $`t_m = m \cdot f_{\text{in}} / f_{\text{out}}`$，介於兩個輸入 sample 之間。Band-limited 訊號的理想重建（sampling theorem）是 sinc 函數之和；我們用加窗、低通過的 sinc kernel 在 $`t_m`$ 處求值：
 
 $$
 y[m] = \sum_k x[k]\; g(t_m - k), \qquad
-g(x) = 2f_c\,\operatorname{sinc}(2 f_c x)\; w\!\left(\frac{x}{W}\right), \qquad
-\operatorname{sinc}(u) = \frac{\sin \pi u}{\pi u}
+g(x) = 2f_c\,\mathrm{sinc}(2 f_c x)\; w\!\left(\frac{x}{W}\right), \qquad
+\mathrm{sinc}(u) = \frac{\sin \pi u}{\pi u}
 $$
 
-- $f_c$ 是以「每個輸入 sample 的 cycle 數」計的 cutoff，$f_c = 0.5 \cdot \min(1, f_{\text{out}}/f_{\text{in}}) \cdot 0.92$：剛好低於兩個 Nyquist frequency 中*較低*者。Downsample（$f_{\text{out}} < f_{\text{in}}$）時，這會移除原本會 alias 的成分；upsample 時，它移除 spectral image。"移除" 只是近似：加窗的 kernel 在 $f_c$ 附近有約 $5.5 / (2W) = 0.23 f_c$ 的 transition band，所以它的 stopband 在 $1.115 f_c = 0.513 f_{\text{out}}$ 附近才開始，剛好高於輸出的 Nyquist frequency。介於 $0.5$ 與 $0.513 f_{\text{out}}$ 之間的成分（44.1 kHz 輸出時為 22.05-22.6 kHz）仍會折返到 21.5-22.05 kHz（頻帶最上方的 2.6 %），至少約低 54 dB（README 第 3.10 節推導了這些數字）。
-- $W = Z / (2 f_c)$ 是以輸入 sample 計的半寬，其中兩側各有 $Z = 24$ 個 sinc zero crossing；$w$ 是定義在 $[-1, 1]$ 上的 Blackman window。
-- $2 f_c$ 把 kernel 的 DC gain 正規化為 1。
+- $`f_c`$ 是以「每個輸入 sample 的 cycle 數」計的 cutoff，$`f_c = 0.5 \cdot \min(1, f_{\text{out}}/f_{\text{in}}) \cdot 0.92`$：剛好低於兩個 Nyquist frequency 中*較低*者。Downsample（$`f_{\text{out}} < f_{\text{in}}`$）時，這會移除原本會 alias 的成分；upsample 時，它移除 spectral image。"移除" 只是近似：加窗的 kernel 在 $`f_c`$ 附近有約 $`5.5 / (2W) = 0.23 f_c`$ 的 transition band，所以它的 stopband 在 $`1.115 f_c = 0.513 f_{\text{out}}`$ 附近才開始，剛好高於輸出的 Nyquist frequency。介於 $`0.5`$ 與 $`0.513 f_{\text{out}}`$ 之間的成分（44.1 kHz 輸出時為 22.05-22.6 kHz）仍會折返到 21.5-22.05 kHz（頻帶最上方的 2.6 %），至少約低 54 dB（README 第 3.10 節推導了這些數字）。
+- $`W = Z / (2 f_c)`$ 是以輸入 sample 計的半寬，其中兩側各有 $`Z = 24`$ 個 sinc zero crossing；$`w`$ 是定義在 $`[-1, 1]`$ 上的 Blackman window。
+- $`2 f_c`$ 把 kernel 的 DC gain 正規化為 1。
 
-Kernel 只製表一次（每個 zero crossing 512 個點，點與點之間用 linear interpolation）；從 44.1 轉到 48 kHz 時，每個輸出 sample 約花 $2W \approx 52$ 次 multiply-add。這對 audio thread 來說太慢，但在 loader thread 上無關緊要。（這是教學用的 resampler；正式的函式庫使用 polyphase filter——同樣的數學，不同的記帳方式。）
+Kernel 只製表一次（每個 zero crossing 512 個點，點與點之間用 linear interpolation）；從 44.1 轉到 48 kHz 時，每個輸出 sample 約花 $`2W \approx 52`$ 次 multiply-add。這對 audio thread 來說太慢，但在 loader thread 上無關緊要。（這是教學用的 resampler；正式的函式庫使用 polyphase filter——同樣的數學，不同的記帳方式。）
 
 ### 把 demo song 當成資料
 
@@ -68,8 +68,8 @@ Kernel 只製表一次（每個 zero crossing 512 個點，點與點之間用 li
 ```
 
 - 44.1 kHz 的 1 秒剛好變成 48 000 個 sample，而 1 kHz sine 維持它的振幅（passband 誤差 < 0.05 dB）。
-- 20 kHz 的 sine 不可能存在於 22.05 kHz（Nyquist 11.025 kHz）。沒有 lowpass 的話，它會折返到 $22050 - 20000 = 2050$ Hz；用 Goertzel 在 2050 Hz 量測，它比輸入低 122 dB（檢查要求超過 60 dB）。
-- 從 48 轉到 44.1 kHz 的 22.3 kHz 落在 kernel 的 transition band 裡，剛好高於新的 Nyquist frequency 22.05 kHz：它以 -54.3 dB 折返到 $44100 - 22300 = 21800$ Hz。這是這個 kernel 誠實的極限（檢查要求 -50 到 -80 dB，所以 kernel 的任何改動都會被看出來）。
+- 20 kHz 的 sine 不可能存在於 22.05 kHz（Nyquist 11.025 kHz）。沒有 lowpass 的話，它會折返到 $`22050 - 20000 = 2050`$ Hz；用 Goertzel 在 2050 Hz 量測，它比輸入低 122 dB（檢查要求超過 60 dB）。
+- 從 48 轉到 44.1 kHz 的 22.3 kHz 落在 kernel 的 transition band 裡，剛好高於新的 Nyquist frequency 22.05 kHz：它以 -54.3 dB 折返到 $`44100 - 22300 = 21800`$ Hz。這是這個 kernel 誠實的極限（檢查要求 -50 到 -80 dB，所以 kernel 的任何改動都會被看出來）。
 - `MediaLoader::readAudioFile()`——loader thread 的函式——讀取一個 mono 44.1 kHz 的 WAV（由測試寫出），並回傳 48 kHz 下剛好 48 000 個 sample 的 stereo buffer，且音調完好。
 
 第 2 節透過 `Session::applyDemoSong()`（GUI 的路徑）載入 demo song：19 個 insert、0 個未知的參數名稱、mix latency 752 個 sample——與 `l14_render_song` 的數字相同。
@@ -78,7 +78,7 @@ Kernel 只製表一次（每個 zero crossing 512 個點，點與點之間用 li
 
 | | |
 |---|---|
-| 你要寫 | `app/Source/MediaLoader.cpp` 中的 `resampleBuffer()`：輸出長度、cutoff $f_c = 0.46 \min(1, f_{\text{out}}/f_{\text{in}})$、「Resampling：band-limited interpolation」中的 windowed-sinc kernel（保留 `MediaLoader.h` 的 `ResamplerSettings::kZeroCrossings` 與 `kCutoffScale`） |
+| 你要寫 | `app/Source/MediaLoader.cpp` 中的 `resampleBuffer()`：輸出長度、cutoff $`f_c = 0.46 \min(1, f_{\text{out}}/f_{\text{in}})`$、「Resampling：band-limited interpolation」中的 windowed-sinc kernel（保留 `MediaLoader.h` 的 `ResamplerSettings::kZeroCrossings` 與 `kCutoffScale`） |
 | 建置 + 檢查 | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test`（`l14_app_smoke_test`） |
 | 預期 | 第 1 節印出本頁的四行 resampler 輸出：1 kHz 振幅 0.5000 且長度 48 000、20 kHz alias 低於輸入超過 60 dB（作者：122.2 dB）、22.3 kHz transition-band alias 介於 -50 與 -80 dB 之間（作者：-54.3 dB）；`[PASS] l14_app_smoke_test` |
 

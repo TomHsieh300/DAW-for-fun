@@ -77,7 +77,7 @@ juce::NormalisableRange<double> range(info.min, info.max,
     [info](double, double, double v) { return info.clamp((float) v); });           // snap (Int)
 ```
 
-so a frequency knob (log taper: $n = \ln(v/v_{\min}) / \ln(v_{\max}/v_{\min})$) puts 1 kHz near the
+so a frequency knob (log taper: $`n = \ln(v/v_{\min}) / \ln(v_{\max}/v_{\min})`$) puts 1 kHz near the
 middle of 20 Hz .. 20 kHz, exactly like the engine's `getParameterNormalized()`. Text comes from
 `formatParameterValue()` (stage 1), a double-click returns to `defaultValue`, knobs whose range
 crosses zero draw their arc from the centre. For the 30-parameter EQ the panel uses 5 columns -

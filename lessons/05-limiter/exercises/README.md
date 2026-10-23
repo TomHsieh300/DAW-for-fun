@@ -48,7 +48,7 @@ Hint: the deque keeps only elements that still have a chance to become the minim
 
 Starter code: `starter/ex4_true_peak_meter.cpp`
 
-ITU-R BS.1770 measures true peak by upsampling the signal by 4 and then measuring the sample peak. The full theory of windowed sinc and polyphase is not taught until Chapter 06 section 2.6, so before you start, read "How do we upsample by 4? (the intuitive version)" in README section 2.8: zero insertion → image → lowpass interpolation → polyphase computing only the non-zero terms. After reading you should be able to answer: why multiply by 4? Why is the lowpass $\operatorname{sinc}(n/4)$? Why does phase p use `h[4j + p]`? Complete `TruePeakMeter`:
+ITU-R BS.1770 measures true peak by upsampling the signal by 4 and then measuring the sample peak. The full theory of windowed sinc and polyphase is not taught until Chapter 06 section 2.6, so before you start, read "How do we upsample by 4? (the intuitive version)" in README section 2.8: zero insertion → image → lowpass interpolation → polyphase computing only the non-zero terms. After reading you should be able to answer: why multiply by 4? Why is the lowpass $`\mathrm{sinc}(n/4)`$? Why does phase p use `h[4j + p]`? Complete `TruePeakMeter`:
 
 1. `designFilter()`: design a 64-tap windowed-sinc lowpass (cutoff = the original fs/2, Hann window, sum normalized to 4), and do the polyphase decomposition: the j-th tap of phase p is `h[4j + p]`.
 2. `process()`: for each input sample compute only 4 dot products `y[4n + p] = Σ_j h[4j + p] · x[n − j]`, and update `truePeak_`.
@@ -68,10 +68,10 @@ Starter code: `starter/ex5_soft_clipper.cpp`
 Complete `softClip(x, t)`:
 
 $$
-y = \begin{cases} x & |x| \le t \\ \operatorname{sign}(x)\,\bigl[\,t + (1-t)\tanh\!\frac{|x|-t}{1-t}\,\bigr] & |x| > t \end{cases}
+y = \begin{cases} x & |x| \le t \\ \mathrm{sign}(x)\,\bigl[\,t + (1-t)\tanh\!\frac{|x|-t}{1-t}\,\bigr] & |x| > t \end{cases}
 $$
 
-Requirements: the linear region is left completely untouched, continuous with continuous slope (C¹) at $t$, $|y| \le 1$, odd symmetry, monotonically increasing. The starter code compares the THD and harmonics (H2–H5) of the clipper and the limiter using a 1 kHz +6 dBFS sine, then compares peak / RMS using the drum loop at +12 dB, and writes WAV files for you to listen to.
+Requirements: the linear region is left completely untouched, continuous with continuous slope (C¹) at $`t`$, $`|y| \le 1`$, odd symmetry, monotonically increasing. The starter code compares the THD and harmonics (H2–H5) of the clipper and the limiter using a 1 kHz +6 dBFS sine, then compares peak / RMS using the drum loop at +12 dB, and writes WAV files for you to listen to.
 
 Think: why are the clipper's H2 and H4 almost -100 dB? Why is the limiter's THD close to 0?
 

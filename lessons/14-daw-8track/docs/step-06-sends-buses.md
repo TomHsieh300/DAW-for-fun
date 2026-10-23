@@ -31,7 +31,7 @@ $$
 - **Pre-fader**: the send ignores the fader. Used for monitor / headphone mixes, or to fade a dry
   signal out and leave only its reverb.
 
-The send level $s_{t,b}$ is ramped (50 ms) like the fader. -100 dB (`kMinusInfinityDb`) means off -
+The send level $`s_{t,b}`$ is ramped (50 ms) like the fader. -100 dB (`kMinusInfinityDb`) means off -
 the default for every send - and costs nothing: when the send gain is 0 and not ramping, the
 `addFrom` is skipped.
 
@@ -112,7 +112,7 @@ Step 6: sends and buses (build-along)
 ## Verify (reference route)
 
 `l14_test_mixer`, `testSends()` (verified). Track 1: DC 0.5, post-fader send to bus A at -6.02 dB.
-Track 2: DC 0.25, fader at $-\infty$, pre-fader send to bus A at 0 dB. With $g = 0.7071$ (track
+Track 2: DC 0.25, fader at $`-\infty`$, pre-fader send to bus A at 0 dB. With $`g = 0.7071`$ (track
 centre pan) and buses / master at unity balance:
 
 $$

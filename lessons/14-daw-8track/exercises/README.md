@@ -60,7 +60,7 @@ Implement a breakpoint envelope ("automation lane") and use it sample-accurately
 - `AutomationLane::render(start, out, n)`: the same for a whole block, but with one binary search and
   then a forward-moving cursor instead of one search per sample.
 - `VolumeAutomationEffect::processDsp()`: lane values are dB; multiply every channel by
-  $10^{v/20}$. (The effect receives the block's timeline segments through `setPlayHead()`; the base
+  $`10^{v/20}`$. (The effect receives the block's timeline segments through `setPlayHead()`; the base
   class already turns them into one value per sample, so loops work too.)
 
 The self-check renders a DC clip through a fade 0 dB (0.5 s) -> -24 dB (1.5 s) and requires exactly
@@ -111,8 +111,8 @@ answer:
 1. Where does the input audio enter `processBlock()`, and how do you avoid allocating while a take
    of unknown length grows?
 2. Which thread writes the WAV file, and how does the audio reach it without locks?
-3. The interface has an input latency $L_{\text{in}}$ and output latency $L_{\text{out}}$, and the mix
-   has PDC latency $L_{\text{pdc}}$. The musician played along with what they heard. At which timeline
+3. The interface has an input latency $`L_{\text{in}}`$ and output latency $`L_{\text{out}}`$, and the mix
+   has PDC latency $`L_{\text{pdc}}`$. The musician played along with what they heard. At which timeline
    position must the recorded clip be placed?
 4. What happens on the audio thread if the disk is too slow for a while?
 5. How does input monitoring (hearing yourself through the track's inserts) interact with PDC?
@@ -235,7 +235,7 @@ The number of buses is the compile-time constant `engine::kNumBuses`
    low-cut EQ - fed by the Pad and the Lead through **pre-fader** sends at -6 dB.
 
 The self-check counts 12 strips and 3 send knobs per track, moves the C knob and reads the engine,
-mutes everything but the doubler path, pulls the Pad and Lead faders to $-\infty$ and still hears
+mutes everything but the doubler path, pulls the Pad and Lead faders to $`-\infty`$ and still hears
 bus C (pre-fader!), then turns the sends off and requires exact silence.
 
 ## Exercise 13 - A keyboard shortcut map ★☆☆ (implementation)

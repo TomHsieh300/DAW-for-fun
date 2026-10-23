@@ -14,7 +14,7 @@
 
 ### 這裡所說的 real-time 是什麼意思
 
-audio device 每 $N / f_s$ 秒要求 $N$ 個 sample（48 kHz 下 512 個：每 10.67 ms 一次）。如果
+audio device 每 $`N / f_s`$ 秒要求 $`N`$ 個 sample（48 kHz 下 512 個：每 10.67 ms 一次）。如果
 `processBlock()` *有一次*遲到，聽者就會聽到 click 或空隙。平均速度無關緊要；
 **最壞情況**才算數。因此，持續時間無上限或不可預測的操作
 在 audio thread 上是被禁止的：
@@ -70,7 +70,7 @@ audio thread 計算配置次數，並檢查每個 block 是否有 NaN / inf。
 ### 稽核 4 - Block-size invariance
 
 `test_block_invariance` 以 block size 512、64 以及兩組 1..1500 的隨機大小序列 render 一個專案（compressor、EQ、gate、delay bus、limiter、PDC、fade、
-send，以及一個刻意從 sample 777 開始的 clip），並要求最大差異低於 $10^{-5}$。
+send，以及一個刻意從 sample 777 開始的 clip），並要求最大差異低於 $`10^{-5}`$。
 
 ### 模擬的 device
 

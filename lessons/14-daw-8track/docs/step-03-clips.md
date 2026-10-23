@@ -39,14 +39,14 @@ use, the audio thread can read it without any synchronization.
 
 ### The overlap
 
-For a timeline segment $[T_0, T_0 + N)$ and a clip $[S, S + L)$:
+For a timeline segment $`[T_0, T_0 + N)`$ and a clip $`[S, S + L)`$:
 
 $$
 \text{from} = \max(T_0, S), \qquad \text{to} = \min(T_0 + N, S + L)
 $$
 
-If $\text{to} \le \text{from}$ the clip is not in this block. Otherwise, for
-$T \in [\text{from}, \text{to})$:
+If $`\text{to} \le \text{from}`$ the clip is not in this block. Otherwise, for
+$`T \in [\text{from}, \text{to})`$:
 
 $$
 \text{dest}[T - T_0] \mathrel{+}= \text{src}[O + T - S] \cdot g_{\text{clip}} \cdot g_{\text{fade}}(T - S)
@@ -57,7 +57,7 @@ channels; a clip longer than its source pads with silence.
 
 ### Fades
 
-For clip-internal index $i$ and remaining samples $r = L - 1 - i$:
+For clip-internal index $`i`$ and remaining samples $`r = L - 1 - i`$:
 
 $$
 g_{\text{fade}}(i) = \underbrace{\text{shape}\Big(\frac{i+1}{F_{\text{in}}+1}\Big)}_{i < F_{\text{in}}}
@@ -65,11 +65,11 @@ g_{\text{fade}}(i) = \underbrace{\text{shape}\Big(\frac{i+1}{F_{\text{in}}+1}\Bi
 \qquad \text{shape}(x) = \begin{cases} x & \text{Linear} \\ \sin(\pi x / 2) & \text{EqualPower} \end{cases}
 $$
 
-The $+1$ in numerator and denominator means a fade never contains an exact 0 or an exact 1 inside
+The $`+1`$ in numerator and denominator means a fade never contains an exact 0 or an exact 1 inside
 the fade region (a 4-sample fade-in is 0.2, 0.4, 0.6, 0.8), and it makes a fade-out and a fade-in of
-the same length complementary: at overlap index $k$ the arguments are $\frac{F-k}{F+1}$ and
-$\frac{k+1}{F+1}$, which sum to 1. Hence linear crossfades sum to exactly 1 and equal-power
-crossfades satisfy $\cos^2 + \sin^2 = 1$ (Exercise 5).
+the same length complementary: at overlap index $`k`$ the arguments are $`\frac{F-k}{F+1}`$ and
+$`\frac{k+1}{F+1}`$, which sum to 1. Hence linear crossfades sum to exactly 1 and equal-power
+crossfades satisfy $`\cos^2 + \sin^2 = 1`$ (Exercise 5).
 
 Even a few milliseconds of fade matter: a clip that starts or ends in the middle of a waveform is a
 step in the signal, and a step contains all frequencies - a click.
@@ -92,8 +92,8 @@ The audio thread therefore never sees a half-edited list and never frees memory.
 | Function | Purpose |
 |---|---|
 | `Clip::fromBuffer(buffer, start, name)` | a clip that plays the whole buffer |
-| `fadeGain(shape, t)` | $t$ or $\sin(\pi t/2)$ |
-| `clipFadeAt(clip, i)` | the fade gain of clip sample $i$ |
+| `fadeGain(shape, t)` | $`t`$ or $`\sin(\pi t/2)`$ |
+| `clipFadeAt(clip, i)` | the fade gain of clip sample $`i`$ |
 | `renderClip(clip, timelineStart, dest)` | adds the overlapping part into `dest`; real-time safe |
 
 ### `Track.h`
@@ -109,7 +109,7 @@ public:
 ```
 
 `renderClips()` loops over the segments from Step 2 and calls `renderClip()` for each clip with
-the segment's `timelineStart` into the matching sub-block. With $C$ clips this is $O(C)$ per block;
+the segment's `timelineStart` into the matching sub-block. With $`C`$ clips this is $`O(C)`$ per block;
 a real arranger with thousands of clips would keep the list sorted and binary-search the first
 candidate.
 
@@ -146,8 +146,8 @@ Step 3: clips (build-along)
 [PASS] l14_step03 (27 checks passed)
 ```
 
-The trimmed clip is a ramp source (sample $i$ = $i/1000$) with `sourceOffset = 100`,
-`length = 300` and -6.02 dB of clip gain: $0.100 \cdot 0.5$ and $0.399 \cdot 0.5$. The check also
+The trimmed clip is a ramp source (sample $`i`$ = $`i/1000`$) with `sourceOffset = 100`,
+`length = 300` and -6.02 dB of clip gain: $`0.100 \cdot 0.5`$ and $`0.399 \cdot 0.5`$. The check also
 tests stereo sources, a clip longer than its source, overlapping clips and a muted clip.
 
 ## Verify (reference route)
@@ -164,7 +164,7 @@ tests stereo sources, a clip longer than its source, overlapping clips and a mut
 
 `l14_transport_clips` builds a two-bar arpeggio from 16 clips (4 shared pluck buffers, one clip per
 eighth note, clip length = one eighth, 25 ms fade-out, -6 dB except on beat 1) and checks every clip
-start: at its start sample $S$, the output must equal exactly `source[0] x clipGain x 0.7071`
+start: at its start sample $`S`$, the output must equal exactly `source[0] x clipGain x 0.7071`
 (the previous clip has just ended, and a pluck begins with random noise, so a clip one sample off
 would show a different value). Verified output:
 

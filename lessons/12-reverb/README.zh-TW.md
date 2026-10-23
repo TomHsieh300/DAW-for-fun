@@ -48,7 +48,7 @@
 
 1. **直達音（direct sound）**：聲源直線傳到耳朵，最早、最大聲。決定「聲音從哪個方向來」。
 2. **Early reflections（早期反射）**：經過一、兩次牆面 / 地板 / 天花板反射才到的聲音。它們很稀疏、彼此可以分辨（但通常不會被聽成「回音」，而是被大腦融合進直達音），提供「房間大小、形狀、自己離牆多遠」的線索。
-3. **Late reverb（diffuse tail）**：反射了很多次的聲音。反射次數一多，到達的時間點越來越密：在一個體積 V 的房間裡，第 t 秒附近每秒到達的反射數大約與 $t^2$ 成正比（$\approx 4\pi c^3 t^2 / V$）。到了某個時間點以後，反射密到聽起來像一團雜訊，而且能量以**指數**衰減。
+3. **Late reverb（diffuse tail）**：反射了很多次的聲音。反射次數一多，到達的時間點越來越密：在一個體積 V 的房間裡，第 t 秒附近每秒到達的反射數大約與 $`t^2`$ 成正比（$`\approx 4\pi c^3 t^2 / V`$）。到了某個時間點以後，反射密到聽起來像一團雜訊，而且能量以**指數**衰減。
 
 直達音與第一個反射之間的時間差叫 **pre-delay**。大空間的牆比較遠，pre-delay 比較長，這是大腦判斷「大空間」的重要線索。
 
@@ -64,7 +64,7 @@ L(t) = L_0 - 60\cdot\frac{t}{\mathrm{RT60}}\ \ \text{dB}
 a(t) = a_0\cdot 10^{-3t/\mathrm{RT60}} = a_0\, e^{-\ln(1000)\,t/\mathrm{RT60}}
 $$
 
-（振幅掉 60 dB = 掉到 1/1000，所以 $a(\mathrm{RT60}) = a_0/1000$。）
+（振幅掉 60 dB = 掉到 1/1000，所以 $`a(\mathrm{RT60}) = a_0/1000`$。）
 
 實際量測時很少真的等到 −60 dB（背景雜訊會先淹沒它），而是在 −5 到 −25 dB（T20）或 −5 到 −35 dB（T30）的區段量斜率，再外插到 60 dB。本章的 `measureRt60()` 與練習 6 都是這麼做。
 
@@ -80,7 +80,7 @@ $$
 
 ### 2.2 Impulse response 的觀點
 
-如果把房間（聲源位置 → 聽者位置）當成一個 LTI（線性非時變）系統，那它完全由 **impulse response** $h[n]$ 描述：拍手（≈ impulse）錄下來的東西就是 $h$，而任何聲音 $x$ 經過這個房間的結果是卷積：
+如果把房間（聲源位置 → 聽者位置）當成一個 LTI（線性非時變）系統，那它完全由 **impulse response** $`h[n]`$ 描述：拍手（≈ impulse）錄下來的東西就是 $`h`$，而任何聲音 $`x`$ 經過這個房間的結果是卷積：
 
 $$
 y[n] = (h * x)[n] = \sum_{k=0}^{M-1} h[k]\,x[n-k]
@@ -90,7 +90,7 @@ $$
 
 | | Convolution reverb | Algorithmic reverb |
 |---|---|---|
-| 做法 | 直接用量到（或合成）的 $h$ 做卷積 | 用 delay + feedback 做一個「IR 統計上像房間」的遞迴系統 |
+| 做法 | 直接用量到（或合成）的 $`h`$ 做卷積 | 用 delay + feedback 做一個「IR 統計上像房間」的遞迴系統 |
 | 真實度 | 就是那個空間（在那個聲源/聽者位置） | 「像」某種空間，取決於設計 |
 | 參數 | 只能事後修 IR（截短、EQ、改包絡） | decay、size、damping、modulation、freeze 都可即時調 |
 | 成本 | 跟 IR 長度成正比（要靠 FFT） | 跟 RT60 無關，幾十條 delay 就夠 |
@@ -113,11 +113,11 @@ y[n] = x[n-D] + g\,y[n-D]
 H(z) = \frac{z^{-D}}{1 - g\,z^{-D}}
 $$
 
-餵一個 impulse，輸出是 $\delta[n-D] + g\,\delta[n-2D] + g^2\,\delta[n-3D] + \dots$：**每繞一圈（D 個 sample）振幅乘 g**。
+餵一個 impulse，輸出是 $`\delta[n-D] + g\,\delta[n-2D] + g^2\,\delta[n-3D] + \dots`$：**每繞一圈（D 個 sample）振幅乘 g**。
 
 #### 推導：RT60 與 g
 
-經過 t 秒，總共繞了 $t\cdot f_s / D$ 圈，振幅是 $g^{t f_s / D}$。要求 t = RT60 時振幅是 $10^{-60/20} = 10^{-3}$：
+經過 t 秒，總共繞了 $`t\cdot f_s / D`$ 圈，振幅是 $`g^{t f_s / D}`$。要求 t = RT60 時振幅是 $`10^{-60/20} = 10^{-3}`$：
 
 $$
 g^{\mathrm{RT60}\cdot f_s / D} = 10^{-3}
@@ -129,13 +129,13 @@ g^{\mathrm{RT60}\cdot f_s / D} = 10^{-3}
 \boxed{\,\mathrm{RT60} = \frac{-3D}{f_s\log_{10} g}\,}
 $$
 
-例：D = 1557 samples、fs = 48 kHz、RT60 = 2 s → $g = 10^{-3\cdot1557/96000} = 10^{-0.04866} = 0.89401$。範例 `l12_comb_rt60` 會用這個 g 餵 impulse：從第一個 echo（t = D/fs，振幅 1，當作 0 dB 的參考點）起算，衰減到 −60 dB 以下花了 62 圈 = 2.011 s（量化到 D/fs = 32.4 ms 的整數倍，所以略大於 2.000 s）。
+例：D = 1557 samples、fs = 48 kHz、RT60 = 2 s → $`g = 10^{-3\cdot1557/96000} = 10^{-0.04866} = 0.89401`$。範例 `l12_comb_rt60` 會用這個 g 餵 impulse：從第一個 echo（t = D/fs，振幅 1，當作 0 dB 的參考點）起算，衰減到 −60 dB 以下花了 62 圈 = 2.011 s（量化到 D/fs = 32.4 ms 的整數倍，所以略大於 2.000 s）。
 
 注意 g 跟 D 有關：**同樣的 RT60，迴路越長、每圈要衰減越多**（g 越小）。這是 FDN 每條線各自算 g_i 的原因。
 
 #### 頻率響應：為什麼叫 comb
 
-$|H(e^{j\omega})| = 1/|1 - g e^{-j\omega D}|$。當 $\omega D = 2\pi k$（頻率是 $f_s/D$ 的整數倍）時分母最小 → peak $= 1/(1-g)$；半整數倍時分母最大 → notch $= 1/(1+g)$。g = 0.894 時 peak = +19.49 dB、notch = −5.55 dB，相差 25 dB，頻譜像一把梳子：
+$`|H(e^{j\omega})| = 1/|1 - g e^{-j\omega D}|`$。當 $`\omega D = 2\pi k`$（頻率是 $`f_s/D`$ 的整數倍）時分母最小 → peak $`= 1/(1-g)`$；半整數倍時分母最大 → notch $`= 1/(1+g)`$。g = 0.894 時 peak = +19.49 dB、notch = −5.55 dB，相差 25 dB，頻譜像一把梳子：
 
 ```
  dB
@@ -161,14 +161,14 @@ y[n] = x[n-D] + g\cdot \mathrm{LP}\{y\}[n-D],\qquad
 \mathrm{LP}(z) = \frac{1-d}{1-d\,z^{-1}}
 $$
 
-現在每繞一圈的增益變成與頻率有關的 $g\,|\mathrm{LP}(e^{j\omega})|$。把它代進 RT60 公式：
+現在每繞一圈的增益變成與頻率有關的 $`g\,|\mathrm{LP}(e^{j\omega})|`$。把它代進 RT60 公式：
 
 $$
 \mathrm{RT60}(\omega) = \frac{-3D}{f_s\log_{10}\!\big(g\,|\mathrm{LP}(e^{j\omega})|\big)},\qquad
 |\mathrm{LP}(e^{j\omega})| = \frac{1-d}{\sqrt{1 - 2d\cos\omega + d^2}}
 $$
 
-DC 時 $|\mathrm{LP}| = 1$（低頻 RT60 不變），Nyquist 時 $|\mathrm{LP}| = (1-d)/(1+d)$。代 d = 0.5、g = 0.894、D = 1557，在 4008 Hz（ω = 0.5246）：$|\mathrm{LP}| = 0.5/\sqrt{1.25 - \cos 0.5246} = 0.806$，RT60 = 0.685 s。範例量到 0.685 s。
+DC 時 $`|\mathrm{LP}| = 1`$（低頻 RT60 不變），Nyquist 時 $`|\mathrm{LP}| = (1-d)/(1+d)`$。代 d = 0.5、g = 0.894、D = 1557，在 4008 Hz（ω = 0.5246）：$`|\mathrm{LP}| = 0.5/\sqrt{1.25 - \cos 0.5246} = 0.806`$，RT60 = 0.685 s。範例量到 0.685 s。
 
 ### 2.4 Schroeder allpass：只打散、不染色
 
@@ -188,9 +188,9 @@ v[n] = x[n] + g\,v[n-D],\qquad y[n] = -g\,v[n] + v[n-D]
 H(z) = \frac{-g + z^{-D}}{1 - g\,z^{-D}}
 $$
 
-**為什麼 |H| = 1**：令 $u = e^{-j\omega D}$（$|u| = 1$），分子 $u - g = u\,(1 - g\,\bar u)$，所以 $|u - g| = |1 - g\bar u| = |\overline{1 - g u}| = |1 - g u|$，分子分母大小相同。振幅響應在每個頻率都是 0 dB（範例會量給你看：100 Hz 到 12 kHz 都是 ±0.00 dB）。
+**為什麼 |H| = 1**：令 $`u = e^{-j\omega D}`$（$`|u| = 1`$），分子 $`u - g = u\,(1 - g\,\bar u)`$，所以 $`|u - g| = |1 - g\bar u| = |\overline{1 - g u}| = |1 - g u|`$，分子分母大小相同。振幅響應在每個頻率都是 0 dB（範例會量給你看：100 Hz 到 12 kHz 都是 ±0.00 dB）。
 
-那它做了什麼？**把相位打亂**：一個 impulse 進去，出來是 $-g, 0,\dots,0, (1-g^2), 0,\dots, (1-g^2)g, \dots$ 一串 echo。把幾個不同長度的 allpass 串起來，每一級把每個 echo 再拆成一串，密度相乘 —— 一個 click 進去，出來是一團「沙沙」聲，但長時間的頻譜還是平的。這叫 **diffusion（擴散）**。
+那它做了什麼？**把相位打亂**：一個 impulse 進去，出來是 $`-g, 0,\dots,0, (1-g^2), 0,\dots, (1-g^2)g, \dots`$ 一串 echo。把幾個不同長度的 allpass 串起來，每一級把每個 echo 再拆成一串，密度相乘 —— 一個 click 進去，出來是一團「沙沙」聲，但長時間的頻譜還是平的。這叫 **diffusion（擴散）**。
 
 > 注意：allpass 是「長時間平均」上不染色。短時間看（例如 20 ms 的 window），它的 echo 仍然會帶點音色，g 太大或 D 太長會聽到「嗡嗡」或「彈簧」感。所以 diffuser 的 D 通常很短（幾 ms），g 在 0.5–0.7。
 
@@ -206,7 +206,7 @@ Schroeder（1962）把兩者組合起來：
         parallel comb：產生 mode 的「密度」與 decay       series allpass：增加 echo 密度（擴散）
 ```
 
-- **Parallel combs**：每個 comb 的 mode 間距是 $f_s/D_i$，4 個不同長度的 comb 疊起來，mode 數量變成 4 倍；每個 comb 用自己的 $g_i = 10^{-3D_i/(\mathrm{RT60}f_s)}$，所以全部以同一個 RT60 衰減。
+- **Parallel combs**：每個 comb 的 mode 間距是 $`f_s/D_i`$，4 個不同長度的 comb 疊起來，mode 數量變成 4 倍；每個 comb 用自己的 $`g_i = 10^{-3D_i/(\mathrm{RT60}f_s)}`$，所以全部以同一個 RT60 衰減。
 - **Series allpass**：把 comb 輸出的規律 echo 打散成密集的雜訊狀尾巴，又不改變整體頻譜。
 
 **Freeverb**（Jezar at Dreampoint，2000 年公開為 public domain）是這個架構最廣為流傳的版本：
@@ -224,9 +224,9 @@ Schroeder（1962）把兩者組合起來：
 ```
 
 - **8 個 lowpass-feedback comb（LBCF）並聯**：迴路裡的 one-pole lowpass 就是 2.3 節的 damping。Freeverb 的實作是 `filterstore = output·(1−damp) + filterstore·damp`、`buffer = input + filterstore·feedback` —— 本章 `CombFilter` 用同樣的寫法。
-- **4 個 allpass 串聯**，g = 0.5。細節：Freeverb 的 allpass 程式碼是 `output = bufout − input`、`buffer = input + bufout·g`，也就是 $v[n] = x[n] + g\,v[n-D]$、$y[n] = v[n-D] - x[n]$，transfer function
+- **4 個 allpass 串聯**，g = 0.5。細節：Freeverb 的 allpass 程式碼是 `output = bufout − input`、`buffer = input + bufout·g`，也就是 $`v[n] = x[n] + g\,v[n-D]`$、$`y[n] = v[n-D] - x[n]`$，transfer function
   $$H(z) = \frac{-1 + (1+g)\,z^{-D}}{1 - g\,z^{-D}}$$
-  要成為 allpass，分子係數必須是分母係數「倒過來」的倍數：$[-1,\ 1+g] = c\,[-g,\ 1]$ ⇒ $c = 1/g$、$1 + g = 1/g$ ⇒ $g^2 + g - 1 = 0$ ⇒ $g = (\sqrt5 - 1)/2 \approx 0.618$。Freeverb 用 g = 0.5，所以它**不是**嚴格的 allpass（在 $f_s/D$ 的整數倍是 0 dB，半整數倍是 $2.5/1.5$ → +4.4 dB 的起伏）；它在實務上「聽起來對」，但不要拿它當 allpass 的定義（J. O. Smith 的 *Physical Audio Signal Processing*「Freeverb Allpass Approximation」一節有同樣的分析）。我們的 `AllpassDiffuser` 用的是 2.4 節的標準式。
+  要成為 allpass，分子係數必須是分母係數「倒過來」的倍數：$`[-1,\ 1+g] = c\,[-g,\ 1]`$ ⇒ $`c = 1/g`$、$`1 + g = 1/g`$ ⇒ $`g^2 + g - 1 = 0`$ ⇒ $`g = (\sqrt5 - 1)/2 \approx 0.618`$。Freeverb 用 g = 0.5，所以它**不是**嚴格的 allpass（在 $`f_s/D`$ 的整數倍是 0 dB，半整數倍是 $`2.5/1.5`$ → +4.4 dB 的起伏）；它在實務上「聽起來對」，但不要拿它當 allpass 的定義（J. O. Smith 的 *Physical Audio Signal Processing*「Freeverb Allpass Approximation」一節有同樣的分析）。我們的 `AllpassDiffuser` 用的是 2.4 節的標準式。
 - **Stereo spread**：右聲道每一條 delay 都比左聲道長 23 samples，兩聲道的殘響因此去相關（decorrelated），聽起來很寬。
 - **參數映射**：`roomsize` 0..1 → feedback = roomsize·0.28 + 0.7（0.7–0.98），`damp` 0..1 → damping 係數 = damp·0.4。注意 Freeverb 的 roomsize 直接控制 feedback，**不是** RT60：8 個 comb 用同一個 g，所以長的 comb 衰減得比短的慢一點，RT60 依 comb 而異（例如 g = 0.84 時，1116 samples 的 comb RT60 = 1.00 s，1617 的是 1.45 s）。
 - **Freeze**：feedback = 1、damping = 0、輸入增益 = 0 → 尾巴無限延長。
@@ -250,7 +250,7 @@ Schroeder 結構的 comb 彼此獨立。如果讓 N 條 delay line 的輸出**�
    └──────── g_i ◄── LP_i ◄── [ 回授矩陣 A（N×N）] ◄───────┘
 ```
 
-狀態方程式（N 條線，第 i 條長 $L_i$）：
+狀態方程式（N 條線，第 i 條長 $`L_i`$）：
 
 $$
 v_i[n] = s_i[n - L_i],\qquad
@@ -258,27 +258,27 @@ v_i[n] = s_i[n - L_i],\qquad
 y[n] = \mathbf c^{\mathsf T}\mathbf v[n]
 $$
 
-$\boldsymbol\Gamma = \mathrm{diag}(g_0,\dots,g_{N-1})$ 是每條線的衰減（之後再加 damping）。
+$`\boldsymbol\Gamma = \mathrm{diag}(g_0,\dots,g_{N-1})`$ 是每條線的衰減（之後再加 damping）。
 
 #### 為什麼正交矩陣 ⇒ 無損
 
-先看 $\boldsymbol\Gamma = \mathbf I$、沒有輸入的情況。整個系統的「能量」是所有 delay line 裡面存的 sample 平方和 $E[n]$。每過一個 sample，每條線吐出一個 $v_i$、吃進一個 $s_i$：
+先看 $`\boldsymbol\Gamma = \mathbf I`$、沒有輸入的情況。整個系統的「能量」是所有 delay line 裡面存的 sample 平方和 $`E[n]`$。每過一個 sample，每條線吐出一個 $`v_i`$、吃進一個 $`s_i`$：
 
 $$
 E[n+1] - E[n] = \sum_i s_i^2 - \sum_i v_i^2 = \|\mathbf A\mathbf v\|^2 - \|\mathbf v\|^2
 $$
 
-如果 $\mathbf A$ 是**正交矩陣**（$\mathbf A^{\mathsf T}\mathbf A = \mathbf I$），則 $\|\mathbf A\mathbf v\|^2 = \mathbf v^{\mathsf T}\mathbf A^{\mathsf T}\mathbf A\mathbf v = \|\mathbf v\|^2$，能量**完全不變**：系統既不會爆掉、也不會自己衰減，是一個「無損（lossless）」的原型。所有 decay 都由我們刻意加入的 $g_i$ 與 damping 控制。練習 4 會驗證：g = 1 時 1.0 s 與 2.5 s 的 RMS 只差 0.01 dB。
+如果 $`\mathbf A`$ 是**正交矩陣**（$`\mathbf A^{\mathsf T}\mathbf A = \mathbf I`$），則 $`\|\mathbf A\mathbf v\|^2 = \mathbf v^{\mathsf T}\mathbf A^{\mathsf T}\mathbf A\mathbf v = \|\mathbf v\|^2`$，能量**完全不變**：系統既不會爆掉、也不會自己衰減，是一個「無損（lossless）」的原型。所有 decay 都由我們刻意加入的 $`g_i`$ 與 damping 控制。練習 4 會驗證：g = 1 時 1.0 s 與 2.5 s 的 RMS 只差 0.01 dB。
 
 常用的正交矩陣：
 
-- **Householder**：$\mathbf A = \mathbf I - \frac{2}{N}\mathbf 1\mathbf 1^{\mathsf T}$。驗證：$\mathbf A^{\mathsf T}\mathbf A = \mathbf I - \frac4N\mathbf 1\mathbf 1^{\mathsf T} + \frac{4}{N^2}\mathbf 1(\mathbf 1^{\mathsf T}\mathbf 1)\mathbf 1^{\mathsf T} = \mathbf I - \frac4N\mathbf 1\mathbf 1^{\mathsf T} + \frac4N\mathbf 1\mathbf 1^{\mathsf T} = \mathbf I$。計算只要 O(N)：先算總和 $S = \sum v_j$，再 $u_i = v_i - \frac2N S$。N = 8 時對角是 0.75、非對角是 −0.25：每條線把 75% 留給自己、其餘平均分給別人。（N = 4 時對角是 0.5，混合更「平均」。）
-- **Hadamard**：$\mathbf H_2 = \frac{1}{\sqrt2}\begin{bmatrix}1&1\\1&-1\end{bmatrix}$、$\mathbf H_{2N} = \mathbf H_2\otimes\mathbf H_N$（N 為 2 的次方）。所有元素的大小都是 $1/\sqrt N$ —— 混合得最徹底，可以用類似 FFT 的 butterfly 在 O(N log N) 算完。
+- **Householder**：$`\mathbf A = \mathbf I - \frac{2}{N}\mathbf 1\mathbf 1^{\mathsf T}`$。驗證：$`\mathbf A^{\mathsf T}\mathbf A = \mathbf I - \frac4N\mathbf 1\mathbf 1^{\mathsf T} + \frac{4}{N^2}\mathbf 1(\mathbf 1^{\mathsf T}\mathbf 1)\mathbf 1^{\mathsf T} = \mathbf I - \frac4N\mathbf 1\mathbf 1^{\mathsf T} + \frac4N\mathbf 1\mathbf 1^{\mathsf T} = \mathbf I`$。計算只要 O(N)：先算總和 $`S = \sum v_j`$，再 $`u_i = v_i - \frac2N S`$。N = 8 時對角是 0.75、非對角是 −0.25：每條線把 75% 留給自己、其餘平均分給別人。（N = 4 時對角是 0.5，混合更「平均」。）
+- **Hadamard**：$`\mathbf H_2 = \frac{1}{\sqrt2}\begin{bmatrix}1&1\\1&-1\end{bmatrix}`$、$`\mathbf H_{2N} = \mathbf H_2\otimes\mathbf H_N`$（N 為 2 的次方）。所有元素的大小都是 $`1/\sqrt N`$ —— 混合得最徹底，可以用類似 FFT 的 butterfly 在 O(N log N) 算完。
 - 任意旋轉矩陣、或隨機正交矩陣（QR 分解產生）也都可以。
 
 本章 `Reverb.h` 用 Householder（簡單、便宜、N = 8 時擴散已經足夠）。
 
-#### 讓所有 mode 以同一速率衰減：$g_i = \gamma^{L_i}$
+#### 讓所有 mode 以同一速率衰減：$`g_i = \gamma^{L_i}`$
 
 我們希望每個頻率都以同一個 RT60 衰減。Jot 的做法：讓每條線的衰減與它的長度成正比 —— 在 dB 上，每「一個 sample」都衰減一樣多：
 
@@ -288,27 +288,27 @@ g_i = \gamma^{L_i},\qquad \gamma = 10^{-3/(\mathrm{RT60}\cdot f_s)}
 g_i = 10^{-3L_i/(\mathrm{RT60}\cdot f_s)}
 $$
 
-為什麼這樣就對：把無損系統的每一個 $z^{-1}$ 換成 $\gamma z^{-1}$，等於把每條 delay $z^{-L_i}$ 乘上 $\gamma^{L_i}$ —— 正好是我們加的 $g_i$。而「$z^{-1} \to \gamma z^{-1}$」的效果是把系統所有的 pole 半徑乘以 γ：無損系統的 pole 全在單位圓上，現在全在半徑 γ 的圓上，**每個 mode 每個 sample 都衰減 γ 倍**，所以 RT60 全部相同。這跟 comb 的公式長得一樣，只是現在每條線各自代入自己的 $L_i$。
+為什麼這樣就對：把無損系統的每一個 $`z^{-1}`$ 換成 $`\gamma z^{-1}`$，等於把每條 delay $`z^{-L_i}`$ 乘上 $`\gamma^{L_i}`$ —— 正好是我們加的 $`g_i`$。而「$`z^{-1} \to \gamma z^{-1}`$」的效果是把系統所有的 pole 半徑乘以 γ：無損系統的 pole 全在單位圓上，現在全在半徑 γ 的圓上，**每個 mode 每個 sample 都衰減 γ 倍**，所以 RT60 全部相同。這跟 comb 的公式長得一樣，只是現在每條線各自代入自己的 $`L_i`$。
 
 #### Damping：頻率相依的 RT60
 
-把每條線的 $g_i$ 換成一個 filter $G_i(z)$，讓它的大小 $|G_i(e^{j\omega})| = 10^{-3L_i/(\mathrm{RT60}(\omega) f_s)}$，就可以讓不同頻率有不同 RT60（Jot 的 absorptive filter）。精確設計需要 shelving filter；本章用簡化版：每條線放一個第 02 章的 `OnePole` lowpass（cutoff = `setDampingHz`），再乘 $g_i$。結果是低頻 RT60 ≈ 設定值、高頻越來越短，跟真實房間的趨勢一致（範例 2 會量出每個頻帶的 RT60）。
+把每條線的 $`g_i`$ 換成一個 filter $`G_i(z)`$，讓它的大小 $`|G_i(e^{j\omega})| = 10^{-3L_i/(\mathrm{RT60}(\omega) f_s)}`$，就可以讓不同頻率有不同 RT60（Jot 的 absorptive filter）。精確設計需要 shelving filter；本章用簡化版：每條線放一個第 02 章的 `OnePole` lowpass（cutoff = `setDampingHz`），再乘 $`g_i`$。結果是低頻 RT60 ≈ 設定值、高頻越來越短，跟真實房間的趨勢一致（範例 2 會量出每個頻帶的 RT60）。
 
 #### 輸入、輸出向量
 
 - **b**：輸入要灌進哪些線。我們讓左聲道進偶數線、右聲道進奇數線。
-- **c**：輸出取哪些線、正負號。我們取 $y_L = v_0 - v_2 + v_4 - v_6$、$y_R = v_1 - v_3 + v_5 - v_7$。正負交錯可以抵消一部分 Householder 造成的「所有線同相」成分，左右用不同的線 → 左右聲道去相關（寬的 stereo）。
+- **c**：輸出取哪些線、正負號。我們取 $`y_L = v_0 - v_2 + v_4 - v_6`$、$`y_R = v_1 - v_3 + v_5 - v_7`$。正負交錯可以抵消一部分 Householder 造成的「所有線同相」成分，左右用不同的線 → 左右聲道去相關（寬的 stereo）。
 
 #### Echo 密度與 mode 密度
 
 - 時域：每一個 echo 下一圈分裂成 N 個（矩陣混合），echo 密度很快就滿了。範例 2 會印每 10 ms 內非零 sample 的數量：0, 0, 1, 6, 27, 71, 145, 231, 319, 398（滿分 480），100 ms 內就接近全滿。
-- 頻域：FDN 的 mode 總數 = 所有 delay 長度的總和 $\sum L_i$，所以平均 **mode 密度 = $\sum L_i / f_s$ 個 / Hz**。本章的 8 條線總長 19502 samples → 0.41 個 / Hz（平均每 2.5 Hz 一個 mode）。練習 4 的 4 線 FDN 只有 0.14 個 / Hz（每 7 Hz 一個），尾巴就聽得出音高。常被引用的經驗法則來自 Schroeder 與 Logan：RT60 = 1 s 時 mode 密度約 0.15 個 / Hz 就夠，而需要的密度與 RT60 成正比，也就是 mode 密度（個 / Hz，等於總 delay 長度的秒數）至少要約 0.15 × RT60，寫成 delay 總長度就是 $\sum L_i \ge 0.15\cdot\mathrm{RT60}\cdot f_s$（J. O. Smith 的 *Physical Audio Signal Processing*「Mode Density Requirement」一節）。不夠的話，長 decay 會聽起來像一堆分開的共振（ringing tones）。本章 0.41 對 RT60 = 2 s（需要 0.3）足夠；RT60 = 4 s 時（需要 0.6）就不太夠了 —— 這時把 size 調大、或加 modulation 會有幫助。
+- 頻域：FDN 的 mode 總數 = 所有 delay 長度的總和 $`\sum L_i`$，所以平均 **mode 密度 = $`\sum L_i / f_s`$ 個 / Hz**。本章的 8 條線總長 19502 samples → 0.41 個 / Hz（平均每 2.5 Hz 一個 mode）。練習 4 的 4 線 FDN 只有 0.14 個 / Hz（每 7 Hz 一個），尾巴就聽得出音高。常被引用的經驗法則來自 Schroeder 與 Logan：RT60 = 1 s 時 mode 密度約 0.15 個 / Hz 就夠，而需要的密度與 RT60 成正比，也就是 mode 密度（個 / Hz，等於總 delay 長度的秒數）至少要約 0.15 × RT60，寫成 delay 總長度就是 $`\sum L_i \ge 0.15\cdot\mathrm{RT60}\cdot f_s`$（J. O. Smith 的 *Physical Audio Signal Processing*「Mode Density Requirement」一節）。不夠的話，長 decay 會聽起來像一堆分開的共振（ringing tones）。本章 0.41 對 RT60 = 2 s（需要 0.3）足夠；RT60 = 4 s 時（需要 0.6）就不太夠了 —— 這時把 size 調大、或加 modulation 會有幫助。
 
 ### 2.7 為什麼 delay 長度要互質
 
 假設兩條線長 1500 與 2000 samples（gcd = 500）：
 
-- **頻域**：第一條的 mode 在 $f_s/1500 = 32$ Hz 的整數倍、第二條在 24 Hz 的整數倍。兩者在 $f_s/500 = 96$ Hz 的整數倍**重疊** —— 那些頻率被兩條線同時共振，能量特別大、衰減特別久，聽起來就是「金屬聲」（metallic ringing）。
+- **頻域**：第一條的 mode 在 $`f_s/1500 = 32`$ Hz 的整數倍、第二條在 24 Hz 的整數倍。兩者在 $`f_s/500 = 96`$ Hz 的整數倍**重疊** —— 那些頻率被兩條線同時共振，能量特別大、衰減特別久，聽起來就是「金屬聲」（metallic ringing）。
 - **時域**：兩條線的 echo 每 lcm(1500, 2000) = 6000 samples（125 ms）就**同時抵達**一次，形成規律的 flutter。
 
 如果長度互質（例如 1427 與 1783，都是質數），除了 DC 以外沒有共同的 mode，echo 同時抵達的週期是 lcm = 1427·1783 = 2,544,341 samples（53 秒），實務上等於不會重複。
@@ -319,7 +319,7 @@ $$
 
 即使 delay 互質，長 decay（數秒）時尾巴仍然是成千上萬個固定頻率的共振。耳朵對「靜止不動、衰減很慢的窄頻共振」很敏感，會聽到隱約的音高或 ringing。解法：讓 delay 長度**緩慢地調變**（例如 ±0.5–2 ms、0.5–2 Hz 的 LFO，每條線相位不同）。
 
-- mode 的頻率 ≈ $k f_s / L_i$；$L_i$ 在動，mode 就在頻率軸上來回漂移。
+- mode 的頻率 ≈ $`k f_s / L_i`$；$`L_i`$ 在動，mode 就在頻率軸上來回漂移。
 - 長時間平均下來，能量被抹到相鄰頻率，頻譜變平滑，ringing 消失。
 - 代價：調變 delay 等於微小的 vibrato（第 10 章 chorus 的原理），深度太大會聽到音高晃動，對鋼琴等長音很明顯。
 
@@ -327,7 +327,7 @@ $$
 
 > 調變的 delay 需要讀「非整數位置」的 sample，所以用第 09 章的 `FractionalDelayLine`（linear 或 cubic 插值）。這也是 `Reverb.h` 不用整數 `DelayLine` 的原因：`setSize()` 改變 delay 長度時也需要平滑的非整數長度。
 >
-> 代價之一：在非整數位置做 linear interpolation 本身就是一個輕微的 lowpass（小數部分 0.5 時，Nyquist 直接歸零），放在迴路裡就是每繞一圈多一點損失。平常這點損失混在 $g_i$ 的衰減裡聽不出來，但 freeze 要求迴路**嚴格無損**，所以 `Reverb` 在 freeze 時會把 modulation 淡出，讓讀取位置回到整數長度（3.2 節）。
+> 代價之一：在非整數位置做 linear interpolation 本身就是一個輕微的 lowpass（小數部分 0.5 時，Nyquist 直接歸零），放在迴路裡就是每繞一圈多一點損失。平常這點損失混在 $`g_i`$ 的衰減裡聽不出來，但 freeze 要求迴路**嚴格無損**，所以 `Reverb` 在 freeze 時會把 modulation 淡出，讓讀取位置回到整數長度（3.2 節）。
 
 ### 2.9 Pre-delay 與 early reflections
 
@@ -345,7 +345,7 @@ d_k = \frac{|\mathbf r_{\mathrm{img},k} - \mathbf r_{\mathrm{listener}}| - |\mat
 a_k = \sqrt{1-\alpha}\cdot\frac{|\mathbf r_{\mathrm{src}} - \mathbf r_{\mathrm{listener}}|}{|\mathbf r_{\mathrm{img},k} - \mathbf r_{\mathrm{listener}}|}
 $$
 
-（相對直達音的延遲與增益；$\sqrt{1-\alpha}$ 是牆面的振幅反射係數，距離比是 1/r 的球面擴散。）練習 3 就是實作這個，並把 ER 接上 FDN（pre-delay = 最晚的一個 ER）組成完整的「ER + late」reverb。
+（相對直達音的延遲與增益；$`\sqrt{1-\alpha}`$ 是牆面的振幅反射係數，距離比是 1/r 的球面擴散。）練習 3 就是實作這個，並把 ER 接上 FDN（pre-delay = 最晚的一個 ER）組成完整的「ER + late」reverb。
 
 完整的 algorithmic reverb 大致長這樣：
 
@@ -367,7 +367,7 @@ flowchart LR
 
 #### 直接卷積的成本
 
-$y[n] = \sum_{k=0}^{M-1} h[k]x[n-k]$：每個輸出 sample 要 M 次乘加。一個 2 秒的 IR 在 48 kHz 是 M = 96000，stereo 每秒就要 2 × 48000 × 96000 ≈ 9.2 × 10⁹ 次乘加 —— 一般 CPU 一個 core 做不到即時。範例 3 用 0.33 秒的 IR（15840 samples）處理 1 秒音訊，直接卷積在 Release build 就要約 0.9 秒（本機實測；Debug build 要好幾秒）。
+$`y[n] = \sum_{k=0}^{M-1} h[k]x[n-k]`$：每個輸出 sample 要 M 次乘加。一個 2 秒的 IR 在 48 kHz 是 M = 96000，stereo 每秒就要 2 × 48000 × 96000 ≈ 9.2 × 10⁹ 次乘加 —— 一般 CPU 一個 core 做不到即時。範例 3 用 0.33 秒的 IR（15840 samples）處理 1 秒音訊，直接卷積在 Release build 就要約 0.9 秒（本機實測；Debug build 要好幾秒）。
 
 #### FFT 快速卷積
 
@@ -375,14 +375,14 @@ $y[n] = \sum_{k=0}^{M-1} h[k]x[n-k]$：每個輸出 sample 要 M 次乘加。一
 
 對無限長的輸入，把輸入切成長 B 的 block 逐塊處理，有兩種標準做法：
 
-**Overlap-add（OLA）**：每塊輸入 $x_j$（長 B）補零到 N ≥ B + M − 1，FFT、乘 $H$、IFFT，得到長 B + M − 1 的結果；相鄰塊的結果有 M − 1 個 sample 重疊，**相加**起來。
+**Overlap-add（OLA）**：每塊輸入 $`x_j`$（長 B）補零到 N ≥ B + M − 1，FFT、乘 $`H`$、IFFT，得到長 B + M − 1 的結果；相鄰塊的結果有 M − 1 個 sample 重疊，**相加**起來。
 
 ```
  x_j  補零 → FFT → ×H → IFFT → [ B + M − 1 個輸出 ]
                                  └─ 尾巴 M−1 個與下一塊的開頭相加 ─┘
 ```
 
-**Overlap-save（OLS）**：每次取 N 個輸入（新的 B 個 + 前面舊的 N − B 個），FFT、乘 $H$、IFFT；結果的前 M − 1 個 sample 被循環卷積「繞回來」的部分污染（wrap-around），**丟掉**，只留後面 B 個正確的輸出。
+**Overlap-save（OLS）**：每次取 N 個輸入（新的 B 個 + 前面舊的 N − B 個），FFT、乘 $`H`$、IFFT；結果的前 M − 1 個 sample 被循環卷積「繞回來」的部分污染（wrap-around），**丟掉**，只留後面 B 個正確的輸出。
 
 ```
  frame = [ 舊的 N−B 個 | 新的 B 個 ] → FFT → ×H → IFFT → [ 前 N−B 個：wrap，丟掉 | 後 B 個：正確輸出 ]
@@ -404,7 +404,7 @@ $$
 y = h * x = \sum_{k=0}^{K-1} \big(h_k * x\big)\ \text{延遲 } kP
 $$
 
-每一段 $h_k$ 只有 P 長，配上長 P 的輸入塊，用 N = 2P 的 FFT 就夠（overlap-save：frame = [上一塊 P 個 | 這一塊 P 個]）。關鍵觀察：「延遲 kP 再跟 $h_k$ 卷積」在頻域就是「**k 塊以前的輸入頻譜** $X_{j-k}$ 乘上 $H_k$」。所以只要把每一塊輸入的頻譜存起來（**frequency-domain delay line，FDL**），每一塊輸出就是：
+每一段 $`h_k`$ 只有 P 長，配上長 P 的輸入塊，用 N = 2P 的 FFT 就夠（overlap-save：frame = [上一塊 P 個 | 這一塊 P 個]）。關鍵觀察：「延遲 kP 再跟 $`h_k`$ 卷積」在頻域就是「**k 塊以前的輸入頻譜** $`X_{j-k}`$ 乘上 $`H_k`$」。所以只要把每一塊輸入的頻譜存起來（**frequency-domain delay line，FDL**），每一塊輸出就是：
 
 $$
 Y_j = \sum_{k=0}^{K-1} H_k \cdot X_{j-k}
@@ -420,7 +420,7 @@ $$
                                                          IFFT ◄───────┘ → 取後 P 個 → 輸出塊 j
 ```
 
-一次 FFT、K 個頻譜乘加、一次 IFFT，就算出 P 個輸出。IR 的頻譜 $H_k$ 在 `setImpulseResponse()` 時就算好。
+一次 FFT、K 個頻譜乘加、一次 IFFT，就算出 P 個輸出。IR 的頻譜 $`H_k`$ 在 `setImpulseResponse()` 時就算好。
 
 #### Latency 從哪裡來
 
@@ -453,7 +453,7 @@ $$
 
 - **真實空間錄製**：在空間裡放喇叭播 **exponential sine sweep**，錄下來再用反濾波器 deconvolve 得到 IR（Farina 2000，目前的主流方法，能把喇叭的諧波失真分離出去）；也有人用起始槍、氣球爆破這種近似 impulse 的聲源（簡單，但 SNR 與頻寬較差）。錄到的 IR 也包含喇叭、麥克風的音色。
 - **硬體效果器取樣**：把經典的 plate、spring、數位 reverb 餵 sweep，得到它們的 IR（只能取到「LTI 的部分」，modulation 等時變效果取不到）。
-- **合成**：最簡單的合成 IR 是**指數衰減的雜訊**：$h[n] = w[n]\cdot e^{-\ln(1000)\,n/(\mathrm{RT60}\,f_s)}$，$w$ 是白雜訊（可再加 lowpass 讓高頻衰減）。這正是 late reverb 的統計模型。`ConvolutionReverb::makeSyntheticImpulseResponse()` 就是這樣做的：每個 channel 用不同 seed（stereo 去相關），8 kHz one-pole lowpass，最後 10% 線性 fade-out 避免截斷，並正規化成單位能量 $\sum h^2 = 1$（讓輸入輸出的響度大致相同）。
+- **合成**：最簡單的合成 IR 是**指數衰減的雜訊**：$`h[n] = w[n]\cdot e^{-\ln(1000)\,n/(\mathrm{RT60}\,f_s)}`$，$`w`$ 是白雜訊（可再加 lowpass 讓高頻衰減）。這正是 late reverb 的統計模型。`ConvolutionReverb::makeSyntheticImpulseResponse()` 就是這樣做的：每個 channel 用不同 seed（stereo 去相關），8 kHz one-pole lowpass，最後 10% 線性 fade-out 避免截斷，並正規化成單位能量 $`\sum h^2 = 1`$（讓輸入輸出的響度大致相同）。
 - 也可以用 algorithmic reverb 錄出 IR（範例 2 的 `l12_fdn_ir_2s.wav`）再拿去當 convolution 的 IR。
 
 ### 2.11 Plate、hall、room 的特徵
@@ -518,11 +518,11 @@ float processSample(float x) noexcept {
 
 注意 `read(delay_ - 1)`：內部 ring buffer 的慣例是「push 之後 `read(0)` 是剛寫入的值」，而這裡是**先讀後寫**，上一次 push 的值已經是一個 sample 以前了，所以讀 D − 1 才是「D 個 sample 前寫入」的值，迴路長度剛好是 D。這種 off-by-one 是 reverb 程式最常見的錯（會讓 RT60 與 mode 頻率有微小偏差）。
 
-兩個 static 函式對應 2.3 節的公式：`feedbackForRt60(D, RT60, fs)` 回傳 $10^{-3D/(\mathrm{RT60} f_s)}$、`rt60ForFeedback(D, g, fs)` 回傳 $-3D/(f_s\log_{10}g)$。
+兩個 static 函式對應 2.3 節的公式：`feedbackForRt60(D, RT60, fs)` 回傳 $`10^{-3D/(\mathrm{RT60} f_s)}`$、`rt60ForFeedback(D, g, fs)` 回傳 $`-3D/(f_s\log_{10}g)`$。
 
 **`AllpassDiffuser`**：2.4 節的標準 Schroeder allpass，`v = x + g·v[n−D]`、`y = v[n−D] − g·v`。
 
-**`TappedDelay`**：`setTaps(std::vector<Tap>)`（會 allocate，只在準備階段呼叫），`processSample()` 回傳 $\sum a_k x[n-d_k]$。
+**`TappedDelay`**：`setTaps(std::vector<Tap>)`（會 allocate，只在準備階段呼叫），`processSample()` 回傳 $`\sum a_k x[n-d_k]`$。
 
 **`measureRt60(x, n, fs, windowMs, fitStartDb, fitEndDb)`**：以 windowMs 為單位算 RMS envelope（dB），從 peak 之後第一次低於 −5 dB 的點開始、到 −35 dB 為止做線性回歸，RT60 = −60 / slope。window 要比 echo 間距長（comb 的 D = 32 ms，所以範例 1 用 40 ms），否則會量到 echo 之間的 0。練習 6 會實作更標準的 Schroeder backward integration。
 
@@ -546,8 +546,8 @@ float processSample(float x) noexcept {
 幾個設計重點：
 
 - **delay 長度**：基礎長度 29.7–73.1 ms（`kBaseDelaysMs`），乘上 `size` 對應的倍率 0.5 + size（0.5–1.5），換算成 samples 後取 `nextPrime()`。size = 0.5、48 kHz 時是 1427, 1783, 1973, 2099, 2579, 2879, 3251, 3511（全是質數）。
-- **`setDecaySeconds()`** 立刻重算 $g_i$；**`setSize()`** 改變目標長度，實際長度以約 30 ms 的時間常數平滑滑過去（delay 長度跳動會 click，平滑滑動則只是短暫的音高變化），同時重算 $g_i$。
-- **`setFreeze(true)`**：$g_i = 1$、略過 damping、輸入增益 0，而且 modulation 以約 30 ms 的時間常數淡出到 0。Householder 矩陣無損，所以尾巴永遠不衰減（範例 2：凍結後 1.1 秒 RMS 只差 +0.02 dB）。modulation 一定要停：在小數位置讀 delay 線（linear interpolation）等於每圈多一個 lowpass，開著 1 ms 的 modulation 凍結 28 秒會掉約 4 dB、而且越來越暗；停掉之後 28 秒只差 0.03 dB。同理，delay 長度的平滑在接近目標時會直接吸附到整數長度（delay 長度是幾千 samples 的 float，差距小於約 0.1–0.2 sample 時，平滑的增量小於半個 ulp，加不上去，會永遠停在小數點上）。解除 freeze 時 modulation 再淡入。
+- **`setDecaySeconds()`** 立刻重算 $`g_i`$；**`setSize()`** 改變目標長度，實際長度以約 30 ms 的時間常數平滑滑過去（delay 長度跳動會 click，平滑滑動則只是短暫的音高變化），同時重算 $`g_i`$。
+- **`setFreeze(true)`**：$`g_i = 1`$、略過 damping、輸入增益 0，而且 modulation 以約 30 ms 的時間常數淡出到 0。Householder 矩陣無損，所以尾巴永遠不衰減（範例 2：凍結後 1.1 秒 RMS 只差 +0.02 dB）。modulation 一定要停：在小數位置讀 delay 線（linear interpolation）等於每圈多一個 lowpass，開著 1 ms 的 modulation 凍結 28 秒會掉約 4 dB、而且越來越暗；停掉之後 28 秒只差 0.03 dB。同理，delay 長度的平滑在接近目標時會直接吸附到整數長度（delay 長度是幾千 samples 的 float，差距小於約 0.1–0.2 sample 時，平滑的增量小於半個 ulp，加不上去，會永遠停在小數點上）。解除 freeze 時 modulation 再淡入。
 - **`setWidth()`**：對 wet 做 mid/side，side × width。width = 0 → wet 變 mono。
 - **`setMix()`**：線性 dry/wet，`out = dry·(1−mix) + wet·mix`，有平滑。
 - **NaN 參數**：所有 float setter 開頭都有 `if (std::isnan(x)) return;`，收到 NaN 時保留上一個有效值（理由見第 4 節）。
@@ -555,13 +555,13 @@ float processSample(float x) noexcept {
 - **Mono**：block 只有 1 個 channel 時，左右輸入都用同一個訊號，只輸出左聲道的 wet。
 - **`processSampleStereo(inL, inR, wetL, wetR)`**：只算 wet（不含 width / mix），給想自己組合的人用。
 
-**為什麼 FDN 而不是 Freeverb**：同樣的 delay 數量，FDN 有能量交換（echo 密度隨時間增加）、$g_i$ 讓所有 mode 嚴格同一 RT60（範例 2 量到的誤差 < 1%），而 Freeverb 的 roomsize 只是 feedback。Freeverb 的元件（`CombFilter`、`AllpassDiffuser`）都在 `ReverbBuildingBlocks.h`，你可以自己組一個比較看看。
+**為什麼 FDN 而不是 Freeverb**：同樣的 delay 數量，FDN 有能量交換（echo 密度隨時間增加）、$`g_i`$ 讓所有 mode 嚴格同一 RT60（範例 2 量到的誤差 < 1%），而 Freeverb 的 roomsize 只是 feedback。Freeverb 的元件（`CombFilter`、`AllpassDiffuser`）都在 `ReverbBuildingBlocks.h`，你可以自己組一個比較看看。
 
 ### 3.3 `ConvolutionReverb.h`
 
 - `prepare(sr, maxBlockSize, nch)`：partition size P = 大於等於 maxBlockSize 的最小 2 的次方（至少 64），FFT size N = 2P；建立第 11 章的 `Fft(order)`、每個 channel 的 FIFO、frame、FDL。
-- `setImpulseResponse(ir)`：**非 audio thread**。把 IR 切成 K 段、每段前半放 IR、後半補零到 N，`forwardReal` 得到 $H_k$（N/2 + 1 個 bin）。IR 的 channel 數可以是 1（所有 channel 共用）或 ≥ 處理的 channel 數。可在 prepare 之前或之後呼叫。
-- `process(block)`：每個 sample 先從 output FIFO 取出「P 個 sample 前算好的」wet，再把輸入放進 input FIFO；收滿 P 個就呼叫 `processPartition()`。dry/wet mix 用的 dry 也要晚 P 個 sample，否則 wet 晚 P、dry 不晚，兩者的 latency 不一樣：IR 有直達音時（真實錄製的 IR 都有），dry 和晚 P 的直達音疊加會變成間距 fs/P 的 comb filtering（48 kHz、P = 512 時每 93.75 Hz 一個 notch），而 host 依 `getLatencySamples()` 做延遲補償後，這一軌的 dry 反而比其他軌早 P。好在不需要另一條 delay line：input FIFO 的第 `fifoPos` 格在被覆寫之前，存的正好是 P 個 sample 前的輸入 $x[n-P]$：
+- `setImpulseResponse(ir)`：**非 audio thread**。把 IR 切成 K 段、每段前半放 IR、後半補零到 N，`forwardReal` 得到 $`H_k`$（N/2 + 1 個 bin）。IR 的 channel 數可以是 1（所有 channel 共用）或 ≥ 處理的 channel 數。可在 prepare 之前或之後呼叫。
+- `process(block)`：每個 sample 先從 output FIFO 取出「P 個 sample 前算好的」wet，再把輸入放進 input FIFO；收滿 P 個就呼叫 `processPartition()`。dry/wet mix 用的 dry 也要晚 P 個 sample，否則 wet 晚 P、dry 不晚，兩者的 latency 不一樣：IR 有直達音時（真實錄製的 IR 都有），dry 和晚 P 的直達音疊加會變成間距 fs/P 的 comb filtering（48 kHz、P = 512 時每 93.75 Hz 一個 notch），而 host 依 `getLatencySamples()` 做延遲補償後，這一軌的 dry 反而比其他軌早 P。好在不需要另一條 delay line：input FIFO 的第 `fifoPos` 格在被覆寫之前，存的正好是 P 個 sample 前的輸入 $`x[n-P]`$：
 
 ```cpp
 const float dryDelayed = inputFifo[fifoPos];   // x[n-P]（還沒被覆寫）
@@ -633,13 +633,13 @@ Theoretical peak = 1/(1-g) = +19.49 dB, notch = 1/(1+g) = -5.55 dB
     8015.4        1.999        0.339
 ```
 
-- 「衰減 −60dB」從第一個 echo（t = D/fs，振幅 1）起算：第 k 個 echo 的振幅是 $g^{k-1}$，找第一個振幅 ≤ 10⁻³ 的 echo，衰減時間 = 圈數 (k − 1) × D/fs。RT60 = 2 s 時 k − 1 = ⌈61.65⌉ = 62 圈 → 2.011 s，被量化到 D/fs = 32.4 ms 的整數倍，所以略大於設定值。如果看絕對時間，那個 echo（第 63 個）出現在 63 × D/fs = 2.044 s，多出來的 D/fs 是第一個 echo 本身的傳播延遲，不算衰減。
+- 「衰減 −60dB」從第一個 echo（t = D/fs，振幅 1）起算：第 k 個 echo 的振幅是 $`g^{k-1}`$，找第一個振幅 ≤ 10⁻³ 的 echo，衰減時間 = 圈數 (k − 1) × D/fs。RT60 = 2 s 時 k − 1 = ⌈61.65⌉ = 62 圈 → 2.011 s，被量化到 D/fs = 32.4 ms 的整數倍，所以略大於設定值。如果看絕對時間，那個 echo（第 63 個）出現在 63 × D/fs = 2.044 s，多出來的 D/fs 是第一個 echo 本身的傳播延遲，不算衰減。
 - damp = 0.5 時 4 kHz 的 RT60 = 0.685 s，與 2.3 節的手算一致。
 - 輸出 `l12_comb_ir.wav`（RT60 2 s 的 comb IR：一串每 32 ms 一個、越來越小的 click，像 flutter echo）、`l12_comb_damped_ir.wav`（click 越來越悶）。
 
 #### 範例 2：`l12_reverb_impulse`（`examples/reverb_impulse.cpp`）
 
-把 impulse 餵進 `Reverb`（mix = 1、damping 關閉），印出 8 條線的長度與 $g_i$、RT60 設定 vs 量測、ASCII 衰減曲線、echo density、damping 與 freeze 的效果。實際輸出（節錄）：
+把 impulse 餵進 `Reverb`（mix = 1、damping 關閉），印出 8 條線的長度與 $`g_i`$、RT60 設定 vs 量測、ASCII 衰減曲線、echo density、damping 與 freeze 的效果。實際輸出（節錄）：
 
 ```
 --- RT60 verification (no damping; windowed-RMS regression over the -5 .. -35 dB range) ---
@@ -729,8 +729,8 @@ pre-fader,  fader -inf : return RMS 0.0752 (+0.00 dB relative to 0 dB -> unaffec
 - **參數平滑**：`setMix()`、`setWidth()`、`setPreDelayMs()`、`setSize()` 都會平滑（約 30 ms 時間常數）。`setSize()` 與 pre-delay 的變化本質上是 delay 長度在滑動 → 短暫的音高變化（Doppler），比 click 好得多，但不要拿來做快速自動化。`setDecaySeconds()` 立即生效（只改變衰減率，不會 click）。
 - **`reset()` 會讓平滑值直接跳到目標**：reset 之後內部沒有任何聲音，跳值不會 click。所以離線處理時的慣用順序是 `prepare()` → 各種 setter → `reset()`，第一個 sample 起參數就到位（否則前 ~0.1 s 會從預設值滑過來，例如 mix 從 0.3 滑到 1，漏出 dry）。
 - **Latency 回報**：`ConvolutionReverb::getLatencySamples()` = P。內建的 dry/wet mix 已經把 dry 也延遲 P（3.3 節），所以不論 mix 多少，整個輸出的 latency 都一致是 P；但 host 仍然必須做延遲補償，否則和其他軌或 send/return 的 dry 訊號平行混音時，這一路會晚 P 個 sample。`Reverb`（FDN）沒有 latency。
-- **NaN 參數**：`std::clamp(NaN, lo, hi)` 會原樣回傳 NaN。如果 setter 只靠 clamp，一個 NaN 參數（例如 host automation 出錯）就會讓 $g_i$ 或 mix 變 NaN，輸出永久變 NaN，連 `reset()` 都救不回來（reset 只是把平滑值設成已經是 NaN 的目標）。本章所有 setter 都和 `OnePole`、`Delay` 一樣，開頭先 `if (std::isnan(x)) return;`。
-- **Freeze 的安全性**：freeze 時 $g_i = 1$，只有在矩陣嚴格正交時才不會發散。不要在 freeze 時打開 damping 以外的增益（或把 A 換成非正交矩陣），float 誤差也可能慢慢累積 —— 實務上可以讓 freeze 的 g 是 0.99999 而不是 1。
+- **NaN 參數**：`std::clamp(NaN, lo, hi)` 會原樣回傳 NaN。如果 setter 只靠 clamp，一個 NaN 參數（例如 host automation 出錯）就會讓 $`g_i`$ 或 mix 變 NaN，輸出永久變 NaN，連 `reset()` 都救不回來（reset 只是把平滑值設成已經是 NaN 的目標）。本章所有 setter 都和 `OnePole`、`Delay` 一樣，開頭先 `if (std::isnan(x)) return;`。
+- **Freeze 的安全性**：freeze 時 $`g_i = 1`$，只有在矩陣嚴格正交時才不會發散。不要在 freeze 時打開 damping 以外的增益（或把 A 換成非正交矩陣），float 誤差也可能慢慢累積 —— 實務上可以讓 freeze 的 g 是 0.99999 而不是 1。
 
 ---
 
@@ -764,7 +764,7 @@ pre-fader,  fader -inf : return RMS 0.0752 (+0.00 dB relative to 0 dB -> unaffec
 
 - M. R. Schroeder, "Natural Sounding Artificial Reverberation," *Journal of the Audio Engineering Society*, vol. 10, no. 3, 1962. —— comb + allpass 架構的原始論文。
 - M. R. Schroeder, "New Method of Measuring Reverberation Time," *Journal of the Acoustical Society of America*, vol. 37, 1965. —— backward integration（練習 6）。
-- J.-M. Jot and A. Chaigne, "Digital Delay Networks for Designing Artificial Reverberators," AES 90th Convention, 1991. —— FDN 的系統化設計、$g_i = \gamma^{L_i}$、absorptive filter。
+- J.-M. Jot and A. Chaigne, "Digital Delay Networks for Designing Artificial Reverberators," AES 90th Convention, 1991. —— FDN 的系統化設計、$`g_i = \gamma^{L_i}`$、absorptive filter。
 - J. Dattorro, "Effect Design, Part 1: Reverberator and Other Filters," *JAES*, vol. 45, no. 9, 1997. —— 經典的 plate reverb 拓樸（本章 input diffuser 的長度取自這裡）。
 - V. Välimäki, J. D. Parker, L. Savioja, J. O. Smith, J. S. Abel, "Fifty Years of Artificial Reverberation," *IEEE Transactions on Audio, Speech, and Language Processing*, vol. 20, no. 5, 2012. —— 很好的綜述。
 - Julius O. Smith III, *Physical Audio Signal Processing*（CCRMA 線上書）—— Schroeder reverb、Freeverb、FDN 的章節，有詳細推導。
