@@ -116,6 +116,16 @@ dawlab_add_test(l03_test_parametric_eq  tests/parametric_eq_test.cpp)   # option
 
 The warning level is MSVC `/W4`; new code should produce no warnings.
 
+### 4.6 Building and testing (Linux / macOS)
+
+```bash
+./scripts/build.sh                                   # all pure C++ chapters
+./scripts/build.sh --only 02-filter                  # only chapter 02
+./scripts/build.sh --only 13-vst-hosting,14-daw-8track --juce   # JUCE chapters
+```
+
+GCC / Clang use `-Wall -Wextra -Wpedantic`; new code should produce no warnings there either (the only expected ones are unused helper functions in starter files, which the learner is meant to use). The course is verified on Ubuntu 24.04 + GCC 13.3; when you change something, check that it still builds and passes its tests on both MSVC and GCC.
+
 ## 5. DSP API contract
 
 Later chapters (especially the chapter 13 plugin and the chapter 14 DAW) use these classes directly, so **the names and the methods listed below must exist and have the same semantics**. You may add extra methods or classes.

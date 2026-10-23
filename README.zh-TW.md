@@ -36,18 +36,25 @@
    - 不 clone 也可以：`third_party/JUCE` 不存在時，CMake 會用 FetchContent 自動從 GitHub 下載 `DAWLAB_JUCE_TAG`（預設 9.0.4）指定的版本（需要網路與 git）。也可以用 `-DDAWLAB_JUCE_DIR=<路徑>` 指向你自己的 JUCE。
    - VST3 SDK 已內含在 JUCE 裡，不需要另外下載。
 
-### macOS / Linux（簡述）
+### Linux（已在 Ubuntu 24.04 驗證）
 
-第 00–12 章是純 C++17 + CMake，在 macOS（`xcode-select --install`、`brew install cmake`）與 Linux（`sudo apt install build-essential cmake`）上同樣可以建置：
+所有章節，包括 JUCE 的第 13、14 章，都已在 **Ubuntu 24.04 LTS、GCC 13.3、CMake 3.28** 上建置成功並通過全部測試（第 00–12 章加上第 14 章純 C++ 部分共 149 個測試，第 13–14 章的 JUCE 建置共 44 個測試，包含 `DawLab 8` 的 smoke test 與 snapshot）。
 
-```bash
-cmake -S . -B build -DDAWLAB_ONLY="00-basics;01-gain"
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
-cd build && ./bin/l00_test_signals        # 單一組態的 generator 沒有 Debug/ 子資料夾
-```
+1. 安裝編譯器與 CMake：
+   ```bash
+   sudo apt install build-essential cmake git
+   ```
+2. 第 13、14 章需要 JUCE 的系統相依套件（ALSA / JACK、X11、freetype、fontconfig、OpenGL、webkit2gtk、curl；見 `third_party/JUCE/docs/Linux Dependencies.md`）：
+   ```bash
+   sudo apt install libasound2-dev libjack-jackd2-dev ladspa-sdk libfreetype-dev libfontconfig1-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libglu1-mesa-dev mesa-common-dev libcurl4-openssl-dev libwebkit2gtk-4.1-dev
+   ```
+3. JUCE 本身的取得方式和 Windows 相同：clone 到 `third_party/JUCE`（指令見上），或讓 CMake 用 FetchContent 下載。
 
-第 13、14 章（`-DDAWLAB_WITH_JUCE=ON`）在 Linux 上還需要 JUCE 的系統相依套件（ALSA、X11、freetype、webkit2gtk 等，見 `third_party/JUCE/docs/Linux Dependencies.md`）。**本教材的建置與測試只在 Windows + MSVC 上實際驗證過**；macOS / Linux 的指令是依 CMake 的一般用法寫的，可能需要自行調整。
+`scripts/build.sh` 是 `build.ps1` 在 Linux / macOS 上的對應腳本（選項相同，寫成小寫的 `--long-option` 風格）；見下一節。
+
+### macOS（未驗證）
+
+第 00–12 章是純 C++17 + CMake，在 macOS（`xcode-select --install`、`brew install cmake`）上應該可以用 `./scripts/build.sh` 同樣建置。macOS 尚未測試過，指令可能需要自行調整。
 
 ## 建置、執行、測試
 
@@ -67,6 +74,21 @@ cd build && ./bin/l00_test_signals        # 單一組態的 generator 沒有 Deb
 
 PowerShell 說「無法載入指令碼」時，改用 `powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1 ...`。第一次加 `-Juce` 時會先建 JUCE 的工具 `juceaide`，完整建置需要數分鐘到十幾分鐘。
 
+在 **Linux / macOS** 上，於終端機的專案根目錄執行 `scripts/build.sh`，選項相同：
+
+```bash
+./scripts/build.sh                                    # 全部純 C++ 章節（00–12），Debug，並跑所有測試
+./scripts/build.sh --only 02-filter,03-eq             # 多章以逗號分隔
+./scripts/build.sh --only 14-daw-8track --juce        # 只建第 14 章，連同 JUCE 應用程式
+./scripts/build.sh --config Release --no-test         # Release，只建置
+./scripts/build.sh --only 05-limiter --test-label example   # 只跑範例（或 solution、test）
+./scripts/build.sh --build-dir build-juce --juce      # 指定 build 資料夾（預設 build）
+```
+
+它使用單一組態的 generator（有安裝 Ninja 就用 Ninja，否則用 Makefiles），所以組態在每個 build 資料夾內是固定的：Debug 與 Release 請使用不同的 `--build-dir`。
+
+**在 Linux / macOS 上讀各章 README**：各章寫的是 Windows 指令，請這樣對照：`.\scripts\build.ps1 -Only 02-filter` → `./scripts/build.sh --only 02-filter`，`-Juce` → `--juce`，`.\bin\Debug\l02_filter_response.exe` → `./bin/l02_filter_response`（沒有 `Debug/` 子資料夾，也沒有 `.exe`）。
+
 **輸出位置**（以預設的 `build` 資料夾為例）：
 
 | 東西 | 位置 |
@@ -75,6 +97,7 @@ PowerShell 說「無法載入指令碼」時，改用 `powershell -ExecutionPoli
 | 程式輸出的 WAV / PNG | 目前工作目錄底下的 `dawlab_output\`（ctest 的工作目錄就是 build 資料夾，所以是 `build\dawlab_output\`） |
 | 第 13 章的 VST3 plugin | `build\lessons\13-vst-hosting\plugin\DawLabCompressor_artefacts\Debug\VST3\DawLabCompressor.vst3`（`DawLabLimiter` 同理） |
 | 第 14 章的 DAW | `build\bin\Debug\DawLab 8.exe` |
+| 在 Linux / macOS 上 | `build/bin/lNN_*` 與 `build/bin/DawLab 8`（沒有 `Debug/` 子資料夾，也沒有 `.exe`）；VST3 bundle 在 `build/lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/VST3/DawLabCompressor.vst3` |
 
 手動執行範例時，**請先 `cd` 到 build 資料夾**，WAV 才會出現在 `build\dawlab_output\`：
 
@@ -95,6 +118,7 @@ DAW/
 ├── CMakeLists.txt            根建置檔（DAWLAB_ONLY、DAWLAB_WITH_JUCE、DAWLAB_JUCE_DIR 等選項）
 ├── cmake/DawLab.cmake        dawlab_add_example / _solution / _starter / _test
 ├── scripts/build.ps1         Windows 建置 + 測試腳本
+├── scripts/build.sh          Linux / macOS 建置 + 測試腳本（選項相同）
 ├── docs/
 │   ├── authoring-guide.md    教材撰寫規範與 DSP API 合約（另有 .zh-TW.md）
 │   └── images/               本頁的截圖

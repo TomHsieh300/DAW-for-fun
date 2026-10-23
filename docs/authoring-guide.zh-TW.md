@@ -116,6 +116,16 @@ dawlab_add_test(l03_test_parametric_eq  tests/parametric_eq_test.cpp)   # 可選
 
 警告等級是 MSVC `/W4`；新程式碼不應該產生 warning。
 
+### 4.6 編譯與測試（Linux / macOS）
+
+```bash
+./scripts/build.sh                                   # 全部純 C++ 章節
+./scripts/build.sh --only 02-filter                  # 只建第 02 章
+./scripts/build.sh --only 13-vst-hosting,14-daw-8track --juce   # JUCE 章節
+```
+
+GCC / Clang 使用 `-Wall -Wextra -Wpedantic`；新程式碼在這些編譯器上同樣不應該產生 warning（唯一預期會出現的，是起始碼檔案裡未使用的輔助函式，那是留給學習者使用的）。本教材已在 Ubuntu 24.04 + GCC 13.3 上驗證；修改內容時，請確認在 MSVC 與 GCC 上都仍能建置並通過測試。
+
 ## 5. DSP API 合約
 
 後面的章節（尤其第 13 章 plugin 與第 14 章 DAW）會直接使用這些 class，**名稱與下列 method 必須存在且語意相同**。可以額外增加 method 或 class。

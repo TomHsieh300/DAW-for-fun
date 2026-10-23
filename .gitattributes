@@ -4,5 +4,8 @@
 # Windows PowerShell 5.1 的腳本保留 CRLF
 *.ps1 text eol=crlf
 
+# Linux / macOS 的 shell 腳本一律 LF（CRLF 會讓 bash 執行失敗）
+*.sh text eol=lf
+
 *.png binary
 *.wav binary

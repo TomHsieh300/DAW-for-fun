@@ -77,18 +77,35 @@ cd build
 - **VS Code + the CMake Tools extension**: open the project folder, pick the kit "Visual Studio Build Tools 2022 Release - amd64" (or Community) in the status bar at the bottom, and click "Build". To build just one chapter, add `"cmake.configureSettings": { "DAWLAB_ONLY": "00-basics" }` to `.vscode/settings.json`. "Run CTest" in the status bar runs the tests; to run a program by hand, make sure the terminal's working directory is the build folder.
 - **Visual Studio 2022 IDE**: choose "Open a local folder" and select the project root; VS detects `CMakeLists.txt` automatically. Under "Project → CMake Settings", add the CMake variable `DAWLAB_ONLY=00-basics` to build just one chapter. Pick the target executable from the toolbar's "Select Startup Item" dropdown, for example `l00_db_math.exe`.
 
-### 0.3 macOS / Linux
+### 0.3 Linux / macOS
 
-Install CMake ≥ 3.22 and a C++17 compiler (macOS: `xcode-select --install` plus `brew install cmake`; Ubuntu: `sudo apt install build-essential cmake`), then:
+The course is verified on **Ubuntu 24.04** (GCC 13.3, CMake 3.28); macOS has not been tested. Install CMake ≥ 3.22 and a C++17 compiler (Ubuntu: `sudo apt install build-essential cmake git`; macOS: `xcode-select --install` plus `brew install cmake`), then use `scripts/build.sh`, the counterpart of `build.ps1`:
 
 ```bash
-cmake -S . -B build -DDAWLAB_ONLY=00-basics
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
-cd build && ./bin/l00_test_signals      # single-configuration generators have no Debug/ subfolder
+./scripts/build.sh --only 00-basics                         # configure + build + test chapter 00
+./scripts/build.sh --only 00-basics --test-label example    # run only the examples (or "solution")
+./scripts/build.sh --only 14-daw-8track --juce              # JUCE chapters (13, 14) need --juce
 ```
 
-Only the JUCE chapters (13, 14) need extra packages such as `libasound2-dev` on Linux; this chapter does not.
+It does the equivalent of:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DDAWLAB_ONLY=00-basics
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+```
+
+The executables are in `build/bin/` (single-configuration generators have no `Debug/` subfolder, and there is no `.exe`). As on Windows, `cd build` before running an example by hand:
+
+```bash
+cd build
+./bin/l00_test_signals
+./bin/l00_wav_info dawlab_output/l00_drum_loop.wav
+```
+
+In the rest of the course, read `.\scripts\build.ps1 -Only X` as `./scripts/build.sh --only X`, `-Juce` as `--juce`, and `.\bin\Debug\name.exe` as `./bin/name`.
+
+Only the JUCE chapters (13, 14) need extra packages on Linux (ALSA, X11, freetype, ...; the full `apt install` line is in "Setting up your environment" in the top-level README); this chapter does not.
 
 ### 0.4 Where the output WAVs go and how to listen to them
 

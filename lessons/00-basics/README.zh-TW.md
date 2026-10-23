@@ -77,18 +77,35 @@ cd build
 - **VS Code + CMake Tools 擴充套件**：開啟專案資料夾 → 下方狀態列選 kit「Visual Studio Build Tools 2022 Release - amd64」（或 Community）→ 按「Build」。要只建一章，在 `.vscode/settings.json` 加 `"cmake.configureSettings": { "DAWLAB_ONLY": "00-basics" }`。狀態列的「Run CTest」會跑測試；要手動執行某支程式，記得終端機的工作目錄要在 build 資料夾。
 - **Visual Studio 2022 IDE**：「開啟本機資料夾」選專案根目錄，VS 會自動偵測 `CMakeLists.txt`。在「專案 → CMake 設定」裡加 CMake 變數 `DAWLAB_ONLY=00-basics` 可以只建一章。目標執行檔從工具列的「選取啟動項目」挑，例如 `l00_db_math.exe`。
 
-### 0.3 macOS / Linux
+### 0.3 Linux / macOS
 
-安裝 CMake ≥ 3.22 與 C++17 編譯器（macOS：`xcode-select --install` 加 `brew install cmake`；Ubuntu：`sudo apt install build-essential cmake`），然後：
+本教材已在 **Ubuntu 24.04**（GCC 13.3、CMake 3.28）上驗證；macOS 尚未測試。安裝 CMake ≥ 3.22 與 C++17 編譯器（Ubuntu：`sudo apt install build-essential cmake git`；macOS：`xcode-select --install` 加 `brew install cmake`），然後使用 `scripts/build.sh`，它是 `build.ps1` 的對應腳本：
 
 ```bash
-cmake -S . -B build -DDAWLAB_ONLY=00-basics
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
-cd build && ./bin/l00_test_signals      # 單一組態 generator 沒有 Debug/ 子資料夾
+./scripts/build.sh --only 00-basics                         # configure + build + test 第 00 章
+./scripts/build.sh --only 00-basics --test-label example    # 只跑範例（或 "solution"）
+./scripts/build.sh --only 14-daw-8track --juce              # JUCE 章節（13、14）需要 --juce
 ```
 
-Linux 需要 `libasound2-dev` 等套件的只有 JUCE 章節（13、14），本章不需要。
+它做的事等同於：
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DDAWLAB_ONLY=00-basics
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+```
+
+執行檔在 `build/bin/`（單一組態的 generator 沒有 `Debug/` 子資料夾，也沒有 `.exe`）。和 Windows 一樣，手動執行範例前先 `cd build`：
+
+```bash
+cd build
+./bin/l00_test_signals
+./bin/l00_wav_info dawlab_output/l00_drum_loop.wav
+```
+
+在本教材的其他部分，請把 `.\scripts\build.ps1 -Only X` 讀成 `./scripts/build.sh --only X`，`-Juce` 讀成 `--juce`，`.\bin\Debug\name.exe` 讀成 `./bin/name`。
+
+Linux 上只有 JUCE 章節（13、14）需要額外套件（ALSA、X11、freetype 等；完整的 `apt install` 指令在最上層 README 的「環境安裝」）；本章不需要。
 
 ### 0.4 輸出的 WAV 在哪裡、怎麼試聽
 

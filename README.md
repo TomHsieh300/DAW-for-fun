@@ -38,18 +38,25 @@ The course is **bilingual (English / Traditional Chinese)**. English is the prim
    - Cloning is optional: when `third_party/JUCE` does not exist, CMake automatically downloads the version given by `DAWLAB_JUCE_TAG` (default 9.0.4) from GitHub with FetchContent (this needs network access and git). You can also point to your own JUCE with `-DDAWLAB_JUCE_DIR=<path>`.
    - The VST3 SDK is included in JUCE, so no separate download is needed.
 
-### macOS / Linux (brief)
+### Linux (verified on Ubuntu 24.04)
 
-Chapters 00–12 are plain C++17 + CMake and build the same way on macOS (`xcode-select --install`, `brew install cmake`) and Linux (`sudo apt install build-essential cmake`):
+Every chapter, including the JUCE chapters 13 and 14, builds and passes all its tests on **Ubuntu 24.04 LTS with GCC 13.3 and CMake 3.28** (149 tests for chapters 00–12 plus the pure C++ part of chapter 14, and 44 for the JUCE build of chapters 13–14, including the `DawLab 8` smoke test and snapshot).
 
-```bash
-cmake -S . -B build -DDAWLAB_ONLY="00-basics;01-gain"
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
-cd build && ./bin/l00_test_signals        # single-config generators have no Debug/ subfolder
-```
+1. Install the compiler and CMake:
+   ```bash
+   sudo apt install build-essential cmake git
+   ```
+2. Chapters 13 and 14 need JUCE's system dependencies (ALSA / JACK, X11, freetype, fontconfig, OpenGL, webkit2gtk, curl; see `third_party/JUCE/docs/Linux Dependencies.md`):
+   ```bash
+   sudo apt install libasound2-dev libjack-jackd2-dev ladspa-sdk libfreetype-dev libfontconfig1-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libglu1-mesa-dev mesa-common-dev libcurl4-openssl-dev libwebkit2gtk-4.1-dev
+   ```
+3. JUCE itself is obtained the same way as on Windows: clone it into `third_party/JUCE` (command above), or let CMake download it with FetchContent.
 
-On Linux, chapters 13 and 14 (`-DDAWLAB_WITH_JUCE=ON`) also need JUCE's system dependencies (ALSA, X11, freetype, webkit2gtk, etc.; see `third_party/JUCE/docs/Linux Dependencies.md`). **The build and tests of this course have only been verified on Windows + MSVC**; the macOS / Linux commands are written from general CMake usage and may need adjusting.
+`scripts/build.sh` is the Linux / macOS counterpart of `build.ps1` (same options, written in lower-case `--long-option` style); see the next section.
+
+### macOS (unverified)
+
+Chapters 00–12 are plain C++17 + CMake and should build the same way on macOS (`xcode-select --install`, `brew install cmake`) with `./scripts/build.sh`. macOS has not been tested; the commands may need adjusting.
 
 ## Building, running and testing
 
@@ -69,6 +76,21 @@ Run all commands in PowerShell from the project root (`scripts/build.ps1` runs c
 
 If PowerShell says scripts cannot be loaded, use `powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1 ...` instead. The first time you add `-Juce`, JUCE's `juceaide` tool is built first, and a full build takes anywhere from a few minutes to over ten minutes.
 
+On **Linux / macOS**, run `scripts/build.sh` from the project root in a terminal; it takes the same options:
+
+```bash
+./scripts/build.sh                                    # all pure C++ chapters (00–12), Debug, and run all tests
+./scripts/build.sh --only 02-filter,03-eq             # several chapters, comma-separated
+./scripts/build.sh --only 14-daw-8track --juce        # build only chapter 14, with the JUCE app
+./scripts/build.sh --config Release --no-test         # Release, build only
+./scripts/build.sh --only 05-limiter --test-label example   # run only the examples (or solution, test)
+./scripts/build.sh --build-dir build-juce --juce      # choose the build folder (default: build)
+```
+
+It uses a single-config generator (Ninja if installed, otherwise Makefiles), so the configuration is fixed per build folder: use a different `--build-dir` for Debug and Release.
+
+**Reading the chapter READMEs on Linux / macOS**: the chapters show Windows commands. Translate them like this: `.\scripts\build.ps1 -Only 02-filter` → `./scripts/build.sh --only 02-filter`, `-Juce` → `--juce`, and `.\bin\Debug\l02_filter_response.exe` → `./bin/l02_filter_response` (no `Debug/` subfolder and no `.exe`).
+
 **Where the output goes** (using the default `build` folder as the example):
 
 | What | Location |
@@ -77,6 +99,7 @@ If PowerShell says scripts cannot be loaded, use `powershell -ExecutionPolicy By
 | WAV / PNG files written by the programs | `dawlab_output\` under the current working directory (ctest's working directory is the build folder, so this is `build\dawlab_output\`) |
 | Chapter 13 VST3 plugin | `build\lessons\13-vst-hosting\plugin\DawLabCompressor_artefacts\Debug\VST3\DawLabCompressor.vst3` (`DawLabLimiter` likewise) |
 | Chapter 14 DAW | `build\bin\Debug\DawLab 8.exe` |
+| On Linux / macOS | `build/bin/lNN_*` and `build/bin/DawLab 8` (no `Debug/` subfolder, no `.exe`); the VST3 bundles are at `build/lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/VST3/DawLabCompressor.vst3` |
 
 When you run an example by hand, **`cd` into the build folder first** so the WAV files end up in `build\dawlab_output\`:
 
@@ -97,6 +120,7 @@ DAW/
 ├── CMakeLists.txt            root build file (options DAWLAB_ONLY, DAWLAB_WITH_JUCE, DAWLAB_JUCE_DIR, ...)
 ├── cmake/DawLab.cmake        dawlab_add_example / _solution / _starter / _test
 ├── scripts/build.ps1         Windows build + test script
+├── scripts/build.sh          Linux / macOS build + test script (same options)
 ├── docs/
 │   ├── authoring-guide.md    authoring rules and the DSP API contract (also available as .zh-TW.md)
 │   └── images/               screenshots for this page
