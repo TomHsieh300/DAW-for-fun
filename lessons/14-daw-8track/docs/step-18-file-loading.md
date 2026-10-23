@@ -1,4 +1,5 @@
 # Step 18 - Loading files and the demo song
+**English** | [繁體中文](step-18-file-loading.zh-TW.md)
 
 [Overview](../README.md) | Previous: [Step 17](step-17-vst3-inserts.md) | Next: [Step 19](step-19-export.md) | Back to the [roadmap](../README.md#4-the-twenty-one-steps)
 

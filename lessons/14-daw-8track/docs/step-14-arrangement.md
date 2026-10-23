@@ -1,4 +1,5 @@
 # Step 14 - The arrangement view
+**English** | [繁體中文](step-14-arrangement.zh-TW.md)
 
 [Overview](../README.md) | Previous: [Step 13](step-13-transport-bar.md) | Next: [Step 15](step-15-mixer.md) | Back to the [roadmap](../README.md#4-the-twenty-one-steps)
 

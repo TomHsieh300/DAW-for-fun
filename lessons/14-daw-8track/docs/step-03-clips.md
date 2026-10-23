@@ -1,5 +1,7 @@
 # Step 3 - Clips on a track: sample-accurate placement, clip gain, fades
 
+**English** | [繁體中文](step-03-clips.zh-TW.md)
+
 [Overview](../README.md) | Previous: [Step 2](step-02-transport.md) | Next: [Step 4 - Mixer](step-04-mixer.md)
 
 ## Goal

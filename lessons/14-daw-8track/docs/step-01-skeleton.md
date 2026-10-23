@@ -1,5 +1,7 @@
 # Step 1 - Project skeleton and AudioBlock plumbing
 
+**English** | [繁體中文](step-01-skeleton.zh-TW.md)
+
 [Back to the chapter overview](../README.md) | Next: [Step 2 - Transport](step-02-transport.md)
 
 ## Goal

@@ -1,4 +1,5 @@
 # Step 20 - Spectrum analyzer and loudness display
+**English** | [繁體中文](step-20-spectrum-loudness.zh-TW.md)
 
 [Overview](../README.md) | Previous: [Step 19](step-19-export.md) | Next: [Step 21](step-21-shortcuts-and-tests.md) | Back to the [roadmap](../README.md#4-the-twenty-one-steps)
 

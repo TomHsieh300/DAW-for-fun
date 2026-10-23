@@ -1,4 +1,5 @@
 # Step 19 - Export mixdown
+**English** | [繁體中文](step-19-export.zh-TW.md)
 
 [Overview](../README.md) | Previous: [Step 18](step-18-file-loading.md) | Next: [Step 20](step-20-spectrum-loudness.md) | Back to the [roadmap](../README.md#4-the-twenty-one-steps)
 

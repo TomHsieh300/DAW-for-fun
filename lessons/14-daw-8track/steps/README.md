@@ -1,5 +1,7 @@
 # Build-along snapshots, Steps 1-10
 
+**English** | [繁體中文](README.zh-TW.md)
+
 > [Chapter 14](../README.md) | How the two routes work: [How to use this chapter](../README.md#how-to-use-this-chapter)
 
 Each folder is a small, complete engine that contains exactly what exists after its step. You

@@ -1,4 +1,5 @@
 # Step 13 - The transport bar
+**English** | [繁體中文](step-13-transport-bar.zh-TW.md)
 
 [Overview](../README.md) | Previous: [Step 12](step-12-main-window.md) | Next: [Step 14](step-14-arrangement.md) | Back to the [roadmap](../README.md#4-the-twenty-one-steps)
 

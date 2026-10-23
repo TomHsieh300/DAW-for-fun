@@ -1,5 +1,7 @@
 # Step 5 - Insert effects: one interface for nineteen DSP classes
 
+**English** | [繁體中文](step-05-insert-effects.zh-TW.md)
+
 [Overview](../README.md) | Previous: [Step 4](step-04-mixer.md) | Next: [Step 6 - Sends and buses](step-06-sends-buses.md)
 
 ## Goal

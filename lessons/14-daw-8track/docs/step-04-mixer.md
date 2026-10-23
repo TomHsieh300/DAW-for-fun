@@ -1,5 +1,7 @@
 # Step 4 - The 8-track mixer: fader, pan, mute, solo, master, meters
 
+**English** | [繁體中文](step-04-mixer.zh-TW.md)
+
 [Overview](../README.md) | Previous: [Step 3](step-03-clips.md) | Next: [Step 5 - Inserts](step-05-insert-effects.md)
 
 ## Goal

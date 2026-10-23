@@ -1,4 +1,5 @@
 # Step 21 - Keyboard shortcuts, menus and automated tests of the app
+**English** | [繁體中文](step-21-shortcuts-and-tests.zh-TW.md)
 
 [Overview](../README.md) | Previous: [Step 20](step-20-spectrum-loudness.md) | Back to the [roadmap](../README.md#4-the-twenty-one-steps)
 

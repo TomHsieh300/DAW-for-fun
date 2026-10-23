@@ -1,5 +1,7 @@
 # Step 8 - Plugin delay compensation (PDC)
 
+**English** | [繁體中文](step-08-pdc.zh-TW.md)
+
 [Overview](../README.md) | Previous: [Step 7](step-07-commands.md) | Next: [Step 9 - Offline render](step-09-offline-render.md)
 
 ## Goal

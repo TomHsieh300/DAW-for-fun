@@ -1,8 +1,10 @@
 # Chapter 14 - Capstone: Build an 8-Track DAW, Step by Step
 
+**English** | [繁體中文](README.zh-TW.md)
+
 > [Course home](../../README.md) | Previous: [13 - VST hosting](../13-vst-hosting/README.md) | This is the last chapter.
 
-> This is the last chapter of the course, and the only one written in English.
+> This is the last chapter of the course.
 > Chapters 01-12 gave you DSP building blocks (gain, filters, EQ, dynamics, saturation,
 > delay, modulation, metering, reverb); [chapter 13](../13-vst-hosting/README.md) showed how plugins are hosted.
 > Now we put everything together into a small but *real* digital audio workstation.

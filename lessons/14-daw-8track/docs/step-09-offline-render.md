@@ -1,5 +1,7 @@
 # Step 9 - Offline render / bounce to WAV
 
+**English** | [繁體中文](step-09-offline-render.zh-TW.md)
+
 [Overview](../README.md) | Previous: [Step 8](step-08-pdc.md) | Next: [Step 10 - Real-time safety](step-10-realtime-safety.md)
 
 ## Goal

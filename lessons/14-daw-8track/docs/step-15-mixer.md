@@ -1,4 +1,5 @@
 # Step 15 - The mixer
+**English** | [繁體中文](step-15-mixer.zh-TW.md)
 
 [Overview](../README.md) | Previous: [Step 14](step-14-arrangement.md) | Next: [Step 16](step-16-inserts-panels.md) | Back to the [roadmap](../README.md#4-the-twenty-one-steps)
 

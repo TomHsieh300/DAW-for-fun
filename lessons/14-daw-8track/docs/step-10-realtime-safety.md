@@ -1,5 +1,7 @@
 # Step 10 - A real-time safety audit
 
+**English** | [繁體中文](step-10-realtime-safety.zh-TW.md)
+
 [Overview](../README.md) | Previous: [Step 9](step-09-offline-render.md) | Next: [Step 11 - Audio device](step-11-audio-device.md) (stage 2: the app) | Back to the [roadmap](../README.md#4-the-twenty-one-steps)
 
 ## Goal

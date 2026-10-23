@@ -1,4 +1,5 @@
 # Step 17 - VST3 plugins as inserts
+**English** | [繁體中文](step-17-vst3-inserts.zh-TW.md)
 
 [Overview](../README.md) | Previous: [Step 16](step-16-inserts-panels.md) | Next: [Step 18](step-18-file-loading.md) | Back to the [roadmap](../README.md#4-the-twenty-one-steps)
 

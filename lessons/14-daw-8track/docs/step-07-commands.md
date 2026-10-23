@@ -1,5 +1,7 @@
 # Step 7 - The lock-free command queue and the garbage queue
 
+**English** | [繁體中文](step-07-commands.zh-TW.md)
+
 [Overview](../README.md) | Previous: [Step 6](step-06-sends-buses.md) | Next: [Step 8 - PDC](step-08-pdc.md)
 
 ## Goal

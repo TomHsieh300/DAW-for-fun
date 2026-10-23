@@ -1,4 +1,5 @@
 # Step 16 - Insert slots and auto-generated parameter panels
+**English** | [繁體中文](step-16-inserts-panels.zh-TW.md)
 
 [Overview](../README.md) | Previous: [Step 15](step-15-mixer.md) | Next: [Step 17](step-17-vst3-inserts.md) | Back to the [roadmap](../README.md#4-the-twenty-one-steps)
 

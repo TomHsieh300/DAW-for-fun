@@ -1,5 +1,7 @@
 # Step 2 - The transport: play, stop, position, loop, tempo, bars:beats
 
+**English** | [繁體中文](step-02-transport.zh-TW.md)
+
 [Overview](../README.md) | Previous: [Step 1](step-01-skeleton.md) | Next: [Step 3 - Clips](step-03-clips.md)
 
 ## Goal

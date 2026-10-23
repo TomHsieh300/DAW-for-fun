@@ -1,4 +1,5 @@
 # Step 12 - The main window and a dark LookAndFeel
+**English** | [繁體中文](step-12-main-window.zh-TW.md)
 
 [Overview](../README.md) | Previous: [Step 11](step-11-audio-device.md) | Next: [Step 13](step-13-transport-bar.md) | Back to the [roadmap](../README.md#4-the-twenty-one-steps)
 

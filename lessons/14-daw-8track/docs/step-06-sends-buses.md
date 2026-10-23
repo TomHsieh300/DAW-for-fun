@@ -1,5 +1,7 @@
 # Step 6 - Send / return buses
 
+**English** | [繁體中文](step-06-sends-buses.zh-TW.md)
+
 [Overview](../README.md) | Previous: [Step 5](step-05-insert-effects.md) | Next: [Step 7 - Commands](step-07-commands.md)
 
 ## Goal
