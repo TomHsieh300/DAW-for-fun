@@ -69,3 +69,44 @@ endif()
 
 add_subdirectory(app)   # targets: l14_daw_app (static library), DawLab8 (the application)
 
+# l14_add_juce_program(<target> <label> <sources...>)
+#   A JUCE console program linked against the app library ${L14_APP_LIB}, default l14_daw_app
+#   (and through it the engine, the chapter-13 host library and the JUCE modules). label example/solution/test -> ctest,
+#   "" -> build only (starters).
+function(l14_add_juce_program target label)
+    juce_add_console_app(${target} PRODUCT_NAME ${target})
+    target_sources(${target} PRIVATE ${ARGN})
+    if(NOT L14_APP_LIB)
+        set(L14_APP_LIB l14_daw_app)
+    endif()
+    target_link_libraries(${target} PRIVATE ${L14_APP_LIB})
+    set_target_properties(${target} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        FOLDER "14-daw-8track")
+    dawlab_set_warnings(${target})
+    if(label)
+        add_test(NAME ${target} COMMAND ${target})
+        set_tests_properties(${target} PROPERTIES
+            LABELS "${label}"
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            TIMEOUT 300)
+    endif()
+endfunction()
+
+# ---- exercises 8-13 (the application): starters build only, solutions are ctests -------------
+l14_add_juce_program(l14_ex8_starter   ""       exercises/starter/ex8_automation_lane.cpp)
+l14_add_juce_program(l14_ex9_starter   ""       exercises/starter/ex9_recording.cpp)
+l14_add_juce_program(l14_ex10_starter  ""       exercises/starter/ex10_midi_synth.cpp)
+l14_add_juce_program(l14_ex11_starter  ""       exercises/starter/ex11_project_file.cpp)
+l14_add_juce_program(l14_ex13_starter  ""       exercises/starter/ex13_shortcut_map.cpp)
+l14_add_juce_program(l14_ex8_solution  solution solutions/ex8_automation_lane.cpp)
+l14_add_juce_program(l14_ex9_solution  solution solutions/ex9_recording.cpp)
+l14_add_juce_program(l14_ex10_solution solution solutions/ex10_midi_synth.cpp)
+l14_add_juce_program(l14_ex11_solution solution solutions/ex11_project_file.cpp)
+l14_add_juce_program(l14_ex13_solution solution solutions/ex13_shortcut_map.cpp)
+
+# Exercise 12 (a third FX bus): the engine and the whole app library compiled with
+# DAWLAB_ENGINE_NUM_BUSES=3 (see app/CMakeLists.txt, target l14_daw_app_3bus).
+set(L14_APP_LIB l14_daw_app_3bus)
+l14_add_juce_program(l14_ex12_starter  ""       exercises/starter/ex12_third_bus.cpp)
+l14_add_juce_program(l14_ex12_solution solution solutions/ex12_third_bus.cpp)
