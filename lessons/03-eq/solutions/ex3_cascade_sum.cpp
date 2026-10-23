@@ -1,11 +1,11 @@
-// 練習 3（解答）：驗證兩個 peak 串接時 dB 響應相加
+// Exercise 3 (solution): verify that the dB responses add when two peaks are cascaded
 //
-// 串接（cascade）= 兩個 LTI 系統的轉移函數相乘：H(z) = H1(z)·H2(z)
-//   |H| = |H1|·|H2|  →  20 log10|H| = 20 log10|H1| + 20 log10|H2|   （dB 相加）
-// 乘法可交換，所以串接順序不影響「頻率響應」（但會影響數值行為與 headroom，見 README 4 節）。
-// 這裡用兩種方式驗證：
-//   1. 公式：H1·H2 的 magnitudeDb 等於各自 magnitudeDb 的和。
-//   2. 實測：真的把正弦波送進兩顆串接的 Biquad，用 measureGainDb 量。
+// A cascade = multiplying the transfer functions of two LTI systems: H(z) = H1(z)·H2(z)
+//   |H| = |H1|·|H2|  ->  20 log10|H| = 20 log10|H1| + 20 log10|H2|   (dB addition)
+// Multiplication is commutative, so the order of the cascade does not affect the "frequency response" (though it does affect numerical behavior and headroom; see README section 4).
+// We verify it in two ways:
+//   1. Formula: the magnitudeDb of H1·H2 equals the sum of the individual magnitudeDb values.
+//   2. Measurement: actually feed a sine wave through two cascaded Biquads and measure it with measureGainDb.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Biquad.h>
@@ -18,7 +18,7 @@ using namespace dawlab::dsp;
 
 namespace {
 
-// 兩顆 Biquad 串接：y = H2(H1(x))
+// Two Biquads in cascade: y = H2(H1(x))
 class Cascade2 {
 public:
     void prepare(double sr, int maxBlock, int nch) {
@@ -43,7 +43,7 @@ private:
 
 int main() {
     constexpr double sr = 48000.0;
-    std::printf("=== 第 03 章 練習 3：串接 = dB 相加 ===\n\n");
+    std::printf("=== Chapter 03 Exercise 3: cascade = dB addition ===\n\n");
 
     const BiquadCoefficients p1 = BiquadCoefficients::makePeak(sr, 500.0, 1.0, 6.0);   // +6 dB @ 500 Hz
     const BiquadCoefficients p2 = BiquadCoefficients::makePeak(sr, 2000.0, 2.0, -4.0); // -4 dB @ 2 kHz
@@ -51,9 +51,9 @@ int main() {
     forward.prepare(sr, 512, 1);
     backward.prepare(sr, 512, 1);
     forward.setCoefficients(p1, p2);
-    backward.setCoefficients(p2, p1); // 顛倒順序
+    backward.setCoefficients(p2, p1); // reversed order
 
-    std::printf("  freq(Hz)   H1(dB)   H2(dB)   H1+H2   |H1·H2|   實測 p1->p2   實測 p2->p1\n");
+    std::printf("  freq(Hz)   H1(dB)   H2(dB)   H1+H2   |H1·H2|   measured p1->p2   measured p2->p1\n");
     for (double f : {100.0, 250.0, 500.0, 1000.0, 1414.0, 2000.0, 3000.0, 8000.0}) {
         const double d1 = p1.magnitudeDb(f, sr), d2 = p2.magnitudeDb(f, sr);
         const double product = gainToDb(std::abs(p1.response(f, sr) * p2.response(f, sr)));
@@ -63,31 +63,31 @@ int main() {
         const double mb = measureGainDb([&](float x) { return backward.processSample(0, x); }, f, sr);
         std::printf("  %7.0f   %+6.2f   %+6.2f   %+6.2f   %+6.2f     %+6.2f        %+6.2f\n", f, d1, d2, d1 + d2, product,
                     mf, mb);
-        DAWLAB_CHECK_NEAR(product, d1 + d2, 1e-9); // 複數相乘 ⇔ dB 相加（數學恆等式）
-        DAWLAB_CHECK_NEAR(mf, d1 + d2, 0.05);      // 實測
-        DAWLAB_CHECK_NEAR(mb, mf, 0.02);           // 順序無關
+        DAWLAB_CHECK_NEAR(product, d1 + d2, 1e-9); // complex multiplication <=> dB addition (a mathematical identity)
+        DAWLAB_CHECK_NEAR(mf, d1 + d2, 0.05);      // measurement
+        DAWLAB_CHECK_NEAR(mb, mf, 0.02);           // independent of order
     }
 
-    // 同一個頻率疊兩顆 +6 dB：每個頻率的 dB 都剛好加倍（中心 +12、邊緣 +6），
-    // 所以「中點增益」邊緣的位置不變——曲線形狀在 dB 軸上只是被拉高兩倍
+    // Stacking two +6 dB bands at the same frequency: the dB value at every frequency exactly doubles (center +12, edge +6),
+    // so the position of the "midpoint gain" edge does not change -- on the dB axis the curve shape is simply stretched to twice the height
     const BiquadCoefficients q1 = BiquadCoefficients::makePeak(sr, 1000.0, std::sqrt(2.0), 6.0);
     const double centre = 2.0 * q1.magnitudeDb(1000.0, sr);
     const double edge = 2.0 * q1.magnitudeDb(1000.0 * std::sqrt(2.0), sr);
-    std::printf("\n  兩顆 +6 dB Q=sqrt(2) @ 1 kHz 串接：中心 %+.2f dB，1414 Hz 處 %+.2f dB（單顆是 %+.2f）\n", centre, edge,
+    std::printf("\n  Two +6 dB Q=sqrt(2) @ 1 kHz peaks in cascade: center %+.2f dB, %+.2f dB at 1414 Hz (a single one gives %+.2f)\n", centre, edge,
                 0.5 * edge);
     DAWLAB_CHECK_NEAR(centre, 12.0, 0.01);
-    DAWLAB_CHECK_NEAR(edge, 6.0, 0.1); // 邊緣的 dB 也加倍：+3 → +6，所以「相對中心」仍是一半 → 中點邊緣不變
-    // 線性振幅相加的錯誤直覺：2× 與 2× 是 4×（+12 dB），不是 2+2 = 4 的「加法」——是乘法
+    DAWLAB_CHECK_NEAR(edge, 6.0, 0.1); // the dB at the edge also doubles: +3 -> +6, so it is still half "relative to the center" -> the midpoint edge does not change
+    // The wrong intuition of adding linear amplitudes: 2x and 2x make 4x (+12 dB); it is not the "addition" 2+2 = 4 -- it is multiplication
     DAWLAB_CHECK_NEAR(dbToGain(6.0) * dbToGain(6.0), dbToGain(12.0), 1e-6);
 
-    // boost 與同 f、同 Q 的 cut 串接 = 完全抵銷：RBJ peak 的 H_{-g}(z) = 1 / H_{+g}(z)
-    // （analog 原型的分子分母 s²+s·A/Q+1 與 s²+s/(A·Q)+1 剛好互換，bilinear 之後仍然成立）
+    // A boost cascaded with a cut at the same f and Q = complete cancellation: for the RBJ peak, H_{-g}(z) = 1 / H_{+g}(z)
+    // (the numerator and denominator of the analog prototype, s²+s·A/Q+1 and s²+s/(A·Q)+1, swap exactly, and this still holds after the bilinear transform)
     const BiquadCoefficients boost = BiquadCoefficients::makePeak(sr, 1000.0, 1.0, 6.0);
     const BiquadCoefficients cut = BiquadCoefficients::makePeak(sr, 1000.0, 1.0, -6.0);
     double worst = 0.0;
     for (double f = 20.0; f < 20000.0; f *= 1.1)
         worst = std::max(worst, std::abs(gainToDb(std::abs(boost.response(f, sr) * cut.response(f, sr)))));
-    std::printf("  +6 dB 與 -6 dB（1 kHz, Q=1）串接：20 Hz–20 kHz 最大偏差 %.2e dB\n", worst);
+    std::printf("  +6 dB and -6 dB (1 kHz, Q=1) in cascade: maximum deviation over 20 Hz-20 kHz %.2e dB\n", worst);
     DAWLAB_CHECK(worst < 1e-9);
 
     return dawlab::test::summary("l03_ex3");

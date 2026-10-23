@@ -1,12 +1,12 @@
-// ParametricEq 的回歸測試（self-test）
+// Regression test (self-test) for ParametricEq
 //
-// 這支不是範例，也不是練習解答，而是本章 DSP 元件 dawlab::dsp::ParametricEq 的「合約測試」：
-// 把 README 與 authoring guide 說的保證（理論曲線 = 實測、參數平滑的時間正確、
-// 換 type / 開關不 click、smoothing = 0 時也會套用新參數……）全部用數字驗證。
-// 後面的章節（第 13 章 plugin、第 14 章 DAW）直接使用 ParametricEq，改 header 之後先跑這支。
+// This is neither an example nor an exercise solution; it is the "contract test" for this chapter's DSP component dawlab::dsp::ParametricEq:
+// it verifies, with numbers, every guarantee stated in the README and the authoring guide (theoretical curve = measurement, correct parameter-smoothing time,
+// no clicks when changing type / toggling a band, new parameters still take effect when smoothing = 0, ...).
+// Later chapters (the plugin in Chapter 13, the DAW in Chapter 14) use ParametricEq directly, so run this test first after changing the header.
 //
-// 怎麼執行：l03_test_parametric_eq（不需參數；ctest label: solution）
-// 輸出：只有 console 文字；全部通過時最後一行是 [PASS]。
+// How to run: l03_test_parametric_eq (no arguments; ctest label: solution)
+// Output: console text only; when everything passes, the last line is [PASS].
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/ParametricEq.h>
@@ -21,12 +21,12 @@ namespace {
 
 constexpr double kSr = 48000.0;
 
-// ---- 1. 平滑時間：不論 block size、host 多常重送參數，ramp 長度都要 ≈ smoothingSeconds · sr ----
+// ---- 1. Smoothing time: regardless of block size or how often the host resends parameters, the ramp length must be ≈ smoothingSeconds · sr ----
 //
-// 量法：同一組參數呼叫送進兩個一模一樣的 EQ，一個吃 sin、一個吃 cos（同頻率）。
-// 對（慢慢變化的）filter 來說 sqrt(ys² + yc²) 就是「這一瞬間的增益」，不必等一個週期。
-// Peak @ 1 kHz 的 gain 從 0 dB 線性（在 dB 域）走到 +12 dB，ramp 20 ms = 960 samples，
-// 所以增益應在第 ~480 個 sample 越過 +6 dB（加上最多 32 個 sample 的係數更新延遲與 filter 本身的延遲）。
+// How we measure: the same sequence of parameter calls goes into two identical EQs, one fed sin and the other cos (same frequency).
+// For a (slowly varying) filter, sqrt(ys² + yc²) is "the gain at this instant", with no need to wait a full period.
+// The gain of a Peak @ 1 kHz goes linearly (in the dB domain) from 0 dB to +12 dB, and the ramp is 20 ms = 960 samples,
+// so the gain should cross +6 dB at around sample ~480 (plus up to 32 samples of coefficient-update delay and the filter's own delay).
 enum class Resend { None, SameValues, OtherBandChanges };
 
 int samplesToHalfGain(int blockSize, Resend resend) {
@@ -43,18 +43,18 @@ int samplesToHalfGain(int blockSize, Resend resend) {
         s[static_cast<size_t>(i)] = static_cast<float>(std::sin(kTwoPi * 1000.0 * i / kSr));
         c[static_cast<size_t>(i)] = static_cast<float>(std::cos(kTwoPi * 1000.0 * i / kSr));
     }
-    // 先跑 100 個 sample 讓 tick 的相位不在 0（模擬播放到一半才改參數）
+    // Run 100 samples first so the tick phase is not at 0 (simulating a parameter change in the middle of playback)
     const int startAt = 100;
     int crossed = -1;
     for (int start = 0, block = 0; start < total; start += blockSize, ++block) {
         const int len = std::min(blockSize, total - start);
         for (ParametricEq* eq : {&eqS, &eqC}) {
             if (start >= startAt && start - blockSize < startAt)
-                eq->setBandGainDb(0, 12.0f); // 只在這一刻改一次目標
+                eq->setBandGainDb(0, 12.0f); // change the target only once, at this moment
             else if (start > startAt && resend == Resend::SameValues)
-                eq->setBand(0, eq->getBand(0)); // host 每個 block 開頭重送同一組參數
+                eq->setBand(0, eq->getBand(0)); // the host resends the same parameters at the start of every block
             else if (start > startAt && resend == Resend::OtherBandChanges)
-                eq->setBandGainDb(1, (block % 2) ? 0.001f : 0.0f); // 別的 band 一直在變 → 每個 block 都強迫 tick
+                eq->setBandGainDb(1, (block % 2) ? 0.001f : 0.0f); // another band keeps changing -> a tick is forced on every block
         }
         float* ps = s.data() + start;
         float* pc = c.data() + start;
@@ -78,13 +78,13 @@ int samplesToHalfGain(int blockSize, Resend resend) {
 }
 
 void testRampLength() {
-    std::printf("[1] ramp 長度（Peak 1 kHz 0 -> +12 dB，20 ms = 960 samples；越過 +6 dB 應在 ~480 samples）\n");
-    std::printf("    block   不重送   每 block 重送同值   別的 band 每 block 改值\n");
+    std::printf("[1] ramp length (Peak 1 kHz 0 -> +12 dB, 20 ms = 960 samples; crossing +6 dB should happen at ~480 samples)\n");
+    std::printf("    block   no resend   resend same values every block   other band changes every block\n");
     for (int block : {1, 8, 16, 48, 512}) {
         const int a = samplesToHalfGain(block, Resend::None);
         const int b = samplesToHalfGain(block, Resend::SameValues);
         const int c = samplesToHalfGain(block, Resend::OtherBandChanges);
-        std::printf("    %5d   %6d   %12d        %12d\n", block, a, b, c);
+        std::printf("    %5d   %9d   %29d   %30d\n", block, a, b, c);
         for (int v : {a, b, c}) {
             DAWLAB_CHECK(v >= 470);
             DAWLAB_CHECK(v <= 540);
@@ -92,9 +92,9 @@ void testRampLength() {
     }
 }
 
-// ---- 2. smoothing = 0（或短到不到一個 sample）時，改參數也要真的套用到 filter ----
+// ---- 2. With smoothing = 0 (or shorter than one sample), parameter changes must still really be applied to the filter ----
 void testZeroSmoothing() {
-    std::printf("[2] smoothing 0：改參數後，量到的響應要等於 getMagnitudeDb\n");
+    std::printf("[2] smoothing 0: after changing parameters, the measured response must equal getMagnitudeDb\n");
     for (double seconds : {0.0, 0.000005}) {
         ParametricEq eq;
         eq.setSmoothingSeconds(seconds);
@@ -104,14 +104,14 @@ void testZeroSmoothing() {
         eq.process(buf.toBlock());
         eq.setBandFrequency(0, 4000.0f);
         eq.setBandGainDb(0, -12.0f);
-        eq.process(buf.toBlock()); // 不呼叫 reset()：reset 會順手重算係數，藏住 bug
+        eq.process(buf.toBlock()); // Do not call reset(): reset would recompute the coefficients as a side effect and hide the bug
         for (double f : {1000.0, 4000.0}) {
             const double m = measureGainDb([&](float x) { return eq.processSample(0, x); }, f, kSr);
-            std::printf("    smoothing %.6f s  %5.0f Hz：實測 %+7.3f dB，getMagnitudeDb %+7.3f dB\n", seconds, f, m,
+            std::printf("    smoothing %.6f s  %5.0f Hz: measured %+7.3f dB, getMagnitudeDb %+7.3f dB\n", seconds, f, m,
                         eq.getMagnitudeDb(f));
             DAWLAB_CHECK_NEAR(m, eq.getMagnitudeDb(f), 0.05);
         }
-        // 換 type 也一樣（smoothing 0 時 mix 也是瞬間切換）
+        // The same goes for changing the type (with smoothing 0 the mix also switches instantly)
         eq.setBandType(0, EqBandType::LowShelf);
         eq.process(buf.toBlock());
         const double m = measureGainDb([&](float x) { return eq.processSample(0, x); }, 200.0, kSr);
@@ -120,9 +120,9 @@ void testZeroSmoothing() {
     }
 }
 
-// ---- 3. 理論曲線 = 實測（六個 band 全開，含 24 dB/oct） ----
+// ---- 3. Theoretical curve = measurement (all six bands on, including 24 dB/oct) ----
 void testCurveMatchesMeasurement() {
-    std::printf("[3] 六個 band 全開：getMagnitudeDb 與正弦波實測\n");
+    std::printf("[3] All six bands on: getMagnitudeDb vs sine-wave measurement\n");
     ParametricEq eq;
     eq.prepare(kSr, 512, 1);
     eq.setBand(0, {EqBandType::LowCut, 60.0f, 0.707f, 0.0f, true});
@@ -139,10 +139,10 @@ void testCurveMatchesMeasurement() {
         const double m = measureGainDb([&](float x) { return eq.processSample(0, x); }, f, kSr);
         maxDiff = std::max(maxDiff, std::abs(m - eq.getMagnitudeDb(f)));
     }
-    std::printf("    最大差異 %.4f dB\n", maxDiff);
+    std::printf("    max difference %.4f dB\n", maxDiff);
     DAWLAB_CHECK(maxDiff < 0.05);
 
-    // 24 dB/oct 的 cut 在 fc 是 -3.01 dB（兩顆 Butterworth 相乘），12 dB/oct 也是
+    // A 24 dB/oct cut is -3.01 dB at fc (two Butterworth sections multiplied), and so is a 12 dB/oct one
     ParametricEq cut;
     cut.prepare(kSr, 512, 1);
     for (EqSlope slope : {EqSlope::Db12, EqSlope::Db24}) {
@@ -150,15 +150,15 @@ void testCurveMatchesMeasurement() {
         cut.setSlope(0, slope);
         cut.reset();
         const double m = measureGainDb([&](float x) { return cut.processSample(0, x); }, 2000.0, kSr);
-        std::printf("    HighCut 2 kHz %s：fc 處實測 %+.3f dB\n", slope == EqSlope::Db24 ? "24 dB/oct" : "12 dB/oct", m);
+        std::printf("    HighCut 2 kHz %s: measured at fc %+.3f dB\n", slope == EqSlope::Db24 ? "24 dB/oct" : "12 dB/oct", m);
         DAWLAB_CHECK_NEAR(m, -3.0103, 0.03);
         DAWLAB_CHECK_NEAR(cut.getMagnitudeDb(2000.0), -3.0103, 0.01);
     }
 }
 
-// ---- 4. 換 type 來回切換之後，穩態響應仍等於 getMagnitudeDb ----
+// ---- 4. After switching types back and forth, the steady-state response still equals getMagnitudeDb ----
 void testTypeSwitching() {
-    std::printf("[4] 播放中來回換 type / slope / 開關，最後的穩態響應 = getMagnitudeDb\n");
+    std::printf("[4] Switching type / slope / enable back and forth during playback; the final steady-state response = getMagnitudeDb\n");
     ParametricEq eq;
     eq.prepare(kSr, 64, 1);
     AudioBuffer noise = makeWhiteNoise(kSr, 0.5, 0.1f, 1);
@@ -168,7 +168,7 @@ void testTypeSwitching() {
     int k = 0;
     AudioBlock whole = noise.toBlock();
     for (int start = 0; start + 64 <= noise.getNumSamples(); start += 64, ++k) {
-        if (k % 7 == 0) // 每 7 個 block（約 9 ms，比 40 ms 的切換短）就換一次：排隊中的切換也要正確收尾
+        if (k % 7 == 0) // Switch every 7 blocks (about 9 ms, shorter than the 40 ms switch): a queued switch must also finish correctly
             eq.setBandType(2, seq[(k / 7) % 6]);
         if (k % 11 == 0)
             eq.setSlope(2, (k / 11) % 2 ? EqSlope::Db24 : EqSlope::Db12);
@@ -178,37 +178,37 @@ void testTypeSwitching() {
     }
     DAWLAB_CHECK(!hasNanOrInf(noise));
     eq.setBand(2, {EqBandType::Peak, 800.0f, 2.0f, 9.0f, true});
-    eq.process(whole.getSubBlock(0, 4096)); // 讓 40 ms 的切換走完
+    eq.process(whole.getSubBlock(0, 4096)); // let the 40 ms switch run to completion
     for (double f : {200.0, 800.0, 3000.0}) {
         const double m = measureGainDb([&](float x) { return eq.processSample(0, x); }, f, kSr);
-        std::printf("    %5.0f Hz：實測 %+7.3f dB，getMagnitudeDb %+7.3f dB\n", f, m, eq.getMagnitudeDb(f));
+        std::printf("    %5.0f Hz: measured %+7.3f dB, getMagnitudeDb %+7.3f dB\n", f, m, eq.getMagnitudeDb(f));
         DAWLAB_CHECK_NEAR(m, eq.getMagnitudeDb(f), 0.05);
     }
     DAWLAB_CHECK_NEAR(eq.getMagnitudeDb(800.0), 9.0, 0.01);
 }
 
-// ---- 5. 在 prepare() 之前設定的頻率不會被 48 kHz 的上限永久夾掉 ----
+// ---- 5. A frequency set before prepare() is not permanently clamped by the 48 kHz limit ----
 void testFrequencyBeforePrepare() {
-    std::printf("[5] prepare 之前設定 30 kHz 的 HighCut，再 prepare(96 kHz)\n");
+    std::printf("[5] Set a 30 kHz HighCut before prepare, then prepare(96 kHz)\n");
     ParametricEq eq;
-    eq.setBand(5, {EqBandType::HighCut, 30000.0f, 0.707f, 0.0f, true}); // 例如 plugin 在 prepareToPlay 前還原狀態
+    eq.setBand(5, {EqBandType::HighCut, 30000.0f, 0.707f, 0.0f, true}); // e.g. a plugin restoring its state before prepareToPlay
     eq.prepare(96000.0, 512, 1);
     std::printf("    getBand(5).frequency = %.0f Hz\n", eq.getBand(5).frequency);
     DAWLAB_CHECK_NEAR(eq.getBand(5).frequency, 30000.0, 0.5);
     DAWLAB_CHECK_NEAR(eq.getMagnitudeDb(30000.0), -3.0103, 0.01);
     const double m = measureGainDb([&](float x) { return eq.processSample(0, x); }, 30000.0, 96000.0);
     DAWLAB_CHECK_NEAR(m, -3.0103, 0.05);
-    // 換回 48 kHz：實際生效的頻率是 0.49·fs，但使用者的設定值保留
+    // Switch back to 48 kHz: the effective frequency is 0.49·fs, but the user's setting is preserved
     eq.prepare(48000.0, 512, 1);
     DAWLAB_CHECK_NEAR(eq.getBand(5).frequency, 30000.0, 0.5);
     const double m48 = measureGainDb([&](float x) { return eq.processSample(0, x); }, 10000.0, 48000.0);
     DAWLAB_CHECK_NEAR(m48, eq.getMagnitudeDb(10000.0), 0.05);
-    // NaN 欄位被忽略
+    // NaN fields are ignored
     eq.setBandFrequency(5, std::nanf(""));
     DAWLAB_CHECK_NEAR(eq.getBand(5).frequency, 30000.0, 0.5);
 }
 
-// ---- 6. 開關 band、換 type 不 click：正弦波預測殘差 ----
+// ---- 6. No clicks when toggling a band or changing type: sine prediction residual ----
 float maxSineResidual(const AudioBuffer& y, double freq) {
     const float* d = y.getReadPointer(0);
     const double c = 2.0 * std::cos(kTwoPi * freq / kSr);
@@ -219,7 +219,7 @@ float maxSineResidual(const AudioBuffer& y, double freq) {
 }
 
 void testNoClicks() {
-    std::printf("[6] 開關 band、換 type 時的正弦波預測殘差（1 kHz、振幅 0.25）\n");
+    std::printf("[6] Sine prediction residual when toggling a band / changing type (1 kHz, amplitude 0.25)\n");
     AudioBuffer y = makeSine(1000.0, kSr, 0.6, 0.25f, 1);
     const float dry = maxSineResidual(y, 1000.0);
     ParametricEq eq;
@@ -235,14 +235,14 @@ void testNoClicks() {
         eq.process(whole.getSubBlock(start, std::min(128, y.getNumSamples() - start)));
     }
     const float wet = maxSineResidual(y, 1000.0);
-    std::printf("    原始 %.6f，ParametricEq %.6f\n", dry, wet);
-    DAWLAB_CHECK(wet < 0.004f); // naive 直接切換約 0.01–0.03（範例 3）
+    std::printf("    original %.6f, ParametricEq %.6f\n", dry, wet);
+    DAWLAB_CHECK(wet < 0.004f); // naive direct switching gives about 0.01-0.03 (Example 3)
 }
 
 } // namespace
 
 int main() {
-    std::printf("=== 第 03 章 ParametricEq 回歸測試 ===\n\n");
+    std::printf("=== Chapter 03 ParametricEq regression test ===\n\n");
     testRampLength();
     testZeroSmoothing();
     testCurveMatchesMeasurement();

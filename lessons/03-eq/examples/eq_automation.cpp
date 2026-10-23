@@ -1,31 +1,32 @@
-// 範例 3：EQ 參數自動化（掃 peak frequency）—— naive vs 平滑版本，量化 click
+// Example 3: EQ parameter automation (sweeping a peak's frequency) -- naive vs smoothed, quantifying the clicks
 //
-// 示範什麼：
-//   - 一顆 +12 dB、Q = 6 的 peak，中心頻率從 150 Hz 對數掃到 6 kHz，歷時 4 秒（經典的 wah 聲）。
-//   - host 每 100 ms 才送一次新的 frequency（像轉 MIDI controller 旋鈕、或解析度很粗的 automation）。
-//   - 五種做法：
-//       reference  ：每個 sample 都照理想掃頻曲線重算係數（最貴、最平滑，當作標準答案）。
-//       naive      ：收到參數就直接換 Biquad 係數，中間不平滑 → 階梯狀的參數 = zipper noise。
-//       smooth/1   ：交給 ParametricEq 平滑（100 ms linear ramp），每 1 個 sample 重算係數。
-//       smooth/32  ：同上，但每 32 個 sample 重算一次係數（ParametricEq 的預設值）。
-//       smooth/512 ：同上，每 512 個 sample（= 一個 block）才重算一次。
-//   - 量化 click：分析訊號用 1 kHz 正弦波（振幅 0.25）。peak 掃過 1 kHz 時，輸出的「音量包絡」
-//     應該平滑地起伏；把輸出切成 1 ms 的小框、算每框的 RMS（dB），相鄰兩框的 dB 差就是
-//     「每毫秒的音量跳變」。平滑的掃頻每毫秒只變零點幾 dB；一次跳好幾 dB 就是聽得到的喀聲。
-//   - 試聽訊號用 110 Hz 的 band-limited 鋸齒波（30 個諧波），比較像樂器。
-//   - 第 3 部分：「開關 band」與「換 band type」這種沒辦法內插的改變。naive 做法（直接切換 Biquad）
-//     vs ParametricEq（mix 淡出 → 切換 → 淡入）。量化方式是「正弦波預測殘差」：
-//     純正弦波滿足 y[n] = 2cos(ω)·y[n-1] − y[n-2]，所以 r[n] = y[n] − 2cos(ω)·y[n-1] + y[n-2]
-//     對穩定的正弦波是 0；振幅或相位「慢慢」變時 r 很小，瞬間跳變（click）時 r 會突然變大。
-// 怎麼執行：l03_eq_automation（不需參數）
-// 輸出（build 目錄/dawlab_output/）：
-//   l03_sweep_sine_naive.wav / l03_sweep_sine_smooth.wav（分析用的 1 kHz 正弦波）
-//   l03_sweep_saw_reference.wav / l03_sweep_saw_naive.wav / l03_sweep_saw_smooth.wav（鋸齒波 wah）
-//   l03_switch_naive.wav / l03_switch_smooth.wav（第 3 部分：band 開關與換 type）
-// 該聽到什麼：naive 版在 peak 掃過訊號頻率附近有規律的「噠噠噠」（每 100 ms 一次，等於 10 Hz 的
-//   顫動）；smooth 與 reference 版是連續、滑順的 wah。正弦波版本差異最明顯。
-//   最後用 DAWLAB_CHECK 自我檢查（平滑版沒有 > 1 dB/ms 的跳變、開關 / 換 type 的殘差比 naive 小 5 倍以上），
-//   全部成立時印 [PASS]；不成立會回傳非 0，ctest 判定失敗。
+// What it demonstrates:
+//   - A +12 dB, Q = 6 peak whose center frequency sweeps logarithmically from 150 Hz to 6 kHz over 4 seconds (the classic wah sound).
+//   - The host sends a new frequency only every 100 ms (like turning a MIDI controller knob, or very coarse automation).
+//   - Five approaches:
+//       reference  : recompute the coefficients at every sample along the ideal sweep curve (most expensive, smoothest; used as the gold standard).
+//       naive      : swap the Biquad coefficients as soon as a parameter arrives, with no smoothing in between -> stair-stepped parameters = zipper noise.
+//       smooth/1   : let ParametricEq smooth it (100 ms linear ramp), recomputing the coefficients every 1 sample.
+//       smooth/32  : same, but recompute the coefficients every 32 samples (ParametricEq's default).
+//       smooth/512 : same, but recompute only every 512 samples (= one block).
+//   - Quantifying the click: the analysis signal is a 1 kHz sine (amplitude 0.25). As the peak sweeps past 1 kHz, the output's
+//     "loudness envelope" should rise and fall smoothly; we cut the output into 1 ms frames and compute each frame's RMS (in dB),
+//     and the dB difference between adjacent frames is the "loudness jump per millisecond". A smooth sweep changes by only a few
+//     tenths of a dB per millisecond; a jump of several dB at once is an audible click.
+//   - The listening signal is a 110 Hz band-limited sawtooth (30 harmonics), which is more instrument-like.
+//   - Part 3: changes that cannot be interpolated, such as "switching a band on/off" and "changing the band type". The naive approach (switching the Biquad directly)
+//     vs ParametricEq (mix fade-out -> switch -> fade-in). The measure is the "sine prediction residual":
+//     a pure sine satisfies y[n] = 2cos(ω)·y[n-1] - y[n-2], so r[n] = y[n] - 2cos(ω)·y[n-1] + y[n-2]
+//     is 0 for a steady sine; when the amplitude or phase changes "slowly" r stays small, and at an instantaneous jump (click) r suddenly becomes large.
+// How to run: l03_eq_automation (no arguments)
+// Output (build directory/dawlab_output/):
+//   l03_sweep_sine_naive.wav / l03_sweep_sine_smooth.wav (the 1 kHz sine used for analysis)
+//   l03_sweep_saw_reference.wav / l03_sweep_saw_naive.wav / l03_sweep_saw_smooth.wav (sawtooth wah)
+//   l03_switch_naive.wav / l03_switch_smooth.wav (part 3: band on/off and type change)
+// What you should hear: the naive version has a regular "tick-tick-tick" (once every 100 ms, i.e. a 10 Hz
+//   flutter) while the peak sweeps near the signal frequency; the smooth and reference versions are a continuous, smooth wah. The difference is clearest with the sine version.
+//   At the end DAWLAB_CHECK self-checks (the smoothed versions have no jump > 1 dB/ms, and the residual for on/off / type change is at least 5x smaller than naive),
+//   printing [PASS] if all hold; otherwise it returns non-zero and ctest reports a failure.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Biquad.h>
@@ -44,12 +45,12 @@ constexpr int kBlockSize = 512;
 constexpr double kSeconds = 4.0;
 constexpr double kFreqStart = 150.0, kFreqEnd = 6000.0;
 constexpr float kPeakGainDb = 12.0f, kPeakQ = 6.0f;
-constexpr double kAutomationIntervalSec = 0.1; // host 每 100 ms 送一次參數
-constexpr double kToneHz = 1000.0;             // 分析用正弦波
-constexpr double kFrameMs = 1.0;               // 包絡分析的框長
-constexpr float kJumpThresholdDb = 1.0f;       // 1 ms 內跳超過 1 dB 就算一次「喀」
+constexpr double kAutomationIntervalSec = 0.1; // the host sends parameters every 100 ms
+constexpr double kToneHz = 1000.0;             // sine wave used for analysis
+constexpr double kFrameMs = 1.0;               // frame length for the envelope analysis
+constexpr float kJumpThresholdDb = 1.0f;       // a jump of more than 1 dB within 1 ms counts as one "click"
 
-// band-limited 鋸齒波：x = (2/π) Σ (-1)^(k+1) sin(2π k f t) / k，k = 1..harmonics
+// Band-limited sawtooth: x = (2/π) Σ (-1)^(k+1) sin(2π k f t) / k, k = 1..harmonics
 AudioBuffer makeSaw(double f0, int harmonics, double seconds, float amplitude) {
     AudioBuffer b(1, secondsToSamples(seconds, kSr));
     for (int i = 0; i < b.getNumSamples(); ++i) {
@@ -61,12 +62,12 @@ AudioBuffer makeSaw(double f0, int harmonics, double seconds, float amplitude) {
     return b;
 }
 
-// 掃頻曲線：對數插值（每秒走過一樣多的 octave）
+// Sweep curve: logarithmic interpolation (the same number of octaves per second)
 double sweepFrequency(double t) {
     return kFreqStart * std::pow(kFreqEnd / kFreqStart, std::clamp(t / kSeconds, 0.0, 1.0));
 }
 
-// reference：逐 sample 重算係數（理想掃頻）
+// reference: recompute the coefficients at every sample (ideal sweep)
 AudioBuffer runReference(const AudioBuffer& input) {
     AudioBuffer out = input;
     Biquad bq;
@@ -79,7 +80,7 @@ AudioBuffer runReference(const AudioBuffer& input) {
     return out;
 }
 
-// naive：每 100 ms 直接換係數，中間不平滑
+// naive: swap the coefficients directly every 100 ms, with no smoothing in between
 AudioBuffer runNaive(const AudioBuffer& input) {
     AudioBuffer out = input;
     const int n = out.getNumSamples();
@@ -98,13 +99,13 @@ AudioBuffer runNaive(const AudioBuffer& input) {
     return out;
 }
 
-// smooth：模擬 host 在 block 之間、每 100 ms 把新的 frequency 送給 ParametricEq，然後整塊處理
+// smooth: simulate the host sending a new frequency to ParametricEq between blocks every 100 ms, then processing the whole block
 AudioBuffer runSmoothed(const AudioBuffer& input, int coefficientUpdateInterval) {
     AudioBuffer out = input;
     const int n = out.getNumSamples();
     const int automationInterval = secondsToSamples(kAutomationIntervalSec, kSr);
     ParametricEq eq;
-    eq.setSmoothingSeconds(kAutomationIntervalSec); // ramp 跟自動化間隔一樣長，剛好銜接下一次更新
+    eq.setSmoothingSeconds(kAutomationIntervalSec); // the ramp is as long as the automation interval, so it just meets the next update
     eq.setCoefficientUpdateInterval(coefficientUpdateInterval);
     eq.prepare(kSr, kBlockSize, 1);
     eq.setBand(0, {EqBandType::Peak, static_cast<float>(kFreqStart), kPeakQ, kPeakGainDb, true});
@@ -121,8 +122,8 @@ AudioBuffer runSmoothed(const AudioBuffer& input, int coefficientUpdateInterval)
 }
 
 struct EnvelopeStats {
-    float maxJumpDb = 0.0f; // 相鄰 1 ms 框之間最大的 RMS 變化
-    int jumpCount = 0;      // 變化超過門檻的次數
+    float maxJumpDb = 0.0f; // largest RMS change between adjacent 1 ms frames
+    int jumpCount = 0;      // number of changes above the threshold
     float peakEnvDb = -100.0f;
     double peakAtMs = 0.0;
 };
@@ -154,11 +155,11 @@ void printRow(const char* name, const AudioBuffer& y) {
                 s.peakEnvDb, s.peakAtMs);
 }
 
-// ---- 第 3 部分：開關 band、換 type ----
-// 輸入 1 kHz 正弦波（振幅 0.25）。事件（都在 block 邊界上）：
-//   block 24（0.256 s）打開一顆 LowCut @ 2 kHz（1 kHz 處約 -12 dB，而且相位大幅偏移）
-//   block 72（0.768 s）把它換成 Peak +6 dB @ 1 kHz（換 type）
-//   block 120（1.28 s）關掉
+// ---- Part 3: switching bands on/off, changing type ----
+// The input is a 1 kHz sine (amplitude 0.25). Events (all on block boundaries):
+//   block 24 (0.256 s): switch on a LowCut @ 2 kHz (about -12 dB at 1 kHz, with a large phase shift)
+//   block 72 (0.768 s): change it to Peak +6 dB @ 1 kHz (type change)
+//   block 120 (1.28 s): switch it off
 constexpr double kSwitchSeconds = 1.6;
 constexpr int kEventBlocks[3] = {24, 72, 120};
 
@@ -170,7 +171,7 @@ EqBand switchEventBand(int event) {
     return {EqBandType::Peak, 1000.0f, 1.0f, 6.0f, false};
 }
 
-// naive：一顆 Biquad，事件發生時直接換係數 / 直接 bypass
+// naive: a single Biquad; when an event occurs, swap the coefficients / bypass directly
 AudioBuffer runSwitchNaive(const AudioBuffer& input) {
     AudioBuffer out = input;
     Biquad bq;
@@ -192,7 +193,7 @@ AudioBuffer runSwitchNaive(const AudioBuffer& input) {
     return out;
 }
 
-// ParametricEq：同樣的事件交給 setBand()，由它負責淡出 / 切換 / 淡入
+// ParametricEq: hand the same events to setBand(), which takes care of the fade-out / switch / fade-in
 AudioBuffer runSwitchSmooth(const AudioBuffer& input) {
     AudioBuffer out = input;
     ParametricEq eq;
@@ -208,8 +209,8 @@ AudioBuffer runSwitchSmooth(const AudioBuffer& input) {
     return out;
 }
 
-// 正弦波預測殘差的最大值：r[n] = y[n] − 2cos(ω)·y[n-1] + y[n-2]
-// （只看 [from, to) 這一段；to < 0 代表到結尾）
+// Maximum of the sine prediction residual: r[n] = y[n] - 2cos(ω)·y[n-1] + y[n-2]
+// (looks only at the range [from, to); to < 0 means up to the end)
 float maxSineResidual(const AudioBuffer& y, double freq, int from = 2, int to = -1) {
     const float* d = y.getReadPointer(0);
     const double c = 2.0 * std::cos(kTwoPi * freq / kSr);
@@ -224,11 +225,11 @@ float maxSineResidual(const AudioBuffer& y, double freq, int from = 2, int to = 
 } // namespace
 
 int main() {
-    std::printf("=== 第 03 章 範例 3：掃 peak frequency，naive vs smooth vs reference ===\n");
-    std::printf("\npeak +%.0f dB Q=%.0f，%.0f Hz -> %.0f Hz，%.0f 秒；host 每 %.0f ms 送一次參數\n", kPeakGainDb, kPeakQ,
+    std::printf("=== Chapter 03 Example 3: sweeping the peak frequency, naive vs smooth vs reference ===\n");
+    std::printf("\npeak +%.0f dB Q=%.0f, %.0f Hz -> %.0f Hz, %.0f s; the host sends parameters every %.0f ms\n", kPeakGainDb, kPeakQ,
                 kFreqStart, kFreqEnd, kSeconds, kAutomationIntervalSec * 1000.0);
 
-    // ---- 1. 分析：1 kHz 正弦波的音量包絡 ----
+    // ---- 1. Analysis: loudness envelope of a 1 kHz sine ----
     const AudioBuffer sine = makeSine(kToneHz, kSr, kSeconds, 0.25f, 1);
     const AudioBuffer sineRef = runReference(sine);
     const AudioBuffer sineNaive = runNaive(sine);
@@ -236,53 +237,53 @@ int main() {
     const AudioBuffer sineSmooth32 = runSmoothed(sine, ParametricEq::kDefaultUpdateInterval);
     const AudioBuffer sineSmooth512 = runSmoothed(sine, kBlockSize);
 
-    std::printf("\n[分析] 1 kHz 正弦波，每 %.0f ms 一框算 RMS，看相鄰框之間的音量跳變\n", kFrameMs);
-    std::printf("  version      max jump(dB/ms)  跳變>%.0f dB 次數   包絡最高點\n", double(kJumpThresholdDb));
+    std::printf("\n[analysis] 1 kHz sine, RMS computed per %.0f ms frame, looking at the loudness jump between adjacent frames\n", kFrameMs);
+    std::printf("  version      max jump(dB/ms)  jumps>%.0f dB     envelope peak\n", double(kJumpThresholdDb));
     printRow("reference", sineRef);
     printRow("naive", sineNaive);
     printRow("smooth/1", sineSmooth1);
     printRow("smooth/32", sineSmooth32);
     printRow("smooth/512", sineSmooth512);
-    std::printf("\n  讀法：\n");
-    std::printf("  - reference 每毫秒只變零點幾 dB：這是 +12 dB、Q=6 的 peak 用 1.33 oct/s 掃過 1 kHz 時\n");
-    std::printf("    「音樂上」應有的包絡變化速度。\n");
-    std::printf("  - naive 一次跳好幾 dB（參數每 100 ms 跳一階，音量也跟著跳一階）：這就是 zipper noise。\n");
-    std::printf("    它的包絡最高點也比 reference 低——階梯剛好跨過了 peak 的中心。\n");
-    std::printf("  - smooth/1 與 smooth/32 跟 reference 一樣平滑，只是晚了約一個自動化間隔（約 90–100 ms）到達最高點：\n");
-    std::printf("    ramp 是「追」著目標走的，這個延遲聽不出來。\n");
-    std::printf("  - smooth/512 每個 block 才換一次係數，跳變介於兩者之間：更新間隔是 CPU 與平滑度的取捨。\n");
+    std::printf("\n  How to read it:\n");
+    std::printf("  - reference changes by only a few tenths of a dB per millisecond: this is the envelope change rate that is\n");
+    std::printf("    \"musically\" expected when a +12 dB, Q=6 peak sweeps past 1 kHz at 1.33 oct/s.\n");
+    std::printf("  - naive jumps by several dB at once (the parameter steps every 100 ms, and so does the loudness): this is zipper noise.\n");
+    std::printf("    Its envelope peak is also lower than the reference's -- a step happened to straddle the center of the peak.\n");
+    std::printf("  - smooth/1 and smooth/32 are as smooth as the reference, only about one automation interval (roughly 90-100 ms) late in reaching the peak:\n");
+    std::printf("    the ramp \"chases\" the target, and this delay is inaudible.\n");
+    std::printf("  - smooth/512 changes the coefficients only once per block, so its jumps fall between the two: the update interval is a trade-off between CPU and smoothness.\n");
 
-    // ---- 2. 試聽：鋸齒波 wah ----
+    // ---- 2. Listening test: sawtooth wah ----
     const AudioBuffer saw = makeSaw(110.0, 30, kSeconds, 0.4f);
     const AudioBuffer sawRef = runReference(saw);
     const AudioBuffer sawNaive = runNaive(saw);
     const AudioBuffer sawSmooth = runSmoothed(saw, ParametricEq::kDefaultUpdateInterval);
-    std::printf("\n[試聽] 110 Hz 鋸齒波（30 個諧波）：peak(dBFS) reference %+.2f / naive %+.2f / smooth %+.2f\n",
+    std::printf("\n[listening] 110 Hz sawtooth (30 harmonics): peak(dBFS) reference %+.2f / naive %+.2f / smooth %+.2f\n",
                 gainToDb(peakAbs(sawRef)), gainToDb(peakAbs(sawNaive)), gainToDb(peakAbs(sawSmooth)));
 
-    // ---- 3. 開關 band 與換 type ----
+    // ---- 3. Switching bands on/off and changing type ----
     const AudioBuffer tone = makeSine(kToneHz, kSr, kSwitchSeconds, 0.25f, 1);
     const AudioBuffer switchNaive = runSwitchNaive(tone);
     const AudioBuffer switchSmooth = runSwitchSmooth(tone);
     const float resDry = maxSineResidual(tone, kToneHz);
     const float resNaive = maxSineResidual(switchNaive, kToneHz);
     const float resSmooth = maxSineResidual(switchSmooth, kToneHz);
-    std::printf("\n[開關 / 換 type] 1 kHz 正弦波（振幅 0.25）：0.256 s 開 LowCut@2k、0.768 s 換成 Peak +6 dB@1k、1.28 s 關掉\n");
-    std::printf("  正弦波預測殘差 max|r|（越小越乾淨；以振幅 0.25 為 0 dB）\n");
-    std::printf("  原始正弦波                 %.6f  (%+6.1f dB)\n", resDry, gainToDb(resDry / 0.25f));
-    std::printf("  naive（直接切換）          %.6f  (%+6.1f dB)\n", resNaive, gainToDb(resNaive / 0.25f));
-    std::printf("  ParametricEq（淡出 / 淡入） %.6f  (%+6.1f dB)\n", resSmooth, gainToDb(resSmooth / 0.25f));
-    std::printf("  各事件附近（事件前 5 ms 到事件後 100 ms）的 max|r|：\n");
-    std::printf("      時間       naive      ParametricEq   事件\n");
-    const char* eventNames[3] = {"開 LowCut@2k", "換成 Peak +6 dB@1k", "關掉"};
+    std::printf("\n[on/off / type change] 1 kHz sine (amplitude 0.25): LowCut@2k on at 0.256 s, changed to Peak +6 dB@1k at 0.768 s, off at 1.28 s\n");
+    std::printf("  sine prediction residual max|r| (smaller is cleaner; amplitude 0.25 is 0 dB)\n");
+    std::printf("  original sine              %.6f  (%+6.1f dB)\n", resDry, gainToDb(resDry / 0.25f));
+    std::printf("  naive (direct switching)   %.6f  (%+6.1f dB)\n", resNaive, gainToDb(resNaive / 0.25f));
+    std::printf("  ParametricEq (fade out/in) %.6f  (%+6.1f dB)\n", resSmooth, gainToDb(resSmooth / 0.25f));
+    std::printf("  max|r| around each event (from 5 ms before to 100 ms after the event):\n");
+    std::printf("      time       naive      ParametricEq   event\n");
+    const char* eventNames[3] = {"LowCut@2k on", "changed to Peak +6 dB@1k", "off"};
     for (int e = 0; e < 3; ++e) {
         const int at = kEventBlocks[e] * kBlockSize;
         const int from = at - secondsToSamples(0.005, kSr), to = at + secondsToSamples(0.1, kSr);
         std::printf("    %6.3f s   %.6f   %.6f       %s\n", at / kSr, maxSineResidual(switchNaive, kToneHz, from, to),
                     maxSineResidual(switchSmooth, kToneHz, from, to), eventNames[e]);
     }
-    std::printf("  -> naive 每個事件都有一個尖銳的殘差（= 波形瞬間轉折，聽得到的 click）；\n");
-    std::printf("     ParametricEq 把同樣的改變攤在約 20–40 ms 裡，殘差小了一個數量級以上。\n");
+    std::printf("  -> naive has a sharp residual at every event (= the waveform kinks instantly, an audible click);\n");
+    std::printf("     ParametricEq spreads the same change over roughly 20-40 ms, and the residual is more than an order of magnitude smaller.\n");
     writeWav(outputPath("l03_switch_naive.wav"), switchNaive, kSr);
     writeWav(outputPath("l03_switch_smooth.wav"), switchSmooth, kSr);
 
@@ -291,19 +292,19 @@ int main() {
     writeWav(outputPath("l03_sweep_saw_reference.wav"), sawRef, kSr);
     writeWav(outputPath("l03_sweep_saw_naive.wav"), sawNaive, kSr);
     writeWav(outputPath("l03_sweep_saw_smooth.wav"), sawSmooth, kSr);
-    std::printf("\n輸出：dawlab_output/l03_sweep_sine_naive.wav, l03_sweep_sine_smooth.wav,\n"
+    std::printf("\nOutput: dawlab_output/l03_sweep_sine_naive.wav, l03_sweep_sine_smooth.wav,\n"
                 "      l03_sweep_saw_reference.wav, l03_sweep_saw_naive.wav, l03_sweep_saw_smooth.wav,\n"
                 "      l03_switch_naive.wav, l03_switch_smooth.wav\n");
 
-    // 自我檢查：上面「讀法」說的結論要真的成立，否則 ctest 判定失敗
+    // Self-check: the conclusions stated in "How to read it" above must really hold, otherwise ctest reports a failure
     std::printf("\n");
     const EnvelopeStats stNaive = analyzeEnvelope(sineNaive);
     for (const AudioBuffer* y : {&sineSmooth1, &sineSmooth32}) {
         const EnvelopeStats st = analyzeEnvelope(*y);
-        DAWLAB_CHECK(st.maxJumpDb < 0.5f); // 平滑版每毫秒只變零點幾 dB
+        DAWLAB_CHECK(st.maxJumpDb < 0.5f); // the smoothed versions change by only a few tenths of a dB per millisecond
         DAWLAB_CHECK(st.jumpCount == 0);
     }
-    DAWLAB_CHECK(stNaive.jumpCount > 0); // naive 確實有跳變（對照組要成立，比較才有意義）
+    DAWLAB_CHECK(stNaive.jumpCount > 0); // naive really does jump (the control group must hold for the comparison to mean anything)
     DAWLAB_CHECK(resSmooth < resNaive / 5.0f);
     DAWLAB_CHECK(!hasNanOrInf(sawSmooth));
     return dawlab::test::summary("l03_eq_automation");

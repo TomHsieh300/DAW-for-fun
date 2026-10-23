@@ -1,117 +1,118 @@
-# 第 03 章 練習題：Parametric EQ
+# Chapter 03 Exercises: Parametric EQ
+**English** | [繁體中文](README.zh-TW.md)
 
-難度：★☆☆ 基礎 ／ ★★☆ 中等 ／ ★★★ 進階。
-實作題的起始碼在 [`starter/`](starter/)，可以直接編譯；執行時 self-check 會印出 `[FAIL]`，這是預期的——把 `// TODO` 補完，直到印出 `[PASS]`。完整解答在 [`../solutions/`](../solutions/)，解說在 [`../solutions/README.md`](../solutions/README.md)。
+Difficulty: ★☆☆ basic / ★★☆ intermediate / ★★★ advanced.
+The starter code for the programming exercises is in [`starter/`](starter/) and compiles as-is. When you run it, the self-check prints `[FAIL]`; that is expected. Fill in the `// TODO`s until it prints `[PASS]`. Complete solutions are in [`../solutions/`](../solutions/), with explanations in [`../solutions/README.md`](../solutions/README.md).
 
-建置與執行（以第 03 章為例）：
+Build and run (using Chapter 03 as the example):
 
 ```powershell
-.\scripts\build.ps1 -Only 03-eq                      # 建置 + 跑範例與解答的測試
+.\scripts\build.ps1 -Only 03-eq                      # build + run the tests for the examples and solutions
 cd build
-.\bin\Debug\l03_ex2_starter.exe                      # 跑你自己的起始碼
+.\bin\Debug\l03_ex2_starter.exe                      # run your own starter code
 ```
 
-| 題號 | 類型 | 難度 | 起始碼 | starter target | 解答 target |
+| # | Type | Difficulty | Starter code | starter target | solution target |
 |---|---|---|---|---|---|
-| 1 | 計算 | ★☆☆ | — | — | （數字在 `l03_ex2_solution` 裡驗證） |
-| 2 | 實作 | ★☆☆ | `starter/ex2_q_bandwidth.cpp` | `l03_ex2_starter` | `l03_ex2_solution` |
-| 3 | 實作 | ★☆☆ | `starter/ex3_cascade_sum.cpp` | `l03_ex3_starter` | `l03_ex3_solution` |
-| 4 | 實作 | ★★☆ | `starter/ex4_graphic_eq.cpp` | `l03_ex4_starter` | `l03_ex4_solution` |
-| 5 | 實作 | ★★☆ | `starter/ex5_tilt_eq.cpp` | `l03_ex5_starter` | `l03_ex5_solution` |
-| 6 | 實作 | ★★★ | `starter/ex6_switchable_highcut.cpp` | `l03_ex6_starter` | `l03_ex6_solution` |
-| 7 | 觀念 | ★★☆ | — | — | — |
+| 1 | Calculation | ★☆☆ | — | — | (the numbers are verified in `l03_ex2_solution`) |
+| 2 | Programming | ★☆☆ | `starter/ex2_q_bandwidth.cpp` | `l03_ex2_starter` | `l03_ex2_solution` |
+| 3 | Programming | ★☆☆ | `starter/ex3_cascade_sum.cpp` | `l03_ex3_starter` | `l03_ex3_solution` |
+| 4 | Programming | ★★☆ | `starter/ex4_graphic_eq.cpp` | `l03_ex4_starter` | `l03_ex4_solution` |
+| 5 | Programming | ★★☆ | `starter/ex5_tilt_eq.cpp` | `l03_ex5_starter` | `l03_ex5_solution` |
+| 6 | Programming | ★★★ | `starter/ex6_switchable_highcut.cpp` | `l03_ex6_starter` | `l03_ex6_solution` |
+| 7 | Concept | ★★☆ | — | — | — |
 
 ---
 
-## 練習 1：手算 A、Q、bandwidth 與 RBJ 係數（計算，★☆☆）
+## Exercise 1: Work out A, Q, bandwidth, and the RBJ coefficients by hand (calculation, ★☆☆)
 
-不要用電腦（計算機可以），寫出算式：
+No computer (a calculator is fine). Write out your calculations:
 
-1. RBJ peak / shelf 的 $A$：gain = +6 dB 與 −12 dB 時 $A$ 各是多少？+6 dB 的 peak 中心的**線性**增益是多少？
-2. 頻寬 2/3 octave 對應的 Q？Q = 2 對應幾個 octave？
-3. $f_0 = 1$ kHz、Q = √2 的 peak，「中點增益」的兩個頻寬邊緣在哪裡？+12 dB 時邊緣的增益是多少 dB？
-4. $f_s = 48$ kHz、$f_0 = 12$ kHz、Q = 1、gain = +6 dB 的 peak：算出正規化後的 $b_0, b_1, b_2, a_1, a_2$，並驗證 DC 增益是 0 dB、$f_0$ 處是 +6 dB。
-5. 一顆 +6 dB 和一顆 −6 dB 的 peak（同為 1 kHz、Q = 1）串接，整條曲線是什麼？為什麼？
+1. The $A$ of an RBJ peak / shelf: what is $A$ for gain = +6 dB and for −12 dB? What is the **linear** gain at the center of a +6 dB peak?
+2. What Q corresponds to a bandwidth of 2/3 octave? How many octaves does Q = 2 correspond to?
+3. For a peak with $f_0$ = 1 kHz and Q = √2, where are the two bandwidth edges (the "midpoint gain" edges)? With +12 dB, what is the gain in dB at the edges?
+4. A peak with $f_s$ = 48 kHz, $f_0$ = 12 kHz, Q = 1, gain = +6 dB: compute the normalized $b_0, b_1, b_2, a_1, a_2$, and verify that the DC gain is 0 dB and the gain at $f_0$ is +6 dB.
+5. A +6 dB peak and a −6 dB peak (both at 1 kHz, Q = 1) are cascaded. What is the overall curve, and why?
 
-> 提示：README 2.4、2.5 節。第 4 小題 $\omega_0 = \pi/2$ 時 $\cos\omega_0 = 0$，計算會簡單很多；$f_0$ 處 $z = e^{j\pi/2} = j$，$z^{-1} = -j$、$z^{-2} = -1$。
-
----
-
-## 練習 2：Q ↔ bandwidth 換算與驗證（實作，★☆☆）
-
-起始碼：[`starter/ex2_q_bandwidth.cpp`](starter/ex2_q_bandwidth.cpp)
-
-1. 實作三個函式：`qToBandwidthOctaves(q)`、`bandwidthOctavesToQ(bw)`、`bandEdges(f0, q, fLow, fHigh)`（公式見 README 2.4 節）。
-2. self-check 會驗證：1 octave ↔ Q = √2、1/3 octave ↔ Q ≈ 4.3185、來回換算回到原點、$f_1 f_2 = f_0^2$、$f_2 - f_1 = f_0/Q$。
-3. 完成 `main()` 裡的 TODO：用 `BiquadCoefficients::makePeak(48000, 1000, √2, 12)` 驗證邊緣增益是 +6 dB（中點增益），用 `makeBandpass` 驗證同樣的邊緣是 −3 dB。再用 `measureGainDb` 實際送正弦波量一次。
-
-> 提示：`std::asinh`、`std::sinh` 在 `<cmath>` 裡。
+> Hint: Sections 2.4 and 2.5 of the README. For part 4, $\omega_0 = \pi/2$ makes $\cos\omega_0 = 0$, which simplifies the arithmetic a lot. At $f_0$, $z = e^{j\pi/2} = j$, so $z^{-1} = -j$ and $z^{-2} = -1$.
 
 ---
 
-## 練習 3：驗證兩個 peak 串接 dB 相加（實作，★☆☆）
+## Exercise 2: Q ↔ bandwidth conversion and verification (programming, ★☆☆)
 
-起始碼：[`starter/ex3_cascade_sum.cpp`](starter/ex3_cascade_sum.cpp)
+Starter code: [`starter/ex2_q_bandwidth.cpp`](starter/ex2_q_bandwidth.cpp)
 
-1. 完成 `Cascade2::processSample`：`y = H2(H1(x))`。
-2. 兩顆 peak：+6 dB @ 500 Hz（Q 1）與 −4 dB @ 2 kHz（Q 2）。在 8 個頻率比較：各自的 dB、dB 之和、$|H_1 H_2|$ 的 dB（用 `response()` 複數相乘）、實測（`measureGainDb`）。
-3. 把串接順序顛倒，確認實測結果不變。
-4. 加分：兩顆 +6 dB、Q = √2 @ 1 kHz 串接，中心應為 +12 dB、1414 Hz 應為 +6 dB。
+1. Implement three functions: `qToBandwidthOctaves(q)`, `bandwidthOctavesToQ(bw)`, and `bandEdges(f0, q, fLow, fHigh)` (formulas in README Section 2.4).
+2. The self-check verifies: 1 octave ↔ Q = √2, 1/3 octave ↔ Q ≈ 4.3185, round-trip conversions return to the starting value, $f_1 f_2 = f_0^2$, and $f_2 - f_1 = f_0/Q$.
+3. Complete the TODOs in `main()`: use `BiquadCoefficients::makePeak(48000, 1000, √2, 12)` to verify that the gain at the edges is +6 dB (the midpoint gain), and use `makeBandpass` to verify that the same edges are at −3 dB. Then use `measureGainDb` to measure it once by feeding in actual sine waves.
 
-> 提示：$\log(ab) = \log a + \log b$。
-
----
-
-## 練習 4：10-band graphic EQ（實作，★★☆）
-
-起始碼：[`starter/ex4_graphic_eq.cpp`](starter/ex4_graphic_eq.cpp)
-
-做一個 10-band graphic EQ：中心頻率 $31.25 \times 2^k$ Hz（$k = 0..9$，即 31.25、62.5、125 … 16000 Hz），每個 band 頻寬 1 octave，使用者只能推 gain（±12 dB）。
-
-1. 用練習 2 的公式把「1 octave」換成 `kQ`。
-2. 完成 `setGainDb`（重算該 band 的係數）、`getMagnitudeDb`（各 band dB 相加）、`processSample`、`process`。
-3. 觀察 self-check 印出的數字：只推 1 kHz +6 dB 時，500 Hz 和 2 kHz 各被帶起多少？**全部** band 推 +6 dB 時，1 kHz 處是多少？為什麼不是 +6？
-4. 把「笑臉曲線」套在 drum loop 上，輸出 `l03_ex4_graphic_smile.wav`。
-
-> 提示：相鄰 band 的「尾巴」會疊加（README 2.11 節）。
+> Hint: `std::asinh` and `std::sinh` are in `<cmath>`.
 
 ---
 
-## 練習 5：Tilt EQ（實作，★★☆）
+## Exercise 3: Verify that cascaded peaks add in dB (programming, ★☆☆)
 
-起始碼：[`starter/ex5_tilt_eq.cpp`](starter/ex5_tilt_eq.cpp)
+Starter code: [`starter/ex3_cascade_sum.cpp`](starter/ex3_cascade_sum.cpp)
 
-Tilt EQ 只有兩個參數：pivot 頻率與 tilt（dB）。曲線像翹翹板：pivot 處 0 dB，低頻端 → $-t/2$，高頻端 → $+t/2$。
+1. Complete `Cascade2::processSample`: `y = H2(H1(x))`.
+2. Two peaks: +6 dB @ 500 Hz (Q 1) and −4 dB @ 2 kHz (Q 2). At 8 frequencies, compare: each one's dB, the sum of the dB values, the dB of $|H_1 H_2|$ (multiply the complex values from `response()`), and the measured value (`measureGainDb`).
+3. Reverse the cascade order and confirm that the measured result does not change.
+4. Bonus: cascade two +6 dB, Q = √2 peaks @ 1 kHz. The center should be +12 dB and 1414 Hz should be +6 dB.
 
-1. 用一顆 low shelf（gain $-t/2$）加一顆 high shelf（gain $+t/2$），兩顆都放在 pivot、Q = 0.707。
-2. 完成 `getMagnitudeDb` 與 `updateCoefficients`。
-3. self-check 會驗證：pivot 處 0 dB、兩端 ∓3 dB（tilt = +6）、以 pivot 為中心反對稱、整條曲線單調、$-t$ 是 $+t$ 的鏡像。
-4. 加分：`setTiltDb` 用 `SmoothedValue` 平滑，`process()` 每 32 個 sample 重算一次係數；pluck sequence 在 2 秒處從 +6 切到 −6 dB，不可以 click。輸出 `l03_ex5_tilt.wav`。
-
-> 提示：為什麼 pivot 剛好是 0 dB？README 2.6 節「shelf 的 $f_0$ 是中點增益」。
+> Hint: $\log(ab) = \log a + \log b$.
 
 ---
 
-## 練習 6：可切換 12 / 24 dB/oct 的 high cut（實作，★★★）
+## Exercise 4: 10-band graphic EQ (programming, ★★☆)
 
-起始碼：[`starter/ex6_switchable_highcut.cpp`](starter/ex6_switchable_highcut.cpp)
+Starter code: [`starter/ex4_graphic_eq.cpp`](starter/ex4_graphic_eq.cpp)
 
-1. 12 dB/oct = 一顆 Butterworth lowpass（Q = 1/√2）；24 dB/oct = 兩顆 lowpass 串接，Q 用 `butterworthQ(4, 0)` 與 `butterworthQ(4, 1)`（第 02 章 `Biquad.h`）。
-2. 實作數位 Butterworth 的理論值 $|H|^2 = 1/\left(1 + \left(\frac{\tan(\pi f/f_s)}{\tan(\pi f_c/f_s)}\right)^{2N}\right)$，並驗證兩種 slope 的實測響應都符合，且在 $f_c$ 都是 −3.01 dB。
-3. 切換 slope 時不可以 click：兩條鏈同時跑，用 `SmoothedValue` 做 20 ms crossfade。self-check 會比較「直接切換」與「crossfade」在 1 kHz（= $f_c$）正弦波上的最大 sample 跳變。
-4. 試聽：drum loop、high cut 2 kHz，前 2 秒 12 dB/oct、後 2 秒 24 dB/oct，輸出 `l03_ex6_highcut_switch.wav`。
+Build a 10-band graphic EQ: center frequencies $31.25 \times 2^k$ Hz ($k = 0..9$, i.e. 31.25, 62.5, 125 … 16000 Hz), each band 1 octave wide, and the user can only move the gain (±12 dB).
 
-> 提示：為什麼直接切換會 click？想想 $f_c$ 處 2 階與 4 階 Butterworth 的相位各是多少。
+1. Use the formula from Exercise 2 to turn "1 octave" into `kQ`.
+2. Complete `setGainDb` (recompute that band's coefficients), `getMagnitudeDb` (sum the dB of all bands), `processSample`, and `process`.
+3. Look at the numbers the self-check prints: with only 1 kHz pushed +6 dB, how much are 500 Hz and 2 kHz lifted? With **all** bands pushed +6 dB, what is the level at 1 kHz? Why isn't it +6?
+4. Apply a "smiley curve" to the drum loop and write the output to `l03_ex4_graphic_smile.wav`.
+
+> Hint: the "skirts" of adjacent bands add up (README Section 2.11).
 
 ---
 
-## 練習 7：EQ 與相位（觀念，★★☆）
+## Exercise 5: Tilt EQ (programming, ★★☆)
 
-用自己的話回答（每題幾句話即可）：
+Starter code: [`starter/ex5_tilt_eq.cpp`](starter/ex5_tilt_eq.cpp)
 
-1. 為什麼一個改變 magnitude 的 IIR EQ 一定會改變相位？什麼是 minimum phase？
-2. +6 dB @ 1 kHz、Q = 1 的 peak，在 500 Hz 和 2 kHz 的相位大約是多少？方向（領先 / 落後）？如果改成 −6 dB 呢？（可以用範例 `l03_eq_phase_cramping` 的輸出佐證）
-3. 單一軌上用 IIR EQ，相位偏移通常聽不出來；什麼情況下它會變成問題？
-4. Linear-phase EQ 的代價有哪些？一個 4097-tap 的 linear-phase FIR 在 48 kHz 下 latency 多少 ms？
-5. 什麼是 pre-ringing？為什麼它對 kick、snare 特別明顯？
-6. 你在 mastering 時想在 40 Hz 做一個很窄的 cut，用 linear-phase 還是 minimum-phase？說說你的取捨。
+A tilt EQ has only two parameters: the pivot frequency and the tilt (in dB). The curve behaves like a seesaw: 0 dB at the pivot, $-t/2$ toward the low end, and $+t/2$ toward the high end.
+
+1. Use one low shelf (gain $-t/2$) plus one high shelf (gain $+t/2$), both placed at the pivot with Q = 0.707.
+2. Complete `getMagnitudeDb` and `updateCoefficients`.
+3. The self-check verifies: 0 dB at the pivot, ∓3 dB at the two ends (tilt = +6), antisymmetry about the pivot, a monotonic curve, and that $-t$ is the mirror image of $+t$.
+4. Bonus: make `setTiltDb` smooth with `SmoothedValue`, and have `process()` recompute the coefficients every 32 samples. The pluck sequence switches from +6 to −6 dB at the 2-second mark and must not click. Write the output to `l03_ex5_tilt.wav`.
+
+> Hint: why is the pivot exactly 0 dB? See README Section 2.6: "the $f_0$ of a shelf is the midpoint gain".
+
+---
+
+## Exercise 6: A high cut switchable between 12 / 24 dB/oct (programming, ★★★)
+
+Starter code: [`starter/ex6_switchable_highcut.cpp`](starter/ex6_switchable_highcut.cpp)
+
+1. 12 dB/oct = one Butterworth lowpass (Q = 1/√2); 24 dB/oct = two cascaded lowpasses, using `butterworthQ(4, 0)` and `butterworthQ(4, 1)` for Q (`Biquad.h` from Chapter 02).
+2. Implement the theoretical digital Butterworth response $|H|^2 = 1/\left(1 + \left(\frac{\tan(\pi f/f_s)}{\tan(\pi f_c/f_s)}\right)^{2N}\right)$, and verify that the measured response of both slopes matches it, and that both are −3.01 dB at $f_c$.
+3. Switching the slope must not click: run both chains at the same time and use `SmoothedValue` for a 20 ms crossfade. The self-check compares the largest sample-to-sample jump of a 1 kHz (= $f_c$) sine wave under "direct switching" versus "crossfade".
+4. Listen: drum loop, high cut at 2 kHz, 12 dB/oct for the first 2 seconds and 24 dB/oct for the last 2 seconds. Write the output to `l03_ex6_highcut_switch.wav`.
+
+> Hint: why does direct switching click? Think about the phase of the 2nd-order and 4th-order Butterworth at $f_c$.
+
+---
+
+## Exercise 7: EQ and phase (concept, ★★☆)
+
+Answer in your own words (a few sentences each):
+
+1. Why must an IIR EQ that changes the magnitude also change the phase? What is minimum phase?
+2. For a +6 dB @ 1 kHz, Q = 1 peak, roughly what is the phase at 500 Hz and at 2 kHz? In which direction (leading / lagging)? What if it were −6 dB? (You can support your answer with the output of the example `l03_eq_phase_cramping`.)
+3. With an IIR EQ on a single track, the phase shift is usually inaudible. When does it become a problem?
+4. What are the costs of a linear-phase EQ? How many ms of latency does a 4097-tap linear-phase FIR have at 48 kHz?
+5. What is pre-ringing? Why is it especially noticeable on kick and snare?
+6. When mastering, you want a very narrow cut at 40 Hz. Do you use linear-phase or minimum-phase? Explain your trade-off.

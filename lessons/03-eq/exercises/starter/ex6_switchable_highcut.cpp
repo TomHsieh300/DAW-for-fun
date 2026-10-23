@@ -1,12 +1,12 @@
-// 練習 6（起始碼）：可切換 12 / 24 dB/oct 的 high cut（lowpass），切換時不 click
+// Exercise 6 (starter code): a high cut (lowpass) switchable between 12 / 24 dB/oct, with no click when switching
 //
-// 目標：
-//   1. 12 dB/oct = 一顆 Butterworth lowpass（Q = 1/√2）。
-//      24 dB/oct = 兩顆 lowpass 串接，Q 用 butterworthQ(4, 0) 與 butterworthQ(4, 1)（第 02 章 Biquad.h）。
-//   2. 兩種 slope 在 fc 都要是 -3 dB；在其他頻率要符合數位 Butterworth 理論值
-//      |H|² = 1 / (1 + (tan(πf/fs) / tan(πfc/fs))^(2N))。
-//   3. 切換 slope 時用 SmoothedValue 做 crossfade，fc 處的正弦波不可以出現大跳變。
-// 執行時 self-check 會印出 FAIL，直到你把 TODO 補完。
+// Goals:
+//   1. 12 dB/oct = one Butterworth lowpass (Q = 1/√2).
+//      24 dB/oct = two lowpass sections in cascade, with Q from butterworthQ(4, 0) and butterworthQ(4, 1) (Biquad.h from Chapter 02).
+//   2. Both slopes must be -3 dB at fc; at other frequencies they must match the digital Butterworth theory
+//      |H|² = 1 / (1 + (tan(πf/fs) / tan(πfc/fs))^(2N)).
+//   3. When switching the slope, use a SmoothedValue to crossfade; the sine wave at fc must not show a large jump.
+// When run, the self-check prints FAIL until you complete the TODOs.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Biquad.h>
@@ -47,7 +47,7 @@ public:
     }
     void setSlope(Slope slope) noexcept {
         slope_ = slope;
-        // TODO: 不要直接切，改成把 mix_ 的目標設為 0（12）或 1（24）做 crossfade
+        // TODO: do not switch directly; instead set the target of mix_ to 0 (12) or 1 (24) to crossfade
         mix_.setCurrentAndTargetValue(slope == Slope::Db24 ? 1.0f : 0.0f);
     }
     void setCrossfadeSeconds(double seconds) noexcept { crossfadeSeconds_ = std::max(0.0, seconds); }
@@ -55,10 +55,10 @@ public:
 
     double getMagnitudeDb(double freq) const noexcept {
         (void)freq;
-        return 0.0; // TODO: 依目前 slope 回傳 lp12 或 lp24a + lp24b 的 dB
+        return 0.0; // TODO: return the dB of lp12 or of lp24a + lp24b, depending on the current slope
     }
 
-    // TODO: 數位 Butterworth 的理論值：-10 log10(1 + (tan(πf/fs) / tan(πfc/fs))^(2N))
+    // TODO: theoretical digital Butterworth value: -10 log10(1 + (tan(πf/fs) / tan(πfc/fs))^(2N))
     static double butterworthDb(double freq, double cutoff, double sampleRate, int order) noexcept {
         (void)freq;
         (void)cutoff;
@@ -70,7 +70,7 @@ public:
     float processSample(int ch, float x) noexcept {
         if (ch == 0)
             mixCurrent_ = mix_.getNextValue();
-        // TODO: y12 = lp12_(x)；y24 = lp24b_(lp24a_(x))；回傳 y12 + mix * (y24 - y12)
+        // TODO: y12 = lp12_(x); y24 = lp24b_(lp24a_(x)); return y12 + mix * (y24 - y12)
         return lp12_.processSample(ch, x);
     }
 
@@ -84,7 +84,7 @@ public:
 private:
     void updateCoefficients() noexcept {
         lp12_.setCoefficients(BiquadCoefficients::makeLowpass(sampleRate_, cutoffHz_, BiquadCoefficients::kButterworthQ));
-        // TODO: lp24a_ / lp24b_ 用 butterworthQ(4, 0)、butterworthQ(4, 1)
+        // TODO: lp24a_ / lp24b_ use butterworthQ(4, 0) and butterworthQ(4, 1)
     }
 
     double sampleRate_ = 48000.0;
@@ -105,8 +105,8 @@ float maxJumpWhenSwitching(double crossfadeSeconds, double sr) {
     AudioBuffer y = makeSine(1000.0, sr, 1.0, 0.5f, 1);
     AudioBlock whole(y);
     for (int start = 0; start < y.getNumSamples(); start += 512) {
-        // 在第 48 個 block 開頭（0.512 秒）切換：此時 1 kHz 正弦波相位剛好是 0°，
-        // 12 與 24 dB/oct 兩條鏈的輸出差 y24 − y12 = 0.5·cos(θ + 45°)，θ = 0° 時 ≈ 0.35，直接切換一定看得到大跳變
+        // Switch at the start of block 48 (0.512 s): the phase of the 1 kHz sine is exactly 0° at that point,
+        // and the output difference between the 12 and 24 dB/oct chains is y24 - y12 = 0.5·cos(θ + 45°), about 0.35 at θ = 0°, so a direct switch is sure to show a big jump
         if (start == 48 * 512)
             hc.setSlope(SwitchableHighCut::Slope::Db24);
         hc.process(whole.getSubBlock(start, std::min(512, y.getNumSamples() - start)));
@@ -123,7 +123,7 @@ float maxJumpWhenSwitching(double crossfadeSeconds, double sr) {
 int main() {
     constexpr double sr = 48000.0;
     constexpr double fc = 1000.0;
-    std::printf("=== 第 03 章 練習 6：可切換 12 / 24 dB/oct 的 high cut ===\n\n");
+    std::printf("=== Chapter 03 Exercise 6: high cut switchable between 12 / 24 dB/oct ===\n\n");
 
     SwitchableHighCut hc;
     hc.prepare(sr, 512, 1);
@@ -132,12 +132,12 @@ int main() {
     for (int order : {2, 4}) {
         hc.setSlope(order == 2 ? SwitchableHighCut::Slope::Db12 : SwitchableHighCut::Slope::Db24);
         hc.prepare(sr, 512, 1);
-        std::printf("  %d dB/oct（%d 階 Butterworth），fc = %.0f Hz\n", 6 * order, order, fc);
+        std::printf("  %d dB/oct (Butterworth, order %d), fc = %.0f Hz\n", 6 * order, order, fc);
         for (double f : {500.0, 1000.0, 2000.0, 4000.0}) {
             hc.reset();
             const double theory = SwitchableHighCut::butterworthDb(f, fc, sr, order);
             const double m = measureGainDb([&](float x) { return hc.processSample(0, x); }, f, sr);
-            std::printf("    %7.0f    理論 %+7.2f    實測 %+7.2f\n", f, theory, m);
+            std::printf("    %7.0f    theory %+7.2f    measured %+7.2f\n", f, theory, m);
             DAWLAB_CHECK_NEAR(m, theory, 0.1);
             DAWLAB_CHECK_NEAR(hc.getMagnitudeDb(f), theory, 1e-6);
         }
@@ -149,13 +149,13 @@ int main() {
     const float sineSlope = static_cast<float>(0.5 * kTwoPi * 1000.0 / sr);
     const float jumpHard = maxJumpWhenSwitching(0.0, sr);
     const float jumpSoft = maxJumpWhenSwitching(0.02, sr);
-    std::printf("\n  切換時最大跳變：直接 %.4f / crossfade %.4f（正弦波本身 %.4f）\n", jumpHard, jumpSoft, sineSlope);
+    std::printf("\n  Maximum jump when switching: direct %.4f / crossfade %.4f (the sine itself %.4f)\n", jumpHard, jumpSoft, sineSlope);
     DAWLAB_CHECK(jumpHard > 3.0f * sineSlope);
     DAWLAB_CHECK(jumpSoft < 1.2f * sineSlope);
 
-    // TODO（第 4 小題，試聽）：drum loop（makeDrumLoop(sr, 2)）過 high cut 2 kHz，
-    //   以 512 sample 為一個 block 處理：前 2 秒 12 dB/oct，在包含 2 秒那個 block 的開頭 setSlope(Db24)，
-    //   最後 writeWav(outputPath("l03_ex6_highcut_switch.wav"), wet, sr)。切換處不應該聽到 click。
+    // TODO (part 4, listening test): run the drum loop (makeDrumLoop(sr, 2)) through a 2 kHz high cut,
+    //   processing in blocks of 512 samples: 12 dB/oct for the first 2 seconds, and call setSlope(Db24) at the start of the block that contains the 2-second mark,
+    //   and finally writeWav(outputPath("l03_ex6_highcut_switch.wav"), wet, sr). You should not hear a click at the switch.
 
     return dawlab::test::summary("l03_ex6_starter");
 }

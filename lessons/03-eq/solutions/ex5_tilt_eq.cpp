@@ -1,13 +1,13 @@
-// 練習 5（解答）：Tilt EQ
+// Exercise 5 (solution): Tilt EQ
 //
-// Tilt EQ 只有兩個旋鈕：pivot（樞軸頻率）與 tilt（dB）。曲線像翹翹板：pivot 處 0 dB，
-// 往低頻一端漸漸變成 −tilt/2，往高頻一端變成 +tilt/2（tilt > 0 = 更亮；tilt < 0 = 更暗）。
-// 用兩顆 RBJ shelf 就能做：
-//   low shelf  @ pivot，gain = −tilt/2
-//   high shelf @ pivot，gain = +tilt/2
-// 為什麼 pivot 剛好是 0 dB？RBJ shelf 的 f0 是「中點頻率」：|H(f0)| = A = 10^(gainDb/40)，
-// 也就是 gainDb / 2（README 2.6 節證明）。低架在 pivot 貢獻 −tilt/4、高架貢獻 +tilt/4，相加 = 0。
-// 兩顆的 Q 都用 0.707（S = 1）：最陡但不過衝，所以整條曲線單調、沒有駝峰。
+// A tilt EQ has only two knobs: the pivot (the pivot frequency) and the tilt (in dB). The curve acts like a seesaw: 0 dB at the pivot,
+// gradually approaching -tilt/2 toward the low-frequency end and +tilt/2 toward the high-frequency end (tilt > 0 = brighter; tilt < 0 = darker).
+// Two RBJ shelves are enough:
+//   low shelf  @ pivot, gain = -tilt/2
+//   high shelf @ pivot, gain = +tilt/2
+// Why is the pivot exactly 0 dB? The f0 of an RBJ shelf is the "midpoint frequency": |H(f0)| = A = 10^(gainDb/40),
+// which is gainDb / 2 (proved in README section 2.6). At the pivot the low shelf contributes -tilt/4 and the high shelf +tilt/4, which sum to 0.
+// Both use Q = 0.707 (S = 1): the steepest without overshoot, so the whole curve is monotonic with no hump.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Biquad.h>
@@ -43,7 +43,7 @@ public:
         pivotHz_ = hz;
         updateCoefficients(tiltSmoother_.getCurrentValue());
     }
-    // tilt：正 = 高頻多、低頻少（更亮）；負 = 相反
+    // tilt: positive = more highs, fewer lows (brighter); negative = the opposite
     void setTiltDb(float tiltDb) noexcept {
         tiltDb_ = std::clamp(tiltDb, -12.0f, 12.0f);
         tiltSmoother_.setTargetValue(tiltDb_);
@@ -53,7 +53,7 @@ public:
         return low_.getCoefficients().magnitudeDb(freq, sampleRate_) + high_.getCoefficients().magnitudeDb(freq, sampleRate_);
     }
 
-    // 參數平滑：tilt 以 20 ms linear ramp 走到目標，每 32 個 sample 重算一次係數（跟 ParametricEq 同一招）
+    // Parameter smoothing: tilt ramps linearly to the target over 20 ms, and the coefficients are recomputed every 32 samples (the same trick as ParametricEq)
     void process(AudioBlock block) noexcept {
         const int n = block.getNumSamples();
         for (int start = 0; start < n; start += kUpdateInterval) {
@@ -89,28 +89,28 @@ private:
 
 int main() {
     constexpr double sr = 48000.0;
-    std::printf("=== 第 03 章 練習 5：Tilt EQ ===\n\n");
+    std::printf("=== Chapter 03 Exercise 5: Tilt EQ ===\n\n");
 
     TiltEq tilt;
     tilt.prepare(sr, 512, 1);
     tilt.setPivotHz(1000.0f);
     tilt.setTiltDb(6.0f);
-    tilt.prepare(sr, 512, 1); // 重新 prepare：平滑器直接對齊，量測不用等 ramp
+    tilt.prepare(sr, 512, 1); // prepare again: the smoother snaps to the target, so the measurement does not have to wait for the ramp
 
-    std::printf("  pivot 1 kHz, tilt +6 dB：\n");
-    std::printf("    freq(Hz)   理論(dB)   實測(dB)\n");
+    std::printf("  pivot 1 kHz, tilt +6 dB:\n");
+    std::printf("    freq(Hz)   theory(dB)   measured(dB)\n");
     for (double f : {30.0, 60.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0}) {
         tilt.reset();
         const double m = measureGainDb([&](float x) { return tilt.processSample(0, x); }, f, sr);
         std::printf("    %7.0f    %+6.2f     %+6.2f\n", f, tilt.getMagnitudeDb(f), m);
         DAWLAB_CHECK_NEAR(m, tilt.getMagnitudeDb(f), 0.05);
     }
-    DAWLAB_CHECK_NEAR(tilt.getMagnitudeDb(1000.0), 0.0, 0.01);   // pivot 恰為 0 dB（兩顆 shelf 的中點互相抵消）
-    DAWLAB_CHECK_NEAR(tilt.getMagnitudeDb(30.0), -3.0, 0.1);     // 低頻端 → −tilt/2
-    DAWLAB_CHECK_NEAR(tilt.getMagnitudeDb(16000.0), 3.0, 0.1);   // 高頻端 → +tilt/2
-    DAWLAB_CHECK_NEAR(tilt.getMagnitudeDb(2000.0), -tilt.getMagnitudeDb(500.0), 0.1); // 以 pivot 為中心反對稱（1 octave）
-    DAWLAB_CHECK_NEAR(tilt.getMagnitudeDb(4000.0), -tilt.getMagnitudeDb(250.0), 0.15); // 2 octave（高頻端有一點 warp）
-    // 單調：從低到高每一步都要上升（沒有駝峰）
+    DAWLAB_CHECK_NEAR(tilt.getMagnitudeDb(1000.0), 0.0, 0.01);   // the pivot is exactly 0 dB (the midpoints of the two shelves cancel)
+    DAWLAB_CHECK_NEAR(tilt.getMagnitudeDb(30.0), -3.0, 0.1);     // low end -> -tilt/2
+    DAWLAB_CHECK_NEAR(tilt.getMagnitudeDb(16000.0), 3.0, 0.1);   // high end -> +tilt/2
+    DAWLAB_CHECK_NEAR(tilt.getMagnitudeDb(2000.0), -tilt.getMagnitudeDb(500.0), 0.1); // antisymmetric about the pivot (1 octave)
+    DAWLAB_CHECK_NEAR(tilt.getMagnitudeDb(4000.0), -tilt.getMagnitudeDb(250.0), 0.15); // 2 octaves (a little warping at the high end)
+    // Monotonic: it must rise at every step from low to high (no hump)
     bool monotonic = true;
     double prev = tilt.getMagnitudeDb(20.0);
     for (double f = 25.0; f <= 20000.0; f *= 1.05) {
@@ -121,14 +121,14 @@ int main() {
     }
     DAWLAB_CHECK(monotonic);
 
-    // 負 tilt 是正 tilt 的鏡像：H(-t) = 1 / H(+t)
+    // A negative tilt is the mirror image of a positive tilt: H(-t) = 1 / H(+t)
     TiltEq dark;
     dark.setTiltDb(-6.0f);
     dark.prepare(sr, 512, 1);
     for (double f : {100.0, 1000.0, 5000.0})
         DAWLAB_CHECK_NEAR(dark.getMagnitudeDb(f), -tilt.getMagnitudeDb(f), 1e-6);
 
-    // 試聽：pluck sequence 套 +6 dB（亮）與 −6 dB（暗），用 block 處理且中途改 tilt（平滑、沒有 click）
+    // Listening test: apply +6 dB (bright) and -6 dB (dark) to the pluck sequence, process in blocks, and change the tilt midway (smooth, no click)
     AudioBuffer dry = makePluckSequence(sr, 4.0);
     AudioBuffer wet = dry;
     TiltEq live;
@@ -137,13 +137,13 @@ int main() {
     live.prepare(sr, 512, wet.getNumChannels());
     AudioBlock whole(wet);
     for (int start = 0; start < wet.getNumSamples(); start += 512) {
-        if (start <= secondsToSamples(2.0, sr) && secondsToSamples(2.0, sr) < start + 512) // 包含該時間點的那個 block
-            live.setTiltDb(-6.0f); // 2 秒處從「亮」切到「暗」
+        if (start <= secondsToSamples(2.0, sr) && secondsToSamples(2.0, sr) < start + 512) // the block that contains that time point
+            live.setTiltDb(-6.0f); // at 2 seconds, switch from "bright" to "dark"
         live.process(whole.getSubBlock(start, std::min(512, wet.getNumSamples() - start)));
     }
     DAWLAB_CHECK(!hasNanOrInf(wet));
     writeWav(outputPath("l03_ex5_tilt.wav"), wet, sr);
-    std::printf("\n  pluck sequence：前 2 秒 tilt +6 dB，後 2 秒 −6 dB -> dawlab_output/l03_ex5_tilt.wav\n");
+    std::printf("\n  pluck sequence: tilt +6 dB for the first 2 seconds, -6 dB for the last 2 seconds -> dawlab_output/l03_ex5_tilt.wav\n");
 
     return dawlab::test::summary("l03_ex5");
 }

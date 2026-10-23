@@ -1,14 +1,14 @@
-// 範例 1：畫 EQ 曲線（理論）並與實測比對
+// Example 1: plot the EQ curve (theory) and compare it with measurement
 //
-// 示範什麼：
-//   - 用 ParametricEq::getMagnitudeDb() 算出整條 EQ 曲線，以 ASCII 圖印出（橫軸 log 頻率）。
-//   - 用 measureGainDb() 把正弦波真的送進 EQ 量增益，疊在同一張圖上（'o'），證明「畫的」跟「算的」一致。
-//   - 列出每個 band 在幾個頻率的 dB 貢獻與總和，驗證串接的 dB 會相加。
-//   - Low shelf 的 Q（slope S）與過衝：Q = 0.707（S = 1）單調；Q 更大時轉折兩側出現過衝與凹陷。
-// 怎麼執行：l03_eq_curve（不需參數）
-// 輸出：只有 console 文字，不輸出 WAV。
-// 該看到什麼：理論曲線 '#' 與實測點 'o' 幾乎重疊；表格裡「理論 − 實測」小於 0.05 dB。
-//   最後用 DAWLAB_CHECK 自我檢查這些結論（全部成立時印 [PASS]；不成立會回傳非 0，ctest 判定失敗）。
+// What it demonstrates:
+//   - Uses ParametricEq::getMagnitudeDb() to compute the whole EQ curve and prints it as an ASCII plot (log frequency on the horizontal axis).
+//   - Uses measureGainDb() to actually run sine waves through the EQ and measure the gain, overlaid on the same plot ('o'), showing that what is "drawn" matches what is "computed".
+//   - Lists each band's dB contribution at several frequencies, plus the sum, to verify that cascaded dB values add.
+//   - Low-shelf Q (slope S) and overshoot: Q = 0.707 (S = 1) is monotonic; a larger Q produces overshoot and a dip on either side of the transition.
+// How to run: l03_eq_curve (no arguments)
+// Output: console text only; no WAV files.
+// What to look for: the theoretical curve '#' and the measured points 'o' nearly coincide; in the table, "theory - measured" is below 0.05 dB.
+//   At the end DAWLAB_CHECK self-checks these conclusions (prints [PASS] if all hold; otherwise returns non-zero and ctest reports a failure).
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/ParametricEq.h>
@@ -34,7 +34,7 @@ const char* typeName(EqBandType t) {
     return "?";
 }
 
-// 在 [fMin, fMax] 的 log 軸上，橫向 width 格、縱向從 dbTop 到 dbBottom 每 dbStep 一列
+// On a log axis over [fMin, fMax]: width columns horizontally, and one row per dbStep vertically from dbTop to dbBottom
 void plotAscii(const ParametricEq& eq, const std::vector<double>& measuredFreqs, const std::vector<double>& measuredDb,
                double fMin, double fMax, int width, double dbTop, double dbBottom, double dbStep) {
     const int rows = static_cast<int>(std::lround((dbTop - dbBottom) / dbStep)) + 1;
@@ -47,23 +47,23 @@ void plotAscii(const ParametricEq& eq, const std::vector<double>& measuredFreqs,
         const double t = std::log(f / fMin) / std::log(fMax / fMin);
         return std::clamp(static_cast<int>(std::lround(t * (width - 1))), 0, width - 1);
     };
-    // 0 dB 基準線
+    // 0 dB reference line
     const int zeroRow = rowOf(0.0);
     for (int c = 0; c < width; ++c)
         grid[static_cast<size_t>(zeroRow)][static_cast<size_t>(c)] = '-';
-    // 理論曲線
+    // Theoretical curve
     for (int c = 0; c < width; ++c) {
         const double f = fMin * std::pow(fMax / fMin, static_cast<double>(c) / (width - 1));
         grid[static_cast<size_t>(rowOf(eq.getMagnitudeDb(f)))][static_cast<size_t>(c)] = '#';
     }
-    // 實測點
+    // Measured points
     for (size_t i = 0; i < measuredFreqs.size(); ++i)
         grid[static_cast<size_t>(rowOf(measuredDb[i]))][static_cast<size_t>(colOf(measuredFreqs[i]))] = 'o';
 
     for (int r = 0; r < rows; ++r)
         std::printf("%+6.0f dB |%s|\n", dbTop - r * dbStep, grid[static_cast<size_t>(r)].c_str());
     std::printf("          +%s+\n", std::string(static_cast<size_t>(width), '-').c_str());
-    // 頻率刻度
+    // Frequency ticks
     std::string ticks(static_cast<size_t>(width), ' ');
     for (double f : {20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0}) {
         const int c = colOf(f);
@@ -88,9 +88,9 @@ int main() {
     eq.setBand(3, {EqBandType::Peak, 3000.0f, 1.0f, 5.0f, true});
     eq.setBand(4, {EqBandType::HighShelf, 10000.0f, 0.707f, 2.0f, true});
     eq.setBand(5, {EqBandType::HighCut, 18000.0f, 0.707f, 0.0f, true});
-    eq.reset(); // 讓平滑器直接跳到目標，量測時不用等 ramp
+    eq.reset(); // Make the smoothers jump straight to the targets, so the measurement does not have to wait for a ramp
 
-    std::printf("=== 第 03 章 範例 1：EQ 曲線（理論 '#' vs 實測 'o'）@ %.0f Hz ===\n\n", sr);
+    std::printf("=== Chapter 03 Example 1: EQ curve (theory '#' vs measured 'o') @ %.0f Hz ===\n\n", sr);
     std::printf("band  type       freq(Hz)   Q      gain(dB)  slope\n");
     for (int i = 0; i < ParametricEq::kNumBands; ++i) {
         const EqBand& b = eq.getBand(i);
@@ -100,7 +100,7 @@ int main() {
                         : "-");
     }
 
-    // 實測：對每個頻率送正弦波進 EQ（逐 sample），量輸出 / 輸入的 dB
+    // Measurement: feed a sine wave at each frequency through the EQ (sample by sample) and measure output / input in dB
     const std::vector<double> freqs = {30, 60, 120, 200, 300, 500, 1000, 2000, 3000, 5000, 8000, 12000, 16000, 18000, 21000};
     std::vector<double> measured;
     for (double f : freqs) {
@@ -119,10 +119,10 @@ int main() {
         maxDiff = std::max(maxDiff, std::abs(diff));
         std::printf("  %8.0f   %+9.2f   %+9.2f      %+6.3f\n", freqs[i], theory, measured[i], diff);
     }
-    std::printf("  最大差異 = %.3f dB（Goertzel 量測在接近 Nyquist 的 -30 dB 以下會略有誤差）\n", maxDiff);
+    std::printf("  max difference = %.3f dB (the Goertzel measurement is slightly off below -30 dB near Nyquist)\n", maxDiff);
 
-    // 串接 = dB 相加：列出每個 band 的貢獻
-    std::printf("\n=== 每個 band 的 dB 貢獻（相加就是整條曲線）===\n");
+    // Cascade = dB addition: list each band's contribution
+    std::printf("\n=== dB contribution of each band (they add up to the whole curve) ===\n");
     std::printf("   freq(Hz) ");
     for (int i = 0; i < ParametricEq::kNumBands; ++i)
         std::printf("   band%d", i);
@@ -138,9 +138,9 @@ int main() {
         std::printf("   %+6.2f   %+6.2f\n", sum, eq.getMagnitudeDb(f));
     }
 
-    // Shelf 的 Q（或 slope S）：Q = 0.707（S = 1）是「最陡但不過衝」，再大就會在轉折兩側出現過衝與凹陷
-    std::printf("\n=== Low shelf +6 dB @ 1 kHz：Q 與過衝（README 2.6 節）===\n");
-    std::printf("      Q     S(對應)   |H(f0)|(dB)   曲線最高(dB)   曲線最低(dB)\n");
+    // Shelf Q (or slope S): Q = 0.707 (S = 1) is "steepest without overshoot"; anything larger produces overshoot and a dip on either side of the transition
+    std::printf("\n=== Low shelf +6 dB @ 1 kHz: Q and overshoot (README section 2.6) ===\n");
+    std::printf("      Q     S(equiv)  |H(f0)|(dB)   curve max(dB)   curve min(dB)\n");
     for (double q : {0.5, 0.707, 1.0, 1.5, 2.0}) {
         const BiquadCoefficients c = BiquadCoefficients::makeLowShelf(sr, 1000.0, q, 6.0);
         double hi = -100.0, lo = 100.0;
@@ -148,18 +148,18 @@ int main() {
             hi = std::max(hi, c.magnitudeDb(f, sr));
             lo = std::min(lo, c.magnitudeDb(f, sr));
         }
-        // 由 1/Q² = (A + 1/A)(1/S − 1) + 2 反解 S = 1 / ((1/Q² − 2) / (A + 1/A) + 1)
+        // Solve 1/Q² = (A + 1/A)(1/S - 1) + 2 for S: S = 1 / ((1/Q² - 2) / (A + 1/A) + 1)
         const double A = std::pow(10.0, 6.0 / 40.0);
         const double s = 1.0 / ((1.0 / (q * q) - 2.0) / (A + 1.0 / A) + 1.0);
         std::printf("   %5.3f    %5.2f       %+6.2f        %+6.2f         %+6.2f\n", q, s, c.magnitudeDb(1000.0, sr), hi, lo);
     }
-    std::printf("   shelfSlopeToQ(S = 1, +6 dB) = %.4f（任何 gain 都是 1/√2）\n", ParametricEq::shelfSlopeToQ(1.0, 6.0));
+    std::printf("   shelfSlopeToQ(S = 1, +6 dB) = %.4f (1/√2 at any gain)\n", ParametricEq::shelfSlopeToQ(1.0, 6.0));
 
-    // 自我檢查：範例印出的結論要真的成立，否則 ctest 判定失敗
+    // Self-check: the conclusions printed by the example must really hold, otherwise ctest reports a failure
     std::printf("\n");
-    DAWLAB_CHECK(maxDiff < 0.05);                                    // 理論曲線 = 實測
-    DAWLAB_CHECK_NEAR(eq.getBandMagnitudeDb(5, 18000.0), -3.0103, 0.01); // HighCut 在 fc 是 -3 dB
-    DAWLAB_CHECK_NEAR(eq.getBandMagnitudeDb(0, 60.0), -3.0103, 0.01);    // 24 dB/oct LowCut 在 fc 也是 -3 dB
+    DAWLAB_CHECK(maxDiff < 0.05);                                    // theoretical curve = measurement
+    DAWLAB_CHECK_NEAR(eq.getBandMagnitudeDb(5, 18000.0), -3.0103, 0.01); // HighCut is -3 dB at fc
+    DAWLAB_CHECK_NEAR(eq.getBandMagnitudeDb(0, 60.0), -3.0103, 0.01);    // 24 dB/oct LowCut is also -3 dB at fc
     DAWLAB_CHECK_NEAR(ParametricEq::shelfSlopeToQ(1.0, 6.0), 0.70711, 1e-4);
     return dawlab::test::summary("l03_eq_curve");
 }

@@ -1,17 +1,17 @@
-// 範例 4：相位、群延遲、Nyquist cramping、以及「直接插值係數」會發生什麼事
+// Example 4: phase, group delay, Nyquist cramping, and what happens when you "interpolate the coefficients directly"
 //
-// 示範什麼：
-//   A. 一顆 +6 dB@1 kHz Q=1 的 peak：印出 magnitude / phase / group delay，看 IIR EQ 的 minimum-phase 特性
-//      （boost 的地方相位先正後負、群延遲在中心最大）。
-//   B. Nyquist cramping：44.1 kHz 下 +6 dB@10 kHz Q=1 的 peak，比較類比原型 H(s) 與 bilinear 數位版 H(z)。
-//      數位版在 Nyquist（22.05 kHz）被硬壓回 0 dB，鐘形變得不對稱。
-//   C. 係數插值：把「100 Hz peak」與「10 kHz peak」的係數線性插值到一半，結果既不是 1 kHz 的 peak，
-//      增益與 Q 也都變了——這就是為什麼我們平滑「參數」而不是平滑「係數」。
-//   D. 係數插值什麼時候會不穩定：
-//      D1. 把 24 dB/oct high cut（4 階）乘成一個 4 階多項式再插值 → 中點的 pole 跑出單位圓。
-//      D2. 每個 sample 在兩組「各自都穩定」的係數之間交替 → time-varying 的 filter 照樣發散。
-// 怎麼執行：l03_eq_phase_cramping（不需參數）
-// 輸出：只有 console 文字。
+// What it demonstrates:
+//   A. A +6 dB@1 kHz Q=1 peak: prints magnitude / phase / group delay to show the minimum-phase behavior of an IIR EQ
+//      (around a boost the phase is first positive and then negative, and the group delay is largest at the center).
+//   B. Nyquist cramping: a +6 dB@10 kHz Q=1 peak at 44.1 kHz, comparing the analog prototype H(s) with the bilinear digital version H(z).
+//      The digital version is forced back to 0 dB at Nyquist (22.05 kHz), and the bell becomes asymmetric.
+//   C. Coefficient interpolation: linearly interpolate the coefficients of a "100 Hz peak" and a "10 kHz peak" to the halfway point; the result is not a 1 kHz peak,
+//      and both its gain and its Q have changed too -- which is why we smooth the "parameters" rather than the "coefficients".
+//   D. When coefficient interpolation becomes unstable:
+//      D1. Multiply a 24 dB/oct high cut (4th order) out into a single 4th-order polynomial and then interpolate -> the pole at the midpoint leaves the unit circle.
+//      D2. Alternate every sample between two sets of coefficients that are "each stable on their own" -> the time-varying filter diverges anyway.
+// How to run: l03_eq_phase_cramping (no arguments)
+// Output: console text only.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/ParametricEq.h>
@@ -25,7 +25,7 @@ using namespace dawlab::dsp;
 
 namespace {
 
-// RBJ peak 的類比原型：H(s) = (s² + s·A/Q + 1) / (s² + s/(A·Q) + 1)，s = jΩ，Ω = f / f0
+// Analog prototype of the RBJ peak: H(s) = (s² + s·A/Q + 1) / (s² + s/(A·Q) + 1), s = jΩ, Ω = f / f0
 double analogPeakDb(double f, double f0, double q, double gainDb) {
     const double A = std::pow(10.0, gainDb / 40.0);
     const std::complex<double> s(0.0, f / f0);
@@ -33,9 +33,9 @@ double analogPeakDb(double f, double f0, double q, double gainDb) {
     return gainToDb(std::abs(h));
 }
 
-// ---- D 段用的小工具 ----
+// ---- Small helpers for section D ----
 
-// 4 階 IIR：b[0..4]、a[0..4]（a[0] = 1），也就是兩顆 biquad 的多項式乘開
+// 4th-order IIR: b[0..4], a[0..4] (a[0] = 1), i.e. the polynomials of two biquads multiplied out
 struct Poly4 {
     std::array<double, 5> b{}, a{};
 };
@@ -52,16 +52,16 @@ Poly4 cascade(const BiquadCoefficients& x, const BiquadCoefficients& y) {
     return p;
 }
 
-// 1 + a1 z^-1 + … + a4 z^-4 = 0 的根（pole）的最大絕對值。
-// 用 Durand–Kerner 迭代同時求 4 個根：z_i ← z_i − p(z_i) / Π_{j≠i}(z_i − z_j)
+// The largest absolute value of the roots (poles) of 1 + a1 z^-1 + … + a4 z^-4 = 0.
+// Find all 4 roots simultaneously with the Durand-Kerner iteration: z_i ← z_i − p(z_i) / Π_{j≠i}(z_i − z_j)
 double maxPoleMagnitude(const std::array<double, 5>& a) {
     using cd = std::complex<double>;
     std::array<cd, 4> r;
     for (size_t i = 0; i < 4; ++i)
-        r[i] = std::pow(cd(0.4, 0.9), static_cast<double>(i)); // 慣用的起始點（不在實軸上、互不相同）
+        r[i] = std::pow(cd(0.4, 0.9), static_cast<double>(i)); // The conventional starting points (off the real axis and distinct from each other)
     for (int iter = 0; iter < 500; ++iter)
         for (size_t i = 0; i < 4; ++i) {
-            cd p = 1.0; // z^4 + a1 z^3 + a2 z^2 + a3 z + a4（Horner）
+            cd p = 1.0; // z^4 + a1 z^3 + a2 z^2 + a3 z + a4 (Horner)
             for (size_t k = 1; k < 5; ++k)
                 p = p * r[i] + a[k];
             cd den = 1.0;
@@ -76,7 +76,7 @@ double maxPoleMagnitude(const std::array<double, 5>& a) {
     return m;
 }
 
-// 用 Direct Form I 跑 4 階 IIR 的 impulse response，回傳 h[n]
+// Run the impulse response of a 4th-order IIR in Direct Form I and return h[n]
 double impulseResponseAt(const Poly4& p, int n) {
     std::array<double, 5> x{}, y{};
     double h = 0.0;
@@ -109,28 +109,28 @@ BiquadCoefficients lerpCoefficients(const BiquadCoefficients& x, const BiquadCoe
 } // namespace
 
 int main() {
-    std::printf("=== 第 03 章 範例 4：相位 / 群延遲 / Nyquist cramping / 係數插值 ===\n");
+    std::printf("=== Chapter 03 Example 4: phase / group delay / Nyquist cramping / coefficient interpolation ===\n");
 
-    // ---- A. minimum phase ----
+    // ---- A. Minimum phase ----
     {
         constexpr double sr = 48000.0;
         ParametricEq eq;
         eq.prepare(sr, 512, 1);
         eq.setBand(0, {EqBandType::Peak, 1000.0f, 1.0f, 6.0f, true});
         eq.reset();
-        std::printf("\n[A] +6 dB @ 1 kHz, Q = 1（48 kHz）\n");
+        std::printf("\n[A] +6 dB @ 1 kHz, Q = 1 (48 kHz)\n");
         std::printf("   freq(Hz)   mag(dB)   phase(deg)   group delay(samples)  (ms)\n");
         for (double f : {100.0, 250.0, 500.0, 707.0, 1000.0, 1414.0, 2000.0, 4000.0, 10000.0}) {
             const double gd = eq.getGroupDelaySamples(f);
             std::printf("   %7.0f    %+6.2f     %+7.2f        %7.2f           %.3f\n", f, eq.getMagnitudeDb(f),
                         eq.getPhaseDegrees(f), gd, samplesToMs(gd, sr));
         }
-        std::printf("   -> boost 的中心相位 = 0，低於中心相位為正（領先）、高於中心為負（落後）；\n");
-        std::printf("      群延遲只有零點幾 ms，且只在 boost 附近——這是 minimum-phase 的特徵。\n");
+        std::printf("   -> At the center of the boost the phase = 0; below the center the phase is positive (leading) and above it negative (lagging);\n");
+        std::printf("      the group delay is only a few tenths of a ms and only near the boost -- a hallmark of minimum phase.\n");
 
-        // 對照：同一顆改成 -6 dB cut，相位剛好反號
+        // For comparison: change the same band to a -6 dB cut, and the phase flips sign
         eq.setBand(0, {EqBandType::Peak, 1000.0f, 1.0f, -6.0f, true});
-        std::printf("   -6 dB cut 在 707 Hz 的相位 = %+.2f deg（boost 時為相反號）\n", eq.getPhaseDegrees(707.0));
+        std::printf("   Phase of the -6 dB cut at 707 Hz = %+.2f deg (the opposite sign of the boost)\n", eq.getPhaseDegrees(707.0));
     }
 
     // ---- B. Nyquist cramping ----
@@ -141,30 +141,30 @@ int main() {
         eq.prepare(sr, 512, 1);
         eq.setBand(0, {EqBandType::Peak, static_cast<float>(f0), static_cast<float>(q), static_cast<float>(g), true});
         eq.reset();
-        std::printf("\n[B] Nyquist cramping：+6 dB @ 10 kHz, Q = 1（44.1 kHz，Nyquist = 22.05 kHz）\n");
+        std::printf("\n[B] Nyquist cramping: +6 dB @ 10 kHz, Q = 1 (44.1 kHz, Nyquist = 22.05 kHz)\n");
         std::printf("   freq(Hz)   analog(dB)   digital(dB)   diff\n");
         for (double f : {2500.0, 5000.0, 7000.0, 10000.0, 14000.0, 17000.0, 20000.0, 22000.0, 22050.0}) {
             const double a = analogPeakDb(f, f0, q, g), d = eq.getMagnitudeDb(f);
             std::printf("   %7.0f     %+6.2f       %+6.2f      %+6.2f\n", f, a, d, d - a);
         }
-        std::printf("   -> 中心 10 kHz 兩者一樣（bilinear 有 pre-warp）；Nyquist 處數位版被壓回 0 dB，\n");
-        std::printf("      類比版還有 %+.2f dB。鐘形右半邊被「擠扁」（cramped）。\n", analogPeakDb(sr / 2, f0, q, g));
+        std::printf("   -> The two agree at the 10 kHz center (the bilinear transform pre-warps); at Nyquist the digital version is forced back to 0 dB,\n");
+        std::printf("      while the analog one still has %+.2f dB. The right half of the bell is \"squashed\" (cramped).\n", analogPeakDb(sr / 2, f0, q, g));
 
-        // 用 getMagnitudeDb 證明：RBJ peak 在 z = -1 的響應一定是 1
+        // Show it directly: the response of an RBJ peak at z = -1 is always 1
         const BiquadCoefficients c = ParametricEq::makeCoefficients(sr, eq.getBand(0));
-        std::printf("   H(z=-1) = (b0-b1+b2)/(1-a1+a2) = %.6f（恆為 1）\n", (c.b0 - c.b1 + c.b2) / (1.0 - c.a1 + c.a2));
+        std::printf("   H(z=-1) = (b0-b1+b2)/(1-a1+a2) = %.6f (always 1)\n", (c.b0 - c.b1 + c.b2) / (1.0 - c.a1 + c.a2));
     }
 
-    // ---- C. 係數插值 ----
+    // ---- C. Coefficient interpolation ----
     {
         constexpr double sr = 48000.0;
         const BiquadCoefficients lo = BiquadCoefficients::makePeak(sr, 100.0, 2.0, 12.0);
         const BiquadCoefficients hi = BiquadCoefficients::makePeak(sr, 10000.0, 2.0, 12.0);
-        const BiquadCoefficients mid = BiquadCoefficients::makePeak(sr, 1000.0, 2.0, 12.0); // 參數插值到一半
-        const BiquadCoefficients lerped = lerpCoefficients(lo, hi, 0.5); // 係數插值到一半
+        const BiquadCoefficients mid = BiquadCoefficients::makePeak(sr, 1000.0, 2.0, 12.0); // parameters interpolated to the halfway point
+        const BiquadCoefficients lerped = lerpCoefficients(lo, hi, 0.5); // coefficients interpolated to the halfway point
 
-        std::printf("\n[C] 係數插值 vs 參數插值：+12 dB Q=2 的 peak，從 100 Hz 到 10 kHz 的「中點」\n");
-        std::printf("   freq(Hz)   參數插值(1 kHz peak)   係數插值\n");
+        std::printf("\n[C] Coefficient interpolation vs parameter interpolation: a +12 dB Q=2 peak, the \"midpoint\" between 100 Hz and 10 kHz\n");
+        std::printf("   freq(Hz)   param interp (1 kHz peak)   coeff interp\n");
         double lerpedMax = -100.0, lerpedMaxFreq = 0.0;
         for (double f = 20.0; f <= 20000.0; f *= 1.02) {
             const double db = lerped.magnitudeDb(f, sr);
@@ -175,19 +175,19 @@ int main() {
         }
         for (double f : {100.0, 300.0, 1000.0, 3000.0, 10000.0})
             std::printf("   %7.0f        %+6.2f             %+6.2f\n", f, mid.magnitudeDb(f, sr), lerped.magnitudeDb(f, sr));
-        std::printf("   係數插值的最大增益 %+.2f dB 出現在 %.0f Hz（不是 1 kHz，也不是 +12 dB）\n", lerpedMax, lerpedMaxFreq);
-        std::printf("   穩定性（|a2| < 1 且 |a1| < 1 + a2）：%s —— 二階的穩定三角形是凸的，線性插值不會跑出去，\n",
-                    lerped.isStable() ? "穩定" : "不穩定");
-        std::printf("   但中間的響應沒有意義（頻率跑到 6 kHz 以上）。\n");
+        std::printf("   The maximum gain of the coefficient interpolation is %+.2f dB, at %.0f Hz (neither 1 kHz nor +12 dB)\n", lerpedMax, lerpedMaxFreq);
+        std::printf("   Stability (|a2| < 1 and |a1| < 1 + a2): %s -- the 2nd-order stability triangle is convex, so linear interpolation cannot leave it,\n",
+                    lerped.isStable() ? "stable" : "unstable");
+        std::printf("   but the response in between is meaningless (the frequency ends up above 6 kHz).\n");
     }
 
-    // ---- D. 係數插值什麼時候會「不穩定」 ----
+    // ---- D. When coefficient interpolation becomes "unstable" ----
     {
         constexpr double sr = 48000.0;
-        std::printf("\n[D] 係數插值什麼時候會不穩定\n");
+        std::printf("\n[D] When coefficient interpolation becomes unstable\n");
 
-        // D1. 高階多項式的插值：24 dB/oct high cut（4 階 Butterworth）@ 100 Hz 與 @ 10 kHz。
-        //     如果把兩顆 biquad 先乘成一個 4 階多項式再插值，中點的 pole 會跑出單位圓。
+        // D1. Interpolating a high-order polynomial: a 24 dB/oct high cut (4th-order Butterworth) @ 100 Hz and @ 10 kHz.
+        //     If the two biquads are first multiplied into a single 4th-order polynomial and then interpolated, the pole at the midpoint leaves the unit circle.
         const Poly4 lo = cascade(BiquadCoefficients::makeLowpass(sr, 100.0, butterworthQ(4, 0)),
                                  BiquadCoefficients::makeLowpass(sr, 100.0, butterworthQ(4, 1)));
         const Poly4 hi = cascade(BiquadCoefficients::makeLowpass(sr, 10000.0, butterworthQ(4, 0)),
@@ -197,28 +197,28 @@ int main() {
             mid4.b[k] = 0.5 * (lo.b[k] + hi.b[k]);
             mid4.a[k] = 0.5 * (lo.a[k] + hi.a[k]);
         }
-        std::printf("   D1. 4 階 Butterworth lowpass，100 Hz 與 10 kHz 的「4 階多項式係數」取中點：\n");
-        std::printf("       max|pole|：100 Hz 版 %.5f、10 kHz 版 %.5f、插值中點 %.5f（> 1 = 不穩定）\n",
+        std::printf("   D1. 4th-order Butterworth lowpass, taking the midpoint of the \"4th-order polynomial coefficients\" at 100 Hz and 10 kHz:\n");
+        std::printf("       max|pole|: 100 Hz version %.5f, 10 kHz version %.5f, interpolated midpoint %.5f (> 1 = unstable)\n",
                     maxPoleMagnitude(lo.a), maxPoleMagnitude(hi.a), maxPoleMagnitude(mid4.a));
-        std::printf("       中點的 impulse response：n = 100 時 |h| = %.3g，n = 1000 時 |h| = %.3g（發散）\n",
+        std::printf("       Impulse response of the midpoint: |h| = %.3g at n = 100, |h| = %.3g at n = 1000 (diverging)\n",
                     std::abs(impulseResponseAt(mid4, 100)), std::abs(impulseResponseAt(mid4, 1000)));
-        // 對照：拆成兩顆 biquad、各自插值（二階穩定三角形是凸的）
+        // For comparison: split into two biquads and interpolate each separately (the 2nd-order stability triangle is convex)
         const BiquadCoefficients s1 = lerpCoefficients(BiquadCoefficients::makeLowpass(sr, 100.0, butterworthQ(4, 0)),
                                                        BiquadCoefficients::makeLowpass(sr, 10000.0, butterworthQ(4, 0)), 0.5);
         const BiquadCoefficients s2 = lerpCoefficients(BiquadCoefficients::makeLowpass(sr, 100.0, butterworthQ(4, 1)),
                                                        BiquadCoefficients::makeLowpass(sr, 10000.0, butterworthQ(4, 1)), 0.5);
-        std::printf("       對照：拆成兩顆 biquad 各自插值 -> 兩顆都%s（每顆仍在凸的穩定三角形內）\n",
-                    (s1.isStable() && s2.isStable()) ? "穩定" : "不穩定");
+        std::printf("       For comparison: interpolating the two biquads separately -> both are %s (each is still inside the convex stability triangle)\n",
+                    (s1.isStable() && s2.isStable()) ? "stable" : "unstable");
 
-        // D2. 「每一瞬間都穩定」≠「time-varying 系統穩定」：
-        //     每個 sample 在兩組都穩定的 lowpass 係數（50 Hz / 16 kHz，Q = 0.707）之間來回切換，
-        //     用第 02 章真正的 Biquad（TDF-II）跑一個 impulse。
+        // D2. "Stable at every instant" != "the time-varying system is stable":
+        //     switch every sample back and forth between two lowpass coefficient sets that are each stable (50 Hz / 16 kHz, Q = 0.707),
+        //     and run an impulse through the real Biquad (TDF-II) from Chapter 02.
         const BiquadCoefficients c50 = BiquadCoefficients::makeLowpass(sr, 50.0, BiquadCoefficients::kButterworthQ);
         const BiquadCoefficients c16k = BiquadCoefficients::makeLowpass(sr, 16000.0, BiquadCoefficients::kButterworthQ);
         Biquad bq;
         bq.prepare(sr, 1, 1);
-        std::printf("   D2. 每個 sample 在 lowpass 50 Hz 與 16 kHz（各自都穩定：%s / %s）之間交替，輸入 impulse：\n",
-                    c50.isStable() ? "穩定" : "不穩定", c16k.isStable() ? "穩定" : "不穩定");
+        std::printf("   D2. Alternating every sample between lowpass 50 Hz and 16 kHz (each stable on its own: %s / %s), feeding an impulse:\n",
+                    c50.isStable() ? "stable" : "unstable", c16k.isStable() ? "stable" : "unstable");
         std::printf("       ");
         for (int n = 0; n <= 80; ++n) {
             bq.setCoefficients((n % 2 == 0) ? c50 : c16k);
@@ -227,23 +227,23 @@ int main() {
                 std::printf("n=%d |y|=%.3g   ", n, std::abs(static_cast<double>(y)));
         }
         std::printf("\n");
-        // 對照：同樣在 50 Hz 與 16 kHz 之間來回，但每趟用 20 ms 在 log 頻率上平滑地走（ParametricEq 的做法）
+        // For comparison: also go back and forth between 50 Hz and 16 kHz, but make each leg a smooth 20 ms walk in log frequency (what ParametricEq does)
         Biquad slow;
         slow.prepare(sr, 1, 1);
         NoiseGenerator noise(1);
         const int leg = msToSamples(20.0, sr);
         float slowPeak = 0.0f;
         for (int n = 0; n < secondsToSamples(1.0, sr); ++n) {
-            const double phase = static_cast<double>(n % (2 * leg)) / leg; // 0..2：上去再下來
+            const double phase = static_cast<double>(n % (2 * leg)) / leg; // 0..2: up and then back down
             const double t = phase < 1.0 ? phase : 2.0 - phase;
             const double f = 50.0 * std::pow(16000.0 / 50.0, t);
             slow.setCoefficients(BiquadCoefficients::makeLowpass(sr, f, BiquadCoefficients::kButterworthQ));
             slowPeak = std::max(slowPeak, std::abs(slow.processSample(0, 0.5f * noise.next())));
         }
-        std::printf("       對照：每 20 ms 在 50 Hz <-> 16 kHz 之間平滑掃一趟（逐 sample 重算），1 秒白雜訊（peak 0.5）\n");
-        std::printf("       輸出 peak = %.3f（有界）\n", slowPeak);
-        std::printf("   -> 參數慢慢變（相對於 filter 的時間常數）時，time-varying 的效應很小；\n");
-        std::printf("      係數「跳」或「快速來回」時，即使每組係數單獨看都穩定，整體也可能發散。\n");
+        std::printf("       For comparison: a smooth sweep between 50 Hz <-> 16 kHz every 20 ms (recomputed at every sample), 1 second of white noise (peak 0.5)\n");
+        std::printf("       output peak = %.3f (bounded)\n", slowPeak);
+        std::printf("   -> When the parameters change slowly (relative to the filter's time constant), the time-varying effect is small;\n");
+        std::printf("      when the coefficients \"jump\" or \"flip back and forth quickly\", the whole thing can diverge even though each coefficient set is stable on its own.\n");
     }
     return 0;
 }

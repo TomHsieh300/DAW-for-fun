@@ -1,24 +1,33 @@
 #pragma once
-// ParametricEq：6-band parametric EQ（第 03 章）。
+// ParametricEq: a 6-band parametric EQ (Chapter 03).
 //
-// 每個 band 是一顆第 02 章的 Biquad（RBJ Audio EQ Cookbook 係數），六顆 band 串接（cascade）。
-// 串接的意義：H(z) = H1(z)·H2(z)·…·H6(z)，所以 dB 響應會「相加」——這也是 getMagnitudeDb()
-// 能把每個 band 的 magnitudeDb() 加總就得到整條曲線的原因。
+// Each band is one Biquad from Chapter 02 (RBJ Audio EQ Cookbook coefficients), and the six bands
+// are connected in cascade. What a cascade means: H(z) = H1(z)·H2(z)·…·H6(z), so the dB responses
+// "add up" -- which is also why getMagnitudeDb() can sum each band's magnitudeDb() to get the
+// whole curve.
 //
-// 參數即時改變時避免 click 的策略（README 第 2.9 節）：
-//   1. 三個會影響係數的參數（frequency、Q、gain）各自用第 01 章的 SmoothedValue 做 linear ramp
-//      （frequency 在 log2 域平滑，掃頻時聽起來每個 octave 速度一致；gain 在 dB 域平滑）。
-//   2. 每 kDefaultUpdateInterval（預設 32）個 sample 檢查一次（tick）：平滑器只往前推「上次 tick 以來
-//      實際經過的 sample 數」，參數值跟上次算係數時不同的 band 才重算 RBJ 係數。
-//      係數不是逐 sample 重算（省 sin/cos/pow），也不是「插值係數」（為什麼不插值見 README）。
-//   3. band 的 enabled 開關用 dry/wet mix 做 20 ms crossfade，所以 LowCut/HighCut/Notch 這些
-//      沒有 gain 可以淡出的 band 也不會 click。
-//   4. 「結構性」的改變（band type、LowCut/HighCut 的 slope）沒辦法平滑地內插——Peak 和 Notch 之間
-//      沒有「一半」。做法是：先把這個 band 用 mix 淡出到 bypass（20 ms）、在完全 bypass 時換 type
-//      並清掉 filter 記憶，再淡入新的 type（20 ms）。總共約 40 ms，聽起來是一次很短的 crossfade。
+// Strategy for avoiding clicks when parameters change live (README section 2.9):
+//   1. The three parameters that affect the coefficients (frequency, Q, gain) are each smoothed
+//      with a linear ramp using SmoothedValue from Chapter 01 (frequency is smoothed in the log2
+//      domain, so a sweep moves at the same speed in every octave; gain is smoothed in the dB
+//      domain).
+//   2. Every kDefaultUpdateInterval (default 32) samples we run a check (tick): the smoothers only
+//      advance by the number of samples that have actually elapsed since the last tick, and only
+//      bands whose parameter values differ from those used for the last coefficient computation
+//      recompute their RBJ coefficients. The coefficients are not recomputed every sample (that
+//      saves sin/cos/pow), and they are not "interpolated coefficients" either (see the README for
+//      why interpolating is a bad idea).
+//   3. A band's enabled switch uses a dry/wet mix with a 20 ms crossfade, so bands such as
+//      LowCut/HighCut/Notch, which have no gain to fade out, do not click either.
+//   4. "Structural" changes (band type, the slope of LowCut/HighCut) cannot be interpolated
+//      smoothly -- there is no "halfway" between Peak and Notch. Instead the band is first faded
+//      out to bypass with the mix (20 ms), the type is swapped and the filter memory cleared while
+//      the band is fully bypassed, and then the new type is faded in (20 ms). That is about 40 ms
+//      in total and sounds like one very short crossfade.
 //
-// 介面依 docs/authoring-guide.md 第 5 節的合約；額外提供 EqSlope（LowCut/HighCut 12 或 24 dB/oct）、
-// getResponse / getPhaseDegrees / getGroupDelaySamples、Q↔bandwidth 換算等輔助函式。
+// The interface follows the contract in section 5 of docs/authoring-guide.md; it additionally
+// provides EqSlope (LowCut/HighCut at 12 or 24 dB/oct), getResponse / getPhaseDegrees /
+// getGroupDelaySamples, and helpers for converting between Q and bandwidth.
 
 #include <dawlab/AudioBuffer.h>
 #include <dawlab/DspMath.h>
@@ -35,15 +44,16 @@ namespace dawlab::dsp {
 
 enum class EqBandType { LowCut, LowShelf, Peak, HighShelf, HighCut, Notch };
 
-// LowCut / HighCut 的斜率：Db12 = 一顆 2 階 Butterworth（用 band 的 q，預設 0.707）；
-// Db24 = 兩顆 2 階串接成 4 階 Butterworth（Q = 0.5412 與 1.3066，此時 band 的 q 會被忽略）。
+// Slope of LowCut / HighCut: Db12 = one 2nd-order Butterworth section (uses the band's q, default
+// 0.707); Db24 = two 2nd-order sections cascaded into a 4th-order Butterworth (Q = 0.5412 and
+// 1.3066; the band's q is ignored in this case).
 enum class EqSlope { Db12, Db24 };
 
 struct EqBand {
     EqBandType type = EqBandType::Peak;
-    float frequency = 1000.0f; // Hz（Peak 的中心、Shelf 的轉折「中點」、Cut 的 -3 dB 點）
-    float q = 0.707f;          // Peak/Notch：頻寬；Shelf：轉折的陡度（0.707 = 最陡但不過衝）；Cut：共振
-    float gainDb = 0.0f;       // 只對 Peak / LowShelf / HighShelf 有意義
+    float frequency = 1000.0f; // Hz (Peak: center; Shelf: transition "midpoint"; Cut: -3 dB point)
+    float q = 0.707f;          // Peak/Notch: bandwidth; Shelf: transition steepness (0.707 = steepest without overshoot); Cut: resonance
+    float gainDb = 0.0f;       // Only meaningful for Peak / LowShelf / HighShelf
     bool enabled = false;
 };
 
@@ -51,25 +61,30 @@ class ParametricEq {
 public:
     static constexpr int kNumBands = 6;
     static constexpr float kMinFrequency = 10.0f;
-    // 目標值（getBand 回傳的值）只夾到這個「絕對」上限；跟 sample rate 有關的上限 0.49·fs
-    // 只在算係數時套用（clampFrequency），所以 prepare 前設定的頻率不會被預設的 48 kHz 永久夾掉。
+    // The target value (what getBand returns) is only clamped to this "absolute" upper limit. The
+    // sample-rate-dependent limit of 0.49·fs is applied only when computing coefficients
+    // (clampFrequency), so a frequency set before prepare() is not permanently clamped by the
+    // default 48 kHz.
     static constexpr float kMaxFrequency = 100000.0f;
     static constexpr float kMinQ = 0.05f;
     static constexpr float kMaxQ = 40.0f;
     static constexpr float kMaxGainDb = 36.0f;
-    static constexpr int kDefaultUpdateInterval = 32; // 每 32 個 sample 重算一次係數（48 kHz 下約 0.67 ms）
+    static constexpr int kDefaultUpdateInterval = 32; // Recompute coefficients every 32 samples (about 0.67 ms at 48 kHz)
     static constexpr double kDefaultSmoothingSeconds = 0.02;
-    // 4 階 Butterworth 拆成兩顆 2 階的 Q（同第 02 章 butterworthQ(4, k)）：
-    //     Q_k = 1 / (2 cos((2k + 1) π / 8))，k = 0 → 0.5412，k = 1 → 1.3066
-    // 兩顆各自的 -3 dB 點都不在 fc，但相乘後 |H(fc)| = 1/√2，整體仍是 -3 dB（README 2.3 節）。
+    // The Q values of the two 2nd-order sections that make up a 4th-order Butterworth (same as
+    // butterworthQ(4, k) in Chapter 02):
+    //     Q_k = 1 / (2 cos((2k + 1) π / 8)),  k = 0 -> 0.5412,  k = 1 -> 1.3066
+    // Neither section has its own -3 dB point at fc, but after multiplying them |H(fc)| = 1/√2,
+    // so the overall response is still -3 dB there (README section 2.3).
     static constexpr double kButterworthQ1 = 0.54119610014619698;
     static constexpr double kButterworthQ2 = 1.30656296487637652;
 
     ParametricEq() { setDefaultBands(); }
 
-    // ---- 標準介面 ----------------------------------------------------------------------
+    // ---- Standard interface -------------------------------------------------------------
 
-    // 唯一可以 allocate 的地方：配置每顆 Biquad 的 channel 狀態，並把所有平滑器對齊目前設定
+    // The only place that may allocate: sets up each Biquad's per-channel state and aligns all
+    // smoothers with the current settings.
     void prepare(double sampleRate, int maxBlockSize, int numChannels) {
         sampleRate_ = sampleRate;
         numChannels_ = numChannels;
@@ -84,8 +99,9 @@ public:
         reset();
     }
 
-    // 清掉 filter 記憶，並讓平滑器直接跳到目標值（不要在開頭就 ramp）。
-    // 頻率會用目前的 sample rate 重新 clamp（prepare 換了 sample rate 時就在這裡生效）。
+    // Clears the filter memory and makes the smoothers jump straight to their targets (no ramp at
+    // the start). Frequencies are re-clamped using the current sample rate (this is where a
+    // sample-rate change made in prepare takes effect).
     void reset() noexcept {
         for (auto& b : bands_) {
             b.stage1.reset();
@@ -96,45 +112,50 @@ public:
         samplesSinceTick_ = 0;
     }
 
-    // ---- 參數 -----------------------------------------------------------------------------
-    // 所有 setter 都必須由呼叫 process() 的同一個 thread（audio thread）在 block 之間呼叫：
-    // 它們會改動平滑器與 filter 狀態，跟 process() 同時執行就是 data race。
-    // UI 的參數請先用 atomic / FIFO 送到 audio thread，再在 process() 之前套用（第 13、14 章）。
+    // ---- Parameters ---------------------------------------------------------------------
+    // All setters must be called between blocks, from the same thread (the audio thread) that
+    // calls process(): they modify the smoothers and the filter state, so running them
+    // concurrently with process() is a data race.
+    // Send UI parameters to the audio thread through an atomic / FIFO first, then apply them before
+    // process() (Chapters 13 and 14).
 
     void setBand(int index, const EqBand& band) noexcept {
         assert(index >= 0 && index < kNumBands);
         Band& b = bands_[static_cast<size_t>(index)];
         EqBand t = band;
-        // NaN / inf 的欄位直接忽略（保留舊值）：std::clamp(NaN, lo, hi) 會原樣回傳 NaN，
-        // 一旦 NaN 進了平滑器，log2 / exp2 之後整個 band 就壞了
+        // Ignore NaN / inf fields (keep the old value): std::clamp(NaN, lo, hi) returns NaN
+        // unchanged, and once a NaN gets into a smoother, the whole band is broken after log2 / exp2.
         if (!std::isfinite(t.frequency))
             t.frequency = b.target.frequency;
         if (!std::isfinite(t.q))
             t.q = b.target.q;
         if (!std::isfinite(t.gainDb))
             t.gainDb = b.target.gainDb;
-        // 目標值保留使用者的設定（只夾到與 sample rate 無關的範圍）；0.49·fs 的上限在
-        // targetLogFreq() / makeCoefficients() 裡才套用
+        // The target keeps the user's setting (clamped only to ranges that do not depend on the
+        // sample rate); the 0.49·fs upper limit is applied later in targetLogFreq() /
+        // makeCoefficients().
         t.frequency = std::clamp(t.frequency, kMinFrequency, kMaxFrequency);
         t.q = std::clamp(t.q, kMinQ, kMaxQ);
         t.gainDb = std::clamp(t.gainDb, -kMaxGainDb, kMaxGainDb);
         const bool paramsChanged =
             t.frequency != b.target.frequency || t.q != b.target.q || t.gainDb != b.target.gainDb;
         if (!paramsChanged && t.type == b.target.type && t.enabled == b.target.enabled)
-            return; // 完全沒變（例如 host 每個 block 都重送同一組參數）：什麼都不做，ramp 照原速前進
+            return; // Nothing changed (e.g. the host resends the same parameters every block): do nothing, the ramps keep their speed.
         if (paramsChanged)
-            catchUpSmoothers(); // 先把所有 ramp 推進到「現在」，新的 ramp 才會從正確的位置出發
+            catchUpSmoothers(); // Advance all ramps to "now" first, so the new ramps start from the correct position.
         b.target = t;
         b.logFreq.setTargetValue(targetLogFreq(t));
         b.q.setTargetValue(t.q);
         b.gainDb.setTargetValue(t.gainDb);
         if (!b.active)
-            snapParameters(b); // 完全 bypass 中：沒有人聽得到，參數直接跳到目標（淡入時就是最終的曲線）
+            snapParameters(b); // Fully bypassed: nobody can hear it, so jump the parameters straight to the target (the fade-in then shows the final curve).
         requestStructure(b);
-        // 下一個 sample 立刻 tick，不必等到下一個 update 邊界。tick 只推進實際經過的 sample 數
-        // （samplesSinceTick_），所以提早 tick 不會讓 ramp 變快。
+        // Tick on the very next sample instead of waiting for the next update boundary. The tick
+        // only advances the number of samples that have actually elapsed (samplesSinceTick_), so
+        // ticking early does not make the ramps faster.
         samplesUntilUpdate_ = 0;
-        // 有結構性切換在排隊時，先淡出到 bypass；否則淡到 enabled 對應的 mix
+        // If a structural switch is queued, fade out to bypass first; otherwise fade to the mix
+        // that corresponds to enabled.
         b.mix.setTargetValue((t.enabled && !b.pendingSwitch) ? 1.0f : 0.0f);
     }
 
@@ -143,7 +164,7 @@ public:
         return bands_[static_cast<size_t>(index)].target;
     }
 
-    // 方便 UI 只改一個欄位的小幫手（都走 setBand，所以同樣沒有 click）
+    // Small helpers so a UI can change a single field (they all go through setBand, so they also click-free)
     void setBandEnabled(int index, bool enabled) noexcept {
         EqBand b = getBand(index);
         b.enabled = enabled;
@@ -170,7 +191,7 @@ public:
         setBand(index, b);
     }
 
-    // LowCut / HighCut 的斜率（其他 band 類型忽略此設定）
+    // Slope of LowCut / HighCut (ignored for the other band types)
     void setSlope(int index, EqSlope slope) noexcept {
         assert(index >= 0 && index < kNumBands);
         Band& b = bands_[static_cast<size_t>(index)];
@@ -186,19 +207,22 @@ public:
         return bands_[static_cast<size_t>(index)].slope;
     }
 
-    // 平滑時間（秒）。請在 prepare() 之前呼叫；預設 20 ms。0 = 不平滑（參數與開關都瞬間切換）。
+    // Smoothing time in seconds. Call before prepare(); the default is 20 ms. 0 = no smoothing
+    // (parameters and the enable switch change instantly).
     void setSmoothingSeconds(double seconds) noexcept { smoothingSeconds_ = std::max(0.0, seconds); }
     double getSmoothingSeconds() const noexcept { return smoothingSeconds_; }
 
-    // 平滑期間每隔幾個 sample 重算一次係數（1 = 逐 sample，最平滑但最花 CPU）
+    // How many samples pass between coefficient recomputations while smoothing (1 = every sample:
+    // smoothest but most CPU).
     void setCoefficientUpdateInterval(int samples) noexcept { updateInterval_ = std::max(1, samples); }
     int getCoefficientUpdateInterval() const noexcept { return updateInterval_; }
 
     double getSampleRate() const noexcept { return sampleRate_; }
 
-    // ---- 頻率響應（給 UI 畫圖；用「目標」參數，不受平滑進度影響）------------------------
+    // ---- Frequency response (for UI drawing; uses the "target" parameters, independent of smoothing progress)
 
-    // 整條 EQ 曲線的 dB：enabled band 的 dB 相加（串接 = 複數相乘 = dB 相加）
+    // dB of the whole EQ curve: the dB values of the enabled bands add up (cascade = complex
+    // multiplication = dB addition).
     double getMagnitudeDb(double freq) const noexcept {
         double total = 0.0;
         for (int i = 0; i < kNumBands; ++i)
@@ -206,7 +230,7 @@ public:
         return total;
     }
 
-    // 單一 band 的 dB（未啟用 = 0 dB）
+    // dB of a single band (disabled = 0 dB)
     double getBandMagnitudeDb(int index, double freq) const noexcept {
         const Band& b = bands_[static_cast<size_t>(index)];
         if (!b.target.enabled)
@@ -217,7 +241,7 @@ public:
         return db;
     }
 
-    // 整條 EQ 的複數響應 H(e^{jω})（所有 enabled band 相乘）
+    // Complex response H(e^{jω}) of the whole EQ (product of all enabled bands)
     std::complex<double> getResponse(double freq) const noexcept {
         std::complex<double> h(1.0, 0.0);
         for (const auto& b : bands_) {
@@ -230,15 +254,15 @@ public:
         return h;
     }
 
-    // 相位（度，-180..180）
+    // Phase in degrees (-180..180)
     double getPhaseDegrees(double freq) const noexcept { return std::arg(getResponse(freq)) * 180.0 / kPi; }
 
-    // 群延遲 τ(ω) = -dφ/dω，用數值微分估計，單位 sample
+    // Group delay τ(ω) = -dφ/dω, estimated by numerical differentiation, in samples
     double getGroupDelaySamples(double freq) const noexcept {
         const double df = std::max(0.5, freq * 1e-3);
         const double p1 = std::arg(getResponse(freq - df));
         const double p2 = std::arg(getResponse(freq + df));
-        double dphi = p2 - p1; // unwrap 到 (-π, π]
+        double dphi = p2 - p1; // Unwrap into (-π, π]
         while (dphi > kPi)
             dphi -= kTwoPi;
         while (dphi <= -kPi)
@@ -247,21 +271,21 @@ public:
         return -dphi / dOmega;
     }
 
-    // ---- 靜態輔助：公式對照 README 第 2.4–2.6 節 ----------------------------------------------
+    // ---- Static helpers: the formulas match README sections 2.4-2.6 ---------------------
 
-    // Q -> bandwidth（octave）：BW = (2 / ln 2) · asinh(1 / (2Q))
+    // Q -> bandwidth (octaves): BW = (2 / ln 2) · asinh(1 / (2Q))
     static double qToBandwidthOctaves(double q) noexcept { return 2.0 / std::log(2.0) * std::asinh(1.0 / (2.0 * q)); }
 
-    // bandwidth（octave）-> Q：Q = 1 / (2 sinh(ln 2 · BW / 2)) = 2^(BW/2) / (2^BW - 1)
+    // bandwidth (octaves) -> Q: Q = 1 / (2 sinh(ln 2 · BW / 2)) = 2^(BW/2) / (2^BW - 1)
     static double bandwidthOctavesToQ(double bw) noexcept { return 1.0 / (2.0 * std::sinh(std::log(2.0) * bw / 2.0)); }
 
-    // RBJ shelf slope 參數 S -> Q：Q = 1 / sqrt((A + 1/A)(1/S - 1) + 2)，S = 1 時對任何 gain 都是 0.707
+    // RBJ shelf slope parameter S -> Q: Q = 1 / sqrt((A + 1/A)(1/S - 1) + 2); for S = 1 this is 0.707 at any gain
     static double shelfSlopeToQ(double slope, double gainDb) noexcept {
         const double A = std::pow(10.0, gainDb / 40.0);
         return 1.0 / std::sqrt((A + 1.0 / A) * (1.0 / slope - 1.0) + 2.0);
     }
 
-    // peak 的「中點增益」頻寬邊緣：f_{1,2} = f0 ( sqrt(1 + 1/(4Q²)) ∓ 1/(2Q) )
+    // The "midpoint gain" bandwidth edges of a peak: f_{1,2} = f0 ( sqrt(1 + 1/(4Q²)) ∓ 1/(2Q) )
     static void bandEdges(double f0, double q, double& fLow, double& fHigh) noexcept {
         const double r = std::sqrt(1.0 + 1.0 / (4.0 * q * q));
         fLow = f0 * (r - 1.0 / (2.0 * q));
@@ -276,7 +300,7 @@ public:
         return slope == EqSlope::Db24 && (type == EqBandType::LowCut || type == EqBandType::HighCut);
     }
 
-    // 一個 band 的（第一顆）Biquad 係數
+    // The coefficients of a band's (first) Biquad
     static BiquadCoefficients makeCoefficients(double sr, const EqBand& band, EqSlope slope = EqSlope::Db12) noexcept {
         const double f = clampFrequency(band.frequency, sr);
         const double q = std::clamp(band.q, kMinQ, kMaxQ);
@@ -293,7 +317,7 @@ public:
         }
     }
 
-    // Db24 的第二顆係數（只有 LowCut / HighCut 會用到；其他類型回傳恆等）
+    // Coefficients of the second section for Db24 (only used by LowCut / HighCut; other types return identity)
     static BiquadCoefficients makeSecondStageCoefficients(double sr, const EqBand& band) noexcept {
         const double f = clampFrequency(band.frequency, sr);
         if (band.type == EqBandType::LowCut)
@@ -303,9 +327,9 @@ public:
         return BiquadCoefficients{};
     }
 
-    // ---- 處理 ---------------------------------------------------------------------------
+    // ---- Processing ---------------------------------------------------------------------
 
-    // 逐 sample：每個 frame 請依序呼叫 channel 0, 1, …；參數平滑的計數器在 channel 0 推進
+    // Per sample: call channels 0, 1, … in order for every frame; the parameter-smoothing counters advance on channel 0
     float processSample(int channel, float x) noexcept {
         if (channel == 0)
             advanceFrame();
@@ -326,22 +350,22 @@ public:
 
 private:
     struct Band {
-        EqBand target;                   // UI 設定的目標值
-        EqSlope slope = EqSlope::Db12;   // UI 設定的 slope
-        EqBandType runningType = EqBandType::Peak; // filter 目前「真正在跑」的 type / slope
-        EqSlope runningSlope = EqSlope::Db12;      // （結構性切換淡出期間仍是舊的）
-        bool pendingSwitch = false;      // 等淡出到 bypass 後要換 type / slope
-        SmoothedValue logFreq, q, gainDb; // 平滑中的參數（frequency 以 log2(Hz) 平滑）
-        SmoothedValue mix;               // 0 = bypass，1 = 全開；enabled 切換時 crossfade
+        EqBand target;                   // Target values set by the UI
+        EqSlope slope = EqSlope::Db12;   // Slope set by the UI
+        EqBandType runningType = EqBandType::Peak; // The type / slope the filter is "really running" right now
+        EqSlope runningSlope = EqSlope::Db12;      // (still the old one while a structural switch is fading out)
+        bool pendingSwitch = false;      // The type / slope must be swapped once the fade-out to bypass is done
+        SmoothedValue logFreq, q, gainDb; // Parameters being smoothed (frequency is smoothed as log2(Hz))
+        SmoothedValue mix;               // 0 = bypass, 1 = fully on; crossfades when enabled is toggled
         Biquad stage1, stage2;
         float mixCurrent = 0.0f;
-        bool active = false;             // 目前需不需要跑這個 band 的 filter
+        bool active = false;             // Whether this band's filter needs to run right now
         bool twoStages = false;
-        bool dirty = false;              // type / slope 改了，下次 tick 一定要重算係數
-        float coeffLogFreq = 0.0f, coeffQ = 0.0f, coeffGainDb = 0.0f; // 目前的係數是用哪組參數值算的
+        bool dirty = false;              // The type / slope changed, so the next tick must recompute the coefficients
+        float coeffLogFreq = 0.0f, coeffQ = 0.0f, coeffGainDb = 0.0f; // Which parameter values the current coefficients were computed from
     };
-    // 注意：整個 class 刻意保持可複製 / 可移動（沒有 atomic、沒有指標），
-    // 第 14 章的 DAW 才能把它放進 std::vector<Track> 之類的容器。
+    // Note: the whole class is deliberately kept copyable / movable (no atomics, no pointers), so
+    // the DAW in Chapter 14 can put it in a container such as std::vector<Track>.
 
     void setDefaultBands() noexcept {
         const EqBand defaults[kNumBands] = {
@@ -355,7 +379,7 @@ private:
         }
     }
 
-    // 平滑器的頻率目標：log2(Hz)，並夾在目前 sample rate 的合法範圍內
+    // The smoother's frequency target: log2(Hz), clamped to the valid range for the current sample rate
     float targetLogFreq(const EqBand& t) const noexcept { return std::log2(clampFrequency(t.frequency, sampleRate_)); }
 
     void snapParameters(Band& b) const noexcept {
@@ -364,7 +388,7 @@ private:
         b.gainDb.setCurrentAndTargetValue(b.target.gainDb);
     }
 
-    // 平滑器直接跳到目標，並重算係數
+    // Make the smoothers jump straight to the target and recompute the coefficients
     void snapToTarget(Band& b) noexcept {
         snapParameters(b);
         b.mix.setCurrentAndTargetValue(b.target.enabled ? 1.0f : 0.0f);
@@ -377,13 +401,13 @@ private:
         b.dirty = false;
     }
 
-    // type 或 slope 跟「正在跑的」不同 → 結構性切換。
-    // band 正在發聲（active）時要先淡出；完全 bypass 時直接換，不會有人聽到。
+    // If the type or slope differs from what is "running" -> structural switch.
+    // While the band is sounding (active) it must fade out first; when fully bypassed it can be swapped directly, and nobody will hear it.
     void requestStructure(Band& b) noexcept {
         const bool isCut = b.target.type == EqBandType::LowCut || b.target.type == EqBandType::HighCut;
         const bool changed = b.target.type != b.runningType || (isCut && b.slope != b.runningSlope);
         if (!changed) {
-            // 淡出途中使用者又把 type 改回原本的：取消排隊中的切換，mix 直接淡回去即可
+            // The user changed the type back to the original while it was fading out: cancel the queued switch, and the mix can simply fade back.
             b.pendingSwitch = false;
             return;
         }
@@ -397,7 +421,8 @@ private:
     }
 
     void updateCoefficients(Band& b) noexcept {
-        // 記下這次用的參數值：tick 時只要目前值跟它們不同就重算（不管是不是「正在平滑」）
+        // Remember the parameter values used this time: at a tick we recompute whenever the
+        // current values differ from them (whether or not the band is "currently smoothing").
         b.coeffLogFreq = b.logFreq.getCurrentValue();
         b.coeffQ = b.q.getCurrentValue();
         b.coeffGainDb = b.gainDb.getCurrentValue();
@@ -412,12 +437,15 @@ private:
             b.stage2.setCoefficients(makeSecondStageCoefficients(sampleRate_, cur));
     }
 
-    // 每個 frame（所有 channel 的同一個 sample 時間點）呼叫一次：
-    //   - 係數：每 updateInterval_ 個 sample 才重算（tick）。tick 把平滑器推進「上次 tick 以來
-    //     實際經過的 sample 數」，所以係數最多落後 updateInterval_ 個 sample、永遠不會超前；
-    //     setBand() 強迫提早 tick 時也只推進已經經過的部分，ramp 的總長度不受影響。
-    //   - mix（dry/wet crossfade）：逐 sample 前進。mix 只是乘法，逐 sample 很便宜；
-    //     如果也每 32 個 sample 才跳一階，crossfade 本身就會變成小小的 zipper noise。
+    // Called once per frame (the same sample instant for all channels):
+    //   - Coefficients: recomputed only every updateInterval_ samples (a tick). The tick advances
+    //     the smoothers by the number of samples that have actually elapsed since the last tick,
+    //     so the coefficients lag by at most updateInterval_ samples and never run ahead; when
+    //     setBand() forces an early tick it also advances only the part that has elapsed, so the
+    //     total ramp length is unaffected.
+    //   - mix (the dry/wet crossfade): advances every sample. The mix is only a multiplication, so
+    //     doing it per sample is cheap; if it also jumped one step every 32 samples, the crossfade
+    //     itself would turn into a little zipper noise.
     void advanceFrame() noexcept {
         if (samplesUntilUpdate_ == 0) {
             tick(samplesSinceTick_);
@@ -431,8 +459,9 @@ private:
                 b.mixCurrent = b.mix.getNextValue();
     }
 
-    // setBand() 改參數之前：把所有平滑器推進到「現在」（上次 tick 以來經過的 sample），
-    // 新的 ramp 才會從現在的值出發，而且下一次 tick 不會再推進同一段。係數由緊接著的 tick 重算。
+    // Before setBand() changes parameters: advance all smoothers to "now" (the samples elapsed
+    // since the last tick), so the new ramps start from the current values and the next tick does
+    // not advance the same stretch again. The coefficients are recomputed by the tick that follows immediately.
     void catchUpSmoothers() noexcept {
         if (samplesSinceTick_ <= 0)
             return;
@@ -444,34 +473,37 @@ private:
         samplesSinceTick_ = 0;
     }
 
-    // 每 updateInterval_ 個 sample（或 setBand 之後的下一個 sample）執行一次：
-    // 把平滑器推進 numSamples（上次 tick 以來經過的 sample 數），必要時重算係數
+    // Runs once every updateInterval_ samples (or on the sample after a setBand):
+    // advances the smoothers by numSamples (the samples elapsed since the last tick) and
+    // recomputes the coefficients when needed.
     void tick(int numSamples) noexcept {
         for (auto& b : bands_) {
-            // 結構性切換：已經淡出到 bypass → 換 type / slope、清 filter 記憶、再淡入
+            // Structural switch: once faded out to bypass -> swap type / slope, clear the filter memory, then fade back in
             if (b.pendingSwitch && !b.mix.isSmoothing() && b.mix.getCurrentValue() <= 0.0f) {
                 b.pendingSwitch = false;
                 b.runningType = b.target.type;
                 b.runningSlope = b.slope;
-                snapParameters(b); // 此刻 mix = 0：新 type 直接用最終參數淡入，不必邊淡入邊掃頻
+                snapParameters(b); // mix = 0 right now: the new type fades in directly with the final parameters, with no need to sweep while fading in
                 b.dirty = true;
-                b.active = false; // 讓下面的 !wasActive 分支清掉舊的 filter 記憶
+                b.active = false; // Lets the !wasActive branch below clear the old filter memory
                 b.mix.setTargetValue(b.target.enabled ? 1.0f : 0.0f);
             }
             const bool wasActive = b.active;
-            b.logFreq.skip(numSamples); // 沒在平滑時 skip 什麼都不做
+            b.logFreq.skip(numSamples); // skip does nothing when not smoothing
             b.q.skip(numSamples);
             b.gainDb.skip(numSamples);
             b.mixCurrent = b.mix.getCurrentValue();
             b.active = b.mixCurrent > 0.0f || b.mix.isSmoothing();
             if (!b.active)
                 continue;
-            if (!wasActive) { // 剛從完全 bypass 變成啟用：filter 記憶是舊的，清掉再 crossfade 進來
+            if (!wasActive) { // Just went from fully bypassed to active: the filter memory is stale, so clear it before crossfading in
                 b.stage1.reset();
                 b.stage2.reset();
             }
-            // 「參數值跟上次算係數時不同」才重算：平滑中的 band 每次 tick 都會成立；
-            // smoothing = 0 時 setTargetValue 讓值瞬間跳到目標，也是靠這個條件套用到 filter
+            // Recompute only when "the parameter values differ from those used at the last
+            // coefficient computation": this holds at every tick for a band that is smoothing;
+            // with smoothing = 0, setTargetValue makes the value jump to the target, and this
+            // condition is also what applies it to the filter.
             const bool paramsMoved = b.logFreq.getCurrentValue() != b.coeffLogFreq ||
                                      b.q.getCurrentValue() != b.coeffQ || b.gainDb.getCurrentValue() != b.coeffGainDb;
             if (paramsMoved || !wasActive || b.dirty) {
@@ -489,7 +521,7 @@ private:
             float wet = b.stage1.processSample(ch, y);
             if (b.twoStages)
                 wet = b.stage2.processSample(ch, wet);
-            // dry/wet crossfade：mix = 1 時就是 wet；切換 enabled 時 mix 以 20 ms ramp 過去
+            // dry/wet crossfade: with mix = 1 this is just wet; when enabled is toggled, mix ramps over 20 ms
             y = (b.mixCurrent >= 1.0f) ? wet : y + b.mixCurrent * (wet - y);
         }
         return y;
@@ -500,8 +532,8 @@ private:
     double smoothingSeconds_ = kDefaultSmoothingSeconds;
     int numChannels_ = 0;
     int updateInterval_ = kDefaultUpdateInterval;
-    int samplesUntilUpdate_ = 0; // 距離下一次 tick 還有幾個 sample
-    int samplesSinceTick_ = 0;   // 上次 tick 以來實際經過了幾個 sample（下一次 tick 推進平滑器的量）
+    int samplesUntilUpdate_ = 0; // How many samples remain until the next tick
+    int samplesSinceTick_ = 0;   // How many samples have actually elapsed since the last tick (the amount the next tick advances the smoothers by)
 };
 
 } // namespace dawlab::dsp

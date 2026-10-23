@@ -1,9 +1,9 @@
-// 練習 2（起始碼）：Q ↔ bandwidth（octave）換算，並用 Biquad 實際驗證「頻寬邊緣」的增益
+// Exercise 2 (starter code): Q <-> bandwidth (octaves) conversion, and using a Biquad to verify the gain at the "bandwidth edges"
 //
-// 目標：
-//   1. 實作 qToBandwidthOctaves / bandwidthOctavesToQ / bandEdges（公式見 README 2.4 節）。
-//   2. 用 BiquadCoefficients::makePeak 驗證：Q = √2 的 peak 在 f0·2^(±1/2) 的增益是 gainDb / 2。
-// 執行時 self-check 會印出 FAIL，直到你把 TODO 補完。
+// Goals:
+//   1. Implement qToBandwidthOctaves / bandwidthOctavesToQ / bandEdges (formulas in README section 2.4).
+//   2. Use BiquadCoefficients::makePeak to verify that a peak with Q = √2 has a gain of gainDb / 2 at f0·2^(±1/2).
+// When run, the self-check prints FAIL until you complete the TODOs.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Biquad.h>
@@ -38,7 +38,7 @@ void bandEdges(double f0, double q, double& fLow, double& fHigh) {
 
 int main() {
     constexpr double sr = 48000.0;
-    std::printf("=== 第 03 章 練習 2：Q <-> bandwidth ===\n\n");
+    std::printf("=== Chapter 03 Exercise 2: Q <-> bandwidth ===\n\n");
 
     std::printf("  Q -> bandwidth(octave)\n");
     for (double q : {0.5, 0.707, 1.0, 1.4142, 2.0, 4.3185, 10.0})
@@ -57,14 +57,14 @@ int main() {
 
     double f1 = 0.0, f2 = 0.0;
     bandEdges(1000.0, std::sqrt(2.0), f1, f2);
-    std::printf("\n  f0 = 1000 Hz, Q = sqrt(2)（1 octave）：邊緣 = %.1f Hz / %.1f Hz\n", f1, f2);
+    std::printf("\n  f0 = 1000 Hz, Q = sqrt(2) (1 octave): edges = %.1f Hz / %.1f Hz\n", f1, f2);
     DAWLAB_CHECK_NEAR(f1, 1000.0 / std::sqrt(2.0), 0.01);
     DAWLAB_CHECK_NEAR(f2, 1000.0 * std::sqrt(2.0), 0.01);
     DAWLAB_CHECK_NEAR(f1 * f2, 1000.0 * 1000.0, 1e-6);
     DAWLAB_CHECK_NEAR(f2 - f1, 1000.0 / std::sqrt(2.0), 1e-6);
 
-    // TODO: 用 BiquadCoefficients::makePeak(sr, 1000, sqrt(2), 12) 與 makeBandpass 驗證
-    //       邊緣處 peak = +6 dB（中點增益）、bandpass = -3 dB；再用 measureGainDb 實測一次。
+    // TODO: use BiquadCoefficients::makePeak(sr, 1000, sqrt(2), 12) and makeBandpass to verify
+    //       that at the edges the peak = +6 dB (midpoint gain) and the bandpass = -3 dB; then measure once more with measureGainDb.
     const double gainDb = 12.0;
     const BiquadCoefficients peak = BiquadCoefficients::makePeak(sr, 1000.0, std::sqrt(2.0), gainDb);
     DAWLAB_CHECK_NEAR(peak.magnitudeDb(f1, sr), gainDb * 0.5, 0.1);

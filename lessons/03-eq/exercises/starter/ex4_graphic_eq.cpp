@@ -1,10 +1,10 @@
-// 練習 4（起始碼）：10-band graphic EQ
+// Exercise 4 (starter code): 10-band graphic EQ
 //
-// 目標：用 10 顆 peak Biquad 做一個 graphic EQ：
-//   - 中心頻率 31.25 × 2^k Hz（k = 0..9），Q 由「1 octave 頻寬」換算（練習 2 的公式）。
-//   - setGainDb(band, dB) 重算那顆 band 的係數；getMagnitudeDb 把每顆的 dB 相加。
-//   - 觀察 band 之間的互相影響。
-// 執行時 self-check 會印出 FAIL，直到你把 TODO 補完。
+// Goal: build a graphic EQ from 10 peak Biquads:
+//   - Center frequencies 31.25 × 2^k Hz (k = 0..9), with Q converted from a "1 octave bandwidth" (the formula from Exercise 2).
+//   - setGainDb(band, dB) recomputes that band's coefficients; getMagnitudeDb adds up the dB of every band.
+//   - Observe how the bands influence each other.
+// When run, the self-check prints FAIL until you complete the TODOs.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Biquad.h>
@@ -21,7 +21,7 @@ class GraphicEq10 {
 public:
     static constexpr int kNumBands = 10;
     static constexpr double kBandwidthOctaves = 1.0;
-    static constexpr double kQ = 1.0; // TODO: 由 1 octave 頻寬換算成 Q（提示：2^(BW/2) / (2^BW − 1)）
+    static constexpr double kQ = 1.0; // TODO: convert from a 1 octave bandwidth to Q (hint: 2^(BW/2) / (2^BW - 1))
 
     static double centreFrequency(int band) noexcept { return 31.25 * std::pow(2.0, band); }
 
@@ -47,12 +47,12 @@ public:
 
     double getMagnitudeDb(double freq) const noexcept {
         (void)freq;
-        return 0.0; // TODO: 每顆 filter 的 getCoefficients().magnitudeDb(freq, sampleRate_) 相加
+        return 0.0; // TODO: add up getCoefficients().magnitudeDb(freq, sampleRate_) of every filter
     }
 
     float processSample(int ch, float x) noexcept {
         (void)ch;
-        return x; // TODO: 依序通過 10 顆 filter
+        return x; // TODO: pass through the 10 filters in order
     }
 
     void process(AudioBlock block) noexcept {
@@ -73,13 +73,13 @@ private:
 
 int main() {
     constexpr double sr = 48000.0;
-    std::printf("=== 第 03 章 練習 4：10-band graphic EQ ===\n\n");
+    std::printf("=== Chapter 03 Exercise 4: 10-band graphic EQ ===\n\n");
 
     GraphicEq10 eq;
     eq.prepare(sr, 512, 1);
 
     const double flat = measureGainDb([&](float x) { return eq.processSample(0, x); }, 1000.0, sr);
-    std::printf("  全部 0 dB：1 kHz 實測 %+.3f dB\n", flat);
+    std::printf("  all 0 dB: measured at 1 kHz %+.3f dB\n", flat);
     DAWLAB_CHECK_NEAR(flat, 0.0, 0.01);
 
     eq.setGainDb(5, 6.0f);
@@ -87,7 +87,7 @@ int main() {
     for (double f : {500.0, 1000.0, 1414.2, 2000.0}) {
         eq.reset();
         const double m = measureGainDb([&](float x) { return eq.processSample(0, x); }, f, sr);
-        std::printf("    %7.1f Hz: 理論 %+6.2f dB, 實測 %+6.2f dB\n", f, eq.getMagnitudeDb(f), m);
+        std::printf("    %7.1f Hz: theory %+6.2f dB, measured %+6.2f dB\n", f, eq.getMagnitudeDb(f), m);
         DAWLAB_CHECK_NEAR(m, eq.getMagnitudeDb(f), 0.05);
     }
     DAWLAB_CHECK_NEAR(eq.getMagnitudeDb(1000.0), 6.0, 0.01);
@@ -97,14 +97,14 @@ int main() {
     for (int i = 0; i < GraphicEq10::kNumBands; ++i)
         eq.setGainDb(i, 6.0f);
     eq.reset();
-    std::printf("  全部 +6 dB：1 kHz 理論 %+.2f dB\n", eq.getMagnitudeDb(1000.0));
-    DAWLAB_CHECK(eq.getMagnitudeDb(1000.0) > 8.0); // 相鄰 band 的尾巴會疊上來
+    std::printf("  all +6 dB: theory at 1 kHz %+.2f dB\n", eq.getMagnitudeDb(1000.0));
+    DAWLAB_CHECK(eq.getMagnitudeDb(1000.0) > 8.0); // the tails of the neighboring bands pile on top
 
-    // TODO（第 4 小題，試聽）：把「笑臉曲線」套在 drum loop 上
+    // TODO (part 4, listening test): apply a "smiley curve" to the drum loop
     //   const float smile[GraphicEq10::kNumBands] = {6, 4, 2, 0, -3, -3, 0, 2, 4, 6};
-    //   AudioBuffer wet = makeDrumLoop(sr, 2);  用 eq.prepare(sr, 512, wet.getNumChannels()) 重新 prepare、
-    //   設好 10 個 gain，以 512 sample 為一個 block 呼叫 eq.process(...)，印出處理前後的 peak（dBFS），
-    //   最後 writeWav(outputPath("l03_ex4_graphic_smile.wav"), wet, sr)。
+    //   AudioBuffer wet = makeDrumLoop(sr, 2);  call eq.prepare(sr, 512, wet.getNumChannels()) again,
+    //   set the 10 gains, call eq.process(...) in blocks of 512 samples, print the peak (dBFS) before and after processing,
+    //   and finally writeWav(outputPath("l03_ex4_graphic_smile.wav"), wet, sr).
 
     return dawlab::test::summary("l03_ex4_starter");
 }
