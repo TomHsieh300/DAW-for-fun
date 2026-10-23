@@ -1,25 +1,28 @@
 #pragma once
-// StateVariableFilter（SVF，TPT / "zero-delay feedback" 版本）。
+// StateVariableFilter (SVF, TPT / "zero-delay feedback" version).
 //
-// 第 02 章的補充元件：biquad 的係數在參數快速變化時（例如 LFO 掃 cutoff、
-// 合成器的 filter envelope）會因為「係數跟狀態不匹配」而產生 transient 甚至瞬間爆音；
-// 用 topology-preserving transform（TPT）把 analog state-variable filter 離散化後，
-// 狀態變數對應的是真實的物理量（積分器的電容電壓），cutoff / Q 每個 sample 都能改，
-// 而且同一組狀態同時給出 lowpass / bandpass / highpass / notch 輸出。
+// A supplementary component for Chapter 02: when parameters change quickly (for example an
+// LFO sweeping the cutoff, or a synthesizer filter envelope), a biquad's coefficients no
+// longer match its state, which produces transients and even sudden pops. Discretizing the
+// analog state-variable filter with the topology-preserving transform (TPT) makes each state
+// variable a real physical quantity (the capacitor voltage of an integrator), so cutoff / Q
+// can be changed on every sample, and the same set of states yields the lowpass / bandpass /
+// highpass / notch outputs at once.
 //
-// 推導來源：Vadim Zavalishin, "The Art of VA Filter Design"（2nd-order TPT SVF），
-// 實作上與 Andrew Simper（Cytomic）的 "Solving the continuous SVF equations using
-// trapezoidal integration" 相同：
-//     g  = tan(π fc / fs)         （bilinear 的 prewarp）
-//     k  = 1 / Q                  （damping）
+// Derivation: Vadim Zavalishin, "The Art of VA Filter Design" (2nd-order TPT SVF). The
+// implementation is equivalent to Andrew Simper's (Cytomic) "Solving the continuous SVF
+// equations using trapezoidal integration":
+//     g  = tan(π fc / fs)         (the bilinear prewarp)
+//     k  = 1 / Q                  (damping)
 //     a1 = 1 / (1 + g (g + k)),  a2 = g a1,  a3 = g a2
-// 每個 sample：
+// For each sample:
 //     v3 = x - ic2eq
-//     v1 = a1 ic1eq + a2 v3            （bandpass 積分器輸出）
-//     v2 = ic2eq + a2 ic1eq + a3 v3    （lowpass 積分器輸出）
+//     v1 = a1 ic1eq + a2 v3            (bandpass integrator output)
+//     v2 = ic2eq + a2 ic1eq + a3 v3    (lowpass integrator output)
 //     ic1eq = 2 v1 - ic1eq,  ic2eq = 2 v2 - ic2eq
 //     low = v2,  band = v1,  high = x - k v1 - v2,  notch = x - k v1
-// 大小響應和 RBJ cookbook 的 LPF / HPF / BPF / Notch 完全一樣（同一個 analog prototype + bilinear）。
+// The magnitude response is identical to the RBJ cookbook LPF / HPF / BPF / Notch (same
+// analog prototype + bilinear transform).
 
 #include <dawlab/DspMath.h>
 #include <dawlab/AudioBuffer.h>
@@ -34,7 +37,7 @@ class StateVariableFilter {
 public:
     enum class Type { Lowpass, Highpass, Bandpass, Notch };
 
-    // 一次拿到同一組狀態的所有輸出（例如做 crossover、或 morphing filter）
+    // All outputs from one set of states at once (for example for a crossover or a morphing filter)
     struct Outputs {
         float low, band, high, notch;
     };
@@ -53,7 +56,7 @@ public:
     void setType(Type type) noexcept { type_ = type; }
     Type getType() const noexcept { return type_; }
 
-    // 可以每個 sample 呼叫（一次 tan）
+    // Safe to call on every sample (costs one tan)
     void setCutoff(float hz) noexcept {
         cutoffHz_ = hz;
         updateCoefficients();
@@ -75,7 +78,7 @@ public:
         s.ic2eq = flushDenormal(2.0 * v2 - s.ic2eq);
         Outputs o;
         o.low = static_cast<float>(v2);
-        o.band = static_cast<float>(k_ * v1); // 乘 k 讓 bandpass 峰值 = 0 dB（與 RBJ 相同）
+        o.band = static_cast<float>(k_ * v1); // multiplying by k makes the bandpass peak 0 dB (same as RBJ)
         o.high = static_cast<float>(x - k_ * v1 - v2);
         o.notch = static_cast<float>(x - k_ * v1);
         return o;
@@ -103,7 +106,7 @@ public:
 
 private:
     struct State {
-        double ic1eq = 0.0, ic2eq = 0.0; // 兩個積分器的「電容電壓」
+        double ic1eq = 0.0, ic2eq = 0.0; // the "capacitor voltages" of the two integrators
     };
 
     static double flushDenormal(double v) noexcept { return std::abs(v) < 1.0e-30 ? 0.0 : v; }

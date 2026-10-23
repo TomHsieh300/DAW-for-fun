@@ -1,23 +1,27 @@
 #pragma once
-// OnePole：一階（one-pole）lowpass / highpass filter。
+// OnePole: a first-order (one-pole) lowpass / highpass filter.
 //
-// 這是最簡單、也最常用的 IIR filter：每個 sample 只要 2 個乘法（一次乘加加一個乘法），
-// 斜率 6 dB/oct（-20 dB/decade），沒有 resonance。常見用途：
-//   - 參數平滑（smoothing）、envelope follower 的 ballistics
-//   - delay / reverb feedback 迴路裡的 damping
-//   - 把訊號的 DC / 極低頻去掉（highpass）
+// This is the simplest and most widely used IIR filter: each sample costs only two
+// multiplications (one multiply-add plus one multiply). Its slope is 6 dB/oct
+// (-20 dB/decade) and it has no resonance. Typical uses:
+//   - parameter smoothing, and the ballistics of an envelope follower
+//   - damping inside delay / reverb feedback loops
+//   - removing DC / very low frequencies from a signal (highpass)
 //
-// Lowpass 的 difference equation：
+// Lowpass difference equation:
 //     y[n] = (1 - a) * x[n] + a * y[n-1]
-// 係數 a 由 cutoff 決定（analog RC lowpass 的 impulse response e^{-t/τ} 每個 sample 衰減 a 倍）：
+// The coefficient a is set by the cutoff (the impulse response e^{-t/τ} of an analog RC
+// lowpass decays by a factor of a per sample):
 //     a = exp(-2π fc / fs)
-// 這個版本（impulse-invariant / "exact" 版）在 fc << fs 時 -3 dB 點就在 fc；
-// fc 接近 Nyquist 時會偏高（第 02 章 README 有數字）。想要 -3 dB 點精準落在 fc，
-// 可以改用 bilinear 版本（README 與範例 l02_filter_response 有比較）。
+// This version (impulse-invariant / "exact") puts the -3 dB point at fc when fc << fs;
+// near Nyquist the -3 dB point lands too high (the Chapter 02 README gives the numbers).
+// If you need the -3 dB point to land exactly on fc, use the bilinear version instead
+// (the README and the l02_filter_response example compare the two).
 //
-// Highpass 用的是正規化後的一階 highpass（DC 處為 0、Nyquist 處為 0 dB）：
+// The highpass is a normalized first-order highpass (zero at DC, 0 dB at Nyquist):
 //     y[n] = h * (x[n] - x[n-1]) + a * y[n-1],   h = (1 + a) / 2
-// 它和「x - lowpass」只差一個常數增益（後者在高頻的增益是 2a/(1+a)，cutoff 高時會不到 0 dB）。
+// It differs from "x - lowpass" only by a constant gain (the latter has a high-frequency
+// gain of 2a/(1+a), which falls short of 0 dB when the cutoff is high).
 
 #include <dawlab/DspMath.h>
 #include <dawlab/AudioBuffer.h>
@@ -32,8 +36,8 @@ class OnePole {
 public:
     enum class Type { Lowpass, Highpass };
 
-    // 由 cutoff 與 sample rate 算出 feedback 係數 a = exp(-2π fc / fs)。
-    // 給練習與範例用（手算驗證）。
+    // Computes the feedback coefficient a = exp(-2π fc / fs) from the cutoff and sample rate.
+    // Provided for exercises and examples (to check hand calculations).
     static double coefficientForCutoff(double cutoffHz, double sampleRate) noexcept {
         return std::exp(-kTwoPi * cutoffHz / sampleRate);
     }
@@ -52,8 +56,9 @@ public:
     void setType(Type type) noexcept { type_ = type; }
     Type getType() const noexcept { return type_; }
 
-    // NaN 會被忽略（保留上一個有效的 cutoff）：std::clamp(NaN, lo, hi) 會原樣回傳 NaN，
-    // 係數一旦變成 NaN，之後就算 reset() 也救不回來。±inf 則由 updateCoefficients() 的 clamp 處理。
+    // NaN is ignored (the last valid cutoff is kept): std::clamp(NaN, lo, hi) returns NaN
+    // unchanged, and once a coefficient becomes NaN even reset() cannot recover it.
+    // ±inf is handled by the clamp in updateCoefficients().
     void setCutoff(float hz) noexcept {
         if (std::isnan(hz))
             return;
@@ -62,7 +67,7 @@ public:
     }
     float getCutoff() const noexcept { return cutoffHz_; }
 
-    // 目前的 feedback 係數 a（0 < a < 1）
+    // The current feedback coefficient a (0 < a < 1)
     double getCoefficient() const noexcept { return a_; }
 
     float processSample(int channel, float x) noexcept {
@@ -91,18 +96,20 @@ public:
 
 private:
     struct State {
-        double x1 = 0.0; // x[n-1]（只有 highpass 用到）
+        double x1 = 0.0; // x[n-1] (used only by the highpass)
         double y1 = 0.0; // y[n-1]
     };
 
-    // 遞迴結構的狀態會無限趨近 0 但永遠不等於 0，最後落入 denormal 範圍（CPU 會變得非常慢）。
-    // 把小到聽不見的值直接清成 0。
+    // The state of a recursive structure approaches 0 forever without ever reaching it, and
+    // eventually falls into the denormal range (the CPU becomes very slow).
+    // Flush values too small to be audible straight to 0.
     static double flushDenormal(double v) noexcept { return std::abs(v) < 1.0e-30 ? 0.0 : v; }
 
     void updateCoefficients() noexcept {
         if (sampleRate_ <= 0.0)
             return;
-        // cutoff 限制在 (0, Nyquist) 之間，避免 a 落到 0 或 1 造成 filter 完全不動或爆掉
+        // Clamp the cutoff to (0, Nyquist) so that a never reaches 0 or 1, which would make the
+        // filter either do nothing or blow up
         const double fc = std::clamp(static_cast<double>(cutoffHz_), 1.0e-3, sampleRate_ * 0.49);
         a_ = coefficientForCutoff(fc, sampleRate_);
         b_ = 1.0 - a_;

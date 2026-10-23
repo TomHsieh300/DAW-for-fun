@@ -1,20 +1,23 @@
-// l02_filter_sweep：把白雜訊與 log sweep 送過 LPF / HPF / BPF / Notch，輸出 WAV 試聽。
+// l02_filter_sweep: runs white noise and a log sweep through LPF / HPF / BPF / Notch and writes WAVs to listen to.
 //
-// 示範什麼：
-//   - 用 Biquad 一塊一塊（block size 512）處理整段訊號，模擬 audio callback。
-//   - 同一個 1 kHz 的 cutoff / center，四種 filter 聽起來差多少。
-//   - 用 RMS 數字對照聽感：白雜訊能量均勻分布在 0..24 kHz，LPF 1 kHz 只留下約 1/24 的頻寬，
-//     RMS 應該大幅下降；HPF 幾乎不變；BPF 更少；Notch 幾乎不變。
+// What it shows:
+//   - Uses Biquad to process the whole signal block by block (block size 512), simulating an audio callback.
+//   - How different the four filter types sound with the same 1 kHz cutoff / center.
+//   - Matches the listening impression with RMS numbers: white noise has its energy spread evenly
+//     over 0..24 kHz, so a 1 kHz LPF keeps only about 1/24 of the bandwidth and the RMS should drop
+//     sharply; the HPF barely changes it; the BPF drops it even more; the notch barely changes it.
 //
-// 怎麼執行：不帶參數直接執行；或 l02_filter_sweep 你的.wav（會改用你的檔案當輸入）。
-// 輸出 WAV（dawlab_output/）：
+// How to run: run with no arguments; or `l02_filter_sweep your.wav` (uses your file as the input instead).
+// Output WAVs (in dawlab_output/):
 //   l02_noise_dry.wav, l02_noise_lpf.wav, l02_noise_hpf.wav, l02_noise_bpf.wav, l02_noise_notch.wav
 //   l02_sweep_dry.wav, l02_sweep_lpf.wav, l02_sweep_hpf.wav, l02_sweep_bpf.wav, l02_sweep_notch.wav
-// 該聽到什麼：
-//   - noise_lpf 像隔著牆聽到的「悶」聲；noise_hpf 只剩「嘶」聲；noise_bpf 像老電話的窄頻；
-//     noise_notch 跟 dry 幾乎一樣（只挖掉 1 kHz 附近一小塊）。
-//   - sweep 從 20 Hz 掃到 20 kHz：lpf 版在 1 kHz 之後越來越小聲；hpf 相反；bpf 只有經過 1 kHz
-//     時最大聲；notch 在經過 1 kHz 的瞬間有個「凹陷」。
+// What you should hear:
+//   - noise_lpf sounds "muffled", as if heard through a wall; noise_hpf is just a "hiss"; noise_bpf
+//     is a narrow band like an old telephone; noise_notch is almost the same as dry (only a small
+//     chunk around 1 kHz is cut out).
+//   - The sweep runs from 20 Hz to 20 kHz: the lpf version gets quieter and quieter after 1 kHz; the
+//     hpf is the opposite; the bpf is loudest only when passing 1 kHz; the notch has a "dip" at the
+//     moment it passes 1 kHz.
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Biquad.h>
 
@@ -28,9 +31,9 @@ using dawlab::dsp::BiquadCoefficients;
 
 constexpr int kBlockSize = 512;
 
-// 一塊一塊處理（模擬 audio callback），回傳處理後的新 buffer
+// Process block by block (simulating an audio callback) and return the processed new buffer
 static AudioBuffer processInBlocks(const AudioBuffer& input, const BiquadCoefficients& coeffs, double sampleRate) {
-    AudioBuffer out = input; // 複製一份，在複製上 in-place 處理
+    AudioBuffer out = input; // make a copy and process the copy in place
     Biquad filter;
     filter.prepare(sampleRate, kBlockSize, out.getNumChannels());
     filter.setCoefficients(coeffs);
@@ -54,10 +57,10 @@ int main(int argc, char** argv) {
             noise = wav.buffer;
             sampleRate = wav.sampleRate;
             haveUserFile = true;
-            std::printf("使用輸入檔 %s（%.0f Hz, %d ch, %.2f s）\n", argv[1], sampleRate, noise.getNumChannels(),
+            std::printf("Using input file %s (%.0f Hz, %d ch, %.2f s)\n", argv[1], sampleRate, noise.getNumChannels(),
                         noise.getNumSamples() / sampleRate);
         } else {
-            std::printf("無法讀取 %s：%s，改用合成訊號\n", argv[1], err.c_str());
+            std::printf("Cannot read %s: %s, falling back to the synthetic signal\n", argv[1], err.c_str());
         }
     }
     if (!haveUserFile)
@@ -76,7 +79,7 @@ int main(int argc, char** argv) {
         {"notch", BiquadCoefficients::makeNotch(sampleRate, fc, 2.0)},
     };
 
-    std::printf("=== 第 02 章：雜訊 / 掃頻通過四種 biquad（fc = %.0f Hz, block = %d）===\n\n", fc, kBlockSize);
+    std::printf("=== Chapter 02: noise / sweep through four biquads (fc = %.0f Hz, block = %d) ===\n\n", fc, kBlockSize);
     std::printf("    %-8s  %10s  %10s\n", "", "noise RMS", "sweep RMS");
     const float noiseDryRms = rms(noise, 0);
     const float sweepDryRms = rms(sweep, 0);
@@ -95,8 +98,8 @@ int main(int argc, char** argv) {
         DAWLAB_CHECK(!hasNanOrInf(n) && !hasNanOrInf(s));
 
         if (!haveUserFile) {
-            // 白雜訊的功率均勻分布，所以輸出 / 輸入的功率比 = 平均 |H|²。
-            // 用理論響應在 0..Nyquist 積分一次做對照（數值積分 2000 點）。
+            // White noise has its power spread evenly, so output / input power ratio = mean |H|².
+            // Cross-check by integrating the theoretical response over 0..Nyquist once (numerical integration, 2000 points).
             double power = 0.0;
             const int steps = 2000;
             for (int i = 0; i < steps; ++i) {
@@ -106,10 +109,10 @@ int main(int argc, char** argv) {
             }
             const double expectedDb = 10.0 * std::log10(power);
             const double measuredDb = gainToDb(nRms / noiseDryRms);
-            std::printf("              雜訊 RMS 變化：實測 %.2f dB，理論 ∫|H|² = %.2f dB\n", measuredDb, expectedDb);
+            std::printf("              Noise RMS change: measured %.2f dB, theory ∫|H|² = %.2f dB\n", measuredDb, expectedDb);
             DAWLAB_CHECK_NEAR(measuredDb, expectedDb, 0.3);
         }
     }
-    std::printf("\nWAV 已寫到 dawlab_output/l02_noise_*.wav 與 l02_sweep_*.wav\n\n");
+    std::printf("\nWAVs written to dawlab_output/l02_noise_*.wav and l02_sweep_*.wav\n\n");
     return dawlab::test::summary("l02_filter_sweep");
 }

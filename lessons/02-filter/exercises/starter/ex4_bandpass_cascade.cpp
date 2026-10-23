@@ -1,10 +1,10 @@
-// 練習 4：用 HPF + LPF 串接組成 bandpass（起始碼）。
+// Exercise 4: build a bandpass from a cascaded HPF + LPF (starter code).
 //
-// 完成 TODO：
-//   1. setBand()：用 makeHighpass(f_low) 與 makeLowpass(f_high)（都用 Butterworth Q = 0.7071）設定兩級。
-//   2. processSample()：先過 HPF 再過 LPF。
-//   3. magnitudeDb()：兩級的 dB 相加。
-// 驗證：f_low 與 f_high 處約 -3 dB、通帶中央約 -0.5 dB、邊界外 2 octaves 約 -24 dB。
+// Complete the TODOs:
+//   1. setBand(): set the two stages with makeHighpass(f_low) and makeLowpass(f_high) (both with Butterworth Q = 0.7071).
+//   2. processSample(): run through the HPF first, then the LPF.
+//   3. magnitudeDb(): add the dB values of the two stages.
+// Verification: about -3 dB at f_low and f_high, about -0.5 dB at the center of the passband, about -24 dB two octaves outside the edges.
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Biquad.h>
 
@@ -31,10 +31,10 @@ public:
     void setBand(float lowHz, float highHz) noexcept {
         lowHz_ = lowHz;
         highHz_ = highHz;
-        // TODO: hp_ 設成 highpass(lowHz)、lp_ 設成 lowpass(highHz)，Q 都用 kButterworthQ
+        // TODO: set hp_ to highpass(lowHz) and lp_ to lowpass(highHz), both with kButterworthQ
     }
     float processSample(int ch, float x) noexcept {
-        // TODO: 串接兩級
+        // TODO: chain the two stages
         return hp_.processSample(ch, x);
     }
     void process(AudioBlock block) noexcept {
@@ -42,7 +42,7 @@ public:
         lp_.process(block);
     }
     double magnitudeDb(double f) const {
-        // TODO: 兩級 dB 相加
+        // TODO: add the dB values of the two stages
         return hp_.getCoefficients().magnitudeDb(f, sampleRate_);
     }
 

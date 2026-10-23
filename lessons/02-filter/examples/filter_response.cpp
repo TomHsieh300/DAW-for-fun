@@ -1,14 +1,19 @@
-// l02_filter_response：理論頻率響應 vs 實測。
+// l02_filter_response: theoretical frequency response vs. measurement.
 //
-// 示範什麼：
-//   1. one-pole lowpass：exp 版（a = exp(-2π fc/fs)）與 bilinear 版的響應比較，
-//      並用二分搜尋找出實際的 -3 dB 點，看 cutoff 越高兩者差多少。
-//   2. RBJ biquad 的 8 種 filter：把 BiquadCoefficients::magnitudeDb()（把 z = e^{jω} 代入 H(z)）
-//      和 measureGainDb()（真的送正弦波進 filter 量輸出）放在同一張表，兩者應該一致。
-//   3. 斜率：LPF 在 cutoff 以上每個 octave 掉多少 dB（biquad ≈ 12 dB/oct，one-pole ≈ 6 dB/oct）。
-//   4. Cramping：cutoff 接近 Nyquist 時，bilinear transform 把 analog prototype 的曲線「擠」向 Nyquist。
+// What it shows:
+//   1. One-pole lowpass: compares the exp version (a = exp(-2π fc/fs)) with the bilinear version,
+//      and uses bisection to find the actual -3 dB point, to see how far apart the two are as
+//      the cutoff rises.
+//   2. The 8 RBJ biquad filter types: puts BiquadCoefficients::magnitudeDb() (substituting
+//      z = e^{jω} into H(z)) and measureGainDb() (actually feeding sine waves through the filter
+//      and measuring the output) in one table; the two should agree.
+//   3. Slope: how many dB a lowpass drops per octave above the cutoff (biquad ~ 12 dB/oct,
+//      one-pole ~ 6 dB/oct).
+//   4. Cramping: when the cutoff approaches Nyquist, the bilinear transform "squeezes" the analog
+//      prototype's curve toward Nyquist.
 //
-// 怎麼執行：不帶參數直接執行。沒有 WAV 輸出，只印表格；最後用 self-check 確認理論與實測一致。
+// How to run: run with no arguments. There is no WAV output, only tables are printed; the
+// self-check at the end confirms that theory and measurement agree.
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Biquad.h>
 #include <dawlab/dsp/OnePole.h>
@@ -25,28 +30,28 @@ using dawlab::dsp::OnePole;
 
 constexpr double kSampleRate = 48000.0;
 
-// ---- one-pole 的兩種設計 -------------------------------------------------------------
-// exp 版：H(z) = (1-a) / (1 - a z^-1)，a = exp(-2π fc/fs)
+// ---- Two one-pole designs --------------------------------------------------------------
+// exp version: H(z) = (1-a) / (1 - a z^-1), a = exp(-2π fc/fs)
 static double onePoleExpDb(double fc, double f) {
     const double a = OnePole::coefficientForCutoff(fc, kSampleRate);
     const std::complex<double> z1 = std::polar(1.0, -kTwoPi * f / kSampleRate);
     return gainToDb(std::abs((1.0 - a) / (1.0 - a * z1)));
 }
 
-// bilinear 版：analog H(s) = 1/(1 + s/ωc)，s = (2/T)(1 - z^-1)/(1 + z^-1)，prewarp 後
-//   g = tan(π fc/fs)，H(z) = g(1 + z^-1) / ((1+g) - (1-g) z^-1)
+// bilinear version: analog H(s) = 1/(1 + s/ωc), s = (2/T)(1 - z^-1)/(1 + z^-1); after prewarping
+//   g = tan(π fc/fs), H(z) = g(1 + z^-1) / ((1+g) - (1-g) z^-1)
 static double onePoleBilinearDb(double fc, double f) {
     const double g = std::tan(kPi * fc / kSampleRate);
     const std::complex<double> z1 = std::polar(1.0, -kTwoPi * f / kSampleRate);
     return gainToDb(std::abs(g * (1.0 + z1) / ((1.0 + g) - (1.0 - g) * z1)));
 }
 
-// 二分搜尋 responseDb(f) = targetDb 的頻率（responseDb 在 [lo, hi] 內要單調）
+// Bisection for the frequency where responseDb(f) = targetDb (responseDb must be monotonic on [lo, hi])
 static double findFrequencyAtDb(const std::function<double(double)>& responseDb, double targetDb, double lo,
                                 double hi) {
     const bool decreasing = responseDb(lo) > responseDb(hi);
     for (int i = 0; i < 60; ++i) {
-        const double mid = std::sqrt(lo * hi); // 幾何平均：在 log 頻率軸上對半切
+        const double mid = std::sqrt(lo * hi); // geometric mean: bisect on a logarithmic frequency axis
         const bool above = responseDb(mid) > targetDb;
         if (above == decreasing)
             lo = mid;
@@ -57,47 +62,47 @@ static double findFrequencyAtDb(const std::function<double(double)>& responseDb,
 }
 
 int main() {
-    std::printf("=== 第 02 章：理論頻率響應 vs 實測（fs = %.0f Hz）===\n\n", kSampleRate);
+    std::printf("=== Chapter 02: theoretical frequency response vs. measurement (fs = %.0f Hz) ===\n\n", kSampleRate);
 
-    // ---- 1. one-pole：exp 版 vs bilinear 版 ---------------------------------------------
-    std::printf("[1] one-pole lowpass：exp 版 vs bilinear 版的實際 -3.01 dB 點\n");
+    // ---- 1. one-pole: exp version vs. bilinear version ----------------------------------
+    std::printf("[1] One-pole lowpass: actual -3.01 dB point of the exp version vs. the bilinear version\n");
     std::printf("    %8s  %12s  %12s  %12s\n", "fc (Hz)", "a=exp(..)", "exp -3dB", "bilinear -3dB");
     for (double fc : {100.0, 1000.0, 5000.0, 10000.0, 15000.0}) {
         const double a = OnePole::coefficientForCutoff(fc, kSampleRate);
         const double f3bil = findFrequencyAtDb([&](double f) { return onePoleBilinearDb(fc, f); }, -3.0103, 1.0,
                                                kSampleRate * 0.4999);
-        // exp 版在 Nyquist 的增益是 (1-a)/(1+a)，不是 0：fc 太高時整條曲線都在 -3 dB 以上，-3 dB 點根本不存在
+        // The exp version's gain at Nyquist is (1-a)/(1+a), not 0: when fc is too high the whole curve stays above -3 dB, so there is no -3 dB point at all
         const double nyquistDb = onePoleExpDb(fc, kSampleRate * 0.5);
         if (nyquistDb < -3.0103) {
             const double f3exp = findFrequencyAtDb([&](double f) { return onePoleExpDb(fc, f); }, -3.0103, 1.0,
                                                    kSampleRate * 0.4999);
             std::printf("    %8.0f  %12.6f  %12.1f  %12.1f\n", fc, a, f3exp, f3bil);
         } else {
-            std::printf("    %8.0f  %12.6f  %12s  %12.1f   ← exp 版在 Nyquist 也只有 %.2f dB\n", fc, a, "不存在", f3bil,
+            std::printf("    %8.0f  %12.6f  %12s  %12.1f   <- the exp version is only %.2f dB even at Nyquist\n", fc, a, "none", f3bil,
                         nyquistDb);
-            DAWLAB_CHECK(fc >= 12000.0); // 只有 cutoff 很高時才會發生
+            DAWLAB_CHECK(fc >= 12000.0); // only happens when the cutoff is very high
         }
-        // bilinear 版 -3 dB 點永遠精準落在 fc（prewarp 的目的）
+        // The bilinear version's -3 dB point always lands exactly on fc (the purpose of prewarping)
         DAWLAB_CHECK_NEAR(f3bil, fc, fc * 0.001);
     }
-    std::printf("    → exp 版在 fc << fs 時很準，fc 越接近 Nyquist 偏得越多；bilinear 版永遠精準。\n\n");
-    // 書上的數字：fc = 1 kHz 時 exp 版只偏 0.14%，fc = 10 kHz 時偏約 19%
+    std::printf("    -> The exp version is accurate when fc << fs and drifts more the closer fc gets to Nyquist; the bilinear version is always exact.\n\n");
+    // Numbers quoted in the text: at fc = 1 kHz the exp version is off by only 0.14%, at fc = 10 kHz by about 19%
     DAWLAB_CHECK_NEAR(findFrequencyAtDb([](double f) { return onePoleExpDb(1000.0, f); }, -3.0103, 1.0, 23999.0),
                       1001.4, 0.5);
     DAWLAB_CHECK_NEAR(findFrequencyAtDb([](double f) { return onePoleExpDb(10000.0, f); }, -3.0103, 1.0, 23999.0),
                       11895.0, 5.0);
-    // 2.8 節表格的其他兩列：fc = 5 kHz 的 exp 版 -3 dB 點，以及 fc = 15 kHz 時 Nyquist 處只有 -2.45 dB
+    // The other rows of the table in section 2.8: the exp version's -3 dB point for fc = 5 kHz, and only -2.45 dB at Nyquist for fc = 15 kHz
     DAWLAB_CHECK_NEAR(findFrequencyAtDb([](double f) { return onePoleExpDb(5000.0, f); }, -3.0103, 1.0, 23999.0),
                       5188.9, 0.5);
     DAWLAB_CHECK_NEAR(onePoleExpDb(15000.0, kSampleRate * 0.5), -2.45, 0.01);
 
-    // OnePole class 的實測：1 kHz lowpass 在 1 kHz 應該約 -3 dB，10 kHz 約 -20 dB（6 dB/oct）
+    // Measurements of the OnePole class: a 1 kHz lowpass should be about -3 dB at 1 kHz and about -20 dB at 10 kHz (6 dB/oct)
     {
         OnePole lp;
         lp.prepare(kSampleRate, 512, 1);
         lp.setType(OnePole::Type::Lowpass);
         lp.setCutoff(1000.0f);
-        std::printf("[1b] OnePole class 實測（Lowpass fc = 1 kHz）\n");
+        std::printf("[1b] OnePole class measurements (Lowpass fc = 1 kHz)\n");
         std::printf("    %8s  %10s  %10s\n", "f (Hz)", "theory dB", "measured");
         for (double f : {100.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0}) {
             lp.reset();
@@ -110,14 +115,14 @@ int main() {
         hp.prepare(kSampleRate, 512, 1);
         hp.setType(OnePole::Type::Highpass);
         hp.setCutoff(1000.0f);
-        // highpass 理論值：H(z) = h (1 - z^-1) / (1 - a z^-1)，h = (1 + a) / 2
+        // Highpass theory: H(z) = h (1 - z^-1) / (1 - a z^-1), h = (1 + a) / 2
         const auto onePoleHpDb = [](double fcHz, double f) {
             const double ah = OnePole::coefficientForCutoff(fcHz, kSampleRate);
             const double h = 0.5 * (1.0 + ah);
             const std::complex<double> z1 = std::polar(1.0, -kTwoPi * f / kSampleRate);
             return gainToDb(std::abs(h * (1.0 - z1) / (1.0 - ah * z1)));
         };
-        std::printf("    Highpass fc = 1 kHz（實測 / 理論）：");
+        std::printf("    Highpass fc = 1 kHz (measured / theory):");
         double hpMeas[3] = {};
         int idx = 0;
         for (double f : {20.0, 1000.0, 20000.0}) {
@@ -129,16 +134,16 @@ int main() {
             hpMeas[idx++] = meas;
         }
         std::printf("\n");
-        // README 2.9 節引用的數字：20 Hz ≈ 6 dB/oct 外插 20 log10(20/1000) = -33.98 dB、fc 處 -3 dB、高頻 0 dB
+        // Numbers quoted in README section 2.9: 20 Hz ~ the 6 dB/oct extrapolation 20 log10(20/1000) = -33.98 dB, -3 dB at fc, 0 dB at high frequencies
         DAWLAB_CHECK_NEAR(hpMeas[0], 20.0 * std::log10(20.0 / 1000.0), 0.1);
         DAWLAB_CHECK_NEAR(hpMeas[1], -3.0, 0.05);
         DAWLAB_CHECK_NEAR(hpMeas[2], 0.0, 0.05);
-        DAWLAB_CHECK_NEAR(onePoleHpDb(1000.0, kSampleRate * 0.5), 0.0, 1e-9); // h = (1+a)/2：Nyquist 剛好 0 dB
+        DAWLAB_CHECK_NEAR(onePoleHpDb(1000.0, kSampleRate * 0.5), 0.0, 1e-9); // h = (1+a)/2: exactly 0 dB at Nyquist
 
-        // NaN 參數防護（README 第 4 節）：std::clamp / std::max 擋不住 NaN，所以 setter / factory 要先擋
+        // NaN parameter guards (README section 4): std::clamp / std::max cannot stop NaN, so the setter / factories must block it first
         {
             const double before = hp.getCoefficient();
-            hp.setCutoff(std::numeric_limits<float>::quiet_NaN()); // 被忽略，保留上一個有效值
+            hp.setCutoff(std::numeric_limits<float>::quiet_NaN()); // ignored, the last valid value is kept
             DAWLAB_CHECK(hp.getCoefficient() == before && std::isfinite(hp.processSample(0, 0.5f)));
             const double qnan = std::numeric_limits<double>::quiet_NaN();
             const BiquadCoefficients bad[] = {BiquadCoefficients::makeLowpass(kSampleRate, qnan, 0.7),
@@ -148,23 +153,23 @@ int main() {
                 DAWLAB_CHECK(std::isfinite(c.b0) && std::isfinite(c.a1) && c.isStable());
         }
 
-        // 手算對照（練習 1）：fc = 1 kHz 的兩種 one-pole 係數，以及 exp 版在 Nyquist 的增益
+        // Hand-calculation cross-check (exercise 1): both one-pole coefficient sets at fc = 1 kHz, and the exp version's gain at Nyquist
         const double a = lp.getCoefficient();
         const double nyqDb = gainToDb((1.0 - a) / (1.0 + a));
         const double g = std::tan(kPi * 1000.0 / kSampleRate);
         const double pole = (1.0 - g) / (1.0 + g);
-        std::printf("    手算對照：exp 版 a = %.6f，b0 = 1 - a = %.6f，Nyquist 增益 (1-a)/(1+a) = %.2f dB\n", a, 1.0 - a,
+        std::printf("    Hand-calculation check: exp version a = %.6f, b0 = 1 - a = %.6f, Nyquist gain (1-a)/(1+a) = %.2f dB\n", a, 1.0 - a,
                     nyqDb);
-        std::printf("              bilinear 版 g = tan(π fc/fs) = %.6f，pole = (1-g)/(1+g) = %.6f，b0 = b1 = g/(1+g) = %.6f\n\n",
+        std::printf("                            bilinear version g = tan(π fc/fs) = %.6f, pole = (1-g)/(1+g) = %.6f, b0 = b1 = g/(1+g) = %.6f\n\n",
                     g, pole, g / (1.0 + g));
         DAWLAB_CHECK_NEAR(a, 0.877306, 1e-6);
         DAWLAB_CHECK_NEAR(nyqDb, -23.69, 0.01);
         DAWLAB_CHECK_NEAR(onePoleExpDb(1000.0, kSampleRate * 0.5), nyqDb, 1e-9);
         DAWLAB_CHECK_NEAR(pole, 0.876976, 1e-6);
-        DAWLAB_CHECK(onePoleBilinearDb(1000.0, kSampleRate * 0.4999) < -80.0); // zero 在 z = -1：Nyquist 處趨近 -∞
+        DAWLAB_CHECK(onePoleBilinearDb(1000.0, kSampleRate * 0.4999) < -80.0); // the zero sits at z = -1: the response heads to -∞ at Nyquist
     }
 
-    // ---- 2. biquad 八種 filter：理論 vs 實測 ------------------------------------------
+    // ---- 2. The eight biquad filters: theory vs. measurement ----------------------------
     struct Case {
         const char* name;
         BiquadCoefficients c;
@@ -182,7 +187,7 @@ int main() {
     };
     const double freqs[] = {50.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 16000.0};
 
-    std::printf("[2] RBJ biquad（fc = 1 kHz）：每格「理論 / 實測」dB\n");
+    std::printf("[2] RBJ biquad (fc = 1 kHz): each cell is \"theory / measured\" in dB\n");
     std::printf("    %-17s", "filter");
     for (double f : freqs)
         std::printf("  %13.0f", f);
@@ -202,46 +207,46 @@ int main() {
             if (theory > -50.0)
                 DAWLAB_CHECK_NEAR(meas, theory, 0.1);
             else
-                DAWLAB_CHECK(meas < -50.0); // notch 中心：量測受 window leakage 限制，只要求「非常深」
+                DAWLAB_CHECK(meas < -50.0); // notch center: the measurement is limited by window leakage, so only require "very deep"
         }
         std::printf("\n");
         DAWLAB_CHECK(cs.c.isStable());
     }
     std::printf("\n");
 
-    // 幾個「教科書數字」的 self-check
+    // Self-checks for a few "textbook numbers"
     const BiquadCoefficients lpf = cases[0].c;
-    DAWLAB_CHECK_NEAR(lpf.magnitudeDb(1000.0, kSampleRate), -3.01, 0.05);  // Butterworth：cutoff 處 -3 dB
-    DAWLAB_CHECK_NEAR(lpf.magnitudeDb(20.0, kSampleRate), 0.0, 0.01);      // 通帶 0 dB
-    DAWLAB_CHECK_NEAR(cases[2].c.magnitudeDb(1000.0, kSampleRate), 0.0, 0.01); // BPF 峰值 0 dB
-    DAWLAB_CHECK(cases[3].c.magnitudeDb(1000.0, kSampleRate) < -60.0);        // notch 中心幾乎全消
-    DAWLAB_CHECK_NEAR(cases[4].c.magnitudeDb(300.0, kSampleRate), 0.0, 1e-9); // allpass 全頻段 0 dB
-    DAWLAB_CHECK_NEAR(std::abs(cases[4].c.phase(1000.0, kSampleRate)), kPi, 1e-6); // allpass 在 fc 相位 ±180°
-    DAWLAB_CHECK_NEAR(cases[5].c.magnitudeDb(1000.0, kSampleRate), 6.0, 0.01); // peak 在 fc = +6 dB
-    DAWLAB_CHECK_NEAR(cases[6].c.magnitudeDb(20.0, kSampleRate), 6.0, 0.05);   // low shelf 低頻 +6 dB
-    DAWLAB_CHECK_NEAR(cases[7].c.magnitudeDb(20000.0, kSampleRate), -6.0, 0.05); // high shelf 高頻 -6 dB
+    DAWLAB_CHECK_NEAR(lpf.magnitudeDb(1000.0, kSampleRate), -3.01, 0.05);  // Butterworth: -3 dB at the cutoff
+    DAWLAB_CHECK_NEAR(lpf.magnitudeDb(20.0, kSampleRate), 0.0, 0.01);      // 0 dB in the passband
+    DAWLAB_CHECK_NEAR(cases[2].c.magnitudeDb(1000.0, kSampleRate), 0.0, 0.01); // bandpass peak is 0 dB
+    DAWLAB_CHECK(cases[3].c.magnitudeDb(1000.0, kSampleRate) < -60.0);        // notch center is almost fully cancelled
+    DAWLAB_CHECK_NEAR(cases[4].c.magnitudeDb(300.0, kSampleRate), 0.0, 1e-9); // allpass is 0 dB at all frequencies
+    DAWLAB_CHECK_NEAR(std::abs(cases[4].c.phase(1000.0, kSampleRate)), kPi, 1e-6); // allpass phase is ±180° at fc
+    DAWLAB_CHECK_NEAR(cases[5].c.magnitudeDb(1000.0, kSampleRate), 6.0, 0.01); // peak at fc = +6 dB
+    DAWLAB_CHECK_NEAR(cases[6].c.magnitudeDb(20.0, kSampleRate), 6.0, 0.05);   // low shelf is +6 dB at low frequencies
+    DAWLAB_CHECK_NEAR(cases[7].c.magnitudeDb(20000.0, kSampleRate), -6.0, 0.05); // high shelf is -6 dB at high frequencies
 
-    // ---- 3. 斜率：每個 octave 掉幾 dB ------------------------------------------------
-    std::printf("[3] 斜率（cutoff 以上，每升一個 octave 的衰減）\n");
+    // ---- 3. Slope: how many dB per octave ---------------------------------------------
+    std::printf("[3] Slope (attenuation per octave above the cutoff)\n");
     {
         const double d1 = lpf.magnitudeDb(4000.0, kSampleRate) - lpf.magnitudeDb(2000.0, kSampleRate);
         const double d2 = lpf.magnitudeDb(8000.0, kSampleRate) - lpf.magnitudeDb(4000.0, kSampleRate);
-        // one-pole 用 fc = 100 Hz 來看：離 Nyquist 夠遠，才看得到乾淨的 -6 dB/oct 漸近線
+        // For the one-pole use fc = 100 Hz: far enough from Nyquist to see a clean -6 dB/oct asymptote
         const double o1 = onePoleExpDb(100.0, 1600.0) - onePoleExpDb(100.0, 800.0);
         const double o2 = onePoleExpDb(1000.0, 4000.0) - onePoleExpDb(1000.0, 2000.0);
-        std::printf("    biquad LPF fc=1k    2k→4k: %.2f dB   4k→8k: %.2f dB   （漸近 -12 dB/oct；8 kHz 已開始 cramping，更陡）\n",
+        std::printf("    biquad LPF fc=1k    2k->4k: %.2f dB   4k->8k: %.2f dB   (asymptotically -12 dB/oct; cramping has started by 8 kHz, so it is steeper)\n",
                     d1, d2);
-        std::printf("    one-pole LP fc=100  800→1.6k: %.2f dB                  （漸近 -6 dB/oct）\n", o1);
-        std::printf("    one-pole LP fc=1k   2k→4k: %.2f dB   （exp 版在 Nyquist 處不是 -∞，fc 高時斜率不到 6 dB/oct）\n", o2);
+        std::printf("    one-pole LP fc=100  800->1.6k: %.2f dB                  (asymptotically -6 dB/oct)\n", o1);
+        std::printf("    one-pole LP fc=1k   2k->4k: %.2f dB   (the exp version is not -∞ at Nyquist, so for a high fc the slope is less than 6 dB/oct)\n", o2);
         DAWLAB_CHECK_NEAR(d1, -12.0, 0.6);
-        DAWLAB_CHECK(d2 < d1 - 0.5); // cramping：越接近 Nyquist 越陡
+        DAWLAB_CHECK(d2 < d1 - 0.5); // cramping: steeper the closer to Nyquist
         DAWLAB_CHECK_NEAR(o1, -6.0, 0.3);
         DAWLAB_CHECK(o2 > -6.0 && o2 < -4.5);
     }
     std::printf("\n");
 
-    // ---- 4. Cramping：cutoff 接近 Nyquist ----------------------------------------------
-    std::printf("[4] Cramping：analog prototype vs bilinear 後的 digital 響應（LPF Q=0.707）\n");
+    // ---- 4. Cramping: cutoff close to Nyquist ----------------------------------------
+    std::printf("[4] Cramping: analog prototype vs. the digital response after bilinear (LPF Q=0.707)\n");
     std::printf("    %8s  %8s  %12s  %12s\n", "fc", "f", "analog dB", "digital dB");
     for (double cutoff : {1000.0, 10000.0, 18000.0}) {
         const BiquadCoefficients c = BiquadCoefficients::makeLowpass(kSampleRate, cutoff, q);
@@ -249,17 +254,17 @@ int main() {
             const double f = cutoff * ratio;
             if (f >= kSampleRate * 0.5)
                 continue;
-            // analog 二階 Butterworth：|H|² = 1 / (1 + (f/fc)^4)
+            // Analog second-order Butterworth: |H|² = 1 / (1 + (f/fc)^4)
             const double analog = -10.0 * std::log10(1.0 + std::pow(f / cutoff, 4.0));
             const double digital = c.magnitudeDb(f, kSampleRate);
             std::printf("    %8.0f  %8.0f  %12.2f  %12.2f\n", cutoff, f, analog, digital);
             if (ratio == 1.0)
-                DAWLAB_CHECK_NEAR(digital, -3.01, 0.01); // prewarp：cutoff 處永遠 -3.01 dB
+                DAWLAB_CHECK_NEAR(digital, -3.01, 0.01); // prewarping: always -3.01 dB at the cutoff
             if (ratio == 1.2 && cutoff == 1000.0)
-                DAWLAB_CHECK_NEAR(digital, analog, 0.02); // fc 低：幾乎和 analog 一樣
+                DAWLAB_CHECK_NEAR(digital, analog, 0.02); // low fc: almost identical to analog
         }
     }
-    // 2.14 節表格的數字：cutoff 上方 20% 處 analog 都是 -4.88 dB；digital 在 fc = 10k / 18k 時是 -5.89 / -16.79 dB
+    // Numbers in the section 2.14 table: 20% above the cutoff the analog response is -4.88 dB everywhere; the digital response is -5.89 / -16.79 dB at fc = 10k / 18k
     {
         const auto digitalAt = [&](double cutoff, double f) {
             return BiquadCoefficients::makeLowpass(kSampleRate, cutoff, q).magnitudeDb(f, kSampleRate);
@@ -268,10 +273,10 @@ int main() {
         DAWLAB_CHECK_NEAR(analog12, -4.88, 0.01);
         DAWLAB_CHECK_NEAR(digitalAt(10000.0, 12000.0), -5.89, 0.01);
         DAWLAB_CHECK_NEAR(digitalAt(18000.0, 21600.0), -16.79, 0.01);
-        DAWLAB_CHECK(digitalAt(18000.0, 21600.0) < analog12 - 10.0); // cramping：多衰減超過 10 dB
+        DAWLAB_CHECK(digitalAt(18000.0, 21600.0) < analog12 - 10.0); // cramping: more than 10 dB of extra attenuation
     }
-    std::printf("    → cutoff 處永遠對齊（prewarp 保證），但 cutoff 以上的曲線被壓向 Nyquist（24 kHz 處 = -∞）。\n");
-    std::printf("      fc = 18 kHz 時 21.6 kHz 的衰減遠比 analog 深，這就是 cramping。\n\n");
+    std::printf("    -> The response always lines up at the cutoff (guaranteed by prewarping), but the curve above the cutoff is squeezed toward Nyquist (= -∞ at 24 kHz).\n");
+    std::printf("       With fc = 18 kHz the attenuation at 21.6 kHz is far deeper than analog; that is cramping.\n\n");
 
     return dawlab::test::summary("l02_filter_response");
 }

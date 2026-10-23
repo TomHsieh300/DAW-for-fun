@@ -1,9 +1,9 @@
-// 練習 6：FIR moving average vs one-pole lowpass（起始碼）。
+// Exercise 6: FIR moving average vs. one-pole lowpass (starter code).
 //
-// 完成 TODO：
-//   1. processSample()：用 running sum 實作 N 點 moving average（加新的、減掉 N 個 sample 前的）。
-//   2. magnitudeDb()：|H(e^{jω})| = |sin(Nω/2) / (N sin(ω/2))|。
-// 驗證：fs/N 處為 null（-100 dB，gainToDb 的下限）、-3 dB 點 ≈ 0.443 fs/N、step response 剛好 N 個 sample 到位。
+// Complete the TODOs:
+//   1. processSample(): implement an N-point moving average with a running sum (add the new sample, subtract the one from N samples ago).
+//   2. magnitudeDb(): |H(e^{jω})| = |sin(Nω/2) / (N sin(ω/2))|.
+// Verification: a null at fs/N (-100 dB, the floor of gainToDb), the -3 dB point ~ 0.443 fs/N, and the step response settles in exactly N samples.
 #include <dawlab/Common.h>
 #include <dawlab/dsp/OnePole.h>
 
@@ -34,7 +34,7 @@ public:
 
     float processSample(int channel, float x) noexcept {
         const auto ch = static_cast<size_t>(channel);
-        // TODO: sum += x - history[writeIndex]; history[writeIndex] = x; writeIndex 前進；回傳 sum / N
+        // TODO: sum += x - history[writeIndex]; history[writeIndex] = x; advance writeIndex; return sum / N
         (void)ch;
         return x;
     }
@@ -49,7 +49,7 @@ public:
     }
 
     double magnitudeDb(double f, double sampleRate) const {
-        // TODO: ω = 2π f / fs；ω ≈ 0 時回傳 0 dB，否則 20 log10 |sin(Nω/2) / (N sin(ω/2))|
+        // TODO: ω = 2π f / fs; return 0 dB when ω ~ 0, otherwise 20 log10 |sin(Nω/2) / (N sin(ω/2))|
         (void)f;
         (void)sampleRate;
         return 0.0;
@@ -72,7 +72,7 @@ int main() {
     double f3 = 10.0;
     while (f3 < 20000.0 && ma.magnitudeDb(f3, kSampleRate) > -3.0103)
         f3 *= 1.0005;
-    std::printf("-3 dB 點 = %.0f Hz（近似 %.0f）\n", f3, f3Approx);
+    std::printf("-3 dB point = %.0f Hz (approximation %.0f)\n", f3, f3Approx);
     DAWLAB_CHECK_NEAR(f3, f3Approx, f3Approx * 0.02);
 
     for (double f : {100.0, 1000.0, 4000.0, firstNull, 1.5 * firstNull}) {
@@ -85,7 +85,7 @@ int main() {
         else
             DAWLAB_CHECK(meas < -50.0);
     }
-    DAWLAB_CHECK(ma.magnitudeDb(firstNull, kSampleRate) <= -99.9); // gainToDb 的下限是 -100 dB
+    DAWLAB_CHECK(ma.magnitudeDb(firstNull, kSampleRate) <= -99.9); // the floor of gainToDb is -100 dB
     DAWLAB_CHECK_NEAR(ma.magnitudeDb(1.5 * firstNull, kSampleRate), -12.96, 0.05);
 
     ma.reset();
@@ -93,7 +93,7 @@ int main() {
     for (int i = 0; i < 64; ++i)
         if (maSettle < 0 && std::abs(ma.processSample(0, 1.0f) - 1.0f) < 1e-6f)
             maSettle = i + 1;
-    std::printf("step response 到位需要 %d samples（應該剛好 N = %d）\n", maSettle, N);
+    std::printf("The step response takes %d samples to settle (should be exactly N = %d)\n", maSettle, N);
     DAWLAB_CHECK(maSettle == N);
 
     return dawlab::test::summary("l02_ex6_starter");

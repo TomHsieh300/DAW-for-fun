@@ -1,10 +1,10 @@
-// 練習 5：從 biquad 係數算出 pole 並判斷穩定性（起始碼）。
+// Exercise 5: compute the poles from biquad coefficients and judge stability (starter code).
 //
-// 完成 TODO：
-//   1. computePoles()：解 z² + a1 z + a2 = 0（用 std::complex 的 sqrt，判別式為負時會得到共軛 pole）。
-//   2. isStable()：所有 pole 的 |p| < 1。
-//   3. tailToHeadRatio()：送 impulse 進 filter，回傳「最後 10% 的峰值 / 前 10% 的峰值」。
-// 驗證：與 BiquadCoefficients::poles() / isStable() 一致；穩定的 filter impulse response 會衰減。
+// Complete the TODOs:
+//   1. computePoles(): solve z² + a1 z + a2 = 0 (use std::complex's sqrt; a negative discriminant yields conjugate poles).
+//   2. isStable(): every pole has |p| < 1.
+//   3. tailToHeadRatio(): feed an impulse into the filter and return "peak of the last 10% / peak of the first 10%".
+// Verification: agrees with BiquadCoefficients::poles() / isStable(); the impulse response of a stable filter decays.
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Biquad.h>
 
@@ -28,14 +28,14 @@ static Poles computePoles(double a1, double a2) {
 }
 
 static bool isStable(double a1, double a2) {
-    // TODO: 兩個 pole 的 |p| 都 < 1
+    // TODO: both poles have |p| < 1
     (void)a1;
     (void)a2;
     return false;
 }
 
 static double tailToHeadRatio(const BiquadCoefficients& c, int n) {
-    // TODO: 用 Biquad 跑 impulse，比較最後 n/10 個與最前 n/10 個 sample 的峰值
+    // TODO: run an impulse through a Biquad and compare the peak of the last n/10 samples with that of the first n/10 samples
     (void)c;
     (void)n;
     return 1.0;

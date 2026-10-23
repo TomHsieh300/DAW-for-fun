@@ -1,19 +1,24 @@
-// l02_cutoff_modulation：快速調變 cutoff 時，biquad vs TPT state-variable filter。
+// l02_cutoff_modulation: fast cutoff modulation, biquad vs. TPT state-variable filter.
 //
-// 示範什麼：
-//   - 用 6 Hz 的 LFO 讓 lowpass 的 cutoff 在 200 Hz ~ 8 kHz 之間快速來回（像 auto-wah）。
-//   - Biquad 的係數只能在 block 之間換（每 512 samples ≈ 10.7 ms 一次），cutoff 是階梯狀前進：
-//     resonance 峰停在錯的頻率、一格一格跳（[B2] 量化它和理想平滑調變的差異），聽起來有顆粒感。
-//     [B3] 另外實測 cutoff 瞬間大跳時的過衝：TDF-II 與 SVF 其實都不大（TDF-II 的狀態和輸出同量級）。
-//   - StateVariableFilter（TPT）的 cutoff 可以每個 sample 更新（一次 tan），而且狀態是物理量，
-//     調變時平順得多。
-//   - 兩者的靜態頻率響應完全一樣（最後用 measureGainDb 驗證），差別只在「動起來」的時候。
+// What it shows:
+//   - A 6 Hz LFO sweeps the lowpass cutoff quickly between 200 Hz and 8 kHz (like an auto-wah).
+//   - A biquad's coefficients can only be swapped between blocks (once every 512 samples,
+//     about 10.7 ms), so the cutoff advances in steps: the resonance peak sits at the wrong
+//     frequency and jumps from step to step ([B2] quantifies the difference from an ideal smooth
+//     modulation), which sounds grainy.
+//     [B3] also measures the overshoot when the cutoff jumps suddenly: neither the TDF-II biquad
+//     nor the SVF overshoots much (the TDF-II state is of the same magnitude as its output).
+//   - The StateVariableFilter (TPT) can update its cutoff on every sample (one tan), and its
+//     state variables are physical quantities, so it is much smoother under modulation.
+//   - Their static frequency responses are identical (verified at the end with measureGainDb);
+//     the difference only appears when things are moving.
 //
-// 怎麼執行：不帶參數直接執行。輸出 WAV（dawlab_output/）：
-//   l02_mod_dry.wav、l02_mod_biquad_block.wav、l02_mod_svf_sample.wav
-// 該聽到什麼：兩者都是 wah-wah；biquad_block 的 resonance 峰是「一格一格跳」的（每 10.7 ms 跳一次，
-//   LFO 最快時一步接近一個 octave），聽起來有顆粒感；svf_sample 則是連續的滑動。
-//   peak / RMS 兩者差不多，差異要用 [B2] 的「與理想平滑調變的差」才量得出來。
+// How to run: run with no arguments. It writes WAV files (to dawlab_output/):
+//   l02_mod_dry.wav, l02_mod_biquad_block.wav, l02_mod_svf_sample.wav
+// What you should hear: both are wah-wah sounds. In biquad_block the resonance peak jumps in
+//   steps (once every 10.7 ms, and at the LFO's fastest almost an octave per step), which sounds
+//   grainy; svf_sample slides continuously. Peak / RMS are about the same for the two, so the
+//   difference can only be measured with the "difference from the ideal smooth modulation" of [B2].
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Biquad.h>
 #include <dawlab/dsp/StateVariableFilter.h>
@@ -31,20 +36,20 @@ constexpr int kBlockSize = 512;
 constexpr double kLfoHz = 6.0;
 constexpr double kQ = 6.0;
 
-// LFO：在 log 頻率軸上以正弦擺動的 cutoff
+// LFO: a cutoff that swings sinusoidally along a logarithmic frequency axis
 static double cutoffAt(int sampleIndex) {
     const double lfo = std::sin(kTwoPi * kLfoHz * sampleIndex / kSampleRate); // -1..1
     return 200.0 * std::pow(40.0, 0.5 + 0.5 * lfo);                             // 200 Hz..8 kHz
 }
 
 int main() {
-    std::printf("=== 第 02 章：cutoff 快速調變（LFO %.0f Hz, 200 Hz..8 kHz, Q = %.0f）===\n\n", kLfoHz, kQ);
+    std::printf("=== Chapter 02: fast cutoff modulation (LFO %.0f Hz, 200 Hz..8 kHz, Q = %.0f) ===\n\n", kLfoHz, kQ);
 
     AudioBuffer dry = makePluckSequence(kSampleRate, 4.0, 0.35f, 2);
     writeWav(outputPath("l02_mod_dry.wav"), dry, kSampleRate);
     const int total = dry.getNumSamples();
 
-    // ---- A. biquad：每個 block 更新一次係數 ------------------------------------------
+    // ---- A. biquad: update the coefficients once per block ---------------------------
     AudioBuffer outBiquad = dry;
     {
         Biquad bq;
@@ -57,7 +62,7 @@ int main() {
         }
     }
 
-    // ---- B. SVF：每個 sample 更新 cutoff ---------------------------------------------
+    // ---- B. SVF: update the cutoff on every sample -----------------------------------
     AudioBuffer outSvf = dry;
     {
         StateVariableFilter svf;
@@ -80,23 +85,27 @@ int main() {
     writeWav(outputPath("l02_mod_biquad_block.wav"), outBiquad, kSampleRate, 32);
     writeWav(outputPath("l02_mod_svf_sample.wav"), outSvf, kSampleRate, 32);
 
-    // 「block 之間跳係數」的 transient 有多大？量輸出的「一階差分」峰值（sample 之間的最大跳動）。
-    // 兩者都是同樣的 LFO，平滑度差異會直接反映在這個數字上。
+    // How large is the transient of "jumping the coefficients between blocks"? Measure the peak of
+    // the output's first difference (the largest jump between samples). Both use the same LFO,
+    // so any difference in smoothness shows up directly in this number.
     auto maxStep = [](const AudioBuffer& b) {
         float m = 0.0f;
         for (int i = 1; i < b.getNumSamples(); ++i)
             m = std::max(m, std::abs(b.getSample(0, i) - b.getSample(0, i - 1)));
         return m;
     };
-    std::printf("\n    sample 間最大跳動：biquad %.4f，SVF %.4f（pluck 本身的 transient 主導了這個數字，看不出差別）\n",
+    std::printf("\n    Largest jump between samples: biquad %.4f, SVF %.4f (the pluck's own transient dominates this number, so no difference is visible)\n",
                 maxStep(outBiquad), maxStep(outSvf));
 
-    // ---- B2. 用穩態訊號量「階梯式 cutoff」帶來的差異 ---------------------------------------
-    // 輸入：110 Hz 的 band-limited saw（諧波到 8 kHz），沒有自己的 transient。
-    // 以「每個 sample 都重算 RBJ 係數的 biquad」當作理想的平滑調變，量：
-    //   - per-block biquad 與它的差（= 階梯式 cutoff 造成的 zipper 成分，RMS dB re. 訊號）
-    //   - per-sample SVF 與它的差（兩種結構在調變中的狀態語意不同，但都平滑）
-    std::printf("\n[B2] 穩態 saw 110 Hz，以 per-sample biquad 為基準的差異（RMS，dB re. 輸出）\n");
+    // ---- B2. Measure the effect of a "stepped cutoff" with a steady-state signal -----------
+    // Input: a 110 Hz band-limited saw (harmonics up to 8 kHz) with no transient of its own.
+    // A biquad that recomputes its RBJ coefficients on every sample serves as the ideal smooth
+    // modulation. Measure:
+    //   - the difference between the per-block biquad and it (= the zipper component caused by the
+    //     stepped cutoff, RMS dB re. signal)
+    //   - the difference between the per-sample SVF and it (the two structures have different state
+    //     semantics during modulation, but both are smooth)
+    std::printf("\n[B2] Steady-state saw 110 Hz, difference from the per-sample biquad (RMS, dB re. output)\n");
     std::vector<float> saw(static_cast<size_t>(48000 * 2));
     for (size_t i = 0; i < saw.size(); ++i) {
         double v = 0.0;
@@ -121,7 +130,7 @@ int main() {
             const double yBlock = perBlock.processSample(0, saw[i]);
             const double yRef = perSample.processSample(0, saw[i]);
             const double ySvf = svfMod.processSample(0, saw[i]);
-            if (n >= 4800) { // 跳過開頭 0.1 s
+            if (n >= 4800) { // skip the first 0.1 s
                 refPow += yRef * yRef;
                 errBlock += (yBlock - yRef) * (yBlock - yRef);
                 errSvf += (ySvf - yRef) * (ySvf - yRef);
@@ -129,18 +138,19 @@ int main() {
         }
         const double blockDb = 10.0 * std::log10(errBlock / refPow);
         const double svfDb = 10.0 * std::log10(errSvf / refPow);
-        std::printf("    biquad per-block（每 %d samples 換一次係數）   %7.2f dB\n", kBlockSize, blockDb);
-        std::printf("    SVF per-sample                                %7.2f dB\n", svfDb);
-        std::printf("    → block 階梯造成的差異幾乎和訊號本身一樣大（resonance 峰停在錯的頻率上）；\n"
-                    "      per-sample SVF 與 per-sample biquad 接近得多（剩下的差異來自調變中兩種結構的狀態語意不同）。\n");
+        std::printf("    biquad per-block (coefficients swapped every %d samples)   %7.2f dB\n", kBlockSize, blockDb);
+        std::printf("    SVF per-sample                                             %7.2f dB\n", svfDb);
+        std::printf("    -> The error from the block steps is almost as large as the signal itself (the resonance peak sits at the wrong frequency);\n"
+                    "       the per-sample SVF is much closer to the per-sample biquad (the remaining difference comes from the two structures' different state semantics during modulation).\n");
         DAWLAB_CHECK(blockDb > -30.0);
         DAWLAB_CHECK(svfDb < blockDb - 10.0);
     }
 
-    // ---- B3. cutoff 瞬間大跳（200 Hz → 8 kHz）：換係數後的過衝 ---------------------------
-    // 穩態 saw 先以 cutoff 200 Hz 跑 0.5 s，然後一個 sample 內跳到 8 kHz。
-    // 比較「跳之後 20 ms 內的峰值」與「8 kHz 穩態的峰值」：越接近 1 代表狀態與新係數越相容。
-    std::printf("\n[B3] cutoff 200 Hz → 8 kHz 瞬間跳：跳後 20 ms 內的峰值 / 8 kHz 穩態峰值\n");
+    // ---- B3. A sudden large cutoff jump (200 Hz -> 8 kHz): overshoot after the coefficient change ----
+    // Run the steady-state saw with the cutoff at 200 Hz for 0.5 s, then jump to 8 kHz within one sample.
+    // Compare "the peak within 20 ms after the jump" with "the steady-state peak at 8 kHz":
+    // the closer to 1, the better the state is compatible with the new coefficients.
+    std::printf("\n[B3] Sudden cutoff jump 200 Hz -> 8 kHz: peak within 20 ms after the jump / steady-state peak at 8 kHz\n");
     {
         auto overshoot = [&](auto&& setCutoff, auto&& processOne) {
             const int jumpAt = 24000, window = 960;
@@ -169,13 +179,13 @@ int main() {
         const double rSvf = overshoot([&](double fc) { svfJump.setCutoff(static_cast<float>(fc)); },
                                       [&](float x) { return svfJump.processSample(0, x); });
         std::printf("    biquad (TDF-II)  %.3f\n    SVF (TPT)        %.3f\n", rBq, rSvf);
-        std::printf("    → 兩者都沒有爆衝（TDF-II 的狀態與輸出同量級，見 l02_direct_forms）；\n"
-                    "      SVF 的優勢在於每個 sample 更新只要一次 tan，而且同一組狀態同時給 LP/BP/HP/Notch。\n");
+        std::printf("    -> Neither blows up (the TDF-II state is of the same magnitude as its output, see l02_direct_forms);\n"
+                    "       the SVF's advantage is that a per-sample update costs just one tan, and the same set of states serves LP/BP/HP/Notch at once.\n");
         DAWLAB_CHECK(rBq < 2.0 && rSvf < 2.0);
     }
 
-    // ---- C. 靜態響應一致 ----------------------------------------------------------------
-    std::printf("\n[C] 靜態響應（cutoff 固定 1 kHz, Q = %.0f）：biquad 與 SVF 應該完全一樣\n", kQ);
+    // ---- C. The static responses agree -------------------------------------------------
+    std::printf("\n[C] Static response (fixed cutoff 1 kHz, Q = %.0f): the biquad and the SVF should be exactly the same\n", kQ);
     Biquad bq;
     bq.prepare(kSampleRate, kBlockSize, 1);
     bq.setCoefficients(BiquadCoefficients::makeLowpass(kSampleRate, 1000.0, kQ));
@@ -192,7 +202,7 @@ int main() {
         std::printf("    %8.0f  %10.2f  %10.2f\n", f, a, b);
         DAWLAB_CHECK_NEAR(a, b, 0.05);
     }
-    // SVF 的 highpass / bandpass / notch 也對應 RBJ 的同名 filter
+    // The SVF's highpass / bandpass / notch also match RBJ's filters of the same names
     for (auto [type, coeffs] : {
              std::pair{StateVariableFilter::Type::Highpass, BiquadCoefficients::makeHighpass(kSampleRate, 1000.0, 2.0)},
              std::pair{StateVariableFilter::Type::Bandpass, BiquadCoefficients::makeBandpass(kSampleRate, 1000.0, 2.0)},
@@ -209,7 +219,7 @@ int main() {
                 DAWLAB_CHECK(meas < -50.0);
         }
     }
-    std::printf("    （SVF 的 Highpass / Bandpass / Notch 也與 RBJ 同名 filter 一致，見 self-check）\n\n");
+    std::printf("    (The SVF's Highpass / Bandpass / Notch also match the RBJ filters of the same names; see the self-check)\n\n");
 
     return dawlab::test::summary("l02_cutoff_modulation");
 }

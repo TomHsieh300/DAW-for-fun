@@ -1,10 +1,11 @@
-// 練習 3：兩級 biquad 串接成 4 階 Butterworth lowpass（起始碼）。
+// Exercise 3: two cascaded biquads forming a 4th-order Butterworth lowpass (starter code).
 //
-// 完成 TODO：
-//   1. 算出 4 階 Butterworth 兩級的 Q（提示：N 為偶數時 Q_k = 1 / (2 cos((2k+1)π/(2N)))，或用 dsp::butterworthQ）。
-//   2. 在 setCutoff() 裡用同一個 fc、不同的 Q 設定兩級。
-//   3. processSample() 把兩級串起來；magnitudeDb() 把兩級的 dB 相加。
-// 驗證：cutoff 處 -3.01 dB、2 fc 處約 -24.1 dB。
+// Complete the TODOs:
+//   1. Work out the Q of each of the two stages of a 4th-order Butterworth (hint: for even N,
+//      Q_k = 1 / (2 cos((2k+1)π/(2N))), or use dsp::butterworthQ).
+//   2. In setCutoff(), set the two stages with the same fc but different Qs.
+//   3. processSample() chains the two stages; magnitudeDb() adds the dB values of the two stages.
+// Verification: -3.01 dB at the cutoff, about -24.1 dB at 2 fc.
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Biquad.h>
 
@@ -30,12 +31,12 @@ public:
     }
     void setCutoff(float hz) noexcept {
         cutoff_ = hz;
-        // TODO: 兩級 Q 值不同（0.5412 與 1.3066），這裡暫時都用 0.707——這是錯的，請修正
+        // TODO: the two stages have different Q values (0.5412 and 1.3066); for now both use 0.707 -- this is wrong, please fix it
         for (Biquad& s : stages_)
             s.setCoefficients(BiquadCoefficients::makeLowpass(sampleRate_, hz, 0.7071));
     }
     float processSample(int ch, float x) noexcept {
-        // TODO: 串接兩級
+        // TODO: chain the two stages
         return stages_[0].processSample(ch, x);
     }
     void process(AudioBlock block) noexcept {
@@ -43,7 +44,7 @@ public:
             s.process(block);
     }
     double magnitudeDb(double f) const {
-        // TODO: 回傳兩級 dB 相加
+        // TODO: return the sum of the two stages' dB values
         return stages_[0].getCoefficients().magnitudeDb(f, sampleRate_);
     }
 
@@ -66,7 +67,7 @@ int main() {
         const double meas = measureGainDb([&](float x) { return lp.processSample(0, x); }, f, kSampleRate, 0.5, 0.5);
         std::printf("%8.0f  %12.2f  %12.2f  %12.2f\n", f, analog, lp.magnitudeDb(f), meas);
         DAWLAB_CHECK_NEAR(meas, lp.magnitudeDb(f), 0.1);
-        // 4 kHz 已經開始 cramping（digital 比 analog 陡約 0.8 dB），所以容許誤差放寬
+        // Cramping has already started at 4 kHz (the digital response is about 0.8 dB steeper than analog), so the tolerance is relaxed
         DAWLAB_CHECK_NEAR(lp.magnitudeDb(f), analog, f <= 2000.0 ? 0.3 : 1.0);
     }
     DAWLAB_CHECK_NEAR(lp.magnitudeDb(fc), -3.01, 0.05);

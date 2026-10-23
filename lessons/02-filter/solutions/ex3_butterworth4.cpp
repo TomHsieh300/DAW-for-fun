@@ -1,11 +1,12 @@
-// 練習 3 解答：用兩級 biquad 串接成 4 階 Butterworth lowpass（24 dB/oct）。
+// Exercise 3 solution: two cascaded biquads forming a 4th-order Butterworth lowpass (24 dB/oct).
 //
-// N 階 Butterworth 的 |H(jΩ)|² = 1 / (1 + (Ω/Ωc)^(2N))：通帶最平坦，cutoff 處永遠 -3 dB。
-// 拆成二階段時每一級的 Q 來自 pole 的角度：N 為偶數時 Q_k = 1 / (2 cos((2k+1)π/(2N)))，
-// N = 4 → Q = 0.5412（k=0）與 1.3066（k=1）。兩級都用同一個 fc。
-// （N 為奇數時角度改成 (k+1)π/N，另加一級 one-pole；最後也順便驗證 3 階的情況。）
+// For an N-th order Butterworth, |H(jΩ)|² = 1 / (1 + (Ω/Ωc)^(2N)): the passband is maximally flat
+// and the cutoff is always -3 dB. When split into second-order stages, the Q of each stage comes
+// from the pole angle: for even N, Q_k = 1 / (2 cos((2k+1)π/(2N))),
+// and N = 4 -> Q = 0.5412 (k=0) and 1.3066 (k=1). Both stages use the same fc.
+// (For odd N the angle becomes (k+1)π/N, plus one extra one-pole stage; at the end we also verify the 3rd-order case.)
 //
-// 注意：兩級都用 Q = 0.707 串起來「不是」Butterworth——cutoff 處會變成 -6 dB，通帶也不最平坦。
+// Note: cascading two stages that both use Q = 0.707 is *not* a Butterworth -- the cutoff becomes -6 dB and the passband is no longer maximally flat.
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Biquad.h>
 
@@ -18,7 +19,7 @@ using dawlab::dsp::butterworthQ;
 
 constexpr double kSampleRate = 48000.0;
 
-// 兩級 biquad 串接
+// Two cascaded biquad stages
 class Butterworth4Lowpass {
 public:
     void prepare(double sampleRate, int maxBlockSize, int numChannels) {
@@ -43,7 +44,7 @@ public:
         for (Biquad& s : stages_)
             s.process(block);
     }
-    // 整體響應 = 各級響應相乘（dB 相加）
+    // Overall response = product of the stage responses (dB values add)
     double magnitudeDb(double f) const {
         return stages_[0].getCoefficients().magnitudeDb(f, sampleRate_) +
                stages_[1].getCoefficients().magnitudeDb(f, sampleRate_);
@@ -56,21 +57,21 @@ private:
 };
 
 int main() {
-    std::printf("4 階 Butterworth 的 Q：%.4f, %.4f\n", butterworthQ(4, 0), butterworthQ(4, 1));
+    std::printf("Q values of a 4th-order Butterworth: %.4f, %.4f\n", butterworthQ(4, 0), butterworthQ(4, 1));
     DAWLAB_CHECK_NEAR(butterworthQ(4, 0), 0.5412, 1e-4);
     DAWLAB_CHECK_NEAR(butterworthQ(4, 1), 1.3066, 1e-4);
     DAWLAB_CHECK_NEAR(butterworthQ(2, 0), 0.70711, 1e-4);
 
-    // 奇數階：pole 角度（從負實軸量起）是 kπ/N，不是 (2k+1)π/(2N)。
-    // 3 階 = 一級 one-pole（φ = 0 的實數 pole）+ 一級 Q = 1 的 biquad（φ = π/3）；
-    // 5 階 = one-pole + Q = 0.618、1.618 兩級。
-    std::printf("奇數階的 Q：N=3 → %.4f；N=5 → %.4f, %.4f\n", butterworthQ(3, 0), butterworthQ(5, 0),
+    // Odd orders: the pole angle (measured from the negative real axis) is kπ/N, not (2k+1)π/(2N).
+    // 3rd order = one one-pole stage (the real pole at φ = 0) + one Q = 1 biquad (φ = π/3);
+    // 5th order = one-pole + two stages with Q = 0.618 and 1.618.
+    std::printf("Q values for odd orders: N=3 -> %.4f; N=5 -> %.4f, %.4f\n", butterworthQ(3, 0), butterworthQ(5, 0),
                 butterworthQ(5, 1));
     DAWLAB_CHECK_NEAR(butterworthQ(3, 0), 1.0, 1e-9);
     DAWLAB_CHECK_NEAR(butterworthQ(5, 0), 0.6180, 1e-4);
     DAWLAB_CHECK_NEAR(butterworthQ(5, 1), 1.6180, 1e-4);
     {
-        // 驗證：bilinear one-pole（-3 dB 精準在 fc）串接 makeLowpass(fc, butterworthQ(3, 0)) = 3 階 Butterworth
+        // Verify: a bilinear one-pole (-3 dB exactly at fc) cascaded with makeLowpass(fc, butterworthQ(3, 0)) = a 3rd-order Butterworth
         const double fc3 = 1000.0;
         const double g = std::tan(kPi * fc3 / kSampleRate);
         const BiquadCoefficients bq3 = BiquadCoefficients::makeLowpass(kSampleRate, fc3, butterworthQ(3, 0));
@@ -80,7 +81,7 @@ int main() {
             return onePoleDb + bq3.magnitudeDb(f, kSampleRate);
         };
         const double analog500 = -10.0 * std::log10(1.0 + std::pow(500.0 / fc3, 6.0)); // |H|² = 1/(1 + (f/fc)^6)
-        std::printf("3 階 Butterworth（one-pole + Q=1 biquad）：fc 處 %.2f dB，500 Hz 處 %.3f dB（analog %.3f dB）\n",
+        std::printf("3rd-order Butterworth (one-pole + Q=1 biquad): %.2f dB at fc, %.3f dB at 500 Hz (analog %.3f dB)\n",
                     order3Db(fc3), order3Db(500.0), analog500);
         DAWLAB_CHECK_NEAR(order3Db(fc3), -3.01, 0.01);
         DAWLAB_CHECK_NEAR(order3Db(500.0), analog500, 0.01);
@@ -91,39 +92,39 @@ int main() {
     lp.prepare(kSampleRate, 512, 1);
     lp.setCutoff(static_cast<float>(fc));
 
-    // 對照組：單一 biquad（12 dB/oct）、兩級 Q=0.707（錯誤的串法）
+    // Control groups: a single biquad (12 dB/oct), and two Q=0.707 stages (the wrong way to cascade)
     const BiquadCoefficients single = BiquadCoefficients::makeLowpass(kSampleRate, fc, BiquadCoefficients::kButterworthQ);
 
     std::printf("\n%8s  %12s  %12s  %12s  %14s\n", "f (Hz)", "analog BW4", "2-stage dB", "measured", "single biquad");
     for (double f : {100.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0}) {
-        // analog 4 階 Butterworth：-10 log10(1 + (f/fc)^8)
+        // Analog 4th-order Butterworth: -10 log10(1 + (f/fc)^8)
         const double analog = -10.0 * std::log10(1.0 + std::pow(f / fc, 8.0));
         lp.reset();
         const double meas = measureGainDb([&](float x) { return lp.processSample(0, x); }, f, kSampleRate, 0.5, 0.5);
         std::printf("%8.0f  %12.2f  %12.2f  %12.2f  %14.2f\n", f, analog, lp.magnitudeDb(f), meas,
                     single.magnitudeDb(f, kSampleRate));
         DAWLAB_CHECK_NEAR(meas, lp.magnitudeDb(f), 0.1);
-        // 遠離 Nyquist 時 digital ≈ analog；4 kHz（fs/12）已經開始 cramping，digital 比 analog 陡約 0.8 dB
+        // Far from Nyquist digital ~ analog; cramping has already started at 4 kHz (fs/12), where digital is about 0.8 dB steeper than analog
         if (f <= 2000.0)
             DAWLAB_CHECK_NEAR(lp.magnitudeDb(f), analog, 0.3);
         else if (f <= 4000.0)
             DAWLAB_CHECK_NEAR(lp.magnitudeDb(f), analog, 1.0);
     }
 
-    // 關鍵數字：cutoff -3.01 dB；1 octave 外 ≈ -24.1 dB（-10 log10(1 + 2^8) = -24.10）；
-    // 2 octaves 外 analog 是 -48.2 dB，digital 因 cramping 約 -48.9 dB
+    // Key numbers: -3.01 dB at the cutoff; ~ -24.1 dB one octave out (-10 log10(1 + 2^8) = -24.10);
+    // two octaves out analog is -48.2 dB, and digital is about -48.9 dB because of cramping
     DAWLAB_CHECK_NEAR(lp.magnitudeDb(fc), -3.01, 0.05);
     DAWLAB_CHECK_NEAR(lp.magnitudeDb(2.0 * fc), -24.1, 0.3);
     DAWLAB_CHECK_NEAR(lp.magnitudeDb(4.0 * fc), -48.2, 1.0);
-    // 通帶最平坦：500 Hz 處只掉 0.017 dB
+    // Maximally flat passband: only 0.017 dB down at 500 Hz
     DAWLAB_CHECK_NEAR(lp.magnitudeDb(500.0), -0.017, 0.02);
 
-    // 錯誤示範：兩級 Q = 0.707 串接，cutoff 處是 -6 dB
+    // Counter-example: two cascaded Q = 0.707 stages give -6 dB at the cutoff
     const double wrong = 2.0 * single.magnitudeDb(fc, kSampleRate);
-    std::printf("\n兩級都用 Q=0.707 串接時，cutoff 處 = %.2f dB（不是 Butterworth）\n", wrong);
+    std::printf("\nWith two Q=0.707 stages cascaded, the response at the cutoff = %.2f dB (not a Butterworth)\n", wrong);
     DAWLAB_CHECK_NEAR(wrong, -6.02, 0.1);
 
-    // 聽一下：白雜訊過 4 階 vs 2 階
+    // Listen: white noise through the 4th-order vs. the 2nd-order filter
     AudioBuffer noise = makeWhiteNoise(kSampleRate, 2.0, 0.25f, 2);
     AudioBuffer out4 = noise, out2 = noise;
     Butterworth4Lowpass lp2;
@@ -140,7 +141,7 @@ int main() {
     }
     writeWav(outputPath("l02_ex3_noise_butterworth4.wav"), out4, kSampleRate);
     writeWav(outputPath("l02_ex3_noise_biquad2.wav"), out2, kSampleRate);
-    std::printf("雜訊 RMS：dry %.2f dB → 2 階 %.2f dB → 4 階 %.2f dB（更陡 = 留下更少高頻能量）\n",
+    std::printf("Noise RMS: dry %.2f dB -> 2nd order %.2f dB -> 4th order %.2f dB (steeper = less high-frequency energy left)\n",
                 gainToDb(rms(noise, 0)), gainToDb(rms(out2, 0)), gainToDb(rms(out4, 0)));
     DAWLAB_CHECK(rms(out4, 0) < rms(out2, 0));
 
