@@ -1,5 +1,7 @@
 # Licensing
 
+**English** | [繁體中文](LICENSING.zh-TW.md)
+
 This repository uses two licenses, chosen by file type:
 
 | What | License | File |

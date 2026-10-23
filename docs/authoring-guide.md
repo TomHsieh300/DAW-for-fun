@@ -1,20 +1,26 @@
-# 教材撰寫規範（Authoring Guide）
+# Authoring Guide
+**English** | [繁體中文](authoring-guide.zh-TW.md)
 
-這份文件規定每一章的結構、程式風格與 API 合約。之後自己新增章節或練習時也照這份走，整套教材才會一致。
+This document defines the structure of each chapter, the code style and the API contract. Follow it whenever you add a chapter or an exercise, so that the whole course stays consistent.
 
-## 1. 讀者與語言
+## 1. Audience and language
 
-- 讀者：會基本 C++（class、template、std::vector、lambda），**沒學過 DSP**，目標是能自己寫 DAW。
-- 一律用**繁體中文**（不可出現簡體字）。專有名詞與技術術語保留英文，不硬翻：sample rate、buffer、block、filter、cutoff、Q、biquad、gain、dB、envelope、attack、release、threshold、ratio、knee、lookahead、aliasing、oversampling、waveshaper、plugin、host、callback、thread、lock-free……第一次出現時可以在括號補中文說明。
-- 程式碼識別字用英文；註解用繁體中文。
-- **例外：第 14 章（期末專題：8 軌 DAW）全部使用英文**——README、step-by-step 文件、程式註解、UI 文字、printf 輸出、練習題與解答都是英文。其他章節維持繁體中文。`Check.h` 的 PASS/FAIL 輸出本身是英文，各章都可直接使用。
-- 數學用 GitHub Markdown 支援的 LaTeX：行內 `$...$`、區塊 `$$...$$`。區塊圖用 ASCII 或 ```mermaid```。
+- Audience: readers who know basic C++ (classes, templates, `std::vector`, lambdas) but have **not studied DSP**, and whose goal is to be able to write a DAW themselves.
+- The course is **bilingual (English / Traditional Chinese), and English is the primary language**:
+  - The English version uses the original file name (for example `README.md`, `exercises/README.md`). Code comments and `printf` / `std::cout` output are always written in natural English.
+  - The Traditional Chinese version lives in the same folder under the same name with `.zh-TW` added (for example `README.zh-TW.md`, `exercises/README.zh-TW.md`). It must stay in sync with the English version, and it must not contain Simplified Chinese characters.
+  - Every Markdown file has a language switcher line right after its first line (the title): English files use `**English** | [繁體中文](xxx.zh-TW.md)` and Chinese files use `[English](xxx.md) | **繁體中文**`. Links in an English file point to other English files; links in a Chinese file point to the corresponding `.zh-TW.md` files. Links to code, images and LICENSE files are the same in both versions.
+  - In the Chinese version, proper nouns and technical terms stay in English instead of being translated literally: sample rate, buffer, block, filter, cutoff, Q, biquad, gain, dB, envelope, attack, release, threshold, ratio, knee, lookahead, aliasing, oversampling, waveshaper, plugin, host, callback, thread, lock-free, and so on. On first use you may add a Chinese explanation in parentheses.
+  - Program output quoted in the Chinese version stays in the English the program actually prints. Output quoted in a README must always be what the program really prints when run.
+  - **Chapter 14 is no longer a special case**: all code in the course (comments, UI text, output) is in English, and every chapter follows the same rules. The PASS/FAIL output of `Check.h` is also in English.
+- Identifiers in code are in English.
+- Math uses the LaTeX supported by GitHub Markdown: inline `$...$` and block `$$...$$`. For block diagrams use ASCII or ```mermaid```.
 
-## 2. 目錄結構
+## 2. Directory structure
 
 ```
-common/include/dawlab/        共用工具（已提供，不要改 API）
-  AudioBuffer.h  AudioBlock / AudioBuffer（non-interleaved float）
+common/include/dawlab/        Shared utilities (already provided; do not change the API)
+  AudioBuffer.h  AudioBlock / AudioBuffer (non-interleaved float)
   WavFile.h      readWav / writeWav / outputPath
   Signals.h      makeSine / makeLogSweep / makeWhiteNoise / makeImpulse / makeToneBursts /
                  makeDrumLoop / makePluck / makePluckSequence / NoiseGenerator
@@ -22,129 +28,129 @@ common/include/dawlab/        共用工具（已提供，不要改 API）
                  harmonicLevelsDb / thdPercent
   Check.h        DAWLAB_CHECK / DAWLAB_CHECK_NEAR / dawlab::test::summary
   DspMath.h      kPi / kTwoPi / dbToGain / gainToDb / lerp / msToSamples
-  Common.h       一次 include 以上全部
+  Common.h       Includes all of the above at once
 
-dsp/include/dawlab/dsp/       各章逐步長出來的 DSP 元件（header-only，namespace dawlab::dsp）
+dsp/include/dawlab/dsp/       DSP components that grow chapter by chapter (header-only, namespace dawlab::dsp)
 
 lessons/NN-name/
-  README.md                   原理講義（主教材）
+  README.md                   Theory notes (the main text); README.zh-TW.md is the Traditional Chinese version
   CMakeLists.txt
-  examples/*.cpp              範例程式（每支都能直接執行，ctest label: example）
-  exercises/README.md         練習題（只有題目與提示）
-  exercises/starter/*.cpp     實作題的起始碼（可編譯，留 TODO；只建置、不跑測試）
-  solutions/README.md         所有題目的解答與解說（含觀念題、計算題）
-  solutions/*.cpp             實作題的完整解答（含 self-check，ctest label: solution）
-  tests/*.cpp                 （可選）本章 dsp 元件的回歸測試（ctest label: test）
+  examples/*.cpp              Example programs (each one runs on its own, ctest label: example)
+  exercises/README.md         Exercises (problems and hints only; README.zh-TW.md alongside)
+  exercises/starter/*.cpp     Starter code for the programming exercises (compiles, contains TODOs; built but not run as a test)
+  solutions/README.md         Answers and explanations for all exercises, including the conceptual and calculation ones (README.zh-TW.md alongside)
+  solutions/*.cpp             Complete solutions to the programming exercises (with self-checks, ctest label: solution)
+  tests/*.cpp                 (Optional) regression tests for this chapter's dsp components (ctest label: test)
 ```
 
-## 3. 每章 README.md 的結構
+## 3. Structure of each chapter README.md
 
-1. **本章目標**：讀完能做到什麼（條列）。
-2. **原理**：從直覺 → 數學 → 圖解。要推導關鍵公式，不只丟結論；說明每個參數在聽感上的意義。
-3. **從公式到程式碼**：逐段解說 `dsp/include/dawlab/dsp/` 裡本章新增的 header，以及每支範例在示範什麼、怎麼執行、輸出哪些 WAV、該聽到什麼。
-4. **Real-time 注意事項**：本章元件在 audio thread 上要注意的事（allocation、denormal、參數平滑、thread safety……）。
-5. **常見錯誤與除錯**：初學者最常踩的坑與症狀（爆音、zipper noise、NaN、aliasing……）。
-6. **練習題**：連到 `exercises/README.md`。
-7. **延伸閱讀**：書、論文、規格（只列真實存在、你確定的資料）。
-8. **下一章**：一句話連到下一章。
+1. **Chapter goals**: what the reader can do after finishing (as a list).
+2. **Theory**: from intuition, to math, to diagrams. Derive the key formulas instead of just stating the result, and explain what each parameter means to the ear.
+3. **From formula to code**: a walkthrough of the headers this chapter adds under `dsp/include/dawlab/dsp/`, and what each example demonstrates, how to run it, which WAV files it writes and what you should hear.
+4. **Real-time considerations**: what to watch for when this chapter's components run on the audio thread (allocation, denormals, parameter smoothing, thread safety, ...).
+5. **Common mistakes and debugging**: the pitfalls beginners hit most often, and their symptoms (pops, zipper noise, NaN, aliasing, ...).
+6. **Exercises**: a link to `exercises/README.md`.
+7. **Further reading**: books, papers, specifications (list only sources that really exist and that you are sure of).
+8. **Next chapter**: one sentence linking to the next chapter.
 
-## 4. 程式碼規範
+## 4. Coding rules
 
-### 4.1 DSP 元件（`dsp/include/dawlab/dsp/*.h`）
+### 4.1 DSP components (`dsp/include/dawlab/dsp/*.h`)
 
-- header-only、`#pragma once`、`namespace dawlab::dsp`，只依賴標準函式庫與 `dawlab/` 共用工具（以及前面章節的 dsp header）。**不可依賴 JUCE**，這樣離線測試、plugin、DAW 都能共用同一份程式。
-- 統一介面：
+- Header-only, `#pragma once`, `namespace dawlab::dsp`, depending only on the standard library, the shared utilities under `dawlab/` (and the dsp headers of earlier chapters). **No JUCE dependency**, so that offline tests, plugins and the DAW can all share the same code.
+- Common interface:
 
 ```cpp
 class Xxx {
 public:
-    void prepare(double sampleRate, int maxBlockSize, int numChannels); // 唯一可以 allocate 的地方
-    void reset() noexcept;                                              // 清除內部狀態（filter memory、envelope…）
-    void setSomething(float value) noexcept;                            // 參數 setter：可在 block 之間呼叫
-    float processSample(int channel, float x) noexcept;                 // 逐 sample 的效果才提供
-    void process(AudioBlock block) noexcept;                            // in-place 處理整個 block
+    void prepare(double sampleRate, int maxBlockSize, int numChannels); // the only place allowed to allocate
+    void reset() noexcept;                                              // clear internal state (filter memory, envelope, ...)
+    void setSomething(float value) noexcept;                            // parameter setter: may be called between blocks
+    float processSample(int channel, float x) noexcept;                 // provided only for per-sample effects
+    void process(AudioBlock block) noexcept;                            // process a whole block in place
 };
 ```
 
-- `process()` 內**不可**：allocate / free、拿 mutex、檔案或 console I/O、throw exception。
-- 參數改變要避免 zipper noise / click：用 `SmoothedValue`（第 01 章）或係數插值。
-- 遞迴結構（IIR filter、envelope）要處理 denormal：在 `reset()` 歸零，必要時加極小 offset 或把極小值 flush 成 0。
-- 需要給 UI 讀的量測值（例如 gain reduction）用 `std::atomic<float>`（relaxed 即可）。
-- 註解解釋「為什麼」，公式旁邊寫出對應的數學式。
+- `process()` must **not**: allocate / free, take a mutex, do file or console I/O, or throw an exception.
+- Parameter changes must avoid zipper noise / clicks: use `SmoothedValue` (chapter 01) or coefficient interpolation.
+- Recursive structures (IIR filters, envelopes) must handle denormals: zero them in `reset()`, and where necessary add a tiny offset or flush tiny values to 0.
+- Measurements that the UI reads (for example gain reduction) use `std::atomic<float>` (relaxed ordering is enough).
+- Comments explain "why", and the corresponding math is written next to the formula.
 
-### 4.2 範例程式（`examples/*.cpp`）
+### 4.2 Example programs (`examples/*.cpp`)
 
-- `#include <dawlab/Common.h>` 與本章的 dsp header。
-- **不帶參數就能執行並成功結束（return 0）**：用 `Signals.h` 產生輸入訊號。可選擇接受 `argv[1]` 作為輸入 WAV 路徑。
-- 用 `dawlab::writeWav(dawlab::outputPath("lNN_xxx.wav"), buffer, sampleRate)` 輸出「處理前 / 處理後」的 WAV 供試聽，並用 printf 印出有意義的數字（peak、RMS、頻率響應表、gain reduction……）。
-- 預設 sample rate 48000 Hz、block size 512（模擬 audio callback 一塊一塊處理），不要整段一次處理。
-- 每支程式開頭有一段註解：示範什麼、怎麼執行、會輸出哪些檔案、該聽到什麼。
+- `#include <dawlab/Common.h>` and this chapter's dsp headers.
+- **It must run with no arguments and exit successfully (return 0)**: generate the input signal with `Signals.h`. It may optionally accept `argv[1]` as an input WAV path.
+- Write the "before / after" WAV files for listening with `dawlab::writeWav(dawlab::outputPath("lNN_xxx.wav"), buffer, sampleRate)`, and print meaningful numbers with printf (peak, RMS, frequency-response table, gain reduction, ...).
+- Default to a 48000 Hz sample rate and a block size of 512 (simulating an audio callback that processes one block at a time); do not process the whole signal in one go.
+- Every program starts with a comment block: what it demonstrates, how to run it, which files it writes and what you should hear.
 
-### 4.3 練習題
+### 4.3 Exercises
 
-- 每章 5–8 題（第 08 章有 8 題，讓 Gate、Expander、De-esser、Transient shaper 各有實作題；例外：第 14 章為 7 題 engine 練習 + 6 個可選的 application project，標為 Exercises 1–7 與 optional Projects 8–13），混合：**觀念題**、**計算題**（手算 dB、係數、時間常數……）、**實作題**（至少 3 題）。標示難度 ★☆☆ / ★★☆ / ★★★。
-- 實作題提供 `exercises/starter/exN_xxx.cpp`：可編譯、留 `// TODO`，執行時會因為 self-check 失敗而印出 FAIL（這是預期的）。
-- `solutions/exN_xxx.cpp`：完整解答，用 `DAWLAB_CHECK` / `DAWLAB_CHECK_NEAR` **以數字驗證**結果（例如用 `measureGainDb` 驗證 cutoff 處是 -3 dB），最後 `return dawlab::test::summary("lNN_exN");`。
-- `solutions/README.md`：每一題都有答案與解說（觀念題寫完整說明，計算題寫出算式，實作題講解關鍵思路並指向解答檔）。
-- 解答檔可以自帶本題需要的 class（例如練習「自己寫一個 RMS detector」），不一定要放進 `dsp/`。
+- Each chapter has 5–8 exercises (chapter 08 has 8, so that Gate, Expander, De-esser and Transient shaper each get a programming exercise; the exception is chapter 14, which has 7 engine exercises plus 6 optional application projects, labelled Exercises 1–7 and optional Projects 8–13). They mix **conceptual questions**, **calculation questions** (working out dB, coefficients, time constants, ... by hand) and **programming exercises** (at least 3). Difficulty is marked ★☆☆ / ★★☆ / ★★★.
+- Programming exercises provide `exercises/starter/exN_xxx.cpp`: it compiles and leaves `// TODO`s; when run it prints FAIL because the self-check fails (this is expected).
+- `solutions/exN_xxx.cpp`: the complete solution. It uses `DAWLAB_CHECK` / `DAWLAB_CHECK_NEAR` to **verify the result with numbers** (for example, using `measureGainDb` to verify that the gain at the cutoff is -3 dB), and ends with `return dawlab::test::summary("lNN_exN");`.
+- `solutions/README.md`: every exercise has an answer and an explanation (full explanations for conceptual questions, the working for calculation questions, and for programming exercises the key ideas plus a pointer to the solution file).
+- A solution file may bring along the classes the exercise needs (for example the exercise "write your own RMS detector"); they do not have to go into `dsp/`.
 
 ### 4.4 CMake
 
-每章的 `CMakeLists.txt` 只用 `cmake/DawLab.cmake` 的函式，target 名稱以章節編號為前綴，避免衝突：
+Each chapter's `CMakeLists.txt` uses only the functions from `cmake/DawLab.cmake`, and target names are prefixed with the chapter number to avoid collisions:
 
 ```cmake
 dawlab_add_example(l02_biquad_response   examples/biquad_response.cpp)
 dawlab_add_starter(l02_ex3_starter       exercises/starter/ex3_highpass.cpp)
 dawlab_add_solution(l02_ex3_solution     solutions/ex3_highpass.cpp)
-dawlab_add_test(l03_test_parametric_eq  tests/parametric_eq_test.cpp)   # 可選：元件回歸測試
+dawlab_add_test(l03_test_parametric_eq  tests/parametric_eq_test.cpp)   # optional: component regression test
 ```
 
-### 4.5 編譯與測試（Windows）
+### 4.5 Building and testing (Windows)
 
 ```powershell
-.\scripts\build.ps1                                  # 全部純 C++ 章節
-.\scripts\build.ps1 -Only 02-filter                  # 只建第 02 章
-.\scripts\build.ps1 -Only 13-vst-hosting -Juce       # JUCE 章節
-.\scripts\build.ps1 -Only 13-vst-hosting,14-daw-8track -Juce   # 多個章節用逗號分隔
+.\scripts\build.ps1                                  # all pure C++ chapters
+.\scripts\build.ps1 -Only 02-filter                  # only chapter 02
+.\scripts\build.ps1 -Only 13-vst-hosting -Juce       # a JUCE chapter
+.\scripts\build.ps1 -Only 13-vst-hosting,14-daw-8track -Juce   # several chapters, comma-separated
 ```
 
-警告等級是 MSVC `/W4`；新程式碼不應該產生 warning。
+The warning level is MSVC `/W4`; new code should produce no warnings.
 
-## 5. DSP API 合約
+## 5. DSP API contract
 
-後面的章節（尤其第 13 章 plugin 與第 14 章 DAW）會直接使用這些 class，**名稱與下列 method 必須存在且語意相同**。可以額外增加 method 或 class。
+Later chapters (especially the chapter 13 plugin and the chapter 14 DAW) use these classes directly, so **the names and the methods listed below must exist and have the same semantics**. You may add extra methods or classes.
 
-| 章 | Header | 必須提供 |
+| Chapter | Header | Must provide |
 |---|---|---|
-| 01 | `SmoothedValue.h` | `class SmoothedValue`：`reset(double sampleRate, double rampSeconds)`、`setCurrentAndTargetValue(float)`、`setTargetValue(float)`、`float getNextValue()`、`float getCurrentValue() const`、`float getTargetValue() const`、`bool isSmoothing() const`、`void skip(int numSamples)`（linear ramp） |
-| 01 | `Gain.h` | `class Gain`：標準介面 + `setGainDb(float)`、`setGainLinear(float)`、`float getGainDb() const`、`setRampSeconds(double)`（預設約 0.05 s） |
-| 01 | `Panner.h` | `enum class PanLaw { Linear, ConstantPower, Minus4_5dB }`；`class Panner`：標準介面 + `setPan(float)`（-1 = 左，0 = 中，+1 = 右）、`setPanLaw(PanLaw)`、`static void computeGains(float pan, PanLaw law, float& left, float& right)`；`process()` 處理立體聲 block（mono 輸入的情況要在文件說明；`process()` 對立體聲 block 套用的是 pan law，中間 -3 dB，已經是立體聲的 bus 通常要用 balance，見第 01 章） |
-| 02 | `OnePole.h` | `class OnePole`：`enum class Type { Lowpass, Highpass }`、標準介面 + `setType(Type)`、`setCutoff(float hz)`、`processSample(int ch, float x)` |
-| 02 | `Biquad.h` | `struct BiquadCoefficients { double b0, b1, b2, a1, a2; }`（a0 已正規化為 1），static factory（RBJ Audio EQ Cookbook）：`makeLowpass(sr, f, q)`、`makeHighpass(sr, f, q)`、`makeBandpass(sr, f, q)`（0 dB peak）、`makeNotch(sr, f, q)`、`makeAllpass(sr, f, q)`、`makePeak(sr, f, q, gainDb)`、`makeLowShelf(sr, f, q, gainDb)`、`makeHighShelf(sr, f, q, gainDb)`；成員 `std::complex<double> response(double f, double sr) const`、`double magnitudeDb(double f, double sr) const`。`class Biquad`：標準介面 + `setCoefficients(const BiquadCoefficients&)`、`getCoefficients()`、`processSample(int ch, float x)`（Transposed Direct Form II） |
-| 03 | `ParametricEq.h` | `enum class EqBandType { LowCut, LowShelf, Peak, HighShelf, HighCut, Notch }`；`struct EqBand { EqBandType type; float frequency; float q; float gainDb; bool enabled; }`；`class ParametricEq`：`static constexpr int kNumBands = 6`、標準介面 + `setBand(int, const EqBand&)`、`const EqBand& getBand(int) const`、`double getMagnitudeDb(double freq) const`（整條 EQ 曲線，給 UI 畫圖）。參數變化不可有 click |
-| 04 | `EnvelopeFollower.h` | `enum class DetectorMode { Peak, Rms }`、`enum class SmoothingMode { Branching, Decoupled }`（預設 Branching）；`class EnvelopeFollower`：`prepare(double sr)`、`reset()`、`setAttackMs`、`setReleaseMs`、`setMode`、`setSmoothingMode(SmoothingMode)`（第 08 章 Expander 使用 Decoupled）、`float processSample(float x)`（輸入原始 sample，回傳線性振幅 envelope） |
-| 04 | `Compressor.h` | `class Compressor`：標準介面 + `setThresholdDb`、`setRatio`、`setKneeDb`、`setAttackMs`、`setReleaseMs`、`setMakeupGainDb`、`setStereoLink(bool)`、`float getGainReductionDb() const`（**正值**，例如 6 代表正在壓 6 dB；thread-safe）、`static float computeOutputDb(float inputDb, float thresholdDb, float ratio, float kneeDb)`（靜態 gain computer） |
-| 05 | `DelayLine.h` | `class DelayLine`：`prepare(int maxDelaySamples, int numChannels)`、`reset()`、`void push(int ch, float x)`、`float read(int ch, int delaySamples) const` |
-| 05 | `Limiter.h` | `class Limiter`：標準介面 + `setCeilingDb`、`setInputGainDb`、`setReleaseMs`、`setLookaheadMs`（上限在 prepare 決定；預設上限 20 ms，可在 prepare 前用 `setMaxLookaheadMs(float)` 改變）、`int getLatencySamples() const`、`float getGainReductionDb() const`（正值、thread-safe）。保證：任何輸入下，輸出 sample peak ≤ ceiling |
-| 06 | `Oversampler.h` | `class Oversampler`：`explicit Oversampler(int factorLog2 = 1)`（倍率 = 2^factorLog2）、`prepare(double sr, int maxBlockSize, int numChannels)`、`reset()`、`int getFactor() const`、`AudioBlock upsample(const AudioBlock& input)`（回傳內部高取樣率 buffer 的 view）、`void downsample(AudioBlock output)`、`int getLatencySamples() const`（以原始取樣率計）；`static constexpr int kMaxFactorLog2 = 3`（最高 8×） |
-| 06 | `Saturation.h` | `enum class SaturationCurve { Tanh, Cubic, Arctan, Asymmetric }`；`class Saturation`：標準介面 + `setCurve`、`setDriveDb`、`setMix(float 0..1)`、`setOutputGainDb`、`setOversamplingFactorLog2(int)`（在 prepare 之前呼叫）、`static float shape(SaturationCurve, float x)`、`int getLatencySamples() const` |
-| 07 | `Distortion.h` | `enum class DistortionType { HardClip, Foldback, Fuzz, Rectify, Bitcrush }`；`class Distortion`：標準介面 + `setType`、`setDriveDb`、`setToneHz`（後級 lowpass）、`setMix`、`setOutputGainDb`、`setBitDepth(float)`、`setDownsampleFactor(int)`、`setOversamplingFactorLog2(int)`（在 prepare 之前呼叫，預設 2 = 4×）、`int getOversamplingFactor() const`（prepare 之後回報實際生效的倍率）、`int getLatencySamples() const` |
-| 08 | `Gate.h` | `class Gate`：標準介面 + `setThresholdDb`、`setHysteresisDb`（關門門檻 = threshold − hysteresis）、`setRangeDb`（關門時的衰減，負值，例如 -80）、`setAttackMs`、`setHoldMs`、`setReleaseMs`、`process(AudioBlock)`、`process(AudioBlock main, const AudioBlock& sidechain)`（以 sidechain 偵測）、`float getGainReductionDb() const`（正值、thread-safe）、`bool isOpen() const` |
-| 08 | `Expander.h` | `class Expander`（downward expander）：標準介面 + `setThresholdDb`、`setRatio`（2 代表低於 threshold 的每 1 dB 變成 2 dB）、`setKneeDb`、`setRangeDb`、`setAttackMs`、`setReleaseMs`、`float getGainReductionDb() const`、`static float computeOutputDb(float inputDb, float thresholdDb, float ratio, float kneeDb)` |
-| 08 | `DeEsser.h` | `class DeEsser`：標準介面 + `setFrequency(float hz)`、`setThresholdDb`、`setRangeDb`（最大衰減，正值）、`setSplitBand(bool)`（true = 只壓高頻段）、`setListen(bool)`（監聽偵測訊號）、`float getGainReductionDb() const` |
-| 08 | `TransientShaper.h` | `class TransientShaper`：標準介面 + `setAttackDb(float)`（-24..+24，加強或減弱 transient）、`setSustainDb(float)` |
-| 09 | `FractionalDelayLine.h` | `class FractionalDelayLine`：`prepare(int maxDelaySamples, int numChannels)`、`reset()`、`void push(int ch, float x)`、`float readLinear(int ch, float delaySamples) const`、`float readCubic(int ch, float delaySamples) const`（3 階 Lagrange 或 Hermite）、`int getMaxDelaySamples() const`。讀取慣例：`push()` 之後 `read*(ch, 0)` 是剛寫入的 sample，`read*(ch, D)` 是 D 次 push 以前的 sample；`readCubic` 的延遲小於 1 時 clamp 到 1 |
-| 09 | `Delay.h` | `class Delay`（stereo echo）：`setMaxDelayMs(float)`（在 prepare 前呼叫，預設 2000）、標準介面 + `setDelayMs(float)`（平滑變化）、`setFeedback(float 0..0.99)`、`setMix(float 0..1)`、`setPingPong(bool)`、`setLowpassHz(float)`、`setHighpassHz(float)`（feedback 迴路內的濾波）、`static float noteToMs(double bpm, double beats)`（beats = 0.75 代表附點八分音符） |
-| 10 | `Lfo.h` | `enum class LfoShape { Sine, Triangle, Saw, Square, SampleAndHold }`；`class Lfo`：`prepare(double sampleRate)`、`reset()`、`setShape(LfoShape)`、`setRateHz(float)`、`setPhase(float 0..1)`、`float getNextValue()`（輸出 -1..1） |
-| 10 | `Chorus.h` | `class Chorus`：標準介面 + `setRateHz`、`setDepthMs`、`setCentreDelayMs`、`setVoices(int)`、`setMix`、`setStereoSpread(float 0..1)` |
-| 10 | `Flanger.h` | `class Flanger`：標準介面 + `setRateHz`、`setDepthMs`、`setDelayMs`（基礎延遲）、`setFeedback(float -0.99..0.99)`、`setMix` |
-| 10 | `Phaser.h` | `class Phaser`：標準介面 + `setRateHz`、`setDepth(float 0..1)`、`setCentreHz`、`setFeedback`、`setStages(int)`（2..12 的偶數）、`setMix` |
-| 10 | `Tremolo.h` | `class Tremolo`：標準介面 + `setRateHz`、`setDepth(float 0..1)`、`setShape(LfoShape)`、`setAutoPan(bool)`（true 時左右反相 = autopan） |
-| 11 | `Fft.h` | `enum class WindowType { Rectangular, Hann, Hamming, BlackmanHarris }`；`class Fft`：`explicit Fft(int order)`（size = 2^order，建構時預先算好 twiddle）、`int getSize() const`、`void forward(std::complex<float>* data) const`、`void inverse(std::complex<float>* data) const`（in-place，inverse 含 1/N）、`void forwardReal(const float* input, std::complex<float>* output) const`（輸出 N/2+1 個 bin）、`void inverseReal(const std::complex<float>* input, float* output) const`、`static void makeWindow(std::vector<float>& window, int size, WindowType type)`。注意：`forwardReal` / `inverseReal` 使用內部 scratch buffer，同一個 `Fft` 物件不可同時被兩個 thread 使用 |
-| 11 | `LevelMeter.h` | `class LevelMeter`：`prepare(double sampleRate, int numChannels)`、`reset()`、`setPeakHoldMs`、`setDecayDbPerSecond`、`setRmsWindowMs`、`void process(const AudioBlock&)`（audio thread）、`float getPeakDb(int ch) const`、`float getRmsDb(int ch) const`、`float getPeakHoldDb(int ch) const`（thread-safe）、`void resetPeakHold()` |
-| 11 | `LoudnessMeter.h` | `class LoudnessMeter`（ITU-R BS.1770 / EBU R128，K-weighting）：`prepare(double sampleRate, int numChannels)`、`reset()`、`void process(const AudioBlock&)`（不可 allocate）、`float getMomentaryLufs() const`（400 ms）、`float getShortTermLufs() const`（3 s）、`float getIntegratedLufs() const`（含 -70 LUFS absolute 與 -10 LU relative gating）；getter 皆 thread-safe |
-| 11 | `SpectrumAnalyzer.h` | `class SpectrumAnalyzer`：`prepare(double sampleRate, int fftOrder = 11)`、`void pushSamples(const float* x, int n)`（audio thread，lock-free）、`bool computeSpectrum(std::vector<float>& magnitudesDb)`（UI thread；回傳 N/2+1 個 bin 的 dB，含 window 與平滑；沒有新資料時回傳 false）、`double getBinFrequency(int bin) const` |
-| 12 | `Reverb.h` | `class Reverb`（algorithmic，FDN 或 Freeverb 架構擇一並說明）：標準介面 + `setDecaySeconds`（RT60）、`setPreDelayMs`、`setDampingHz`、`setSize(float 0..1)`、`setWidth(float 0..1)`、`setMix(float 0..1)`、`setFreeze(bool)`。教學用 building blocks（`CombFilter`、`AllpassDiffuser` 等）可放在 `ReverbBuildingBlocks.h` |
-| 12 | `ConvolutionReverb.h` | `class ConvolutionReverb`（uniform partitioned FFT convolution，使用第 11 章 `Fft`）：`prepare(double sampleRate, int maxBlockSize, int numChannels)`、`reset()`、`void setImpulseResponse(const AudioBuffer& ir)`（非 audio thread，可 allocate）、`setMix(float 0..1)`、`process(AudioBlock)`、`int getLatencySamples() const`、`static AudioBuffer makeSyntheticImpulseResponse(double sampleRate, double rt60Seconds, int numChannels, uint32_t seed = 1)` |
+| 01 | `SmoothedValue.h` | `class SmoothedValue`: `reset(double sampleRate, double rampSeconds)`, `setCurrentAndTargetValue(float)`, `setTargetValue(float)`, `float getNextValue()`, `float getCurrentValue() const`, `float getTargetValue() const`, `bool isSmoothing() const`, `void skip(int numSamples)` (linear ramp) |
+| 01 | `Gain.h` | `class Gain`: standard interface + `setGainDb(float)`, `setGainLinear(float)`, `float getGainDb() const`, `setRampSeconds(double)` (default about 0.05 s) |
+| 01 | `Panner.h` | `enum class PanLaw { Linear, ConstantPower, Minus4_5dB }`; `class Panner`: standard interface + `setPan(float)` (-1 = left, 0 = centre, +1 = right), `setPanLaw(PanLaw)`, `static void computeGains(float pan, PanLaw law, float& left, float& right)`; `process()` handles stereo blocks (document how a mono input is treated; `process()` applies the pan law to a stereo block, with -3 dB at the centre, while a bus that is already stereo normally needs balance instead, see chapter 01) |
+| 02 | `OnePole.h` | `class OnePole`: `enum class Type { Lowpass, Highpass }`, standard interface + `setType(Type)`, `setCutoff(float hz)`, `processSample(int ch, float x)` |
+| 02 | `Biquad.h` | `struct BiquadCoefficients { double b0, b1, b2, a1, a2; }` (a0 normalized to 1), static factories (RBJ Audio EQ Cookbook): `makeLowpass(sr, f, q)`, `makeHighpass(sr, f, q)`, `makeBandpass(sr, f, q)` (0 dB peak), `makeNotch(sr, f, q)`, `makeAllpass(sr, f, q)`, `makePeak(sr, f, q, gainDb)`, `makeLowShelf(sr, f, q, gainDb)`, `makeHighShelf(sr, f, q, gainDb)`; members `std::complex<double> response(double f, double sr) const` and `double magnitudeDb(double f, double sr) const`. `class Biquad`: standard interface + `setCoefficients(const BiquadCoefficients&)`, `getCoefficients()`, `processSample(int ch, float x)` (Transposed Direct Form II) |
+| 03 | `ParametricEq.h` | `enum class EqBandType { LowCut, LowShelf, Peak, HighShelf, HighCut, Notch }`; `struct EqBand { EqBandType type; float frequency; float q; float gainDb; bool enabled; }`; `class ParametricEq`: `static constexpr int kNumBands = 6`, standard interface + `setBand(int, const EqBand&)`, `const EqBand& getBand(int) const`, `double getMagnitudeDb(double freq) const` (the whole EQ curve, for the UI to draw). Parameter changes must not click |
+| 04 | `EnvelopeFollower.h` | `enum class DetectorMode { Peak, Rms }`, `enum class SmoothingMode { Branching, Decoupled }` (default Branching); `class EnvelopeFollower`: `prepare(double sr)`, `reset()`, `setAttackMs`, `setReleaseMs`, `setMode`, `setSmoothingMode(SmoothingMode)` (the chapter 08 Expander uses Decoupled), `float processSample(float x)` (takes the raw sample and returns the linear amplitude envelope) |
+| 04 | `Compressor.h` | `class Compressor`: standard interface + `setThresholdDb`, `setRatio`, `setKneeDb`, `setAttackMs`, `setReleaseMs`, `setMakeupGainDb`, `setStereoLink(bool)`, `float getGainReductionDb() const` (a **positive** value, e.g. 6 means it is currently compressing by 6 dB; thread-safe), `static float computeOutputDb(float inputDb, float thresholdDb, float ratio, float kneeDb)` (the static gain computer) |
+| 05 | `DelayLine.h` | `class DelayLine`: `prepare(int maxDelaySamples, int numChannels)`, `reset()`, `void push(int ch, float x)`, `float read(int ch, int delaySamples) const` |
+| 05 | `Limiter.h` | `class Limiter`: standard interface + `setCeilingDb`, `setInputGainDb`, `setReleaseMs`, `setLookaheadMs` (the upper bound is fixed in prepare; the default maximum is 20 ms and can be changed before prepare with `setMaxLookaheadMs(float)`), `int getLatencySamples() const`, `float getGainReductionDb() const` (positive, thread-safe). Guarantee: for any input, the output sample peak is ≤ the ceiling |
+| 06 | `Oversampler.h` | `class Oversampler`: `explicit Oversampler(int factorLog2 = 1)` (factor = 2^factorLog2), `prepare(double sr, int maxBlockSize, int numChannels)`, `reset()`, `int getFactor() const`, `AudioBlock upsample(const AudioBlock& input)` (returns a view of the internal high-rate buffer), `void downsample(AudioBlock output)`, `int getLatencySamples() const` (in samples at the original rate); `static constexpr int kMaxFactorLog2 = 3` (up to 8×) |
+| 06 | `Saturation.h` | `enum class SaturationCurve { Tanh, Cubic, Arctan, Asymmetric }`; `class Saturation`: standard interface + `setCurve`, `setDriveDb`, `setMix(float 0..1)`, `setOutputGainDb`, `setOversamplingFactorLog2(int)` (call before prepare), `static float shape(SaturationCurve, float x)`, `int getLatencySamples() const` |
+| 07 | `Distortion.h` | `enum class DistortionType { HardClip, Foldback, Fuzz, Rectify, Bitcrush }`; `class Distortion`: standard interface + `setType`, `setDriveDb`, `setToneHz` (post-stage lowpass), `setMix`, `setOutputGainDb`, `setBitDepth(float)`, `setDownsampleFactor(int)`, `setOversamplingFactorLog2(int)` (call before prepare; default 2 = 4×), `int getOversamplingFactor() const` (after prepare, reports the factor actually in effect), `int getLatencySamples() const` |
+| 08 | `Gate.h` | `class Gate`: standard interface + `setThresholdDb`, `setHysteresisDb` (close threshold = threshold − hysteresis), `setRangeDb` (attenuation when closed, negative, e.g. -80), `setAttackMs`, `setHoldMs`, `setReleaseMs`, `process(AudioBlock)`, `process(AudioBlock main, const AudioBlock& sidechain)` (detects from the sidechain), `float getGainReductionDb() const` (positive, thread-safe), `bool isOpen() const` |
+| 08 | `Expander.h` | `class Expander` (downward expander): standard interface + `setThresholdDb`, `setRatio` (2 means every 1 dB below the threshold becomes 2 dB), `setKneeDb`, `setRangeDb`, `setAttackMs`, `setReleaseMs`, `float getGainReductionDb() const`, `static float computeOutputDb(float inputDb, float thresholdDb, float ratio, float kneeDb)` |
+| 08 | `DeEsser.h` | `class DeEsser`: standard interface + `setFrequency(float hz)`, `setThresholdDb`, `setRangeDb` (maximum attenuation, positive), `setSplitBand(bool)` (true = attenuate only the high band), `setListen(bool)` (monitor the detection signal), `float getGainReductionDb() const` |
+| 08 | `TransientShaper.h` | `class TransientShaper`: standard interface + `setAttackDb(float)` (-24..+24, emphasizes or softens transients), `setSustainDb(float)` |
+| 09 | `FractionalDelayLine.h` | `class FractionalDelayLine`: `prepare(int maxDelaySamples, int numChannels)`, `reset()`, `void push(int ch, float x)`, `float readLinear(int ch, float delaySamples) const`, `float readCubic(int ch, float delaySamples) const` (3rd-order Lagrange or Hermite), `int getMaxDelaySamples() const`. Read convention: after a `push()`, `read*(ch, 0)` is the sample just written and `read*(ch, D)` is the sample from D pushes ago; `readCubic` clamps delays below 1 to 1 |
+| 09 | `Delay.h` | `class Delay` (stereo echo): `setMaxDelayMs(float)` (call before prepare, default 2000), standard interface + `setDelayMs(float)` (changes are smoothed), `setFeedback(float 0..0.99)`, `setMix(float 0..1)`, `setPingPong(bool)`, `setLowpassHz(float)`, `setHighpassHz(float)` (filtering inside the feedback loop), `static float noteToMs(double bpm, double beats)` (beats = 0.75 means a dotted eighth note) |
+| 10 | `Lfo.h` | `enum class LfoShape { Sine, Triangle, Saw, Square, SampleAndHold }`; `class Lfo`: `prepare(double sampleRate)`, `reset()`, `setShape(LfoShape)`, `setRateHz(float)`, `setPhase(float 0..1)`, `float getNextValue()` (outputs -1..1) |
+| 10 | `Chorus.h` | `class Chorus`: standard interface + `setRateHz`, `setDepthMs`, `setCentreDelayMs`, `setVoices(int)`, `setMix`, `setStereoSpread(float 0..1)` |
+| 10 | `Flanger.h` | `class Flanger`: standard interface + `setRateHz`, `setDepthMs`, `setDelayMs` (base delay), `setFeedback(float -0.99..0.99)`, `setMix` |
+| 10 | `Phaser.h` | `class Phaser`: standard interface + `setRateHz`, `setDepth(float 0..1)`, `setCentreHz`, `setFeedback`, `setStages(int)` (an even number from 2 to 12), `setMix` |
+| 10 | `Tremolo.h` | `class Tremolo`: standard interface + `setRateHz`, `setDepth(float 0..1)`, `setShape(LfoShape)`, `setAutoPan(bool)` (when true, left and right are in opposite phase = autopan) |
+| 11 | `Fft.h` | `enum class WindowType { Rectangular, Hann, Hamming, BlackmanHarris }`; `class Fft`: `explicit Fft(int order)` (size = 2^order; twiddle factors are precomputed in the constructor), `int getSize() const`, `void forward(std::complex<float>* data) const`, `void inverse(std::complex<float>* data) const` (in place; the inverse includes 1/N), `void forwardReal(const float* input, std::complex<float>* output) const` (outputs N/2+1 bins), `void inverseReal(const std::complex<float>* input, float* output) const`, `static void makeWindow(std::vector<float>& window, int size, WindowType type)`. Note: `forwardReal` / `inverseReal` use an internal scratch buffer, so one `Fft` object must not be used by two threads at the same time |
+| 11 | `LevelMeter.h` | `class LevelMeter`: `prepare(double sampleRate, int numChannels)`, `reset()`, `setPeakHoldMs`, `setDecayDbPerSecond`, `setRmsWindowMs`, `void process(const AudioBlock&)` (audio thread), `float getPeakDb(int ch) const`, `float getRmsDb(int ch) const`, `float getPeakHoldDb(int ch) const` (thread-safe), `void resetPeakHold()` |
+| 11 | `LoudnessMeter.h` | `class LoudnessMeter` (ITU-R BS.1770 / EBU R128, K-weighting): `prepare(double sampleRate, int numChannels)`, `reset()`, `void process(const AudioBlock&)` (must not allocate), `float getMomentaryLufs() const` (400 ms), `float getShortTermLufs() const` (3 s), `float getIntegratedLufs() const` (with the -70 LUFS absolute gate and the -10 LU relative gate); all getters are thread-safe |
+| 11 | `SpectrumAnalyzer.h` | `class SpectrumAnalyzer`: `prepare(double sampleRate, int fftOrder = 11)`, `void pushSamples(const float* x, int n)` (audio thread, lock-free), `bool computeSpectrum(std::vector<float>& magnitudesDb)` (UI thread; returns the dB values of N/2+1 bins, with windowing and smoothing; returns false when there is no new data), `double getBinFrequency(int bin) const` |
+| 12 | `Reverb.h` | `class Reverb` (algorithmic; choose either an FDN or a Freeverb architecture and explain it): standard interface + `setDecaySeconds` (RT60), `setPreDelayMs`, `setDampingHz`, `setSize(float 0..1)`, `setWidth(float 0..1)`, `setMix(float 0..1)`, `setFreeze(bool)`. Teaching-oriented building blocks (`CombFilter`, `AllpassDiffuser`, etc.) may live in `ReverbBuildingBlocks.h` |
+| 12 | `ConvolutionReverb.h` | `class ConvolutionReverb` (uniform partitioned FFT convolution, using the chapter 11 `Fft`): `prepare(double sampleRate, int maxBlockSize, int numChannels)`, `reset()`, `void setImpulseResponse(const AudioBuffer& ir)` (not on the audio thread; may allocate), `setMix(float 0..1)`, `process(AudioBlock)`, `int getLatencySamples() const`, `static AudioBuffer makeSyntheticImpulseResponse(double sampleRate, double rt60Seconds, int numChannels, uint32_t seed = 1)` |
 
-第 13 章（JUCE）會提供：一個用 `dawlab::dsp::Compressor` 包成的 VST3 plugin（`DawLabCompressor`），以及可重用的 plugin hosting 程式碼（給第 14 章的 DAW 用來在 track 上插 VST3）。第 14 章把 engine（純 C++、可離線測試）和 JUCE app（audio device、GUI、VST3 insert）分開，並提供兩條路線從零做出 8 軌 DAW：build-along 路線讓讀者逐步自己寫——Steps 1–10 在 `steps/stepNN-*/` 各有一個只含到該步為止功能、可獨立編譯的 engine 快照（`minidaw.h`；`starter/` 留 TODO、執行會 FAIL，`solution/` 以 `DAWLAB_CHECK` 只驗證該步功能，ctest 名稱為 `l14_stepNN_solution`，後一步以前一步的 solution 為基礎），Steps 11–21 則在每份 step 文件的「Your turn」一節指定要在 `app/` 中刪掉重寫的函式，以及重寫後必須通過的檢查（`l14_app_smoke_test` 的對應段落、`--snapshot` 圖片或練習解答）；reference 路線則直接閱讀並執行 `engine/`、`app/` 的完成品。
+Chapter 13 (JUCE) provides a VST3 plugin built around `dawlab::dsp::Compressor` (`DawLabCompressor`), plus reusable plugin-hosting code (which the chapter 14 DAW uses to insert VST3 plugins on tracks). Chapter 14 separates the engine (pure C++, testable offline) from the JUCE app (audio device, GUI, VST3 inserts), and offers two routes to building the 8-track DAW from scratch. In the build-along route the reader writes the code step by step: Steps 1–10 each have, under `steps/stepNN-*/`, a stand-alone compilable engine snapshot containing only the features up to that step (`minidaw.h`; `starter/` leaves TODOs and FAILs when run, `solution/` uses `DAWLAB_CHECK` to verify only that step's features, the ctest names are `l14_stepNN_solution`, and each step builds on the previous step's solution), while Steps 11–21 specify, in the "Your turn" section of each step document, which functions in `app/` to delete and rewrite, and the checks that must pass afterwards (the corresponding section of `l14_app_smoke_test`, a `--snapshot` image, or an exercise solution). In the reference route you simply read and run the finished `engine/` and `app/`.

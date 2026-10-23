@@ -1,47 +1,48 @@
 # dawlab::dsp
+**English** | [繁體中文](README.zh-TW.md)
 
-各章節逐步實作的 DSP 元件：header-only、`namespace dawlab::dsp`、只依賴標準函式庫與 `common/` 的共用工具（**不依賴 JUCE**），所以離線範例、第 13 章的 VST3 plugin 與第 14 章的 DAW engine 都共用同一份程式。
+The DSP components implemented step by step across the chapters: header-only, in `namespace dawlab::dsp`, depending only on the standard library and the shared utilities in `common/` (**no JUCE dependency**), so the offline examples, the chapter 13 VST3 plugins and the chapter 14 DAW engine all share the same code.
 
-- 統一介面（`prepare` / `reset` / setter / `processSample` / `process`）、real-time 規則與各 class 的 API 合約見 [docs/authoring-guide.md](../../../../docs/authoring-guide.md) 第 4、5 節。
-- 在 CMake 裡連結 `dawlab::dsp` 即可使用（它會一併帶入 `dawlab::common`）；程式裡 `#include <dawlab/dsp/Xxx.h>`。
-- 每個 header 的原理、推導與逐段解說都在對應章節的 README。
+- The common interface (`prepare` / `reset` / setters / `processSample` / `process`), the real-time rules and the API contract of each class are in sections 4 and 5 of [docs/authoring-guide.md](../../../../docs/authoring-guide.md).
+- To use them, link `dawlab::dsp` in CMake (it brings in `dawlab::common` as well), then `#include <dawlab/dsp/Xxx.h>` in your code.
+- The theory, derivations and line-by-line walkthrough of each header are in the README of the corresponding chapter.
 
-## 依章節列出
+## Listed by chapter
 
-| 章 | Header | 用途 |
+| Chapter | Header | Purpose |
 |---|---|---|
-| [01](../../../../lessons/01-gain/README.md) | `SmoothedValue.h` | 參數的 linear ramp 平滑，避免改參數時的 click 與 zipper noise |
-| 01 | `Gain.h` | 以 dB 或倍率設定、帶平滑的 gain 元件 |
-| 01 | `Panner.h` | 三種 pan law（linear / constant power / −4.5 dB）的 mono pan 與立體聲 balance |
-| [02](../../../../lessons/02-filter/README.md) | `OnePole.h` | 一階 lowpass / highpass（DC blocker、平滑、tone 控制的基礎） |
-| 02 | `Biquad.h` | RBJ Audio EQ Cookbook 係數與 Transposed Direct Form II 的二階 IIR filter |
-| 02 | `StateVariableFilter.h` | TPT（zero-delay feedback）state variable filter，cutoff 快速調變也穩定 |
-| [03](../../../../lessons/03-eq/README.md) | `ParametricEq.h` | 6-band parametric EQ（low cut、shelf、peak、high cut、notch），參數平滑且可算整條曲線給 UI |
-| [04](../../../../lessons/04-compressor/README.md) | `EnvelopeFollower.h` | Peak / RMS envelope 偵測器與 attack / release 平滑器 |
-| 04 | `Compressor.h` | feedforward、log-domain 的 compressor（threshold、ratio、knee、makeup、stereo link） |
-| [05](../../../../lessons/05-limiter/README.md) | `DelayLine.h` | 整數 sample 的 circular buffer 延遲線 |
-| 05 | `Limiter.h` | lookahead brickwall limiter，保證輸出 sample peak 不超過 ceiling |
-| [06](../../../../lessons/06-saturation/README.md) | `Oversampler.h` | 2× / 4× / 8× polyphase halfband FIR oversampling（降低非線性處理的 aliasing） |
-| 06 | `Saturation.h` | tanh / cubic / arctan / asymmetric 的 waveshaper 飽和效果，內建 oversampling |
-| [07](../../../../lessons/07-distortion/README.md) | `Distortion.h` | hard clip、foldback、fuzz、rectify、bitcrush 五種 distortion，含 tone filter 與 mix |
-| 07 | `AmpChain.h` | 簡易吉他 amp 模擬鏈（HPF → pre-EQ → preamp saturation → tone stack → power amp distortion → cabinet） |
-| [08](../../../../lessons/08-gate-expander/README.md) | `Gate.h` | 有 hysteresis、hold、range 與 sidechain 的 noise gate |
-| 08 | `Expander.h` | downward expander（低於 threshold 的訊號依 ratio 再壓低） |
-| 08 | `DeEsser.h` | 偵測齒音頻段並壓低（wideband 或 split-band，可監聽偵測訊號） |
-| 08 | `TransientShaper.h` | 以快 / 慢兩條 envelope 的差分別加強或減弱 attack 與 sustain |
-| [09](../../../../lessons/09-delay/README.md) | `FractionalDelayLine.h` | 支援非整數延遲的 circular buffer（linear / cubic Hermite / Lagrange 插值） |
-| 09 | `Delay.h` | 立體聲 echo：平滑 delay time、feedback 迴路內的濾波、ping-pong、tempo sync |
-| [10](../../../../lessons/10-modulation/README.md) | `Lfo.h` | 低頻振盪器（sine、triangle、saw、square、sample & hold） |
-| 10 | `Chorus.h` | 多 voice、LFO 調變的短延遲，加上立體聲展開 |
-| 10 | `Flanger.h` | 很短的調變延遲加 feedback，形成會掃動的 comb filter |
-| 10 | `Phaser.h` | 串接一階 allpass、以 LFO 掃動 notch 的 phaser |
-| 10 | `Tremolo.h` | LFO 振幅調變，可切換成 autopan |
-| [11](../../../../lessons/11-metering-fft/README.md) | `Fft.h` | radix-2 FFT / IFFT、real FFT 與 window function |
-| 11 | `LevelMeter.h` | sample peak（含 peak hold 與 decay）與滑動視窗 RMS meter，getter thread-safe |
-| 11 | `LoudnessMeter.h` | ITU-R BS.1770 / EBU R128 loudness（momentary、short-term、integrated LUFS） |
-| 11 | `SpectrumAnalyzer.h` | audio thread 以 lock-free FIFO 推 sample、UI thread 算出平滑後的頻譜 |
-| [12](../../../../lessons/12-reverb/README.md) | `ReverbBuildingBlocks.h` | 教學用的殘響積木：`CombFilter`、`AllpassDiffuser`、`TappedDelay`、RT60 量測 `measureRt60`、`nextPrime` |
-| 12 | `Reverb.h` | 8 線 FDN algorithmic reverb（decay、pre-delay、damping、size、width、freeze） |
-| 12 | `ConvolutionReverb.h` | uniform partitioned FFT convolution reverb，可產生合成 impulse response |
+| [01](../../../../lessons/01-gain/README.md) | `SmoothedValue.h` | Linear-ramp smoothing of parameters, avoiding clicks and zipper noise when a parameter changes |
+| 01 | `Gain.h` | A gain component set in dB or as a linear factor, with smoothing |
+| 01 | `Panner.h` | Mono pan and stereo balance with three pan laws (linear / constant power / −4.5 dB) |
+| [02](../../../../lessons/02-filter/README.md) | `OnePole.h` | First-order lowpass / highpass (the basis of DC blockers, smoothing and tone controls) |
+| 02 | `Biquad.h` | Second-order IIR filter with RBJ Audio EQ Cookbook coefficients and Transposed Direct Form II |
+| 02 | `StateVariableFilter.h` | TPT (zero-delay feedback) state variable filter that stays stable under fast cutoff modulation |
+| [03](../../../../lessons/03-eq/README.md) | `ParametricEq.h` | 6-band parametric EQ (low cut, shelf, peak, high cut, notch) with parameter smoothing, and it can compute the whole curve for a UI |
+| [04](../../../../lessons/04-compressor/README.md) | `EnvelopeFollower.h` | Peak / RMS envelope detector and attack / release smoother |
+| 04 | `Compressor.h` | Feedforward, log-domain compressor (threshold, ratio, knee, makeup, stereo link) |
+| [05](../../../../lessons/05-limiter/README.md) | `DelayLine.h` | Integer-sample circular-buffer delay line |
+| 05 | `Limiter.h` | Lookahead brickwall limiter that guarantees the output sample peak never exceeds the ceiling |
+| [06](../../../../lessons/06-saturation/README.md) | `Oversampler.h` | 2× / 4× / 8× polyphase halfband FIR oversampling (reduces aliasing from nonlinear processing) |
+| 06 | `Saturation.h` | Waveshaper saturation (tanh / cubic / arctan / asymmetric) with built-in oversampling |
+| [07](../../../../lessons/07-distortion/README.md) | `Distortion.h` | Five distortion types (hard clip, foldback, fuzz, rectify, bitcrush) with tone filter and mix |
+| 07 | `AmpChain.h` | A simple guitar amp simulation chain (HPF → pre-EQ → preamp saturation → tone stack → power amp distortion → cabinet) |
+| [08](../../../../lessons/08-gate-expander/README.md) | `Gate.h` | Noise gate with hysteresis, hold, range and sidechain |
+| 08 | `Expander.h` | Downward expander (signal below the threshold is pushed down further according to the ratio) |
+| 08 | `DeEsser.h` | Detects the sibilance band and attenuates it (wideband or split-band, with a monitorable detection signal) |
+| 08 | `TransientShaper.h` | Boosts or cuts attack and sustain separately, based on the difference between a fast and a slow envelope |
+| [09](../../../../lessons/09-delay/README.md) | `FractionalDelayLine.h` | Circular buffer supporting non-integer delays (linear / cubic Hermite / Lagrange interpolation) |
+| 09 | `Delay.h` | Stereo echo: smoothed delay time, filtering inside the feedback loop, ping-pong, tempo sync |
+| [10](../../../../lessons/10-modulation/README.md) | `Lfo.h` | Low-frequency oscillator (sine, triangle, saw, square, sample & hold) |
+| 10 | `Chorus.h` | Multi-voice, LFO-modulated short delay with stereo spread |
+| 10 | `Flanger.h` | Very short modulated delay with feedback, forming a sweeping comb filter |
+| 10 | `Phaser.h` | Phaser built from cascaded first-order allpass filters with LFO-swept notches |
+| 10 | `Tremolo.h` | LFO amplitude modulation, switchable to autopan |
+| [11](../../../../lessons/11-metering-fft/README.md) | `Fft.h` | Radix-2 FFT / IFFT, real FFT and window functions |
+| 11 | `LevelMeter.h` | Sample-peak meter (with peak hold and decay) and sliding-window RMS meter, with thread-safe getters |
+| 11 | `LoudnessMeter.h` | ITU-R BS.1770 / EBU R128 loudness (momentary, short-term, integrated LUFS) |
+| 11 | `SpectrumAnalyzer.h` | The audio thread pushes samples through a lock-free FIFO and the UI thread computes the smoothed spectrum |
+| [12](../../../../lessons/12-reverb/README.md) | `ReverbBuildingBlocks.h` | Teaching-oriented reverb building blocks: `CombFilter`, `AllpassDiffuser`, `TappedDelay`, the RT60 measurement `measureRt60`, `nextPrime` |
+| 12 | `Reverb.h` | 8-line FDN algorithmic reverb (decay, pre-delay, damping, size, width, freeze) |
+| 12 | `ConvolutionReverb.h` | Uniform partitioned FFT convolution reverb, which can generate a synthetic impulse response |
 
-第 13 章（JUCE plugin 與 hosting）與第 14 章（8 軌 DAW）沒有新增這個資料夾的 header：第 13 章的程式在 `lessons/13-vst-hosting/plugin/` 與 `host/`，第 14 章的 engine 在 `lessons/14-daw-8track/engine/include/dawlab/engine/`。
+Chapter 13 (JUCE plugins and hosting) and chapter 14 (the 8-track DAW) add no headers to this folder: the chapter 13 code is in `lessons/13-vst-hosting/plugin/` and `host/`, and the chapter 14 engine is in `lessons/14-daw-8track/engine/include/dawlab/engine/`.
