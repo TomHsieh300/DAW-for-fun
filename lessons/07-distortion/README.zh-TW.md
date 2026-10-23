@@ -27,16 +27,7 @@
 
 從數學上看，第 06 章與本章做的事情一模一樣：把每個 sample 丟進一條 **memoryless 的 transfer curve** $`y = f(u)`$，其中 $`u = g \cdot x`$ 是乘上 drive gain $`g`$ 之後的輸入。差別在曲線的**形狀**：
 
-```
- y                                    y
- 1 ┤          ___________             1 ┤        ┌────────────
-   │       .-'                          │       /
-   │     .'      tanh（soft knee）      │      /     hard clip（hard knee）
- 0 ┼───.'──────────────── u           0 ┼─────/─────────────── u
-   │ .'                                 │    /
--1 ┤'                                  -1 ┤───┘
-     -3   -1   0   1    3                  -3  -1  0  1     3
-```
+![tanh（soft knee）與 hard clip（hard knee）在輸入 -3 到 3 之間的 transfer curve](images/transfer-tanh-vs-hardclip.svg)
 
 三個面向可以區分「saturation」與「distortion」：
 
@@ -94,15 +85,7 @@ drive 40 dB 時 H1 = 2.1 dBFS（= $`4/\pi`$）、H3 − H1 = −9.5 dB、THD 47.
 
 hard clip 在超過 ±1 時「切掉」，foldback 則是「折回來」，像光在兩面鏡子之間反射：
 
-```
- y
- 1 ┤    /\        /\
-   │   /  \      /  \
- 0 ┼──/────\────/────\──  u
-   │ /      \  /
--1 ┤/        \/
-   -1   1    3    5    7
-```
+![Foldback 的 transfer curve：週期 4 的三角波，u 到 1 之前 y = u，超過後折回](images/transfer-foldback.svg)
 
 數學上就是把 $`u`$ 映射到一個週期 $`4`$ 的三角波上：
 
@@ -129,15 +112,7 @@ y = \begin{cases}
 \end{cases}
 $$
 
-```
- y
- 1.0 ┤             ┌──────
-     │            /
-     │           /
- 0   ┼──────┬─┬─/────────── u
-     │     / -d d
--0.6 ┤────┘
-```
+![Fuzz 的 transfer curve：零點附近寬 0.1 的 dead zone，正向上限 +1.0、負向上限 -0.6](images/transfer-fuzz.svg)
 
 1. **高增益**：drive 通常 30 dB 以上，幾乎所有時間都在 clip，接近方波。
 2. **不對稱**（asymmetric）：正半週最高 +1.0、負半週最低 −0.6。$`f(-u) \ne -f(u)`$，half-wave symmetry 被破壞，**偶次諧波出現**，而且輸出的平均值不再是 0（**DC offset**）。DC 會吃掉 headroom、讓下一級（compressor、另一個 distortion）誤判，所以 `Distortion` 對 Fuzz 與 Rectify 會在 shaper 後面加一個 10 Hz 的 one-pole highpass（DC blocker，第 02 章的 `OnePole`）。
@@ -246,11 +221,7 @@ $$
 
 降取樣率的「正確」做法是先 lowpass 再丟 sample（第 06 章的 Oversampler 反過來做）。bitcrusher 偏偏不這麼做：每 $`D`$ 個 sample 才「看」一次輸入，其餘時間維持上一個值（**sample & hold**, S&H）：
 
-```
-x:   ●  ●  ●  ●  ●  ●  ●  ●  ●     原始 48 kHz
-y:   ●──●──●──●  ●──●──●──●  ●     D = 4：每 4 個 sample 取一次，然後 hold
-     └ hold ─┘   └ hold ─┘
-```
+![D = 4 的 sample & hold：每 4 個 sample 取一個，並維持到下一個](images/sample-and-hold.svg)
 
 等效取樣率 $`f_s' = f_s / D`$。在 $`f_s'`$ 的世界裡，任何高於 $`f_s'/2`$ 的頻率都會 alias：
 
@@ -300,12 +271,12 @@ flowchart LR
 
 以 48 kHz、5 kHz 正弦的 hard clip 為例，奇次諧波 15k、25k、35k、45k、55k ……只有 15k 在 Nyquist 以內，其餘按 $`|f - k f_s|`$ 折回來：
 
-```
- 諧波:  5k   15k   25k   35k   45k   55k   65k ...
- 折到:  5k   15k   23k   13k    3k    7k   17k ...
-                   ↑     ↑     ↑     ↑
-              這些都不是 5 kHz 的整數倍 → 不和諧
-```
+| 諧波 | 5k | 15k | 25k | 35k | 45k | 55k | 65k ... |
+|---|---|---|---|---|---|---|---|
+| 折到 | 5k | 15k | 23k | 13k | 3k | 7k | 17k ... |
+| 是 5 kHz 的整數倍嗎？ | 是 | 是 | 否 | 否 | 否 | 否 | 否 |
+
+折回來的 23k、13k、3k、7k、17k 都不是 5 kHz 的整數倍，所以是**不和諧（inharmonic）**的。
 
 範例 4（`l07_oversampling_aliasing`，drive 20 dB）的量測（dBFS）：
 
@@ -422,13 +393,20 @@ LR4（兩顆 Q = $`1/\sqrt{2}`$ 的 2 階 Butterworth lowpass 串接）在 cutof
 
 位置：`dsp/include/dawlab/dsp/Distortion.h`。訊號流程：
 
-```
-in ──┬──────────── dry（延遲 latency 個 sample，跟 wet 對齊）──────────────────────┐
-     │                                                                              ├─ mix ─→ out
-     └─ drive ─┬→ [ Oversampler ↑ → shaper → ↓ ]（HardClip/Foldback/Fuzz/Rectify）    │
-               └→ [ sample & hold → quantize → 延遲 latency ]（Bitcrush，原始取樣率）  │
-                     依 type 選一條（切換時 crossfade）→ DC blocker（Fuzz/Rectify）    │
-                     → tone lowpass → output gain ──────────────────────────────────┘
+```mermaid
+flowchart LR
+    IN["in"] --> DRY["dry<br/>（延遲 latency 個 sample，<br/>跟 wet 對齊）"]
+    IN --> DRV["drive"]
+    DRV --> OS["Oversampler 升頻、shaper、降頻<br/>（HardClip / Foldback / Fuzz / Rectify）"]
+    DRV --> BC["sample-and-hold、quantize、<br/>延遲 latency<br/>（Bitcrush，原始取樣率）"]
+    OS --> SEL["依 type 選一條<br/>（切換時 crossfade）"]
+    BC --> SEL
+    SEL --> DCB["DC blocker<br/>（Fuzz / Rectify）"]
+    DCB --> TONE["tone lowpass"]
+    TONE --> OG["output gain"]
+    DRY --> MIX["mix"]
+    OG --> MIX
+    MIX --> OUT["out"]
 ```
 
 公開介面（照 authoring guide 第 5 節的合約，另外多了幾個方便教學的 method）：

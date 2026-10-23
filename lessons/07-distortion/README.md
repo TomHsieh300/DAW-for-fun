@@ -27,16 +27,7 @@ After reading this chapter and doing the exercises, you should be able to:
 
 Mathematically, Chapter 06 and this chapter do exactly the same thing: every sample is fed through a **memoryless transfer curve** $`y = f(u)`$, where $`u = g \cdot x`$ is the input multiplied by the drive gain $`g`$. The difference is the **shape** of the curve:
 
-```
- y                                    y
- 1 ┤          ___________             1 ┤        ┌────────────
-   │       .-'                          │       /
-   │     .'      tanh (soft knee)       │      /     hard clip (hard knee)
- 0 ┼───.'──────────────── u           0 ┼─────/─────────────── u
-   │ .'                                 │    /
--1 ┤'                                  -1 ┤───┘
-     -3   -1   0   1    3                  -3  -1  0  1     3
-```
+![Transfer curves of tanh (soft knee) and hard clip (hard knee) for inputs from -3 to 3](images/transfer-tanh-vs-hardclip.svg)
 
 Three aspects distinguish "saturation" from "distortion":
 
@@ -94,15 +85,7 @@ At drive 40 dB, H1 = 2.1 dBFS (= $`4/\pi`$), H3 − H1 = −9.5 dB, and THD is 4
 
 Where hard clip "cuts off" anything beyond ±1, foldback "folds it back", like light bouncing between two mirrors:
 
-```
- y
- 1 ┤    /\        /\
-   │   /  \      /  \
- 0 ┼──/────\────/────\──  u
-   │ /      \  /
--1 ┤/        \/
-   -1   1    3    5    7
-```
+![Foldback transfer curve: a triangle wave of period 4 that follows y = u up to 1 and then folds back](images/transfer-foldback.svg)
 
 Mathematically, $`u`$ is mapped onto a triangle wave of period $`4`$:
 
@@ -129,15 +112,7 @@ y = \begin{cases}
 \end{cases}
 $$
 
-```
- y
- 1.0 ┤             ┌──────
-     │            /
-     │           /
- 0   ┼──────┬─┬─/────────── u
-     │     / -d d
--0.6 ┤────┘
-```
+![Fuzz transfer curve: dead zone of width 0.1 around zero, positive ceiling +1.0 and negative ceiling -0.6](images/transfer-fuzz.svg)
 
 1. **High gain**: drive is usually 30 dB or more, so it is clipping almost all the time, close to a square wave.
 2. **Asymmetric**: the positive half-cycle reaches at most +1.0 and the negative at least −0.6. $`f(-u) \ne -f(u)`$, half-wave symmetry is broken, and **even harmonics appear**; the average of the output is no longer 0 (**DC offset**). DC eats headroom and fools the next stage (a compressor, another distortion), so for Fuzz and Rectify `Distortion` adds a 10 Hz one-pole highpass after the shaper (a DC blocker, the `OnePole` from Chapter 02).
@@ -246,11 +221,7 @@ From 8 → 16 bit the measurement gives 6.12 / 6.04 dB per bit. The deviation at
 
 The "correct" way to reduce the sample rate is to lowpass first and then drop samples (the Oversampler of Chapter 06 does the reverse). A bitcrusher deliberately does not: it "looks" at the input only once every $`D`$ samples and holds the previous value the rest of the time (**sample & hold**, S&H):
 
-```
-x:   ●  ●  ●  ●  ●  ●  ●  ●  ●     original 48 kHz
-y:   ●──●──●──●  ●──●──●──●  ●     D = 4: take one sample every 4, then hold
-     └ hold ─┘   └ hold ─┘
-```
+![Sample and hold with D = 4: one sample in four is kept and held until the next one](images/sample-and-hold.svg)
 
 The effective sample rate is $`f_s' = f_s / D`$. In the world of $`f_s'`$, any frequency above $`f_s'/2`$ aliases:
 
@@ -300,12 +271,12 @@ Chapter 06 already explained that a nonlinearity generates new frequencies, and 
 
 Take a 5 kHz sine through hard clip at 48 kHz: the odd harmonics 15k, 25k, 35k, 45k, 55k ... only 15k is within Nyquist, and the rest fold back according to $`|f - k f_s|`$:
 
-```
- harmonic:  5k   15k   25k   35k   45k   55k   65k ...
- folds to:  5k   15k   23k   13k    3k    7k   17k ...
-                   ↑     ↑     ↑     ↑
-              none of these is an integer multiple of 5 kHz → inharmonic
-```
+| harmonic | 5k | 15k | 25k | 35k | 45k | 55k | 65k ... |
+|---|---|---|---|---|---|---|---|
+| folds to | 5k | 15k | 23k | 13k | 3k | 7k | 17k ... |
+| integer multiple of 5 kHz? | yes | yes | no | no | no | no | no |
+
+The folded frequencies 23k, 13k, 3k, 7k, and 17k are not integer multiples of 5 kHz, so they are **inharmonic**.
 
 Measurements from Example 4 (`l07_oversampling_aliasing`, drive 20 dB) in dBFS:
 
@@ -422,13 +393,20 @@ The LR4 (two 2nd-order Butterworth lowpass filters with Q = $`1/\sqrt{2}`$ in ca
 
 Location: `dsp/include/dawlab/dsp/Distortion.h`. Signal flow:
 
-```
-in ──┬──────────── dry (delayed by latency samples, aligned with wet) ──────────────┐
-     │                                                                              ├─ mix ─→ out
-     └─ drive ─┬→ [ Oversampler ↑ → shaper → ↓ ] (HardClip/Foldback/Fuzz/Rectify)    │
-               └→ [ sample & hold → quantize → latency delay ] (Bitcrush, original rate) │
-                     pick one by type (crossfade on change) → DC blocker (Fuzz/Rectify) │
-                     → tone lowpass → output gain ──────────────────────────────────┘
+```mermaid
+flowchart LR
+    IN["in"] --> DRY["dry<br/>(delayed by latency samples,<br/>aligned with wet)"]
+    IN --> DRV["drive"]
+    DRV --> OS["Oversampler up, shaper, down<br/>(HardClip / Foldback / Fuzz / Rectify)"]
+    DRV --> BC["sample-and-hold, quantize,<br/>latency delay<br/>(Bitcrush, original rate)"]
+    OS --> SEL["pick one by type<br/>(crossfade on change)"]
+    BC --> SEL
+    SEL --> DCB["DC blocker<br/>(Fuzz / Rectify)"]
+    DCB --> TONE["tone lowpass"]
+    TONE --> OG["output gain"]
+    DRY --> MIX["mix"]
+    OG --> MIX
+    MIX --> OUT["out"]
 ```
 
 The public interface (following the contract in Section 5 of the authoring guide, plus a few extra methods that are convenient for teaching):
