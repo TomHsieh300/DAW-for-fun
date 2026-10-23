@@ -16,3 +16,5 @@ if(NOT DAWLAB_WITH_JUCE)
 endif()
 
 add_subdirectory(plugin)   # 會設定 L13_COMPRESSOR_VST3 / L13_LIMITER_VST3（bundle 路徑）
+add_subdirectory(host)
+
