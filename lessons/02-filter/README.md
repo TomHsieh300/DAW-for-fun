@@ -58,19 +58,7 @@ The derivations that follow use the notation $`e^{j\theta}`$ constantly ($`j = \
 3. **Multiplying complex numbers = multiplying magnitudes and adding angles**: $`|H|e^{j\angle H} \cdot e^{j\theta} = |H|\,e^{j(\theta + \angle H)}`$. So for a single frequency, "passing a signal through a filter" means "multiply the amplitude by $`|H|`$ and add $`\angle H`$ to the phase" -- exactly the statement in section 2.1.
 4. **Why use $`e^{j\omega n}`$ instead of $`\cos(\omega n)`$?** Because $`e^{j\omega(n-1)} = e^{-j\omega} \cdot e^{j\omega n}`$: delaying by one sample is just "multiplying by a constant", which makes the derivations far simpler (after a delay, a cosine has to be split with the angle-sum formula into a cosine term and a sine term). A real sine wave is the sum of two conjugate complex sinusoids: $`\cos(\omega n) = \tfrac12\big(e^{j\omega n} + e^{-j\omega n}\big)`$; when the filter coefficients are real, the two halves are multiplied by mutually conjugate values of $`H`$, and added back they still form a real sine with amplitude × $`|H|`$ and phase + $`\angle H`$.
 
-```
-                  Im
-                   │
-              .  ─ j ─  .
-           .       │      ●    ← e^{jθ} = cos θ + j sin θ: angle θ, magnitude 1
-         .         │    ╱    .
-   ─── -1 ─────────┼───╱ θ ──── 1 ───→ Re
-     z = -1        │           z = 1
-     Nyquist (ω = π)│           DC (ω = 0)
-         .         │         .
-           .       │       .
-              .  ─ -j ─ .
-```
+![The unit circle in the complex plane: the point e^(j theta) at angle theta has magnitude 1; z = 1 is DC and z = -1 is Nyquist](images/unit-circle-euler.svg)
 
 Later we substitute $`z = e^{j\omega}`$ into the transfer function: as $`\omega`$ goes from 0 to $`\pi`$, you walk counterclockwise along the upper half of the unit circle from $`z = 1`$ (DC) to $`z = -1`$ (Nyquist).
 
@@ -117,19 +105,9 @@ All the personality of the moving average can be read off this formula:
 - The phase is $`-\omega (N-1)/2`$: a fixed delay of $`(N-1)/2`$ samples at all frequencies, called **linear phase**.
 - The −3 dB point is at about $`0.443\, f_s/N`$.
 
-```
-|H| (dB)   N = 8, fs = 48 kHz
-  0 ┤■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
-    │                 ■■■■■
- -3 ┤···················· ■ ← 0.443·fs/N ≈ 2.66 kHz (exact value for N = 8: 2.68 kHz)
-    │                       ■■
--13 ┤                          ■       ■■■■■   ← sidelobe: peak at about 8.6 kHz, −12.8 dB (−12.96 dB at 1.5·fs/N = 9 kHz)
-    │                           ■     ■     ■
-    │                            ■   ■       ■
- -∞ ┤                             ■■           ■■  ...
-    └──────────────────────────────┬────────────┬──────→ f
-                                 6 kHz        12 kHz      ← nulls at k·fs/N
-```
+![Magnitude response in dB of an 8-point moving average at fs = 48 kHz: a lowpass-like main lobe, then nulls at 6, 12 and 18 kHz separated by sidelobes](images/moving-average-response.svg)
+
+The figure (N = 8, $`f_s = 48`$ kHz) marks the −3 dB point at $`0.443\,f_s/N \approx 2.66`$ kHz (exact value for N = 8: 2.68 kHz), the nulls at $`k\cdot f_s/N`$ = 6, 12, 18 kHz, and the first sidelobe, whose peak is at about 8.6 kHz with −12.8 dB (−12.96 dB at $`1.5\,f_s/N`$ = 9 kHz).
 
 A filter whose impulse response has finite length is called an **FIR** (finite impulse response) filter. Exercise 6 implements one (with a running sum: each sample needs just one addition and one subtraction, independent of $`N`$) and compares it with a one-pole.
 
@@ -177,7 +155,7 @@ This is exactly what `BiquadCoefficients::response()` / `magnitudeDb()` do (see 
 
 ```mermaid
 flowchart LR
-    DE["difference equation<br/>y[n] = b0 x[n] + ... - a1 y[n-1] ..."] -- "x[n-k] → z^-k X(z)" --> TF["transfer function<br/>H(z) = B(z) / A(z)"]
+    DE["difference equation<br/>y[n] = b0 x[n] + ... - a1 y[n-1] ..."] -- "x[n-k] -> z^-k X(z)" --> TF["transfer function<br/>H(z) = B(z) / A(z)"]
     TF -- "substitute z = e^jω" --> FR["frequency response<br/>|H| (gain) and ∠H (phase)"]
     DE -- "input δ[n]" --> IR["impulse response h[n]"]
     IR -- "DTFT" --> FR
@@ -203,22 +181,9 @@ $`e^{j\omega}`$ is a point on the **unit circle** of the complex plane: as $`\om
 - Near a **zero** the numerator is small → the response has a dip; a zero exactly on the unit circle → that frequency vanishes completely (a notch, the nulls of the moving average).
 - Near a **pole** the denominator is small → the response has a peak; the closer a pole is to the unit circle, the higher and sharper the peak (resonance, high Q).
 
-```
-                 Im
-                  │        ← unit circle |z| = 1, upper half = 0 .. Nyquist
-             .  ─ ┼ ─  .
-          .       │       .        × pole (in conjugate pairs, inside the circle)
-        .         │   ×     .      ○ zero
-       .          │          .
-  ─ ○ ┼───────────┼───────────┼ ─→ Re
-   z=-1 .         │          .  z=1
-  Nyquist .       │   ×     .   DC
-            .     │       .
-               ' ─┼─ '
-                  │
-  Example: the RBJ lowpass has its two zeros stacked at z = -1 (completely gone at Nyquist)
-      and its two poles near DC; the closer they are to the circle, the sharper the peak near the cutoff.
-```
+![Pole-zero plot of an RBJ lowpass (f0 = 1 kHz, Q = 2, fs = 48 kHz) on the z-plane: a double zero at z = -1 and a conjugate pole pair just inside the unit circle near z = 1](images/pole-zero-lowpass.svg)
+
+In the figure, × is a pole (they come in conjugate pairs, inside the circle) and ○ is a zero; the upper half of the unit circle is 0 .. Nyquist. Example: the RBJ lowpass has its two zeros stacked at $`z = -1`$ (completely gone at Nyquist) and its two poles near DC; the closer they are to the circle, the sharper the peak near the cutoff.
 
 **The stability condition:** a pole $`p`$ contributes $`p^n`$ to the impulse response. With $`|p| < 1`$, $`p^n \to 0`$ (decays); with $`|p| = 1`$ it never decays (marginal); with $`|p| > 1`$ it grows exponentially (blows up, and the output soon becomes inf / NaN). Therefore:
 
@@ -364,7 +329,7 @@ The most widely used biquad formulas in the industry come from Robert Bristow-Jo
 ```mermaid
 flowchart LR
     A["analog prototype H(s)<br/>(e.g. 1 / (s² + s/Q + 1))"] --> B["prewarp<br/>so that f0 lines up exactly"]
-    B --> C["bilinear transform<br/>s → (1 - z^-1)/(1 + z^-1)·constant"]
+    B --> C["bilinear transform<br/>s -> (1 - z^-1)/(1 + z^-1)·constant"]
     C --> D["rearrange into b0, b1, b2, a0, a1, a2"]
     D --> E["divide by a0 (normalize)"]
 ```
@@ -534,16 +499,23 @@ The same $`H(z)`$ has several implementation "structures". They are mathematical
 
 **Direct Form I (DF-I)** -- copies the difference equation literally, storing the past 2 inputs and 2 outputs (4 states):
 
-```
-x[n] ──┬──► ×b0 ──►(+)──────────────┬──► y[n]
-       │            ▲               │
-      z⁻¹           │              z⁻¹
-       │            │               │
-       ├──► ×b1 ──►(+)◄── ×(-a1) ◄──┤
-       │            ▲               │
-      z⁻¹           │              z⁻¹
-       │            │               │
-       └──► ×b2 ──►(+)◄── ×(-a2) ◄──┘
+```mermaid
+flowchart LR
+    X["x[n]"] --> B0["x b0"]
+    X --> XD1["z^-1<br/>x[n-1]"]
+    XD1 --> B1["x b1"]
+    XD1 --> XD2["z^-1<br/>x[n-2]"]
+    XD2 --> B2["x b2"]
+    B0 --> S["sum (+)"]
+    B1 --> S
+    B2 --> S
+    S --> Y["y[n]"]
+    Y --> YD1["z^-1<br/>y[n-1]"]
+    YD1 --> YD2["z^-1<br/>y[n-2]"]
+    YD1 --> A1["x (-a1)"]
+    YD2 --> A2["x (-a2)"]
+    A1 --> S
+    A2 --> S
 ```
 
 **Direct Form II (DF-II)** -- does the feedback (poles) first and then the feed-forward (zeros), with the two sharing one delay line, so only 2 states are needed:
@@ -564,21 +536,23 @@ s_2[n] &= b_2\,x[n] - a_2\,y[n]
 \end{aligned}
 $$
 
-```
-x[n] ─┬──────────────────┬──────────────────┐
-      │                  │                  │
-     ×b0                ×b1                ×b2
-      │                  │                  │
-      ▼                  ▼                  ▼
-     (+) ◄── z⁻¹ ◄───── (+) ◄── z⁻¹ ◄───── (+)
-      │      (s1)        ▲      (s2)        ▲
-      │                  │                  │
-      ├─────────────► ×(-a1)                │
-      │                                     │
-      ├──────────────────────────────► ×(-a2)
-      │
-      ▼
-    y[n]
+```mermaid
+flowchart LR
+    X["x[n]"] --> B0["x b0"]
+    X --> B1["x b1"]
+    X --> B2["x b2"]
+    B0 --> S0["sum (+)"]
+    Z1["z^-1<br/>state s1"] --> S0
+    S0 --> Y["y[n]"]
+    Y --> A1["x (-a1)"]
+    Y --> A2["x (-a2)"]
+    B1 --> S1["sum (+)"]
+    A1 --> S1
+    Z2["z^-1<br/>state s2"] --> S1
+    S1 --> Z1
+    B2 --> S2["sum (+)"]
+    A2 --> S2
+    S2 --> Z2
 ```
 
 `l02_direct_forms` measures a "hard" filter (a 30 Hz, Q = 0.707 LPF, $`f_s = 48`$ kHz, with a pole radius of 0.997227, very close to $`z = 1`$; $`b_0 \approx 3.8\times10^{-6}`$):

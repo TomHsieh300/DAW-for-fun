@@ -58,19 +58,7 @@ $$
 3. **複數相乘 = 大小相乘、角度相加**：$`|H|e^{j\angle H} \cdot e^{j\theta} = |H|\,e^{j(\theta + \angle H)}`$。所以「讓訊號通過 filter」對單一頻率而言，就是「振幅乘上 $`|H|`$、相位加上 $`\angle H`$」——正是 2.1 節那句話。
 4. **為什麼用 $`e^{j\omega n}`$ 而不用 $`\cos(\omega n)`$？** 因為 $`e^{j\omega(n-1)} = e^{-j\omega} \cdot e^{j\omega n}`$：延遲一個 sample 只是「乘上一個常數」，推導會簡單非常多（cos 延遲後要用和角公式拆成 cos 與 sin 兩項）。真實的正弦波是兩個共軛複數正弦的和：$`\cos(\omega n) = \tfrac12\big(e^{j\omega n} + e^{-j\omega n}\big)`$；filter 係數是實數時，這兩半各自被乘上互為共軛的 $`H`$，加回來仍是實數的正弦，振幅 × $`|H|`$、相位 + $`\angle H`$。
 
-```
-                  Im
-                   │
-              .  ─ j ─  .
-           .       │      ●    ← e^{jθ} = cos θ + j sin θ：角度 θ、大小 1
-         .         │    ╱    .
-   ─── -1 ─────────┼───╱ θ ──── 1 ───→ Re
-     z = -1        │           z = 1
-     Nyquist（ω = π）│           DC（ω = 0）
-         .         │         .
-           .       │       .
-              .  ─ -j ─ .
-```
+![複數平面上的單位圓：角度 theta 的點 e^(j theta) 大小為 1；z = 1 是 DC，z = -1 是 Nyquist](images/unit-circle-euler.svg)
 
 之後會把 $`z = e^{j\omega}`$ 代入 transfer function：$`\omega`$ 從 0 走到 $`\pi`$，就是在單位圓的上半圈從 $`z = 1`$（DC）逆時針走到 $`z = -1`$（Nyquist）。
 
@@ -117,19 +105,9 @@ $$
 - 相位是 $`-\omega (N-1)/2`$：對所有頻率都是固定延遲 $`(N-1)/2`$ 個 sample，叫做 **linear phase**。
 - −3 dB 點大約在 $`0.443\, f_s/N`$。
 
-```
-|H| (dB)   N = 8, fs = 48 kHz
-  0 ┤■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
-    │                 ■■■■■
- -3 ┤···················· ■ ← 0.443·fs/N ≈ 2.66 kHz（N = 8 的精確值 2.68 kHz）
-    │                       ■■
--13 ┤                          ■       ■■■■■   ← 旁瓣：峰值約 8.6 kHz、−12.8 dB（1.5·fs/N = 9 kHz 處 −12.96 dB）
-    │                           ■     ■     ■
-    │                            ■   ■       ■
- -∞ ┤                             ■■           ■■  ...
-    └──────────────────────────────┬────────────┬──────→ f
-                                 6 kHz        12 kHz      ← null 在 k·fs/N
-```
+![fs = 48 kHz、8 點 moving average 的頻率響應（dB）：一個類似 lowpass 的主瓣，然後在 6、12、18 kHz 出現 null，null 之間是 sidelobe](images/moving-average-response.svg)
+
+圖中（N = 8，$`f_s = 48`$ kHz）標出 −3 dB 點在 $`0.443\,f_s/N \approx 2.66`$ kHz（N = 8 的精確值是 2.68 kHz）、位於 $`k\cdot f_s/N`$ = 6、12、18 kHz 的 null，以及第一個 sidelobe：峰值在約 8.6 kHz、−12.8 dB（在 $`1.5\,f_s/N`$ = 9 kHz 是 −12.96 dB）。
 
 這種「impulse response 有限長」的 filter 叫 **FIR**（finite impulse response）。練習 6 會實作它（用 running sum，每個 sample 只要一加一減，與 $`N`$ 無關），並和 one-pole 比較。
 
@@ -177,7 +155,7 @@ $$
 
 ```mermaid
 flowchart LR
-    DE["difference equation<br/>y[n] = b0 x[n] + ... - a1 y[n-1] ..."] -- "x[n-k] → z^-k X(z)" --> TF["transfer function<br/>H(z) = B(z) / A(z)"]
+    DE["difference equation<br/>y[n] = b0 x[n] + ... - a1 y[n-1] ..."] -- "x[n-k] -> z^-k X(z)" --> TF["transfer function<br/>H(z) = B(z) / A(z)"]
     TF -- "代入 z = e^jω" --> FR["頻率響應<br/>|H|（gain）與 ∠H（相位）"]
     DE -- "輸入 δ[n]" --> IR["impulse response h[n]"]
     IR -- "DTFT" --> FR
@@ -203,22 +181,9 @@ $`e^{j\omega}`$ 是複數平面上**單位圓**的一個點：$`\omega`$ 從 0�
 - 走到 **zero 附近**時分子很小 → 響應有凹陷；zero 正好在單位圓上 → 那個頻率完全消失（notch、moving average 的 null）。
 - 走到 **pole 附近**時分母很小 → 響應有峰；pole 越靠近單位圓，峰越高越尖（resonance，高 Q）。
 
-```
-                 Im
-                  │        ← 單位圓 |z| = 1，上半圈 = 0 .. Nyquist
-             .  ─ ┼ ─  .
-          .       │       .        × pole（共軛成對，在圓內）
-        .         │   ×     .      ○ zero
-       .          │          .
-  ─ ○ ┼───────────┼───────────┼ ─→ Re
-   z=-1 .         │          .  z=1
-  Nyquist .       │   ×     .   DC
-            .     │       .
-               ' ─┼─ '
-                  │
-  例：RBJ lowpass 的兩個 zero 疊在 z = -1（Nyquist 完全消失），
-      兩個 pole 在 DC 附近；越靠近圓周，cutoff 附近的峰越尖。
-```
+![z 平面上 RBJ lowpass（f0 = 1 kHz、Q = 2、fs = 48 kHz）的 pole-zero 圖：兩個 zero 疊在 z = -1，一對共軛 pole 在單位圓內、靠近 z = 1](images/pole-zero-lowpass.svg)
+
+圖中 × 是 pole（共軛成對，在圓內），○ 是 zero；單位圓的上半圈 = 0 .. Nyquist。例：RBJ lowpass 的兩個 zero 疊在 $`z = -1`$（Nyquist 完全消失），兩個 pole 在 DC 附近；越靠近圓周，cutoff 附近的峰越尖。
 
 **穩定條件：** 一個 pole $`p`$ 對 impulse response 的貢獻是 $`p^n`$。$`|p| < 1`$ 時 $`p^n \to 0`$（衰減）；$`|p| = 1`$ 時永遠不衰減（臨界）；$`|p| > 1`$ 時指數成長（爆掉，輸出很快變成 inf / NaN）。所以：
 
@@ -364,7 +329,7 @@ $$
 ```mermaid
 flowchart LR
     A["analog prototype H(s)<br/>（例：1 / (s² + s/Q + 1)）"] --> B["prewarp<br/>讓 f0 精準對齊"]
-    B --> C["bilinear transform<br/>s → (1 - z^-1)/(1 + z^-1)·常數"]
+    B --> C["bilinear transform<br/>s -> (1 - z^-1)/(1 + z^-1)·常數"]
     C --> D["整理成 b0, b1, b2, a0, a1, a2"]
     D --> E["除以 a0（normalize）"]
 ```
@@ -534,16 +499,23 @@ $`f_c`$ 低時幾乎完全一致；$`f_c = 18`$ kHz 時，cutoff 上方 20% 的�
 
 **Direct Form I（DF-I）**——照抄 difference equation，存過去 2 個輸入、2 個輸出（4 個狀態）：
 
-```
-x[n] ──┬──► ×b0 ──►(+)──────────────┬──► y[n]
-       │            ▲               │
-      z⁻¹           │              z⁻¹
-       │            │               │
-       ├──► ×b1 ──►(+)◄── ×(-a1) ◄──┤
-       │            ▲               │
-      z⁻¹           │              z⁻¹
-       │            │               │
-       └──► ×b2 ──►(+)◄── ×(-a2) ◄──┘
+```mermaid
+flowchart LR
+    X["x[n]"] --> B0["x b0"]
+    X --> XD1["z^-1<br/>x[n-1]"]
+    XD1 --> B1["x b1"]
+    XD1 --> XD2["z^-1<br/>x[n-2]"]
+    XD2 --> B2["x b2"]
+    B0 --> S["sum (+)"]
+    B1 --> S
+    B2 --> S
+    S --> Y["y[n]"]
+    Y --> YD1["z^-1<br/>y[n-1]"]
+    YD1 --> YD2["z^-1<br/>y[n-2]"]
+    YD1 --> A1["x (-a1)"]
+    YD2 --> A2["x (-a2)"]
+    A1 --> S
+    A2 --> S
 ```
 
 **Direct Form II（DF-II）**——先做 feedback（pole）再做 feed-forward（zero），兩段共用同一條延遲線，只要 2 個狀態：
@@ -564,21 +536,23 @@ s_2[n] &= b_2\,x[n] - a_2\,y[n]
 \end{aligned}
 $$
 
-```
-x[n] ─┬──────────────────┬──────────────────┐
-      │                  │                  │
-     ×b0                ×b1                ×b2
-      │                  │                  │
-      ▼                  ▼                  ▼
-     (+) ◄── z⁻¹ ◄───── (+) ◄── z⁻¹ ◄───── (+)
-      │      (s1)        ▲      (s2)        ▲
-      │                  │                  │
-      ├─────────────► ×(-a1)                │
-      │                                     │
-      ├──────────────────────────────► ×(-a2)
-      │
-      ▼
-    y[n]
+```mermaid
+flowchart LR
+    X["x[n]"] --> B0["x b0"]
+    X --> B1["x b1"]
+    X --> B2["x b2"]
+    B0 --> S0["sum (+)"]
+    Z1["z^-1<br/>狀態 s1"] --> S0
+    S0 --> Y["y[n]"]
+    Y --> A1["x (-a1)"]
+    Y --> A2["x (-a2)"]
+    B1 --> S1["sum (+)"]
+    A1 --> S1
+    Z2["z^-1<br/>狀態 s2"] --> S1
+    S1 --> Z1
+    B2 --> S2["sum (+)"]
+    A2 --> S2
+    S2 --> Z2
 ```
 
 `l02_direct_forms` 用一個「很難算」的 filter 實測（30 Hz、Q = 0.707 的 LPF，$`f_s = 48`$ kHz，pole 半徑 0.997227，非常貼近 $`z = 1`$；$`b_0 \approx 3.8\times10^{-6}`$）：
@@ -785,10 +759,14 @@ cd build
 ```
                noise RMS   sweep RMS
     dry        -16.82 dB    -9.03 dB
-    lpf        -30.13 dB   -11.50 dB   雜訊 RMS 變化：實測 -13.32 dB，理論 ∫|H|² = -13.36 dB
-    hpf        -17.02 dB   -12.66 dB   雜訊 RMS 變化：實測 -0.21 dB，理論 ∫|H|² = -0.21 dB
-    bpf        -31.76 dB   -19.12 dB   雜訊 RMS 變化：實測 -14.95 dB，理論 ∫|H|² = -15.00 dB
-    notch      -16.96 dB    -9.48 dB   雜訊 RMS 變化：實測 -0.14 dB，理論 ∫|H|² = -0.14 dB
+    lpf        -30.13 dB   -11.50 dB   peak -6.02 dBFS
+              Noise RMS change: measured -13.32 dB, theory ∫|H|² = -13.36 dB
+    hpf        -17.02 dB   -12.66 dB   peak -6.02 dBFS
+              Noise RMS change: measured -0.21 dB, theory ∫|H|² = -0.21 dB
+    bpf        -31.76 dB   -19.12 dB   peak -6.02 dBFS
+              Noise RMS change: measured -14.95 dB, theory ∫|H|² = -15.00 dB
+    notch      -16.96 dB    -9.48 dB   peak -6.02 dBFS
+              Noise RMS change: measured -0.14 dB, theory ∫|H|² = -0.14 dB
 ```
 
 （為了排版，上面把兩行合併成一行。）LPF 1 kHz 只留下 0..24 kHz 中大約前 1 kHz 的能量，所以雜訊 RMS 掉了 13 dB；HPF 去掉的是同樣那 1 kHz，所以只掉 0.2 dB——但聽起來差很多，因為人耳對頻率是對數感知的。

@@ -71,11 +71,11 @@ return gainToDb(std::abs((1.0 - z1) / (1.0 - r_ * z1)));
 結果（$`R = 0.995`$）：
 
 ```
-DC：輸入平均 0.5000 → 輸出平均 -0.000000
-1 kHz：輸入振幅 0.2500 → 輸出振幅 0.2504（0.015 dB）
--3 dB 點：理論近似 38.2 Hz，由 H(z) 算出 38.1 Hz
-實測：38.1 Hz = -3.01 dB，20 Hz = -6.67 dB（理論 -6.67 dB）
-step response：τ = 199 samples（4.2 ms），降到 1% 需要 918 samples（理論 ≈ 4.6 τ = 919）
+DC: input mean 0.5000 -> output mean -0.000000
+1 kHz: input amplitude 0.2500 -> output amplitude 0.2504 (0.015 dB)
+-3 dB point: theoretical approximation 38.2 Hz, computed from H(z) 38.1 Hz
+Measured: 38.1 Hz = -3.01 dB, 20 Hz = -6.67 dB (theory -6.67 dB)
+Step response: τ = 199 samples (4.2 ms), 918 samples to fall to 1% (theory ~ 4.6 τ = 919)
 ```
 
 **為什麼 −3 dB 點 ≈ $`f_s(1-R)/2\pi`$：** 在低頻 $`e^{-j\omega} \approx 1 - j\omega`$，所以 $`H \approx \dfrac{j\omega}{(1-R) + jR\omega} \approx \dfrac{j\omega}{(1-R) + j\omega}`$。這就是一個 cutoff 在 $`\omega_c = 1-R`$ 的一階 highpass，換成 Hz 就是 $`f_s(1-R)/2\pi`$。
