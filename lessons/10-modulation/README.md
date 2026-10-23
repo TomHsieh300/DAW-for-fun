@@ -26,20 +26,19 @@ After reading this chapter and doing the exercises, you should be able to:
 
 So far, the signal flow has looked like this:
 
-```
-x[n] ──► [ effect (fixed parameters) ] ──► y[n]
+```mermaid
+flowchart LR
+    X["x[n]"] --> E["effect<br/>(fixed parameters)"] --> Y["y[n]"]
 ```
 
 A modulation effect adds one more line, a "control signal":
 
-```
-                 LFO (0.1–10 Hz)
-                   │  m[n] ∈ [-1, +1]
-                   ▼
-            ┌─ map to parameter range ─┐   e.g. delay = 15 ms + 3 ms · m[n]
-            │                          │        fc    = 800 Hz · 2^(2·m[n])
-            ▼                          │        gain  = 1 − depth · (1 − m[n]) / 2
-x[n] ──► [ effect ] ───────────────────┴────► y[n]
+```mermaid
+flowchart TD
+    L["LFO (0.1–10 Hz)<br/>m[n] ∈ [-1, +1]"] --> P["map to parameter range"]
+    P -.->|"e.g."| EX["delay = 15 ms + 3 ms · m[n]<br/>fc = 800 Hz · 2^(2·m[n])<br/>gain = 1 − depth · (1 − m[n]) / 2"]
+    P -->|"parameter"| E
+    X["x[n]"] --> E["effect"] --> Y["y[n]"]
 ```
 
 The LFO (Low-Frequency Oscillator) output is not meant to be heard. Its frequency is usually 0.05–10 Hz, far below the audible range (20 Hz). Its job is to make a "parameter" change slowly over time. Which parameter is controlled determines the kind of effect:
@@ -75,12 +74,7 @@ The waveforms are functions of the phase (all outputs lie in $`[-1, +1]`$):
 | Square | $`p < \tfrac12 ? +1 : -1`$ | Switches between two values; the "chopped" tremolo |
 | Sample & Hold | pick a random number at the start of each cycle and hold it for the whole cycle | A random staircase with a "robot / computer" feel |
 
-```
-Sine         Triangle      Saw            Square        S&H
- ╭─╮           /\           /|  /|        ┌──┐  ┌──      ──┐    ┌──
-╯   ╰   ╭    /  \  /      /  | / |        │  │  │          └──┐ │
-     ╰─╯       \/       /    |/  |      ──┘  └──┘             └─┘
-```
+![Five LFO waveforms over two cycles: sine, triangle, saw, square and sample & hold](images/lfo-shapes.svg)
 
 (`l10_lfo_shapes` prints more precise ASCII plots from the real values.)
 
@@ -196,13 +190,21 @@ Doppler pitch drift (1 kHz sine, 1 voice, mix 1, rate 0.8 Hz, depth 3 ms):
 
 A choir sounds "thicker" than a solo singer because each person is slightly different in pitch and timing, and that difference keeps changing. A chorus effect imitates this electronically: copy the signal a few times and delay each copy by 5–30 ms (short enough that the ear does not hear an echo; Chapter 09 explained that below about 35 ms the copies fuse into one sound (the table in Section 2.1)), then let an LFO slowly push each delay time → each copy gets a slight, slowly changing detune (Section 2.3) → mix them with the dry signal, and it sounds like several "slightly out-of-tune doubles" playing together.
 
-```
-x ──┬──────────────────────────────────────────────(1 − mix)──┐
-    │                                                           │
-    ├─► delay read d₀ + D·sin(2πrt + 2π·0/N) ──┐                ├─(+)─► y
-    ├─► delay read d₀ + D·sin(2πrt + 2π·1/N) ──┼─(+)─ ÷N ─(mix)─┘
-    └─► delay read d₀ + D·sin(2πrt + 2π·2/N) ──┘
-         (one FractionalDelayLine, several read heads)
+```mermaid
+flowchart LR
+    X["x"] -->|"1 − mix"| Y["y"]
+    X --> D0["delay read<br/>d0 + D·sin(2πrt + 2π·0/N)"]
+    X --> D1["delay read<br/>d0 + D·sin(2πrt + 2π·1/N)"]
+    X --> D2["delay read<br/>d0 + D·sin(2πrt + 2π·2/N)"]
+    D0 --> SUM["Σ, ÷N"]
+    D1 --> SUM
+    D2 --> SUM
+    SUM -->|"mix"| Y
+    subgraph FD["one FractionalDelayLine, several read heads"]
+        D0
+        D1
+        D2
+    end
 ```
 
 $$
@@ -259,14 +261,9 @@ $$
 
 With $`d = 2`$ ms the notches are at 250, 750, 1250 Hz and so on, spaced $`1/d = 500`$ Hz apart, **evenly spaced**, like a comb on the spectrum. A flanger lets the LFO push $`d`$: the whole comb slides left and right together, which is the "whoosh" of a jet flying past.
 
-```
-|H|  d = 2 ms                          d = 1 ms (the LFO shortens the delay → teeth spread out and move up)
-1 ┤╮   ╭─╮   ╭─╮   ╭─╮   ╭          1 ┤╮       ╭───╮       ╭──
-  │ ╲ ╱   ╲ ╱   ╲ ╱   ╲ ╱             │ ╲     ╱     ╲     ╱
-0 ┤  V     V     V     V              0 ┤  ╲___╱       ╲___╱
-  └──┴─────┴─────┴─────┴──► f         └────┴───────────┴────► f
-    250   750  1250  1750 Hz              500         1500 Hz
-```
+![Flanger magnitude response |H| for d = 2 ms and d = 1 ms: a comb with notches at odd multiples of 1/(2d)](images/flanger-comb-delay.svg)
+
+*Left: d = 2 ms, notches at 250, 750, 1250 and 1750 Hz. Right: d = 1 ms (the LFO shortens the delay), so the teeth spread out and move up: notches at 500 and 1500 Hz.*
 
 `l10_flanger` parks the LFO at a fixed delay and sweeps the frequency to find the notches:
 
@@ -286,12 +283,13 @@ Notches found sweeping 100-4000 Hz (every 25 Hz), vs f_k = (2k+1)/(2d), d = 2 ms
 
 Send part of the delay output back to the delay-line input (the feedback comb of Chapter 09):
 
-```
-x ──┬────────────────────────────────(1 − m)──┐
-    │                                          ├─► y
-    └─►(+)─► [ z^(−D) ] ──┬─────────────(m)───┘
-        ▲                 │
-        └────── g ◄───────┘
+```mermaid
+flowchart LR
+    X["x"] -->|"1 − m"| Y["y"]
+    X --> ADD(("+"))
+    ADD --> DL["z^(−D)"]
+    DL -->|"m"| Y
+    DL -->|"g"| ADD
 ```
 
 The signal inside the delay line is $`w[n] = x[n] + g\,w[n-D]`$ and the output is $`y = (1-m)x + m\,w[n-D]`$:
@@ -361,12 +359,13 @@ At the instant the delay difference $`\delta = d(t) - d_0`$ passes through 0, $`
 
 A flanger uses "delay" to make the phase difference between two paths grow linearly with frequency ($`\Delta\varphi = 2\pi f d`$), giving evenly spaced notches. A phaser uses a different tool: the **allpass filter**. It leaves the amplitude of every frequency unchanged ($`|H| = 1`$) and changes only the phase, and the phase shift goes from 0° to −180° **non-linearly** with frequency. Chain N stages, add the result to the dry signal, and the frequencies where the phase differs by exactly 180° cancel into notches.
 
-```
-x ──┬────────────────────────────────────────────(1 − mix)──┐
-    │                                                         ├─► y
-    └─►(+)─► AP₁ ─► AP₂ ─► … ─► AP_N ──┬────────────(mix)───┘
-        ▲                               │
-        └──────── g · z⁻¹ ◄─────────────┘   (feedback, optional)
+```mermaid
+flowchart LR
+    X["x"] -->|"1 − mix"| Y["y"]
+    X --> ADD(("+")) --> AP1["AP 1"] --> AP2["AP 2"] --> APD["..."] --> APN["AP N"]
+    APN -->|"mix"| Y
+    APN --> FB["g · z^(−1)<br/>(feedback, optional)"]
+    FB --> ADD
 ```
 
 #### First-order allpass: deriving the phase and the 90° frequency
