@@ -1,25 +1,30 @@
-// 練習 5 解答：Stereo chorus —— 左右各一個 LFO，相位差 90°，量左右相關係數
+// Exercise 5 solution: Stereo chorus -- one LFO per side with a 90° phase offset; measure the left/right correlation
 //
-// 單聲道 chorus 複製到左右兩邊，聲像仍然在正中間（左右完全相同，相關係數 = 1）。
-// 讓左右聲道的 LFO 錯開 0.25 個週期（90°；右聲道的起始相位 = 0.25）：
-//   左：d_L(t) = d0 + D·sin(2πrt)         右：d_R(t) = d0 + D·sin(2πrt + π/2) = d0 + D·cos(2πrt)
-// 左右的延遲（因此走音的方向與量）不同步 → 兩耳聽到的訊號不再相同 → 聲像變寬。
+// A mono chorus copied to both sides still has the image dead center (left and right identical,
+// correlation = 1). Offset the left and right LFOs by 0.25 cycle (90°; the right channel's start phase = 0.25):
+//   left: d_L(t) = d0 + D·sin(2πrt)         right: d_R(t) = d0 + D·sin(2πrt + π/2) = d0 + D·cos(2πrt)
+// The left and right delays (and therefore the direction and amount of detuning) are out of sync
+// -> the two ears no longer hear the same signal -> the image widens.
 //
-// 為什麼常用 90°？對白雜訊這種寬頻素材，90° 和 180° 的相關係數都接近 0（下面會量到）；
-// 差別在「動態」：180° 時左右的延遲永遠一個最長、一個最短，走音方向完全相反，聲像在左右之間
-// 對稱地來回拉扯；90° 時左右輪流領先，聽起來是比較均勻、會旋轉的寬度。這是聽感的選擇，不是數學上的最佳解。
+// Why is 90° so common? For broadband material like white noise, the correlation at both 90° and
+// 180° is close to 0 (measured below); the difference is in the "dynamics": at 180° one side always
+// has the longest delay while the other has the shortest, the detuning directions are exactly
+// opposite, and the image is pulled symmetrically back and forth between left and right; at 90°
+// left and right take turns leading, which sounds like a more even, rotating width. This is an
+// aesthetic choice, not a mathematical optimum.
 //
-// 量測：輸入是「左右相同」的單聲道素材（白雜訊複製兩邊），輸出的 Pearson 相關係數
+// Measurement: the input is mono material with identical left and right (white noise copied to
+// both sides), and the output's Pearson correlation coefficient is
 //   ρ = Σ L·R / sqrt(Σ L² · Σ R²)
-// self-check：
-//   1. phase offset 0 → ρ > 0.999（左右完全相同）
-//   2. phase offset 0.25（90°）、mix 1 → ρ < 0.5（純濕訊號，左右明顯不同）
-//   3. phase offset 0.25、mix 0.5 → ρ 介於上面兩者之間（乾訊號左右相同把相關係數拉高）
-//   3b. 相位差真的是 90°：rate 0、impulse 輸入，左聲道延遲 = centre（15 ms）、右聲道 = centre + depth（18 ms）。
-//       （白雜訊的 ρ 對相位差不敏感——任何非 0 的相位差都讓 ρ 接近 0，所以第 2、3、5 項分辨不出 0.25 和 0.5。）
-//   4. mono 相容性：(L + R)/2 的 RMS 相對單一聲道的 RMS ≈ −1.25 dB（理論見下），且不低於 −3 dB
-//   5. 和第 10 章 Chorus（setStereoSpread(1)、1 voice）的結果一致（相關係數差 < 0.05）
-// 輸出：dawlab_output/l10_ex5_stereo_chorus.wav（撥弦琶音）
+// self-check:
+//   1. phase offset 0 -> ρ > 0.999 (left and right identical)
+//   2. phase offset 0.25 (90°), mix 1 -> ρ < 0.5 (purely wet signal, clearly different left and right)
+//   3. phase offset 0.25, mix 0.5 -> ρ between the two above (the dry signal, identical on both sides, pulls the correlation up)
+//   3b. The offset really is 90°: rate 0, impulse input; left delay = centre (15 ms), right = centre + depth (18 ms).
+//       (The white-noise ρ is insensitive to the phase offset -- any non-zero offset drives ρ close to 0, so items 2, 3 and 5 cannot tell 0.25 from 0.5.)
+//   4. Mono compatibility: the RMS of (L + R)/2 relative to a single channel's RMS ≈ −1.25 dB (theory below), and not below −3 dB
+//   5. Agrees with the Chapter 10 Chorus (setStereoSpread(1), 1 voice) (correlation difference < 0.05)
+// Output: dawlab_output/l10_ex5_stereo_chorus.wav (plucked arpeggio)
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Chorus.h>
@@ -46,7 +51,7 @@ public:
 
     void prepare(double sampleRate, int maxBlockSize, int numChannels) {
         (void)maxBlockSize;
-        (void)numChannels; // 永遠處理兩個聲道
+        (void)numChannels; // always processes two channels
         sampleRate_ = sampleRate;
         delay_.prepare(dawlab::msToSamples(kMaxDelayMs, sampleRate) + 8, 2);
         for (Lfo& l : lfo_)
@@ -57,7 +62,7 @@ public:
     void reset() noexcept {
         delay_.reset();
         lfo_[0].setPhase(0.0f);
-        lfo_[1].setPhase(phaseOffset_); // 右聲道的 LFO 從 offset 開始 → 兩個 LFO 永遠相差 offset 個週期
+        lfo_[1].setPhase(phaseOffset_); // the right channel's LFO starts at the offset -> the two LFOs always differ by `offset` cycles
         for (Lfo& l : lfo_)
             l.reset();
     }
@@ -69,7 +74,7 @@ public:
     void setDepthMs(float ms) noexcept { depthMs_ = std::clamp(ms, 0.0f, 20.0f); }
     void setCentreDelayMs(float ms) noexcept { centreMs_ = std::clamp(ms, 1.0f, kMaxDelayMs - 20.0f); }
     void setMix(float mix) noexcept { mix_ = std::clamp(mix, 0.0f, 1.0f); }
-    // 左右 LFO 的相位差（0..1 個週期；0.25 = 90°）。改變後要 reset() 才生效。
+    // Phase offset between the left and right LFOs (0..1 cycle; 0.25 = 90°). Takes effect only after reset().
     void setPhaseOffset(float offset01) noexcept { phaseOffset_ = std::clamp(offset01, 0.0f, 1.0f); }
 
     void process(dawlab::AudioBlock block) noexcept {
@@ -141,16 +146,17 @@ double runAndCorrelate(float phaseOffset, float mix, dawlab::AudioBuffer* keep =
     return correlation(in, dawlab::secondsToSamples(0.5, kSampleRate));
 }
 
-// 相位差的直接驗證：rate 0 讓 LFO 停在起始相位，送進一個 impulse，
-// 輸出 impulse 的位置就是那個聲道的延遲：d = centre + depth·sin(2π·phase)。
-// （白雜訊的 ρ 對「相位差是多少」不敏感：任何非 0 的相位差都讓 ρ 接近 0，所以要另外量。）
+// Direct verification of the phase offset: rate 0 parks the LFOs at their start phases, and an
+// impulse is sent in. The position of the output impulse is that channel's delay: d = centre + depth·sin(2π·phase).
+// (The white-noise ρ is insensitive to the size of the phase offset: any non-zero offset drives ρ
+// close to 0, so it has to be measured separately.)
 void impulsePeakDelaysMs(float phaseOffset, double& leftMs, double& rightMs) {
     dawlab::AudioBuffer b(2, dawlab::secondsToSamples(0.1, kSampleRate));
     b.setSample(0, 0, 1.0f);
     b.setSample(1, 0, 1.0f);
     StereoChorus c;
     c.prepare(kSampleRate, kBlockSize, 2);
-    c.setRateHz(0.0f); // LFO 停住
+    c.setRateHz(0.0f); // LFO frozen
     c.setDepthMs(3.0f);
     c.setCentreDelayMs(15.0f);
     c.setMix(1.0f);
@@ -173,12 +179,12 @@ void impulsePeakDelaysMs(float phaseOffset, double& leftMs, double& rightMs) {
 } // namespace
 
 int main() {
-    std::printf("=== 第 10 章 練習 5：Stereo chorus ===\n\n");
+    std::printf("=== Chapter 10 Exercise 5: Stereo chorus ===\n\n");
     const int skip = dawlab::secondsToSamples(0.5, kSampleRate);
 
-    // ---- 1–3. 相位差 vs 相關係數 ------------------------------------------------
-    std::printf("白雜訊（左右相同）→ StereoChorus，rate 0.8 Hz、depth 3 ms、centre 15 ms：\n");
-    std::printf("   phase offset   mix   L/R 相關係數\n");
+    // ---- 1-3. Phase offset vs correlation ---------------------------------------
+    std::printf("White noise (left = right) -> StereoChorus, rate 0.8 Hz, depth 3 ms, centre 15 ms:\n");
+    std::printf("   phase offset   mix   L/R correlation\n");
     const double rho0 = runAndCorrelate(0.0f, 1.0f);
     const double rho90wet = runAndCorrelate(0.25f, 1.0f);
     const double rho90half = runAndCorrelate(0.25f, 0.5f);
@@ -190,19 +196,19 @@ int main() {
     DAWLAB_CHECK(rho0 > 0.999);
     DAWLAB_CHECK(rho90wet < 0.5);
     DAWLAB_CHECK(rho90half > rho90wet && rho90half < rho0);
-    std::printf("  -> 白雜訊在不同延遲下幾乎不相關，所以純濕訊號的 ρ 很低；加回乾訊號後 ρ 回升。\n\n");
+    std::printf("  -> White noise is almost uncorrelated at different delays, so the purely wet signal has a very low ρ; adding the dry signal back raises ρ again.\n\n");
 
-    // ---- 3b. 相位差真的是 90°？（impulse 量延遲） -----------------------------------
+    // ---- 3b. Is the phase offset really 90°? (measure the delay with an impulse) --
     {
         double lMs = 0.0, rMs = 0.0;
         impulsePeakDelaysMs(0.25f, lMs, rMs);
-        std::printf("rate 0、phase offset 0.25 的 impulse response：左 %.3f ms、右 %.3f ms\n", lMs, rMs);
-        std::printf("  理論：左 centre + depth·sin(0) = 15.000 ms、右 centre + depth·sin(π/2) = 18.000 ms\n\n");
+        std::printf("Impulse response with rate 0, phase offset 0.25: left %.3f ms, right %.3f ms\n", lMs, rMs);
+        std::printf("  Theory: left centre + depth·sin(0) = 15.000 ms, right centre + depth·sin(π/2) = 18.000 ms\n\n");
         DAWLAB_CHECK_NEAR(lMs, 15.0, 0.05);
-        DAWLAB_CHECK_NEAR(rMs, 18.0, 0.05); // offset 0.5 → 15 ms、0.05 → 15.93 ms，都會 FAIL
+        DAWLAB_CHECK_NEAR(rMs, 18.0, 0.05); // offset 0.5 -> 15 ms, 0.05 -> 15.93 ms; both would FAIL
     }
 
-    // ---- 4. mono 相容性 -----------------------------------------------------------
+    // ---- 4. Mono compatibility --------------------------------------------------
     {
         dawlab::AudioBuffer out;
         runAndCorrelate(0.25f, 0.5f, &out);
@@ -212,17 +218,17 @@ int main() {
         const float sumRms = dawlab::rms(monoSum.getReadPointer(0) + skip, monoSum.getNumSamples() - skip);
         const float lrRms = 0.5f * (dawlab::rms(out.getReadPointer(0) + skip, out.getNumSamples() - skip) +
                                     dawlab::rms(out.getReadPointer(1) + skip, out.getNumSamples() - skip));
-        // 理論：L = 0.5x + 0.5w_L，x、w_L、w_R 互不相關且功率相同（σ²）
+        // Theory: L = 0.5x + 0.5w_L, where x, w_L, w_R are mutually uncorrelated with equal power (σ²)
         //   P(L) = 0.25σ² + 0.25σ² = 0.5σ²
         //   P((L+R)/2) = P(0.5x + 0.25w_L + 0.25w_R) = 0.25σ² + 0.0625σ² · 2 = 0.375σ²
-        //   比值 = 0.375 / 0.5 = 0.75 → 10·log10(0.75) = −1.25 dB
+        //   ratio = 0.375 / 0.5 = 0.75 -> 10·log10(0.75) = −1.25 dB
         const float lossDb = dawlab::gainToDb(sumRms / lrRms);
-        std::printf("mono 相容性（90°、mix 0.5）：(L+R)/2 的 RMS 相對單一聲道 %+.2f dB（理論 −1.25 dB）\n\n", lossDb);
+        std::printf("Mono compatibility (90°, mix 0.5): RMS of (L+R)/2 relative to a single channel %+.2f dB (theory −1.25 dB)\n\n", lossDb);
         DAWLAB_CHECK_NEAR(lossDb, -1.25, 0.5);
         DAWLAB_CHECK(lossDb > -3.0f);
     }
 
-    // ---- 5. 和 dsp::Chorus 的 stereo spread 對照 -----------------------------------
+    // ---- 5. Comparison with dsp::Chorus's stereo spread ---------------------------
     {
         dawlab::AudioBuffer in = dualMono(3.0, 21u);
         Chorus c;
@@ -232,15 +238,15 @@ int main() {
         c.setCentreDelayMs(15.0f);
         c.setVoices(1);
         c.setMix(1.0f);
-        c.setStereoSpread(1.0f); // 右聲道 LFO 和左聲道相差 90°
+        c.setStereoSpread(1.0f); // the right channel's LFO is 90° off the left
         c.reset();
         processInBlocks(c, in);
         const double rhoLib = correlation(in, skip);
-        std::printf("dsp::Chorus（1 voice、mix 1、spread 1）：ρ = %.4f（自己寫的 90° 版 %.4f）\n\n", rhoLib, rho90wet);
+        std::printf("dsp::Chorus (1 voice, mix 1, spread 1): ρ = %.4f (your own 90° version: %.4f)\n\n", rhoLib, rho90wet);
         DAWLAB_CHECK_NEAR(rhoLib, rho90wet, 0.05);
     }
 
-    // ---- 聽 ----------------------------------------------------------------------
+    // ---- Listening ---------------------------------------------------------------
     {
         dawlab::AudioBuffer pluck = dawlab::makePluckSequence(kSampleRate, 4.0, 0.4f, 2);
         StereoChorus c;
@@ -253,7 +259,7 @@ int main() {
         c.reset();
         processInBlocks(c, pluck);
         dawlab::writeWav(dawlab::outputPath("l10_ex5_stereo_chorus.wav"), pluck, kSampleRate);
-        std::printf("輸出 l10_ex5_stereo_chorus.wav：peak %.3f，L/R 相關係數 %.3f\n", dawlab::peakAbs(pluck),
+        std::printf("Output l10_ex5_stereo_chorus.wav: peak %.3f, L/R correlation %.3f\n", dawlab::peakAbs(pluck),
                     correlation(pluck, 0));
         DAWLAB_CHECK(!dawlab::hasNanOrInf(pluck));
     }

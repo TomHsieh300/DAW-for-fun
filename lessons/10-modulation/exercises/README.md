@@ -1,150 +1,152 @@
-# 第 10 章 練習題：Modulation —— Chorus、Flanger、Phaser、Tremolo
+# Chapter 10 Exercises: Modulation -- Chorus, Flanger, Phaser, Tremolo
 
-難度：★☆☆ 基礎 / ★★☆ 中等 / ★★★ 進階。
-實作題（3–6、8）都有起始碼 `exercises/starter/exN_xxx.cpp`（可編譯、留 `// TODO`，執行會印出 FAIL——這是預期的）與完整解答 `solutions/exN_xxx.cpp`。
-解答與解說（含觀念題、計算題）在 [`../solutions/README.md`](../solutions/README.md)，建議先自己做完再看。
+**English** | [繁體中文](README.zh-TW.md)
 
-建置與執行（Windows，在專案根目錄）：
+Difficulty: ★☆☆ basic / ★★☆ intermediate / ★★★ advanced.
+The implementation problems (3–6, 8) each come with starter code `exercises/starter/exN_xxx.cpp` (it compiles and leaves `// TODO` markers; running it prints FAIL, which is expected) and a complete solution `solutions/exN_xxx.cpp`.
+Solutions and explanations (including the conceptual and calculation problems) are in [`../solutions/README.md`](../solutions/README.md). Try to finish a problem on your own before looking.
+
+Build and run (Windows, from the project root):
 
 ```powershell
-.\scripts\build.ps1 -Only 10-modulation -NoTest     # 預設 build 目錄是 build\
+.\scripts\build.ps1 -Only 10-modulation -NoTest     # the default build directory is build\
 cd build
-.\bin\Debug\l10_ex3_starter.exe      # 你的版本（改 exercises/starter/ex3_vibrato.cpp）
-.\bin\Debug\l10_ex3_solution.exe     # 參考解答
+.\bin\Debug\l10_ex3_starter.exe      # your version (edit exercises/starter/ex3_vibrato.cpp)
+.\bin\Debug\l10_ex3_solution.exe     # the reference solution
 ```
 
-改完 starter 之後重新執行 `build.ps1`（或在專案根目錄 `cmake --build build --config Debug --target l10_ex3_starter`）即可。
-程式輸出的 WAV 會寫在「目前工作目錄」的 `dawlab_output/` 底下，所以先 `cd build` 再執行。
-注意 starter 與 solution 輸出的 WAV 檔名相同（例如都是 `l10_ex3_vibrato.wav`），後執行的會覆蓋先執行的。
-每支 starter 的 self-check 全部通過、印出 `[PASS]` 就算完成。
+After editing a starter, just run `build.ps1` again (or, from the project root, `cmake --build build --config Debug --target l10_ex3_starter`).
+The WAV files the programs write go into `dawlab_output/` under the "current working directory", so `cd build` before running.
+Note that the starter and the solution write WAV files with the same name (for example both write `l10_ex3_vibrato.wav`), and whichever runs later overwrites the earlier one.
+A starter is done when all of its self-checks pass and it prints `[PASS]`.
 
-| 題號 | 類型 | 難度 | starter / solution target |
+| No. | Type | Difficulty | starter / solution target |
 |---|---|---|---|
-| 1 | 觀念 | ★☆☆ | — |
-| 2 | 計算 | ★★☆ | — |
-| 3 | 實作：Vibrato | ★★☆ | `l10_ex3_starter` / `l10_ex3_solution` |
-| 4 | 實作：Ring modulator | ★★☆ | `l10_ex4_starter` / `l10_ex4_solution` |
-| 5 | 實作：Stereo chorus 與相關係數 | ★★☆ | `l10_ex5_starter` / `l10_ex5_solution` |
-| 6 | 實作：Tempo-synced tremolo | ★★☆ | `l10_ex6_starter` / `l10_ex6_solution` |
-| 7 | 觀念 + 計算：Phaser 的 notch 間距 | ★★★ | — |
-| 8 | 實作：Staggered phaser（每級不同 $f_c$） | ★★★ | `l10_ex8_starter` / `l10_ex8_solution` |
+| 1 | Concept | ★☆☆ | — |
+| 2 | Calculation | ★★☆ | — |
+| 3 | Implementation: Vibrato | ★★☆ | `l10_ex3_starter` / `l10_ex3_solution` |
+| 4 | Implementation: Ring modulator | ★★☆ | `l10_ex4_starter` / `l10_ex4_solution` |
+| 5 | Implementation: Stereo chorus and correlation | ★★☆ | `l10_ex5_starter` / `l10_ex5_solution` |
+| 6 | Implementation: Tempo-synced tremolo | ★★☆ | `l10_ex6_starter` / `l10_ex6_solution` |
+| 7 | Concept + calculation: phaser notch spacing | ★★★ | — |
+| 8 | Implementation: Staggered phaser (a different $f_c$ per stage) | ★★★ | `l10_ex8_starter` / `l10_ex8_solution` |
 
 ---
 
-## 練習 1 ★☆☆（觀念）Chorus、flanger、vibrato 的本質差異
+## Exercise 1 ★☆☆ (concept) The essential differences between chorus, flanger and vibrato
 
-`Chorus` 和 `Flanger` 的程式幾乎一樣：都是「被 LFO 推動的延遲 + 原音」。
+The code of `Chorus` and `Flanger` is almost the same: both are "a delay pushed by an LFO + the dry signal".
 
-1. 兩者的延遲範圍各是多少？為什麼「延遲長短」會讓耳朵聽到完全不同的東西？請從**頻域**（comb filter 的梳齒間距 $1/d$）和**音高**（Doppler，$1 - d'(t)$）兩個角度各說一次。
-2. Flanger 常常開 feedback，chorus 幾乎不用。為什麼？（提示：feedback 在 $f = k/d$ 製造共振，$d = 20$ ms 時這些共振頻率是多少？聽起來會像什麼？）
-3. Vibrato 和 chorus 只差一個參數。是哪一個？為什麼 vibrato 沒有 comb filter 的峰谷？
-4. 把 flanger 的 mix 從 0.5 改成 0.2，notch 還會到 −∞ dB 嗎？最深會到幾 dB？
+1. What is the delay range of each? Why does the delay length make the ear hear completely different things? Explain once from the **frequency-domain** view (the spacing $1/d$ of the comb filter teeth) and once from the **pitch** view (Doppler, $1 - d'(t)$).
+2. A flanger often uses feedback and a chorus almost never does. Why? (Hint: feedback creates resonances at $f = k/d$. What are those resonance frequencies for $d = 20$ ms, and what would they sound like?)
+3. Vibrato and chorus differ by a single parameter. Which one? Why does vibrato have no comb-filter peaks and valleys?
+4. If you change the flanger mix from 0.5 to 0.2, do the notches still reach −∞ dB? How deep do they get?
 
-## 練習 2 ★★☆（計算）把公式算過一遍
+## Exercise 2 ★★☆ (calculation) Work through the formulas
 
-全部用 $f_s = 48$ kHz。
+Use $f_s = 48$ kHz throughout.
 
-1. Flanger，延遲固定 0.5 ms、mix 0.5、feedback 0：前三個 notch 與前三個 peak（含 0 Hz）的頻率？
-2. 想讓 flanger 的**第一個** notch 在 200 Hz 到 1000 Hz 之間掃，`setDelayMs` 與 `setDepthMs` 該設多少？（本章 `Flanger` 的延遲範圍是 $[\text{delay}, \text{delay} + \text{depth}]$。）
-3. Flanger mix 0.5、feedback +0.7：peak 與原 notch 位置的增益各是幾 dB？feedback 改成 −0.7 呢？
-4. Chorus depth 5 ms、rate 1 Hz：最大音高偏移幾 cents？如果 depth 固定 5 ms、希望最大偏移只有 ±10 cents，rate 最多可以設多少？
-5. 一階 allpass，$f_c = 1$ kHz：係數 $a$ 是多少？500 Hz 的相位是幾度？
-6. 4 stages phaser，所有 stage 的 $f_c = 1$ kHz、mix 0.5、feedback 0：兩個 notch 在哪裡？
-7. Tremolo：1 kHz 正弦（振幅 0.5）、sine LFO 6 Hz、depth 0.6。輸出的頻譜有哪幾根線？各自振幅多少？
-8. Tempo sync：128 bpm 的附點八分音符，LFO rate 是多少 Hz？一個週期幾 ms？
+1. Flanger, fixed delay 0.5 ms, mix 0.5, feedback 0: what are the frequencies of the first three notches and the first three peaks (including 0 Hz)?
+2. You want the **first** notch of a flanger to sweep between 200 Hz and 1000 Hz. What should `setDelayMs` and `setDepthMs` be? (The delay range of this chapter's `Flanger` is $[\text{delay}, \text{delay} + \text{depth}]$.)
+3. Flanger with mix 0.5 and feedback +0.7: what is the gain in dB at the peaks and at the former notch positions? What about feedback −0.7?
+4. Chorus with depth 5 ms and rate 1 Hz: what is the maximum pitch deviation in cents? If the depth stays at 5 ms and you want a maximum deviation of only ±10 cents, what is the largest rate you can set?
+5. A first-order allpass with $f_c = 1$ kHz: what is the coefficient $a$? What is the phase at 500 Hz, in degrees?
+6. A 4-stage phaser with $f_c = 1$ kHz in every stage, mix 0.5, feedback 0: where are the two notches?
+7. Tremolo: a 1 kHz sine (amplitude 0.5), sine LFO at 6 Hz, depth 0.6. Which lines does the output spectrum contain, and what is the amplitude of each?
+8. Tempo sync: for a dotted eighth note at 128 bpm, what is the LFO rate in Hz? How many ms is one cycle?
 
-## 練習 3 ★★☆（實作）Vibrato
+## Exercise 3 ★★☆ (implementation) Vibrato
 
-起始碼：`exercises/starter/ex3_vibrato.cpp`
+Starter code: `exercises/starter/ex3_vibrato.cpp`
 
-用第 09 章的 `FractionalDelayLine` 與本章的 `Lfo` 寫一個 `Vibrato`：延遲 $d(t) = \text{centre} + \text{depth}\cdot m(t)$，輸出**只有**延遲後的訊號。完成三個 TODO：
+Use `FractionalDelayLine` from Chapter 09 and `Lfo` from this chapter to write a `Vibrato`: the delay is $d(t) = \text{centre} + \text{depth}\cdot m(t)$, and the output is **only** the delayed signal. Complete the three TODOs:
 
-1. `prepare()` 裡配置 delay line（最長延遲 = `kMaxCentreMs + kMaxDepthMs`，換成 sample，多留幾個給插值）。
-2. `advanceModulation()` 算出這個 sample 的延遲（sample），clamp 在合法範圍。
-3. `processSample()` / `process()`：push、再用 `readCubic` 讀出來，**不要**混原音。
+1. In `prepare()`, allocate the delay line (maximum delay = `kMaxCentreMs + kMaxDepthMs`, converted to samples, with a few extra for interpolation).
+2. In `advanceModulation()`, compute the delay (in samples) for this sample and clamp it to the legal range.
+3. In `processSample()` / `process()`: push, then read with `readCubic`, and **do not** mix in the dry signal.
 
-Self-check：
+Self-checks:
 
-- 1 kHz 正弦、rate 5 Hz、depth 1 ms → 瞬時頻率最大 / 最小 = $1000(1 \pm 2\pi \cdot 5 \cdot 0.001) = 1031.4 / 968.6$ Hz（±2 Hz）。
-- 平均頻率 1000 Hz（±1 Hz）；輸出 RMS 與輸入相同（±0.3 dB）。
-- depth 0 → 頻率固定 1000 Hz。
+- 1 kHz sine, rate 5 Hz, depth 1 ms → the maximum / minimum instantaneous frequency is $1000(1 \pm 2\pi \cdot 5 \cdot 0.001) = 1031.4 / 968.6$ Hz (±2 Hz).
+- The mean frequency is 1000 Hz (±1 Hz); the output RMS equals the input RMS (±0.3 dB).
+- depth 0 → the frequency stays at 1000 Hz.
 
-輸出 `l10_ex3_vibrato.wav`（撥弦琶音 + vibrato）。聽聽看 depth、rate 怎麼搭配才像歌手的自然顫音（提示：5–6 Hz、±20–50 cents）。
+The program writes `l10_ex3_vibrato.wav` (plucked arpeggio + vibrato). Listen and work out how depth and rate combine to sound like a singer's natural vibrato (hint: 5–6 Hz, ±20–50 cents).
 
-## 練習 4 ★★☆（實作）Ring modulator
+## Exercise 4 ★★☆ (implementation) Ring modulator
 
-起始碼：`exercises/starter/ex4_ringmod.cpp`
+Starter code: `exercises/starter/ex4_ringmod.cpp`
 
-$y = (1 - \text{mix})\,x + \text{mix}\cdot x \cdot c(t)$，載波 $c(t) = \sin(2\pi f_c t)$ 用一個跑在可聽頻率範圍的 `Lfo`（sine）產生。
+$y = (1 - \text{mix})\,x + \text{mix}\cdot x \cdot c(t)$, where the carrier $c(t) = \sin(2\pi f_c t)$ is produced by an `Lfo` (sine) running in the audible range.
 
-Self-check：
+Self-checks:
 
-- 1000 Hz 正弦（$A = 0.5$）× 150 Hz 載波、mix 1：850 與 1150 Hz 振幅 ≈ 0.25（±0.005）；1000 Hz 與 150 Hz 都低於 −60 dB。
-- 載波 0 Hz、相位 0.25（$\sin = 1$）→ 輸出 = 輸入。
-- mix 0.5：1000 Hz 剩 0.25、850 Hz 為 0.125。
+- 1000 Hz sine ($A = 0.5$) × 150 Hz carrier, mix 1: the amplitudes at 850 and 1150 Hz ≈ 0.25 (±0.005); both 1000 Hz and 150 Hz are below −60 dB.
+- Carrier 0 Hz, phase 0.25 ($\sin = 1$) → output = input.
+- mix 0.5: 1000 Hz keeps 0.25 and 850 Hz is 0.125.
 
-輸出 `l10_ex4_ringmod_30hz.wav`、`l10_ex4_ringmod_500hz.wav`。比較 30 Hz（像很深的 tremolo）和 500 Hz（金屬鐘聲）的差別，並說明為什麼 30 Hz 載波聽起來是「每秒 60 次」的起伏。
+The program writes `l10_ex4_ringmod_30hz.wav` and `l10_ex4_ringmod_500hz.wav`. Compare 30 Hz (like a very deep tremolo) with 500 Hz (a metallic bell), and explain why a 30 Hz carrier sounds like a swell "60 times per second".
 
-## 練習 5 ★★☆（實作）Stereo chorus 與左右相關性
+## Exercise 5 ★★☆ (implementation) Stereo chorus and left/right correlation
 
-起始碼：`exercises/starter/ex5_stereo_chorus.cpp`
+Starter code: `exercises/starter/ex5_stereo_chorus.cpp`
 
-寫一個只有 1 個 voice、但左右各有一個 LFO 的 `StereoChorus`，右聲道的 LFO 起始相位 = `phaseOffset`（0.25 = 90°）。完成 TODO 後量測 Pearson 相關係數 $\rho = \sum LR / \sqrt{\sum L^2 \sum R^2}$。
+Write a `StereoChorus` with only 1 voice but one LFO per channel; the right-channel LFO starting phase = `phaseOffset` (0.25 = 90°). After completing the TODOs, measure the Pearson correlation coefficient $\rho = \sum LR / \sqrt{\sum L^2 \sum R^2}$.
 
-Self-check：
+Self-checks:
 
-- phase offset 0 → $\rho > 0.999$。
-- phase offset 0.25、mix 1 → $\rho < 0.5$。
-- phase offset 0.25、mix 0.5 → $\rho$ 介於上面兩者之間。
-- 相位差真的是 90°：rate 0、impulse 輸入 → 左聲道的 impulse 出現在 15 ms（centre）、右聲道在 18 ms（centre + depth·sin 90°）。白雜訊的 $\rho$ 只看得出「左右有沒有錯開」，看不出錯開多少，所以需要這一項。
-- mono 相容性：$(L+R)/2$ 的 RMS 相對單一聲道 RMS ≈ −1.25 dB（±0.5），且不低於 −3 dB。先自己推導 −1.25 dB 這個數字從哪裡來。
-- 和 `dawlab::dsp::Chorus`（1 voice、mix 1、`setStereoSpread(1)`）的 $\rho$ 相差 < 0.05。
+- phase offset 0 → $\rho > 0.999$.
+- phase offset 0.25, mix 1 → $\rho < 0.5$.
+- phase offset 0.25, mix 0.5 → $\rho$ lies between the two values above.
+- The phase difference really is 90°: rate 0, impulse input → the left-channel impulse appears at 15 ms (centre) and the right-channel one at 18 ms (centre + depth·sin 90°). The $\rho$ of white noise only shows "whether left and right are offset", not "by how much", so this check is needed.
+- Mono compatibility: the RMS of $(L+R)/2$ relative to the RMS of a single channel ≈ −1.25 dB (±0.5), and not below −3 dB. First derive for yourself where the −1.25 dB figure comes from.
+- The $\rho$ differs from that of `dawlab::dsp::Chorus` (1 voice, mix 1, `setStereoSpread(1)`) by < 0.05.
 
-延伸思考：白雜訊在 90° 和 180° 的 $\rho$ 都接近 0，那 stereo chorus 為什麼常用 90°？
+Further thought: the $\rho$ of white noise is close to 0 at both 90° and 180°, so why is 90° the usual choice for a stereo chorus?
 
-## 練習 6 ★★☆（實作）Tempo-synced tremolo
+## Exercise 6 ★★☆ (implementation) Tempo-synced tremolo
 
-起始碼：`exercises/starter/ex6_tempo_tremolo.cpp`
+Starter code: `exercises/starter/ex6_tempo_tremolo.cpp`
 
-`TempoSyncTremolo` 包住本章的 `Tremolo`，每個 block 由「host」給你 block 開頭的歌曲位置 `ppq`（四分音符拍數）。完成兩個 TODO：
+`TempoSyncTremolo` wraps this chapter's `Tremolo`. For every block, the "host" gives you the song position `ppq` (in quarter-note beats) at the start of the block. Complete the two TODOs:
 
-1. `getRateHz()`：$r = \text{bpm} / 60 / \text{beats}$。
-2. `process()`：每個 block 開頭把 LFO 相位設成 $\operatorname{frac}(\text{ppq}/\text{beats} + \text{phaseOffset})$。
+1. `getRateHz()`: $r = \text{bpm} / 60 / \text{beats}$.
+2. `process()`: at the start of every block, set the LFO phase to $\operatorname{frac}(\text{ppq}/\text{beats} + \text{phaseOffset})$.
 
-Self-check：
+Self-checks:
 
-- `getRateHz()`：120 bpm 八分 → 4 Hz；附點八分 → 2.6667 Hz；90 bpm 四分 → 1.5 Hz。
-- 輸入 DC 1.0（輸出 = gain 曲線）、sine、depth 1、phaseOffset 0.25：每個八分音符拍點 gain > 0.999、兩拍中間 gain < 0.001，2 秒內 8 個谷。
-- 從 ppq = 3.3 開始播放，和從頭播放到同一位置的 gain 最大差 < $10^{-3}$。
-- tempo 120 → 90 bpm 之後，谷的間距 = 0.3333 s（±2 ms）。
+- `getRateHz()`: 120 bpm eighth → 4 Hz; dotted eighth → 2.6667 Hz; 90 bpm quarter → 1.5 Hz.
+- Input DC 1.0 (output = the gain curve), sine, depth 1, phaseOffset 0.25: the gain is > 0.999 on every eighth-note beat and < 0.001 midway between beats, with 8 troughs in 2 seconds.
+- Starting playback from ppq = 3.3 differs from playing from the start up to the same position by a gain difference of at most < $10^{-3}$.
+- After the tempo changes from 120 → 90 bpm, the spacing between troughs = 0.3333 s (±2 ms).
 
-想一想：如果只設 rate、不在每個 block 重新對齊相位，從歌曲中間開始播放會發生什麼事？
+Think about it: if you only set the rate and do not realign the phase every block, what happens when playback starts in the middle of the song?
 
-## 練習 7 ★★★（觀念 + 計算）為什麼 phaser 的 notch 不是等間距？
+## Exercise 7 ★★★ (concept + calculation) Why are a phaser's notches not evenly spaced?
 
-1. Flanger 的 notch 等間距（間距 $1/d$），phaser 的不是。從「兩條路徑的相位差對頻率的關係」解釋原因。
-2. 證明：$N$ 級、同一個 $f_c$ 的 phaser，在低頻近似 $\tan(\pi f/f_s) \approx \pi f/f_s$ 下，notch 成對滿足 $f_k \cdot f_{N/2-1-k} \approx f_c^2$。（提示：$\tan\theta \cdot \tan(\pi/2 - \theta) = 1$。）
-3. 用範例 4 印出的 6 stages notch（268.3 / 1000.0 / 3665.4 Hz）驗證第 2 小題。為什麼乘積不是剛好 $10^6$？
-4. 如果把 4 級 allpass 的 $f_c$ 設成**不同**的值（例如 300、600、1200、2400 Hz），總相位變成什麼？notch 數會變嗎？notch 位置大概往哪裡移？
-5. 如果希望 phaser 的 notch「等間距」，有什麼辦法？代價是什麼？
+1. A flanger's notches are evenly spaced (spacing $1/d$) and a phaser's are not. Explain why, from the relationship between the phase difference of the two paths and frequency.
+2. Prove: for an $N$-stage phaser with the same $f_c$ in every stage, under the low-frequency approximation $\tan(\pi f/f_s) \approx \pi f/f_s$ the notches satisfy, in pairs, $f_k \cdot f_{N/2-1-k} \approx f_c^2$. (Hint: $\tan\theta \cdot \tan(\pi/2 - \theta) = 1$.)
+3. Use the 6-stage notches printed by Example 4 (268.3 / 1000.0 / 3665.4 Hz) to check part 2. Why is the product not exactly $10^6$?
+4. If the $f_c$ of the four allpass stages are set to **different** values (for example 300, 600, 1200, 2400 Hz), what does the total phase become? Does the number of notches change? Roughly which way do the notch positions move?
+5. If you want a phaser's notches to be "evenly spaced", what can you do? What is the cost?
 
-第 4 小題的答案可以用練習 8 實際量出來驗證。
+The answer to part 4 can be checked by actually measuring it in Exercise 8.
 
-## 練習 8 ★★★（實作）Staggered phaser：每一級 allpass 有自己的 $f_c$
+## Exercise 8 ★★★ (implementation) Staggered phaser: each allpass stage has its own $f_c$
 
-起始碼：`exercises/starter/ex8_staggered_phaser.cpp`
+Starter code: `exercises/starter/ex8_staggered_phaser.cpp`
 
-本章的 `Phaser` 讓所有 stage 共用同一個 $f_c$，notch 位置有封閉解（README 2.6）。這題寫一個 `StaggeredPhaser`：每一級有自己的基準 $f_c$，LFO 把所有 $f_c$ 乘上同一個比例 $2^{\text{depth}\cdot\text{octaves}\cdot m(t)}$（各級之間的比例不變）。每級 $f_c$ 不同時沒有封閉解，但總相位仍是各級相加：$\Phi(f) = \sum_i \varphi_i(f)$，從 0 單調降到 $-N\pi$，notch 在 $\Phi(f) = -(2k+1)\pi$。完成三個 TODO：
+The `Phaser` in this chapter has all stages share the same $f_c$, so the notch positions have a closed-form solution (README 2.6). In this exercise you write a `StaggeredPhaser`: each stage has its own base $f_c$, and the LFO multiplies all the $f_c$ by the same factor $2^{\text{depth}\cdot\text{octaves}\cdot m(t)}$ (the ratios between stages stay unchanged). With a different $f_c$ per stage there is no closed form, but the total phase is still the sum over the stages: $\Phi(f) = \sum_i \varphi_i(f)$, falling monotonically from 0 to $-N\pi$, with notches at $\Phi(f) = -(2k+1)\pi$. Complete the three TODOs:
 
-1. `theoryPhase(f, scale)`：$\sum_i \varphi_i(f)$，第 $i$ 級的 $f_c$ = scale × 基準 $f_c$（可直接用 `Phaser::allpassPhase`）。
-2. `predictNotchHz(k, scale)`：在 $[1, f_s/2 - 1]$ Hz 之間用二分法解 $\Phi(f) = -(2k+1)\pi$。
-3. `advanceModulation()`：算出這個 sample 的比例，替每一級設定**各自**的一階 allpass 係數（`Phaser::makeFirstOrderAllpass`）。
+1. `theoryPhase(f, scale)`: $\sum_i \varphi_i(f)$, where the $f_c$ of stage $i$ = scale × base $f_c$ (you can use `Phaser::allpassPhase` directly).
+2. `predictNotchHz(k, scale)`: solve $\Phi(f) = -(2k+1)\pi$ by bisection on $[1, f_s/2 - 1]$ Hz.
+3. `advanceModulation()`: compute this sample's scale factor and set **each stage's own** first-order allpass coefficients (`Phaser::makeFirstOrderAllpass`).
 
-Self-check（mix 0.5、無 feedback、LFO 停住，掃頻 50 Hz–16 kHz 自動找 notch）：
+Self-checks (mix 0.5, no feedback, LFO parked, sweep 50 Hz–16 kHz to find the notches automatically):
 
-- 4 級都設 1000 Hz：`predictNotchHz` 和 `Phaser::notchFrequencyHz` 的封閉解一致（414.7 / 2397.8 Hz，±0.01 Hz）；白雜訊經過 `StaggeredPhaser` 和 `dawlab::dsp::Phaser`（rate 0、depth 0、feedback 0、mix 0.5）的輸出逐 sample 相同（最大差 < $10^{-5}$）。
-- 300 / 600 / 1200 / 2400 Hz：量到的 notch 仍是 **2 個**，位置和 `predictNotchHz` 相差 < 0.5%，深度 < −30 dB。
-- 驗證練習 7 第 4 小題的預測：第一個 notch 比 4 × 1000 Hz 的 414.7 Hz 低、第二個比 2397.8 Hz 高。
-- depth 1、octaves 1、LFO 停在 +1（rate 0、相位 0.25）→ 所有 $f_c$ 加倍，量到的 notch = `predictNotchHz(k, 2)`（±0.5%）。
+- All 4 stages at 1000 Hz: `predictNotchHz` agrees with the closed form of `Phaser::notchFrequencyHz` (414.7 / 2397.8 Hz, ±0.01 Hz); white noise through `StaggeredPhaser` and through `dawlab::dsp::Phaser` (rate 0, depth 0, feedback 0, mix 0.5) gives the same output sample by sample (largest difference < $10^{-5}$).
+- 300 / 600 / 1200 / 2400 Hz: there are still **2** measured notches, within 0.5% of `predictNotchHz`, with depth < −30 dB.
+- Verify the prediction of Exercise 7, part 4: the first notch is below the 414.7 Hz of the 4 × 1000 Hz case, and the second is above 2397.8 Hz.
+- depth 1, octaves 1, LFO parked at +1 (rate 0, phase 0.25) → all $f_c$ double, and the measured notches = `predictNotchHz(k, 2)` (±0.5%).
 
-輸出 `l10_ex8_uniform.wav`、`l10_ex8_staggered.wav`（白雜訊、rate 0.2 Hz、±1.5 個八度）。比較兩者掃動的聽感：notch 分得更開之後有什麼不同？
+The program writes `l10_ex8_uniform.wav` and `l10_ex8_staggered.wav` (white noise, rate 0.2 Hz, ±1.5 octaves). Compare how the two sweeps sound: what changes once the notches are farther apart?

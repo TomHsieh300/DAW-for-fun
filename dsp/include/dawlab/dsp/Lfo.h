@@ -1,16 +1,20 @@
 #pragma once
-// Lfo：低頻振盪器（Low-Frequency Oscillator）。第 10 章。
+// Lfo: Low-Frequency Oscillator. Chapter 10.
 //
-// LFO 不是拿來「聽」的訊號，而是拿來「控制」別的參數（delay 時間、gain、filter 頻率……）。
-// 它的輸出固定在 -1..+1，由各效果器自己決定要把這個值對應到什麼範圍。
+// An LFO is not a signal you listen to; it is a signal that controls other parameters
+// (delay time, gain, filter frequency, ...). Its output is always in -1..+1, and each
+// effect decides what range to map that value onto.
 //
-// 設計重點：
-// - 內部只有一個 phase 累加器（0..1），每個 sample 前進 rate / sampleRate。
-//   所有波形都是「phase 的函式」，所以 rate 改變時 phase 連續、不會跳。
-// - Square / Saw / Sample&Hold 有瞬間跳變。LFO 本身的頻率太低，aliasing 不是問題，
-//   但「被它控制的 gain 或 delay」瞬間跳變會在音訊裡產生 click，所以這幾種波形
-//   預設經過一個 1 ms 的 one-pole 平滑（setSmoothingMs 可調，0 = 關閉）。
-// - Sine / Triangle 本身連續，不平滑，才能保持精確的波形（例如 chorus 要算 pitch 偏移）。
+// Design notes:
+// - There is a single phase accumulator (0..1) that advances by rate / sampleRate per sample.
+//   Every waveform is a function of the phase, so when the rate changes the phase stays
+//   continuous and never jumps.
+// - Square / Saw / Sample&Hold have instantaneous jumps. The LFO's own frequency is so low
+//   that aliasing is not a concern, but a sudden jump in the gain or delay it controls
+//   produces a click in the audio. These shapes therefore pass through a 1 ms one-pole
+//   smoother by default (adjustable with setSmoothingMs; 0 = off).
+// - Sine / Triangle are already continuous and are not smoothed, so the waveform stays exact
+//   (a chorus, for example, needs it to compute the pitch deviation).
 
 #include <dawlab/DspMath.h>
 #include <dawlab/Signals.h>
@@ -26,9 +30,10 @@ enum class LfoShape { Sine, Triangle, Saw, Square, SampleAndHold };
 
 namespace detail {
 
-// 第 10 章效果器共用的一階（one-pole）參數平滑器：
-//   y[n] = y[n-1] + k (target - y[n-1])，  k = 1 - exp(-1 / (τ · fs))
-// τ 是時間常數：經過 τ 之後走完 63%，約 5τ 之後視為到達。
+// First-order (one-pole) parameter smoother shared by the Chapter 10 effects:
+//   y[n] = y[n-1] + k (target - y[n-1]),  k = 1 - exp(-1 / (τ · fs))
+// τ is the time constant: after τ the smoother has covered 63% of the distance, and after
+// about 5τ it is considered to have arrived.
 class ModParamSmoother {
 public:
     explicit ModParamSmoother(float initialValue = 0.0f) noexcept : current_(initialValue), target_(initialValue) {}
@@ -44,7 +49,7 @@ public:
 
     float next() noexcept {
         current_ += coeff_ * (target_ - current_);
-        if (std::abs(target_ - current_) < 1e-6f) // 收斂後直接貼齊目標，避免 denormal 與永遠差一點點
+        if (std::abs(target_ - current_) < 1e-6f) // Snap to the target once converged, avoiding denormals and a forever-almost-there tail
             current_ = target_;
         return current_;
     }
@@ -55,10 +60,13 @@ private:
     float coeff_ = 1.0f;
 };
 
-// 給 UI thread 讀的量測值（例如目前的 gain、延遲、中心頻率）：audio thread 寫、UI thread 讀，
-// 必須是 std::atomic，否則是 data race（authoring guide 4.1）。只需要「讀到某個最近的值」，
-// 不需要和其他變數同步，所以 memory_order_relaxed 就夠了（x86 / ARM 上就是一般的 load / store）。
-// std::atomic 本身不能複製；包一層讓擁有它的效果器 class 仍然可以被複製（例如以值回傳）。
+// A measured value for the UI thread to read (e.g. the current gain, delay, or center
+// frequency): the audio thread writes it and the UI thread reads it, so it must be a
+// std::atomic, otherwise it is a data race (authoring guide 4.1). We only need to read some
+// recent value and do not need to synchronize with other variables, so memory_order_relaxed
+// is enough (on x86 / ARM it is a plain load / store).
+// std::atomic itself is not copyable; this wrapper keeps the owning effect class copyable
+// (e.g. returnable by value).
 class RelaxedAtomicFloat {
 public:
     explicit RelaxedAtomicFloat(float v = 0.0f) noexcept : value_(v) {}
@@ -85,8 +93,9 @@ public:
         reset();
     }
 
-    // 回到初始狀態：相位回到起始相位（setPhase 設定的值），Sample & Hold 的亂數序列也從種子重新開始。
-    // 所以每次 reset() 之後，同樣的輸入一定得到同樣的輸出（離線 bounce 可以重現）。
+    // Return to the initial state: the phase goes back to the start phase (the value set by
+    // setPhase), and the Sample & Hold random sequence restarts from its seed. So after every
+    // reset() the same input always produces the same output (an offline bounce is reproducible).
     void reset() noexcept {
         phase_ = startPhase_;
         noise_ = NoiseGenerator(seed_);
@@ -97,42 +106,43 @@ public:
     void setShape(LfoShape shape) noexcept { shape_ = shape; }
     LfoShape getShape() const noexcept { return shape_; }
 
-    // 0 Hz 是合法的：LFO 停在目前相位（量測頻率響應時很好用）
+    // 0 Hz is legal: the LFO stays frozen at its current phase (handy when measuring a frequency response)
     void setRateHz(float hz) noexcept {
         rateHz_ = std::max(0.0f, hz);
         updateIncrement();
     }
     float getRateHz() const noexcept { return rateHz_; }
 
-    // 設定「目前」相位（0..1 = 一個週期），同時記住它作為 reset() 的起始相位。
-    // chorus 的多個 voice、autopan 的左右聲道就是靠不同的起始相位錯開。
+    // Set the *current* phase (0..1 = one cycle) and remember it as the start phase for reset().
+    // The voices of a chorus and the left/right channels of an autopan are offset from each other
+    // by using different start phases.
     void setPhase(float phase01) noexcept {
         startPhase_ = wrap(phase01);
         phase_ = startPhase_;
     }
     float getPhase() const noexcept { return static_cast<float>(phase_); }
 
-    // Square / Saw / S&H 邊緣的平滑時間常數（ms）。0 = 不平滑（會有 click，示範用）
+    // Smoothing time constant (ms) for the edges of Square / Saw / S&H. 0 = no smoothing (clicks; for demonstration)
     void setSmoothingMs(float ms) noexcept {
         smoothingMs_ = std::max(0.0f, ms);
         updateSmoothing();
     }
     float getSmoothingMs() const noexcept { return smoothingMs_; }
 
-    // Sample & Hold 用的亂數種子
-    // 種子先經過 hash 打散：xorshift 從「很小的種子」起跑時，前幾個輸出的分布很差
-    // （例如全部落在同一側），S&H 聽起來就不夠隨機。
-    // 新的種子在下一次 reset()（或 prepare()）時生效。
+    // Random seed for Sample & Hold.
+    // The seed is hashed first: when xorshift starts from a very small seed, its first few
+    // outputs are poorly distributed (e.g. all on the same side), and S&H would not sound random.
+    // The new seed takes effect at the next reset() (or prepare()).
     void setSeed(uint32_t seed) noexcept { seed_ = mixSeed(seed); }
 
-    // 取出下一個值（-1..1）並讓相位前進一個 sample
+    // Return the next value (-1..1) and advance the phase by one sample
     float getNextValue() noexcept {
         const float raw = rawValue();
 
         phase_ += increment_;
         if (phase_ >= 1.0) {
             phase_ -= 1.0;
-            hold_ = noise_.next(); // S&H：每個週期開頭抽一個新的亂數
+            hold_ = noise_.next(); // S&H: draw a new random value at the start of each cycle
         }
 
         if (needsSmoothing() && smoothCoeff_ < 1.0f) {
@@ -143,20 +153,21 @@ public:
         return raw;
     }
 
-    // 無狀態的波形函式：給定相位（0..1）回傳 -1..1。
-    // chorus 用它從同一個相位推出「不同聲道錯開 90°」的值。S&H 需要狀態，這裡回傳 0。
+    // Stateless waveform function: given a phase (0..1), return -1..1.
+    // The chorus uses it to derive, from one phase, values for channels offset by 90°.
+    // S&H needs state, so this returns 0 for it.
     static float shapeValue(LfoShape shape, float phase01) noexcept {
         const float p = wrap(phase01);
         switch (shape) {
         case LfoShape::Sine:
             return static_cast<float>(std::sin(kTwoPi * p));
-        case LfoShape::Triangle: // 0 → +1（p=0.25）→ -1（p=0.75）→ 0，和 sine 同相
+        case LfoShape::Triangle: // 0 -> +1 (p=0.25) -> -1 (p=0.75) -> 0, in phase with the sine
             if (p < 0.25f)
                 return 4.0f * p;
             if (p < 0.75f)
                 return 2.0f - 4.0f * p;
             return 4.0f * p - 4.0f;
-        case LfoShape::Saw: // -1 一路爬到 +1，週期結尾瞬間掉回 -1
+        case LfoShape::Saw: // Ramps from -1 up to +1, then drops back to -1 instantly at the end of the cycle
             return 2.0f * p - 1.0f;
         case LfoShape::Square:
             return p < 0.5f ? 1.0f : -1.0f;
@@ -166,8 +177,9 @@ public:
         }
     }
 
-    // tempo sync：beats = 一個 LFO 週期有幾拍（1 = 四分音符、0.5 = 八分音符、0.75 = 附點八分、
-    // 1/3 = 八分音符三連音的一個；三個八分三連音佔一拍）。rate = bpm / 60 / beats
+    // Tempo sync: beats = how many beats one LFO cycle lasts (1 = quarter note, 0.5 = eighth note,
+    // 0.75 = dotted eighth, 1/3 = one eighth-note triplet; three eighth triplets fill one beat).
+    // rate = bpm / 60 / beats
     static float tempoToRateHz(double bpm, double beats) noexcept {
         if (bpm <= 0.0 || beats <= 0.0)
             return 0.0f;
@@ -175,7 +187,7 @@ public:
     }
 
 private:
-    // 32-bit 整數 hash（lowbias32）：把相近的種子打散成看起來無關的值
+    // 32-bit integer hash (lowbias32): scatters nearby seeds into seemingly unrelated values
     static uint32_t mixSeed(uint32_t s) noexcept {
         s ^= s >> 16;
         s *= 0x7feb352du;
@@ -212,7 +224,7 @@ private:
     double sampleRate_ = 48000.0;
     LfoShape shape_ = LfoShape::Sine;
     float rateHz_ = 1.0f;
-    double increment_ = 1.0 / 48000.0; // 相位用 double：rate 很低時 float 的累加誤差會讓頻率偏掉好幾 %
+    double increment_ = 1.0 / 48000.0; // Phase is a double: at very low rates, float accumulation error would shift the frequency by several %
     double phase_ = 0.0;
     float startPhase_ = 0.0f;
     float hold_ = 0.0f;

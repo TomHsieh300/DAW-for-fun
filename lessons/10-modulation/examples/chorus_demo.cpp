@@ -1,24 +1,29 @@
-// 範例 2：Chorus —— 被 LFO 拉長縮短的短延遲 + 原音
+// Example 2: Chorus -- a short delay stretched and shrunk by an LFO, plus the dry signal
 //
-// 示範什麼：
-//   1. 把撥弦琶音丟進 Chorus（2 voice / 3 voice），輸出 WAV 試聽。
-//   2. Doppler 效應的數字驗證：延遲 d(t) = d0 + D·sin(2πrt) 的讀取速度不等於寫入速度，
-//      所以音高會漂移，比例 = 1 − d'(t) = 1 − 2πrD·cos(2πrt)。
-//      用 1 kHz 正弦（1 voice、mix = 1）量瞬時頻率的最大 / 最小值，和 1000·(1 ± 2πrD) 對照。
-//   3. stereo spread：左右聲道的 LFO 相差最多 90°，左右走音不同步 → 左右相關係數下降（聲像變寬）。
-//      同時比較白雜訊與撥弦琶音：寬頻素材只要左右延遲差一點點，濕訊號就幾乎完全去相關。
-//   4. 插值品質：同一個 chorus 用 linear 和 cubic 插值讀 12 kHz 正弦，比較高頻損失。
+// What it demonstrates:
+//   1. Feed a plucked arpeggio into the Chorus (2 voices / 3 voices) and write WAVs to listen to.
+//   2. A numerical check of the Doppler effect: with delay d(t) = d0 + D·sin(2πrt) the read speed
+//      differs from the write speed, so the pitch drifts by a ratio of 1 − d'(t) = 1 − 2πrD·cos(2πrt).
+//      Using a 1 kHz sine (1 voice, mix = 1), measure the maximum / minimum instantaneous frequency
+//      and compare with 1000·(1 ± 2πrD).
+//   3. Stereo spread: the left and right LFOs differ by up to 90°, so the left/right detuning is out
+//      of sync -> the left/right correlation drops (the image widens). White noise and the plucked
+//      arpeggio are compared too: for broadband material, a tiny left/right delay difference is
+//      enough to decorrelate the wet signal almost completely.
+//   4. Interpolation quality: the same chorus reads a 12 kHz sine with linear and with cubic
+//      interpolation, to compare the high-frequency loss.
 //
-// 怎麼執行：l10_chorus（不需要參數；可選 argv[1] = 輸入 WAV 路徑）
+// How to run: l10_chorus (no arguments needed; optional argv[1] = input WAV path)
 //
-// 輸出檔案（dawlab_output/）：
-//   l10_chorus_dry.wav      原始撥弦琶音
-//   l10_chorus_wet.wav      2 voice、rate 0.8 Hz、depth 3 ms、centre 15 ms、mix 0.5、spread 1
-//   l10_chorus_3voice.wav   3 voice、depth 4 ms、rate 0.5 Hz（更厚、更「合奏」）
-//   l10_chorus_mono.wav     spread 0（左右完全相同，拿來和 wet 比較寬度）
+// Output files (dawlab_output/):
+//   l10_chorus_dry.wav      the original plucked arpeggio
+//   l10_chorus_wet.wav      2 voices, rate 0.8 Hz, depth 3 ms, centre 15 ms, mix 0.5, spread 1
+//   l10_chorus_3voice.wav   3 voices, depth 4 ms, rate 0.5 Hz (thicker, more "ensemble")
+//   l10_chorus_mono.wav     spread 0 (left and right identical; compare its width with wet)
 //
-// 該聽到什麼：wet 比 dry 厚、寬，像兩把吉他一起彈但沒有完全對準；3voice 更像一群人；
-//            mono 版厚度一樣但聲像縮在中間。
+// What you should hear: wet is thicker and wider than dry, like two guitars playing together but
+// not perfectly aligned; 3voice sounds more like a crowd; the mono version has the same thickness
+// but the image collapses to the center.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Chorus.h>
@@ -45,7 +50,7 @@ void processInBlocks(Effect& fx, dawlab::AudioBuffer& buffer) {
     }
 }
 
-// 左右聲道的相關係數（Pearson）：1 = 完全相同，0 = 不相關，-1 = 反相
+// Left/right channel correlation (Pearson): 1 = identical, 0 = uncorrelated, -1 = inverted
 double stereoCorrelation(const dawlab::AudioBuffer& b, int skipSamples) {
     const float* l = b.getReadPointer(0);
     const float* r = b.getReadPointer(1);
@@ -58,14 +63,15 @@ double stereoCorrelation(const dawlab::AudioBuffer& b, int skipSamples) {
     return (sll > 0.0 && srr > 0.0) ? slr / std::sqrt(sll * srr) : 0.0;
 }
 
-// 用「相鄰兩個正向零交叉的間距」估計瞬時頻率，回傳 skip 之後的最小與最大值
+// Estimate the instantaneous frequency from the spacing between adjacent upward zero crossings;
+// returns the minimum and maximum after `skip`
 void instantaneousFrequencyRange(const float* x, int n, int skip, double& fMin, double& fMax) {
     fMin = 1.0e9;
     fMax = 0.0;
     double lastCross = -1.0;
     for (int i = std::max(1, skip); i < n; ++i) {
         if (x[i - 1] < 0.0f && x[i] >= 0.0f) {
-            // 線性插值找出精確的交叉位置
+            // Find the exact crossing position by linear interpolation
             const double cross = (i - 1) + double(-x[i - 1]) / (double(x[i]) - x[i - 1]);
             if (lastCross >= 0.0) {
                 const double f = kSampleRate / (cross - lastCross);
@@ -86,7 +92,7 @@ Chorus makeChorus(int channels, float rate, float depth, float centre, int voice
     c.setVoices(voices);
     c.setMix(mix);
     c.setStereoSpread(spread);
-    c.reset(); // 讓平滑器直接貼到目標值
+    c.reset(); // Make the smoothers snap straight to their targets
     return c;
 }
 
@@ -94,16 +100,16 @@ void renderAndWrite(const dawlab::AudioBuffer& input, Chorus& chorus, const char
     dawlab::AudioBuffer out = input;
     processInBlocks(chorus, out);
     dawlab::writeWav(dawlab::outputPath(filename), out, kSampleRate);
-    std::printf("  %-24s peak %.3f   L/R 相關係數 %.3f\n", filename, dawlab::peakAbs(out),
+    std::printf("  %-24s peak %.3f   L/R correlation %.3f\n", filename, dawlab::peakAbs(out),
                 out.getNumChannels() > 1 ? stereoCorrelation(out, 0) : 1.0);
 }
 
 } // namespace
 
 int main(int argc, char** argv) {
-    std::printf("=== 第 10 章 範例 2：Chorus ===\n\n");
+    std::printf("=== Chapter 10 Example 2: Chorus ===\n\n");
 
-    // ---- 1. 撥弦琶音 → WAV --------------------------------------------------
+    // ---- 1. Plucked arpeggio -> WAV ------------------------------------------
     dawlab::AudioBuffer input;
     if (argc > 1) {
         dawlab::WavData wav;
@@ -113,7 +119,7 @@ int main(int argc, char** argv) {
             return 1;
         }
         input = wav.buffer;
-        if (input.getNumChannels() == 1) { // 補成立體聲
+        if (input.getNumChannels() == 1) { // Expand to stereo
             dawlab::AudioBuffer st(2, input.getNumSamples());
             st.copyFrom(0, 0, input, 0, 0, input.getNumSamples());
             st.copyFrom(1, 0, input, 0, 0, input.getNumSamples());
@@ -123,8 +129,8 @@ int main(int argc, char** argv) {
         input = dawlab::makePluckSequence(kSampleRate, 4.0, 0.4f, 2);
     }
     dawlab::writeWav(dawlab::outputPath("l10_chorus_dry.wav"), input, kSampleRate);
-    std::printf("輸出 WAV：\n");
-    std::printf("  %-24s peak %.3f   L/R 相關係數 %.3f\n", "l10_chorus_dry.wav", dawlab::peakAbs(input),
+    std::printf("Output WAVs:\n");
+    std::printf("  %-24s peak %.3f   L/R correlation %.3f\n", "l10_chorus_dry.wav", dawlab::peakAbs(input),
                 stereoCorrelation(input, 0));
     {
         Chorus c = makeChorus(2, 0.8f, 3.0f, 15.0f, 2, 0.5f, 1.0f);
@@ -138,27 +144,27 @@ int main(int argc, char** argv) {
         Chorus c = makeChorus(2, 0.8f, 3.0f, 15.0f, 2, 0.5f, 0.0f);
         renderAndWrite(input, c, "l10_chorus_mono.wav");
     }
-    std::printf("  -> spread 0 時左右完全相同（相關係數 1.000）；spread 1 時相關係數明顯下降 = 聲像變寬。\n\n");
+    std::printf("  -> With spread 0, left and right are identical (correlation 1.000); with spread 1 the correlation drops clearly = a wider image.\n\n");
 
-    // ---- 2. Doppler：瞬時頻率的漂移量 ---------------------------------------
+    // ---- 2. Doppler: the amount of instantaneous-frequency drift ---------------
     {
         const float rate = 0.8f, depthMs = 3.0f;
-        const double dev = dawlab::kTwoPi * rate * depthMs * 0.001; // 2πrD（D 以秒計）
+        const double dev = dawlab::kTwoPi * rate * depthMs * 0.001; // 2πrD (D in seconds)
         dawlab::AudioBuffer tone = dawlab::makeSine(1000.0, kSampleRate, 4.0, 0.5f, 1);
-        Chorus c = makeChorus(1, rate, depthMs, 15.0f, 1, 1.0f, 0.0f); // 1 voice、全濕 = 純粹的調變延遲
+        Chorus c = makeChorus(1, rate, depthMs, 15.0f, 1, 1.0f, 0.0f); // 1 voice, fully wet = a purely modulated delay
         processInBlocks(c, tone);
         double fMin, fMax;
         instantaneousFrequencyRange(tone.getReadPointer(0), tone.getNumSamples(),
                                     dawlab::secondsToSamples(1.0, kSampleRate), fMin, fMax);
-        std::printf("Doppler 音高漂移（1 kHz 正弦，1 voice，mix 1，rate %.1f Hz，depth %.0f ms）：\n", rate, depthMs);
-        std::printf("  理論：比例 1 ± 2πrD = 1 ± %.4f → %.1f .. %.1f Hz（%+.1f / %+.1f cents）\n", dev,
+        std::printf("Doppler pitch drift (1 kHz sine, 1 voice, mix 1, rate %.1f Hz, depth %.0f ms):\n", rate, depthMs);
+        std::printf("  Theory: ratio 1 +/- 2*pi*r*D = 1 +/- %.4f -> %.1f .. %.1f Hz (%+.1f / %+.1f cents)\n", dev,
                     1000.0 * (1.0 - dev), 1000.0 * (1.0 + dev), 1200.0 * std::log2(1.0 + dev),
                     1200.0 * std::log2(1.0 - dev));
-        std::printf("  量測：瞬時頻率 %.1f .. %.1f Hz\n", fMin, fMax);
-        std::printf("  -> depth × rate 決定走音多少：3 ms × 0.8 Hz 大約 ±26 cents（向下略多於向上），再大就會像「醉了」。\n\n");
+        std::printf("  Measured: instantaneous frequency %.1f .. %.1f Hz\n", fMin, fMax);
+        std::printf("  -> depth x rate decides how far the pitch strays: 3 ms x 0.8 Hz is about +/-26 cents (slightly more down than up); much more and it sounds \"drunk\".\n\n");
     }
 
-    // ---- 3. stereo spread 對相關係數的影響 ------------------------------------
+    // ---- 3. Effect of stereo spread on the correlation ------------------------
     {
         dawlab::AudioBuffer mono = dawlab::makeWhiteNoise(kSampleRate, 3.0, 0.25f, 1, 7u);
         dawlab::AudioBuffer noise(2, mono.getNumSamples());
@@ -166,26 +172,29 @@ int main(int argc, char** argv) {
         noise.copyFrom(1, 0, mono, 0, 0, mono.getNumSamples());
         const dawlab::AudioBuffer pluck = dawlab::makePluckSequence(kSampleRate, 4.0, 0.4f, 2);
         const int skip = dawlab::secondsToSamples(0.5, kSampleRate);
-        std::printf("stereo spread 與左右相關係數（2 voice，mix 0.5，depth 3 ms）：\n");
-        std::printf("   spread   左右 LFO 相差   白雜訊   撥弦琶音\n");
+        std::printf("Stereo spread vs left/right correlation (2 voices, mix 0.5, depth 3 ms):\n");
+        std::printf("   spread   L/R LFO offset   white noise   plucked arpeggio\n");
         for (float spread : {0.0f, 0.1f, 0.25f, 0.5f, 1.0f}) {
             dawlab::AudioBuffer a = noise, b = pluck;
             Chorus c1 = makeChorus(2, 0.8f, 3.0f, 15.0f, 2, 0.5f, spread);
             processInBlocks(c1, a);
             Chorus c2 = makeChorus(2, 0.8f, 3.0f, 15.0f, 2, 0.5f, spread);
             processInBlocks(c2, b);
-            std::printf("   %5.2f      %5.1f°        %.3f    %.3f\n", spread, 90.0f * spread, stereoCorrelation(a, skip),
+            std::printf("   %5.2f      %5.1f°          %.3f         %.3f\n", spread, 90.0f * spread, stereoCorrelation(a, skip),
                         stereoCorrelation(b, skip));
         }
-        std::printf("  -> 白雜訊：左右延遲只要差一點點，濕訊號就完全不相關，所以 spread 一離開 0 就掉到底\n"
-                    "     （乾訊號佔一半、左右相同，所以停在約 0.7 而不是 0）。\n"
-                    "     撥弦琶音諧波豐富，行為也很接近：spread 只要大於 0.1，相關係數就落在 0.72–0.77。\n"
-                    "     所以 spread 對「寬不寬」幾乎是開關；它真正改變的是左右走音錯開的動態（聽起來在轉）。\n\n");
+        std::printf("  -> White noise: a tiny left/right delay difference fully decorrelates the wet signal, so the correlation\n"
+                    "     drops to the floor as soon as spread leaves 0 (the dry half is identical in both channels,\n"
+                    "     so it stops at about 0.7 rather than 0).\n"
+                    "     The plucked arpeggio is rich in harmonics and behaves much the same: for any spread above 0.1\n"
+                    "     the correlation lands at 0.72-0.77.\n"
+                    "     So spread is almost an on/off switch for \"how wide\"; what it really changes is how the left and\n"
+                    "     right detuning drift apart over time (it sounds like it is rotating).\n\n");
     }
 
-    // ---- 4. linear vs cubic 插值的高頻損失 -----------------------------------
+    // ---- 4. High-frequency loss of linear vs cubic interpolation ---------------
     {
-        std::printf("插值品質（12 kHz 正弦，1 voice，mix 1，depth 3 ms，rate 0.8 Hz）：\n");
+        std::printf("Interpolation quality (12 kHz sine, 1 voice, mix 1, depth 3 ms, rate 0.8 Hz):\n");
         const dawlab::AudioBuffer tone = dawlab::makeSine(12000.0, kSampleRate, 3.0, 0.25f, 1);
         const int skip = dawlab::secondsToSamples(0.5, kSampleRate);
         const float inRms = dawlab::rms(tone.getReadPointer(0) + skip, tone.getNumSamples() - skip);
@@ -195,12 +204,12 @@ int main(int argc, char** argv) {
             c.setUseCubicInterpolation(cubic);
             processInBlocks(c, out);
             const float outRms = dawlab::rms(out.getReadPointer(0) + skip, out.getNumSamples() - skip);
-            std::printf("  %-6s 插值：輸出 RMS 相對輸入 %+.2f dB\n", cubic ? "cubic" : "linear",
+            std::printf("  %-6s interpolation: output RMS relative to input %+.2f dB\n", cubic ? "cubic" : "linear",
                         dawlab::gainToDb(outRms / inRms));
         }
-        std::printf("  -> linear 插值是一個會變的 FIR：|H|² = (1−Δ)² + Δ² + 2Δ(1−Δ)cos(2πf/fs)。\n"
-                    "     12 kHz = fs/4 時 cos 項為 0，Δ 在 0..1 均勻掃過 → 平均功率 = ∫(1−Δ)²+Δ² dΔ = 2/3\n"
-                    "     → 理論 %.2f dB；cubic 損失小得多。\n",
+        std::printf("  -> Linear interpolation is a time-varying FIR: |H|^2 = (1-D)^2 + D^2 + 2D(1-D)cos(2*pi*f/fs).\n"
+                    "     At 12 kHz = fs/4 the cos term is 0, and D sweeps uniformly over 0..1 -> mean power = integral of (1-D)^2+D^2 dD = 2/3\n"
+                    "     -> theory %.2f dB; cubic loses far less.\n",
                     10.0 * std::log10(2.0 / 3.0));
     }
     return 0;

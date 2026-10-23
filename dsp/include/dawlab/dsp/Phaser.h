@@ -1,8 +1,9 @@
 #pragma once
-// Phaser：串接 N 個一階 allpass filter，讓不同頻率的相位偏移不同量，再和原音相加 →
-// 相位差 180° 的頻率互相抵消成 notch。LFO 以指數刻度掃動 allpass 的中心頻率。第 10 章。
+// Phaser: cascade N first-order allpass filters so that different frequencies get different phase
+// shifts, then add the result to the dry signal -> frequencies that end up 180° out of phase cancel
+// into notches. An LFO sweeps the allpass centre frequency on an exponential scale. Chapter 10.
 //
-// 訊號流程：
+// Signal flow:
 //
 //   x ──┬──────────────────────────────────────────────(1-mix)──┐
 //       │                                                         ├─► y
@@ -10,16 +11,16 @@
 //           ▲                              │
 //           └──────── feedback ◄───────────┘
 //
-// 一階 allpass：H(z) = (a + z⁻¹) / (1 + a z⁻¹)，  a = (tan(π fc/fs) − 1) / (tan(π fc/fs) + 1)
-//   |H| = 1（所有頻率都不改變振幅），相位 φ(ω) = −2·arctan( tan(ω/2) / tan(ωc/2) )
-//   在 f = fc 時 φ = −90°，DC 是 0°，Nyquist 是 −180°。
-// N 級串接的總相位 = N·φ(ω)，和原音相加後 |1 + e^{jNφ}| = 2|cos(Nφ/2)|，
-//   Nφ = −(2k+1)π 時為 0 → notch 數 = N/2（N 為偶數）。
+// First-order allpass: H(z) = (a + z⁻¹) / (1 + a z⁻¹),  a = (tan(π fc/fs) − 1) / (tan(π fc/fs) + 1)
+//   |H| = 1 (the amplitude is unchanged at every frequency), phase φ(ω) = −2·arctan( tan(ω/2) / tan(ωc/2) )
+//   At f = fc, φ = −90°; at DC it is 0°; at Nyquist it is −180°.
+// The total phase of N cascaded stages is N·φ(ω); added to the dry signal, |1 + e^{jNφ}| = 2|cos(Nφ/2)|,
+//   which is zero when Nφ = −(2k+1)π -> the number of notches is N/2 (N even).
 //
-// 這裡用第 02 章的 Biquad 當每一級的容器：把 b2 = a2 = 0 就是一階 section
-//   （b0 = a, b1 = 1, b2 = 0, a1 = a, a2 = 0）。
+// Here the Chapter 02 Biquad serves as the container for each stage: setting b2 = a2 = 0 gives a
+// first-order section (b0 = a, b1 = 1, b2 = 0, a1 = a, a2 = 0).
 //
-// 依賴：第 02 章 Biquad、本章 Lfo。
+// Dependencies: Chapter 02 Biquad, and this chapter's Lfo.
 
 #include <dawlab/AudioBuffer.h>
 #include <dawlab/DspMath.h>
@@ -63,17 +64,17 @@ public:
         mixSm_.setCurrentAndTarget(mixSm_.getTarget());
     }
 
-    // ---- 參數 ----------------------------------------------------------------
+    // ---- Parameters ----------------------------------------------------------
     void setRateHz(float hz) noexcept { lfo_.setRateHz(std::clamp(hz, 0.0f, 20.0f)); }
-    // 0 = 不掃動（停在 centre）；1 = 掃動 ±sweepOctaves 個八度
+    // 0 = no sweep (stays at centre); 1 = sweep ±sweepOctaves octaves
     void setDepth(float depth) noexcept { depthSm_.setTarget(std::clamp(depth, 0.0f, 1.0f)); }
     void setCentreHz(float hz) noexcept { centreSm_.setTarget(std::clamp(hz, 20.0f, 20000.0f)); }
     void setFeedback(float fb) noexcept { feedbackSm_.setTarget(std::clamp(fb, -0.95f, 0.95f)); }
-    // 2..12 的偶數；奇數會向下取偶
+    // Even numbers from 2 to 12; an odd value is rounded down to even
     void setStages(int stages) noexcept {
         stages = std::clamp(stages, kMinStages, kMaxStages);
         stages -= stages % 2;
-        // 新啟用的 stage 可能留著很久以前的狀態，先清掉，避免切換時冒出舊的訊號
+        // A newly enabled stage may hold state from long ago; clear it first so stale signal does not appear on switching
         for (int s = numStages_; s < stages; ++s)
             stages_[static_cast<size_t>(s)].reset();
         numStages_ = stages;
@@ -81,7 +82,7 @@ public:
     void setMix(float mix) noexcept { mixSm_.setTarget(std::clamp(mix, 0.0f, 1.0f)); }
     void setLfoShape(LfoShape shape) noexcept { lfo_.setShape(shape); }
     void setLfoPhase(float phase01) noexcept { lfo_.setPhase(phase01); }
-    // depth = 1 時掃動 ±sweepOctaves（預設 ±2 個八度 = 總共 4 個八度）
+    // At depth = 1 the sweep is ±sweepOctaves (default ±2 octaves = 4 octaves in total)
     void setSweepOctaves(float octaves) noexcept { sweepOctaves_ = std::clamp(octaves, 0.0f, 6.0f); }
 
     float getRateHz() const noexcept { return lfo_.getRateHz(); }
@@ -90,26 +91,27 @@ public:
     float getFeedback() const noexcept { return feedbackSm_.getTarget(); }
     int getStages() const noexcept { return numStages_; }
     float getMix() const noexcept { return mixSm_.getTarget(); }
-    // 最近處理的 sample 的 allpass 中心頻率（Hz），給 UI / 量測（thread-safe：relaxed atomic）
+    // The allpass centre frequency (Hz) of the most recently processed sample, for the UI / measurement
+    // (thread-safe: relaxed atomic)
     float getCurrentCentreHz() const noexcept { return uiCentreHz_.load(); }
 
-    // ---- 公式（static，給範例 / 練習驗證用） -----------------------------------
-    // 一階 allpass 係數：a = (tan(π fc/fs) − 1) / (tan(π fc/fs) + 1)
+    // ---- Formulas (static, for verification in the examples / exercises) -------
+    // First-order allpass coefficient: a = (tan(π fc/fs) − 1) / (tan(π fc/fs) + 1)
     static double allpassCoefficient(double fcHz, double sampleRate) noexcept {
         const double t = std::tan(kPi * std::clamp(fcHz, 1.0, 0.49 * sampleRate) / sampleRate);
         return (t - 1.0) / (t + 1.0);
     }
-    // 一階 allpass 在頻率 f 的相位（弧度，0 .. −π）：φ = −2 arctan( tan(πf/fs) / tan(πfc/fs) )
+    // Phase of a first-order allpass at frequency f (radians, 0 .. −π): φ = −2 arctan( tan(πf/fs) / tan(πfc/fs) )
     static double allpassPhase(double fHz, double fcHz, double sampleRate) noexcept {
         return -2.0 * std::atan(std::tan(kPi * fHz / sampleRate) / std::tan(kPi * fcHz / sampleRate));
     }
-    // N 級、全部中心頻率為 fc 時，第 k 個 notch（k = 0 .. N/2−1）的頻率：
+    // With N stages all centred at fc, the frequency of the k-th notch (k = 0 .. N/2−1):
     //   N·φ(f) = −(2k+1)π  ⇒  tan(πf/fs) = tan(πfc/fs) · tan((2k+1)π / (2N))
     static double notchFrequencyHz(int k, int stages, double fcHz, double sampleRate) noexcept {
         const double t = std::tan(kPi * fcHz / sampleRate) * std::tan((2.0 * k + 1.0) * kPi / (2.0 * stages));
         return std::atan(t) * sampleRate / kPi;
     }
-    // 把 fc 包成「一階 allpass 的 Biquad 係數」
+    // Wrap fc into the Biquad coefficients of a first-order allpass
     static BiquadCoefficients makeFirstOrderAllpass(double fcHz, double sampleRate) noexcept {
         const double a = allpassCoefficient(fcHz, sampleRate);
         BiquadCoefficients c;
@@ -121,7 +123,7 @@ public:
         return c;
     }
 
-    // ---- 處理 ----------------------------------------------------------------
+    // ---- Processing ----------------------------------------------------------
     float processSample(int channel, float x) noexcept {
         if (channel == 0)
             advanceModulation();
@@ -147,7 +149,7 @@ private:
         feedback_ = feedbackSm_.next();
         mix_ = mixSm_.next();
 
-        // 指數刻度：fc = centre · 2^(depth · octaves · lfo)，耳朵聽音高是對數的
+        // Exponential scale: fc = centre · 2^(depth · octaves · lfo), because the ear hears pitch logarithmically
         const float m = lfo_.getNextValue();
         const float octaves = depth * sweepOctaves_ * m;
         currentHz_ = std::clamp(centre * std::exp2(octaves), 20.0f, static_cast<float>(0.45 * sampleRate_));
@@ -177,11 +179,11 @@ private:
     std::vector<float> lastOut_;
     Lfo lfo_;
 
-    // 預設值：depth 1、centre 800 Hz、feedback 0.3、mix 0.5
+    // Defaults: depth 1, centre 800 Hz, feedback 0.3, mix 0.5
     detail::ModParamSmoother depthSm_{1.0f}, centreSm_{800.0f}, feedbackSm_{0.3f}, mixSm_{0.5f};
     float feedback_ = 0.3f, mix_ = 0.5f;
-    float currentHz_ = 800.0f;                   // audio thread 內部使用
-    detail::RelaxedAtomicFloat uiCentreHz_{800.0f}; // 給 UI 讀
+    float currentHz_ = 800.0f;                   // used internally by the audio thread
+    detail::RelaxedAtomicFloat uiCentreHz_{800.0f}; // read by the UI
 };
 
 } // namespace dawlab::dsp

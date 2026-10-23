@@ -1,13 +1,16 @@
-// 練習 3 起始碼：Vibrato —— 調變延遲，但不混原音
+// Exercise 3 starter: Vibrato -- a modulated delay, but without mixing in the dry signal
 //
-// 目標：寫一個 Vibrato class，用 FractionalDelayLine + Lfo 做出「音高上下漂、振幅不變」的效果。
-// 和 chorus 的差別只有：輸出全部是延遲後的訊號（mix = 1），沒有乾訊號 → 沒有 comb 峰谷。
+// Goal: write a Vibrato class that uses FractionalDelayLine + Lfo to get a "pitch drifts up and
+// down, amplitude unchanged" effect. The only difference from the chorus: the output is entirely
+// the delayed signal (mix = 1) with no dry signal -> no comb peaks and valleys.
 //
-// 延遲 d(t) = centre + depth·lfo(t)
-// 音高比例 = 1 − d'(t)，最大偏移 = ±2πr·depth（depth 以秒計）
+// Delay d(t) = centre + depth·lfo(t)
+// Pitch ratio = 1 − d'(t), maximum deviation = ±2πr·depth (depth in seconds)
 //
-// 這支程式可以編譯；執行時因為 TODO 還沒完成，self-check 會印出 FAIL（這是預期的）。
-// 完成後應該看到：1 kHz 正弦、rate 5 Hz、depth 1 ms → 瞬時頻率 968.6 .. 1031.4 Hz，RMS 不變。
+// This program compiles; when run, the self-check prints FAIL because the TODOs are not done yet
+// (this is expected).
+// When finished you should see: 1 kHz sine, rate 5 Hz, depth 1 ms -> instantaneous frequency
+// 968.6 .. 1031.4 Hz, RMS unchanged.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/FractionalDelayLine.h>
@@ -35,7 +38,7 @@ public:
         (void)maxBlockSize;
         sampleRate_ = sampleRate;
         numChannels_ = std::max(1, numChannels);
-        // TODO 1：delay_.prepare(...) —— 最長延遲 = kMaxCentreMs + kMaxDepthMs（換成 sample），多留幾個 sample 給插值
+        // TODO 1: delay_.prepare(...) -- the longest delay = kMaxCentreMs + kMaxDepthMs (converted to samples), plus a few spare samples for interpolation
         lfo_.prepare(sampleRate);
         depthSm_.prepare(sampleRate, 20.0);
         reset();
@@ -55,7 +58,7 @@ public:
     float processSample(int channel, float x) noexcept {
         if (channel == 0)
             advanceModulation();
-        // TODO 3：push 進 delay line，再用 readCubic 讀 currentDelaySamples_ 回傳（不要混 x！）
+        // TODO 3: push into the delay line, then return the readCubic read at currentDelaySamples_ (do not mix in x!)
         return x;
     }
 
@@ -66,7 +69,7 @@ public:
             advanceModulation();
             for (int ch = 0; ch < nch; ++ch) {
                 float* d = block.getChannelPointer(ch);
-                // TODO 3：同上
+                // TODO 3: same as above
                 (void)ch;
                 (void)d;
             }
@@ -76,7 +79,7 @@ public:
 private:
     void advanceModulation() noexcept {
         const float depth = depthSm_.next();
-        // TODO 2：ms = centreMs_ + depth · lfo_.getNextValue()，換成 sample 後 clamp 在 [2, maxDelay − 3]，存進 currentDelaySamples_
+        // TODO 2: ms = centreMs_ + depth · lfo_.getNextValue(); convert to samples, clamp to [2, maxDelay − 3], and store in currentDelaySamples_
         (void)depth;
     }
 
@@ -98,7 +101,7 @@ void processInBlocks(Effect& fx, dawlab::AudioBuffer& buffer) {
     }
 }
 
-// 用相鄰正向零交叉的間距估計瞬時頻率：回傳最小、最大、平均
+// Estimate the instantaneous frequency from the spacing between adjacent upward zero crossings: returns the minimum, maximum, and mean
 void instantaneousFrequency(const float* x, int n, int skip, double& fMin, double& fMax, double& fMean) {
     fMin = 1.0e9;
     fMax = 0.0;
@@ -123,7 +126,7 @@ void instantaneousFrequency(const float* x, int n, int skip, double& fMin, doubl
 } // namespace
 
 int main() {
-    std::printf("=== 第 10 章 練習 3：Vibrato（starter）===\n\n");
+    std::printf("=== Chapter 10 Exercise 3: Vibrato (starter) ===\n\n");
 
     const float rate = 5.0f, depthMs = 1.0f;
     const double dev = dawlab::kTwoPi * rate * depthMs * 0.001;
@@ -144,8 +147,8 @@ int main() {
         double fMin, fMax, fMean;
         instantaneousFrequency(tone.getReadPointer(0), tone.getNumSamples(), skip, fMin, fMax, fMean);
         const float outRms = dawlab::rms(tone.getReadPointer(0) + skip, tone.getNumSamples() - skip);
-        std::printf("1 kHz 正弦、rate %.1f Hz、depth %.1f ms：\n", rate, depthMs);
-        std::printf("  理論：%.1f .. %.1f Hz    量測：%.1f .. %.1f Hz，平均 %.2f Hz；RMS %+.2f dB\n",
+        std::printf("1 kHz sine, rate %.1f Hz, depth %.1f ms:\n", rate, depthMs);
+        std::printf("  Theory: %.1f .. %.1f Hz    Measured: %.1f .. %.1f Hz, mean %.2f Hz; RMS %+.2f dB\n",
                     1000.0 * (1.0 - dev), 1000.0 * (1.0 + dev), fMin, fMax, fMean, dawlab::gainToDb(outRms / inRms));
         DAWLAB_CHECK_NEAR(fMax, 1000.0 * (1.0 + dev), 2.0);
         DAWLAB_CHECK_NEAR(fMin, 1000.0 * (1.0 - dev), 2.0);
@@ -153,7 +156,7 @@ int main() {
         DAWLAB_CHECK_NEAR(dawlab::gainToDb(outRms / inRms), 0.0, 0.3);
     }
 
-    // depth 0：只是固定延遲，瞬時頻率應該固定在 1000 Hz
+    // depth 0: just a fixed delay, so the instantaneous frequency should stay at 1000 Hz
     {
         dawlab::AudioBuffer tone = dawlab::makeSine(1000.0, kSampleRate, 2.0, 0.5f, 1);
         Vibrato v;
@@ -165,7 +168,7 @@ int main() {
         double fMin, fMax, fMean;
         instantaneousFrequency(tone.getReadPointer(0), tone.getNumSamples(),
                                dawlab::secondsToSamples(0.5, kSampleRate), fMin, fMax, fMean);
-        std::printf("depth 0：瞬時頻率 %.2f .. %.2f Hz（應該固定在 1000）\n\n", fMin, fMax);
+        std::printf("depth 0: instantaneous frequency %.2f .. %.2f Hz (should stay at 1000)\n\n", fMin, fMax);
         DAWLAB_CHECK_NEAR(fMin, 1000.0, 0.5);
         DAWLAB_CHECK_NEAR(fMax, 1000.0, 0.5);
     }

@@ -1,13 +1,13 @@
-// 練習 4 起始碼：Ring modulator —— 乘上載波，只剩和頻與差頻
+// Exercise 4 starter: Ring modulator -- multiply by a carrier, leaving only the sum and difference frequencies
 //
 //   y(t) = x(t) · sin(2π fc t)
-//   sin(a)·sin(b) = ½[cos(a−b) − cos(a+b)] → 輸出只有 f − fc 與 f + fc，原本的 f 與載波 fc 都消失。
+//   sin(a)·sin(b) = ½[cos(a−b) − cos(a+b)] -> the output has only f − fc and f + fc; both the original f and the carrier fc vanish.
 //
-// 目標：完成 RingMod class（用 Lfo 當載波），並通過 self-check：
-//   1. 1000 Hz 正弦（A = 0.5）× 150 Hz：850 / 1150 Hz 振幅 ≈ 0.25，1000 / 150 Hz 低於 −60 dB
-//   2. 載波 0 Hz、相位 0.25（sin = 1）→ 輸出 = 輸入
-//   3. mix 0.5：1000 Hz 剩 0.25、850 Hz 為 0.125
-// 這支程式可以編譯；執行時因為 TODO 還沒完成，self-check 會 FAIL（預期）。
+// Goal: complete the RingMod class (using an Lfo as the carrier) and pass the self-check:
+//   1. 1000 Hz sine (A = 0.5) x 150 Hz: the 850 / 1150 Hz amplitudes ≈ 0.25, and 1000 / 150 Hz are below −60 dB
+//   2. Carrier 0 Hz, phase 0.25 (sin = 1) -> output = input
+//   3. mix 0.5: 1000 Hz drops to 0.25 and 850 Hz is 0.125
+// This program compiles; when run, the self-check FAILs because the TODOs are not done yet (expected).
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Lfo.h>
@@ -31,7 +31,7 @@ public:
         (void)maxBlockSize;
         numChannels_ = std::max(1, numChannels);
         carrier_.prepare(sampleRate);
-        carrier_.setShape(LfoShape::Sine); // 載波 = 跑在可聽頻率範圍的 sine LFO
+        carrier_.setShape(LfoShape::Sine); // carrier = a sine LFO running in the audible frequency range
         mixSm_.prepare(sampleRate, 20.0);
         reset();
     }
@@ -49,7 +49,7 @@ public:
     float processSample(int channel, float x) noexcept {
         if (channel == 0)
             advance();
-        // TODO 2：回傳 (1 − mix)·x + mix·x·carrierValue_
+        // TODO 2: return (1 − mix)·x + mix·x·carrierValue_
         return x;
     }
 
@@ -60,7 +60,7 @@ public:
             advance();
             for (int ch = 0; ch < nch; ++ch) {
                 float* d = block.getChannelPointer(ch);
-                // TODO 2：同上，就地改寫 d[i]
+                // TODO 2: same as above, rewriting d[i] in place
                 (void)d;
             }
         }
@@ -69,7 +69,7 @@ public:
 private:
     void advance() noexcept {
         mix_ = mixSm_.next();
-        // TODO 1：從 carrier_ 取下一個值存進 carrierValue_
+        // TODO 1: take the next value from carrier_ and store it in carrierValue_
     }
 
     int numChannels_ = 2;
@@ -95,7 +95,7 @@ double amp(const dawlab::AudioBuffer& b, double freq, int skip) {
 } // namespace
 
 int main() {
-    std::printf("=== 第 10 章 練習 4：Ring modulator（starter）===\n\n");
+    std::printf("=== Chapter 10 Exercise 4: Ring modulator (starter) ===\n\n");
     const int skip = dawlab::secondsToSamples(0.5, kSampleRate);
 
     {
@@ -110,7 +110,7 @@ int main() {
         processInBlocks(rm, tone);
         const double sideband = amp(tone, f - fc, skip), sideband2 = amp(tone, f + fc, skip);
         const double carrierLeft = amp(tone, f, skip), lfoLeft = amp(tone, fc, skip);
-        std::printf("%.0f × %.0f Hz：%.0f Hz %.4f、%.0f Hz %.4f（理論 %.4f）；%.0f Hz %.1f dB、%.0f Hz %.1f dB（應 < −60）\n\n",
+        std::printf("%.0f x %.0f Hz: %.0f Hz %.4f, %.0f Hz %.4f (theory %.4f); %.0f Hz %.1f dB, %.0f Hz %.1f dB (should be < −60)\n\n",
                     f, fc, f - fc, sideband, f + fc, sideband2, A / 2.0, f, dawlab::gainToDb(carrierLeft / A), fc,
                     dawlab::gainToDb(lfoLeft / A));
         DAWLAB_CHECK_NEAR(sideband, A / 2.0, 0.005);
@@ -131,7 +131,7 @@ int main() {
         float maxDiff = 0.0f;
         for (int i = 0; i < tone.getNumSamples(); ++i)
             maxDiff = std::max(maxDiff, std::abs(tone.getSample(0, i) - ref.getSample(0, i)));
-        std::printf("載波 0 Hz、相位 0.25：輸出與輸入最大差 %.2e（應為 0）\n\n", maxDiff);
+        std::printf("Carrier 0 Hz, phase 0.25: largest output-vs-input difference %.2e (should be 0)\n\n", maxDiff);
         DAWLAB_CHECK(maxDiff < 1.0e-5f);
     }
 
@@ -144,7 +144,7 @@ int main() {
         rm.reset();
         processInBlocks(rm, tone);
         const double dry = amp(tone, 1000.0, skip), sb = amp(tone, 850.0, skip);
-        std::printf("mix 0.5：1000 Hz 振幅 %.4f（理論 0.25）、850 Hz 振幅 %.4f（理論 0.125）\n\n", dry, sb);
+        std::printf("mix 0.5: 1000 Hz amplitude %.4f (theory 0.25), 850 Hz amplitude %.4f (theory 0.125)\n\n", dry, sb);
         DAWLAB_CHECK_NEAR(dry, 0.25, 0.005);
         DAWLAB_CHECK_NEAR(sb, 0.125, 0.005);
     }

@@ -1,18 +1,19 @@
-// 練習 6 起始碼：Tempo-synced tremolo —— rate 跟著 bpm 走，相位跟著 host 的歌曲位置走
+// Exercise 6 starter: Tempo-synced tremolo -- the rate follows the bpm, the phase follows the host's song position
 //
-// tempo sync 有兩件事：
-//   1. rate：一個 LFO 週期 = beats 拍，一拍 = 60/bpm 秒 → rate = bpm / 60 / beats
-//   2. phase：host 每個 block 給「block 第一個 sample 的歌曲位置」ppq（四分音符拍數），
+// Tempo sync has two parts:
+//   1. rate: one LFO cycle = beats beats, one beat = 60/bpm seconds -> rate = bpm / 60 / beats
+//   2. phase: for each block the host supplies the song position ppq (in quarter-note beats) of the block's first sample,
 //        phase = frac(ppq / beats + phaseOffset)
-//      每個 block 開頭都重新對齊，跳到歌曲任何位置或改 tempo 後相位都立刻正確。
+//      Re-aligning at the start of every block makes the phase correct immediately after jumping
+//      anywhere in the song or changing the tempo.
 //
-// 目標：完成 TempoSyncTremolo 的 TODO，通過 self-check：
-//   1. 120 bpm 八分 → 4 Hz、附點八分 → 2.667 Hz、90 bpm 四分 → 1.5 Hz
-//   2. 每個八分音符拍點 gain ≈ 1、兩拍中間 gain ≈ 0、2 秒內 8 個谷
-//   3. 從 ppq = 3.3 開始播放與從頭播放的 gain 一致
-//   4. 120 → 90 bpm 後谷的間距 = 0.3333 s
-// 提示：rate 可以直接用 Lfo::tempoToRateHz；frac(x) = x − floor(x)。
-// 這支程式可以編譯；執行時因為 TODO 還沒完成，self-check 會 FAIL（預期）。
+// Goal: complete the TODOs in TempoSyncTremolo and pass the self-check:
+//   1. 120 bpm eighth -> 4 Hz, dotted eighth -> 2.667 Hz, 90 bpm quarter -> 1.5 Hz
+//   2. Gain ≈ 1 on every eighth-note beat, gain ≈ 0 between beats, 8 valleys in 2 seconds
+//   3. Playing from ppq = 3.3 gives the same gain as playing from the start
+//   4. After 120 -> 90 bpm the valley spacing = 0.3333 s
+// Hint: for the rate you can use Lfo::tempoToRateHz directly; frac(x) = x − floor(x).
+// This program compiles; when run, the self-check FAILs because the TODOs are not done yet (expected).
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Lfo.h>
@@ -43,27 +44,27 @@ public:
     void reset() noexcept { tremolo_.reset(); }
 
     void setTempoBpm(double bpm) noexcept { bpm_ = std::max(1.0, bpm); }
-    // 一個 LFO 週期有幾拍：1 = 四分音符、0.5 = 八分、0.25 = 十六分、0.75 = 附點八分
+    // How many beats one LFO cycle lasts: 1 = quarter note, 0.5 = eighth, 0.25 = sixteenth, 0.75 = dotted eighth
     void setDivisionBeats(double beats) noexcept { beats_ = std::max(1.0 / 64.0, beats); }
-    // 拍點落在 LFO 週期的哪裡。sine 時 0.25 → 拍點上 sin = +1 → gain 最大
+    // Where the beat falls within the LFO cycle. For a sine, 0.25 -> sin = +1 on the beat -> maximum gain
     void setPhaseOffset(float offset01) noexcept { phaseOffset_ = offset01; }
     void setDepth(float depth) noexcept { tremolo_.setDepth(depth); }
     void setShape(LfoShape shape) noexcept { tremolo_.setShape(shape); }
 
     float getRateHz() const noexcept {
-        // TODO 1：回傳 bpm_ / 60 / beats_（或呼叫 Lfo::tempoToRateHz）
+        // TODO 1: return bpm_ / 60 / beats_ (or call Lfo::tempoToRateHz)
         return 1.0f;
     }
 
-    // ppqAtBlockStart：block 第一個 sample 的歌曲位置（四分音符拍數），由 host 提供
+    // ppqAtBlockStart: the song position of the block's first sample (in quarter-note beats), supplied by the host
     void process(dawlab::AudioBlock block, double ppqAtBlockStart) noexcept {
         tremolo_.setRateHz(getRateHz());
-        // TODO 2：phase = frac(ppqAtBlockStart / beats_ + phaseOffset_)，用 tremolo_.setLfoPhase(...) 設定
+        // TODO 2: phase = frac(ppqAtBlockStart / beats_ + phaseOffset_), set with tremolo_.setLfoPhase(...)
         (void)ppqAtBlockStart;
         tremolo_.process(block);
     }
 
-    // 一個 block 的長度是幾拍：n / fs 秒 × bpm / 60
+    // The length of a block in beats: n / fs seconds x bpm / 60
     double blockLengthInBeats(int numSamples) const noexcept { return numSamples / sampleRate_ * bpm_ / 60.0; }
 
 private:
@@ -74,8 +75,8 @@ private:
     Tremolo tremolo_;
 };
 
-// 模擬 host：一塊一塊處理，並且每塊告訴 tremolo 目前的 ppq。
-// tempoChangeAtSample ≥ 0 時，在那個 sample 之後的 block 改用 bpm2（為了簡化，只在 block 邊界改）
+// Simulate a host: process block by block, telling the tremolo the current ppq for each block.
+// When tempoChangeAtSample >= 0, blocks after that sample use bpm2 (for simplicity the change happens only at block boundaries)
 void runHost(TempoSyncTremolo& t, dawlab::AudioBuffer& buffer, double startPpq, double bpm1,
              int tempoChangeAtSample = -1, double bpm2 = 120.0) {
     dawlab::AudioBlock whole(buffer);
@@ -95,8 +96,8 @@ dawlab::AudioBuffer makeDc(double seconds) {
     return b;
 }
 
-// 找 gain 曲線的谷底：每一段連續「gain < 0.05」的區間算一個谷，取區間中點當位置。
-// （不用「比左右鄰居小」來判斷：谷底附近 float 的量化會造成好幾個假的局部最小值）
+// Find the valleys of the gain curve: each contiguous run where "gain < 0.05" counts as one valley, and the midpoint of the run is its position.
+// (We do not test "smaller than both neighbours": float quantization near the bottom of a valley creates several false local minima.)
 std::vector<int> findMinima(const float* g, int n, int from, int to) {
     std::vector<int> idx;
     int regionStart = -1;
@@ -105,7 +106,7 @@ std::vector<int> findMinima(const float* g, int n, int from, int to) {
         if (low && regionStart < 0)
             regionStart = i;
         if (!low && regionStart >= 0) {
-            if (regionStart > from) // 從區間一開始就在谷裡的那段不完整，不算
+            if (regionStart > from) // A run that is already inside a valley at the very start of the range is incomplete and is not counted
                 idx.push_back((regionStart + i - 1) / 2);
             regionStart = -1;
         }
@@ -127,11 +128,11 @@ TempoSyncTremolo makeTremolo(double beats, LfoShape shape = LfoShape::Sine) {
 } // namespace
 
 int main() {
-    std::printf("=== 第 10 章 練習 6：Tempo-synced tremolo（starter）===\n\n");
+    std::printf("=== Chapter 10 Exercise 6: Tempo-synced tremolo (starter) ===\n\n");
 
-    // ---- 1. rate 換算 ---------------------------------------------------------
+    // ---- 1. Rate conversion ----------------------------------------------------
     {
-        // 用 TempoSyncTremolo::getRateHz()（TODO 1）本身驗證，而不是直接呼叫 Lfo::tempoToRateHz
+        // Verify through TempoSyncTremolo::getRateHz() itself (TODO 1), rather than calling Lfo::tempoToRateHz directly
         auto rateOf = [](double bpm, double beats) {
             TempoSyncTremolo t;
             t.prepare(kSampleRate, kBlockSize, 2);
@@ -142,39 +143,39 @@ int main() {
         const double r8 = rateOf(120.0, 0.5);
         const double r8d = rateOf(120.0, 0.75);
         const double r4at90 = rateOf(90.0, 1.0);
-        std::printf("rate 換算：120 bpm 八分 %.4f Hz、附點八分 %.4f Hz、90 bpm 四分 %.4f Hz\n\n", r8, r8d, r4at90);
+        std::printf("Rate conversion: 120 bpm eighth %.4f Hz, dotted eighth %.4f Hz, 90 bpm quarter %.4f Hz\n\n", r8, r8d, r4at90);
         DAWLAB_CHECK_NEAR(r8, 4.0, 1e-4);
         DAWLAB_CHECK_NEAR(r8d, 8.0 / 3.0, 1e-4);
         DAWLAB_CHECK_NEAR(r4at90, 1.5, 1e-4);
     }
 
-    // ---- 2. 拍點對齊 -------------------------------------------------------------
+    // ---- 2. Beat alignment -----------------------------------------------------
     {
         dawlab::AudioBuffer g = makeDc(2.0);
         TempoSyncTremolo t = makeTremolo(0.5);
         runHost(t, g, 0.0, 120.0);
         const float* d = g.getReadPointer(0);
         const int eighth = dawlab::secondsToSamples(0.25, kSampleRate); // 12000 samples
-        std::printf("120 bpm 八分音符、sine、depth 1（輸入 DC 1.0 → 輸出 = gain）：\n");
-        std::printf("   拍點   時間(s)   拍點上的 gain   兩拍中間的 gain\n");
+        std::printf("120 bpm eighth notes, sine, depth 1 (input DC 1.0 -> output = gain):\n");
+        std::printf("   beat   time(s)   gain on the beat   gain between beats\n");
         float worstOnBeat = 1.0f, worstMid = 0.0f;
         for (int k = 0; k < 8; ++k) {
             const float onBeat = d[k * eighth];
             const float mid = d[k * eighth + eighth / 2];
             worstOnBeat = std::min(worstOnBeat, onBeat);
             worstMid = std::max(worstMid, mid);
-            std::printf("   %4d   %6.3f      %8.5f        %8.5f\n", k, k * 0.25, onBeat, mid);
+            std::printf("   %4d   %6.3f         %8.5f           %8.5f\n", k, k * 0.25, onBeat, mid);
         }
         const std::vector<int> minima = findMinima(d, g.getNumSamples(), 0, g.getNumSamples());
-        std::printf("  -> 2 秒內找到 %zu 個最小值（理論 8）\n\n", minima.size());
+        std::printf("  -> Found %zu minima in 2 seconds (theory 8)\n\n", minima.size());
         DAWLAB_CHECK(worstOnBeat > 0.999f);
         DAWLAB_CHECK(worstMid < 0.001f);
         DAWLAB_CHECK(minima.size() == 8);
     }
 
-    // ---- 3. 從歌曲中間開始播放 ---------------------------------------------------
+    // ---- 3. Starting playback from the middle of the song ------------------------
     {
-        const double startBeat = 3.3;                       // 120 bpm 下 = 1.65 秒
+        const double startBeat = 3.3;                       // = 1.65 s at 120 bpm
         const int offset = dawlab::secondsToSamples(startBeat * 0.5, kSampleRate);
         dawlab::AudioBuffer full = makeDc(4.0);
         TempoSyncTremolo a = makeTremolo(0.5);
@@ -187,11 +188,11 @@ int main() {
         float maxDiff = 0.0f;
         for (int i = 0; i < late.getNumSamples(); ++i)
             maxDiff = std::max(maxDiff, std::abs(late.getSample(0, i) - full.getSample(0, offset + i)));
-        std::printf("從 ppq = %.1f 開始播放 vs 從頭播放：同一歌曲位置的 gain 最大差 = %.2e\n\n", startBeat, maxDiff);
+        std::printf("Playing from ppq = %.1f vs playing from the start: largest gain difference at the same song position = %.2e\n\n", startBeat, maxDiff);
         DAWLAB_CHECK(maxDiff < 1.0e-3f);
     }
 
-    // ---- 4. tempo 改變 -------------------------------------------------------------
+    // ---- 4. Tempo change -------------------------------------------------------------
     {
         dawlab::AudioBuffer g = makeDc(4.0);
         TempoSyncTremolo t = makeTremolo(0.5);
@@ -203,20 +204,20 @@ int main() {
         for (size_t i = 1; i < after.size(); ++i)
             meanGap += (after[i] - after[i - 1]) / kSampleRate;
         meanGap = after.size() > 1 ? meanGap / static_cast<double>(after.size() - 1) : 0.0;
-        std::printf("tempo 120 → 90 bpm 之後：最小值平均間距 %.4f s（理論 60/90 × 0.5 = %.4f s）\n\n", meanGap,
+        std::printf("After the tempo change 120 -> 90 bpm: mean minimum spacing %.4f s (theory 60/90 x 0.5 = %.4f s)\n\n", meanGap,
                     60.0 / 90.0 * 0.5);
         DAWLAB_CHECK(after.size() >= 4);
         DAWLAB_CHECK_NEAR(meanGap, 60.0 / 90.0 * 0.5, 0.002);
     }
 
-    // ---- 聽 ----------------------------------------------------------------------
+    // ---- Listening ---------------------------------------------------------------
     {
         dawlab::AudioBuffer pluck = dawlab::makePluckSequence(kSampleRate, 4.0, 0.4f, 2);
-        TempoSyncTremolo t = makeTremolo(0.25, LfoShape::Square); // 十六分音符的「切音」
-        t.setPhaseOffset(0.0f); // square 在相位 0..0.5 為 +1：拍點上是「開」
+        TempoSyncTremolo t = makeTremolo(0.25, LfoShape::Square); // sixteenth-note "chopping"
+        t.setPhaseOffset(0.0f); // square is +1 for phase 0..0.5: "open" on the beat
         runHost(t, pluck, 0.0, 120.0);
         dawlab::writeWav(dawlab::outputPath("l10_ex6_tempo_tremolo.wav"), pluck, kSampleRate);
-        std::printf("輸出 l10_ex6_tempo_tremolo.wav（120 bpm、十六分音符、square、depth 1）：peak %.3f\n",
+        std::printf("Output l10_ex6_tempo_tremolo.wav (120 bpm, sixteenth notes, square, depth 1): peak %.3f\n",
                     dawlab::peakAbs(pluck));
         DAWLAB_CHECK(!dawlab::hasNanOrInf(pluck));
     }

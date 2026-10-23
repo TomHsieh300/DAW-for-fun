@@ -1,20 +1,23 @@
 #pragma once
-// Chorus：用 LFO 調變的短延遲（5–30 ms）加上原音，做出「好幾個人一起演奏、各自稍微走音」的厚度。
-// 第 10 章。
+// Chorus: a short delay (5-30 ms) modulated by an LFO and added to the dry signal, giving the
+// thickness of "several people playing together, each slightly out of tune". Chapter 10.
 //
-// 訊號流程（每個 voice 一條）：
+// Signal flow (one path per voice):
 //
 //   x ──┬──────────────────────────────────────────(1-mix)──┐
 //       │                                                     ├─► y
-//       └─► FractionalDelayLine ─ read(centre + depth·lfo_v) ─(mix/N)─┘   （N 個 voice 相加）
+//       └─► FractionalDelayLine ─ read(centre + depth·lfo_v) ─(mix/N)─┘   (N voices summed)
 //
-// - 延遲時間被 LFO 慢慢拉長 / 縮短 → 讀取速度不等於寫入速度 → 音高輕微上下漂（Doppler 效應）。
-//   d(t) = d0 + D·sin(2π r t)  ⇒  音高比例 = 1 - d'(t) = 1 - 2π r D cos(2π r t)
-// - 多個 voice 的 LFO 起始相位均分一圈（voice v 的相位 = v / N），彼此的走音方向不同。
-// - stereo spread：右聲道讀同一個 voice 的 LFO 時，相位再加上 spread × 0.25 週期（最多相差 90°），
-//   左右走音不同步 → 立體聲變寬（左右相關性下降）。
+// - The LFO slowly lengthens / shortens the delay time -> the read speed differs from the write
+//   speed -> the pitch drifts slightly up and down (the Doppler effect).
+//   d(t) = d0 + D·sin(2π r t)  =>  pitch ratio = 1 - d'(t) = 1 - 2π r D cos(2π r t)
+// - The LFO start phases of the voices are spread evenly around one cycle (voice v's phase = v / N),
+//   so their detuning directions differ.
+// - stereo spread: when the right channel reads the same voice's LFO, the phase gets an extra
+//   spread × 0.25 cycle (up to 90° apart), so the left and right detuning are out of sync ->
+//   a wider stereo image (lower left/right correlation).
 //
-// 依賴：第 09 章 FractionalDelayLine（readCubic）、本章 Lfo。
+// Dependencies: Chapter 09 FractionalDelayLine (readCubic), and this chapter's Lfo.
 
 #include <dawlab/AudioBuffer.h>
 #include <dawlab/DspMath.h>
@@ -34,17 +37,17 @@ public:
     static constexpr float kMaxDepthMs = 30.0f;
 
     void prepare(double sampleRate, int maxBlockSize, int numChannels) {
-        (void)maxBlockSize; // 逐 sample 處理，不需要暫存 block
+        (void)maxBlockSize; // processed sample by sample; no block scratch buffer needed
         sampleRate_ = sampleRate;
         numChannels_ = std::max(1, numChannels);
 
-        // 唯一可以 allocate 的地方：最長延遲 = centre 上限 + depth 上限，再留幾個 sample 給插值
+        // The only place allowed to allocate: longest delay = centre limit + depth limit, plus a few samples for interpolation
         const int maxDelay = msToSamples(kMaxCentreDelayMs + kMaxDepthMs, sampleRate) + 8;
         delay_.prepare(maxDelay, numChannels_);
 
         for (auto& lfo : lfos_) {
             lfo.prepare(sampleRate);
-            lfo.setRateHz(rateHz_); // prepare 前呼叫過 setRateHz 也不會遺失
+            lfo.setRateHz(rateHz_); // a setRateHz call made before prepare is not lost
         }
 
         centreSm_.prepare(sampleRate, 20.0);
@@ -56,7 +59,7 @@ public:
 
     void reset() noexcept {
         delay_.reset();
-        spreadVoicePhases(0.0f); // 回到初始狀態：voice v 的起始相位 = v / N
+        spreadVoicePhases(0.0f); // back to the initial state: voice v's start phase = v / N
         for (auto& lfo : lfos_)
             lfo.reset();
         centreSm_.setCurrentAndTarget(centreSm_.getTarget());
@@ -65,19 +68,22 @@ public:
         spreadSm_.setCurrentAndTarget(spreadSm_.getTarget());
     }
 
-    // ---- 參數 ----------------------------------------------------------------
+    // ---- Parameters ----------------------------------------------------------
     void setRateHz(float hz) noexcept {
         rateHz_ = std::clamp(hz, 0.0f, 20.0f);
         for (auto& lfo : lfos_)
             lfo.setRateHz(rateHz_);
     }
-    // 延遲偏離 centre 的最大量（±depth）。
+    // Maximum deviation of the delay from centre (±depth).
     void setDepthMs(float ms) noexcept { depthSm_.setTarget(std::clamp(ms, 0.0f, kMaxDepthMs)); }
     void setCentreDelayMs(float ms) noexcept { centreSm_.setTarget(std::clamp(ms, 1.0f, kMaxCentreDelayMs)); }
-    // plugin / DAW 常常每個 block 都把所有參數推一次，所以「值沒變」時必須什麼都不做——
-    // 否則每個 block 都把 LFO 拉回起始相位，延遲週期性地跳回去，就變成嚴重的走音 glitch。
-    // 值真的改變時：voice 0 保持目前相位繼續走，只把其他 voice 重新均分在它後面（v / N 週期）。
-    // 其他 voice 的延遲仍會跳一下，所以這是「設定時」的操作（UI 上做成離散選項）。
+    // A plugin / DAW often pushes every parameter once per block, so when the value has not changed
+    // this must do nothing -- otherwise every block would pull the LFOs back to their start phase,
+    // the delay would periodically jump back, and that becomes a nasty pitch glitch.
+    // When the value really changes: voice 0 keeps running from its current phase, and only the
+    // other voices are re-spread behind it (v / N cycle).
+    // The other voices' delays still jump once, so this is a "set-up time" operation (make it a
+    // discrete option in the UI).
     void setVoices(int voices) noexcept {
         voices = std::clamp(voices, 1, kMaxVoices);
         if (voices == voices_)
@@ -86,9 +92,9 @@ public:
         spreadVoicePhases(lfos_[0].getPhase());
     }
     void setMix(float mix) noexcept { mixSm_.setTarget(std::clamp(mix, 0.0f, 1.0f)); }
-    // 0 = 左右完全相同；1 = 右聲道的 LFO 和左聲道相差 90°（相位 +0.25 週期）
+    // 0 = left and right identical; 1 = the right channel's LFO is 90° off the left (phase +0.25 cycle)
     void setStereoSpread(float spread) noexcept { spreadSm_.setTarget(std::clamp(spread, 0.0f, 1.0f)); }
-    // 示範用：關掉 cubic 改用 linear 插值，聽 / 量高頻損失
+    // For demonstration: turn cubic off and use linear interpolation, to hear / measure the high-frequency loss
     void setUseCubicInterpolation(bool cubic) noexcept { useCubic_ = cubic; }
 
     float getRateHz() const noexcept { return rateHz_; }
@@ -98,9 +104,10 @@ public:
     float getMix() const noexcept { return mixSm_.getTarget(); }
     float getStereoSpread() const noexcept { return spreadSm_.getTarget(); }
 
-    // ---- 處理 ----------------------------------------------------------------
-    // 逐 sample：呼叫順序必須是每個時間點先 channel 0、再 channel 1……
-    // （LFO 與參數平滑只在 channel 0 前進一步，其他 channel 共用同一組值）
+    // ---- Processing ----------------------------------------------------------
+    // Per sample: at each point in time the calls must go channel 0 first, then channel 1, ...
+    // (the LFOs and parameter smoothers advance one step only on channel 0; the other channels
+    // share the same values)
     float processSample(int channel, float x) noexcept {
         if (channel == 0)
             advanceModulation();
@@ -120,13 +127,13 @@ public:
     }
 
 private:
-    // voice v 的相位 = base + v / N（Lfo::setPhase 會 wrap 回 0..1）
+    // voice v's phase = base + v / N (Lfo::setPhase wraps it back into 0..1)
     void spreadVoicePhases(float base) noexcept {
         for (int v = 0; v < kMaxVoices; ++v)
             lfos_[static_cast<size_t>(v)].setPhase(base + static_cast<float>(v) / static_cast<float>(voices_));
     }
 
-    // 每個時間點做一次：平滑參數、抓各 voice 的相位並讓 LFO 前進
+    // Done once per time step: smooth the parameters, grab each voice's phase, and advance the LFOs
     void advanceModulation() noexcept {
         centreMs_ = centreSm_.next();
         depthMs_ = depthSm_.next();
@@ -140,9 +147,9 @@ private:
     }
 
     float renderSample(int ch, float x) noexcept {
-        delay_.push(ch, x); // 先寫入，讀 d 個 sample 前就是精確的 d（d = 0 會讀到剛寫入的 x）
+        delay_.push(ch, x); // Write first, so reading d samples back is exactly d (d = 0 reads the x just written)
 
-        const float phaseOffset = 0.25f * spread_ * static_cast<float>(ch); // 右聲道最多相差 90°
+        const float phaseOffset = 0.25f * spread_ * static_cast<float>(ch); // the right channel is at most 90° apart
         const float msToSamplesF = static_cast<float>(sampleRate_ * 0.001);
         const float maxRead = static_cast<float>(delay_.getMaxDelaySamples() - 3);
 
@@ -164,10 +171,10 @@ private:
     bool useCubic_ = true;
 
     FractionalDelayLine delay_;
-    std::array<Lfo, kMaxVoices> lfos_{}; // 固定大小：prepare 之前呼叫 setter 也安全
+    std::array<Lfo, kMaxVoices> lfos_{}; // fixed size: calling setters before prepare is also safe
     float voicePhase_[kMaxVoices] = {};
 
-    // 預設值：centre 15 ms、depth 3 ms、mix 0.5、spread 1
+    // Defaults: centre 15 ms, depth 3 ms, mix 0.5, spread 1
     detail::ModParamSmoother centreSm_{15.0f}, depthSm_{3.0f}, mixSm_{0.5f}, spreadSm_{1.0f};
     float centreMs_ = 15.0f, depthMs_ = 3.0f, mix_ = 0.5f, spread_ = 1.0f;
 };
