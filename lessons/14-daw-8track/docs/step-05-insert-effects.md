@@ -82,11 +82,15 @@ The chapter-01..12 classes are not thread-safe: their setters recompute coeffici
 `process()` reads. So exactly one thread at a time may call them. `EffectBase` solves this with an
 atomic value per parameter and a 32-bit "dirty" mask:
 
-```
-UI thread: setParameter(i, v)                 audio thread: process(block)
-  values_[i].store(clamp(v))                    mask = dirty_.exchange(0)
-  dirty_.fetch_or(1 << i)   --- release --->    for each bit i in mask: applyParameter(i, values_[i])
-                                                processDsp(block)
+```mermaid
+flowchart LR
+    subgraph UI["UI thread: setParameter(i, v)"]
+        U1["values_[i].store(clamp(v))"] --> U2["dirty_.fetch_or(1 #60;#60; i)"]
+    end
+    subgraph AU["audio thread: process(block)"]
+        A1["mask = dirty_.exchange(0)"] --> A2["for each bit i in mask:<br/>applyParameter(i, values_[i])"] --> A3["processDsp(block)"]
+    end
+    U2 -->|"release"| A1
 ```
 
 Several changes of one parameter between two blocks collapse into one (only the newest value

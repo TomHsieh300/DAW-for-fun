@@ -28,14 +28,11 @@ DAW 有兩個截然不同的半邊：
 header-only 的 CMake `INTERFACE` library，只 link `dawlab::dsp`（第 01-12 章，它們 link
 `dawlab::common`）：
 
-```
-dawlab::common   AudioBuffer / AudioBlock, WAV I/O, Signals, Analysis, Check
-      ^
-dawlab::dsp      Gain, Panner, ..., Reverb, LevelMeter, LoudnessMeter      (chapters 01-12)
-      ^
-dawlab::engine   Transport, Clip, Track, Mixer, Effects, Engine, Renderer (this chapter)
-      ^
-app (stage 2)    JUCE: device callback, GUI, VST3 hosting
+```mermaid
+flowchart TD
+    APP["app (stage 2)<br/>JUCE：device callback、GUI、VST3 hosting"] -->|"使用"| ENG["dawlab::engine（本章）<br/>Transport, Clip, Track, Mixer, Effects, Engine, Renderer"]
+    ENG -->|"使用"| DSP["dawlab::dsp（第 01-12 章）<br/>Gain, Panner, ..., Reverb, LevelMeter, LoudnessMeter"]
+    DSP -->|"使用"| COM["dawlab::common<br/>AudioBuffer / AudioBlock、WAV I/O、Signals、Analysis、Check"]
 ```
 
 ### Audio callback 的契約

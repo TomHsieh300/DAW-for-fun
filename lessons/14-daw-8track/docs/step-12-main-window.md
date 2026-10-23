@@ -16,17 +16,17 @@ hand: `--snapshot <file.png>`.
 
 ### The object tree
 
-```
-DawLabApplication : juce::JUCEApplication          Main.cpp (START_JUCE_APPLICATION)
- '- MainWindow : juce::DocumentWindow               native title bar, resizable, min 1100 x 720
-     '- MainComponent                               the content and the controller
-          lookAndFeel_   DawLookAndFeel             (1) must outlive all components using it
-          pluginHost_    dawlab::host::PluginHost   (2) VST3 format manager (chapter 13)
-          engine_        dawlab::engine::Engine     (3) stage 1
-          session_       Session                    (4) GUI model of the project (Step 15)
-          audioHost_     AudioHost                  (5) Step 11
-          loader_        MediaLoader                (6) Step 18
-          menuBar_, transportBar_, arrangement_, mixer_, status line, editor windows
+```mermaid
+flowchart TD
+    APP["DawLabApplication : juce::JUCEApplication<br/>Main.cpp (START_JUCE_APPLICATION)"] --> WIN["MainWindow : juce::DocumentWindow<br/>native title bar, resizable, min 1100 x 720"]
+    WIN --> MC["MainComponent<br/>the content and the controller"]
+    MC --> LF["(1) lookAndFeel_ : DawLookAndFeel<br/>must outlive all components using it"]
+    MC --> PH["(2) pluginHost_ : dawlab::host::PluginHost<br/>VST3 format manager (chapter 13)"]
+    MC --> EN["(3) engine_ : dawlab::engine::Engine<br/>stage 1"]
+    MC --> SE["(4) session_ : Session<br/>GUI model of the project (Step 15)"]
+    MC --> AH["(5) audioHost_ : AudioHost<br/>Step 11"]
+    MC --> LD["(6) loader_ : MediaLoader<br/>Step 18"]
+    MC --> OT["menuBar_, transportBar_, arrangement_, mixer_,<br/>status line, editor windows"]
 ```
 
 C++ destroys members in reverse declaration order, and the order above is chosen so that every

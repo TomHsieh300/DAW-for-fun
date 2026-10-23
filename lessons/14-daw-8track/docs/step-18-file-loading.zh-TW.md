@@ -27,16 +27,19 @@ View 只負責轉送；`MainComponent::loadDroppedFiles()` 把第一個檔案載
 
 ### 三個 thread，單一方向
 
-```
-message thread                   loader thread (juce::ThreadPool, 1 worker)       audio thread
---------------                   ---------------------------------------------    ------------
-Load... -> FileChooser
-loader_.loadFile(t, file, fs) -> read with juce::AudioFormatReader
-                                 mono -> stereo, resampleBuffer(fileRate -> fs)
-                                 shared_ptr<const AudioBuffer>
-on the message thread  <-------- MessageManager::callAsync(...)
-Session::setTrackAudio()  -----------------------------------------------------> setTrackClips
-                                                                                  (pointer swap)
+```mermaid
+sequenceDiagram
+    participant M as message thread
+    participant L as loader thread
+    participant A as audio thread
+    Note over L: juce::ThreadPool，1 個 worker
+    M->>M: Load... 開啟 FileChooser
+    M->>L: loader_.loadFile(t, file, fs)
+    L->>L: 用 juce::AudioFormatReader 讀檔
+    L->>L: mono 轉 stereo，resampleBuffer(fileRate 轉 fs)
+    L->>L: shared_ptr#60;const AudioBuffer#62;
+    L->>M: MessageManager::callAsync(...)
+    M->>A: Session::setTrackAudio() 呼叫 setTrackClips<br/>（pointer swap）
 ```
 
 Loader 從不碰 session 或 engine；它只產生一個 immutable 的 buffer，並把一個 closure post 給 message thread。如果到那時 GUI 已經不在了（檔案載入中 app 被關閉），一個共用的 `alive` flag 透過 `std::weak_ptr` 檢查後，會丟棄結果。`MediaLoader` 的 destructor 會等待正在執行的 job。

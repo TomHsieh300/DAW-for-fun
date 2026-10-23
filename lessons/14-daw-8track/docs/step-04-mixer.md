@@ -18,14 +18,13 @@ Tracks, FX buses and the master all need the same things - inserts, a fader, a p
 control, mute, meters - so they are all `ChannelStrip`s. A `Track` is a `ChannelStrip` that also
 reads clips. The strip's processing order (Steps 4-8 together):
 
-```
-in -> [inserts] -> [PDC delay] -> [mute/solo] -+-> pre-fader sends
-                                               |
-                                         [fader x pan]
-                                               |
-                                               +-> post-fader sends
-                                               |
-                                           [meters] -> out
+```mermaid
+flowchart LR
+    IN["in"] --> INS["inserts"] --> PDC["PDC delay"] --> MS["mute / solo"]
+    MS --> PRE["pre-fader sends"]
+    MS --> FP["fader x pan"]
+    FP --> POST["post-fader sends"]
+    FP --> MET["meters"] --> OUT["out"]
 ```
 
 ### Fader and pan are one gain per side
@@ -59,11 +58,16 @@ drop the mix by 3 dB.
 Which of the two a *track* uses depends on its **format**, like the mono and stereo audio tracks
 of Cubase (`enum class TrackFormat { Mono, Stereo }` in `Track.h`):
 
-```
-Mono    clips -> (L+R)/2 -> [inserts, PDC on ONE channel] -> copy to R -> [mute/solo] -> fader x PAN LAW
-Stereo  clips ----------> [inserts, PDC on TWO channels] --------------> [mute/solo] -> fader x BALANCE
-                                                                                          |
-                                      from here on everything is stereo: sends, buses, master
+```mermaid
+flowchart LR
+    subgraph MONO["Mono track"]
+        M1["clips"] --> M2["(L+R)/2"] --> M3["inserts,<br/>PDC on ONE channel"] --> M4["copy to R"] --> M5["mute / solo"] --> M6["fader x PAN LAW"]
+    end
+    subgraph STEREO["Stereo track"]
+        S1["clips"] --> S3["inserts,<br/>PDC on TWO channels"] --> S5["mute / solo"] --> S6["fader x BALANCE"]
+    end
+    M6 --> ALL["from here on everything is stereo:<br/>sends, buses, master"]
+    S6 --> ALL
 ```
 
 - A **mono track** carries one signal. The clips are folded to $`(L+R)/2`$ (exact for a mono file,

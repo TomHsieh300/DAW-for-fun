@@ -14,17 +14,13 @@ Stage 2 從這裡開始：接下來我們要建構 **DawLab 8**，一個圍繞 S
 
 ### 誰呼叫誰
 
-```
- audio driver (WASAPI / ASIO / DirectSound)          high-priority thread, every N / fs seconds
-        |
- juce::AudioDeviceManager  ---- owns the AudioIODevice, mixes registered callbacks
-        |
- AudioHost : juce::AudioIODeviceCallback
-        |   audioDeviceAboutToStart(device)   -> Engine::prepare(fs, N)   (no callback running)
-        |   audioDeviceIOCallbackWithContext  -> Engine::processBlock(AudioBlock(outputs, 2, N))
-        |   audioDeviceStopped()
-        v
- dawlab::engine::Engine (stage 1)
+```mermaid
+flowchart TD
+    DRV["audio driver (WASAPI / ASIO / DirectSound)<br/>高優先權 thread，每 N / fs 秒一次"] --> ADM["juce::AudioDeviceManager<br/>擁有 AudioIODevice，混合所有已註冊的 callback"]
+    ADM --> AH["AudioHost : juce::AudioIODeviceCallback"]
+    AH -->|"audioDeviceAboutToStart(device)<br/>呼叫 Engine::prepare(fs, N)<br/>（此時沒有 callback 在執行）"| ENG["dawlab::engine::Engine (stage 1)"]
+    AH -->|"audioDeviceIOCallbackWithContext<br/>呼叫 Engine::processBlock(AudioBlock(outputs, 2, N))"| ENG
+    AH -->|"audioDeviceStopped()"| ENG
 ```
 
 `AudioDeviceManager::initialise(numInputs, numOutputs, nullptr, true)` 會挑選預設的 device type 與 device，並以 device 偏好的 sample rate 與 buffer size 開啟它。加入我們的 callback（`addAudioCallback`）後，JUCE 會先呼叫 `audioDeviceAboutToStart()`，之後再從 driver 的 thread 呼叫 I/O callback。
@@ -50,18 +46,22 @@ Engine 直接 render 到 driver 的記憶體裡。輸出多於兩個 channel 的
 
 當 device *確實*以另一個 sample rate 回來時，所有以 sample 為單位量測的東西都會出錯：clip 的位置與長度、fade、loop range——還有 clip audio 本身，它現在會以錯誤的速度與音高播放（48 -> 44.1 kHz：慢 8 %，低 1.47 個半音）。每個 clip source 都必須 resample 一次（共用的 buffer 仍維持共用），每個位置都要乘上 $`f_{\text{new}} / f_{\text{old}}`$。Resampling 很慢——即使在 Release build，一個 3 分鐘的 stereo 檔案也要幾秒——所以它既不能跑在 message thread 上（GUI 會凍結），也不能讓 engine 在這段時間繼續播放舊的 clip：
 
-```
-device thread (audioDeviceAboutToStart)      message thread                     loader thread
-Engine::prepare(newRate)
-onEnginePrepared(old, new):
-  transport.stop()  (remember "was playing")
-  callAsync -------------------------------> scaleTransportPositions(old, new)
-                                             startClipConversion():
-                                               loader_.convertBuffers(sources) -> resampleBuffer() x N
-                                             finishClipConversion()  <--callAsync--+
-                                               Session::applySampleRateConversion():
-                                               swap sources, scale positions, setTrackClips
-                                               transport.play() if it was playing
+```mermaid
+sequenceDiagram
+    participant D as device thread
+    participant M as message thread
+    participant L as loader thread
+    Note over D: audioDeviceAboutToStart
+    D->>D: Engine::prepare(newRate)
+    D->>D: onEnginePrepared(old, new) 停止 transport<br/>（記住原本是否在播放）
+    D->>M: callAsync
+    M->>M: scaleTransportPositions(old, new)
+    M->>M: startClipConversion()
+    M->>L: loader_.convertBuffers(sources)
+    L->>L: resampleBuffer() x N
+    L->>M: callAsync
+    M->>M: finishClipConversion()
+    M->>M: Session::applySampleRateConversion()<br/>替換 source、縮放位置、setTrackClips<br/>若原本在播放則 transport.play()
 ```
 
 `Session` 會追蹤 *clip rate*（`getClipSampleRate()`）：clip 清單所採用的 rate。除了這類轉換進行期間之外，它等於 engine 的 rate。轉換進行時，Space 只會設定「完成後播放」，而 export 會被拒絕，因此絕不會有以舊 rate 表示的 clip 在新 rate 下播放。如果 loader 工作期間有東西改變了（另一次 device 變更、新的 project、demo song），`finishClipConversion()` 會丟棄結果，並從目前狀態重新開始；期間載入完成的檔案（仍是舊的 clip rate，Step 18）會在多一輪中轉換。`Session::handleSampleRateChange(old, new)` 是整件事的同步版本，供沒有 message loop、或已知 clip 位於 `old` 的程式碼使用（測試、Exercise 11）。

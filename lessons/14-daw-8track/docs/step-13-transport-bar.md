@@ -18,12 +18,24 @@ The transport (stage 1, Step 2) keeps play state, position, loop range and tempo
 GUI never asks the audio thread anything; it *reads* those atomics from a `juce::Timer` on the
 message thread, 30 times per second:
 
-```
-audio thread (every 10.7 ms)                    message thread (every 33 ms)
-transport.advance() -> position_.store()  ....  TransportBar::update(): getPositionBarsBeats()
-LevelMeter::process() -> peak_.store()    ....  master.getPeakDb(0), getPeakHoldDb(0)
-LoudnessMeter::process() -> lufs_.store() ....  getMomentaryLufs(), getShortTermLufs(), ...
-AudioHost::render() -> cpuLoad_.store()   ....  audioHost.getCpuLoad()
+```mermaid
+flowchart LR
+    subgraph AU["audio thread (every 10.7 ms)"]
+        A1["transport.advance() -> position_.store()"]
+        A2["LevelMeter::process() -> peak_.store()"]
+        A3["LoudnessMeter::process() -> lufs_.store()"]
+        A4["AudioHost::render() -> cpuLoad_.store()"]
+    end
+    subgraph MS["message thread (every 33 ms)"]
+        M1["TransportBar::update():<br/>getPositionBarsBeats()"]
+        M2["master.getPeakDb(0),<br/>getPeakHoldDb(0)"]
+        M3["getMomentaryLufs(),<br/>getShortTermLufs(), ..."]
+        M4["audioHost.getCpuLoad()"]
+    end
+    A1 -.->|"atomic"| M1
+    A2 -.->|"atomic"| M2
+    A3 -.->|"atomic"| M3
+    A4 -.->|"atomic"| M4
 ```
 
 30 Hz is enough for the eye (a film runs at 24) and costs nothing. The values may be one block
@@ -62,8 +74,9 @@ display never shows "0:60.000".
 `Transport::getPosition()` is the sample the engine renders *now*. While playing, that sample
 reaches the speakers later:
 
-```
-engine renders sample P ──> PDC delays every path by L_mix ──> device buffers, driver, DAC: L_device ──> ear
+```mermaid
+flowchart LR
+    A["engine renders sample P"] --> B["PDC delays every path by L_mix"] --> C["device buffers, driver, DAC: L_device"] --> D["ear"]
 ```
 
 - $`L_{\text{mix}}`$ = `Engine::getLatencySamples()`, the plugin delay compensation of Step 8. The

@@ -65,15 +65,21 @@ not keep invalidating each other's cache line (false sharing).
 
 ### Ownership travels with the message
 
-```
-UI thread                                   audio thread
----------                                   ------------
-fx = createEffect("Reverb")     (allocate)
-fx->prepare(sr, block, 2)       (allocate, compute)
-push(AddInsert{track 3, fx})  ----------->  pop -> chain.insertAt(slot, fx)          (pointers only)
-push(RemoveInsert{track 3, 0}) ---------->  pop -> old = chain.removeAt(0)
-                                            garbage.push(Garbage::of(old))
-collectGarbage(): pop -> delete old  <----
+```mermaid
+flowchart TD
+    subgraph UI["UI thread"]
+        U1["fx = createEffect('Reverb')  (allocate)"] --> U2["fx->prepare(sr, block, 2)  (allocate, compute)"]
+        U2 --> U3["push(AddInsert{track 3, fx})"]
+        U3 --> U4["push(RemoveInsert{track 3, 0})"]
+        U5["collectGarbage(): pop -> delete old"]
+    end
+    subgraph AU["audio thread"]
+        A1["pop -> chain.insertAt(slot, fx)<br/>(pointers only)"]
+        A2["pop -> old = chain.removeAt(0)<br/>garbage.push(Garbage::of(old))"]
+    end
+    U3 --> A1
+    U4 --> A2
+    A2 --> U5
 ```
 
 `Garbage` is type-erased: a `void*` plus a plain function pointer that knows the real type,

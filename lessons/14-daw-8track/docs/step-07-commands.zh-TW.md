@@ -64,15 +64,21 @@ head_.store(increment(head), std::memory_order_release); // 5. hand the slot bac
 
 ### 擁有權隨著訊息一起移動
 
-```
-UI thread                                   audio thread
----------                                   ------------
-fx = createEffect("Reverb")     (allocate)
-fx->prepare(sr, block, 2)       (allocate, compute)
-push(AddInsert{track 3, fx})  ----------->  pop -> chain.insertAt(slot, fx)          (pointers only)
-push(RemoveInsert{track 3, 0}) ---------->  pop -> old = chain.removeAt(0)
-                                            garbage.push(Garbage::of(old))
-collectGarbage(): pop -> delete old  <----
+```mermaid
+flowchart TD
+    subgraph UI["UI thread"]
+        U1["fx = createEffect('Reverb')  (配置記憶體)"] --> U2["fx->prepare(sr, block, 2)  (配置記憶體、計算)"]
+        U2 --> U3["push(AddInsert{track 3, fx})"]
+        U3 --> U4["push(RemoveInsert{track 3, 0})"]
+        U5["collectGarbage(): pop -> delete old"]
+    end
+    subgraph AU["audio thread"]
+        A1["pop -> chain.insertAt(slot, fx)<br/>(只動 pointer)"]
+        A2["pop -> old = chain.removeAt(0)<br/>garbage.push(Garbage::of(old))"]
+    end
+    U3 --> A1
+    U4 --> A2
+    A2 --> U5
 ```
 
 `Garbage` 是 type-erased 的：一個 `void*` 加上一個知道真正型別的單純函式 pointer，

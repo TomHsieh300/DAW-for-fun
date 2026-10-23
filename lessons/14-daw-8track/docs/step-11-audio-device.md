@@ -17,17 +17,13 @@ nothing in the callback that could block. Measure how much of the available time
 
 ### Who calls whom
 
-```
- audio driver (WASAPI / ASIO / DirectSound)          high-priority thread, every N / fs seconds
-        |
- juce::AudioDeviceManager  ---- owns the AudioIODevice, mixes registered callbacks
-        |
- AudioHost : juce::AudioIODeviceCallback
-        |   audioDeviceAboutToStart(device)   -> Engine::prepare(fs, N)   (no callback running)
-        |   audioDeviceIOCallbackWithContext  -> Engine::processBlock(AudioBlock(outputs, 2, N))
-        |   audioDeviceStopped()
-        v
- dawlab::engine::Engine (stage 1)
+```mermaid
+flowchart TD
+    DRV["audio driver (WASAPI / ASIO / DirectSound)<br/>high-priority thread, every N / fs seconds"] --> ADM["juce::AudioDeviceManager<br/>owns the AudioIODevice, mixes registered callbacks"]
+    ADM --> AH["AudioHost : juce::AudioIODeviceCallback"]
+    AH -->|"audioDeviceAboutToStart(device)<br/>calls Engine::prepare(fs, N)<br/>(no callback running)"| ENG["dawlab::engine::Engine (stage 1)"]
+    AH -->|"audioDeviceIOCallbackWithContext<br/>calls Engine::processBlock(AudioBlock(outputs, 2, N))"| ENG
+    AH -->|"audioDeviceStopped()"| ENG
 ```
 
 `AudioDeviceManager::initialise(numInputs, numOutputs, nullptr, true)` picks the default device
@@ -67,18 +63,22 @@ $`f_{\text{new}} / f_{\text{old}}`$. Resampling is slow - a few seconds for a 3-
 even in a Release build - so it must neither run on the message thread (the GUI would freeze) nor
 leave the engine playing the old clips meanwhile:
 
-```
-device thread (audioDeviceAboutToStart)      message thread                     loader thread
-Engine::prepare(newRate)
-onEnginePrepared(old, new):
-  transport.stop()  (remember "was playing")
-  callAsync -------------------------------> scaleTransportPositions(old, new)
-                                             startClipConversion():
-                                               loader_.convertBuffers(sources) -> resampleBuffer() x N
-                                             finishClipConversion()  <--callAsync--+
-                                               Session::applySampleRateConversion():
-                                               swap sources, scale positions, setTrackClips
-                                               transport.play() if it was playing
+```mermaid
+sequenceDiagram
+    participant D as device thread
+    participant M as message thread
+    participant L as loader thread
+    Note over D: audioDeviceAboutToStart
+    D->>D: Engine::prepare(newRate)
+    D->>D: onEnginePrepared(old, new) stops the transport<br/>(remembers whether it was playing)
+    D->>M: callAsync
+    M->>M: scaleTransportPositions(old, new)
+    M->>M: startClipConversion()
+    M->>L: loader_.convertBuffers(sources)
+    L->>L: resampleBuffer() x N
+    L->>M: callAsync
+    M->>M: finishClipConversion()
+    M->>M: Session::applySampleRateConversion()<br/>swap sources, scale positions, setTrackClips<br/>transport.play() if it was playing
 ```
 
 `Session` tracks the *clip rate* (`getClipSampleRate()`): the rate the clip lists are expressed

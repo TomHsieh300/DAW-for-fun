@@ -110,24 +110,20 @@ A DAW is a concurrent program with one hard rule: the **audio thread** must deli
 before its deadline (512 samples at 48 kHz = 10.67 ms), *every time*. It may never wait for
 anything. Everybody else - GUI, file loading, plugin scanning - lives on other threads.
 
-```
-  UI / message thread                                             audio thread
-  ===================                                             ============
-                         (1) atomics: fader, pan, mute, solo,
-  mixer.getTrack(t)      sends, effect parameters, bypass,
-     .setGainDb(...)  ---------------------------------------->  strip.beginBlock()
-  fx->setParameter(...)  tempo, play/stop, seek, loop             fx->applyPendingParameters()
-  transport.play()                                                transport.advance()
-
-                         (2) command queue (SpscQueue<Command>)
-  engine.addInsert()  ---------------------------------------->  applyCommands()
-  engine.removeInsert()  "here is a new, prepared effect"          insertAt / removeAt /
-  engine.setTrackClips() "here is a new clip list"                 exchangeClips
-                                                                       |
-                         (3) garbage queue (SpscQueue<Garbage>)        |
-  engine.collectGarbage() <--------------------------------------------+
-     delete old effect    "I no longer use this, please free it"
-     delete old clip list
+```mermaid
+flowchart LR
+    subgraph UI["UI / message thread"]
+        U1["mixer.getTrack(t).setGainDb(...)<br/>fx->setParameter(...)<br/>transport.play()"]
+        U2["engine.addInsert()<br/>engine.removeInsert()<br/>engine.setTrackClips()"]
+        U3["engine.collectGarbage()<br/>delete old effect<br/>delete old clip list"]
+    end
+    subgraph AU["audio thread"]
+        A1["strip.beginBlock()<br/>fx->applyPendingParameters()<br/>transport.advance()"]
+        A2["applyCommands()<br/>insertAt / removeAt / exchangeClips"]
+    end
+    U1 -->|"(1) atomics: fader, pan, mute, solo, sends,<br/>effect parameters, bypass, tempo, play/stop, seek, loop"| A1
+    U2 -->|"(2) command queue SpscQueue#60;Command#62;<br/>here is a new, prepared effect<br/>here is a new clip list"| A2
+    A2 -->|"(3) garbage queue SpscQueue#60;Garbage#62;<br/>I no longer use this, please free it"| U3
 ```
 
 - **(1) Values** are single numbers. They live in `std::atomic`s: the UI writes, the audio thread
@@ -182,20 +178,23 @@ All engine code is header-only in `engine/include/dawlab/engine/`, namespace
 
 ### 2.4 The application: four threads around the engine
 
-```
-                         +---------------------- MainComponent (message thread) ------------------------+
- mouse / keys ---------> | commands (Space, Ctrl+E ...)   TransportBar  ArrangementView  MixerView         |
-                         |        |                           ^              ^             ^   panels    |
-                         |        v                           |  30 Hz timer: read atomics, collect garbage |
-                         |   Session (GUI model) ---- setTrackClips / addInsert / replaceInsert ----+      |
-                         +--------|----------------------------------------------------------------|------+
-                                  | atomics (fader, pan, mute, solo, sends, parameters, transport) | command queue
-                                  v                                                                v
-  driver thread:  AudioHost::audioDeviceIOCallbackWithContext -> Engine::processBlock(AudioBlock(outputs))
-                                  |                                   (+ SpectrumAnalyzer::pushSamples)
-  loader thread:  MediaLoader: read file, resample, convert clips after a device change /
-                  makeDemoSong -> callAsync -> Session
-  export thread:  ExportJob: renderOffline (engine detached from the device) -> WAV -> callAsync
+```mermaid
+flowchart TD
+    IN["mouse / keys"] --> CMD
+    subgraph MC["MainComponent (message thread)"]
+        CMD["commands (Space, Ctrl+E ...)"]
+        VIEWS["TransportBar, ArrangementView, MixerView, panels<br/>30 Hz timer: read atomics, collect garbage"]
+        SES["Session (GUI model)"]
+        CMD --> SES
+    end
+    SES -->|"setTrackClips / addInsert / replaceInsert"| CQ["command queue"]
+    SES -->|"atomics (fader, pan, mute, solo, sends, parameters, transport)"| DRV
+    CQ --> DRV
+    DRV -.->|"read atomics"| VIEWS
+    DRV["driver thread<br/>AudioHost::audioDeviceIOCallbackWithContext"] --> ENG["Engine::processBlock(AudioBlock(outputs))"]
+    ENG --> SPEC["SpectrumAnalyzer::pushSamples"]
+    LDR["loader thread<br/>MediaLoader: read file, resample,<br/>convert clips after a device change<br/>makeDemoSong"] -->|"callAsync"| SES
+    EXP["export thread<br/>ExportJob: renderOffline<br/>(engine detached from the device)"] -->|"WAV, callAsync"| SES
 ```
 
 Every arrow into the audio thread is an atomic or the command queue; every result of a worker

@@ -40,10 +40,17 @@ Mixer 在每個 block 開頭向每個 insert 詢問 `getLatencySamples()`（Step
 
 在 mono track（Step 4）上，insert chain 拿到的是*單一 channel* 的 block。內建 effect 能處理這種情況（Step 5），但被 host 的 plugin 是以 stereo bus layout prepare 的：交給它單一 channel 的 buffer，會讓它讀寫一個不存在的 channel。因此 `VstInsert::process()` 在 plugin 外面包了一層小小的 fold：
 
-```
-mono block --+--> scratch L --+                 +--> L --+
-             |                +--> [plugin] ----+        +--> (L + R) / 2 --> mono block
-             +--> scratch R --+                 +--> R --+
+```mermaid
+flowchart LR
+    MB["mono block"] --> SL["scratch L"]
+    MB --> SR["scratch R"]
+    SL --> PL["plugin"]
+    SR --> PL
+    PL --> OUTL["L"]
+    PL --> OUTR["R"]
+    OUTL --> AVG["(L + R) / 2"]
+    OUTR --> AVG
+    AVG --> MO["mono block"]
 ```
 
 ```cpp

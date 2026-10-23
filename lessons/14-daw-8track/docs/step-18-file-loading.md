@@ -43,16 +43,19 @@ status bar), each through the same `loadAudioFile()` as the button.
 
 ### Three threads, one direction
 
-```
-message thread                   loader thread (juce::ThreadPool, 1 worker)       audio thread
---------------                   ---------------------------------------------    ------------
-Load... -> FileChooser
-loader_.loadFile(t, file, fs) -> read with juce::AudioFormatReader
-                                 mono -> stereo, resampleBuffer(fileRate -> fs)
-                                 shared_ptr<const AudioBuffer>
-on the message thread  <-------- MessageManager::callAsync(...)
-Session::setTrackAudio()  -----------------------------------------------------> setTrackClips
-                                                                                  (pointer swap)
+```mermaid
+sequenceDiagram
+    participant M as message thread
+    participant L as loader thread
+    participant A as audio thread
+    Note over L: juce::ThreadPool, 1 worker
+    M->>M: Load... opens a FileChooser
+    M->>L: loader_.loadFile(t, file, fs)
+    L->>L: read with juce::AudioFormatReader
+    L->>L: mono to stereo, resampleBuffer(fileRate to fs)
+    L->>L: shared_ptr#60;const AudioBuffer#62;
+    L->>M: MessageManager::callAsync(...)
+    M->>A: Session::setTrackAudio() calls setTrackClips<br/>(pointer swap)
 ```
 
 The loader never touches the session or the engine; it only produces an immutable buffer and

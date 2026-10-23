@@ -28,14 +28,11 @@ temptation to call a GUI function from the audio thread is one `#include` away. 
 header-only CMake `INTERFACE` library that only links `dawlab::dsp` (chapters 01-12, which link
 `dawlab::common`):
 
-```
-dawlab::common   AudioBuffer / AudioBlock, WAV I/O, Signals, Analysis, Check
-      ^
-dawlab::dsp      Gain, Panner, ..., Reverb, LevelMeter, LoudnessMeter      (chapters 01-12)
-      ^
-dawlab::engine   Transport, Clip, Track, Mixer, Effects, Engine, Renderer (this chapter)
-      ^
-app (stage 2)    JUCE: device callback, GUI, VST3 hosting
+```mermaid
+flowchart TD
+    APP["app (stage 2)<br/>JUCE: device callback, GUI, VST3 hosting"] -->|"uses"| ENG["dawlab::engine (this chapter)<br/>Transport, Clip, Track, Mixer, Effects, Engine, Renderer"]
+    ENG -->|"uses"| DSP["dawlab::dsp (chapters 01-12)<br/>Gain, Panner, ..., Reverb, LevelMeter, LoudnessMeter"]
+    DSP -->|"uses"| COM["dawlab::common<br/>AudioBuffer / AudioBlock, WAV I/O, Signals, Analysis, Check"]
 ```
 
 ### The audio callback contract

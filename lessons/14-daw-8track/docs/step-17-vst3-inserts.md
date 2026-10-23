@@ -51,10 +51,17 @@ that (Step 5), but a hosted plugin was prepared with a stereo bus layout: handin
 buffer would let it read or write a channel that does not exist. `VstInsert::process()` therefore
 wraps the plugin in a small fold:
 
-```
-mono block --+--> scratch L --+                 +--> L --+
-             |                +--> [plugin] ----+        +--> (L + R) / 2 --> mono block
-             +--> scratch R --+                 +--> R --+
+```mermaid
+flowchart LR
+    MB["mono block"] --> SL["scratch L"]
+    MB --> SR["scratch R"]
+    SL --> PL["plugin"]
+    SR --> PL
+    PL --> OUTL["L"]
+    PL --> OUTR["R"]
+    OUTL --> AVG["(L + R) / 2"]
+    OUTR --> AVG
+    AVG --> MO["mono block"]
 ```
 
 ```cpp

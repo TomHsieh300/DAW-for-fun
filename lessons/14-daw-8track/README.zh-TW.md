@@ -107,24 +107,20 @@ snapshot，所以這裡你直接在完成版的 app 裡作業：每個「Your tu
 DAW 是一個 concurrent 程式，有一條鐵律：**audio thread** 必須在每個 block 的 deadline 前交出它
 （48 kHz 下 512 samples = 10.67 ms），*每一次都要*。它絕不能為任何東西等待。其他所有工作 - GUI、檔案載入、plugin 掃描 - 都在別的 thread 上。
 
-```
-  UI / message thread                                             audio thread
-  ===================                                             ============
-                         (1) atomics: fader, pan, mute, solo,
-  mixer.getTrack(t)      sends, effect parameters, bypass,
-     .setGainDb(...)  ---------------------------------------->  strip.beginBlock()
-  fx->setParameter(...)  tempo, play/stop, seek, loop             fx->applyPendingParameters()
-  transport.play()                                                transport.advance()
-
-                         (2) command queue (SpscQueue<Command>)
-  engine.addInsert()  ---------------------------------------->  applyCommands()
-  engine.removeInsert()  "here is a new, prepared effect"          insertAt / removeAt /
-  engine.setTrackClips() "here is a new clip list"                 exchangeClips
-                                                                       |
-                         (3) garbage queue (SpscQueue<Garbage>)        |
-  engine.collectGarbage() <--------------------------------------------+
-     delete old effect    "I no longer use this, please free it"
-     delete old clip list
+```mermaid
+flowchart LR
+    subgraph UI["UI / message thread"]
+        U1["mixer.getTrack(t).setGainDb(...)<br/>fx->setParameter(...)<br/>transport.play()"]
+        U2["engine.addInsert()<br/>engine.removeInsert()<br/>engine.setTrackClips()"]
+        U3["engine.collectGarbage()<br/>delete 舊 effect<br/>delete 舊 clip list"]
+    end
+    subgraph AU["audio thread"]
+        A1["strip.beginBlock()<br/>fx->applyPendingParameters()<br/>transport.advance()"]
+        A2["applyCommands()<br/>insertAt / removeAt / exchangeClips"]
+    end
+    U1 -->|"(1) atomics：fader、pan、mute、solo、send、<br/>effect 參數、bypass、tempo、play/stop、seek、loop"| A1
+    U2 -->|"(2) command queue SpscQueue#60;Command#62;<br/>這是一個準備好的新 effect<br/>這是一份新的 clip list"| A2
+    A2 -->|"(3) garbage queue SpscQueue#60;Garbage#62;<br/>我不再使用這個，請釋放它"| U3
 ```
 
 - **(1) 數值**是單一的數字。它們住在 `std::atomic` 裡：UI 寫入，audio thread
@@ -179,20 +175,23 @@ flowchart LR
 
 ### 2.4 應用程式：圍繞 engine 的四條 thread
 
-```
-                         +---------------------- MainComponent (message thread) ------------------------+
- mouse / keys ---------> | commands (Space, Ctrl+E ...)   TransportBar  ArrangementView  MixerView         |
-                         |        |                           ^              ^             ^   panels    |
-                         |        v                           |  30 Hz timer: read atomics, collect garbage |
-                         |   Session (GUI model) ---- setTrackClips / addInsert / replaceInsert ----+      |
-                         +--------|----------------------------------------------------------------|------+
-                                  | atomics (fader, pan, mute, solo, sends, parameters, transport) | command queue
-                                  v                                                                v
-  driver thread:  AudioHost::audioDeviceIOCallbackWithContext -> Engine::processBlock(AudioBlock(outputs))
-                                  |                                   (+ SpectrumAnalyzer::pushSamples)
-  loader thread:  MediaLoader: read file, resample, convert clips after a device change /
-                  makeDemoSong -> callAsync -> Session
-  export thread:  ExportJob: renderOffline (engine detached from the device) -> WAV -> callAsync
+```mermaid
+flowchart TD
+    IN["滑鼠 / 鍵盤"] --> CMD
+    subgraph MC["MainComponent (message thread)"]
+        CMD["command（Space、Ctrl+E ...）"]
+        VIEWS["TransportBar、ArrangementView、MixerView、panels<br/>30 Hz timer：讀取 atomics、回收 garbage"]
+        SES["Session（GUI model）"]
+        CMD --> SES
+    end
+    SES -->|"setTrackClips / addInsert / replaceInsert"| CQ["command queue"]
+    SES -->|"atomics（fader、pan、mute、solo、send、參數、transport）"| DRV
+    CQ --> DRV
+    DRV -.->|"讀取 atomics"| VIEWS
+    DRV["driver thread<br/>AudioHost::audioDeviceIOCallbackWithContext"] --> ENG["Engine::processBlock(AudioBlock(outputs))"]
+    ENG --> SPEC["SpectrumAnalyzer::pushSamples"]
+    LDR["loader thread<br/>MediaLoader：讀檔、resample、<br/>換 device 後轉換 clip<br/>makeDemoSong"] -->|"callAsync"| SES
+    EXP["export thread<br/>ExportJob：renderOffline<br/>（engine 已與 device 分離）"] -->|"WAV、callAsync"| SES
 ```
 
 每一條通往 audio thread 的箭頭不是 atomic，就是 command queue；worker

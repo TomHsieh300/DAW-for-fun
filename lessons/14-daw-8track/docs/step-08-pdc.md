@@ -43,11 +43,19 @@ $$
 L_{\text{total}} = \max_u L_u + \max_v L_v + L_{\text{master}}
 $$
 
-```
-track t:  clips -> inserts (L_t) -> delay c_t -> mute/solo -> sends --------+
-                                                   |                        |
-                                                   +-> fader/pan -> track sum -> delay c_sum --+
-bus b:   sends -> inserts (L_b) -> delay c_b -> fader --------------------------------------+--> master (L_m)
+```mermaid
+flowchart LR
+    subgraph TR["track t"]
+        T1["clips"] --> T2["inserts (L_t)"] --> T3["delay c_t"] --> T4["mute / solo"]
+        T4 --> T5["sends"]
+        T4 --> T6["fader / pan"] --> T7["track sum"] --> T8["delay c_sum"]
+    end
+    subgraph BUS["bus b"]
+        B1["sends"] --> B2["inserts (L_b)"] --> B3["delay c_b"] --> B4["fader"]
+    end
+    T5 --> B1
+    T8 --> M["master (L_m)"]
+    B4 --> M
 ```
 
 - Each track's compensator sits *after its inserts and before its sends*, so all tracks are

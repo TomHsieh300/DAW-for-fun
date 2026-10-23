@@ -18,14 +18,13 @@ Track、FX bus 與 master 都需要同樣的東西 - insert、fader、pan 或 ba
 控制、mute、meter - 所以它們全都是 `ChannelStrip`。`Track` 是一個同時
 會讀取 clip 的 `ChannelStrip`。strip 的處理順序（Step 4-8 合起來）：
 
-```
-in -> [inserts] -> [PDC delay] -> [mute/solo] -+-> pre-fader sends
-                                               |
-                                         [fader x pan]
-                                               |
-                                               +-> post-fader sends
-                                               |
-                                           [meters] -> out
+```mermaid
+flowchart LR
+    IN["輸入"] --> INS["inserts"] --> PDC["PDC delay"] --> MS["mute / solo"]
+    MS --> PRE["pre-fader send"]
+    MS --> FP["fader x pan"]
+    FP --> POST["post-fader send"]
+    FP --> MET["meter"] --> OUT["輸出"]
 ```
 
 ### Fader 與 pan 是每一側各一個 gain
@@ -58,11 +57,16 @@ $`p_L = \min(1, 1-p)`$，$`p_R = \min(1, 1+p)`$（`PanMode::Balance`）。預設
 *Track* 用這兩者中的哪一個，由它的 **format** 決定，就像 Cubase 的 mono 與 stereo audio track
 （`Track.h` 中的 `enum class TrackFormat { Mono, Stereo }`）：
 
-```
-Mono    clips -> (L+R)/2 -> [inserts, PDC on ONE channel] -> copy to R -> [mute/solo] -> fader x PAN LAW
-Stereo  clips ----------> [inserts, PDC on TWO channels] --------------> [mute/solo] -> fader x BALANCE
-                                                                                          |
-                                      from here on everything is stereo: sends, buses, master
+```mermaid
+flowchart LR
+    subgraph MONO["Mono track"]
+        M1["clip"] --> M2["(L+R)/2"] --> M3["inserts，<br/>PDC 作用在一個 channel"] --> M4["複製到 R"] --> M5["mute / solo"] --> M6["fader x PAN LAW"]
+    end
+    subgraph STEREO["Stereo track"]
+        S1["clip"] --> S3["inserts，<br/>PDC 作用在兩個 channel"] --> S5["mute / solo"] --> S6["fader x BALANCE"]
+    end
+    M6 --> ALL["從這裡起一切都是 stereo：<br/>send、bus、master"]
+    S6 --> ALL
 ```
 
 - **Mono track** 只承載一個訊號。clip 會先 fold 成 $`(L+R)/2`$（對 mono 檔案來說是精確的，因為

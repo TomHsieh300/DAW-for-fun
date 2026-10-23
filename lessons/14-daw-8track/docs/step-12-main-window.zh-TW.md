@@ -14,17 +14,17 @@
 
 ### 物件樹
 
-```
-DawLabApplication : juce::JUCEApplication          Main.cpp (START_JUCE_APPLICATION)
- '- MainWindow : juce::DocumentWindow               native title bar, resizable, min 1100 x 720
-     '- MainComponent                               the content and the controller
-          lookAndFeel_   DawLookAndFeel             (1) must outlive all components using it
-          pluginHost_    dawlab::host::PluginHost   (2) VST3 format manager (chapter 13)
-          engine_        dawlab::engine::Engine     (3) stage 1
-          session_       Session                    (4) GUI model of the project (Step 15)
-          audioHost_     AudioHost                  (5) Step 11
-          loader_        MediaLoader                (6) Step 18
-          menuBar_, transportBar_, arrangement_, mixer_, status line, editor windows
+```mermaid
+flowchart TD
+    APP["DawLabApplication : juce::JUCEApplication<br/>Main.cpp (START_JUCE_APPLICATION)"] --> WIN["MainWindow : juce::DocumentWindow<br/>原生標題列、可調整大小、最小 1100 x 720"]
+    WIN --> MC["MainComponent<br/>內容與 controller"]
+    MC --> LF["(1) lookAndFeel_ : DawLookAndFeel<br/>必須比所有使用它的 component 活得久"]
+    MC --> PH["(2) pluginHost_ : dawlab::host::PluginHost<br/>VST3 format manager（第 13 章）"]
+    MC --> EN["(3) engine_ : dawlab::engine::Engine<br/>stage 1"]
+    MC --> SE["(4) session_ : Session<br/>專案的 GUI model（Step 15）"]
+    MC --> AH["(5) audioHost_ : AudioHost<br/>Step 11"]
+    MC --> LD["(6) loader_ : MediaLoader<br/>Step 18"]
+    MC --> OT["menuBar_, transportBar_, arrangement_, mixer_,<br/>狀態列、editor window"]
 ```
 
 C++ 以宣告順序的相反順序銷毀 member，而上面的順序經過挑選，使每個物件都先於它所使用的東西被銷毀：audio device 在 engine (3) 消失之前關閉 (5)，所以沒有 callback 能碰到已死亡的 engine；engine（擁有 VST3 insert）先於 plugin format manager (2) 銷毀；每個 component 都先於 LookAndFeel (1) 銷毀——如果 LookAndFeel 在仍有 component 指向它時被刪除，JUCE 會 assert。`~MainComponent()` 另外會明確地停止 timer、等待進行中的 export、關閉 editor window 與 device，讓這個順序在程式碼中清楚可見，而不只是隱含的。

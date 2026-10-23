@@ -80,11 +80,15 @@ $$
 係數。所以同一時間只能有一條 thread 呼叫它們。`EffectBase` 用每個參數一個
 atomic 值，加上一個 32-bit 的「dirty」mask 來解決這個問題：
 
-```
-UI thread: setParameter(i, v)                 audio thread: process(block)
-  values_[i].store(clamp(v))                    mask = dirty_.exchange(0)
-  dirty_.fetch_or(1 << i)   --- release --->    for each bit i in mask: applyParameter(i, values_[i])
-                                                processDsp(block)
+```mermaid
+flowchart LR
+    subgraph UI["UI thread: setParameter(i, v)"]
+        U1["values_[i].store(clamp(v))"] --> U2["dirty_.fetch_or(1 #60;#60; i)"]
+    end
+    subgraph AU["audio thread: process(block)"]
+        A1["mask = dirty_.exchange(0)"] --> A2["對 mask 中的每個 bit i：<br/>applyParameter(i, values_[i])"] --> A3["processDsp(block)"]
+    end
+    U2 -->|"release"| A1
 ```
 
 兩個 block 之間，同一個參數的多次變更會合併成一次（只有最新的值有意義），UI 永遠不會 block，

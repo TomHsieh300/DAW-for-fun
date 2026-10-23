@@ -14,12 +14,24 @@ Play / Stop、Return to start、Loop 開/關、以 bars.beats.ticks 與 m:ss.mmm
 
 Transport（stage 1，Step 2）把 play state、position、loop range 與 tempo 存在 atomic 裡。GUI 從不向 audio thread 詢問任何事；它在 message thread 上以 `juce::Timer` 每秒 30 次*讀取*這些 atomic：
 
-```
-audio thread (every 10.7 ms)                    message thread (every 33 ms)
-transport.advance() -> position_.store()  ....  TransportBar::update(): getPositionBarsBeats()
-LevelMeter::process() -> peak_.store()    ....  master.getPeakDb(0), getPeakHoldDb(0)
-LoudnessMeter::process() -> lufs_.store() ....  getMomentaryLufs(), getShortTermLufs(), ...
-AudioHost::render() -> cpuLoad_.store()   ....  audioHost.getCpuLoad()
+```mermaid
+flowchart LR
+    subgraph AU["audio thread（每 10.7 ms）"]
+        A1["transport.advance() -> position_.store()"]
+        A2["LevelMeter::process() -> peak_.store()"]
+        A3["LoudnessMeter::process() -> lufs_.store()"]
+        A4["AudioHost::render() -> cpuLoad_.store()"]
+    end
+    subgraph MS["message thread（每 33 ms）"]
+        M1["TransportBar::update()：<br/>getPositionBarsBeats()"]
+        M2["master.getPeakDb(0),<br/>getPeakHoldDb(0)"]
+        M3["getMomentaryLufs(),<br/>getShortTermLufs(), ..."]
+        M4["audioHost.getCpuLoad()"]
+    end
+    A1 -.->|"atomic"| M1
+    A2 -.->|"atomic"| M2
+    A3 -.->|"atomic"| M3
+    A4 -.->|"atomic"| M4
 ```
 
 30 Hz 對眼睛已經足夠（電影以 24 fps 播放），而且不花任何成本。這些值可能是一個 block 之前的，沒有人看得出來。沒有 queue、沒有 lock，也沒有來自 audio thread 的訊息。
@@ -50,8 +62,9 @@ juce::String TransportBar::formatBarsBeats(const engine::BarsBeats& p) {
 
 `Transport::getPosition()` 是 engine *現在*正在 render 的 sample。播放時，那個 sample 會稍後才到達喇叭：
 
-```
-engine renders sample P ──> PDC delays every path by L_mix ──> device buffers, driver, DAC: L_device ──> ear
+```mermaid
+flowchart LR
+    A["engine render 出 sample P"] --> B["PDC 讓每條路徑延遲 L_mix"] --> C["device buffer、driver、DAC：L_device"] --> D["耳朵"]
 ```
 
 - $`L_{\text{mix}}`$ = `Engine::getLatencySamples()`，即 Step 8 的 plugin delay compensation。Bounce 會把它移除（Step 9）；即時播放則不能：它是真實的延遲。在 demo song 中它是 752 個 sample（track 8 的 convolution reverb 512 + master limiter 240）= 15.7 ms。
