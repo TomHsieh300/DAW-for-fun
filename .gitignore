@@ -5,3 +5,5 @@ third_party/
 dawlab_output/
 .vs/
 *.user
+__pycache__/
+*.pyc
