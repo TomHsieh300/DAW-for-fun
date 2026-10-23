@@ -18,30 +18,25 @@ This document defines the structure of each chapter, the code style and the API 
 
 ## 2. Directory structure
 
-```
-common/include/dawlab/        Shared utilities (already provided; do not change the API)
-  AudioBuffer.h  AudioBlock / AudioBuffer (non-interleaved float)
-  WavFile.h      readWav / writeWav / outputPath
-  Signals.h      makeSine / makeLogSweep / makeWhiteNoise / makeImpulse / makeToneBursts /
-                 makeDrumLoop / makePluck / makePluckSequence / NoiseGenerator
-  Analysis.h     peakAbs / rms / hasNanOrInf / goertzelAmplitude / measureGainDb /
-                 harmonicLevelsDb / thdPercent
-  Check.h        DAWLAB_CHECK / DAWLAB_CHECK_NEAR / dawlab::test::summary
-  DspMath.h      kPi / kTwoPi / dbToGain / gainToDb / lerp / msToSamples
-  Common.h       Includes all of the above at once
-
-dsp/include/dawlab/dsp/       DSP components that grow chapter by chapter (header-only, namespace dawlab::dsp)
-
-lessons/NN-name/
-  README.md                   Theory notes (the main text); README.zh-TW.md is the Traditional Chinese version
-  CMakeLists.txt
-  examples/*.cpp              Example programs (each one runs on its own, ctest label: example)
-  exercises/README.md         Exercises (problems and hints only; README.zh-TW.md alongside)
-  exercises/starter/*.cpp     Starter code for the programming exercises (compiles, contains TODOs; built but not run as a test)
-  solutions/README.md         Answers and explanations for all exercises, including the conceptual and calculation ones (README.zh-TW.md alongside)
-  solutions/*.cpp             Complete solutions to the programming exercises (with self-checks, ctest label: solution)
-  tests/*.cpp                 (Optional) regression tests for this chapter's dsp components (ctest label: test)
-```
+| Path | Contents |
+|---|---|
+| `common/include/dawlab/` | Shared utilities (already provided; do not change the API) |
+| `common/include/dawlab/AudioBuffer.h` | `AudioBlock` / `AudioBuffer` (non-interleaved float) |
+| `common/include/dawlab/WavFile.h` | `readWav` / `writeWav` / `outputPath` |
+| `common/include/dawlab/Signals.h` | `makeSine` / `makeLogSweep` / `makeWhiteNoise` / `makeImpulse` / `makeToneBursts` / `makeDrumLoop` / `makePluck` / `makePluckSequence` / `NoiseGenerator` |
+| `common/include/dawlab/Analysis.h` | `peakAbs` / `rms` / `hasNanOrInf` / `goertzelAmplitude` / `measureGainDb` / `harmonicLevelsDb` / `thdPercent` |
+| `common/include/dawlab/Check.h` | `DAWLAB_CHECK` / `DAWLAB_CHECK_NEAR` / `dawlab::test::summary` |
+| `common/include/dawlab/DspMath.h` | `kPi` / `kTwoPi` / `dbToGain` / `gainToDb` / `lerp` / `msToSamples` |
+| `common/include/dawlab/Common.h` | Includes all of the above at once |
+| `dsp/include/dawlab/dsp/` | DSP components that grow chapter by chapter (header-only, namespace `dawlab::dsp`) |
+| `lessons/NN-name/README.md` | Theory notes (the main text); README.zh-TW.md is the Traditional Chinese version |
+| `lessons/NN-name/CMakeLists.txt` | The chapter's build file |
+| `lessons/NN-name/examples/*.cpp` | Example programs (each one runs on its own, ctest label: example) |
+| `lessons/NN-name/exercises/README.md` | Exercises (problems and hints only; README.zh-TW.md alongside) |
+| `lessons/NN-name/exercises/starter/*.cpp` | Starter code for the programming exercises (compiles, contains TODOs; built but not run as a test) |
+| `lessons/NN-name/solutions/README.md` | Answers and explanations for all exercises, including the conceptual and calculation ones (README.zh-TW.md alongside) |
+| `lessons/NN-name/solutions/*.cpp` | Complete solutions to the programming exercises (with self-checks, ctest label: solution) |
+| `lessons/NN-name/tests/*.cpp` | (Optional) regression tests for this chapter's dsp components (ctest label: test) |
 
 ## 3. Structure of each chapter README.md
 

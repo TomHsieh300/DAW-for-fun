@@ -112,27 +112,23 @@ cd build
 
 ## 目錄結構
 
-```
-DAW/
-├── README.md                 本頁（英文；中文版是 README.zh-TW.md）
-├── CMakeLists.txt            根建置檔（DAWLAB_ONLY、DAWLAB_WITH_JUCE、DAWLAB_JUCE_DIR 等選項）
-├── cmake/DawLab.cmake        dawlab_add_example / _solution / _starter / _test
-├── scripts/build.ps1         Windows 建置 + 測試腳本
-├── scripts/build.sh          Linux / macOS 建置 + 測試腳本（選項相同）
-├── docs/
-│   ├── authoring-guide.md    教材撰寫規範與 DSP API 合約（另有 .zh-TW.md）
-│   └── images/               本頁的截圖
-├── common/include/dawlab/    共用工具：AudioBuffer / AudioBlock、WAV 讀寫、測試訊號、分析、self-check
-├── dsp/include/dawlab/dsp/   各章做出來的 DSP 元件（header-only；清單見 dsp/include/dawlab/dsp/README.md）
-├── lessons/
-│   └── NN-name/
-│       ├── README.md         講義（主教材；另有 README.zh-TW.md）
-│       ├── examples/         範例程式
-│       ├── exercises/        練習題（README.md）與起始碼（starter/）
-│       ├── solutions/        所有題目的解答與解說，以及實作題的完整程式
-│       └── tests/            （部分章節）元件回歸測試
-└── third_party/JUCE/         JUCE 9.0.4（第 13、14 章）
-```
+| 路徑 | 內容 |
+|---|---|
+| `README.md` | 本頁（英文；中文版是 README.zh-TW.md） |
+| `CMakeLists.txt` | 根建置檔（DAWLAB_ONLY、DAWLAB_WITH_JUCE、DAWLAB_JUCE_DIR 等選項） |
+| `cmake/DawLab.cmake` | dawlab_add_example / _solution / _starter / _test |
+| `scripts/build.ps1` | Windows 建置 + 測試腳本 |
+| `scripts/build.sh` | Linux / macOS 建置 + 測試腳本（選項相同） |
+| `docs/authoring-guide.md` | 教材撰寫規範與 DSP API 合約（另有 .zh-TW.md） |
+| `docs/images/` | 本頁的截圖 |
+| `common/include/dawlab/` | 共用工具：AudioBuffer / AudioBlock、WAV 讀寫、測試訊號、分析、self-check |
+| `dsp/include/dawlab/dsp/` | 各章做出來的 DSP 元件（header-only；清單見 dsp/include/dawlab/dsp/README.md） |
+| `lessons/NN-name/README.md` | 講義（主教材；另有 README.zh-TW.md） |
+| `lessons/NN-name/examples/` | 範例程式 |
+| `lessons/NN-name/exercises/` | 練習題（README.md）與起始碼（starter/） |
+| `lessons/NN-name/solutions/` | 所有題目的解答與解說，以及實作題的完整程式 |
+| `lessons/NN-name/tests/` | （部分章節）元件回歸測試 |
+| `third_party/JUCE/` | JUCE 9.0.4（第 13、14 章） |
 
 所有 DSP 元件的一覽與用途見 [dsp/include/dawlab/dsp/README.zh-TW.md](dsp/include/dawlab/dsp/README.zh-TW.md)；統一介面與 API 合約見 [docs/authoring-guide.zh-TW.md](docs/authoring-guide.zh-TW.md)。
 

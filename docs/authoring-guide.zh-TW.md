@@ -18,30 +18,25 @@
 
 ## 2. 目錄結構
 
-```
-common/include/dawlab/        共用工具（已提供，不要改 API）
-  AudioBuffer.h  AudioBlock / AudioBuffer（non-interleaved float）
-  WavFile.h      readWav / writeWav / outputPath
-  Signals.h      makeSine / makeLogSweep / makeWhiteNoise / makeImpulse / makeToneBursts /
-                 makeDrumLoop / makePluck / makePluckSequence / NoiseGenerator
-  Analysis.h     peakAbs / rms / hasNanOrInf / goertzelAmplitude / measureGainDb /
-                 harmonicLevelsDb / thdPercent
-  Check.h        DAWLAB_CHECK / DAWLAB_CHECK_NEAR / dawlab::test::summary
-  DspMath.h      kPi / kTwoPi / dbToGain / gainToDb / lerp / msToSamples
-  Common.h       一次 include 以上全部
-
-dsp/include/dawlab/dsp/       各章逐步長出來的 DSP 元件（header-only，namespace dawlab::dsp）
-
-lessons/NN-name/
-  README.md                   原理講義（主教材，英文）；README.zh-TW.md 為繁體中文版
-  CMakeLists.txt
-  examples/*.cpp              範例程式（每支都能直接執行，ctest label: example）
-  exercises/README.md         練習題（只有題目與提示；另有 README.zh-TW.md）
-  exercises/starter/*.cpp     實作題的起始碼（可編譯，留 TODO；只建置、不跑測試）
-  solutions/README.md         所有題目的解答與解說（含觀念題、計算題；另有 README.zh-TW.md）
-  solutions/*.cpp             實作題的完整解答（含 self-check，ctest label: solution）
-  tests/*.cpp                 （可選）本章 dsp 元件的回歸測試（ctest label: test）
-```
+| 路徑 | 內容 |
+|---|---|
+| `common/include/dawlab/` | 共用工具（已提供，不要改 API） |
+| `common/include/dawlab/AudioBuffer.h` | `AudioBlock` / `AudioBuffer`（non-interleaved float） |
+| `common/include/dawlab/WavFile.h` | `readWav` / `writeWav` / `outputPath` |
+| `common/include/dawlab/Signals.h` | `makeSine` / `makeLogSweep` / `makeWhiteNoise` / `makeImpulse` / `makeToneBursts` / `makeDrumLoop` / `makePluck` / `makePluckSequence` / `NoiseGenerator` |
+| `common/include/dawlab/Analysis.h` | `peakAbs` / `rms` / `hasNanOrInf` / `goertzelAmplitude` / `measureGainDb` / `harmonicLevelsDb` / `thdPercent` |
+| `common/include/dawlab/Check.h` | `DAWLAB_CHECK` / `DAWLAB_CHECK_NEAR` / `dawlab::test::summary` |
+| `common/include/dawlab/DspMath.h` | `kPi` / `kTwoPi` / `dbToGain` / `gainToDb` / `lerp` / `msToSamples` |
+| `common/include/dawlab/Common.h` | 一次 include 以上全部 |
+| `dsp/include/dawlab/dsp/` | 各章逐步長出來的 DSP 元件（header-only，namespace `dawlab::dsp`） |
+| `lessons/NN-name/README.md` | 原理講義（主教材，英文）；README.zh-TW.md 為繁體中文版 |
+| `lessons/NN-name/CMakeLists.txt` | 本章的建置檔 |
+| `lessons/NN-name/examples/*.cpp` | 範例程式（每支都能直接執行，ctest label: example） |
+| `lessons/NN-name/exercises/README.md` | 練習題（只有題目與提示；另有 README.zh-TW.md） |
+| `lessons/NN-name/exercises/starter/*.cpp` | 實作題的起始碼（可編譯，留 TODO；只建置、不跑測試） |
+| `lessons/NN-name/solutions/README.md` | 所有題目的解答與解說（含觀念題、計算題；另有 README.zh-TW.md） |
+| `lessons/NN-name/solutions/*.cpp` | 實作題的完整解答（含 self-check，ctest label: solution） |
+| `lessons/NN-name/tests/*.cpp` | （可選）本章 dsp 元件的回歸測試（ctest label: test） |
 
 ## 3. 每章 README.md 的結構
 

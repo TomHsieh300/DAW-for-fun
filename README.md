@@ -114,27 +114,23 @@ cd build
 
 ## Directory layout
 
-```
-DAW/
-├── README.md                 this page (English; the Chinese version is README.zh-TW.md)
-├── CMakeLists.txt            root build file (options DAWLAB_ONLY, DAWLAB_WITH_JUCE, DAWLAB_JUCE_DIR, ...)
-├── cmake/DawLab.cmake        dawlab_add_example / _solution / _starter / _test
-├── scripts/build.ps1         Windows build + test script
-├── scripts/build.sh          Linux / macOS build + test script (same options)
-├── docs/
-│   ├── authoring-guide.md    authoring rules and the DSP API contract (also available as .zh-TW.md)
-│   └── images/               screenshots for this page
-├── common/include/dawlab/    shared utilities: AudioBuffer / AudioBlock, WAV I/O, test signals, analysis, self-check
-├── dsp/include/dawlab/dsp/   the DSP components built in the chapters (header-only; list in dsp/include/dawlab/dsp/README.md)
-├── lessons/
-│   └── NN-name/
-│       ├── README.md         lecture notes (the main text; also available as README.zh-TW.md)
-│       ├── examples/         example programs
-│       ├── exercises/        exercises (README.md) and starter code (starter/)
-│       ├── solutions/        answers and explanations for all exercises, plus complete programs for the programming ones
-│       └── tests/            (some chapters) component regression tests
-└── third_party/JUCE/         JUCE 9.0.4 (chapters 13 and 14)
-```
+| Path | Contents |
+|---|---|
+| `README.md` | this page (English; the Chinese version is README.zh-TW.md) |
+| `CMakeLists.txt` | root build file (options DAWLAB_ONLY, DAWLAB_WITH_JUCE, DAWLAB_JUCE_DIR, ...) |
+| `cmake/DawLab.cmake` | dawlab_add_example / _solution / _starter / _test |
+| `scripts/build.ps1` | Windows build + test script |
+| `scripts/build.sh` | Linux / macOS build + test script (same options) |
+| `docs/authoring-guide.md` | authoring rules and the DSP API contract (also available as .zh-TW.md) |
+| `docs/images/` | screenshots for this page |
+| `common/include/dawlab/` | shared utilities: AudioBuffer / AudioBlock, WAV I/O, test signals, analysis, self-check |
+| `dsp/include/dawlab/dsp/` | the DSP components built in the chapters (header-only; list in dsp/include/dawlab/dsp/README.md) |
+| `lessons/NN-name/README.md` | lecture notes (the main text; also available as README.zh-TW.md) |
+| `lessons/NN-name/examples/` | example programs |
+| `lessons/NN-name/exercises/` | exercises (README.md) and starter code (starter/) |
+| `lessons/NN-name/solutions/` | answers and explanations for all exercises, plus complete programs for the programming ones |
+| `lessons/NN-name/tests/` | (some chapters) component regression tests |
+| `third_party/JUCE/` | JUCE 9.0.4 (chapters 13 and 14) |
 
 An overview of all DSP components and what they are for is in [dsp/include/dawlab/dsp/README.md](dsp/include/dawlab/dsp/README.md); the common interface and the API contract are in [docs/authoring-guide.md](docs/authoring-guide.md).
 
