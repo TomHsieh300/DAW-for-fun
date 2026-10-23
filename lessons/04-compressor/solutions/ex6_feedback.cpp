@@ -1,17 +1,20 @@
-// 練習 6 解答：feedback 拓樸的 compressor，並與 feedforward 比較。
+// Exercise 6 solution: a feedback-topology compressor, compared with feedforward.
 //
-// Feedforward：detector 看「輸入」。  Feedback：detector 看「上一個輸出 sample」。
+// Feedforward: the detector looks at the "input". Feedback: the detector looks at the "previous output sample".
 //
-// 推導（dB，hard knee，穩態）：令 gain computer 的斜率 s = GR 每超過 threshold 1 dB 所增加的 dB
-//（feedforward 的 s = 1 - 1/R）。feedback 時 Y = X - GR 且 GR = s·(Y - T)：
+// Derivation (dB, hard knee, steady state): let the gain computer's slope s = the number of dB of GR added for every
+// 1 dB the level goes over the threshold (for feedforward, s = 1 - 1/R). With feedback, Y = X - GR and GR = s·(Y - T):
 //   GR = s·(X - GR - T)  ⇒  GR·(1 + s) = s·(X - T)  ⇒  GR = s/(1+s)·(X - T)
-//   Y - T = (X - T) - GR = (X - T)/(1 + s)  ⇒  有效 ratio R_eff = 1 + s
-// 所以：
-//   - 把 feedforward 的 4:1 設定（s = 0.75）直接搬到 feedback 只會得到 1.75:1；
-//   - 想要 feedback 真的做到 R_eff，要設 s = R_eff - 1（4:1 → s = 3，比 1 還大！）。
-// 行為差異：feedback 的 detector 一開始看到「還沒被壓」的大輸出 → GR 目標值一開始比穩態大很多 → attack 前段特別快、
-// 之後慢慢收斂，attack 變成 program-dependent（跟訊號超過多少有關），這是古典 feedback 壓縮器「聽起來比較順」的原因之一。
-// 注意：s > 1 的 feedback 迴路必須靠 attack 平滑才穩定（attack = 0 會震盪 / 鎖死），解答裡 attack 固定 10 ms。
+//   Y - T = (X - T) - GR = (X - T)/(1 + s)  ⇒  effective ratio R_eff = 1 + s
+// Therefore:
+//   - moving a feedforward 4:1 setting (s = 0.75) straight to feedback gives only 1.75:1;
+//   - to make feedback actually reach R_eff, set s = R_eff - 1 (4:1 → s = 3, which is greater than 1!).
+// Behavioral difference: at first the feedback detector sees a loud output that has "not yet been squashed" → the GR
+// target is initially much larger than at steady state → the attack is especially fast at the start and then slowly
+// converges, so the attack becomes program-dependent (it depends on how far the signal is over the threshold); this
+// is one reason classic feedback compressors "sound smoother".
+// Note: a feedback loop with s > 1 is only stable thanks to the attack smoothing (attack = 0 oscillates / locks up);
+// the attack is fixed at 10 ms in this solution.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Compressor.h>
@@ -31,7 +34,7 @@ constexpr double kSampleRate = 48000.0;
 constexpr double kSegmentSeconds = 0.5;
 constexpr float kThresholdDb = -20.0f;
 
-// Mono feedback compressor（hard knee）。gain computer 用「斜率 s」參數化，R_eff = 1 + s。
+// Mono feedback compressor (hard knee). The gain computer is parameterized by a "slope s", R_eff = 1 + s.
 class FeedbackCompressor {
 public:
     void prepare(double sampleRate) {
@@ -51,7 +54,7 @@ public:
     float getGainReductionDb() const noexcept { return smoother_.getCurrentValue(); }
 
     float processSample(float x) noexcept {
-        // detector 看的是上一個「輸出」sample（feedback），不是輸入
+        // The detector looks at the previous "output" sample (feedback), not the input
         const float levelDb = gainToDb(std::abs(lastOutput_));
         const float grTarget = std::max(0.0f, slope_ * (levelDb - thresholdDb_));
         const float gr = smoother_.process(grTarget);
@@ -66,7 +69,7 @@ private:
     float lastOutput_ = 0.0f;
 };
 
-// 由輸入 / 輸出每 1 ms 視窗的 peak 反推 GR timeline
+// Recover the GR timeline from the peak ratio of the input / output over 1 ms windows
 std::vector<float> grTimeline(const AudioBuffer& in, const AudioBuffer& out) {
     const int n = in.getNumSamples();
     const int win = msToSamples(1.0, kSampleRate);
@@ -107,11 +110,11 @@ Result analyze(const AudioBuffer& in, const AudioBuffer& out) {
 } // namespace
 
 int main() {
-    std::printf("練習 6：feedback vs feedforward\n");
+    std::printf("Exercise 6: feedback vs feedforward\n");
     const AudioBuffer input = makeToneBursts(1000.0, kSampleRate, {-30.0f, -10.0f, -30.0f}, kSegmentSeconds, 1);
-    const float overDb = 10.0f; // -10 dB 比 threshold -20 高 10 dB
+    const float overDb = 10.0f; // -10 dB is 10 dB above the -20 dB threshold
 
-    // Feedforward 4:1（參考）
+    // Feedforward 4:1 (reference)
     Result ff;
     {
         Compressor comp;
@@ -126,12 +129,12 @@ int main() {
         for (int start = 0; start < out.getNumSamples(); start += 512)
             comp.process(whole.getSubBlock(start, std::min(512, out.getNumSamples() - start)));
         ff = analyze(input, out);
-        std::printf("  feedforward R = 4（s = 0.75）：穩態 GR %.2f dB（理論 7.50），t63 = %.2f ms\n", ff.settledGr,
-                    ff.t63Ms);
+        std::printf("  feedforward R = 4 (s = 0.75): steady-state GR %.2f dB (theory 7.50), t63 = %.2f ms\n",
+                    ff.settledGr, ff.t63Ms);
         DAWLAB_CHECK_NEAR(ff.settledGr, 7.5, 0.2);
     }
 
-    // Feedback，不同斜率
+    // Feedback, with different slopes
     const float slopes[] = {0.75f, 3.0f, 9.0f};
     for (float s : slopes) {
         FeedbackCompressor fb;
@@ -146,18 +149,18 @@ int main() {
         const Result r = analyze(input, out);
         const float expectedGr = s / (1.0f + s) * overDb;
         const float effRatio = 1.0f + s;
-        std::printf("  feedback s = %.2f（R_eff = %.2f）：穩態 GR %.2f dB（理論 s/(1+s)·10 = %.2f），t63 = %.2f ms\n",
+        std::printf("  feedback s = %.2f (R_eff = %.2f): steady-state GR %.2f dB (theory s/(1+s)·10 = %.2f), t63 = %.2f ms\n",
                     s, effRatio, r.settledGr, expectedGr, r.t63Ms);
         DAWLAB_CHECK_NEAR(r.settledGr, expectedGr, 0.3);
         DAWLAB_CHECK(!hasNanOrInf(out));
         if (s == 3.0f) {
-            // s = 3 ⇒ R_eff = 4，穩態 GR 應該與 feedforward 4:1 相同，但 attack 更快（program-dependent）
+            // s = 3 ⇒ R_eff = 4: the steady-state GR should equal feedforward 4:1, but the attack is faster (program-dependent)
             DAWLAB_CHECK_NEAR(r.settledGr, ff.settledGr, 0.3);
             DAWLAB_CHECK(r.t63Ms < ff.t63Ms);
             writeWav(outputPath("l04_ex6_feedback.wav"), out, kSampleRate);
         }
     }
-    std::printf("  結論：feedback 的有效 ratio = 1 + s；同樣 4:1 時 feedback 的 attack 比 feedforward 快（t63 較小）。\n");
-    std::printf("  已輸出 dawlab_output/l04_ex6_feedback.wav\n");
+    std::printf("  Conclusion: the effective ratio of feedback = 1 + s; at the same 4:1, feedback attacks faster than feedforward (smaller t63).\n");
+    std::printf("  Wrote dawlab_output/l04_ex6_feedback.wav\n");
     return dawlab::test::summary("l04_ex6");
 }

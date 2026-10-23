@@ -1,18 +1,19 @@
-// 範例 2：attack / release 的 step response。
+// Example 2: attack / release step response.
 //
-// 示範什麼：
-//   (A) AttackReleaseFilter 單獨對一個「dB step」的反應：量 t63（到 63.2%）與 t90（到 90%），
-//       驗證 α = exp(-1/(τ·fs)) 的 τ 就是「到 63.2% 的時間」、t90 = ln(10)·τ ≈ 2.30τ。
-//   (B) 把 Compressor 餵 tone bursts（-30 → -10 → -30 dBFS，各 0.5 秒），印出 gain reduction 隨時間的變化，
-//       量測 attack / release 時間，並比較：
-//         - Decoupled vs Branching 平滑（週期訊號下 Branching 會低估 peak）
+// What it demonstrates:
+//   (A) How AttackReleaseFilter alone responds to a "dB step": measure t63 (time to 63.2%) and t90 (time to 90%),
+//       confirming that the tau of alpha = exp(-1/(tau*fs)) is exactly the "time to 63.2%" and t90 = ln(10)*tau ~ 2.30*tau.
+//   (B) Feed tone bursts (-30 -> -10 -> -30 dBFS, 0.5 s each) into a Compressor, print how gain reduction evolves over
+//       time, measure the attack / release times, and compare:
+//         - Decoupled vs Branching smoothing (Branching underestimates the peak of a periodic signal)
 //         - Peak vs RMS detector
-//         - log(dB) domain 平滑（Compressor 的做法）vs linear domain 平滑（EnvelopeFollower → 靜態曲線）
-//       最後把 B1、B2、B4 的 release 曲線疊成一張 ASCII 圖（GR vs 時間）。
-// 怎麼執行：直接執行 l04_step_response。
-// 輸出檔案：dawlab_output/l04_step_in.wav、l04_step_out.wav（tone bursts 壓縮前 / 後）。
-// 該聽到什麼：第二段大聲的音在剛進來的前 10 ms 會「衝」出來（attack 還沒壓下去），
-//            然後被壓到比較小聲；回到小聲段時，前 100 ms 音量會慢慢「浮」回來（release）。
+//         - log (dB) domain smoothing (what Compressor does) vs linear domain smoothing (EnvelopeFollower -> static curve)
+//       Finally, overlay the release curves of B1, B2 and B4 in one ASCII chart (GR vs time).
+// How to run: just run l04_step_response.
+// Output files: dawlab_output/l04_step_in.wav, l04_step_out.wav (the tone bursts before / after compression).
+// What you should hear: the loud second segment "jumps out" during its first 10 ms (the attack has not clamped down
+//            yet) and is then squashed to a lower level; when it returns to the quiet segment, the volume slowly
+//            "floats" back up over the first 100 ms (release).
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Compressor.h>
@@ -38,7 +39,7 @@ constexpr float kAttackMs = 10.0f;
 constexpr float kReleaseMs = 100.0f;
 constexpr double kSegmentSeconds = 0.5;
 
-// 在 timeline 裡找「第一次 >= target」的時間（毫秒）；從 startIndex 開始找
+// Find the time (in milliseconds) at which the timeline first reaches the target; the search starts at startIndex
 double firstTimeReaching(const std::vector<float>& v, int startIndex, float target, bool rising) {
     for (size_t i = static_cast<size_t>(startIndex); i < v.size(); ++i) {
         if (rising ? v[i] >= target : v[i] <= target)
@@ -47,10 +48,11 @@ double firstTimeReaching(const std::vector<float>& v, int startIndex, float targ
     return -1.0;
 }
 
-// 把 tone bursts 丟進 compressor，逐 block 處理，並記錄每個 sample 的 gain（由輸出 / 輸入算出的 GR）
+// Run the tone bursts through the compressor block by block and record the gain at every sample
+// (the GR derived from output / input)
 struct Run {
-    std::vector<float> grDb; // 每個 sample 的 gain reduction（dB，由 getGainReductionDb 以 block 為單位是不夠細的，
-                             // 這裡用輸入 / 輸出的比值反推）
+    std::vector<float> grDb; // Gain reduction (dB) at every sample. getGainReductionDb() is per block, which is not
+                             // fine-grained enough, so the value is recovered from the input / output ratio.
     AudioBuffer output;
 };
 
@@ -64,7 +66,8 @@ Run runCompressor(const AudioBuffer& input, Compressor& comp) {
         const int len = std::min(kBlockSize, n - start);
         comp.process(whole.getSubBlock(start, len));
     }
-    // 由 |y| / |x| 反推 gain：正弦波過零點附近除不準，所以用「每 sample 取最近 1 ms 視窗的 peak 比」
+    // Recover the gain from |y| / |x|: this is inaccurate near a sine's zero crossings, so use the peak ratio over the
+    // most recent 1 ms window at every sample
     const int win = msToSamples(1.0, kSampleRate);
     for (int i = 0; i < n; ++i) {
         const int a = std::max(0, i - win + 1);
@@ -77,13 +80,13 @@ Run runCompressor(const AudioBuffer& input, Compressor& comp) {
 
 void printTimeline(const char* title, const std::vector<float>& gr, int stepStart, int releaseStart) {
     std::printf("\n  %s\n", title);
-    std::printf("    attack 階段（t = 0 是大聲段開始）：\n      t(ms):");
+    std::printf("    attack phase (t = 0 is where the loud segment starts):\n      t(ms):");
     for (int ms : {0, 2, 5, 10, 15, 20, 30, 50, 100, 200})
         std::printf(" %6d", ms);
     std::printf("\n      GR(dB):");
     for (int ms : {0, 2, 5, 10, 15, 20, 30, 50, 100, 200})
         std::printf(" %6.2f", gr[static_cast<size_t>(stepStart + msToSamples(ms, kSampleRate))]);
-    std::printf("\n    release 階段（t = 0 是回到小聲段）：\n      t(ms):");
+    std::printf("\n    release phase (t = 0 is where it returns to the quiet segment):\n      t(ms):");
     for (int ms : {0, 20, 50, 100, 150, 200, 300, 400, 490})
         std::printf(" %6d", ms);
     std::printf("\n      GR(dB):");
@@ -92,9 +95,10 @@ void printTimeline(const char* title, const std::vector<float>& gr, int stepStar
     std::printf("\n");
 }
 
-// 把幾條 release 曲線（GR 隨時間）疊在同一張 ASCII 圖上。
-// 橫軸：回到小聲段之後 0..490 ms，每欄 10 ms；縱軸：GR，每列 0.5 dB。
-// 每條曲線用一個字元表示，兩條以上落在同一格時印 '*'；'-' 是 refLevelDb（B1 的 36.8% 參考線）。
+// Overlay several release curves (GR vs time) on one ASCII chart.
+// Horizontal axis: 0..490 ms after returning to the quiet segment, 10 ms per column; vertical axis: GR, 0.5 dB per row.
+// Each curve uses one character; '*' is printed where two or more fall in the same cell; '-' is refLevelDb
+// (the 36.8% reference line of B1).
 struct Curve {
     char symbol;
     const std::vector<float>* gr;
@@ -102,10 +106,10 @@ struct Curve {
 
 void printReleaseChart(const Curve* curves, int numCurves, int releaseStart, float refLevelDb) {
     constexpr int kCols = 50;    // 0, 10, ..., 490 ms
-    constexpr int kRows = 16;    // 8.0 dB 到 0.5 dB；0 dB 那一列當作橫軸
+    constexpr int kRows = 16;    // 8.0 dB down to 0.5 dB; the 0 dB row serves as the horizontal axis
     constexpr float kRowDb = 0.5f;
     const int refRow = static_cast<int>(std::lround(refLevelDb / kRowDb));
-    std::printf("\n  release 曲線疊圖（GR vs 時間，t = 0 是回到小聲段）\n");
+    std::printf("\n  Overlaid release curves (GR vs time, t = 0 is where it returns to the quiet segment)\n");
     for (int row = kRows; row >= 0; --row) {
         if (row % 2 == 0)
             std::printf("  %4.1f |", row * kRowDb);
@@ -127,12 +131,12 @@ void printReleaseChart(const Curve* curves, int numCurves, int releaseStart, flo
         }
         std::printf("\n");
     }
-    // 第 c 欄印在第 7 + c 個字元，所以 0 / 100 / 200 ms 的刻度分別對齊第 0 / 10 / 20 欄
+    // Column c is printed at character 7 + c, so the 0 / 100 / 200 ms ticks line up with columns 0 / 10 / 20
     std::printf("       0         100       200       300       400      (ms)\n");
 }
 
 void measureAndPrint(const std::vector<float>& gr, int stepStart, int releaseStart, float staticGrDb) {
-    // 穩態 GR：取大聲段最後 50 ms 的平均
+    // Steady-state GR: the average over the last 50 ms of the loud segment
     double sum = 0.0;
     const int tail = msToSamples(50.0, kSampleRate);
     for (int i = releaseStart - tail; i < releaseStart; ++i)
@@ -142,7 +146,7 @@ void measureAndPrint(const std::vector<float>& gr, int stepStart, int releaseSta
     const double t90 = firstTimeReaching(gr, stepStart, 0.90f * settled, true);
     const double r37 = firstTimeReaching(gr, releaseStart, 0.368f * settled, false);
     const double r10 = firstTimeReaching(gr, releaseStart, 0.10f * settled, false);
-    std::printf("    穩態 GR = %.2f dB（靜態曲線 %.2f dB）；attack: t63 = %.1f ms, t90 = %.1f ms；"
+    std::printf("    Steady-state GR = %.2f dB (static curve %.2f dB); attack: t63 = %.1f ms, t90 = %.1f ms; "
                 "release: t37 = %.1f ms, t10 = %.1f ms\n",
                 settled, staticGrDb, t63, t90, r37, r10);
 }
@@ -150,15 +154,15 @@ void measureAndPrint(const std::vector<float>& gr, int stepStart, int releaseSta
 } // namespace
 
 int main() {
-    std::printf("第 04 章 範例 2：attack / release step response（fs = %.0f Hz）\n", kSampleRate);
+    std::printf("Chapter 04, example 2: attack / release step response (fs = %.0f Hz)\n", kSampleRate);
 
-    // ---------- (A) AttackReleaseFilter 對 dB step 的反應 ----------
-    std::printf("\n=== (A) AttackReleaseFilter 單獨測試：目標值 0 → 10 → 0，attack %.0f ms、release %.0f ms ===\n",
+    // ---------- (A) AttackReleaseFilter response to a dB step ----------
+    std::printf("\n=== (A) AttackReleaseFilter on its own: target 0 -> 10 -> 0, attack %.0f ms, release %.0f ms ===\n",
                 kAttackMs, kReleaseMs);
     const float alphaA = dsp::attackReleaseCoefficient(kAttackMs, kSampleRate);
     const float alphaR = dsp::attackReleaseCoefficient(kReleaseMs, kSampleRate);
-    std::printf("  αA = exp(-1/(0.010·48000)) = %.6f，αR = exp(-1/(0.100·48000)) = %.6f\n", alphaA, alphaR);
-    std::printf("  反推：τA = %.3f ms，τR = %.3f ms\n", dsp::coefficientToTimeMs(alphaA, kSampleRate),
+    std::printf("  αA = exp(-1/(0.010·48000)) = %.6f, αR = exp(-1/(0.100·48000)) = %.6f\n", alphaA, alphaR);
+    std::printf("  Inverted: τA = %.3f ms, τR = %.3f ms\n", dsp::coefficientToTimeMs(alphaA, kSampleRate),
                 dsp::coefficientToTimeMs(alphaR, kSampleRate));
     for (SmoothingMode mode : {SmoothingMode::Branching, SmoothingMode::Decoupled}) {
         AttackReleaseFilter f;
@@ -174,23 +178,23 @@ int main() {
         const double t90 = firstTimeReaching(y, 0, 9.0f, true);
         const double r37 = firstTimeReaching(y, half, 3.68f, false);
         const double r10 = firstTimeReaching(y, half, 1.0f, false);
-        std::printf("  %-9s attack: t63 = %6.2f ms (理論 τ = %.0f), t90 = %6.2f ms (理論 ln10·τ = %.2f) | "
-                    "release: t37 = %6.2f ms (理論 %.0f), t10 = %6.2f ms (理論 %.2f)\n",
+        std::printf("  %-9s attack: t63 = %6.2f ms (theory τ = %.0f), t90 = %6.2f ms (theory ln10·τ = %.2f) | "
+                    "release: t37 = %6.2f ms (theory %.0f), t10 = %6.2f ms (theory %.2f)\n",
                     mode == SmoothingMode::Branching ? "Branching" : "Decoupled", t63, kAttackMs, t90,
                     kAttackMs * 2.302585, r37, kReleaseMs, r10, kReleaseMs * 2.302585);
     }
-    std::printf("  （Decoupled 的 release 多了 attack 濾波器的延遲，所以 t37 ≈ τR + τA 左右）\n");
+    std::printf("  (Decoupled's release adds the delay of the attack filter, so t37 is roughly τR + τA)\n");
 
-    // ---------- (B) Compressor 對 tone bursts 的反應 ----------
+    // ---------- (B) Compressor response to tone bursts ----------
     const AudioBuffer input = makeToneBursts(1000.0, kSampleRate, {-30.0f, -10.0f, -30.0f}, kSegmentSeconds, 2);
     const int segLen = secondsToSamples(kSegmentSeconds, kSampleRate);
     const int stepStart = segLen;
     const int releaseStart = 2 * segLen;
     const float staticGr = Compressor::computeGainReductionDb(-10.0f, kThresholdDb, kRatio, 0.0f);
-    std::printf("\n=== (B) Compressor：1 kHz tone bursts -30 → -10 → -30 dBFS，T = %.0f dB, R = %.0f:1, hard knee, "
+    std::printf("\n=== (B) Compressor: 1 kHz tone bursts -30 → -10 → -30 dBFS, T = %.0f dB, R = %.0f:1, hard knee, "
                 "attack %.0f ms, release %.0f ms ===\n",
                 kThresholdDb, kRatio, kAttackMs, kReleaseMs);
-    std::printf("  靜態曲線：輸入 -10 dB → 輸出 %.2f dB，GR = %.2f dB\n",
+    std::printf("  Static curve: input -10 dB → output %.2f dB, GR = %.2f dB\n",
                 Compressor::computeOutputDb(-10.0f, kThresholdDb, kRatio, 0.0f), staticGr);
 
     auto makeComp = [&](SmoothingMode mode, DetectorMode det) {
@@ -207,53 +211,55 @@ int main() {
         return c;
     };
 
-    // 給最後的 release 疊圖用
+    // For the release overlay chart at the end
     std::vector<float> grB1, grB2, grB4;
     float settledB1 = 0.0f;
 
-    // B1：預設（Decoupled + Peak）—— 這是會輸出 WAV 的那一組
+    // B1: the defaults (Decoupled + Peak) — this is the run that writes the WAV files
     {
         Compressor comp = makeComp(SmoothingMode::Decoupled, DetectorMode::Peak);
         Run run = runCompressor(input, comp);
-        printTimeline("B1. Decoupled 平滑 + Peak detector（Compressor 預設）", run.grDb, stepStart, releaseStart);
+        printTimeline("B1. Decoupled smoothing + Peak detector (the Compressor default)", run.grDb, stepStart,
+                      releaseStart);
         measureAndPrint(run.grDb, stepStart, releaseStart, staticGr);
         grB1 = run.grDb;
         settledB1 = run.grDb[static_cast<size_t>(releaseStart - 1)];
-        std::printf("    getGainReductionDb()（最後一個 block）= %.3f dB\n", comp.getGainReductionDb());
+        std::printf("    getGainReductionDb() (last block) = %.3f dB\n", comp.getGainReductionDb());
         writeWav(outputPath("l04_step_in.wav"), input, kSampleRate);
         writeWav(outputPath("l04_step_out.wav"), run.output, kSampleRate);
-        std::printf("    已輸出 dawlab_output/l04_step_in.wav、l04_step_out.wav\n");
-        std::printf("    輸出 peak：第 1 段 %.2f dBFS、第 2 段 %.2f dBFS（前 10 ms 的 overshoot 峰值 %.2f dBFS）\n",
+        std::printf("    Wrote dawlab_output/l04_step_in.wav, l04_step_out.wav\n");
+        std::printf("    Output peak: segment 1 %.2f dBFS, segment 2 %.2f dBFS (overshoot peak in the first 10 ms: %.2f dBFS)\n",
                     gainToDb(peakAbs(run.output.getReadPointer(0), segLen)),
                     gainToDb(peakAbs(run.output.getReadPointer(0) + stepStart + msToSamples(100.0, kSampleRate),
                                      segLen - msToSamples(100.0, kSampleRate))),
                     gainToDb(peakAbs(run.output.getReadPointer(0) + stepStart, msToSamples(10.0, kSampleRate))));
     }
 
-    // B2：Branching 平滑
+    // B2: Branching smoothing
     {
         Compressor comp = makeComp(SmoothingMode::Branching, DetectorMode::Peak);
         Run run = runCompressor(input, comp);
-        printTimeline("B2. Branching 平滑 + Peak detector", run.grDb, stepStart, releaseStart);
+        printTimeline("B2. Branching smoothing + Peak detector", run.grDb, stepStart, releaseStart);
         measureAndPrint(run.grDb, stepStart, releaseStart, staticGr);
         grB2 = run.grDb;
-        std::printf("    → 正弦波每個週期過零點時瞬間 level 掉到 -inf dB，Branching 會在那段用 release 往下拉，\n"
-                    "      所以穩態 GR 低於靜態曲線（低估 peak）；Decoupled 的 peak-hold 不會。\n");
+        std::printf("    → At every zero crossing of the sine the instantaneous level drops to -inf dB, and Branching\n"
+                    "      pulls the state down with the release coefficient during that time, so the steady-state GR is\n"
+                    "      below the static curve (the peak is underestimated); Decoupled's peak-hold does not have this problem.\n");
     }
 
-    // B3：RMS detector
+    // B3: RMS detector
     {
         Compressor comp = makeComp(SmoothingMode::Decoupled, DetectorMode::Rms);
         Run run = runCompressor(input, comp);
-        printTimeline("B3. Decoupled 平滑 + RMS detector（視窗 5 ms）", run.grDb, stepStart, releaseStart);
+        printTimeline("B3. Decoupled smoothing + RMS detector (5 ms window)", run.grDb, stepStart, releaseStart);
         measureAndPrint(run.grDb, stepStart, releaseStart,
                         Compressor::computeGainReductionDb(-10.0f - 3.01f, kThresholdDb, kRatio, 0.0f));
-        std::printf("    → 正弦波的 RMS 比 peak 低 3.01 dB，所以 GR 以「-13 dB 輸入」來算 = %.2f dB；\n"
-                    "      RMS 視窗本身也是一層平滑，attack 會比標稱值慢一點。\n",
+        std::printf("    → A sine's RMS is 3.01 dB below its peak, so the GR is computed from a \"-13 dB input\" = %.2f dB;\n"
+                    "      the RMS window is itself a layer of smoothing, so the attack is a bit slower than nominal.\n",
                     Compressor::computeGainReductionDb(-13.01f, kThresholdDb, kRatio, 0.0f));
     }
 
-    // B4：linear domain 平滑（EnvelopeFollower → 靜態曲線），對照 log domain
+    // B4: linear domain smoothing (EnvelopeFollower -> static curve), compared with the log domain
     {
         EnvelopeFollower env;
         env.prepare(kSampleRate);
@@ -267,22 +273,23 @@ int main() {
             const float e = env.processSample(input.getSample(0, i));
             gr[static_cast<size_t>(i)] = Compressor::computeGainReductionDb(gainToDb(e), kThresholdDb, kRatio, 0.0f);
         }
-        printTimeline("B4. 對照：linear domain 平滑（EnvelopeFollower 的 envelope 再丟進靜態曲線）", gr, stepStart,
-                      releaseStart);
+        printTimeline("B4. For comparison: linear domain smoothing (the EnvelopeFollower envelope fed into the static curve)",
+                      gr, stepStart, releaseStart);
         measureAndPrint(gr, stepStart, releaseStart, staticGr);
         grB4 = gr;
-        std::printf("    → release 時 envelope 在線性域指數衰減 = 在 dB 上「等速下降」（%.1f dB/s），\n"
-                    "      GR 直線掉到 0 後就停住；log domain 的 GR 則是指數衰減，尾巴拖很長、聽起來比較自然。\n",
+        std::printf("    → During release the envelope decays exponentially in the linear domain = a \"constant-rate fall\" in dB (%.1f dB/s);\n"
+                    "      the GR falls in a straight line, hits 0 and stops; in the log domain the GR itself decays exponentially,\n"
+                    "      with a long tail that sounds more natural.\n",
                     20.0 * std::log10(std::exp(1.0)) / (kReleaseMs * 0.001));
     }
 
-    // ---------- release 曲線疊圖 ----------
+    // ---------- Overlaid release curves ----------
     const Curve curves[] = {{'1', &grB1}, {'2', &grB2}, {'4', &grB4}};
     printReleaseChart(curves, 3, releaseStart, 0.368f * settledB1);
-    std::printf("  1 = B1 decoupled（log domain）、2 = B2 branching、4 = B4 linear domain、* = 重疊；\n"
-                "  '-' 是 B1 穩態 GR 的 36.8%%（%.2f dB）：B1 約在 τR + τA ≈ 110 ms 穿過它。\n",
+    std::printf("  1 = B1 decoupled (log domain), 2 = B2 branching, 4 = B4 linear domain, * = overlap;\n"
+                "  '-' is 36.8%% of B1's steady-state GR (%.2f dB): B1 crosses it at about τR + τA ≈ 110 ms.\n",
                 0.368f * settledB1);
-    std::printf("  B1、B2 是指數衰減（尾巴拖長、慢慢收到 0）；B4 在 dB 上是直線下降，約 150 ms 就直接歸 0。\n");
+    std::printf("  B1 and B2 decay exponentially (a long tail that slowly settles to 0); B4 falls in a straight line in dB and drops straight to 0 at about 150 ms.\n");
 
     return 0;
 }

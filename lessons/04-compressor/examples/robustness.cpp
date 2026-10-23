@@ -1,20 +1,24 @@
-// 範例 5：壞輸入與 stereo link 切換——compressor 在 audio thread 上的兩個「隱形」陷阱。
+// Example 5: bad input and stereo-link toggling — two "invisible" traps for a compressor on the audio thread.
 //
-// 示範什麼：
-//   (A) 壞輸入：在 1 kHz 正弦波中間塞一個 +Inf、NaN 或極大值（2e19，平方後會溢位），
-//       比較「乾淨輸入」與「被污染輸入」在 1 秒後的輸出 peak 與 GR。
-//       遞迴的 attack / release 平滑器只要吃進一個 NaN，狀態就會永久卡死：
-//       Peak 模式會把輸出永久靜音，RMS 模式會永久不壓縮，而且 GR meter 看不出異常。
-//       本章的 AttackReleaseFilter / EnvelopeFollower / Compressor 都會把 non-finite 擋掉，
-//       所以這裡應該看到：壞 sample 過去之後，compressor 很快回到和乾淨輸入一樣的狀態。
-//   (B) stereo link 切換：先 unlinked、R 聲道很大聲（GR 約 15 dB）、L 很小聲（GR 0），
-//       再切成 linked、再切回 unlinked。逐 sample 量 gain，確認切換瞬間沒有 gain 跳變（click）：
-//       切成 linked 之後，L 要以 attack 的速度跟上 R 的 GR，而不是瞬間被拉下 15 dB。
-// 怎麼執行：直接執行 l04_robustness（不帶參數）。
-// 輸出檔案：dawlab_output/l04_link_toggle.wav（(B) 的輸出，切換點在 1.0 s、1.1 s、2.1 s）。
-// 該聽到什麼：l04_link_toggle.wav 是直流（DC）測試訊號，耳朵聽不到內容，重點是看數字；用波形編輯器
-//             打開，切換點附近的波形高度應該是平滑變化，沒有突然的階梯。
-// 本範例最後用 DAWLAB_CHECK 自我驗證，全部通過才回傳 0。
+// What it demonstrates:
+//   (A) Bad input: drop a +Inf, NaN or huge value (2e19, which overflows when squared) into the middle of a 1 kHz
+//       sine, and compare the output peak and GR one second later against a clean input.
+//       A recursive attack / release smoother that swallows a single NaN gets stuck permanently:
+//       in Peak mode the output is silenced forever, in RMS mode the compressor stops compressing forever,
+//       and the GR meter shows nothing unusual.
+//       AttackReleaseFilter / EnvelopeFollower / Compressor in this chapter all block non-finite values,
+//       so here you should see the compressor return to the same state as with the clean input shortly after
+//       the bad sample has passed.
+//   (B) Stereo link toggling: start unlinked with a loud right channel (GR about 15 dB) and a quiet left channel
+//       (GR 0), then switch to linked, then back to unlinked. Measure the gain sample by sample and confirm there
+//       is no gain jump (click) at the switch: after switching to linked, L must catch up with R's GR at the
+//       attack speed instead of being pulled down 15 dB instantly.
+// How to run: just run l04_robustness (no arguments).
+// Output files: dawlab_output/l04_link_toggle.wav (the output of (B); the switch points are at 1.0 s, 1.1 s, 2.1 s).
+// What you should hear: l04_link_toggle.wav is a DC test signal, so there is nothing to hear; the point is the
+//             numbers. Open it in a waveform editor: around the switch points the waveform height should change
+//             smoothly, with no sudden steps.
+// At the end this example verifies itself with DAWLAB_CHECK and returns 0 only if everything passes.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Compressor.h>
@@ -38,23 +42,23 @@ void processBlocks(AudioBuffer& buffer, Compressor& comp) {
         comp.process(whole.getSubBlock(start, std::min(kBlockSize, buffer.getNumSamples() - start)));
 }
 
-// 最後 100 ms 的 peak（dBFS）
+// Peak (dBFS) of the last 100 ms
 float tailPeakDb(const AudioBuffer& b, int ch) {
     const int n = static_cast<int>(0.1 * kSampleRate);
     return gainToDb(peakAbs(b.getReadPointer(ch) + b.getNumSamples() - n, n));
 }
 
-// (A)：回傳 {尾段 peak dB, 最後一個 block 的 GR}
+// (A): returns {tail peak dB, GR of the last block}
 struct Result {
     float tailDb;
     float grDb;
 };
 
 Result runWithBadSample(DetectorMode mode, bool inject, float badValue) {
-    Compressor comp; // 預設：T -20、4:1、knee 6、attack 10 ms、release 100 ms
+    Compressor comp; // Defaults: T -20, 4:1, knee 6, attack 10 ms, release 100 ms
     comp.prepare(kSampleRate, kBlockSize, 1);
     comp.setDetectorMode(mode);
-    AudioBuffer x = makeSine(1000.0, kSampleRate, 1.0, 0.5f, 1); // -6 dBFS，1 秒
+    AudioBuffer x = makeSine(1000.0, kSampleRate, 1.0, 0.5f, 1); // -6 dBFS, 1 second
     if (inject)
         x.setSample(0, 100, badValue);
     processBlocks(x, comp);
@@ -64,11 +68,11 @@ Result runWithBadSample(DetectorMode mode, bool inject, float badValue) {
 } // namespace
 
 int main() {
-    std::printf("第 04 章 範例 5：壞輸入與 stereo link 切換\n");
+    std::printf("Chapter 04, example 5: bad input and stereo-link toggling\n");
 
-    // ---- (A) 壞輸入 -------------------------------------------------------------
-    std::printf("\n(A) 1 kHz -6 dBFS 正弦波，第 100 個 sample 換成壞值，看 1 秒後是否恢復\n");
-    std::printf("  模式 | 壞值   | 尾段 peak (dBFS) | 乾淨輸入的尾段 | GR (dB) | 乾淨輸入的 GR\n");
+    // ---- (A) Bad input ----------------------------------------------------------
+    std::printf("\n(A) 1 kHz -6 dBFS sine, sample 100 replaced by a bad value; does it recover after 1 second?\n");
+    std::printf("  Mode | Bad    | Tail peak (dBFS) | Clean input's tail | GR (dB) | Clean input's GR\n");
     const float inf = std::numeric_limits<float>::infinity();
     const float nan = std::numeric_limits<float>::quiet_NaN();
     const struct {
@@ -80,22 +84,22 @@ int main() {
         const Result clean = runWithBadSample(mode, false, 0.0f);
         for (const auto& bad : bads) {
             const Result r = runWithBadSample(mode, true, bad.value);
-            std::printf("  %-4s | %-6s | %16.2f | %14.2f | %7.2f | %13.2f\n", mode == DetectorMode::Peak ? "Peak" : "RMS",
+            std::printf("  %-4s | %-6s | %16.2f | %18.2f | %7.2f | %16.2f\n", mode == DetectorMode::Peak ? "Peak" : "RMS",
                         bad.name, r.tailDb, clean.tailDb, r.grDb, clean.grDb);
-            // 1 秒後應該和乾淨輸入幾乎一樣（壞 sample 只影響它附近的一小段）
+            // After 1 second it should be almost identical to the clean input (the bad sample only affects a short stretch around it)
             DAWLAB_CHECK(std::isfinite(r.tailDb) && std::isfinite(r.grDb));
             DAWLAB_CHECK_NEAR(r.tailDb, clean.tailDb, 0.05);
             DAWLAB_CHECK_NEAR(r.grDb, clean.grDb, 0.05);
         }
     }
 
-    // ---- (B) stereo link 切換 ---------------------------------------------------
-    // 用直流（DC）當測試訊號：輸入每個 sample 都一樣，gain = 輸出 / 輸入，可以逐 sample 精確量。
-    std::printf("\n(B) stereo link 切換：hard knee、T -20、4:1、attack 10 ms、release 100 ms\n");
-    std::printf("    0.00–1.00 s unlinked，L = -40 dBFS、R = 0 dBFS（R 的 GR 約 15 dB）\n");
-    std::printf("    1.00–1.10 s 切成 linked，輸入不變（L 應以 attack 速度跟上 R 的 GR）\n");
-    std::printf("    1.10–2.10 s 切回 unlinked，L、R 都改成 -40 dBFS（各自 release）\n");
-    std::printf("    2.10–3.10 s 再切成 linked，輸入不變\n");
+    // ---- (B) Stereo link toggling -----------------------------------------------
+    // Use DC as the test signal: every input sample is identical, so gain = output / input can be measured exactly, sample by sample.
+    std::printf("\n(B) Stereo link toggling: hard knee, T -20, 4:1, attack 10 ms, release 100 ms\n");
+    std::printf("    0.00–1.00 s unlinked, L = -40 dBFS, R = 0 dBFS (R's GR is about 15 dB)\n");
+    std::printf("    1.00–1.10 s switch to linked, input unchanged (L should follow R's GR at the attack speed)\n");
+    std::printf("    1.10–2.10 s switch back to unlinked, L and R both become -40 dBFS (each releases on its own)\n");
+    std::printf("    2.10–3.10 s switch to linked again, input unchanged\n");
 
     Compressor comp;
     comp.prepare(kSampleRate, kBlockSize, 2);
@@ -117,7 +121,7 @@ int main() {
     AudioBuffer output = input;
     AudioBlock whole(output);
 
-    // 每一段各自用 512 的 block 處理，段與段之間（block 邊界上）切換 link
+    // Process each segment with its own 512-sample blocks; toggle the link between segments (on block boundaries)
     const int segStart[] = {0, seg1, seg1 + seg2, seg1 + seg2 + seg3};
     const int segLen[] = {seg1, seg2, seg3, seg4};
     const bool segLinked[] = {false, true, false, true};
@@ -127,7 +131,7 @@ int main() {
             comp.process(whole.getSubBlock(segStart[s] + off, std::min(kBlockSize, segLen[s] - off)));
     }
 
-    // 逐 sample 的 gain（dB）與相鄰 sample 的最大差
+    // Per-sample gain (dB) and the largest difference between adjacent samples
     float maxStepDb[2] = {0.0f, 0.0f};
     for (int ch = 0; ch < 2; ++ch) {
         float prevDb = 0.0f;
@@ -141,21 +145,22 @@ int main() {
     auto gainAtDb = [&](int ch, int i) { return gainToDb(output.getSample(ch, i) / input.getSample(ch, i)); };
     for (int s = 1; s < 4; ++s) {
         const int i = segStart[s];
-        std::printf("  切換到 %-8s @ %.2f s：R gain %7.2f dB → %7.2f dB；L gain %7.2f dB → %7.2f dB\n",
+        std::printf("  Switch to %-8s @ %.2f s: R gain %7.2f dB → %7.2f dB; L gain %7.2f dB → %7.2f dB\n",
                     segLinked[s] ? "linked" : "unlinked", i / kSampleRate, gainAtDb(1, i - 1), gainAtDb(1, i),
                     gainAtDb(0, i - 1), gainAtDb(0, i));
     }
-    std::printf("  整段相鄰 sample 的最大 gain 變化：L %.3f dB、R %.3f dB（attack 期間每 sample 最多約 0.03 dB）\n",
+    std::printf("  Largest gain change between adjacent samples over the whole run: L %.3f dB, R %.3f dB "
+                "(at most about 0.03 dB per sample during attack)\n",
                 maxStepDb[0], maxStepDb[1]);
-    // linked 0.1 s（10 個 attack 時間常數）之後，L 的 GR 應該已經追上 R（共用同一個 gain）
+    // After 0.1 s of linking (10 attack time constants), L's GR should have caught up with R's (they share one gain)
     const int endLinked = seg1 + seg2 - 1;
-    std::printf("  linked 段結尾：L gain %.2f dB、R gain %.2f dB（應幾乎相同）\n", gainAtDb(0, endLinked),
-                gainAtDb(1, endLinked));
+    std::printf("  End of the linked segment: L gain %.2f dB, R gain %.2f dB (should be almost identical)\n",
+                gainAtDb(0, endLinked), gainAtDb(1, endLinked));
     DAWLAB_CHECK_NEAR(gainAtDb(0, endLinked), gainAtDb(1, endLinked), 0.01);
     DAWLAB_CHECK(maxStepDb[0] < 0.1f);
     DAWLAB_CHECK(maxStepDb[1] < 0.1f);
 
     writeWav(outputPath("l04_link_toggle.wav"), output, kSampleRate);
-    std::printf("\n  已輸出 dawlab_output/l04_link_toggle.wav\n");
+    std::printf("\n  Wrote dawlab_output/l04_link_toggle.wav\n");
     return dawlab::test::summary("l04_robustness");
 }

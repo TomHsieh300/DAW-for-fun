@@ -1,11 +1,12 @@
-// 練習 3 解答：parallel（New York）compression。
+// Exercise 3 solution: parallel (New York) compression.
 //
-// 作法：把 dry 訊號複製一份，重壓（低 threshold、高 ratio、極快 attack），補 makeup 讓 wet 的 peak 回到 dry 的 peak，
-// 再用 mix 把兩者混在一起：y = (1 - mix)·dry + mix·wet。
-// 注意 attack 要「極快」（這裡 0.02 ms ≈ 1 個 sample，類似 FET 硬體 compressor 最快約 20 µs 的 attack）：鼓組的 peak 是幾個 sample 寬的雜訊尖峰，
-// attack 1 ms 會讓尖峰溜過去、只壓到身體，crest factor 反而上升（見範例 3 的 attack 掃描）。
-// self-check：mix = 0 → 完全等於 dry；mix = 1 → 完全等於 wet；mix = 0.5 的 crest factor 介於兩者之間。
-// 輸出：dawlab_output/l04_ex3_parallel_50.wav（mix 0.5）、l04_ex3_parallel_wet.wav（mix 1）。
+// Approach: make a copy of the dry signal, compress it heavily (low threshold, high ratio, very fast attack), apply
+// makeup so the wet peak returns to the dry peak, then blend the two with mix: y = (1 - mix)·dry + mix·wet.
+// Note that the attack must be "very fast" (here 0.02 ms ≈ 1 sample, similar to the fastest ~20 µs attack of an FET hardware
+// compressor): the drum peaks are noise spikes a few samples wide, and a 1 ms attack lets them slip through and only
+// squashes the body, so the crest factor actually rises (see the attack sweep in example 3).
+// Self-check: mix = 0 → exactly dry; mix = 1 → exactly wet; the crest factor at mix = 0.5 lies between the two.
+// Output: dawlab_output/l04_ex3_parallel_50.wav (mix 0.5), l04_ex3_parallel_wet.wav (mix 1).
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Compressor.h>
@@ -27,7 +28,7 @@ float crestFactorDb(const AudioBuffer& b) {
     return gainToDb(peakAbs(b)) - gainToDb(r);
 }
 
-// 逐 block 壓縮整段 buffer（模擬 audio callback），順便記下整段的最大 gain reduction
+// Compress the whole buffer block by block (mimicking an audio callback), also recording the largest gain reduction over the run
 AudioBuffer compressBlocks(const AudioBuffer& input, Compressor& comp, float& maxGrDb) {
     AudioBuffer out = input;
     AudioBlock whole(out);
@@ -39,7 +40,7 @@ AudioBuffer compressBlocks(const AudioBuffer& input, Compressor& comp, float& ma
     return out;
 }
 
-// y = (1 - mix)·dry + mix·wet，逐 sample 計算（dry 與 wet 必須同長度、同 channel 數）
+// y = (1 - mix)·dry + mix·wet, computed sample by sample (dry and wet must have the same length and channel count)
 AudioBuffer parallelMix(const AudioBuffer& dry, const AudioBuffer& wet, float mix) {
     mix = std::clamp(mix, 0.0f, 1.0f);
     AudioBuffer out(dry.getNumChannels(), dry.getNumSamples());
@@ -64,10 +65,10 @@ float maxAbsDifference(const AudioBuffer& a, const AudioBuffer& b) {
 } // namespace
 
 int main() {
-    std::printf("練習 3：parallel compression\n");
+    std::printf("Exercise 3: parallel compression\n");
     const AudioBuffer dry = makeDrumLoop(kSampleRate, 2, 120.0);
 
-    // 重壓：T -30 dB, 10:1, attack 0.02 ms（≈ 1 sample）, release 60 ms
+    // Heavy compression: T -30 dB, 10:1, attack 0.02 ms (≈ 1 sample), release 60 ms
     Compressor comp;
     comp.prepare(kSampleRate, kBlockSize, dry.getNumChannels());
     comp.setThresholdDb(-30.0f);
@@ -78,20 +79,20 @@ int main() {
     float maxGr = 0.0f;
     AudioBuffer wet = compressBlocks(dry, comp, maxGr);
 
-    // makeup：讓 wet 的 peak 等於 dry 的 peak
+    // Makeup: make the wet peak equal to the dry peak
     const float makeupDb = gainToDb(peakAbs(dry)) - gainToDb(peakAbs(wet));
     wet.applyGain(dbToGain(makeupDb));
-    std::printf("  wet 的 makeup = %+.2f dB（最大 GR %.2f dB）\n", makeupDb, maxGr);
+    std::printf("  wet makeup = %+.2f dB (max GR %.2f dB)\n", makeupDb, maxGr);
 
     const float crestDry = crestFactorDb(dry);
     const float crestWet = crestFactorDb(wet);
-    std::printf("  crest factor：dry %.2f dB, wet %.2f dB\n", crestDry, crestWet);
-    DAWLAB_CHECK(crestWet < crestDry - 3.0f); // 重壓後 crest 明顯下降
+    std::printf("  crest factor: dry %.2f dB, wet %.2f dB\n", crestDry, crestWet);
+    DAWLAB_CHECK(crestWet < crestDry - 3.0f); // after heavy compression the crest drops noticeably
 
     const float mixes[] = {0.0f, 0.25f, 0.5f, 0.75f, 1.0f};
     for (float mix : mixes) {
         AudioBuffer y = parallelMix(dry, wet, mix);
-        std::printf("  mix %.2f：peak %6.2f dBFS, crest %5.2f dB\n", mix, gainToDb(peakAbs(y)), crestFactorDb(y));
+        std::printf("  mix %.2f: peak %6.2f dBFS, crest %5.2f dB\n", mix, gainToDb(peakAbs(y)), crestFactorDb(y));
         DAWLAB_CHECK(!hasNanOrInf(y));
     }
 
@@ -101,11 +102,11 @@ int main() {
     const AudioBuffer half = parallelMix(dry, wet, 0.5f);
     const float crestHalf = crestFactorDb(half);
     DAWLAB_CHECK(crestHalf < crestDry && crestHalf > crestWet);
-    // 線性混合：mix 0.5 的每個 sample 都應該是 dry、wet 的平均
+    // Linear blend: every sample at mix 0.5 should be the average of dry and wet
     DAWLAB_CHECK_NEAR(half.getSample(0, 1000), 0.5f * (dry.getSample(0, 1000) + wet.getSample(0, 1000)), 1e-6);
 
     writeWav(outputPath("l04_ex3_parallel_50.wav"), half, kSampleRate);
     writeWav(outputPath("l04_ex3_parallel_wet.wav"), wet, kSampleRate);
-    std::printf("  已輸出 dawlab_output/l04_ex3_parallel_50.wav、l04_ex3_parallel_wet.wav\n");
+    std::printf("  Wrote dawlab_output/l04_ex3_parallel_50.wav, l04_ex3_parallel_wet.wav\n");
     return dawlab::test::summary("l04_ex3");
 }

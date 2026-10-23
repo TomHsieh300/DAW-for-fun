@@ -1,11 +1,12 @@
-// 練習 6（起始碼）：feedback 拓樸的 compressor，並與 feedforward 比較。
+// Exercise 6 (starter code): a feedback-topology compressor, compared with feedforward.
 //
-// 目標：
-//   1. 完成 FeedbackCompressor::processSample()：detector 看「上一個輸出 sample」而不是輸入；
-//      gain computer 用斜率 s 參數化：GR_target = max(0, s·(level_dB - T))，再經 AttackReleaseFilter 平滑；
-//   2. 驗證穩態 GR = s/(1+s)·(X - T)，也就是有效 ratio R_eff = 1 + s；
-//   3. 比較 s = 3（R_eff = 4）的 feedback 與 feedforward 4:1 的 attack 速度（t63）。
-// 完成 TODO 之後，self-check 全部通過就算完成。起始碼執行時會印出 FAIL，這是預期的。
+// Goals:
+//   1. Complete FeedbackCompressor::processSample(): the detector looks at the "previous output sample" instead of
+//      the input; the gain computer is parameterized by a slope s: GR_target = max(0, s·(level_dB - T)), then
+//      smoothed by an AttackReleaseFilter;
+//   2. Verify that the steady-state GR = s/(1+s)·(X - T), i.e. the effective ratio R_eff = 1 + s;
+//   3. Compare the attack speed (t63) of feedback with s = 3 (R_eff = 4) against feedforward 4:1.
+// You are done when all self-checks pass after you complete the TODOs. The starter code prints FAIL when run; that is expected.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Compressor.h>
@@ -47,7 +48,7 @@ public:
         //   1. levelDb = gainToDb(|lastOutput_|)
         //   2. grTarget = max(0, slope_ · (levelDb - thresholdDb_))
         //   3. gr = smoother_.process(grTarget)
-        //   4. lastOutput_ = x · dbToGain(-gr)，回傳它
+        //   4. lastOutput_ = x · dbToGain(-gr), and return it
         lastOutput_ = x;
         return lastOutput_;
     }
@@ -59,7 +60,7 @@ private:
     float lastOutput_ = 0.0f;
 };
 
-// 由輸入 / 輸出每 1 ms 視窗的 peak 反推 GR timeline
+// Recover the GR timeline from the peak ratio of the input / output over 1 ms windows
 std::vector<float> grTimeline(const AudioBuffer& in, const AudioBuffer& out) {
     const int n = in.getNumSamples();
     const int win = msToSamples(1.0, kSampleRate);
@@ -100,7 +101,7 @@ Result analyze(const AudioBuffer& in, const AudioBuffer& out) {
 } // namespace
 
 int main() {
-    std::printf("練習 6（起始碼）：feedback vs feedforward\n");
+    std::printf("Exercise 6 (starter): feedback vs feedforward\n");
     const AudioBuffer input = makeToneBursts(1000.0, kSampleRate, {-30.0f, -10.0f, -30.0f}, kSegmentSeconds, 1);
     const float overDb = 10.0f;
 
@@ -118,7 +119,8 @@ int main() {
         for (int start = 0; start < out.getNumSamples(); start += 512)
             comp.process(whole.getSubBlock(start, std::min(512, out.getNumSamples() - start)));
         ff = analyze(input, out);
-        std::printf("  feedforward R = 4：穩態 GR %.2f dB（理論 7.50），t63 = %.2f ms\n", ff.settledGr, ff.t63Ms);
+        std::printf("  feedforward R = 4: steady-state GR %.2f dB (theory 7.50), t63 = %.2f ms\n", ff.settledGr,
+                    ff.t63Ms);
         DAWLAB_CHECK_NEAR(ff.settledGr, 7.5, 0.2);
     }
 
@@ -134,10 +136,10 @@ int main() {
         for (int i = 0; i < out.getNumSamples(); ++i)
             out.setSample(0, i, fb.processSample(out.getSample(0, i)));
         const Result r = analyze(input, out);
-        // TODO: 把理論值換成 s/(1+s)·overDb
+        // TODO: replace the theoretical value with s/(1+s)·overDb
         const float expectedGr = 0.0f * overDb;
-        std::printf("  feedback s = %.2f（R_eff = %.2f）：穩態 GR %.2f dB（理論 %.2f），t63 = %.2f ms\n", s, 1.0f + s,
-                    r.settledGr, expectedGr, r.t63Ms);
+        std::printf("  feedback s = %.2f (R_eff = %.2f): steady-state GR %.2f dB (theory %.2f), t63 = %.2f ms\n", s,
+                    1.0f + s, r.settledGr, expectedGr, r.t63Ms);
         DAWLAB_CHECK_NEAR(r.settledGr, expectedGr, 0.3);
         DAWLAB_CHECK(!hasNanOrInf(out));
         if (s == 3.0f) {

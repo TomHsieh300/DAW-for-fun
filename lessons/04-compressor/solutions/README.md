@@ -1,224 +1,226 @@
-# 第 04 章 解答與解說
+# Chapter 04 Solutions and Explanations
 
-題目在 [`../exercises/README.md`](../exercises/README.md)。每一支解答程式都有 self-check，`.\scripts\build.ps1 -Only 04-compressor` 會以 ctest（label `solution`）執行它們；手動執行時先 `cd` 到 build 目錄，例如 `.\bin\Debug\l04_ex3_solution.exe`。下面引用的數字都是解答程式實際印出的結果（48 kHz、block size 512）。
+**English** | [繁體中文](README.zh-TW.md)
 
-| 題目 | 解答檔 | target |
+The questions are in [`../exercises/README.md`](../exercises/README.md). Every solution program has a self-check; `.\scripts\build.ps1 -Only 04-compressor` runs them through ctest (label `solution`); to run one by hand, `cd` to the build directory first, e.g. `.\bin\Debug\l04_ex3_solution.exe`. The numbers quoted below are the results actually printed by the solution programs (48 kHz, block size 512).
+
+| Exercise | Solution file | target |
 |---|---|---|
-| 練習 1 觀念題 | （本文） | — |
-| 練習 2 計算題 | `ex2_calculations.cpp`（驗算手算答案） | `l04_ex2_solution` |
-| 練習 3 parallel compression | `ex3_parallel.cpp` | `l04_ex3_solution` |
-| 練習 4 sidechain HPF | `ex4_sidechain_hpf.cpp` | `l04_ex4_solution` |
-| 練習 5 auto makeup | `ex5_auto_makeup.cpp` | `l04_ex5_solution` |
-| 練習 6 feedback 拓樸 | `ex6_feedback.cpp` | `l04_ex6_solution` |
-| 練習 7 RMS 視窗 vs pumping | `ex7_rms_window.cpp` | `l04_ex7_solution` |
+| Exercise 1 conceptual | (this text) | — |
+| Exercise 2 calculation | `ex2_calculations.cpp` (checks the hand-calculated answers) | `l04_ex2_solution` |
+| Exercise 3 parallel compression | `ex3_parallel.cpp` | `l04_ex3_solution` |
+| Exercise 4 sidechain HPF | `ex4_sidechain_hpf.cpp` | `l04_ex4_solution` |
+| Exercise 5 auto makeup | `ex5_auto_makeup.cpp` | `l04_ex5_solution` |
+| Exercise 6 feedback topology | `ex6_feedback.cpp` | `l04_ex6_solution` |
+| Exercise 7 RMS window vs pumping | `ex7_rms_window.cpp` | `l04_ex7_solution` |
 
 ---
 
-## 練習 1：方塊圖與設計選擇
+## Exercise 1: block diagram and design choices
 
-**1. 四個方塊各負責什麼？**
+**1. What does each of the four blocks do?**
 
-- **Detector**：把訊號變成「現在多大聲」的 level。Peak 模式直接取 $\lvert x \rvert$，RMS 模式取 $x^2$ 的移動平均再開根號。
-- **Gain computer**：依靜態曲線（threshold、ratio、knee）把 level（dB）換成「應該壓幾 dB」的 GR 目標值。
-- **Attack / release 平滑**：決定 GR 以多快的速度趨近目標——上升（壓下去）用 attack 時間常數、下降（放開）用 release 時間常數。
-- **Makeup gain**：壓完之後整體變小聲，用固定增益補回來。
+- **Detector**: turns the signal into a "how loud is it right now" level. Peak mode takes $\lvert x \rvert$ directly; RMS mode takes the moving average of $x^2$ and then the square root.
+- **Gain computer**: uses the static curve (threshold, ratio, knee) to convert the level (dB) into a GR target of "how many dB should be squashed".
+- **Attack / release smoothing**: decides how fast the GR approaches its target: the attack time constant when it rises (clamping down) and the release time constant when it falls (letting go).
+- **Makeup gain**: after compression the whole signal is quieter, and a fixed gain brings it back.
 
-**沒有狀態的純函式是 gain computer**：同樣的輸入 dB 永遠得到同樣的輸出 dB，所以 `Compressor::computeOutputDb()` 是 `static`，UI 可以直接拿來畫 transfer curve。（Peak 模式的 detector 本身也沒有狀態；RMS 模式的 detector 有。）
+**The pure function with no state is the gain computer**: the same input dB always gives the same output dB, which is why `Compressor::computeOutputDb()` is `static` and a UI can use it directly to draw the transfer curve. (The Peak-mode detector itself is also stateless; the RMS-mode detector has state.)
 
-**2. 為什麼在 log domain 平滑？**
+**2. Why smooth in the log domain?**
 
-- 在 log domain，平滑的對象是 GR 本身（dB），所以 attack / release 的時間曲線跟 threshold、ratio、訊號超過多少都無關：attack 10 ms 就是 GR 在 10 ms 走完 63.2%。在 linear domain 先平滑 envelope，再經過非線性的靜態曲線，GR 的時間曲線形狀會隨訊號大小而變。
-- Release 形狀：linear domain 的 envelope 指數衰減，換成 dB 是**等速**下降（每 $\tau$ 掉 8.686 dB），GR 跟著直線掉、碰到 threshold 就突然停住（範例 2 的 B4：release 150 ms 後 GR 已經是 0）。Log domain 的 GR 本身指數衰減，越接近 0 越慢，尾巴拖長、比較平順自然（B1：150 ms 時還有 1.86 dB、400 ms 時 0.15 dB）。
+- In the log domain, what is smoothed is the GR itself (dB), so the time curve of attack / release is independent of the threshold, the ratio and how far the signal exceeds the threshold: an attack of 10 ms means the GR covers 63.2% of its travel in 10 ms. If you first smooth the envelope in the linear domain and then pass it through the nonlinear static curve, the shape of the GR's time curve changes with the signal level.
+- Shape of the release: the linear-domain envelope decays exponentially, which in dB is a **constant-rate** fall (8.686 dB per $\tau$), so the GR falls in a straight line and stops abruptly when it reaches the threshold (B4 in example 2: after 150 ms of release the GR is already 0). The log-domain GR itself decays exponentially, falling more slowly the closer it gets to 0, with a long, smoother, more natural tail (B1: 1.86 dB left at 150 ms, 0.15 dB at 400 ms).
 
-**3. Branching 為什麼低估正弦波的 peak？Decoupled 怎麼解決？**
+**3. Why does branching underestimate the peak of a sine wave? How does decoupled fix it?**
 
-Peak detector 給的是瞬間 $\lvert x[n] \rvert$。正弦波每半個週期就經過 0，瞬間 level 掉到 -100 dB，GR 目標值跟著掉到 0。Branching 平滑在這些時刻會切換成 release 係數往下拉，一個週期內「往上拉一點、往下拉一點」，穩態平衡點落在靜態值之下（範例 2 的 B2：6.47 dB，靜態值 7.50 dB）。
+The peak detector delivers the instantaneous $\lvert x[n] \rvert$. A sine wave passes through 0 every half cycle, the instantaneous level drops to -100 dB, and the GR target drops to 0 with it. Branching smoothing switches to the release coefficient at those moments and pulls the state down, so within one cycle it is "pulled up a bit, pulled down a bit", and the steady-state balance point lands below the static value (B2 in example 2: 6.47 dB against the static value of 7.50 dB).
 
-Decoupled 先過一個「瞬間上升、以 release 衰減」的 peak-hold：$y_1 = \max(x, \alpha_R y_1 + (1-\alpha_R)x)$。在兩個波峰之間（0.5 ms）peak-hold 只以 100 ms 的 release 衰減一點點，等於把 ripple 填平，再交給 attack 濾波器，所以穩態 GR 幾乎精確等於靜態值（B1：7.49 dB）。
+Decoupled first passes through a peak-hold that "rises instantly and decays with the release": $y_1 = \max(x, \alpha_R y_1 + (1-\alpha_R)x)$. Between two crests (0.5 ms) the peak-hold decays only slightly with the 100 ms release, which fills in the ripple, and then hands the result to the attack filter, so the steady-state GR equals the static value almost exactly (B1: 7.49 dB).
 
-**4. 為什麼 stereo link 預設要開？**
+**4. Why is stereo link on by default?**
 
-不 link 時兩個 channel 各自壓，比較大聲的那一邊壓得多，左右音量差縮小，聲像就往小聲那邊漂，而且會隨音樂動態來回飄動。範例 4：L -6 dBFS、R -30 dBFS，unlinked 時左右差從 24 dB 縮成 13.52 dB；linked 時兩邊同樣壓 10.48 dB，左右差維持 24.00 dB。
+Without link the two channels are compressed separately; the louder side is squashed more, the level difference between left and right shrinks, and the image drifts toward the quieter side, wandering back and forth with the dynamics of the music. Example 4: L -6 dBFS, R -30 dBFS; unlinked, the left-right difference shrinks from 24 dB to 13.52 dB; linked, both sides are squashed by the same 10.48 dB and the left-right difference stays at 24.00 dB.
 
-會想關掉的情況：左右聲道其實是兩個不相干的訊號（例如 dual-mono 的兩支麥克風、左右各一把吉他），或是故意要讓立體聲「變寬 / 變動」的創意用法。
+Cases where you would want to turn it off: when the left and right channels are really two unrelated signals (for example two dual-mono microphones, or one guitar on each side), or for creative uses that deliberately make the stereo image "widen / move".
 
-**5. 為什麼 attack 1 ms 抓不住鼓的尖峰？**
+**5. Why can an attack of 1 ms not catch the peaks of a drum?**
 
-One-pole 的 GR 在第 $n$ 個 sample 只走了 $1 - \alpha^n$。attack 1 ms @ 48 kHz 時 $\alpha = e^{-1/48}$，第一個 sample 只到目標的 $1 - e^{-1/48} = 2.06\%$。鼓組的 peak 是 snare 雜訊、hi-hat 這種只有幾個 sample 寬的尖峰，GR 還沒升起來尖峰就過去了（範例 3：attack 1 ms 時最大 GR 12.53 dB，但 peak 只降 5.48 dB）。
+At the $n$-th sample a one-pole GR has traveled only $1 - \alpha^n$. With attack 1 ms @ 48 kHz, $\alpha = e^{-1/48}$, and the first sample reaches only $1 - e^{-1/48} = 2.06\%$ of the target. The peaks of a drum kit are the snare noise and hi-hat spikes only a few samples wide, and the spike is gone before the GR has risen (example 3: with attack 1 ms the maximum GR is 12.53 dB, but the peak drops only 5.48 dB).
 
-要「保證」抓住，需要 **lookahead**：把主訊號延遲幾 ms，讓 detector 先看到未來的尖峰、提前把 gain 降好。代價是延遲（latency）。這正是第 05 章 limiter 的做法。
+To "guarantee" catching them you need **lookahead**: delay the main signal by a few ms so the detector sees the upcoming peak first and lowers the gain in advance. The price is latency. This is exactly what the chapter 05 limiter does.
 
 ---
 
-## 練習 2：靜態曲線與時間常數
+## Exercise 2: static curves and time constants
 
-`l04_ex2_solution` 會把以下每一個答案和 `computeOutputDb()`、`attackReleaseCoefficient()` 對答案（17 checks 全部 PASS）。
+`l04_ex2_solution` checks every answer below against `computeOutputDb()` and `attackReleaseCoefficient()` (all 17 checks PASS).
 
-**1. $T = -24$、$R = 3$、hard knee**：threshold 以上 $y = T + (x - T)/R$。
+**1. $T = -24$, $R = 3$, hard knee**: above the threshold $y = T + (x - T)/R$.
 
-| 輸入 | 輸出 | GR |
+| Input | Output | GR |
 |---|---|---|
-| -30 | -30（在 threshold 以下，不動） | 0 |
-| -24 | -24（剛好在 threshold） | 0 |
+| -30 | -30 (below the threshold, untouched) | 0 |
+| -24 | -24 (exactly at the threshold) | 0 |
 | -12 | $-24 + 12/3 = -20$ | 8 |
 | 0 | $-24 + 24/3 = -16$ | 16 |
 
-**2. Soft knee $W = 12$**：knee 範圍是 $T \pm W/2 = -30 \ldots -18$ dB。knee 內 $y = x + \frac{(1/R - 1)(x - T + W/2)^2}{2W}$，其中 $1/R - 1 = -2/3$、$2W = 24$：
+**2. Soft knee $W = 12$**: the knee covers $T \pm W/2 = -30 \ldots -18$ dB. Inside the knee $y = x + \frac{(1/R - 1)(x - T + W/2)^2}{2W}$, where $1/R - 1 = -2/3$ and $2W = 24$:
 
-- $x = -24$：$x - T + W/2 = 6$，$y = -24 + (-2/3)(36/24) = -24 - 1 = -25$ dB（threshold 處已有 1 dB GR；也可以用 $y(T) = T + (1/R - 1)W/8 = -24 - 1$ 驗算）。
-- $x = -20$：$x - T + W/2 = 10$，$y = -20 + (-2/3)(100/24) = -20 - 2.7778 = -22.7778$ dB（hard knee 是 -22.667，soft knee 壓得多一點，因為在 knee 裡斜率從 1 慢慢變成 1/3，平均起來比「一刀切」多壓一些）。
+- $x = -24$: $x - T + W/2 = 6$, $y = -24 + (-2/3)(36/24) = -24 - 1 = -25$ dB (there is already 1 dB of GR at the threshold; you can also check with $y(T) = T + (1/R - 1)W/8 = -24 - 1$).
+- $x = -20$: $x - T + W/2 = 10$, $y = -20 + (-2/3)(100/24) = -20 - 2.7778 = -22.7778$ dB (the hard knee gives -22.667; the soft knee compresses a bit more because inside the knee the slope changes gradually from 1 to 1/3, and on average that compresses somewhat more than a "single cut").
 
-**3. 上緣 $x = -18$**：$x - T + W/2 = 12 = W$，二次式 $y = -18 + (-2/3)(144/24) = -18 - 4 = -22$；hard knee 直線 $y = -24 + 6/3 = -22$。兩者相等。一般式在本章 README 2.3 節：上緣值 $= T + \frac{W}{2R}$，這裡 $-24 + 12/6 = -22$。解答程式也用數值微分確認 knee 內側的斜率 ≈ 0.334 ≈ 1/R。
+**3. Upper edge $x = -18$**: $x - T + W/2 = 12 = W$, the quadratic gives $y = -18 + (-2/3)(144/24) = -18 - 4 = -22$; the hard-knee line gives $y = -24 + 6/3 = -22$. They are equal. The general form is in section 2.3 of this chapter's README: the value at the upper edge $= T + \frac{W}{2R}$, here $-24 + 12/6 = -22$. The solution program also uses a numerical derivative to confirm that the slope just inside the knee ≈ 0.334 ≈ 1/R.
 
-**4. 係數**（$\alpha = e^{-1/(\tau f_s)}$）：
+**4. Coefficients** ($\alpha = e^{-1/(\tau f_s)}$):
 
-- $\tau_A f_s = 0.005 \times 44100 = 220.5$，$\alpha_A = e^{-1/220.5} = 0.995475$
-- $\tau_R f_s = 0.2 \times 44100 = 8820$，$\alpha_R = e^{-1/8820} = 0.999887$
+- $\tau_A f_s = 0.005 \times 44100 = 220.5$, $\alpha_A = e^{-1/220.5} = 0.995475$
+- $\tau_R f_s = 0.2 \times 44100 = 8820$, $\alpha_R = e^{-1/8820} = 0.999887$
 
-**5. 到達比例的時間** $t_p = -\tau \ln(1 - p)$：
+**5. Time to reach a fraction** $t_p = -\tau \ln(1 - p)$:
 
-- attack 到 90%：$5 \ln 10 = 11.51$ ms；到 99%：$5 \ln 100 = 23.03$ ms
-- release 衰減到 10%（= 走完 90%）：$200 \ln 10 = 460.5$ ms
+- attack to 90%: $5 \ln 10 = 11.51$ ms; to 99%: $5 \ln 100 = 23.03$ ms
+- release decaying to 10% (= 90% of the way): $200 \ln 10 = 460.5$ ms
 
-（解答程式用 step response 模擬量到 11.52、23.04、460.5 ms，差的 0.01 ms 是「取第一個超過的 sample」造成的量化。）
+(The solution program simulates the step response and measures 11.52, 23.04 and 460.5 ms; the 0.01 ms discrepancy comes from the quantization of "taking the first sample that exceeds the value".)
 
-**6. 「10 ms 到 90%」換算**：要 $\tau \ln 10 = 10$ ms，所以 $\tau = 10 / \ln 10 = 4.343$ ms，`setAttackMs(4.343f)`。模擬驗證：到 90% 的時間 10.02 ms。一般規則：**90% 定義的數字除以 2.303 就是本章的 τ**。
-
----
-
-## 練習 3：Parallel（New York）compression
-
-解答：`ex3_parallel.cpp`。
-
-關鍵思路：
-
-1. `compressBlocks()`：複製一份 buffer，用 `AudioBlock::getSubBlock()` 逐 512 個 sample 呼叫 `process()`，每個 block 之後讀一次 `getGainReductionDb()` 取最大值——這就是 GR meter 在 UI 上做的事。
-2. Wet 用「重壓」設定：$T = -30$、10:1、knee 3 dB、attack **0.02 ms**、release 60 ms。makeup = dry peak dB − wet peak dB（實測 +20.64 dB，最大 GR 24.37 dB）。Attack 要極快，理由見範例 3 的掃描：attack ≥ 1 ms 時尖峰溜過去，wet 的 crest 反而變大，parallel 就失去意義。
-3. `parallelMix()`：先 `std::clamp(mix, 0, 1)`，再逐 sample $y = (1 - \text{mix})\,d + \text{mix}\,w$。
-
-實測：
-
-```
-crest factor：dry 14.51 dB, wet 11.03 dB
-mix 0.00：peak  -2.92 dBFS, crest 14.51 dB
-mix 0.25：peak  -3.67 dBFS, crest 13.04 dB
-mix 0.50：peak  -4.50 dBFS, crest 11.33 dB
-mix 0.75：peak  -4.67 dBFS, crest 10.22 dB
-mix 1.00：peak  -2.92 dBFS, crest 11.03 dB
-```
-
-觀察：
-
-- mix 0.5 的 crest（11.33 dB）介於 dry 與 wet 之間，self-check 通過。
-- **mix 0.75 的 crest（10.22 dB）比純 wet 還低**，peak 也比 dry、wet 都低（-4.67 dBFS）。原因是 dry 與 wet 的尖峰位置不完全對齊：wet 的 peak 被壓扁、出現在別的地方，混合後兩邊的 peak 不會同時出現，而 RMS（身體）兩邊都有，加起來就「peak 低、能量高」。這就是 parallel compression 好用的原因——它不只是 dry 和 wet 的內插。
-- 聽感（`l04_ex3_parallel_50.wav` 對 `l04_ex3_parallel_wet.wav`）：wet 很扁、房間感與尾巴被拉起來；50% mix 保留了 dry 的鼓頭衝擊，同時有 wet 的厚度。
+**6. Converting "10 ms to 90%"**: we need $\tau \ln 10 = 10$ ms, so $\tau = 10 / \ln 10 = 4.343$ ms, i.e. `setAttackMs(4.343f)`. Simulation check: the time to 90% is 10.02 ms. General rule: **a number given under the 90% definition, divided by 2.303, is this chapter's τ**.
 
 ---
 
-## 練習 4：Sidechain HPF
+## Exercise 3: Parallel (New York) compression
 
-解答：`ex4_sidechain_hpf.cpp`。
+Solution: `ex3_parallel.cpp`.
 
-**HPF**：$lp[n] = lp[n-1] + b\,(x[n] - lp[n-1])$、$b = 1 - e^{-2\pi f_c / f_s}$、$hp = x - lp$。這是一階 lowpass 的「互補」，所以在 $f_c$ 附近是 -3 dB、低於 $f_c$ 以每 octave 6 dB 衰減。實測（用 `measureGainDb`）：50 Hz -18.36 dB、400 Hz -3.24 dB、3 kHz -0.30 dB。（400 Hz 處是 -3.24 dB 而不是 -3.01 dB。lowpass 本身在 $f_c$ 是精確的 -3.01 dB（$\lvert H_{lp}\rvert = 0.7074$），偏差來自 $hp = x - lp$ 這個互補結構：令 $a = 1 - b$，lowpass 是 $H_{lp}(z) = \dfrac{b}{1 - a z^{-1}}$，所以
+Key ideas:
+
+1. `compressBlocks()`: copy the buffer, call `process()` 512 samples at a time with `AudioBlock::getSubBlock()`, and read `getGainReductionDb()` once after each block to take the maximum, which is exactly what a GR meter does in a UI.
+2. The wet signal uses a "heavy compression" setting: $T = -30$, 10:1, knee 3 dB, attack **0.02 ms**, release 60 ms. Makeup = dry peak dB − wet peak dB (measured +20.64 dB, maximum GR 24.37 dB). The attack must be very fast, for the reason in the example 3 sweep: with attack ≥ 1 ms the peaks slip through, the wet crest actually grows, and parallel compression loses its point.
+3. `parallelMix()`: first `std::clamp(mix, 0, 1)`, then sample by sample $y = (1 - \text{mix})\,d + \text{mix}\,w$.
+
+Measured:
+
+```
+crest factor: dry 14.51 dB, wet 11.03 dB
+mix 0.00: peak  -2.92 dBFS, crest 14.51 dB
+mix 0.25: peak  -3.67 dBFS, crest 13.04 dB
+mix 0.50: peak  -4.50 dBFS, crest 11.33 dB
+mix 0.75: peak  -4.67 dBFS, crest 10.22 dB
+mix 1.00: peak  -2.92 dBFS, crest 11.03 dB
+```
+
+Observations:
+
+- The crest at mix 0.5 (11.33 dB) lies between dry and wet, and the self-check passes.
+- **The crest at mix 0.75 (10.22 dB) is even lower than pure wet**, and the peak is lower than both dry and wet (-4.67 dBFS). The reason is that the peaks of dry and wet are not perfectly aligned: the wet peaks are flattened and appear in other places, so after mixing the peaks of the two sides do not occur at the same time, while the RMS (the body) is present on both sides and adds up, giving "low peak, high energy". This is why parallel compression is so useful: it is not just an interpolation between dry and wet.
+- What it sounds like (`l04_ex3_parallel_50.wav` versus `l04_ex3_parallel_wet.wav`): the wet signal is very flat, with the room sound and tails pulled up; the 50% mix keeps the impact of the dry drum heads while also having the thickness of the wet signal.
+
+---
+
+## Exercise 4: Sidechain HPF
+
+Solution: `ex4_sidechain_hpf.cpp`.
+
+**The HPF**: $lp[n] = lp[n-1] + b\,(x[n] - lp[n-1])$, $b = 1 - e^{-2\pi f_c / f_s}$, $hp = x - lp$. This is the "complement" of a first-order lowpass, so it is -3 dB around $f_c$ and attenuates 6 dB per octave below $f_c$. Measured (with `measureGainDb`): 50 Hz -18.36 dB, 400 Hz -3.24 dB, 3 kHz -0.30 dB. (At 400 Hz it is -3.24 dB rather than -3.01 dB. The lowpass itself is exactly -3.01 dB at $f_c$ ($\lvert H_{lp}\rvert = 0.7074$); the deviation comes from the complementary structure $hp = x - lp$: let $a = 1 - b$, then the lowpass is $H_{lp}(z) = \dfrac{b}{1 - a z^{-1}}$, so
 $$H_{hp}(z) = 1 - H_{lp}(z) = \frac{a\,(1 - z^{-1})}{1 - a z^{-1}}$$
-它在高頻（$z = -1$，Nyquist）的增益只到 $2a/(1+a) \approx 0.974$（約 -0.23 dB），而不是類比一階 HPF 的 1，相位也和類比版不同，所以整條 HPF 曲線略低一點：$f_c$ 處 -3.24 dB、3 kHz 處 -0.30 dB（類比一階 HPF 在 3 kHz 只會是 -0.08 dB）。對 sidechain 用途完全足夠。）
+Its gain at high frequency ($z = -1$, Nyquist) reaches only $2a/(1+a) \approx 0.974$ (about -0.23 dB) rather than the 1 of an analog first-order HPF, and its phase also differs from the analog version, so the whole HPF curve sits slightly lower: -3.24 dB at $f_c$ and -0.30 dB at 3 kHz (an analog first-order HPF would be only -0.08 dB at 3 kHz). This is entirely adequate for a sidechain.)
 
-**流程**：sidechain buffer 在迴圈外配置一次（模擬 `prepare()`），每個 block：`sc.copyFrom(block)` → `hpf->process(sc)` → `comp.process(block, sc)`。gain 永遠套在**原始**訊號上，HPF 只影響 detector「聽到什麼」。
+**Flow**: the sidechain buffer is allocated once outside the loop (mimicking `prepare()`), and for each block: `sc.copyFrom(block)` → `hpf->process(sc)` → `comp.process(block, sc)`. The gain is always applied to the **original** signal; the HPF only affects "what the detector hears".
 
-**數字**：輸入 50 Hz @ -6 dBFS + 3 kHz @ -24 dBFS，峰值約 $20\log_{10}(0.501 + 0.063) = -4.97$ dBFS。$T = -20$、4:1、hard knee：
+**Numbers**: the input is 50 Hz @ -6 dBFS + 3 kHz @ -24 dBFS with a peak of about $20\log_{10}(0.501 + 0.063) = -4.97$ dBFS. $T = -20$, 4:1, hard knee:
 
-- 沒有 HPF：靜態估計 GR = $(−4.97 + 20) \times 0.75 = 11.27$ dB；實測 GR 11.23 dB，3 kHz 成分被拖下去 **11.08 dB**。小聲的高頻被大聲的低頻「綁架」了。
-- HPF 400 Hz：sidechain 裡 50 Hz 掉了約 18 dB，剩下 -24 dBFS 左右，加上 3 kHz 也只稍微超過 threshold，GR 只剩 **1.21 dB**，3 kHz 只少 1.19 dB。
+- Without the HPF: the static estimate is GR = $(−4.97 + 20) \times 0.75 = 11.27$ dB; the measured GR is 11.23 dB, and the 3 kHz component is dragged down by **11.08 dB**. The quiet highs are "hijacked" by the loud lows.
+- HPF at 400 Hz: the 50 Hz drops by about 18 dB in the sidechain, leaving around -24 dBFS, and with the 3 kHz only slightly over the threshold the GR drops to just **1.21 dB**, and the 3 kHz is reduced by only 1.19 dB.
 
-聽感：`l04_ex4_no_hpf.wav` 的高音隨著 50 Hz 的每個波峰被「調變」（50 Hz 的 GR ripple 也會產生失真）；`l04_ex4_with_hpf.wav` 高音穩定。實務上 sidechain HPF 常設 60–150 Hz（讓 kick、bass 不要主導 bus compressor），本題用 400 Hz 是為了讓差異明顯。
+What it sounds like: in `l04_ex4_no_hpf.wav` the highs are "modulated" by every crest of the 50 Hz (the GR ripple at 50 Hz also produces distortion); in `l04_ex4_with_hpf.wav` the highs are stable. In practice a sidechain HPF is often set at 60–150 Hz (so that the kick and bass do not dominate a bus compressor); this exercise uses 400 Hz to make the difference obvious.
 
 ---
 
-## 練習 5：Auto makeup gain
+## Exercise 5: Auto makeup gain
 
-解答：`ex5_auto_makeup.cpp`。
+Solution: `ex5_auto_makeup.cpp`.
 
 $$
 \text{makeup} = -\,y(0) = -\,\text{computeOutputDb}(0, T, R, W)
 $$
 
-| 設定 | 算式 | makeup |
+| Setting | Calculation | makeup |
 |---|---|---|
-| $T=-20$、4:1、hard | $-(-20 + 20/4)$ | 15 dB |
-| $T=-20$、4:1、$W=10$ | 0 dBFS 在 knee（-25..-15）之外，同上 | 15 dB |
-| $T=-30$、2:1、hard | $-(-30 + 30/2)$ | 15 dB |
-| $T=-10$、10:1、hard | $-(-10 + 10/10)$ | 9 dB |
-| $T=-6$、4:1、$W=20$（「想一想」） | knee 是 -16..+4，0 dBFS 在 knee 內：$y = 0 + (-0.75)(0 + 6 + 10)^2/40 = -4.8$ | **4.8 dB** |
+| $T=-20$, 4:1, hard | $-(-20 + 20/4)$ | 15 dB |
+| $T=-20$, 4:1, $W=10$ | 0 dBFS is outside the knee (-25..-15), same as above | 15 dB |
+| $T=-30$, 2:1, hard | $-(-30 + 30/2)$ | 15 dB |
+| $T=-10$, 10:1, hard | $-(-10 + 10/10)$ | 9 dB |
+| $T=-6$, 4:1, $W=20$ ("think about it") | the knee is -16..+4, so 0 dBFS is inside the knee: $y = 0 + (-0.75)(0 + 6 + 10)^2/40 = -4.8$ | **4.8 dB** |
 
-最後一列是陷阱：如果直接用 hard knee 公式 $-(−6 + 6/4) = 4.5$ dB 會差 0.3 dB，因為 soft knee 在 threshold 以上一點點的地方比 hard knee 多壓。
+The last row is a trap: using the hard-knee formula $-(−6 + 6/4) = 4.5$ dB would be off by 0.3 dB, because the soft knee compresses more than the hard knee just above the threshold.
 
-實跑（attack 1 ms、release 100 ms、1 kHz 正弦）：0 dBFS 進 → **0.01 dBFS** 出；-6 dBFS 進 → **-1.49 dBFS** 出（預期 $-20 + 14/4 + 15 = -1.5$）；不加 makeup 時 0 dBFS 進 → -14.99 dBFS。0.01 dB 的差異來自 decoupled peak-hold 在兩個波峰之間的微小衰減（同範例 4 的 10.48 對 10.5）。
+Real run (attack 1 ms, release 100 ms, 1 kHz sine): 0 dBFS in → **0.01 dBFS** out; -6 dBFS in → **-1.49 dBFS** out (expected $-20 + 14/4 + 15 = -1.5$); without makeup, 0 dBFS in → -14.99 dBFS. The 0.01 dB difference comes from the tiny decay of decoupled's peak-hold between two crests (the same as 10.48 versus 10.5 in example 4).
 
-為什麼很多 plugin 只補一半（7.5 dB）？auto makeup 假設訊號一直頂在 0 dBFS，但真實素材的 peak 通常在 -6 ~ -12 dBFS，那裡的 GR 比 0 dBFS 小，補滿 15 dB 會讓輸出明顯比輸入大聲，A/B 比較時會被「比較大聲就比較好聽」騙。比較嚴謹的作法是依實際素材的平均 GR 補，或用 loudness matching（第 11 章 `LoudnessMeter`）。
+Why do many plugins make up only half (7.5 dB)? Auto makeup assumes the signal always sits at 0 dBFS, but the peaks of real material are usually at -6 to -12 dBFS, where the GR is smaller than at 0 dBFS, so a full 15 dB of makeup makes the output noticeably louder than the input, and in an A/B comparison you get fooled by "louder sounds better". A more rigorous approach is to make up according to the average GR of the actual material, or to use loudness matching (the chapter 11 `LoudnessMeter`).
 
 ---
 
-## 練習 6：Feedback 拓樸
+## Exercise 6: Feedback topology
 
-解答：`ex6_feedback.cpp`。
+Solution: `ex6_feedback.cpp`.
 
-**實作重點**：`FeedbackCompressor` 保存上一個輸出 sample `lastOutput_`；每個 sample：
+**Implementation key**: `FeedbackCompressor` keeps the previous output sample `lastOutput_`; for each sample:
 
 ```cpp
-const float levelDb  = gainToDb(std::abs(lastOutput_));                 // 看輸出，不看輸入
-const float grTarget = std::max(0.0f, slope_ * (levelDb - thresholdDb_)); // 斜率 s 的 hard knee
-const float gr       = smoother_.process(grTarget);                      // AttackReleaseFilter（decoupled）
+const float levelDb  = gainToDb(std::abs(lastOutput_));                 // look at the output, not the input
+const float grTarget = std::max(0.0f, slope_ * (levelDb - thresholdDb_)); // hard knee with slope s
+const float gr       = smoother_.process(grTarget);                      // AttackReleaseFilter (decoupled)
 lastOutput_ = x * dbToGain(-gr);
 ```
 
-一個 sample 的延遲在 48 kHz 下無關緊要，而且這正是「detector 只能看到已經算出來的輸出」的本質。
+A one-sample delay is irrelevant at 48 kHz, and it is precisely the nature of "the detector can only see the output that has already been computed".
 
-**推導**（README 2.6 節）：穩態時 $Y = X - \text{GR}$、$\text{GR} = s(Y - T)$ ⇒ $\text{GR} = \frac{s}{1+s}(X - T)$，$R_{\text{eff}} = 1 + s$。
+**Derivation** (README section 2.6): at steady state $Y = X - \text{GR}$ and $\text{GR} = s(Y - T)$ ⇒ $\text{GR} = \frac{s}{1+s}(X - T)$, $R_{\text{eff}} = 1 + s$.
 
-**實測**（tone burst -30 → -10 → -30 dBFS，$X - T = 10$ dB，attack 10 ms、release 100 ms）：
+**Measured** (tone bursts -30 → -10 → -30 dBFS, $X - T = 10$ dB, attack 10 ms, release 100 ms):
 
 ```
-feedforward R = 4（s = 0.75）：穩態 GR 7.49 dB（理論 7.50），t63 = 10.77 ms
-feedback s = 0.75（R_eff = 1.75）：穩態 GR 4.28 dB（理論 4.29），t63 = 5.27 ms
-feedback s = 3.00（R_eff = 4.00）：穩態 GR 7.50 dB（理論 7.50），t63 = 2.79 ms
-feedback s = 9.00（R_eff = 10.00）：穩態 GR 9.00 dB（理論 9.00），t63 = 1.79 ms
+feedforward R = 4 (s = 0.75): steady-state GR 7.49 dB (theory 7.50), t63 = 10.77 ms
+feedback s = 0.75 (R_eff = 1.75): steady-state GR 4.28 dB (theory s/(1+s)·10 = 4.29), t63 = 5.27 ms
+feedback s = 3.00 (R_eff = 4.00): steady-state GR 7.50 dB (theory s/(1+s)·10 = 7.50), t63 = 2.79 ms
+feedback s = 9.00 (R_eff = 10.00): steady-state GR 9.00 dB (theory s/(1+s)·10 = 9.00), t63 = 1.79 ms
 ```
 
-解讀：
+Interpretation:
 
-- 把 feedforward 的 4:1 斜率（0.75）直接搬到 feedback，只得到 1.75:1（4.28 dB）。要 feedback 做到 4:1 必須 $s = 3$。
-- **同樣是 4:1、同樣的 attack 10 ms**，feedback 的 t63 只有 2.79 ms，比 feedforward 的 10.77 ms 快很多。原因：attack 剛開始時輸出還沒被壓，detector 看到超過 10 dB，GR 目標值是 $3 \times 10 = 30$ dB（遠大於穩態的 7.5），平滑器朝 30 dB 衝，很快就越過 7.5 dB 的 63%；隨著輸出被壓下來，目標值跟著降低，最後收斂在 7.5。所以 feedback 的 attack 是 **program-dependent**：超過越多，attack 前段越快。
-- $s$ 越大越快（1.79 ms），也越接近 limiter 的行為；但 $R_{\text{eff}} = 1 + s$ 永遠有限，feedback 做不出 ∞:1，也無法 lookahead。
-- 穩定性：$s > 1$ 時迴路增益大於 1，如果 attack = 0（GR 每個 sample 立即跟著目標跳），GR 會在「壓太多 → 輸出變小 → 放開 → 輸出變大」之間來回震盪。attack 平滑等於在迴路裡加了 lowpass，所以穩定。
+- Moving the feedforward 4:1 slope (0.75) straight to feedback gives only 1.75:1 (4.28 dB). To get 4:1 from feedback you must use $s = 3$.
+- **With the same 4:1 and the same attack of 10 ms**, the feedback t63 is only 2.79 ms, much faster than the feedforward 10.77 ms. The reason: when the attack has just begun the output has not yet been squashed, the detector sees 10 dB over, and the GR target is $3 \times 10 = 30$ dB (far larger than the steady-state 7.5); the smoother rushes toward 30 dB and quickly passes 63% of 7.5 dB; as the output gets squashed, the target drops with it, finally converging at 7.5. So the feedback attack is **program-dependent**: the more it goes over, the faster the early part of the attack.
+- The larger $s$ is, the faster it gets (1.79 ms) and the closer it gets to limiter behavior; but $R_{\text{eff}} = 1 + s$ is always finite, so feedback cannot make ∞:1, nor can it do lookahead.
+- Stability: when $s > 1$ the loop gain is greater than 1, and if attack = 0 (the GR jumps to the target immediately at every sample), the GR oscillates back and forth between "squashed too much → output gets smaller → let go → output gets larger". Attack smoothing adds a lowpass to the loop, so it is stable.
 
-聽感：`l04_ex6_feedback.wav` 的第二段開頭 overshoot 持續的時間明顯比範例 2 的 `l04_step_out.wav` 短（GR 在約 3 ms 內就壓下 63%，feedforward 要約 11 ms），「頭」比較快被收住。
+What it sounds like: at the start of the second segment of `l04_ex6_feedback.wav`, the overshoot lasts clearly shorter than in example 2's `l04_step_out.wav` (the GR squashes 63% within about 3 ms, versus about 11 ms for feedforward), so the "head" is reined in faster.
 
 ---
 
-## 練習 7：RMS 視窗長度 vs pumping
+## Exercise 7: RMS window length vs pumping
 
-解答：`ex7_rms_window.cpp`。
+Solution: `ex7_rms_window.cpp`.
 
-**實作重點**：`setDetectorMode(DetectorMode::Rms)` + `setRmsWindowMs(w)`；跳過前 0.5 秒暖機（長視窗的 RMS detector 需要時間「填滿」，否則 min GR 會被初始的 0 污染）；每個 block 後讀 `getGainReductionDb()` 更新 max / min。
+**Implementation key**: `setDetectorMode(DetectorMode::Rms)` + `setRmsWindowMs(w)`; skip the first 0.5 seconds of warm-up (the RMS detector with a long window needs time to "fill up", otherwise the minimum GR gets polluted by the initial 0); after each block read `getGainReductionDb()` to update max / min.
 
-實測（$T = -24$、4:1、knee 3、attack 1 ms、release 50 ms）：
+Measured ($T = -24$, 4:1, knee 3, attack 1 ms, release 50 ms):
 
 ```
-Peak detector（參考）：擺動 15.41 dB，輸出 crest 18.98 dB
-RMS 視窗     1 ms：擺動 14.19 dB，輸出 crest 19.69 dB
-RMS 視窗     5 ms：擺動 12.65 dB，輸出 crest 20.21 dB
-RMS 視窗    10 ms：擺動 11.75 dB，輸出 crest 20.61 dB
-RMS 視窗    30 ms：擺動 10.59 dB，輸出 crest 20.72 dB
-RMS 視窗   100 ms：擺動  8.99 dB，輸出 crest 20.29 dB
-RMS 視窗   300 ms：擺動  7.09 dB，輸出 crest 19.00 dB
-RMS 視窗  1000 ms：擺動  4.00 dB，輸出 crest 17.80 dB
+Peak detector (reference): GR max 15.46 / min 0.04, swing 15.41 dB, output crest 18.98 dB
+RMS window     1 ms: GR max 14.20 / min 0.00, swing 14.19 dB, output crest 19.69 dB
+RMS window     5 ms: GR max 12.65 / min 0.00, swing 12.65 dB, output crest 20.21 dB
+RMS window    10 ms: GR max 11.75 / min 0.00, swing 11.75 dB, output crest 20.61 dB
+RMS window    30 ms: GR max 10.59 / min 0.00, swing 10.59 dB, output crest 20.72 dB
+RMS window   100 ms: GR max 8.99 / min 0.00, swing 8.99 dB, output crest 20.29 dB
+RMS window   300 ms: GR max 7.54 / min 0.45, swing 7.09 dB, output crest 19.00 dB
+RMS window  1000 ms: GR max 5.97 / min 1.96, swing 4.00 dB, output crest 17.80 dB
 ```
 
-解讀：
+Interpretation:
 
-- **擺動幅度隨視窗單調下降**（14.19 → 4.00 dB），1 ms 是 1000 ms 的 3.5 倍；1 ms 的 RMS 與 peak detector 只差 1.22 dB——視窗短到比鼓聲本身還短時，RMS 就退化成 peak。這三點都是 self-check。
-- 短視窗：每一下 kick / snare 都讓 GR 衝到 14 dB 又放掉，整個 loop 跟著節拍「呼吸」——這就是 **pumping**。有時是想要的效果（EDM 的 sidechain pumping），但用在 bus 上通常是缺點。
-- 長視窗：detector 看到的是「這一秒的平均能量」，GR 幾乎固定在 2–6 dB，壓縮變成緩慢的整體音量控制，鼓聲本身的動態被保留。
-- Crest factor 先升後降：中等視窗（10–30 ms）時 GR 會在鼓頭之後才升起來，壓到的是鼓身，crest 反而最大（同範例 3 的「慢 attack」現象）；視窗再長，GR 不再跟著單一鼓聲動，crest 回落。這說明 RMS 視窗在效果上和 attack 時間是互相疊加的。
+- **The swing decreases monotonically with the window** (14.19 → 4.00 dB); the 1 ms swing is 3.5 times the 1000 ms one; the 1 ms RMS differs from the peak detector by only 1.22 dB, because once the window is shorter than the drum sound itself, RMS degenerates into peak. These three points are all self-checks.
+- Short windows: every kick / snare makes the GR rush to 14 dB and release again, and the whole loop "breathes" with the beat; this is **pumping**. Sometimes it is a desired effect (the sidechain pumping of EDM), but on a bus it is usually a flaw.
+- Long windows: the detector sees "the average energy over the last second", the GR stays almost fixed at 2–6 dB, the compression becomes a slow overall volume control, and the dynamics of the drum sounds themselves are preserved.
+- The crest factor first rises and then falls: with a medium window (10–30 ms) the GR rises only after the drum head, squashing the drum body, and the crest is actually at its largest (the same phenomenon as the "slow attack" in example 3); with a still longer window the GR no longer follows individual drum hits and the crest falls back. This shows that the RMS window and the attack time stack on top of each other in effect.
 
-聽感：`l04_ex7_rms_1ms.wav` 明顯在每拍之間「吸氣」；`l04_ex7_rms_100ms.wav` 比較平穩、像是整體被往下壓了一層。
+What it sounds like: `l04_ex7_rms_1ms.wav` clearly "inhales" between beats; `l04_ex7_rms_100ms.wav` is steadier, as if the whole were pressed down a layer.

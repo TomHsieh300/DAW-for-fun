@@ -1,21 +1,21 @@
 #pragma once
-// 第 04 章：EnvelopeFollower（envelope 偵測器）與 AttackReleaseFilter（attack / release 平滑器）。
+// Chapter 04: EnvelopeFollower (envelope detector) and AttackReleaseFilter (attack / release smoother).
 //
-// 這兩個 class 是所有 dynamics 處理器（compressor、limiter、gate、expander、de-esser）的共同地基：
+// These two classes are the shared foundation of all dynamics processors (compressor, limiter, gate, expander, de-esser):
 //
-//   AttackReleaseFilter  一個「上升用 attack 係數、下降用 release 係數」的 one-pole 平滑器。
-//                        輸入可以是任何量（線性振幅、x²、或 dB 值），所以 compressor 可以拿它在
-//                        log(dB) domain 平滑 gain reduction，而 EnvelopeFollower 拿它在 linear domain
-//                        平滑 |x|。
-//   EnvelopeFollower     吃原始 sample，回傳線性振幅 envelope（Peak 或 RMS 模式）。
-//                        第 08 章的 gate / expander / de-esser 會直接重用它。
+//   AttackReleaseFilter  A one-pole smoother that uses the attack coefficient when rising and the release coefficient
+//                        when falling. Its input can be any quantity (linear amplitude, x², or a dB value), so the
+//                        compressor can use it to smooth gain reduction in the log (dB) domain, while
+//                        EnvelopeFollower uses it to smooth |x| in the linear domain.
+//   EnvelopeFollower     Takes raw samples and returns a linear-amplitude envelope (Peak or RMS mode).
+//                        The gate / expander / de-esser of chapter 08 will reuse it directly.
 //
-// 核心數學（one-pole 平滑）：
-//   y[n] = α·y[n-1] + (1-α)·x[n]，   α = exp(-1 / (τ·fs))
-//   τ 是時間常數（秒）：對一個 step 輸入，y 在 t = τ 時到達目標的 63.2%（1 - 1/e），
-//   t = 2.3τ 到達 90%。詳細推導見 lessons/04-compressor/README.md。
+// Core math (one-pole smoothing):
+//   y[n] = α·y[n-1] + (1-α)·x[n],   α = exp(-1 / (τ·fs))
+//   τ is the time constant (in seconds): for a step input, y reaches 63.2% (1 - 1/e) of the target at t = τ,
+//   and 90% at t = 2.3τ. See lessons/04-compressor/README.md for the full derivation.
 //
-// 只依賴 common/（dawlab/DspMath.h）與標準函式庫，不依賴其他章節。
+// Depends only on common/ (dawlab/DspMath.h) and the standard library, not on any other chapter.
 
 #include <dawlab/DspMath.h>
 
@@ -24,23 +24,25 @@
 
 namespace dawlab::dsp {
 
-// 偵測器模式：Peak = 看瞬間絕對值 |x|；Rms = 看 x² 的移動平均再開根號
+// Detector mode: Peak = look at the instantaneous absolute value |x|; Rms = take the moving average of x², then the square root
 enum class DetectorMode { Peak, Rms };
 
-// 平滑器的兩種結構（Giannoulis, Massberg & Reiss 2012，eq. 16 與 eq. 17）：
-//   Branching：依「目標值比目前狀態高或低」切換 attack / release 係數（最直覺的寫法）
-//   Decoupled：先做一個「瞬間上升、以 release 衰減」的 peak-hold，再用 attack 係數平滑；
-//              對正弦波這種週期訊號不會因 ripple 而低估 peak，attack 曲線也精確是 1 - e^(-t/τ)
+// The two smoother structures (Giannoulis, Massberg & Reiss 2012, eq. 16 and eq. 17):
+//   Branching: switch between the attack / release coefficients depending on whether the target is above or below
+//              the current state (the most intuitive formulation)
+//   Decoupled: first a peak-hold that "rises instantly and decays with the release", then smooth it with the attack
+//              coefficient; for periodic signals such as a sine it does not underestimate the peak because of ripple,
+//              and the attack curve is exactly 1 - e^(-t/τ)
 enum class SmoothingMode { Branching, Decoupled };
 
-// α = exp(-1 / (τ·fs))，τ 以毫秒給。τ <= 0 代表「瞬間」（α = 0，輸出直接等於輸入）。
+// α = exp(-1 / (τ·fs)), with τ given in milliseconds. τ <= 0 means "instant" (α = 0, so the output equals the input).
 inline float attackReleaseCoefficient(double timeMs, double sampleRate) noexcept {
     if (timeMs <= 0.0 || sampleRate <= 0.0)
         return 0.0f;
     return static_cast<float>(std::exp(-1.0 / (timeMs * 0.001 * sampleRate)));
 }
 
-// 反向換算：已知 α 與 fs，求 τ（毫秒）。τ = -1 / (fs · ln α)
+// Inverse conversion: given α and fs, find τ (in milliseconds). τ = -1 / (fs · ln α)
 inline double coefficientToTimeMs(double alpha, double sampleRate) noexcept {
     if (alpha <= 0.0 || alpha >= 1.0 || sampleRate <= 0.0)
         return 0.0;
@@ -79,31 +81,32 @@ public:
     SmoothingMode getMode() const noexcept { return mode_; }
     float getCurrentValue() const noexcept { return y_; }
 
-    // 直接把狀態設成某個值（例如 compressor 想從「不壓縮」開始）
+    // Set the state directly to some value (e.g. when a compressor wants to start from "no compression")
     void setCurrentValue(float value) noexcept {
         y_ = value;
         peakHold_ = value;
     }
 
-    // 餵進一個「目標值」，回傳平滑後的值。
+    // Feed in a "target value" and return the smoothed value.
     float process(float target) noexcept {
-        // non-finite 防護：遞迴濾波器只要吃進一個 Inf / NaN，狀態就會永久卡在 NaN
-        // （NaN 參與的任何運算結果都是 NaN），之後再也回不來，只能 reset()。
-        // 所以壞掉的輸入直接當成 0（忽略這個 sample），狀態維持有限值。
+        // Non-finite guard: as soon as a recursive filter swallows one Inf / NaN, its state is stuck at NaN forever
+        // (any operation involving NaN yields NaN), never recovers, and can only be reset().
+        // So a bad input is simply treated as 0 (this sample is ignored) and the state stays finite.
         if (!std::isfinite(target))
             target = 0.0f;
         if (mode_ == SmoothingMode::Branching) {
-            // y[n] = α·y[n-1] + (1-α)·x[n]；x 比 y 高用 attack 係數，否則用 release 係數
+            // y[n] = α·y[n-1] + (1-α)·x[n]; use the attack coefficient when x is above y, otherwise the release coefficient
             const float a = target > y_ ? attackCoeff_ : releaseCoeff_;
-            y_ = target + a * (y_ - target); // 同一條式子的另一種寫法，少一次乘法
+            y_ = target + a * (y_ - target); // Another way of writing the same formula, with one fewer multiplication
         } else {
-            // Decoupled：y1[n] = max(x[n], αR·y1[n-1] + (1-αR)·x[n])   ← peak-hold，瞬間上升、release 衰減
-            //            y[n]  = αA·y[n-1] + (1-αA)·y1[n]               ← attack 平滑
+            // Decoupled: y1[n] = max(x[n], αR·y1[n-1] + (1-αR)·x[n])   <- peak-hold: rises instantly, decays with the release
+            //            y[n]  = αA·y[n-1] + (1-αA)·y1[n]               <- attack smoothing
             peakHold_ = std::max(target, target + releaseCoeff_ * (peakHold_ - target));
             y_ = peakHold_ + attackCoeff_ * (y_ - peakHold_);
         }
-        // denormal 防護：遞迴衰減到極小的值會變成 denormal，讓 CPU 變慢；直接 flush 成 0。
-        // 同時再擋一次 non-finite（例如極大的有限輸入在運算中溢位成 Inf），確保狀態永遠可恢復。
+        // Denormal guard: a recursive decay down to a tiny value becomes denormal and slows the CPU down; flush it to 0.
+        // Also block non-finite once more (e.g. a very large finite input overflowing to Inf during the computation),
+        // so that the state can always recover.
         if (std::abs(y_) < kDenormalFlush || !std::isfinite(y_))
             y_ = 0.0f;
         if (std::abs(peakHold_) < kDenormalFlush || !std::isfinite(peakHold_))
@@ -129,12 +132,12 @@ private:
     float peakHold_ = 0.0f;
 };
 
-// Envelope follower：輸入原始 sample，輸出線性振幅 envelope（永遠 >= 0）。
+// Envelope follower: takes raw samples and outputs a linear-amplitude envelope (always >= 0).
 //
-//   Peak 模式：env = smooth(|x|)
-//   Rms  模式：env = sqrt(smooth(x²))   ← attack / release 作用在 x² 上，所以 x² 到 63% 時
-//                                        振幅只到 sqrt(0.632) ≈ 79.5%；想用「RMS 視窗」的概念時
-//                                        通常 attack = release = 視窗長度。
+//   Peak mode: env = smooth(|x|)
+//   Rms  mode: env = sqrt(smooth(x²))   <- attack / release act on x², so when x² reaches 63% the amplitude is only
+//                                         at sqrt(0.632) ≈ 79.5%; when thinking in terms of an "RMS window", you
+//                                         would usually set attack = release = the window length.
 class EnvelopeFollower {
 public:
     void prepare(double sampleRate) {
@@ -157,12 +160,13 @@ public:
     DetectorMode getMode() const noexcept { return mode_; }
     SmoothingMode getSmoothingMode() const noexcept { return filter_.getMode(); }
 
-    // 目前的 envelope（線性振幅），不改變狀態
+    // The current envelope (linear amplitude); does not change the state
     float getEnvelope() const noexcept { return envelope_; }
 
     float processSample(float x) noexcept {
-        // 壞輸入防護：Inf / NaN 當成 0；極大值先夾在 ±kMaxInput，避免 x² 溢位成 Inf
-        // （|x| 大於約 1.8e19 時 x² 就超過 float 上限）。正常音訊遠小於這個值，不受影響。
+        // Bad-input guard: Inf / NaN are treated as 0; very large values are first clamped to ±kMaxInput so that x²
+        // cannot overflow to Inf (x² exceeds the float limit once |x| is above about 1.8e19). Normal audio is far
+        // below this value and is unaffected.
         if (!std::isfinite(x))
             x = 0.0f;
         x = std::clamp(x, -kMaxInput, kMaxInput);
@@ -176,7 +180,7 @@ public:
     }
 
 private:
-    static constexpr float kMaxInput = 1.0e6f; // +120 dBFS，x² = 1e12，遠在 float 範圍內
+    static constexpr float kMaxInput = 1.0e6f; // +120 dBFS, x² = 1e12, comfortably within the float range
 
     AttackReleaseFilter filter_;
     DetectorMode mode_ = DetectorMode::Peak;

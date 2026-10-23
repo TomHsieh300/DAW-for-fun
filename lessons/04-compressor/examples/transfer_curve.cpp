@@ -1,13 +1,16 @@
-// 範例 1：印出 compressor 的靜態 transfer curve（hard knee vs soft knee）。
+// Example 1: print the compressor's static transfer curve (hard knee vs soft knee).
 //
-// 示範什麼：
-//   - Compressor::computeOutputDb() 這個「gain computer」在不同 threshold / ratio / knee 下的輸入→輸出關係
-//   - knee 區段的二次曲線怎麼把 hard knee 的「轉角」磨圓，以及它在 knee 兩端與直線平滑銜接
-//   - 用數字對照 README 的公式：例如 T = -20 dB、R = 4、輸入 -10 dB → 輸出 -17.5 dB、GR = 7.5 dB
-//   - 對照：expander / gate 的曲線長什麼樣（第 08 章會完整實作）
-// 怎麼執行：不需要參數，直接執行 l04_transfer_curve。
-// 輸出檔案：無（純數字 / ASCII 圖）。
-// 該看到什麼：soft knee 的 GR 在 threshold 附近「提早、慢慢」開始，hard knee 則在 threshold 之前完全是 0。
+// What it demonstrates:
+//   - The input -> output relationship of Compressor::computeOutputDb(), the "gain computer", for different
+//     threshold / ratio / knee settings
+//   - How the quadratic section of the knee rounds off the "corner" of the hard knee, and how it joins the two
+//     straight lines smoothly at both ends of the knee
+//   - Numbers that match the README formulas: e.g. T = -20 dB, R = 4, input -10 dB -> output -17.5 dB, GR = 7.5 dB
+//   - For comparison: what the curves of an expander / gate look like (implemented fully in chapter 08)
+// How to run: no arguments needed, just run l04_transfer_curve.
+// Output files: none (numbers / ASCII plot only).
+// What to look for: the soft knee's GR starts "early and gradually" around the threshold, while the hard knee's
+//                   GR is exactly 0 all the way up to the threshold.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Compressor.h>
@@ -19,15 +22,15 @@ using dawlab::dsp::Compressor;
 
 namespace {
 
-// 只是示範用：downward expander 的靜態曲線（低於 threshold 時每 1 dB 變成 R dB）
+// For demonstration only: the static curve of a downward expander (below the threshold, every 1 dB becomes R dB)
 float expanderOutputDb(float x, float thresholdDb, float ratio) {
     return x >= thresholdDb ? x : thresholdDb + (x - thresholdDb) * ratio;
 }
 
 void printTable(float thresholdDb, float ratio, float hardKneeDb, float softKneeDb) {
-    std::printf("\n=== Transfer curve：threshold %.0f dB, ratio %.0f:1 ===\n", thresholdDb, ratio);
+    std::printf("\n=== Transfer curve: threshold %.0f dB, ratio %.0f:1 ===\n", thresholdDb, ratio);
     std::printf("  knee = %.0f dB (hard)   vs   knee = %.0f dB (soft)\n", hardKneeDb, softKneeDb);
-    std::printf("  輸入 dB |  輸出(hard)  GR(hard) |  輸出(soft)  GR(soft)\n");
+    std::printf("  In dB   |  out(hard)   GR(hard)  |  out(soft)   GR(soft)\n");
     std::printf("  --------+-----------------------+----------------------\n");
     for (float x = -60.0f; x <= 0.0f + 1e-3f; x += 3.0f) {
         const float yh = Compressor::computeOutputDb(x, thresholdDb, ratio, hardKneeDb);
@@ -36,19 +39,19 @@ void printTable(float thresholdDb, float ratio, float hardKneeDb, float softKnee
     }
 }
 
-// ASCII 圖：橫軸輸入 dB（-60..0），縱軸輸出 dB（-60..0），每格 2 dB
+// ASCII plot: input dB on the horizontal axis (-60..0), output dB on the vertical axis (-60..0), 2 dB per cell
 void plotCurves(float thresholdDb, float ratio, float softKneeDb) {
-    constexpr int kCols = 31; // -60..0，每格 2 dB
+    constexpr int kCols = 31; // -60..0, 2 dB per cell
     constexpr int kRows = 31;
-    std::printf("\n  ASCII transfer curve（. = 1:1 參考線、# = hard knee、o = soft knee %.0f dB、* = 兩者重疊）\n",
+    std::printf("\n  ASCII transfer curve (. = 1:1 reference line, # = hard knee, o = soft knee %.0f dB, * = overlap)\n",
                 softKneeDb);
-    std::printf("  縱軸：輸出 dB（上 = 0 dB），橫軸：輸入 dB（左 = -60，右 = 0）\n");
+    std::printf("  Vertical axis: output dB (top = 0 dB); horizontal axis: input dB (left = -60, right = 0)\n");
     std::string grid[kRows];
     for (auto& row : grid)
         row.assign(kCols, ' ');
     auto plot = [&](float x, float y, char c) {
         const int col = static_cast<int>(std::lround((x + 60.0f) / 2.0f));
-        const int row = static_cast<int>(std::lround(-y / 2.0f)); // 0 dB 在最上面
+        const int row = static_cast<int>(std::lround(-y / 2.0f)); // 0 dB is at the top
         if (col < 0 || col >= kCols || row < 0 || row >= kRows)
             return;
         char& cell = grid[row][static_cast<size_t>(col)];
@@ -68,45 +71,45 @@ void plotCurves(float thresholdDb, float ratio, float softKneeDb) {
     for (int row = 0; row < kRows; ++row)
         std::printf("  %4d |%s|\n", -2 * row, grid[row].c_str());
     std::printf("       +-------------------------------+\n");
-    std::printf("       -60           -30            0  (輸入 dB)\n");
+    std::printf("       -60           -30            0  (input dB)\n");
 }
 
 } // namespace
 
 int main() {
-    std::printf("第 04 章 範例 1：compressor transfer curve\n");
+    std::printf("Chapter 04, example 1: compressor transfer curve\n");
 
-    // 主要設定：T = -20 dB、R = 4、knee 0 vs 10 dB
+    // Main setting: T = -20 dB, R = 4, knee 0 vs 10 dB
     printTable(-20.0f, 4.0f, 0.0f, 10.0f);
 
-    // README 裡的手算對照點
-    std::printf("\n=== 手算對照（T = -20, R = 4）===\n");
+    // Hand-calculated check points from the README
+    std::printf("\n=== Hand-calculated check points (T = -20, R = 4) ===\n");
     const float probes[] = {-30.0f, -25.0f, -22.0f, -20.0f, -18.0f, -15.0f, -10.0f, 0.0f};
-    std::printf("  輸入 dB | hard knee 輸出 | soft knee(10 dB) 輸出 | 兩者差\n");
+    std::printf("  In dB   | hard knee out | soft knee (10 dB) out | difference\n");
     for (float x : probes) {
         const float yh = Compressor::computeOutputDb(x, -20.0f, 4.0f, 0.0f);
         const float ys = Compressor::computeOutputDb(x, -20.0f, 4.0f, 10.0f);
-        std::printf("  %7.1f | %14.3f | %21.3f | %6.3f\n", x, yh, ys, ys - yh);
+        std::printf("  %7.1f | %13.3f | %21.3f | %6.3f\n", x, yh, ys, ys - yh);
     }
-    std::printf("  soft knee 在 threshold 本身（-20 dB）的輸出 = T + (1/R - 1)·W/8 = -20 + (-0.75)(10/8) = -20.9375\n");
+    std::printf("  Soft knee output at the threshold itself (-20 dB) = T + (1/R - 1)·W/8 = -20 + (-0.75)(10/8) = -20.9375\n");
 
-    // ratio 比較：2:1、4:1、10:1、∞:1（limiter）
-    std::printf("\n=== ratio 比較（T = -20 dB, hard knee, 輸入 0 dB）===\n");
+    // Ratio comparison: 2:1, 4:1, 10:1, inf:1 (limiter)
+    std::printf("\n=== Ratio comparison (T = -20 dB, hard knee, input 0 dB) ===\n");
     for (float r : {1.0f, 2.0f, 4.0f, 10.0f, 20.0f, 1000.0f}) {
         const float y = Compressor::computeOutputDb(0.0f, -20.0f, r, 0.0f);
-        std::printf("  ratio %6.0f:1 → 輸出 %7.2f dB，GR %5.2f dB\n", r, y,
-                    Compressor::computeGainReductionDb(0.0f, -20.0f, r, 0.0f)); // 用 GR 函式，避免印出 -0.00
+        std::printf("  ratio %6.0f:1 → output %7.2f dB, GR %5.2f dB\n", r, y,
+                    Compressor::computeGainReductionDb(0.0f, -20.0f, r, 0.0f)); // use the GR function to avoid printing -0.00
     }
 
     plotCurves(-20.0f, 4.0f, 10.0f);
 
-    // 對照：expander / gate（第 08 章）
-    std::printf("\n=== 對照：downward expander（T = -40 dB, ratio 2 ⇒ 每低 1 dB 多衰減 1 dB）與 gate（ratio 很大）===\n");
-    std::printf("  輸入 dB | compressor(T=-20,R=4) | expander(T=-40,R=2) | gate(T=-40,R=20)\n");
+    // For comparison: expander / gate (chapter 08)
+    std::printf("\n=== For comparison: downward expander (T = -40 dB, ratio 2 => every 1 dB lower attenuates 1 dB more) and gate (very large ratio) ===\n");
+    std::printf("  In dB   | compressor(T=-20,R=4) | expander(T=-40,R=2) | gate(T=-40,R=20)\n");
     for (float x = -60.0f; x <= 0.0f + 1e-3f; x += 10.0f) {
         std::printf("  %7.1f | %21.2f | %19.2f | %16.2f\n", x, Compressor::computeOutputDb(x, -20.0f, 4.0f, 0.0f),
                     expanderOutputDb(x, -40.0f, 2.0f), std::max(-100.0f, expanderOutputDb(x, -40.0f, 20.0f)));
     }
-    std::printf("  compressor 把「threshold 以上」壓扁；expander / gate 把「threshold 以下」推更低。\n");
+    std::printf("  The compressor squashes what is above the threshold; the expander / gate push what is below it lower.\n");
     return 0;
 }
