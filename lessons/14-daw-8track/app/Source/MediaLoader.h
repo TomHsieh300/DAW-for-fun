@@ -63,6 +63,7 @@ struct LoadedMedia {
     juce::String name;                         // file name, for the clip and the track
     std::shared_ptr<const AudioBuffer> audio;  // at the target sample rate; nullptr on error
     double fileSampleRate = 0.0;
+    int fileNumChannels = 0;                   // 1 -> the track becomes mono, 2+ -> stereo
     double targetSampleRate = 0.0;
     juce::String error;
 };

@@ -379,6 +379,28 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         DAWLAB_CHECK(engine.getLatencySamples() == latencyBefore);
     }
 
+    // 5a. The same plugin on a mono track (the drums): VstInsert runs the stereo plugin on L = R
+    //     and folds the result back to one channel. At gain 0.5 (x1) the bounce must not move.
+    {
+        const ChannelRef drums = ChannelRef::track(0);
+        DAWLAB_CHECK(session.getTrackFormat(0) == TrackFormat::Mono);
+        const AudioBuffer before = renderSeconds(engine, 1.0);
+        auto hosted = std::make_unique<host::HostedPlugin>(createTestDelayPlugin(100));
+        InsertEffect* fx = session.setVstInsert(drums, 3, std::make_unique<VstInsert>(std::move(hosted)));
+        engine.applyPendingCommandsOffline();
+        DAWLAB_CHECK(fx != nullptr);
+        if (fx != nullptr) {
+            const AudioBuffer with = renderSeconds(engine, 1.0);
+            const float diff = maxAbsDiff(before, 0, with, 0, before.getNumSamples()); // both channels
+            std::printf("5a. test plugin on the mono drum track: |with - without| = %.3g\n", static_cast<double>(diff));
+            DAWLAB_CHECK(diff < 1.0e-6f);
+        }
+        session.clearInsert(drums, 3);
+        engine.applyPendingCommandsOffline();
+        engine.collectGarbage();
+        DAWLAB_CHECK(getTestPluginInstanceCount() == 0);
+    }
+
     // 5b. Real VST3 plugins: chapter 13's DawLab Compressor and DawLab Limiter, when chapter 13 was
     //     built in the same tree. The limiter reports a latency (its lookahead), so it repeats
     //     section 5's PDC test with a real plugin: on the track whose inserts already have the
@@ -504,6 +526,19 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
             DAWLAB_CHECK(droppedFiles.size() == 2 && droppedFiles[0].endsWith("kick.flac") &&
                          droppedFiles[1].endsWith("bass.mp3"));
             arrangement.onFilesDropped = realHandler;
+
+            // the strip's format button toggles mono / stereo, and the pan mode follows
+            auto& session6 = main.getSession();
+            const TrackFormat before = session6.getTrackFormat(1);
+            main.getMixer().getStrip(1).getFormatButton().onClick();
+            const Track& t1 = main.getEngine().getMixer().getTrack(1);
+            DAWLAB_CHECK(session6.getTrackFormat(1) != before);
+            DAWLAB_CHECK(t1.getPanMode() == (t1.getFormat() == TrackFormat::Mono ? PanMode::PanLaw : PanMode::Balance));
+            main.getMixer().getStrip(1).getFormatButton().onClick();
+            DAWLAB_CHECK(session6.getTrackFormat(1) == before);
+            std::printf("   format button: track 2 %s -> %s -> %s\n", trackFormatName(before),
+                        trackFormatName(before == TrackFormat::Mono ? TrackFormat::Stereo : TrackFormat::Mono),
+                        trackFormatName(session6.getTrackFormat(1)));
             DAWLAB_CHECK(arrangement.onFilesDropped != nullptr); // MainComponent wired it up
             std::printf("   drag and drop: %d of 3 dragged files accepted, dropped on track %d\n", droppedFiles.size(),
                         droppedTrack + 1);

@@ -105,6 +105,11 @@ public:
     juce::String getStripName(engine::ChannelRef ref) const;
     void setStripName(engine::ChannelRef ref, const juce::String& name);
 
+    // Mono / stereo track (Step 4). Loading a file sets it from the file's channel count
+    // (Step 18); the strip's format button switches it by hand (Step 15).
+    engine::TrackFormat getTrackFormat(int track) const;
+    void setTrackFormat(int track, engine::TrackFormat format);
+
     // ---- insert slots ------------------------------------------------------------------------
     const InsertSlotState& getSlot(engine::ChannelRef ref, int uiSlot) const;
     int chainIndexOf(engine::ChannelRef ref, int uiSlot) const noexcept;

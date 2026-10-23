@@ -267,6 +267,10 @@ void MainComponent::loadAudioFile(int track, const juce::File& file) {
             safe->loadAudioFile(media.track, file);
             return;
         }
+        // Like Cubase: a mono file makes a mono track (inserts in mono, pan law), anything with
+        // two or more channels a stereo track (balance).
+        safe->session_.setTrackFormat(media.track, media.fileNumChannels == 1 ? engine::TrackFormat::Mono
+                                                                               : engine::TrackFormat::Stereo);
         safe->session_.setTrackAudio(media.track, media.audio, media.name);
         safe->arrangement_.setSelectedTrack(media.track);
         safe->arrangement_.zoomToFit();

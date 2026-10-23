@@ -126,10 +126,19 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
     addAndMakeVisible(name_);
 
     if (isTrack) {
-        load_.setTooltip("Load a WAV / AIFF file into this track");
+        load_.setTooltip("Load an audio file into this track (or drop files on its lane)");
         load_.setWantsKeyboardFocus(false);
         load_.onClick = [this] { if (onLoadRequested) onLoadRequested(ref_.index); };
         addAndMakeVisible(load_);
+
+        format_.setWantsKeyboardFocus(false);
+        format_.setTooltip("Track format. Mono: inserts run on one channel and the pan law places it.\n"
+                           "Stereo: inserts run on both channels and pan works as balance.");
+        format_.onClick = [this] {
+            const bool mono = session_.getTrackFormat(ref_.index) == engine::TrackFormat::Mono;
+            session_.setTrackFormat(ref_.index, mono ? engine::TrackFormat::Stereo : engine::TrackFormat::Mono);
+        };
+        addAndMakeVisible(format_);
     }
 
     for (int s = 0; s < kInsertSlotsPerStrip; ++s) {
@@ -254,6 +263,14 @@ void ChannelStripView::refreshStructure() {
         slots_[static_cast<size_t>(s)]->setState(session_.getSlot(ref_, s));
     if (ref_.kind == ChannelKind::Master)
         ceiling_.setEnabled(session_.hasMasterLimiter());
+    if (ref_.kind == ChannelKind::Track) {
+        const bool mono = session_.getTrackFormat(ref_.index) == engine::TrackFormat::Mono;
+        format_.setButtonText(mono ? "Mono" : "Stereo");
+        format_.setToggleState(!mono, juce::dontSendNotification);
+        pan_.setTooltip(mono ? "Pan (constant-power law: centre -3 dB per side)"
+                             : "Balance (centre: unity; turning right lowers the left side)");
+        panLabel_.setText(mono ? "Pan" : "Bal", juce::dontSendNotification);
+    }
 }
 
 void ChannelStripView::update() {
@@ -323,9 +340,12 @@ void ChannelStripView::resized() {
     area.removeFromTop(2);
     name_.setBounds(area.removeFromTop(20));
     area.removeFromTop(2);
-    const auto loadRow = area.removeFromTop(20);
-    if (ref_.kind == ChannelKind::Track)
+    auto loadRow = area.removeFromTop(20);
+    if (ref_.kind == ChannelKind::Track) {
+        format_.setBounds(loadRow.removeFromRight(42));
+        loadRow.removeFromRight(2);
         load_.setBounds(loadRow);
+    }
     area.removeFromTop(4);
     for (auto& s : slots_) {
         s->setBounds(area.removeFromTop(19));

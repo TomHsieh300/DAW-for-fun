@@ -22,6 +22,14 @@
 // ("-18.0 dB") for the auto-generated panel. The names are copied into std::strings at
 // construction, because ParameterInfo carries `const char*`.
 //
+// Mono tracks (Step 4): their inserts get a one-channel block, but the plugin was prepared with
+// a stereo bus layout, and handing it a one-channel buffer would let it read a channel that
+// does not exist. process() therefore copies the mono block to both sides of a stereo scratch
+// buffer (allocated in prepare()), runs the plugin, and folds the result back to mono with
+// (L + R) / 2. A stereo-widening plugin collapses to mono on a mono track this way - the same
+// trade-off a mono track makes for every insert; put such a plugin on a stereo track to keep
+// its width.
+//
 // reset(): the engine calls reset() on the audio thread (Engine::requestReset). A VST3
 // plugin's reset goes through setActive(false/true), which may allocate, so it is not
 // real-time safe; we leave plugin state alone. Its tail simply rings out.
@@ -71,6 +79,7 @@ private:
     bool valid(int index) const noexcept { return index >= 0 && index < getNumParameters(); }
 
     std::unique_ptr<host::HostedPlugin> plugin_;   // destroyed last
+    AudioBuffer monoScratch_;                      // stereo copy of a mono block (mono tracks)
     std::string name_;
     std::vector<std::string> paramNames_;
     std::vector<float> paramDefaults_;

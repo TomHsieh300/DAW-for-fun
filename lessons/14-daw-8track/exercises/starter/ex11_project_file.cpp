@@ -173,7 +173,7 @@ private:
     strip.setProperty("name", juce::String(cs.getName()), nullptr);
     strip.setProperty("gainDb", f2s(cs.getGainDb()), nullptr);
     // TODO: the rest of the strip, in this order (stripFromTree() reads it back):
-    //   properties pan, panLaw, panMode, mute, solo;
+    //   properties pan, panLaw, format (tracks only: trackFormatName()), panMode, mute, solo;
     //   tracks: one <Send db pre> child per bus;
     //   one <Insert slot bypass kind ...> child per occupied slot: builtin -> type = getName() and one
     //     <Param name value> per parameter; vst3 -> file (PluginDescription::fileOrIdentifier) and
@@ -189,7 +189,8 @@ private:
     ChannelStrip& cs = *session.getEngine().getMixer().getStrip(ref);
     session.setStripName(ref, strip["name"].toString());
     cs.setGainDb(s2f(strip["gainDb"]));
-    // TODO: the reverse of stripToTree(): pan, pan law / mode, mute, solo, sends; inserts through
+    // TODO: the reverse of stripToTree(): pan, pan law, track format (session.setTrackFormat(),
+    //       which also sets the pan mode, so restore panMode after it), mute, solo, sends; inserts through
     //       session.setBuiltinInsert() (effectTypeFromName) + setParameterByName(), or
     //       pluginHost->loadFromFile() + HostedPlugin::setState() + session.setVstInsert();
     //       bypass with session.setInsertBypassed(); clips collected into a vector and handed to

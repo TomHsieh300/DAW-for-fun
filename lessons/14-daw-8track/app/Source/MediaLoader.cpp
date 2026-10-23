@@ -119,6 +119,7 @@ LoadedMedia MediaLoader::readAudioFile(const juce::File& file, double targetSamp
         return result;
     }
     result.fileSampleRate = reader->sampleRate;
+    result.fileNumChannels = static_cast<int>(reader->numChannels);
 
     // The engine is stereo: mono files are duplicated, extra channels are dropped.
     const int fileChannels = static_cast<int>(reader->numChannels);

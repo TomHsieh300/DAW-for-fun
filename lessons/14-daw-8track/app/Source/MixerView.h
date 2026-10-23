@@ -75,6 +75,7 @@ public:
     juce::Button* getSlotButton(int slot) noexcept;
     juce::Button& getMuteButton() noexcept { return mute_; }
     juce::Button& getSoloButton() noexcept { return solo_; }
+    juce::Button& getFormatButton() noexcept { return format_; } // tracks only: Mono / Stereo
     const MeterBar& getMeter() const noexcept { return meter_; }
     int getNumSendKnobs() const noexcept { return static_cast<int>(sends_.size()); }
 
@@ -89,6 +90,7 @@ private:
     engine::ChannelRef ref_;
     juce::Label name_;
     juce::TextButton load_{"Load..."};
+    juce::TextButton format_{"Mono"}; // track format (Step 15); click toggles mono / stereo
     std::vector<std::unique_ptr<SlotButton>> slots_;
     std::vector<std::unique_ptr<juce::Slider>> sends_;
     std::vector<std::unique_ptr<juce::Label>> sendLabels_;

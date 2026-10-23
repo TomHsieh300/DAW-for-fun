@@ -171,6 +171,8 @@ private:
         strip.setProperty("gainDb", f2s(cs.getGainDb()), nullptr);
         strip.setProperty("pan", f2s(cs.getPan()), nullptr);
         strip.setProperty("panLaw", static_cast<int>(cs.getPanLaw()), nullptr);
+        if (ref.kind == ChannelKind::Track) // mono / stereo track (Step 4); before panMode on load
+            strip.setProperty("format", trackFormatName(session.getTrackFormat(ref.index)), nullptr);
         strip.setProperty("panMode", static_cast<int>(cs.getPanMode()), nullptr);
         strip.setProperty("mute", cs.isMuted(), nullptr);
         strip.setProperty("solo", cs.isSoloed(), nullptr);
@@ -231,7 +233,10 @@ private:
         cs.setGainDb(s2f(strip["gainDb"]));
         cs.setPan(s2f(strip["pan"]));
         cs.setPanLaw(static_cast<dsp::PanLaw>(static_cast<int>(strip["panLaw"])));
-        cs.setPanMode(static_cast<PanMode>(static_cast<int>(strip["panMode"])));
+        if (ref.kind == ChannelKind::Track && strip.hasProperty("format")) // sets the pan mode too...
+            session.setTrackFormat(ref.index, strip["format"].toString() == "Stereo" ? TrackFormat::Stereo
+                                                                                    : TrackFormat::Mono);
+        cs.setPanMode(static_cast<PanMode>(static_cast<int>(strip["panMode"]))); // ...so restore it after
         cs.setMute(strip["mute"]);
         cs.setSolo(strip["solo"]);
         int bus = 0;

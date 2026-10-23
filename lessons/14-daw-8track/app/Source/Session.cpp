@@ -77,6 +77,8 @@ void Session::resetMixerSettings() {
         if (s == nullptr)
             continue;
         s->setName(defaultStripName(ref).toStdString());
+        if (ref.kind == ChannelKind::Track)
+            mix.getTrack(ref.index).setFormat(TrackFormat::Mono); // until a loaded file says otherwise
         s->setGainDb(0.0f);
         s->setPan(0.0f);
         s->setMute(false);
@@ -156,7 +158,8 @@ int Session::applyDemoSong(const DemoSong& song) {
     }
 
     for (int t = 0; t < kNumTracks; ++t) {
-        ChannelStrip& s = mix.getTrack(t);
+        Track& s = mix.getTrack(t);
+        s.setFormat(song.trackFormat[static_cast<size_t>(t)]);
         s.setGainDb(song.trackGainDb[static_cast<size_t>(t)]);
         s.setPan(song.trackPan[static_cast<size_t>(t)]);
         for (int b = 0; b < kNumBuses; ++b)
@@ -242,6 +245,19 @@ void Session::setStripName(ChannelRef ref, const juce::String& name) {
         s->setName(name.toStdString()); // the audio thread never reads names
         sendChangeMessage();
     }
+}
+
+TrackFormat Session::getTrackFormat(int track) const {
+    return validTrack(track) ? engine_.getMixer().getTrack(track).getFormat() : TrackFormat::Mono;
+}
+
+void Session::setTrackFormat(int track, TrackFormat format) {
+    if (!validTrack(track) || getTrackFormat(track) == format)
+        return;
+    // An atomic that the audio thread reads once per block: no command needed. The pan mode
+    // follows (pan law / balance); the pan position stays where it is.
+    engine_.getMixer().getTrack(track).setFormat(format);
+    sendChangeMessage();
 }
 
 // ---- insert slots --------------------------------------------------------------------------------

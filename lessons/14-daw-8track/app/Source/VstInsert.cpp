@@ -27,9 +27,26 @@ void VstInsert::prepare(double sampleRate, int maxBlockSize, int numChannels) {
     // Engine::addInsert() calls this on the message thread, before the plugin reaches the audio
     // thread: the right place for prepareToPlay(), which may allocate and may take locks.
     plugin_->prepare(sampleRate, maxBlockSize, numChannels);
+    monoScratch_.setSize(std::max(2, numChannels), maxBlockSize);
 }
 
-void VstInsert::process(AudioBlock block) noexcept { plugin_->process(block); }
+void VstInsert::process(AudioBlock block) noexcept {
+    const int n = block.getNumSamples();
+    if (block.getNumChannels() >= 2 || n > monoScratch_.getNumSamples()) {
+        plugin_->process(block);
+        return;
+    }
+    // Mono track: run the stereo plugin on L = R and fold its output back to one channel.
+    float* mono = block.getChannelPointer(0);
+    AudioBlock stereo = AudioBlock(monoScratch_).getSubBlock(0, n).getChannelSubset(0, 2);
+    std::copy_n(mono, n, stereo.getChannelPointer(0));
+    std::copy_n(mono, n, stereo.getChannelPointer(1));
+    plugin_->process(stereo);
+    const float* l = stereo.getChannelPointer(0);
+    const float* r = stereo.getChannelPointer(1);
+    for (int i = 0; i < n; ++i)
+        mono[i] = 0.5f * (l[i] + r[i]);
+}
 
 int VstInsert::getLatencySamples() const noexcept {
     // A plain int read inside JUCE (AudioProcessor::getLatencySamples is a getter).
