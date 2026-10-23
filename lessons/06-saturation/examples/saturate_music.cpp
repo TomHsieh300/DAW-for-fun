@@ -1,27 +1,31 @@
-// 範例 4：把 Saturation 用在音樂素材上——drum loop 與 pluck sequence
+// Example 4: Saturation on musical material - a drum loop and a pluck sequence.
 //
-// 示範什麼：
-//   用 Saturation（4x oversampling）處理 drum loop 與撥弦琶音，試幾組常見設定：
-//     glue      Tanh，drive +6 dB，100% wet，output -3 dB        → 鼓更「黏」、peak 變小 RMS 變大
-//     tube      Asymmetric，drive +12 dB，100% wet，output -6 dB → 偶次諧波，較厚；同時示範 DC blocker
-//     parallel  Tanh，drive +18 dB，30% wet                      → 「New York」式平行飽和：保留 transient、加厚
-//     cubic     Cubic，drive +12 dB，100% wet，output -3 dB      → 多項式曲線，推大時有 hard clip 的粗糙感
-//   印出每個版本的 peak、RMS、crest factor，以及 Asymmetric 在「關掉 / 打開 DC blocker」時的 DC offset，
-//   並印出 Saturation 回報的 latency（host 要用它做 latency compensation）。
-//   另外對 Cubic 印出「曲線本身的上限（2/3 × output gain）」與「實際輸出 peak」：實際 peak 會比較高，
-//   因為降頻的 lowpass 與 DC blocker 都會改變波形（README 第 5 節「saturation 不是 limiter」）。
-//   為了分辨兩者各占多少，再用「1x 關 DC blocker」「1x 開」「4x 關」三種組合重跑 cubic。
-//   最後驗證：host 給的 block 比 prepare 時的 maxBlockSize 大時，Saturation 會自動切塊，結果與正常處理完全相同。
+// What it shows:
+//   Runs Saturation (4x oversampling) over a drum loop and a plucked arpeggio with a few common settings:
+//     glue      Tanh, drive +6 dB, 100% wet, output -3 dB        -> tighter ("glued") drums, lower peak, higher RMS
+//     tube      Asymmetric, drive +12 dB, 100% wet, output -6 dB -> even harmonics, thicker; also demonstrates the DC blocker
+//     parallel  Tanh, drive +18 dB, 30% wet                      -> "New York" style parallel saturation: keeps transients, adds body
+//     cubic     Cubic, drive +12 dB, 100% wet, output -3 dB      -> polynomial curve; pushed hard it has hard-clip roughness
+//   Prints the peak, RMS and crest factor of every version, the DC offset of Asymmetric with the DC blocker
+//   off / on, and the latency reported by Saturation (the host needs it for latency compensation).
+//   For Cubic it also prints "the ceiling of the curve itself (2/3 x output gain)" next to "the actual
+//   output peak": the actual peak is higher, because the downsampling lowpass and the DC blocker both
+//   change the waveform (README section 5, "saturation is not a limiter").
+//   To tell how much each one contributes, cubic is re-run with three combinations: "1x, DC blocker off",
+//   "1x, on" and "4x, off".
+//   Finally it verifies that when the host passes a block larger than the maxBlockSize given to prepare,
+//   Saturation splits it automatically and the result is identical to normal processing.
 //
-// 怎麼執行：l06_saturate_music（不需要參數）；可選 argv[1] = 自己的 WAV 檔路徑（會取代 drum loop）
+// How to run: l06_saturate_music (no arguments); optional argv[1] = path to your own WAV file (replaces the drum loop)
 //
-// 輸出檔案（在 dawlab_output/）：
+// Output files (in dawlab_output/):
 //   l06_drums_dry.wav   l06_drums_glue.wav   l06_drums_tube.wav   l06_drums_parallel.wav   l06_drums_cubic.wav
 //   l06_pluck_dry.wav   l06_pluck_glue.wav   l06_pluck_tube.wav   l06_pluck_parallel.wav   l06_pluck_cubic.wav
 //
-// 該聽到：
-//   glue：鼓組變緊、變大聲，kick 的 transient 稍微變鈍。tube：snare / hi-hat 更有「砂質感」，低音更厚。
-//   parallel：跟 dry 很像，但更飽滿、更有存在感。cubic：pluck 在音頭處有一點粗糙的破音。
+// What you should hear:
+//   glue: the drum kit gets tighter and louder; the kick transient is slightly blunted. tube: snare and
+//   hi-hat get a gritty texture and the low end is thicker. parallel: close to the dry signal but fuller
+//   and more present. cubic: the pluck has a little rough distortion at the attack.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Saturation.h>
@@ -65,17 +69,17 @@ dawlab::AudioBuffer applyPreset(const dawlab::AudioBuffer& dry, double sampleRat
                                 int* latencyOut = nullptr, int oversamplingLog2 = 2, int hostBlockSize = kBlockSize) {
     dawlab::AudioBuffer out = dry;
     Saturation sat;
-    sat.setOversamplingFactorLog2(oversamplingLog2); // 預設 2 = 4x
+    sat.setOversamplingFactorLog2(oversamplingLog2); // default 2 = 4x
     sat.prepare(sampleRate, kBlockSize, out.getNumChannels());
     sat.setCurve(p.curve);
     sat.setDriveDb(p.driveDb);
     sat.setMix(p.mix);
     sat.setOutputGainDb(p.outputGainDb);
     sat.setDcBlockerEnabled(dcBlocker);
-    sat.reset(); // 參數直接就定位（不要在開頭 ramp）
+    sat.reset(); // Snap the parameters into place (no ramp at the start)
     if (latencyOut)
         *latencyOut = sat.getLatencySamples();
-    // hostBlockSize 可以故意比 prepare 的 kBlockSize 大（測試 Saturation 的自動切塊）
+    // hostBlockSize may deliberately be larger than the kBlockSize given to prepare (tests Saturation's automatic chunking)
     dawlab::AudioBlock whole(out);
     for (int start = 0; start < out.getNumSamples(); start += hostBlockSize) {
         const int len = std::min(hostBlockSize, out.getNumSamples() - start);
@@ -86,11 +90,11 @@ dawlab::AudioBuffer applyPreset(const dawlab::AudioBuffer& dry, double sampleRat
 
 bool runMaterial(const char* label, const dawlab::AudioBuffer& dry, double sampleRate) {
     bool ok = true;
-    std::printf("=== %s：%d samples @ %.0f Hz，peak %.2f dBFS，RMS %.2f dBFS，crest %.2f dB ===\n", label,
+    std::printf("=== %s: %d samples @ %.0f Hz, peak %.2f dBFS, RMS %.2f dBFS, crest %.2f dB ===\n", label,
                 dry.getNumSamples(), sampleRate, peakDb(dry), rmsDb(dry), peakDb(dry) - rmsDb(dry));
     dawlab::writeWav(dawlab::outputPath(std::string("l06_") + label + "_dry.wav"), dry, sampleRate);
     std::printf("%-10s %-12s %7s %6s %10s %10s %10s %10s\n", "preset", "curve", "drive", "mix", "peak", "RMS", "crest",
-                "ΔRMS");
+                "dRMS");
     for (const Preset& p : kPresets) {
         int latency = 0;
         const dawlab::AudioBuffer out = applyPreset(dry, sampleRate, p, true, &latency);
@@ -102,24 +106,25 @@ bool runMaterial(const char* label, const dawlab::AudioBuffer& dry, double sampl
 
         if (p.curve == SaturationCurve::Asymmetric) {
             const dawlab::AudioBuffer noBlocker = applyPreset(dry, sampleRate, p, false);
-            std::printf("           DC offset：dry %+.5f → 關 DC blocker %+.5f → 開 DC blocker %+.5f\n", meanOf(dry),
+            std::printf("           DC offset: dry %+.5f -> DC blocker off %+.5f -> DC blocker on %+.5f\n", meanOf(dry),
                         meanOf(noBlocker), meanOf(out));
             ok = ok && std::abs(meanOf(out)) < std::abs(meanOf(noBlocker)) * 0.2 + 1.0e-4;
         }
         if (p.curve == SaturationCurve::Cubic) {
             const float ceiling = (2.0f / 3.0f) * dawlab::dbToGain(p.outputGainDb);
-            std::printf("           曲線上限 2/3 × output = %.2f dBFS，實際 peak %.2f dBFS（多出 %.2f dB）\n",
+            std::printf("           Curve ceiling 2/3 x output = %.2f dBFS, actual peak %.2f dBFS (%.2f dB over)\n",
                         dawlab::gainToDb(ceiling), peakDb(out), peakDb(out) - dawlab::gainToDb(ceiling));
-            // 拆解：1x 且關掉 DC blocker 時，輸出就是「曲線 × output gain」，peak 不可能超過上限
+            // Breakdown: at 1x with the DC blocker off, the output is exactly "curve x output gain", so the peak
+            // cannot exceed the ceiling
             const float p1xOff = peakDb(applyPreset(dry, sampleRate, p, false, nullptr, 0));
             const float p1xOn = peakDb(applyPreset(dry, sampleRate, p, true, nullptr, 0));
             const float p4xOff = peakDb(applyPreset(dry, sampleRate, p, false, nullptr, 2));
-            std::printf("           拆解 peak：1x 關 DC blocker %.2f、1x 開 %.2f、4x 關 %.2f、4x 開 %.2f dBFS\n", p1xOff,
+            std::printf("           Peak breakdown: 1x DC blocker off %.2f, 1x on %.2f, 4x off %.2f, 4x on %.2f dBFS\n", p1xOff,
                         p1xOn, p4xOff, peakDb(out));
-            ok = ok && std::abs(p1xOff - dawlab::gainToDb(ceiling)) < 0.01f; // 沒有 filter → 正好碰到上限
+            ok = ok && std::abs(p1xOff - dawlab::gainToDb(ceiling)) < 0.01f; // No filter -> hits the ceiling exactly
         }
         if (&p == &kPresets[0])
-            std::printf("           （4x oversampling 的 latency = %d samples = %.2f ms；host 要據此補償）\n", latency,
+            std::printf("           (Latency of 4x oversampling = %d samples = %.2f ms; the host must compensate for it)\n", latency,
                         dawlab::samplesToMs(latency, sampleRate));
     }
     std::printf("\n");
@@ -148,7 +153,8 @@ int main(int argc, char** argv) {
     bool ok = runMaterial("drums", drums, sampleRate);
     ok = runMaterial("pluck", pluck, sampleRate) && ok;
 
-    // host 給 2000 samples 的 block（大於 prepare 時的 512）：Saturation 內部切塊，結果必須與 512 一塊完全相同
+    // The host passes a 2000-sample block (larger than the 512 given to prepare): Saturation chunks it
+    // internally, and the result must be identical to processing in 512-sample blocks
     {
         const dawlab::AudioBuffer a = applyPreset(drums, sampleRate, kPresets[1], true, nullptr, 2, kBlockSize);
         const dawlab::AudioBuffer b = applyPreset(drums, sampleRate, kPresets[1], true, nullptr, 2, 2000);
@@ -156,11 +162,11 @@ int main(int argc, char** argv) {
         for (int ch = 0; ch < a.getNumChannels(); ++ch)
             for (int i = 0; i < a.getNumSamples(); ++i)
                 maxDiff = std::max(maxDiff, std::abs(a.getSample(ch, i) - b.getSample(ch, i)));
-        std::printf("block 2000 > maxBlockSize 512：與正常處理的最大差異 %.3g（應為 0）\n\n", maxDiff);
+        std::printf("block 2000 > maxBlockSize 512: largest difference from normal processing %.3g (should be 0)\n\n", maxDiff);
         ok = ok && maxDiff == 0.0f;
     }
 
-    std::printf("已輸出 dawlab_output/l06_{drums,pluck}_{dry,glue,tube,parallel,cubic}.wav\n");
-    std::printf("%s\n", ok ? "所有輸出 peak ≤ 0 dBFS、無 NaN，DC blocker 有效。" : "[FAIL] 有輸出不符預期！");
+    std::printf("Wrote dawlab_output/l06_{drums,pluck}_{dry,glue,tube,parallel,cubic}.wav\n");
+    std::printf("%s\n", ok ? "All outputs peak <= 0 dBFS, no NaN, and the DC blocker works." : "[FAIL] Some output did not match expectations!");
     return ok ? 0 : 1;
 }

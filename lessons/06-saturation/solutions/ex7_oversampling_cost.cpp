@@ -1,18 +1,21 @@
-// 練習 7 解答：比較 1x / 2x / 4x / 8x oversampling 的 alias 能量與 CPU 成本
+// Exercise 7 solution: compare the alias energy and CPU cost of 1x / 2x / 4x / 8x oversampling.
 //
-// 做法：
-//   - 品質：7 kHz、peak 0.5 的正弦波，Saturation（Tanh、drive +18 dB）。量所有 alias 位置（奇數 kHz，扣掉 7、21 kHz）
-//     的功率總和，相對於基頻（與範例 l06_aliasing_demo 相同）。
-//   - 成本：同一個 Saturation 設定處理 10 秒 stereo white noise（512 sample 一個 block），用 steady_clock 計時。
-//     為了減少雜訊，每個倍率跑 3 次取最小值。
-//   - 再算「每秒音訊的 CPU 時間比例」= 處理時間 / 10 秒，就是這個 plugin 在 real-time 時大約吃掉多少 % 的一顆核心。
+// Method:
+//   - Quality: a 7 kHz sine with peak 0.5 through Saturation (Tanh, drive +18 dB). Measure the total power
+//     at all alias positions (odd kHz, excluding 7 and 21 kHz) relative to the fundamental (same as the
+//     l06_aliasing_demo example).
+//   - Cost: process 10 seconds of stereo white noise (in 512-sample blocks) with the same Saturation
+//     settings, timed with steady_clock. To reduce noise, run each factor 3 times and take the minimum.
+//   - Then compute "CPU time per second of audio" = processing time / 10 s, which is roughly the percentage
+//     of one core this plugin would use in real time.
 //
-// 預期（作者機器上 Release 比 Debug 快約 3–4 倍；相對倍率也略有不同）：
-//   alias 總和：1x ≈ -18 dB、2x ≈ -38 dB、4x ≈ -85 dB、8x ≈ -111 dB
-//   成本：大致隨倍率線性成長（tanh 的呼叫次數 × L，halfband 每多一級再多一點）
-//   結論：對 tanh 這種平滑曲線，4x 已經把 alias 壓到 16-bit 量化底噪（約 -96 dB）附近；8x 多花將近一倍 CPU、換到的改善聽不到。
+// Expected (on the author's machine Release is about 3-4x faster than Debug; the relative factors differ slightly too):
+//   alias total: 1x ~ -18 dB, 2x ~ -38 dB, 4x ~ -85 dB, 8x ~ -111 dB
+//   cost: grows roughly linearly with the factor (tanh calls x L, plus a little more for each extra halfband stage)
+//   conclusion: for a smooth curve such as tanh, 4x already pushes the alias down near the 16-bit
+//   quantization noise floor (about -96 dB); 8x costs almost twice the CPU for an improvement you cannot hear.
 //
-// 執行：l06_ex7_solution
+// Run: l06_ex7_solution
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Saturation.h>
@@ -69,7 +72,7 @@ double aliasDb(int log2) {
 double timeMs(int log2, const dawlab::AudioBuffer& noise) {
     double best = 1e30;
     for (int rep = 0; rep < 3; ++rep) {
-        dawlab::AudioBuffer b = noise; // 複製不計時
+        dawlab::AudioBuffer b = noise; // the copy is not timed
         Saturation sat;
         configure(sat, log2, 2);
         const auto t0 = std::chrono::steady_clock::now();
@@ -87,8 +90,8 @@ int main() {
     const dawlab::AudioBuffer noise = dawlab::makeWhiteNoise(kSampleRate, seconds, 0.5f, 2);
 
     std::vector<double> alias, ms;
-    std::printf("%-6s %-10s %16s %12s %12s %14s\n", "倍率", "latency", "alias 總和 (dB)", "耗時 (ms)", "相對 1x",
-                "CPU 佔用 (%)");
+    std::printf("%-6s %-10s %16s %12s %12s %14s\n", "Factor", "latency", "alias total (dB)", "time (ms)", "vs 1x",
+                "CPU load (%)");
     for (int log2 = 0; log2 <= 3; ++log2) {
         Saturation probe;
         configure(probe, log2, 1);
@@ -98,17 +101,17 @@ int main() {
                     ms.back(), ms.back() / ms[0], 100.0 * ms.back() / (seconds * 1000.0));
     }
 #ifdef NDEBUG
-    std::printf("（本次是 Release 建置；絕對時間會隨機器變動，請看相對倍率。）\n");
+    std::printf("(This is a Release build; absolute times vary by machine, look at the relative factors.)\n");
 #else
-    std::printf("（本次是 Debug 建置，絕對時間偏慢；請看相對倍率。用 -Config Release 建置可以看到真實數字。）\n");
+    std::printf("(This is a Debug build, so absolute times are slow; look at the relative factors. Build with -Config Release for realistic numbers.)\n");
 #endif
 
-    // 品質：每加一倍都要更乾淨（8x 已經碰到量測地板，只要求不變差）
+    // Quality: each doubling must be cleaner (8x already hits the measurement floor, so only require no regression)
     DAWLAB_CHECK(alias[1] < alias[0] - 10.0);
     DAWLAB_CHECK(alias[2] < alias[1] - 20.0);
     DAWLAB_CHECK(alias[3] <= alias[2] + 1.0);
     DAWLAB_CHECK(alias[2] < -70.0);
-    // 成本：倍率越高越貴（計時有雜訊，只檢查「明顯」的關係）
+    // Cost: a higher factor is more expensive (timing is noisy, so only check the "obvious" relationships)
     DAWLAB_CHECK(ms[2] > ms[0] * 1.5);
     DAWLAB_CHECK(ms[3] > ms[1]);
 

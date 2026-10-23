@@ -1,38 +1,43 @@
 #pragma once
-// Oversampler：2x / 4x / 8x oversampling，用 FIR halfband filter 的 polyphase 實作。
+// Oversampler: 2x / 4x / 8x oversampling, implemented as a polyphase FIR halfband filter.
 //
-// 為什麼需要它？非線性處理（saturation、distortion、hard clip……）會產生新的諧波，
-// 其中超過 Nyquist（fs/2）的部分會「折返」（fold back / alias）到可聽頻帶，變成與原音不和諧的雜音。
-// 解法是先把訊號升到 L 倍的 sample rate（Nyquist 變成 L·fs/2），在高取樣率下做非線性，
-// 再用 lowpass 把 fs/2 以上的諧波濾掉、降回原本的 sample rate。
+// Why do we need it? Nonlinear processing (saturation, distortion, hard clipping, ...) creates new
+// harmonics, and the ones above Nyquist (fs/2) "fold back" (alias) into the audible band as noise that
+// is inharmonic with the original sound. The fix is to first raise the signal to L times the sample rate
+// (Nyquist becomes L*fs/2), apply the nonlinearity at the high rate, then lowpass away the harmonics
+// above fs/2 and drop back to the original sample rate.
 //
-//   x[n] ──> upsample(×L) ──> 非線性 f() ──> downsample(÷L) ──> y[n]
-//            （插零 + lowpass）              （lowpass + 丟棄）
+//   x[n] ──> upsample(xL) ──> nonlinearity f() ──> downsample(/L) ──> y[n]
+//            (zero-stuff + lowpass)                (lowpass + discard)
 //
-// 每一級都是「×2」或「÷2」的 halfband 級（HalfbandStage）；4x = 兩級串接、8x = 三級串接。
+// Every stage is a "x2" or "/2" halfband stage (HalfbandStage); 4x = two stages in series, 8x = three.
 //
-// Halfband FIR 的特性（第 06 章 README 2.6 節有推導）：
-//   - 截止頻率剛好在新 sample rate 的 1/4（也就是舊 sample rate 的 Nyquist）。
-//   - 係數 h[n] 在 n 為偶數時全部是 0（只有中心 h[0] = 1/2 例外），奇數 n 時 h[n] = sin(πn/2)/(πn)。
-//   - 所以把它寫成 polyphase 之後：
-//       升頻時   even 輸出 = 奇數係數的 FIR（2K 個乘法）、odd 輸出 = 純延遲（0 個乘法）
-//       降頻時   輸出 = 奇數係數 FIR（作用在偶數輸入）+ 1/2 × 奇數輸入的延遲
-//     每個「原始取樣率的 sample」只要 2K 次乘加，而不是整條 FIR 在高取樣率下跑 2 次（≈ 8K 次）。
-//   - 代價：線性相位 FIR 一定有延遲（latency），每級升頻 + 降頻共 2M 個「該級高取樣率」的 sample
-//     （M = 2K - 1 是 FIR 的 group delay，也就是 FIR 的半長度；注意它和上面的倍率 L 是不同的東西）。
-//     getLatencySamples() 會把所有級的延遲換算回原始取樣率，
-//     並保證是整數（降頻時可以選擇取 filter 輸出的偶數或奇數 sample，奇數少延遲 1 個高取樣率 sample，
-//     用這個 decimation phase 把零頭湊掉）。
+// Properties of the halfband FIR (derived in section 2.6 of the Chapter 06 README):
+//   - The cutoff is exactly 1/4 of the new sample rate (i.e. the Nyquist of the old sample rate).
+//   - The coefficients h[n] are all 0 for even n (the center h[0] = 1/2 is the only exception), and for
+//     odd n, h[n] = sin(pi*n/2)/(pi*n).
+//   - So, written in polyphase form:
+//       upsampling    even output = FIR over the odd coefficients (2K multiplications), odd output = pure delay (0 multiplications)
+//       downsampling  output = odd-coefficient FIR (applied to the even inputs) + 1/2 x the delayed odd inputs
+//     Each "original-rate sample" needs only 2K multiply-adds, instead of running the whole FIR twice at
+//     the high rate (about 8K).
+//   - The price: a linear-phase FIR always has delay (latency). Each stage's upsample + downsample costs
+//     2M samples "at that stage's high rate" (M = 2K - 1 is the FIR's group delay, i.e. its half-length;
+//     note this is a different thing from the factor L above).
+//     getLatencySamples() converts the delay of all stages back to the original rate and guarantees an
+//     integer (when downsampling we may take either the even or the odd samples of the filter output; the
+//     odd ones have 1 fewer high-rate sample of delay, and this decimation phase is used to absorb the
+//     fractional remainder).
 //
-// 用法：
+// Usage:
 //   dawlab::dsp::Oversampler os(2);              // 2^2 = 4x
 //   os.prepare(48000.0, 512, 2);
 //   ...
-//   dawlab::AudioBlock up = os.upsample(block);   // up 的 sample 數 = block 的 4 倍（內部 buffer 的 view）
-//   for (每個 sample) up[i] = std::tanh(up[i]);   // 在 192 kHz 做非線性
-//   os.downsample(block);                         // 寫回 block（block 的長度必須與 upsample 時相同）
+//   dawlab::AudioBlock up = os.upsample(block);   // up has 4x as many samples as block (a view of an internal buffer)
+//   for (each sample) up[i] = std::tanh(up[i]);   // apply the nonlinearity at 192 kHz
+//   os.downsample(block);                         // writes back into block (block must have the same length as at upsample)
 //
-// 只依賴 common/（AudioBuffer、DspMath）；upsample / downsample 不 allocate。
+// Depends only on common/ (AudioBuffer, DspMath); upsample / downsample do not allocate.
 
 #include <dawlab/AudioBuffer.h>
 #include <dawlab/DspMath.h>
@@ -46,7 +51,7 @@ namespace dawlab::dsp {
 
 namespace detail {
 
-// 0 階修正 Bessel 函式 I0(x)，Kaiser window 用。級數：I0(x) = Σ_k ((x/2)^k / k!)^2
+// Zeroth-order modified Bessel function I0(x), used by the Kaiser window. Series: I0(x) = sum_k ((x/2)^k / k!)^2
 inline double besselI0(double x) noexcept {
     const double y = 0.25 * x * x;
     double sum = 1.0, term = 1.0;
@@ -61,18 +66,19 @@ inline double besselI0(double x) noexcept {
 
 } // namespace detail
 
-// 一級 halfband：負責「×2 升頻」與「÷2 降頻」。Oversampler 會把 1~3 級串起來。
-// 升頻與降頻各有自己的 FIR 歷史（同一級在一個 block 裡會先升頻、後降頻，兩條 FIR 看到的是不同的訊號）。
+// One halfband stage: handles "x2 upsampling" and "/2 downsampling". Oversampler chains 1 to 3 stages.
+// Upsampling and downsampling each keep their own FIR history (within one block a stage upsamples first
+// and downsamples later, and the two FIRs see different signals).
 class HalfbandStage {
 public:
-    // 設計 halfband FIR 的完整係數（長度 2*numOddTaps - 1 = 4K - 1，numOddTaps = 2K 必須是偶數）。
-    // 理想 halfband：h[0] = 1/2、h[n] = sin(πn/2)/(πn)（n 為奇數）、h[n] = 0（n 為非 0 偶數），
-    // 乘上 Kaiser window（β 越大：stopband 衰減越深、但 transition band 越寬）。
-    // 回傳的 h 以 index 0 = 最左邊的 tap（h[-M]）、中心在 index M = 2K - 1。Σh ≈ 1（DC gain ≈ 1）。
+    // Designs the full coefficient set of the halfband FIR (length 2*numOddTaps - 1 = 4K - 1; numOddTaps = 2K must be even).
+    // Ideal halfband: h[0] = 1/2, h[n] = sin(pi*n/2)/(pi*n) (n odd), h[n] = 0 (n even and non-zero),
+    // multiplied by a Kaiser window (larger beta: deeper stopband attenuation but a wider transition band).
+    // In the returned h, index 0 = the leftmost tap (h[-M]) and the center is at index M = 2K - 1. sum(h) ~ 1 (DC gain ~ 1).
     static std::vector<double> designHalfband(int numOddTaps, double beta) {
         assert(numOddTaps >= 2 && numOddTaps % 2 == 0);
         const int K = numOddTaps / 2;
-        const int M = 2 * K - 1;             // 半長度；完整長度 2M + 1 = 4K - 1
+        const int M = 2 * K - 1;             // half-length; full length 2M + 1 = 4K - 1
         std::vector<double> h(static_cast<size_t>(2 * M + 1), 0.0);
         const double i0beta = detail::besselI0(beta);
         for (int n = -M; n <= M; ++n) {
@@ -80,7 +86,7 @@ public:
             if (n == 0)
                 ideal = 0.5;
             else if (n % 2 == 0)
-                ideal = 0.0;                 // halfband 的關鍵：偶數 tap 全為 0
+                ideal = 0.0;                 // the key to a halfband: all even taps are 0
             else
                 ideal = std::sin(0.5 * kPi * n) / (kPi * n);
             const double r = static_cast<double>(n) / static_cast<double>(M);
@@ -90,21 +96,22 @@ public:
         return h;
     }
 
-    // numOddTaps = 2K（奇數係數的個數，也是每個輸入 sample 的乘法次數）；beta = Kaiser β；
-    // decimationPhase（0 或 1）：降頻時取 filter 輸出的偶數還是奇數 sample（phase 1 少延遲 1 個高取樣率 sample；
-    // Oversampler 用它來把總 latency 湊成整數）。
+    // numOddTaps = 2K (the number of odd coefficients, which is also the number of multiplications per input sample); beta = Kaiser beta;
+    // decimationPhase (0 or 1): whether downsampling keeps the even or the odd samples of the filter output
+    // (phase 1 has 1 fewer high-rate sample of delay; Oversampler uses it to make the total latency an integer).
     void prepare(int numOddTaps, double beta, int numChannels, int decimationPhase = 0) {
         K_ = numOddTaps / 2;
         phase_ = decimationPhase;
         const std::vector<double> h = designHalfband(numOddTaps, beta);
         const int M = 2 * K_ - 1;
-        // polyphase 奇數分支：g[j] = 2 h[2(j - K) + 1]，j = 0 .. 2K-1（乘 2 是升頻（插零）的補償；降頻時再乘回 1/2）
+        // Polyphase odd branch: g[j] = 2 h[2(j - K) + 1], j = 0 .. 2K-1 (the factor 2 compensates for upsampling
+        // (zero-stuffing); downsampling multiplies by 1/2 again)
         g_.resize(static_cast<size_t>(2 * K_));
         for (int j = 0; j < 2 * K_; ++j)
             g_[static_cast<size_t>(j)] = static_cast<float>(2.0 * h[static_cast<size_t>(2 * (j - K_) + 1 + M)]);
         state_.assign(static_cast<size_t>(numChannels), ChannelState{});
         for (auto& s : state_) {
-            s.upHist.assign(static_cast<size_t>(4 * K_), 0.0f);        // 2N（N = 2K）鏡像 ring buffer
+            s.upHist.assign(static_cast<size_t>(4 * K_), 0.0f);        // 2N (N = 2K) mirrored ring buffer
             s.downHist.assign(static_cast<size_t>(4 * K_), 0.0f);
             s.delayHist.assign(static_cast<size_t>(2 * (K_ + 1)), 0.0f);
         }
@@ -124,24 +131,24 @@ public:
 
     int getNumOddTaps() const noexcept { return 2 * K_; }
     int getFilterLength() const noexcept { return 4 * K_ - 1; }
-    // FIR 的 group delay M = 2K - 1（FIR 的半長度），以「這一級的高取樣率」計
+    // FIR group delay M = 2K - 1 (half the FIR length), counted at "this stage's high sample rate"
     int getFilterDelay() const noexcept { return 2 * K_ - 1; }
     int getDecimationPhase() const noexcept { return phase_; }
-    // 這一級升頻 + 降頻的總延遲，以「這一級的高取樣率」計：2M - phase
+    // Total upsample + downsample delay of this stage, counted at "this stage's high sample rate": 2M - phase
     int getRoundTripDelay() const noexcept { return 2 * getFilterDelay() - phase_; }
     const std::vector<float>& getPolyphaseCoefficients() const noexcept { return g_; }
 
-    // 升頻：n 個輸入 → 2n 個輸出。
-    //   out[2i]   = Σ_j g[j] x[i - j]      （內插出來的「中間點」）
-    //   out[2i+1] = x[i - (K - 1)]          （原始 sample 本身，純延遲）
-    // 整體相當於「插零 + 2·h 的 lowpass」再延遲 M 個高取樣率 sample。
+    // Upsampling: n inputs -> 2n outputs.
+    //   out[2i]   = sum_j g[j] x[i - j]      (the interpolated "in-between point")
+    //   out[2i+1] = x[i - (K - 1)]            (the original sample itself, a pure delay)
+    // Overall this is equivalent to "zero-stuffing + a lowpass 2*h", delayed by M high-rate samples.
     void upsample(int channel, const float* in, float* out, int n) noexcept {
         ChannelState& s = state_[static_cast<size_t>(channel)];
         const int N = 2 * K_;
         const float* g = g_.data();
         for (int i = 0; i < n; ++i) {
             pushMirror(s.upHist, s.upPos, N, in[i]);
-            const float* hist = s.upHist.data() + s.upPos; // hist[j] = x[i - j]，連續記憶體
+            const float* hist = s.upHist.data() + s.upPos; // hist[j] = x[i - j], contiguous memory
             float acc = 0.0f;
             for (int j = 0; j < N; ++j)
                 acc += g[j] * hist[j];
@@ -150,14 +157,15 @@ public:
         }
     }
 
-    // 降頻：2n 個輸入 → n 個輸出。先濾波、再每兩個取一個（polyphase 讓我們只算需要的那一個）：
-    //   phase 0：out[i] = 1/2 ( Σ_j g[j] u_even[i - j] + u_odd[i - K] )        = w[2i - M]
-    //   phase 1：out[i] = 1/2 ( Σ_j g[j] u_odd[i - j]  + u_even[i - (K - 1)] ) = w[2i - (M - 1)]
-    // 其中 u_even[i] = in[2i]、u_odd[i] = in[2i+1]，w = 用完整 h 濾波（零相位）的結果。
+    // Downsampling: 2n inputs -> n outputs. Filter first, then keep every second sample (polyphase lets us
+    // compute only the one we need):
+    //   phase 0: out[i] = 1/2 ( sum_j g[j] u_even[i - j] + u_odd[i - K] )        = w[2i - M]
+    //   phase 1: out[i] = 1/2 ( sum_j g[j] u_odd[i - j]  + u_even[i - (K - 1)] ) = w[2i - (M - 1)]
+    // where u_even[i] = in[2i], u_odd[i] = in[2i+1], and w = the result of filtering with the full h (zero phase).
     void downsample(int channel, const float* in, float* out, int n) noexcept {
         ChannelState& s = state_[static_cast<size_t>(channel)];
         const int N = 2 * K_;
-        const int D = K_ + 1;                      // delayHist 的長度
+        const int D = K_ + 1;                      // length of delayHist
         const int centreDelay = (phase_ == 0) ? K_ : K_ - 1;
         const float* g = g_.data();
         for (int i = 0; i < n; ++i) {
@@ -175,16 +183,17 @@ public:
 
 private:
     struct ChannelState {
-        std::vector<float> upHist;    // 升頻 FIR 的歷史，長度 2N：每個 sample 寫兩份，讓最近 N 個 sample 永遠連續
-        std::vector<float> downHist;  // 降頻 FIR 的歷史（同樣技巧）
-        std::vector<float> delayHist; // 降頻「純延遲」分支的歷史，長度 2D
+        std::vector<float> upHist;    // history of the upsampling FIR, length 2N: every sample is written twice so the latest N samples are always contiguous
+        std::vector<float> downHist;  // history of the downsampling FIR (same trick)
+        std::vector<float> delayHist; // history of the downsampling "pure delay" branch, length 2D
         int upPos = 0;
         int downPos = 0;
         int delayPos = 0;
     };
 
-    // 「鏡像 ring buffer」：buffer 長度 2N，寫入位置往下走，同一個值寫在 pos 與 pos + N。
-    // 之後 buf[pos + j]（j = 0..N-1）就是 x[n - j]，不需要 modulo，FIR 內迴圈可以直接跑。
+    // "Mirrored ring buffer": the buffer has length 2N, the write position moves downward, and the same
+    // value is written at both pos and pos + N. After that, buf[pos + j] (j = 0..N-1) is x[n - j], with no
+    // modulo needed, so the FIR inner loop can run directly.
     static void pushMirror(std::vector<float>& buf, int& pos, int N, float x) noexcept {
         pos = (pos == 0) ? N - 1 : pos - 1;
         buf[static_cast<size_t>(pos)] = x;
@@ -199,31 +208,32 @@ private:
 
 class Oversampler {
 public:
-    // 預設的 filter 設計（第 06 章 README 2.6 節有數字；範例 l06_oversampler_response 會實際量）：
-    //   第 1 級（×2，在 2fs 下）  32 個奇數 tap（63 taps），Kaiser β = 8 → stopband 約 -80 dB、
-    //                              transition 約 20.3 kHz → 28 kHz（fs = 48 kHz 時）
-    //   第 2 級（×4，在 4fs 下）  12 個奇數 tap（23 taps）：transition band 可以寬很多，所以短很多
-    //   第 3 級（×8，在 8fs 下）   8 個奇數 tap（15 taps）
+    // Default filter design (the numbers are in section 2.6 of the Chapter 06 README; the example
+    // l06_oversampler_response measures them):
+    //   Stage 1 (x2, at 2fs)  32 odd taps (63 taps), Kaiser beta = 8 -> stopband about -80 dB,
+    //                         transition about 20.3 kHz -> 28 kHz (for fs = 48 kHz)
+    //   Stage 2 (x4, at 4fs)  12 odd taps (23 taps): the transition band can be much wider, so the filter is much shorter
+    //   Stage 3 (x8, at 8fs)   8 odd taps (15 taps)
     static constexpr int kMaxFactorLog2 = 3;
     static constexpr int kOddTapsStage1 = 32;
     static constexpr int kOddTapsStage2 = 12;
     static constexpr int kOddTapsStage3 = 8;
     static constexpr double kKaiserBeta = 8.0;
 
-    // 倍率 = 2^factorLog2：0 = 不 oversampling（1x，純複製）、1 = 2x、2 = 4x、3 = 8x
+    // Factor = 2^factorLog2: 0 = no oversampling (1x, plain copy), 1 = 2x, 2 = 4x, 3 = 8x
     explicit Oversampler(int factorLog2 = 1) noexcept : factorLog2_(std::clamp(factorLog2, 0, kMaxFactorLog2)) {}
 
     void prepare(double sampleRate, int maxBlockSize, int numChannels) {
         sampleRate_ = sampleRate;
-        maxBlockSize_ = std::max(1, maxBlockSize); // ≤ 0 是不合理的輸入；至少配置 1，避免 buffer 大小為 0
+        maxBlockSize_ = std::max(1, maxBlockSize); // <= 0 is invalid input; allocate at least 1 to avoid a zero-sized buffer
         numChannels_ = numChannels;
         stages_.clear();
         stages_.resize(static_cast<size_t>(factorLog2_));
 
-        // 總延遲（以 1/2^S 個原始 sample 為單位）= Σ_i (2 M_i - φ_i) · 2^(S-i)
-        //   M_i：第 i 級 FIR 的 group delay（升頻與降頻各一次）；φ_i ∈ {0, 1}：第 i 級的 decimation phase。
-        // 先用 φ = 0 算出 delayUnits，零頭 r = delayUnits mod 2^S 用各級的 φ 扣掉（r 的二進位第 (S-i) 位 → 第 i 級），
-        // 剩下的就是整數個原始 sample。
+        // Total delay (in units of 1/2^S original samples) = sum_i (2 M_i - phi_i) * 2^(S-i)
+        //   M_i: group delay of the stage-i FIR (once for upsampling, once for downsampling); phi_i in {0, 1}: the decimation phase of stage i.
+        // First compute delayUnits with phi = 0; the remainder r = delayUnits mod 2^S is then subtracted by
+        // the per-stage phi (bit (S-i) of r -> stage i), leaving an integer number of original samples.
         const int S = factorLog2_;
         int delayUnits = 0;
         for (int i = 1; i <= S; ++i) {
@@ -257,15 +267,15 @@ public:
     int getNumStages() const noexcept { return factorLog2_; }
     const HalfbandStage& getStage(int index) const noexcept { return stages_[static_cast<size_t>(index)]; }
 
-    // 升頻 + 降頻來回的總延遲，以「原始取樣率」的 sample 計（保證是整數）
+    // Total round-trip (upsample + downsample) delay, in samples at the original rate (guaranteed to be an integer)
     int getLatencySamples() const noexcept { return latencySamples_; }
 
-    // 升頻：回傳內部最高取樣率 buffer 的 view，長度 = input 長度 × factor。
-    // 使用者直接在這個 view 上做非線性處理，再呼叫 downsample()。
+    // Upsample: returns a view of the internal highest-rate buffer, with length = input length x factor.
+    // The caller applies the nonlinearity directly on this view and then calls downsample().
     AudioBlock upsample(const AudioBlock& input) noexcept {
         const int n = input.getNumSamples();
         const int numChannels = std::min(input.getNumChannels(), numChannels_);
-        assert(n <= maxBlockSize_ && "block 比 prepare 時的 maxBlockSize 大");
+        assert(n <= maxBlockSize_ && "block is larger than the maxBlockSize given to prepare");
         currentNumSamples_ = n;
         if (factorLog2_ == 0) {
             AudioBlock view = viewOf(0, n);
@@ -284,11 +294,11 @@ public:
         return viewOf(factorLog2_, n << factorLog2_);
     }
 
-    // 降頻：把內部高取樣率 buffer 的內容濾波、降回原始取樣率，寫進 output（長度必須與 upsample 的 input 相同）
+    // Downsample: filters the contents of the internal high-rate buffer, brings them back to the original rate and writes them into output (the length must equal that of the input given to upsample)
     void downsample(AudioBlock output) noexcept {
         const int n = output.getNumSamples();
         const int numChannels = std::min(output.getNumChannels(), numChannels_);
-        assert(n == currentNumSamples_ && "downsample 的長度必須與 upsample 時相同");
+        assert(n == currentNumSamples_ && "downsample length must equal the length used at upsample");
         if (factorLog2_ == 0) {
             output.copyFrom(viewOf(0, n));
             return;
@@ -321,7 +331,7 @@ private:
     int latencySamples_ = 0;
     int currentNumSamples_ = 0;
     std::vector<HalfbandStage> stages_;
-    std::vector<AudioBuffer> buffers_; // buffers_[i] 的取樣率 = fs × 2^i；[0] 只在 1x 時用
+    std::vector<AudioBuffer> buffers_; // the sample rate of buffers_[i] = fs x 2^i; [0] is used only at 1x
 };
 
 } // namespace dawlab::dsp

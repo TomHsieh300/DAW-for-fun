@@ -1,17 +1,18 @@
-// 練習 6（★★★）：一階 ADAA（antiderivative anti-aliasing）hard clip
+// Exercise 6 (***): first-order ADAA (antiderivative anti-aliasing) hard clip
 //
-// 目標：
-//   naive hard clip：y[n] = clamp(x[n], -1, 1)
-//   ADAA：          y[n] = (F(x[n]) - F(x[n-1])) / (x[n] - x[n-1])，F 是 clamp 的反導函式
-//   量測 7 kHz（peak 2）hard clip 在 48 kHz 下的 alias 總能量，ADAA 要比 naive 少 6 dB 以上。
+// Goal:
+//   naive hard clip: y[n] = clamp(x[n], -1, 1)
+//   ADAA:            y[n] = (F(x[n]) - F(x[n-1])) / (x[n] - x[n-1]), where F is the antiderivative of clamp
+//   Measure the total alias energy of a 7 kHz (peak 2) hard clip at 48 kHz; ADAA must be at least 6 dB
+//   lower than naive.
 //
-// 提示：
-//   - F(x) 分兩段：|x| ≤ 1 與 |x| > 1。檢查 F'(x) = f(x)，以及在 |x| = 1 處連續。
-//   - |x[n] - x[n-1]| 很小時是 0/0：改用 f((x[n] + x[n-1]) / 2)。
-//   - 用 double 計算。
+// Hints:
+//   - F(x) has two pieces: |x| <= 1 and |x| > 1. Check that F'(x) = f(x) and that F is continuous at |x| = 1.
+//   - When |x[n] - x[n-1]| is tiny it is 0/0: use f((x[n] + x[n-1]) / 2) instead.
+//   - Compute in double.
 //
-// 完成所有 TODO 之前，執行時會印出 FAIL（這是預期的）。
-// 執行：l06_ex6_starter
+// Until all TODOs are done, running this prints FAIL (that is expected).
+// Run: l06_ex6_starter
 
 #include <dawlab/Common.h>
 
@@ -29,7 +30,7 @@ class HardClipAdaa {
 public:
     static double f(double x) noexcept { return std::clamp(x, -1.0, 1.0); }
 
-    // TODO 1：hard clip 的反導函式
+    // TODO 1: the antiderivative of the hard clip
     static double antiderivative(double x) noexcept {
         (void)x;
         return 0.0;
@@ -37,7 +38,7 @@ public:
 
     void reset() noexcept { x1_ = 0.0; }
 
-    // TODO 2：一階 ADAA（記得處理 Δ ≈ 0）
+    // TODO 2: first-order ADAA (remember to handle delta ~ 0)
     float processSample(float xIn) noexcept {
         x1_ = xIn;
         return static_cast<float>(f(xIn));
@@ -47,7 +48,7 @@ private:
     double x1_ = 0.0;
 };
 
-// alias 總能量（相對於基頻，dB）：所有 alias 落在奇數 kHz，扣掉 7 kHz 與 21 kHz
+// Total alias energy (dB relative to the fundamental): all aliases fall on odd kHz values, excluding 7 kHz and 21 kHz
 double aliasDb(const dawlab::AudioBuffer& b) {
     const int skip = 4800;
     const float* d = b.getReadPointer(0) + skip;
@@ -92,7 +93,7 @@ int main() {
         DAWLAB_CHECK_NEAR(a.processSample(0.6f), 0.4, 1e-6);
     }
     const double naive = run(false), adaa = run(true);
-    std::printf("alias 總和：naive %.1f dB、ADAA %.1f dB（改善 %.1f dB）\n", naive, adaa, naive - adaa);
+    std::printf("alias total: naive %.1f dB, ADAA %.1f dB (improvement %.1f dB)\n", naive, adaa, naive - adaa);
     DAWLAB_CHECK(adaa < naive - 6.0);
     return dawlab::test::summary("l06_ex6_starter");
 }

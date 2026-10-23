@@ -1,18 +1,21 @@
-// 練習 4 解答：Chebyshev polynomial 諧波 exciter——精確地「點」出指定的諧波
+// Exercise 4 solution: Chebyshev polynomial harmonic exciter - "dial in" exactly the harmonics you want.
 //
-// 關鍵恆等式：T_n(cos θ) = cos(nθ)。
-// 所以把振幅 1 的正弦波丟進 T_n，出來的就是「純」n 次諧波，沒有其他成分。
-// 遞迴：T_0 = 1、T_1 = x、T_{n+1}(x) = 2x T_n(x) - T_{n-1}(x)
-//   T_2 = 2x² - 1、T_3 = 4x³ - 3x、T_4 = 8x⁴ - 8x² + 1、T_5 = 16x⁵ - 20x³ + 5x
+// Key identity: T_n(cos(theta)) = cos(n*theta).
+// So a sine of amplitude 1 fed into T_n comes out as a "pure" n-th harmonic with nothing else.
+// Recurrence: T_0 = 1, T_1 = x, T_{n+1}(x) = 2x T_n(x) - T_{n-1}(x)
+//   T_2 = 2x^2 - 1, T_3 = 4x^3 - 3x, T_4 = 8x^4 - 8x^2 + 1, T_5 = 16x^5 - 20x^3 + 5x
 //
-// exciter：y = x + Σ_{n=2..5} g_n T_n(x)
-//   - 輸入振幅 1 時：H1 = 1，H_n = |g_n| → 想要 H2 = -20 dB 就設 g_2 = 0.1。
-//   - 輸入振幅 A < 1 時不再精確：T_2(A cos θ) = A² cos 2θ + (A² - 1)
-//       → H2 振幅變成 g_2 A²，而且多了 DC g_2 (A² - 1)（所以實務上後面要接 DC blocker）。
-//     一般來說 T_n(A cos θ) 的 n 次諧波振幅 = A^n，還會漏出 n-2、n-4…… 次的成分。
-//   - 多項式的次數 N 決定了最高諧波 = N 次 → 你「確切知道」需要多少 oversampling 才不會 alias（N 倍即可）。
+// The exciter: y = x + sum_{n=2..5} g_n T_n(x)
+//   - With input amplitude 1: H1 = 1, H_n = |g_n| -> to get H2 = -20 dB, set g_2 = 0.1.
+//   - With input amplitude A < 1 it is no longer exact: T_2(A cos(theta)) = A^2 cos(2*theta) + (A^2 - 1)
+//       -> the H2 amplitude becomes g_2 A^2, and there is an extra DC of g_2 (A^2 - 1) (which is why a DC
+//          blocker should follow in practice).
+//     In general the n-th harmonic of T_n(A cos(theta)) has amplitude A^n, and components at orders
+//     n-2, n-4, ... leak out as well.
+//   - The polynomial degree N sets the highest harmonic = N -> you know exactly how much oversampling
+//     is needed to avoid aliasing (a factor of N is enough).
 //
-// 執行：l06_ex4_solution
+// Run: l06_ex4_solution
 
 #include <dawlab/Common.h>
 
@@ -22,7 +25,7 @@
 
 namespace {
 
-// T_n(x)：用遞迴算，不用查表
+// T_n(x): computed by recurrence, no lookup table
 float chebyshev(int n, float x) noexcept {
     if (n == 0)
         return 1.0f;
@@ -39,17 +42,17 @@ class ChebyshevExciter {
 public:
     static constexpr int kMaxHarmonic = 5;
 
-    // harmonic = 2..5；gain = 輸入振幅 1 時，該次諧波相對於基頻的振幅（線性）
+    // harmonic = 2..5; gain = amplitude of that harmonic relative to the fundamental (linear) for an input amplitude of 1
     void setHarmonicGain(int harmonic, float gain) noexcept {
         if (harmonic >= 2 && harmonic <= kMaxHarmonic)
             gains_[static_cast<size_t>(harmonic)] = gain;
     }
 
     float processSample(float x) const noexcept {
-        // 把 x 限制在 [-1, 1]：Chebyshev 多項式在 |x| > 1 時會爆炸性成長（T_5(2) = 362）
+        // Limit x to [-1, 1]: Chebyshev polynomials grow explosively for |x| > 1 (T_5(2) = 362)
         const float xc = std::clamp(x, -1.0f, 1.0f);
         float y = x;
-        // 同一個遞迴一路算上去，順便把各次加進來（比呼叫 chebyshev(n, x) 四次省）
+        // Run the same recurrence upward and add each order on the way (cheaper than calling chebyshev(n, x) four times)
         float tPrev = 1.0f, t = xc;
         for (int n = 2; n <= kMaxHarmonic; ++n) {
             const float next = 2.0f * xc * t - tPrev;
@@ -70,19 +73,19 @@ constexpr double kF0 = 1000.0;
 } // namespace
 
 int main() {
-    // ---- 1. T_n 的恆等式 ---------------------------------------------------------------------
+    // ---- 1. The identity for T_n -------------------------------------------------------------
     for (int n = 0; n <= 5; ++n) {
         double worst = 0.0;
         for (double th = 0.0; th < dawlab::kTwoPi; th += 0.01)
             worst = std::max(worst, std::abs(chebyshev(n, static_cast<float>(std::cos(th))) - std::cos(n * th)));
         DAWLAB_CHECK(worst < 1e-5);
     }
-    DAWLAB_CHECK_NEAR(chebyshev(3, 0.5f), 4 * 0.125 - 1.5, 1e-6);   // 4x³ - 3x
-    DAWLAB_CHECK_NEAR(chebyshev(4, 0.5f), 8 * 0.0625 - 2 + 1, 1e-6); // 8x⁴ - 8x² + 1
+    DAWLAB_CHECK_NEAR(chebyshev(3, 0.5f), 4 * 0.125 - 1.5, 1e-6);   // 4x^3 - 3x
+    DAWLAB_CHECK_NEAR(chebyshev(4, 0.5f), 8 * 0.0625 - 2 + 1, 1e-6); // 8x^4 - 8x^2 + 1
 
-    // ---- 2. 振幅 1：諧波正好等於設定值 --------------------------------------------------------
+    // ---- 2. Amplitude 1: the harmonics equal the configured values exactly ------------------
     ChebyshevExciter ex;
-    const float g2 = 0.1f, g3 = 0.05f, g5 = 0.02f; // -20 dB、-26.02 dB、-33.98 dB；H4 不要
+    const float g2 = 0.1f, g3 = 0.05f, g5 = 0.02f; // -20 dB, -26.02 dB, -33.98 dB; no H4
     ex.setHarmonicGain(2, g2);
     ex.setHarmonicGain(3, g3);
     ex.setHarmonicGain(5, g5);
@@ -97,15 +100,15 @@ int main() {
     {
         const auto b = run(1.0f);
         const auto lv = dawlab::harmonicLevelsDb(b.getReadPointer(0), b.getNumSamples(), kF0, kSampleRate, 6);
-        std::printf("振幅 1.0：H2 %.2f dB（目標 %.2f）、H3 %.2f（%.2f）、H4 %.2f（無）、H5 %.2f（%.2f）、H6 %.2f（無）\n",
+        std::printf("Amplitude 1.0: H2 %.2f dB (target %.2f), H3 %.2f (%.2f), H4 %.2f (none), H5 %.2f (%.2f), H6 %.2f (none)\n",
                     lv[1], dawlab::gainToDb(g2), lv[2], dawlab::gainToDb(g3), lv[3], lv[4], dawlab::gainToDb(g5), lv[5]);
         DAWLAB_CHECK_NEAR(lv[1], dawlab::gainToDb(g2), 0.1);
         DAWLAB_CHECK_NEAR(lv[2], dawlab::gainToDb(g3), 0.1);
         DAWLAB_CHECK_NEAR(lv[4], dawlab::gainToDb(g5), 0.1);
-        DAWLAB_CHECK(lv[3] < -80.0); // H4 沒設 → 不存在
-        DAWLAB_CHECK(lv[5] < -80.0); // 5 次多項式 → 沒有 6 次以上
+        DAWLAB_CHECK(lv[3] < -80.0); // H4 not set -> absent
+        DAWLAB_CHECK(lv[5] < -80.0); // 5th-degree polynomial -> nothing at 6th or above
     }
-    // ---- 3. 振幅 0.5：不再精確，且出現 DC --------------------------------------------------------
+    // ---- 3. Amplitude 0.5: no longer exact, and a DC appears ------------------------------
     {
         const float A = 0.5f;
         const auto b = run(A);
@@ -116,8 +119,8 @@ int main() {
             mean += d[i];
         mean /= n;
         const double h2 = dawlab::goertzelAmplitude(d, n, 2 * kF0, kSampleRate);
-        // DC 只來自偶次：T_2 → g2 (A² - 1)；T_4 沒用到
-        std::printf("振幅 0.5：DC %.4f（理論 g2(A²-1) = %.4f）、H2 振幅 %.4f（理論 g2·A² = %.4f）\n", mean,
+        // DC comes only from even orders: T_2 -> g2 (A^2 - 1); T_4 is not used
+        std::printf("Amplitude 0.5: DC %.4f (theory g2(A^2-1) = %.4f), H2 amplitude %.4f (theory g2*A^2 = %.4f)\n", mean,
                     g2 * (A * A - 1.0f), h2, g2 * A * A);
         DAWLAB_CHECK_NEAR(mean, g2 * (A * A - 1.0f), 1e-3);
         DAWLAB_CHECK_NEAR(h2, g2 * A * A, 1e-3);
