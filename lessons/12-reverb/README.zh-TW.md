@@ -33,18 +33,7 @@
 
 想像你站在一個房間裡，前方有人拍手。聲音以約 343 m/s 的速度向四面八方擴散：
 
-```
-  振幅
-   │ 直達音
-   │  ┃
-   │  ┃      early reflections（離散、可分辨）
-   │  ┃   ┃  ┃ ┃    ┃
-   │  ┃   ┃  ┃ ┃ ┃  ┃ ┃┃ ┃      late reverb / diffuse tail（密集、像雜訊、指數衰減）
-   │  ┃   ┃  ┃ ┃ ┃┃ ┃┃┃┃┃┃┃▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌
-   │  ┃   ┃  ┃ ┃ ┃┃ ┃┃┃┃┃┃┃▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▄▄▄▄▄▄▄▄▂▂▂▂▂▂▂▁▁▁
-   └──┸───┸──┸─┸─┸┸─┸┸┸┸┸┸┸┸──────────────────────────────────────────────────────────► t
-      0  ← pre-delay →│← early（約 5–80 ms）→│←────────── late（數百 ms 到數秒）──────────►
-```
+![合成的房間 impulse response：直達音、early reflections（約 5–80 ms）與指數衰減的 late reverb](images/reverb-impulse-response.svg)
 
 1. **直達音（direct sound）**：聲源直線傳到耳朵，最早、最大聲。決定「聲音從哪個方向來」。
 2. **Early reflections（早期反射）**：經過一、兩次牆面 / 地板 / 天花板反射才到的聲音。它們很稀疏、彼此可以分辨（但通常不會被聽成「回音」，而是被大腦融合進直達音），提供「房間大小、形狀、自己離牆多遠」的線索。
@@ -101,10 +90,12 @@ $$
 
 最簡單能產生「一串衰減 echo」的結構是 feedback comb：
 
-```
- x[n] ──►(+)──────────────► [ z^-D ] ──┬──► y[n]
-          ▲                            │
-          └────────── × g ◄────────────┘
+```mermaid
+flowchart LR
+    X["x[n]"] --> S(("+"))
+    S --> D["z^-D"]
+    D --> Y["y[n]"]
+    D -->|"× g"| S
 ```
 
 $$
@@ -137,15 +128,7 @@ $$
 
 $`|H(e^{j\omega})| = 1/|1 - g e^{-j\omega D}|`$。當 $`\omega D = 2\pi k`$（頻率是 $`f_s/D`$ 的整數倍）時分母最小 → peak $`= 1/(1-g)`$；半整數倍時分母最大 → notch $`= 1/(1+g)`$。g = 0.894 時 peak = +19.49 dB、notch = −5.55 dB，相差 25 dB，頻譜像一把梳子：
 
-```
- dB
- +19 ┤ ▲     ▲     ▲     ▲     ▲
-     │ █     █     █     █     █         peak 間距 = fs/D = 30.8 Hz
-     │ █     █     █     █     █
-  -5 ┤▄█▄▁▁▁▄█▄▁▁▁▄█▄▁▁▁▄█▄▁▁▁▄█▄
-     └─┴─────┴─────┴─────┴─────┴──► f
-       0   fs/D  2fs/D  3fs/D
-```
+![g = 0.894、D = 1557、fs = 48 kHz 的 feedback comb 幅頻響應：每隔 fs/D = 30.8 Hz 一個 +19.49 dB 的 peak，中間是 −5.55 dB 的 notch](images/reverb-comb-spectrum.svg)
 
 這些 peak 就是 comb 的 **mode（共振頻率）**。單一個 comb 的 impulse response 是規律的 click 串（聽起來像在兩面平行牆間拍手的 flutter echo），頻譜是一根根分開的共振 —— 有明顯音高，聽起來「金屬」。要做出像房間的殘響，需要：
 
@@ -174,12 +157,14 @@ DC 時 $`|\mathrm{LP}| = 1`$（低頻 RT60 不變），Nyquist 時 $`|\mathrm{LP
 
 光是 comb 的 echo 不夠密。Schroeder 的另一個發明是 **allpass**：
 
-```
-            ┌──────────── × (−g) ─────────────────┐
-            │                                     ▼
- x[n] ──►(+)──► v[n] ──► [ z^-D ] ──► v[n−D] ──►(+)──► y[n]
-          ▲                              │
-          └──────────── × g ◄────────────┘
+```mermaid
+flowchart LR
+    X["x[n]"] --> S1(("+"))
+    S1 -->|"v[n]"| D["z^-D"]
+    D -->|"v[n-D]"| S2(("+"))
+    D -->|"× g"| S1
+    S1 -->|"× (-g)"| S2
+    S2 --> Y["y[n]"]
 ```
 
 $$
@@ -198,12 +183,27 @@ $$
 
 Schroeder（1962）把兩者組合起來：
 
-```
-                ┌─► comb 1 (D1, g1) ─┐
-                ├─► comb 2 (D2, g2) ─┤
- x ─────────────┼─► comb 3 (D3, g3) ─┼─(+)─► allpass (5 ms) ─► allpass (1.7 ms) ─► y
-                └─► comb 4 (D4, g4) ─┘
-        parallel comb：產生 mode 的「密度」與 decay       series allpass：增加 echo 密度（擴散）
+```mermaid
+flowchart LR
+    X["x"] --> C1
+    X --> C2
+    X --> C3
+    X --> C4
+    subgraph PC["Parallel comb：產生 mode 的「密度」與 decay"]
+        C1["comb 1 (D1, g1)"]
+        C2["comb 2 (D2, g2)"]
+        C3["comb 3 (D3, g3)"]
+        C4["comb 4 (D4, g4)"]
+    end
+    C1 --> SUM(("+"))
+    C2 --> SUM
+    C3 --> SUM
+    C4 --> SUM
+    SUM --> AP1
+    subgraph SA["Series allpass：增加 echo 密度（擴散）"]
+        AP1["allpass (5 ms)"] --> AP2["allpass (1.7 ms)"]
+    end
+    AP2 --> Y["y"]
 ```
 
 - **Parallel combs**：每個 comb 的 mode 間距是 $`f_s/D_i`$，4 個不同長度的 comb 疊起來，mode 數量變成 4 倍；每個 comb 用自己的 $`g_i = 10^{-3D_i/(\mathrm{RT60}f_s)}`$，所以全部以同一個 RT60 衰減。
@@ -211,16 +211,40 @@ Schroeder（1962）把兩者組合起來：
 
 **Freeverb**（Jezar at Dreampoint，2000 年公開為 public domain）是這個架構最廣為流傳的版本：
 
-```
-           ┌─► LBCF 1116 ─┐
-           ├─► LBCF 1188 ─┤
-           ├─► LBCF 1277 ─┤
- in (L+R) ─┼─► LBCF 1356 ─┼─(+)─► AP 556 ─► AP 441 ─► AP 341 ─► AP 225 ─► out L
-  × 0.015  ├─► LBCF 1422 ─┤
-           ├─► LBCF 1491 ─┤        右聲道：每個 delay 長度 + 23 samples（stereo spread）
-           ├─► LBCF 1557 ─┤
-           └─► LBCF 1617 ─┘
-   LBCF = lowpass-feedback comb filter（長度為 44.1 kHz 時的 samples）
+```mermaid
+flowchart LR
+    IN["in (L+R)<br/>× 0.015"]
+    IN --> L1
+    IN --> L2
+    IN --> L3
+    IN --> L4
+    IN --> L5
+    IN --> L6
+    IN --> L7
+    IN --> L8
+    subgraph CB["8 條並聯 LBCF（lowpass-feedback comb filter），長度為 44.1 kHz 時的 samples"]
+        L1["LBCF 1116"]
+        L2["LBCF 1188"]
+        L3["LBCF 1277"]
+        L4["LBCF 1356"]
+        L5["LBCF 1422"]
+        L6["LBCF 1491"]
+        L7["LBCF 1557"]
+        L8["LBCF 1617"]
+    end
+    L1 --> SUM(("+"))
+    L2 --> SUM(("+"))
+    L3 --> SUM(("+"))
+    L4 --> SUM(("+"))
+    L5 --> SUM(("+"))
+    L6 --> SUM(("+"))
+    L7 --> SUM(("+"))
+    L8 --> SUM(("+"))
+    SUM --> AP1
+    subgraph AS["4 級串聯 allpass（AP）"]
+        AP1["AP 556"] --> AP2["AP 441"] --> AP3["AP 341"] --> AP4["AP 225"]
+    end
+    AP4 --> OUT["out L<br/>（右聲道：每個 delay 長度 + 23 samples，stereo spread）"]
 ```
 
 - **8 個 lowpass-feedback comb（LBCF）並聯**：迴路裡的 one-pole lowpass 就是 2.3 節的 damping。Freeverb 的實作是 `filterstore = output·(1−damp) + filterstore·damp`、`buffer = input + filterstore·feedback` —— 本章 `CombFilter` 用同樣的寫法。
@@ -239,15 +263,15 @@ Freeverb 的優點是簡單、便宜、聽起來不錯；缺點是：8 個 comb 
 
 Schroeder 結構的 comb 彼此獨立。如果讓 N 條 delay line 的輸出**經過一個矩陣混合**再回授給所有線，每一個 echo 下一圈就會分裂成 N 個，echo 密度隨時間指數成長 —— 這比較像真實房間（反射越多次、越密）。這就是 FDN（Stautner & Puckette 1982；Jot & Chaigne 1991 把它系統化）：
 
-```
-         b（輸入分配）
- x ──────┬────────┬────────┬────────┐
-         ▼        ▼        ▼        ▼
-   ┌──►(+)─►[z^-L0]─►(+)─►[z^-L1]─► ...  (+)─►[z^-L7]──┐   v = 各 delay 線的輸出
-   │                                                      │
-   │     s_i = g_i · LP_i( (A·v)_i ) + b_i·x               │──► y = cᵀ v
-   │                                                      │
-   └──────── g_i ◄── LP_i ◄── [ 回授矩陣 A（N×N）] ◄───────┘
+```mermaid
+flowchart LR
+    X["x"] -->|"b（輸入分配）"| S["每條線 i 前面的 (+)<br/>s_i = g_i · LP_i((A·v)_i) + b_i·x"]
+    S --> D["8 條 delay line<br/>z^-L0 ... z^-L7"]
+    D -->|"v = 各 delay 線的輸出"| Y["y = c^T v"]
+    D -->|"v"| A["回授矩陣 A（N×N）"]
+    A --> LP["LP_i"]
+    LP --> G["× g_i"]
+    G --> S
 ```
 
 狀態方程式（N 條線，第 i 條長 $`L_i`$）：
@@ -377,15 +401,19 @@ $`y[n] = \sum_{k=0}^{M-1} h[k]x[n-k]`$：每個輸出 sample 要 M 次乘加。�
 
 **Overlap-add（OLA）**：每塊輸入 $`x_j`$（長 B）補零到 N ≥ B + M − 1，FFT、乘 $`H`$、IFFT，得到長 B + M − 1 的結果；相鄰塊的結果有 M − 1 個 sample 重疊，**相加**起來。
 
-```
- x_j  補零 → FFT → ×H → IFFT → [ B + M − 1 個輸出 ]
-                                 └─ 尾巴 M−1 個與下一塊的開頭相加 ─┘
+```mermaid
+flowchart LR
+    X["x_j"] --> Z["補零"] --> F["FFT"] --> H["× H"] --> I["IFFT"] --> O["B + M − 1 個輸出"]
+    O -->|"尾巴 M−1 個與下一塊的開頭相加"| N["下一塊"]
 ```
 
 **Overlap-save（OLS）**：每次取 N 個輸入（新的 B 個 + 前面舊的 N − B 個），FFT、乘 $`H`$、IFFT；結果的前 M − 1 個 sample 被循環卷積「繞回來」的部分污染（wrap-around），**丟掉**，只留後面 B 個正確的輸出。
 
-```
- frame = [ 舊的 N−B 個 | 新的 B 個 ] → FFT → ×H → IFFT → [ 前 N−B 個：wrap，丟掉 | 後 B 個：正確輸出 ]
+```mermaid
+flowchart LR
+    X["frame = 舊的 N−B 個 + 新的 B 個"] --> F["FFT"] --> H["× H"] --> I["IFFT"]
+    I --> W["前 N−B 個：wrap，丟掉"]
+    I --> K["後 B 個：正確輸出"]
 ```
 
 兩者成本相同。本章用 overlap-save（不需要額外的累加 buffer）。
@@ -411,13 +439,12 @@ Y_j = \sum_{k=0}^{K-1} H_k \cdot X_{j-k}
 \qquad\text{（逐 bin 的 complex 乘加）}
 $$
 
-```
- 輸入塊 j ──► [上一塊|這一塊] ──► FFT ──► X_j ──► FDL： X_j  X_{j-1}  X_{j-2} ... X_{j-K+1}
-                                                     ×     ×        ×             ×
-                                     （預先算好）    H_0   H_1      H_2    ...    H_{K-1}
-                                                     └─────┴────────┴──── Σ ──────┘
-                                                                      │
-                                                         IFFT ◄───────┘ → 取後 P 個 → 輸出塊 j
+```mermaid
+flowchart LR
+    IN["輸入塊 j"] --> FR["上一塊 + 這一塊"] --> F["FFT"] --> XJ["X_j"]
+    XJ --> FDL["FDL：<br/>X_j, X_{j-1}, X_{j-2}, ..., X_{j-K+1}"]
+    FDL --> MAC["× H_0, H_1, H_2, ..., H_{K-1}<br/>（預先算好），再加總 (Σ)"]
+    MAC --> I["IFFT"] --> OUT["取後 P 個：<br/>輸出塊 j"]
 ```
 
 一次 FFT、K 個頻譜乘加、一次 IFFT，就算出 P 個輸出。IR 的頻譜 $`H_k`$ 在 `setImpulseResponse()` 時就算好。
@@ -472,14 +499,21 @@ $$
 
 混音時 reverb 很少直接插（insert）在每一軌上，而是放在 **aux / return bus**：
 
-```
- track A ──► [insert FX] ──► fader A ──────────────────────────────┐
-                    │                  │                           │
-                    │ pre-fader send   │ post-fader send（預設）     ├──► master
-                    └──────────┬───────┘                           │
- track B ──► ... ──► fader B ──┤                                   │
-                    （send B）  ▼                                   │
-                     reverb bus：Reverb（mix = 100% wet）─► return fader ┘
+```mermaid
+flowchart LR
+    subgraph TA["Track A"]
+        A1["insert FX"] --> A2["fader A"]
+    end
+    subgraph TB["Track B"]
+        B1["..."] --> B2["fader B"]
+    end
+    A1 -->|"pre-fader send"| BUS["reverb bus：<br/>Reverb (mix = 100% wet)"]
+    A2 -->|"post-fader send（預設）"| BUS
+    B2 -->|"send B"| BUS
+    BUS --> RF["return fader"]
+    A2 --> M["master"]
+    B2 --> M
+    RF --> M
 ```
 
 - **Bus 上的 reverb 一律 mix = 1（100% wet）**：dry 已經從各軌的 fader 走到 master 了。如果 bus 上的 reverb 還混了 dry，dry 會被加兩次（而且如果 reverb 有 latency 還會 comb filtering）。
@@ -530,17 +564,22 @@ float processSample(float x) noexcept {
 
 訊號流（每個 sample，對照 2.6 節）：
 
-```
- in L/R ─► pre-delay（FractionalDelayLine，平滑變化）
-        ─► input diffusion：每聲道 4 級 AllpassDiffuser（4.77 / 3.60 / 12.73 / 9.31 ms，g = 0.5；右聲道 ×1.07）
-        ─► × 0.35（freeze 時 × 0）
-        ─► 偶數線吃 L、奇數線吃 R
- FDN：  v_i = line_i.readLinear(L_i − 1 + lfo_i)                 （先讀後寫 → −1）
-        u_i = v_i − (2/8)·Σ v_j                                 （Householder）
-        u_i = OnePole_i(u_i)                                    （damping，>= 20 kHz 或 freeze 時略過）
-        line_i.push(g_i · u_i + input_i)                        （g_i = 10^(−3·L_i/(RT60·fs))）
- 輸出： wetL = v0 − v2 + v4 − v6，wetR = v1 − v3 + v5 − v7
-        width（mid/side）─► dry/wet mix
+```mermaid
+flowchart TD
+    IN["in L/R"] --> PD["pre-delay<br/>（FractionalDelayLine，平滑變化）"]
+    PD --> DF["input diffusion：每聲道 4 級 AllpassDiffuser<br/>4.77 / 3.60 / 12.73 / 9.31 ms，g = 0.5<br/>（右聲道 ×1.07）"]
+    DF --> GN["× 0.35（freeze 時 × 0）"]
+    GN --> RT["偶數線吃 L、奇數線吃 R"]
+    subgraph FDN["FDN（每個 sample）"]
+        R1["v_i = line_i.readLinear(L_i − 1 + lfo_i)<br/>（先讀後寫，所以 −1）"]
+        R2["u_i = v_i − (2/8)·Σ v_j<br/>（Householder）"]
+        R3["u_i = OnePole_i(u_i)<br/>（damping，達到或超過 20 kHz 或 freeze 時略過）"]
+        R4["line_i.push(g_i · u_i + input_i)<br/>g_i = 10^(−3·L_i/(RT60·fs))"]
+        R1 --> R2 --> R3 --> R4
+    end
+    RT --> R4
+    R1 --> OUT["輸出：<br/>wetL = v0 − v2 + v4 − v6<br/>wetR = v1 − v3 + v5 − v7"]
+    OUT --> W["width（mid/side）"] --> MIX["dry/wet mix"]
 ```
 
 幾個設計重點：

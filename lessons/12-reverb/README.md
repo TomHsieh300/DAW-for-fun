@@ -33,18 +33,7 @@ After reading this chapter and doing the exercises, you should be able to:
 
 Imagine standing in a room with someone clapping in front of you. Sound spreads in all directions at about 343 m/s:
 
-```
-  amplitude
-   │ direct sound
-   │  ┃
-   │  ┃      early reflections (discrete, distinguishable)
-   │  ┃   ┃  ┃ ┃    ┃
-   │  ┃   ┃  ┃ ┃ ┃  ┃ ┃┃ ┃      late reverb / diffuse tail (dense, noise-like, exponential decay)
-   │  ┃   ┃  ┃ ┃ ┃┃ ┃┃┃┃┃┃┃▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌
-   │  ┃   ┃  ┃ ┃ ┃┃ ┃┃┃┃┃┃┃▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▄▄▄▄▄▄▄▄▂▂▂▂▂▂▂▁▁▁
-   └──┸───┸──┸─┸─┸┸─┸┸┸┸┸┸┸┸──────────────────────────────────────────────────────────► t
-      0  ← pre-delay →│← early (about 5–80 ms) →│←────────── late (hundreds of ms to several seconds) ──────────►
-```
+![Synthetic room impulse response: direct sound, early reflections (about 5-80 ms) and the exponentially decaying late reverb](images/reverb-impulse-response.svg)
 
 1. **Direct sound**: the sound travelling in a straight line from the source to the ear. It is the earliest and the loudest, and it determines "which direction the sound comes from".
 2. **Early reflections**: sound that reaches the ear after one or two bounces off a wall, the floor or the ceiling. They are sparse and can be told apart from one another (but they are usually not heard as "echoes"; the brain fuses them into the direct sound), and they provide cues about "the size and shape of the room and how far you are from the walls".
@@ -101,10 +90,12 @@ This chapter takes both routes. We also use the "measure the IR" viewpoint to ve
 
 The simplest structure that produces "a train of decaying echoes" is the feedback comb:
 
-```
- x[n] ──►(+)──────────────► [ z^-D ] ──┬──► y[n]
-          ▲                            │
-          └────────── × g ◄────────────┘
+```mermaid
+flowchart LR
+    X["x[n]"] --> S(("+"))
+    S --> D["z^-D"]
+    D --> Y["y[n]"]
+    D -->|"× g"| S
 ```
 
 $$
@@ -137,15 +128,7 @@ Note that g depends on D: **for the same RT60, the longer the loop, the more eac
 
 $`|H(e^{j\omega})| = 1/|1 - g e^{-j\omega D}|`$. When $`\omega D = 2\pi k`$ (the frequency is an integer multiple of $`f_s/D`$) the denominator is at its smallest -> peak $`= 1/(1-g)`$; at half-integer multiples the denominator is at its largest -> notch $`= 1/(1+g)`$. With g = 0.894 the peak is +19.49 dB and the notch is -5.55 dB, a difference of 25 dB, and the spectrum looks like a comb:
 
-```
- dB
- +19 ┤ ▲     ▲     ▲     ▲     ▲
-     │ █     █     █     █     █         peak spacing = fs/D = 30.8 Hz
-     │ █     █     █     █     █
-  -5 ┤▄█▄▁▁▁▄█▄▁▁▁▄█▄▁▁▁▄█▄▁▁▁▄█▄
-     └─┴─────┴─────┴─────┴─────┴──► f
-       0   fs/D  2fs/D  3fs/D
-```
+![Magnitude response of a feedback comb with g = 0.894 and D = 1557 at 48 kHz: peaks of +19.49 dB every fs/D = 30.8 Hz, notches of -5.55 dB in between](images/reverb-comb-spectrum.svg)
 
 These peaks are the comb's **modes (resonant frequencies)**. The impulse response of a single comb is a regular train of clicks (it sounds like the flutter echo when you clap between two parallel walls), and its spectrum is a set of separate resonances -- with a distinct pitch, it sounds "metallic". To make a reverb that sounds like a room you need:
 
@@ -174,12 +157,14 @@ At DC $`|\mathrm{LP}| = 1`$ (the RT60 of the low frequencies is unchanged), and 
 
 The echoes of a comb alone are not dense enough. Schroeder's other invention is the **allpass**:
 
-```
-            ┌──────────── × (−g) ─────────────────┐
-            │                                     ▼
- x[n] ──►(+)──► v[n] ──► [ z^-D ] ──► v[n−D] ──►(+)──► y[n]
-          ▲                              │
-          └──────────── × g ◄────────────┘
+```mermaid
+flowchart LR
+    X["x[n]"] --> S1(("+"))
+    S1 -->|"v[n]"| D["z^-D"]
+    D -->|"v[n-D]"| S2(("+"))
+    D -->|"× g"| S1
+    S1 -->|"× (-g)"| S2
+    S2 --> Y["y[n]"]
 ```
 
 $$
@@ -198,12 +183,27 @@ So what does it do? **It scrambles the phase**: an impulse goes in, and out come
 
 Schroeder (1962) combined the two:
 
-```
-                ┌─► comb 1 (D1, g1) ─┐
-                ├─► comb 2 (D2, g2) ─┤
- x ─────────────┼─► comb 3 (D3, g3) ─┼─(+)─► allpass (5 ms) ─► allpass (1.7 ms) ─► y
-                └─► comb 4 (D4, g4) ─┘
-        parallel combs: produce the "density" of modes and the decay       series allpasses: raise echo density (diffusion)
+```mermaid
+flowchart LR
+    X["x"] --> C1
+    X --> C2
+    X --> C3
+    X --> C4
+    subgraph PC["Parallel combs: density of modes and the decay"]
+        C1["comb 1 (D1, g1)"]
+        C2["comb 2 (D2, g2)"]
+        C3["comb 3 (D3, g3)"]
+        C4["comb 4 (D4, g4)"]
+    end
+    C1 --> SUM(("+"))
+    C2 --> SUM
+    C3 --> SUM
+    C4 --> SUM
+    SUM --> AP1
+    subgraph SA["Series allpasses: raise echo density (diffusion)"]
+        AP1["allpass (5 ms)"] --> AP2["allpass (1.7 ms)"]
+    end
+    AP2 --> Y["y"]
 ```
 
 - **Parallel combs**: the mode spacing of each comb is $`f_s/D_i`$, and stacking 4 combs of different lengths quadruples the number of modes; each comb uses its own $`g_i = 10^{-3D_i/(\mathrm{RT60}f_s)}`$, so they all decay with the same RT60.
@@ -211,16 +211,40 @@ Schroeder (1962) combined the two:
 
 **Freeverb** (by Jezar at Dreampoint, released as public domain in 2000) is the most widely circulated version of this architecture:
 
-```
-           ┌─► LBCF 1116 ─┐
-           ├─► LBCF 1188 ─┤
-           ├─► LBCF 1277 ─┤
- in (L+R) ─┼─► LBCF 1356 ─┼─(+)─► AP 556 ─► AP 441 ─► AP 341 ─► AP 225 ─► out L
-  × 0.015  ├─► LBCF 1422 ─┤
-           ├─► LBCF 1491 ─┤        right channel: every delay length + 23 samples (stereo spread)
-           ├─► LBCF 1557 ─┤
-           └─► LBCF 1617 ─┘
-   LBCF = lowpass-feedback comb filter (lengths are in samples at 44.1 kHz)
+```mermaid
+flowchart LR
+    IN["in (L+R)<br/>× 0.015"]
+    IN --> L1
+    IN --> L2
+    IN --> L3
+    IN --> L4
+    IN --> L5
+    IN --> L6
+    IN --> L7
+    IN --> L8
+    subgraph CB["8 parallel LBCF (lowpass-feedback comb filter), lengths in samples at 44.1 kHz"]
+        L1["LBCF 1116"]
+        L2["LBCF 1188"]
+        L3["LBCF 1277"]
+        L4["LBCF 1356"]
+        L5["LBCF 1422"]
+        L6["LBCF 1491"]
+        L7["LBCF 1557"]
+        L8["LBCF 1617"]
+    end
+    L1 --> SUM(("+"))
+    L2 --> SUM(("+"))
+    L3 --> SUM(("+"))
+    L4 --> SUM(("+"))
+    L5 --> SUM(("+"))
+    L6 --> SUM(("+"))
+    L7 --> SUM(("+"))
+    L8 --> SUM(("+"))
+    SUM --> AP1
+    subgraph AS["4 series allpasses (AP)"]
+        AP1["AP 556"] --> AP2["AP 441"] --> AP3["AP 341"] --> AP4["AP 225"]
+    end
+    AP4 --> OUT["out L<br/>(right channel: every delay length + 23 samples, stereo spread)"]
 ```
 
 - **8 lowpass-feedback combs (LBCF) in parallel**: the one-pole lowpass in the loop is the damping of section 2.3. Freeverb's implementation is `filterstore = output·(1−damp) + filterstore·damp`, `buffer = input + filterstore·feedback` -- this chapter's `CombFilter` is written the same way.
@@ -239,15 +263,15 @@ This chapter's `ReverbBuildingBlocks.h` already provides `CombFilter` (with damp
 
 The combs in a Schroeder structure are independent of one another. If the outputs of N delay lines are **mixed through a matrix** and fed back to all lines, then on the next trip each echo splits into N echoes, and the echo density grows exponentially over time -- which is closer to a real room (the more times sound has been reflected, the denser it is). This is the FDN (Stautner & Puckette 1982; systematized by Jot & Chaigne 1991):
 
-```
-         b (input distribution)
- x ──────┬────────┬────────┬────────┐
-         ▼        ▼        ▼        ▼
-   ┌──►(+)─►[z^-L0]─►(+)─►[z^-L1]─► ...  (+)─►[z^-L7]──┐   v = outputs of the delay lines
-   │                                                      │
-   │     s_i = g_i · LP_i( (A·v)_i ) + b_i·x               │──► y = cᵀ v
-   │                                                      │
-   └──────── g_i ◄── LP_i ◄── [ feedback matrix A (N×N) ] ◄───────┘
+```mermaid
+flowchart LR
+    X["x"] -->|"b (input distribution)"| S["(+) in front of each line i<br/>s_i = g_i · LP_i((A·v)_i) + b_i·x"]
+    S --> D["8 delay lines<br/>z^-L0 ... z^-L7"]
+    D -->|"v = outputs of the delay lines"| Y["y = c^T v"]
+    D -->|"v"| A["feedback matrix A (N×N)"]
+    A --> LP["LP_i"]
+    LP --> G["× g_i"]
+    G --> S
 ```
 
 The state equations (N lines, line i has length $`L_i`$):
@@ -377,15 +401,19 @@ For an infinitely long input, cut the input into blocks of length B and process 
 
 **Overlap-add (OLA)**: zero-pad each input block $`x_j`$ (length B) to N ≥ B + M − 1, FFT, multiply by $`H`$, IFFT, and obtain a result of length B + M − 1; the results of adjacent blocks overlap by M − 1 samples, and the overlapping parts are **added**.
 
-```
- x_j  zero-pad → FFT → ×H → IFFT → [ B + M − 1 output samples ]
-                                 └─ the tail's M−1 samples are added to the start of the next block ─┘
+```mermaid
+flowchart LR
+    X["x_j"] --> Z["zero-pad"] --> F["FFT"] --> H["× H"] --> I["IFFT"] --> O["B + M − 1 output samples"]
+    O -->|"the tail's M−1 samples are added<br/>to the start of the next block"| N["next block"]
 ```
 
 **Overlap-save (OLS)**: each time take N input samples (B new ones + the previous N − B old ones), FFT, multiply by $`H`$, IFFT; the first M − 1 samples of the result are contaminated by the circular convolution "wrapping around" (wrap-around) and are **discarded**, and only the last B correct output samples are kept.
 
-```
- frame = [ old N−B | new B ] → FFT → ×H → IFFT → [ first N−B: wrap, discard | last B: correct output ]
+```mermaid
+flowchart LR
+    X["frame = old N−B samples + new B samples"] --> F["FFT"] --> H["× H"] --> I["IFFT"]
+    I --> W["first N−B: wrap-around, discard"]
+    I --> K["last B: correct output"]
 ```
 
 The two cost the same. This chapter uses overlap-save (no extra accumulation buffer needed).
@@ -411,13 +439,12 @@ Y_j = \sum_{k=0}^{K-1} H_k \cdot X_{j-k}
 \qquad\text{(complex multiply-accumulate, bin by bin)}
 $$
 
-```
- input block j ──► [previous|this] ──► FFT ──► X_j ──► FDL:  X_j  X_{j-1}  X_{j-2} ... X_{j-K+1}
-                                                              ×     ×        ×             ×
-                                          (precomputed)      H_0   H_1      H_2    ...    H_{K-1}
-                                                              └─────┴────────┴──── Σ ──────┘
-                                                                               │
-                                                                  IFFT ◄───────┘ → take the last P → output block j
+```mermaid
+flowchart LR
+    IN["input block j"] --> FR["previous block + this block"] --> F["FFT"] --> XJ["X_j"]
+    XJ --> FDL["FDL:<br/>X_j, X_{j-1}, X_{j-2}, ..., X_{j-K+1}"]
+    FDL --> MAC["× H_0, H_1, H_2, ..., H_{K-1}<br/>(precomputed), then sum (Σ)"]
+    MAC --> I["IFFT"] --> OUT["take the last P samples:<br/>output block j"]
 ```
 
 One FFT, K spectrum multiply-accumulates and one IFFT produce P output samples. The IR spectra $`H_k`$ are precomputed in `setImpulseResponse()`.
@@ -472,14 +499,21 @@ Mapping to this chapter's `Reverb`: large size -> long delays, dense modes, slow
 
 In a mix, reverb is rarely inserted directly on each track; it sits on an **aux / return bus**:
 
-```
- track A ──► [insert FX] ──► fader A ──────────────────────────────┐
-                    │                  │                           │
-                    │ pre-fader send   │ post-fader send (default) ├──► master
-                    └──────────┬───────┘                           │
- track B ──► ... ──► fader B ──┤                                   │
-                    (send B)   ▼                                   │
-                     reverb bus: Reverb (mix = 100% wet) ─► return fader ┘
+```mermaid
+flowchart LR
+    subgraph TA["Track A"]
+        A1["insert FX"] --> A2["fader A"]
+    end
+    subgraph TB["Track B"]
+        B1["..."] --> B2["fader B"]
+    end
+    A1 -->|"pre-fader send"| BUS["reverb bus:<br/>Reverb (mix = 100% wet)"]
+    A2 -->|"post-fader send (default)"| BUS
+    B2 -->|"send B"| BUS
+    BUS --> RF["return fader"]
+    A2 --> M["master"]
+    B2 --> M
+    RF --> M
 ```
 
 - **A reverb on a bus is always mix = 1 (100% wet)**: the dry signal already travels from each track's fader to the master. If the reverb on the bus also mixed in dry, the dry would be added twice (and if the reverb has latency, there would also be comb filtering).
@@ -530,17 +564,22 @@ The two static functions correspond to the formulas of section 2.3: `feedbackFor
 
 Signal flow (per sample, compare with section 2.6):
 
-```
- in L/R ─► pre-delay (FractionalDelayLine, smoothly varying)
-        ─► input diffusion: 4 AllpassDiffuser stages per channel (4.77 / 3.60 / 12.73 / 9.31 ms, g = 0.5; right channel ×1.07)
-        ─► × 0.35 (× 0 when frozen)
-        ─► even lines take L, odd lines take R
- FDN:   v_i = line_i.readLinear(L_i − 1 + lfo_i)                 (read before write → −1)
-        u_i = v_i − (2/8)·Σ v_j                                 (Householder)
-        u_i = OnePole_i(u_i)                                    (damping; skipped when >= 20 kHz or frozen)
-        line_i.push(g_i · u_i + input_i)                        (g_i = 10^(−3·L_i/(RT60·fs)))
- output: wetL = v0 − v2 + v4 − v6, wetR = v1 − v3 + v5 − v7
-        width (mid/side) ─► dry/wet mix
+```mermaid
+flowchart TD
+    IN["in L/R"] --> PD["pre-delay<br/>(FractionalDelayLine, smoothly varying)"]
+    PD --> DF["input diffusion: 4 AllpassDiffuser stages per channel<br/>4.77 / 3.60 / 12.73 / 9.31 ms, g = 0.5<br/>(right channel ×1.07)"]
+    DF --> GN["× 0.35 (× 0 when frozen)"]
+    GN --> RT["even lines take L, odd lines take R"]
+    subgraph FDN["FDN (per sample)"]
+        R1["v_i = line_i.readLinear(L_i − 1 + lfo_i)<br/>(read before write, hence −1)"]
+        R2["u_i = v_i − (2/8)·Σ v_j<br/>(Householder)"]
+        R3["u_i = OnePole_i(u_i)<br/>(damping; skipped when at or above 20 kHz, or frozen)"]
+        R4["line_i.push(g_i · u_i + input_i)<br/>g_i = 10^(−3·L_i/(RT60·fs))"]
+        R1 --> R2 --> R3 --> R4
+    end
+    RT --> R4
+    R1 --> OUT["output:<br/>wetL = v0 − v2 + v4 − v6<br/>wetR = v1 − v3 + v5 − v7"]
+    OUT --> W["width (mid/side)"] --> MIX["dry/wet mix"]
 ```
 
 A few design points:

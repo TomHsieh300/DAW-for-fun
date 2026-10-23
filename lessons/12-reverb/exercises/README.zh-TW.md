@@ -90,9 +90,13 @@ Self-check：lossless 模式（g = 1、無 damping）下 1.0 s 與 2.5 s 的 RMS
 
 1980 年代的經典鼓聲：把很長的 reverb 用 gate 硬生生砍斷，聽起來又大又緊。
 
-```
- snare ──┬──────────────────────────────────────────► dry
-         └─► Reverb（RT60 3 s, mix 1）──► Gate（sidechain = dry snare）──► wet
+```mermaid
+flowchart LR
+    SN["snare"] -->|"dry"| DRY["dry"]
+    SN --> RV["Reverb (RT60 3 s, mix 1)"]
+    RV --> GT["Gate"]
+    SN -.->|"sidechain = dry snare"| GT
+    GT --> WET["wet"]
 ```
 
 1. 設定第 08 章的 `Gate`：threshold −30 dB、hysteresis 6 dB、range −80 dB、attack 0.5 ms、hold 100 ms、release 30 ms。

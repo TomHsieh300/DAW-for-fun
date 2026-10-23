@@ -90,9 +90,13 @@ File: `exercises/starter/ex5_gated_reverb.cpp` (target `l12_ex5_starter`).
 
 The classic 1980s drum sound: a very long reverb is chopped off abruptly by a gate, which sounds both big and tight.
 
-```
- snare ──┬──────────────────────────────────────────► dry
-         └─► Reverb (RT60 3 s, mix 1) ──► Gate (sidechain = dry snare) ──► wet
+```mermaid
+flowchart LR
+    SN["snare"] -->|"dry"| DRY["dry"]
+    SN --> RV["Reverb (RT60 3 s, mix 1)"]
+    RV --> GT["Gate"]
+    SN -.->|"sidechain = dry snare"| GT
+    GT --> WET["wet"]
 ```
 
 1. Configure the Chapter 08 `Gate`: threshold −30 dB, hysteresis 6 dB, range −80 dB, attack 0.5 ms, hold 100 ms, release 30 ms.

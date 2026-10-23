@@ -184,6 +184,7 @@ RT60 的定義 $`e^{-k\cdot\mathrm{RT60}} = 10^{-3}`$ → $`k = 3\ln10/\mathrm{R
 **實際輸出**
 
 ```
+=== Exercise 6: estimating RT60 with Schroeder backward integration ===
 EDC of the exponentially decaying sine: t=0.25 s -> -15.00 dB (theory -15), t=0.5 s -> -30.00 dB (theory -30)
 
 IR                             truth(s)       T20(s)       T30(s) windowed-RMS(s)
@@ -198,7 +199,7 @@ EDC of the FDN IR (every 0.25 s):
   t = 0.50 s :  -13.73 dB
   t = 1.00 s :  -28.75 dB
   t = 2.00 s :  -58.77 dB
-  ...（節錄）
+  ... (excerpt)
 [PASS] l12_ex6 (11 checks passed)
 ```
 
