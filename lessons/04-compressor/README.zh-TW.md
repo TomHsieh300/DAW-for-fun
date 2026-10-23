@@ -37,11 +37,11 @@ $$
 
 ```mermaid
 flowchart LR
-    X["輸入 x"] --> D["Detector<br/>peak 或 RMS<br/>→ level"]
-    D --> L["20·log10<br/>→ dB"]
-    L --> G["Gain computer<br/>靜態曲線<br/>→ GR 目標值 dB"]
-    G --> S["Attack / release<br/>one-pole 平滑<br/>→ GR dB"]
-    S --> E["10^(-GR/20)<br/>→ 線性 gain g"]
+    X["輸入 x"] --> D["Detector<br/>peak 或 RMS<br/>(level)"]
+    D --> L["20·log10<br/>(dB 值)"]
+    L --> G["Gain computer<br/>靜態曲線<br/>(GR 目標值 dB)"]
+    G --> S["Attack / release<br/>one-pole 平滑<br/>(GR dB)"]
+    S --> E["10^(-GR/20)<br/>(線性 gain g)"]
     X --> M(("×"))
     E --> M
     M --> K["× makeup gain"] --> Y["輸出 y"]
@@ -105,39 +105,24 @@ $$
 
 $`T = -20`$、$`R = 4`$、$`W = 10`$：$`y = -20 + (-0.75)(10/8) = -20.9375`$ dB，也就是 threshold 處已經有 0.94 dB 的 GR。
 
-把它畫出來（節錄自範例 1 的輸出；完整版每 2 dB 一列。`#` = hard knee、`o` = soft knee、`.` = 1:1 參考線、`*` = 兩者重疊）：
+畫出來如下圖（範例 1 會印出同一組曲線的文字版，每 2 dB 一列）。左圖是完整範圍，點線是 1:1 參考線；右圖放大 knee 區域（-25 到 -15 dB，灰底部分）。Knee 以上兩條曲線的斜率都是 1/4；在 knee 之內，soft knee（虛線）慢慢離開 1:1 線，hard knee（實線）則在 threshold 處突然轉折：
 
-```
-     0 |                              .|
-    -4 |                            .  |
-    -8 |                          .    |
-   -12 |                        .      |
-   -14 |                       .       |
-   -16 |                      .   *****|   ← threshold 以上：斜率 1/4
-   -18 |                     .*****    |   ← knee 彎曲處：已經離開 1:1 線
-   -20 |                    ***        |   ← knee：-25..-15 dB 之間慢慢彎
-   -22 |                   **          |
-   -24 |                  **           |
-   -28 |                **             |
-       ...
-   -60 |**                             |
-       +-------------------------------+
-       -60           -30            0  (輸入 dB)
-```
+![Compressor 的 transfer curve（T = -20 dB、R = 4:1），hard knee 與 10 dB soft knee，並放大 knee 區域](images/transfer-curve-knee.svg)
 
 **聽感**：ratio 小（2:1）、knee 寬、threshold 高 → 「幾乎聽不出來在壓，只是整體比較穩」；ratio 大（8:1 以上）、hard knee、threshold 低 → 「明顯被壓扁、有被抓住的感覺」。Soft knee 在人聲、bus 上特別受歡迎，因為訊號在 threshold 附近時不會突然「切換」。
 
 #### 對照：expander 與 gate
 
-Compressor 壓的是 **threshold 以上**；**expander** 反過來，把 threshold **以下**的訊號推得更小（每低 1 dB 變成低 $`R`$ dB），**gate** 是 ratio 極大的 expander（低於門檻直接關掉）。它們的靜態曲線在 threshold 以下彎向下方：
+Compressor 壓的是 **threshold 以上**；**expander** 反過來，把 threshold **以下**的訊號推得更小（每低 1 dB 變成低 $`R`$ dB），**gate** 是 ratio 極大的 expander（低於門檻直接關掉）。它們的靜態曲線在 threshold 以下彎向下方（表與圖中 gate 的輸出以 -100 dB 為下限）：
 
-```
- 輸入 dB | compressor(T=-20,R=4) | expander(T=-40,R=2) | gate(T=-40,R=20)
-   -60.0 |                -60.00 |              -80.00 |          -100.00
-   -40.0 |                -40.00 |              -40.00 |           -40.00
-   -10.0 |                -17.50 |              -10.00 |           -10.00
-     0.0 |                -15.00 |                0.00 |             0.00
-```
+| 輸入 dB | compressor (T=-20, R=4) | expander (T=-40, R=2) | gate (T=-40, R=20) |
+|---:|---:|---:|---:|
+| -60.0 | -60.00 | -80.00 | -100.00 |
+| -40.0 | -40.00 | -40.00 | -40.00 |
+| -10.0 | -17.50 | -10.00 | -10.00 |
+| 0.0 | -15.00 | 0.00 | 0.00 |
+
+![Compressor、expander、gate 的靜態曲線：compressor 在 threshold 以上彎向下方，expander 與 gate 則在 threshold 以下彎向下方](images/transfer-curve-expander-gate.svg)
 
 第 08 章會完整實作它們；這裡先知道它們用的是同一套 detector 與 attack/release 機制，只是 gain computer 的曲線不同。
 
@@ -207,28 +192,9 @@ peak-hold 把週期訊號的 ripple 填平，所以穩態 GR 精確等於靜態�
 
 #### 圖解：三種平滑的 release 曲線
 
-下圖是範例 2 最後印出的 ASCII 圖（$`T = -20`$、$`R = 4`$、attack 10 ms、release 100 ms，1 kHz 正弦波從 -10 dBFS 掉回 -30 dBFS 的那一刻是 $`t = 0`$）。橫軸每格 10 ms，縱軸每列 0.5 dB；`1` = B1 decoupled（log domain，`Compressor` 預設）、`2` = B2 branching、`4` = B4 linear domain、`*` = 兩條以上重疊；`-` 那一列是 B1 穩態 GR 7.49 dB 的 36.8%（2.76 dB），也就是「經過一個時間常數」該到的位置：
+下圖是把範例 2 最後印出的圖重畫一次（$`T = -20`$、$`R = 4`$、attack 10 ms、release 100 ms，1 kHz 正弦波從 -10 dBFS 掉回 -30 dBFS 的那一刻是 $`t = 0`$）。實線是 B1 decoupled（log domain，`Compressor` 預設）、虛線是 B2 branching、點虛線是 B4 linear domain；水平的點線是 B1 穩態 GR 7.49 dB 的 36.8%（2.76 dB），也就是「經過一個時間常數」該到的位置：
 
-```
-   8.0 |
-       |*4
-   7.0 | 14
-       |2 14
-   6.0 | 2 1
-       |  2 *
-   5.0 |   2 *
-       |    2 *
-   4.0 |     2 *
-       |      2 *1
-   3.0 |-------22411--------------------------------------
-       |         22 11
-   2.0 |          422211
-       |           4  22*11
-   1.0 |            4    22***111
-       |             4        222********111
-   0.0 |______________4444444444444444444*****************
-       0         100       200       300       400      (ms)
-```
+![Gain reduction 隨時間變化的 release 曲線：B1 decoupled 與 B2 branching 指數衰減，B4 linear domain 則直線下降、約 150 ms 掉到 0](images/release-curves.svg)
 
 三件事一眼可以看出來：
 
@@ -374,7 +340,7 @@ Decoupled attack: t63 =   9.98 ms (theory τ = 10), t90 =  23.02 ms (theory ln10
 | B3 | Decoupled + RMS 5 ms | 5.29 dB（靜態以 -13 dB 算 = 5.24） | 15.8 ms | 114.8 ms |
 | B4 | linear domain（EnvelopeFollower → 靜態曲線） | 7.49 dB | 9.7 ms | 90.8 ms，150 ms 後直接 0 |
 
-最後把 B1、B2、B4 的 release 曲線疊成一張 ASCII 圖（就是 2.5 節「圖解」那張）。輸出 `l04_step_in.wav`、`l04_step_out.wav`。該聽到：第二段大聲的音在前 10 ms 會「衝」出來（overshoot 峰值 -10.11 dBFS，之後被壓到 -17.49 dBFS），回到小聲段時前 100 ms 音量慢慢「浮」回來。
+最後把 B1、B2、B4 的 release 曲線疊成一張 ASCII 圖（2.5 節「圖解」那張圖就是依它重畫的）。輸出 `l04_step_in.wav`、`l04_step_out.wav`。該聽到：第二段大聲的音在前 10 ms 會「衝」出來（overshoot 峰值 -10.11 dBFS，之後被壓到 -17.49 dBFS），回到小聲段時前 100 ms 音量慢慢「浮」回來。
 
 #### 範例 3：`l04_drum_loop`（`examples/drum_loop.cpp`）
 
@@ -389,7 +355,7 @@ Decoupled attack: t63 =   9.98 ms (theory τ = 10), t90 =  23.02 ms (theory ln10
 attack 掃描（$`T = -20`$、$`R = 4`$、knee 6、release 80 ms）：
 
 ```
-attack(ms) | max GR | peak ↓ | RMS ↓ | crest(dB) | RMS vs dry after makeup
+attack(ms) | max GR | peak (down) | RMS (down) | crest(dB) | RMS vs dry after makeup
       0.02 |  12.81 |  12.64 |  8.57 |     10.44 |  +4.07 dB
       0.10 |  12.80 |   9.37 |  8.56 |     13.71 |  +0.81 dB
       1.00 |  12.53 |   5.48 |  8.39 |     17.42 |  -2.91 dB
@@ -433,9 +399,9 @@ GR 理論值 $`(-6 + 20)(1 - 1/4) = 10.5`$ dB；量到 10.48 是因為 decoupled
 (B) **stereo link 切換**：用直流（DC）測試訊號逐 sample 量 gain。先 unlinked、R = 0 dBFS（GR 15 dB）、L = -40 dBFS（GR 0）；1.0 s 切成 linked、1.1 s 切回 unlinked（同時 L、R 都變成 -40 dBFS）、2.1 s 再切成 linked：
 
 ```
-  Switch to linked   @ 1.00 s: R gain  -15.00 dB →  -15.00 dB; L gain    0.00 dB →   -0.03 dB
-  Switch to unlinked @ 1.10 s: R gain  -15.00 dB →  -15.00 dB; L gain  -15.00 dB →  -15.00 dB
-  Switch to linked   @ 2.10 s: R gain   -0.00 dB →   -0.00 dB; L gain   -0.00 dB →   -0.00 dB
+  Switch to linked   @ 1.00 s: R gain  -15.00 dB ->  -15.00 dB; L gain    0.00 dB ->   -0.03 dB
+  Switch to unlinked @ 1.10 s: R gain  -15.00 dB ->  -15.00 dB; L gain  -15.00 dB ->  -15.00 dB
+  Switch to linked   @ 2.10 s: R gain   -0.00 dB ->   -0.00 dB; L gain   -0.00 dB ->   -0.00 dB
   Largest gain change between adjacent samples over the whole run: L 0.031 dB, R 0.031 dB (at most about 0.03 dB per sample during attack)
   End of the linked segment: L gain -15.00 dB, R gain -15.00 dB (should be almost identical)
 ```

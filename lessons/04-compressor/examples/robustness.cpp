@@ -145,7 +145,7 @@ int main() {
     auto gainAtDb = [&](int ch, int i) { return gainToDb(output.getSample(ch, i) / input.getSample(ch, i)); };
     for (int s = 1; s < 4; ++s) {
         const int i = segStart[s];
-        std::printf("  Switch to %-8s @ %.2f s: R gain %7.2f dB → %7.2f dB; L gain %7.2f dB → %7.2f dB\n",
+        std::printf("  Switch to %-8s @ %.2f s: R gain %7.2f dB -> %7.2f dB; L gain %7.2f dB -> %7.2f dB\n",
                     segLinked[s] ? "linked" : "unlinked", i / kSampleRate, gainAtDb(1, i - 1), gainAtDb(1, i),
                     gainAtDb(0, i - 1), gainAtDb(0, i));
     }

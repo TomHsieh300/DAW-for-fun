@@ -37,11 +37,11 @@ A drum kit has a very large crest factor (the synthetic drum loop in this chapte
 
 ```mermaid
 flowchart LR
-    X["Input x"] --> D["Detector<br/>peak or RMS<br/>→ level"]
-    D --> L["20·log10<br/>→ dB"]
-    L --> G["Gain computer<br/>static curve<br/>→ GR target dB"]
-    G --> S["Attack / release<br/>one-pole smoothing<br/>→ GR dB"]
-    S --> E["10^(-GR/20)<br/>→ linear gain g"]
+    X["Input x"] --> D["Detector<br/>peak or RMS<br/>(level)"]
+    D --> L["20·log10<br/>(level in dB)"]
+    L --> G["Gain computer<br/>static curve<br/>(GR target dB)"]
+    G --> S["Attack / release<br/>one-pole smoothing<br/>(GR dB)"]
+    S --> E["10^(-GR/20)<br/>(linear gain g)"]
     X --> M(("×"))
     E --> M
     M --> K["× makeup gain"] --> Y["Output y"]
@@ -105,39 +105,24 @@ $$
 
 With $`T = -20`$, $`R = 4`$, $`W = 10`$: $`y = -20 + (-0.75)(10/8) = -20.9375`$ dB, i.e. there is already 0.94 dB of GR at the threshold.
 
-Plotted (an excerpt of example 1's output; the full version has one row per 2 dB. `#` = hard knee, `o` = soft knee, `.` = 1:1 reference line, `*` = the two overlap):
+Plotted below (example 1 prints a text version of the same curves, one row per 2 dB). The left panel shows the full range, with the dotted 1:1 line for reference; the right panel zooms in on the knee region (-25 to -15 dB, shaded). Above the knee both curves run with slope 1/4; inside the knee the soft knee (dashed) leaves the 1:1 line gradually, while the hard knee (solid) bends abruptly at the threshold:
 
-```
-     0 |                              .|
-    -4 |                            .  |
-    -8 |                          .    |
-   -12 |                        .      |
-   -14 |                       .       |
-   -16 |                      .   *****|   ← above the threshold: slope 1/4
-   -18 |                     .*****    |   ← where the knee bends: already off the 1:1 line
-   -20 |                    ***        |   ← knee: curves gradually between -25..-15 dB
-   -22 |                   **          |
-   -24 |                  **           |
-   -28 |                **             |
-       ...
-   -60 |**                             |
-       +-------------------------------+
-       -60           -30            0  (input dB)
-```
+![Transfer curve of a compressor with T = -20 dB and R = 4:1, hard knee and 10 dB soft knee, with a zoom on the knee region](images/transfer-curve-knee.svg)
 
 **What it sounds like**: a small ratio (2:1), a wide knee and a high threshold → "you can barely hear it working, the whole thing is just steadier"; a large ratio (8:1 or more), a hard knee and a low threshold → "clearly squashed, with a feeling of being grabbed". The soft knee is especially popular on vocals and buses, because when the signal hovers around the threshold there is no sudden "switching".
 
 #### For comparison: expander and gate
 
-A compressor squashes what is **above the threshold**; an **expander** does the opposite and pushes the signal **below the threshold** even lower (every 1 dB below becomes $`R`$ dB lower), and a **gate** is an expander with a very large ratio (below the threshold it simply shuts off). Their static curves bend downward below the threshold:
+A compressor squashes what is **above the threshold**; an **expander** does the opposite and pushes the signal **below the threshold** even lower (every 1 dB below becomes $`R`$ dB lower), and a **gate** is an expander with a very large ratio (below the threshold it simply shuts off). Their static curves bend downward below the threshold (the gate's output is clamped at -100 dB in the table and the figure):
 
-```
- In dB   | compressor(T=-20,R=4) | expander(T=-40,R=2) | gate(T=-40,R=20)
-   -60.0 |                -60.00 |              -80.00 |          -100.00
-   -40.0 |                -40.00 |              -40.00 |           -40.00
-   -10.0 |                -17.50 |              -10.00 |           -10.00
-     0.0 |                -15.00 |                0.00 |             0.00
-```
+| In dB | compressor (T=-20, R=4) | expander (T=-40, R=2) | gate (T=-40, R=20) |
+|---:|---:|---:|---:|
+| -60.0 | -60.00 | -80.00 | -100.00 |
+| -40.0 | -40.00 | -40.00 | -40.00 |
+| -10.0 | -17.50 | -10.00 | -10.00 |
+| 0.0 | -15.00 | 0.00 | 0.00 |
+
+![Static curves of a compressor, an expander and a gate: the compressor bends down above its threshold, the expander and the gate bend down below theirs](images/transfer-curve-expander-gate.svg)
 
 Chapter 08 implements them in full; for now just know that they use the same detector and attack/release machinery, and only the gain computer's curve differs.
 
@@ -207,28 +192,9 @@ The difference is in the shape of the release. In the linear domain the envelope
 
 #### Illustration: the release curves of three kinds of smoothing
 
-The figure below is the ASCII chart printed at the end of example 2 ($`T = -20`$, $`R = 4`$, attack 10 ms, release 100 ms; $`t = 0`$ is the moment a 1 kHz sine drops from -10 dBFS back to -30 dBFS). Each column is 10 ms and each row is 0.5 dB; `1` = B1 decoupled (log domain, the `Compressor` default), `2` = B2 branching, `4` = B4 linear domain, `*` = two or more overlapping; the `-` row is 36.8% (2.76 dB) of B1's steady-state GR of 7.49 dB, i.e. where the curve should be "after one time constant":
+The figure below redraws the chart printed at the end of example 2 ($`T = -20`$, $`R = 4`$, attack 10 ms, release 100 ms; $`t = 0`$ is the moment a 1 kHz sine drops from -10 dBFS back to -30 dBFS). The solid line is B1 decoupled (log domain, the `Compressor` default), the dashed line is B2 branching, and the dash-dot line is B4 linear domain; the dotted horizontal line is 36.8% (2.76 dB) of B1's steady-state GR of 7.49 dB, i.e. where the curve should be "after one time constant":
 
-```
-   8.0 |
-       |*4
-   7.0 | 14
-       |2 14
-   6.0 | 2 1
-       |  2 *
-   5.0 |   2 *
-       |    2 *
-   4.0 |     2 *
-       |      2 *1
-   3.0 |-------22411--------------------------------------
-       |         22 11
-   2.0 |          422211
-       |           4  22*11
-   1.0 |            4    22***111
-       |             4        222********111
-   0.0 |______________4444444444444444444*****************
-       0         100       200       300       400      (ms)
-```
+![Release curves of gain reduction over time: B1 decoupled and B2 branching decay exponentially, B4 linear domain falls in a straight line to 0 at about 150 ms](images/release-curves.svg)
 
 Three things can be seen at a glance:
 
@@ -374,7 +340,7 @@ Decoupled attack: t63 =   9.98 ms (theory τ = 10), t90 =  23.02 ms (theory ln10
 | B3 | Decoupled + RMS 5 ms | 5.29 dB (static, computed at -13 dB = 5.24) | 15.8 ms | 114.8 ms |
 | B4 | linear domain (EnvelopeFollower → static curve) | 7.49 dB | 9.7 ms | 90.8 ms, straight to 0 after 150 ms |
 
-Finally the release curves of B1, B2 and B4 are overlaid in one ASCII chart (the one in the section 2.5 illustration). It writes `l04_step_in.wav` and `l04_step_out.wav`. What you should hear: the loud second segment "jumps out" during the first 10 ms (overshoot peak -10.11 dBFS, then squashed to -17.49 dBFS), and on returning to the quiet segment the volume slowly "floats" back up over the first 100 ms.
+Finally the release curves of B1, B2 and B4 are overlaid in one ASCII chart (redrawn as the figure in section 2.5). It writes `l04_step_in.wav` and `l04_step_out.wav`. What you should hear: the loud second segment "jumps out" during the first 10 ms (overshoot peak -10.11 dBFS, then squashed to -17.49 dBFS), and on returning to the quiet segment the volume slowly "floats" back up over the first 100 ms.
 
 #### Example 3: `l04_drum_loop` (`examples/drum_loop.cpp`)
 
@@ -389,7 +355,7 @@ Uses the 2-bar drum loop from `makeDrumLoop()` (peak -2.92 dBFS, RMS -17.43 dBFS
 The attack sweep ($`T = -20`$, $`R = 4`$, knee 6, release 80 ms):
 
 ```
-attack(ms) | max GR | peak ↓ | RMS ↓ | crest(dB) | RMS vs dry after makeup
+attack(ms) | max GR | peak (down) | RMS (down) | crest(dB) | RMS vs dry after makeup
       0.02 |  12.81 |  12.64 |  8.57 |     10.44 |  +4.07 dB
       0.10 |  12.80 |   9.37 |  8.56 |     13.71 |  +0.81 dB
       1.00 |  12.53 |   5.48 |  8.39 |     17.42 |  -2.91 dB
@@ -433,9 +399,9 @@ Without the non-finite guard (section 3.1), a recursive smoother that swallows a
 (B) **Stereo link toggling**: measure the gain sample by sample using a direct-current (DC) test signal. Start unlinked with R = 0 dBFS (GR 15 dB) and L = -40 dBFS (GR 0); switch to linked at 1.0 s, back to unlinked at 1.1 s (L and R both become -40 dBFS at the same time), and to linked again at 2.1 s:
 
 ```
-  Switch to linked   @ 1.00 s: R gain  -15.00 dB →  -15.00 dB; L gain    0.00 dB →   -0.03 dB
-  Switch to unlinked @ 1.10 s: R gain  -15.00 dB →  -15.00 dB; L gain  -15.00 dB →  -15.00 dB
-  Switch to linked   @ 2.10 s: R gain   -0.00 dB →   -0.00 dB; L gain   -0.00 dB →   -0.00 dB
+  Switch to linked   @ 1.00 s: R gain  -15.00 dB ->  -15.00 dB; L gain    0.00 dB ->   -0.03 dB
+  Switch to unlinked @ 1.10 s: R gain  -15.00 dB ->  -15.00 dB; L gain  -15.00 dB ->  -15.00 dB
+  Switch to linked   @ 2.10 s: R gain   -0.00 dB ->   -0.00 dB; L gain   -0.00 dB ->   -0.00 dB
   Largest gain change between adjacent samples over the whole run: L 0.031 dB, R 0.031 dB (at most about 0.03 dB per sample during attack)
   End of the linked segment: L gain -15.00 dB, R gain -15.00 dB (should be almost identical)
 ```

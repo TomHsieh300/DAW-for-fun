@@ -169,7 +169,7 @@ int main(int argc, char** argv) {
 
     // ---------- Attack-time sweep ----------
     std::printf("\n=== Attack-time sweep (T -20 dB, R 4:1, knee 6 dB, release 80 ms; peak equals dry after makeup) ===\n");
-    std::printf("  attack(ms) | max GR | peak ↓ | RMS ↓ | crest(dB) | RMS vs dry after makeup\n");
+    std::printf("  attack(ms) | max GR | peak (down) | RMS (down) | crest(dB) | RMS vs dry after makeup\n");
     std::printf("  -----------+--------+--------+-------+-----------+------------------------\n");
     for (float attackMs : {0.0f, 0.02f, 0.1f, 0.5f, 1.0f, 3.0f, 10.0f, 30.0f}) {
         const Setting s{"", -20.0f, 4.0f, 6.0f, attackMs, 80.0f, nullptr};
