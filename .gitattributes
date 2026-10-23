@@ -1,0 +1,8 @@
+# 文字檔在 repo 內一律存成 LF；checkout 時依平台轉換
+* text=auto
+
+# Windows PowerShell 5.1 的腳本保留 CRLF
+*.ps1 text eol=crlf
+
+*.png binary
+*.wav binary
