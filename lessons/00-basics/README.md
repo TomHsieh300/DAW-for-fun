@@ -10,9 +10,22 @@ This is the starting point of the whole course. By the end of this chapter you w
 
 The chapters go in numeric order, in a single straight line:
 
-```
-00 → 01 → 02 → 03 → 04 → 05 → 06 → 07
-  → 08 → 09 → 10 → 11 → 12 → 13 → 14
+```mermaid
+flowchart LR
+    C00["00"] --> C01["01"]
+    C01["01"] --> C02["02"]
+    C02["02"] --> C03["03"]
+    C03["03"] --> C04["04"]
+    C04["04"] --> C05["05"]
+    C05["05"] --> C06["06"]
+    C06["06"] --> C07["07"]
+    C07["07"] --> C08["08"]
+    C08["08"] --> C09["09"]
+    C09["09"] --> C10["10"]
+    C10["10"] --> C11["11"]
+    C11["11"] --> C12["12"]
+    C12["12"] --> C13["13"]
+    C13["13"] --> C14["14"]
 ```
 
 | Chapter | Topic | What you will build |
@@ -147,16 +160,7 @@ Sound is a tiny variation of air pressure over time. A microphone turns the pres
 
 The result is a stream of numbers $`x[n] = x(nT)`$, $`n = 0, 1, 2, \ldots`$. That stream of numbers is "what sound looks like inside a computer"; there is nothing else. One second of 48 kHz stereo audio is 2 × 48000 = 96000 numbers.
 
-```
-Continuous sound wave x(t)           Sampled x[n] (one dot per sample)
-      ╭──╮                                  •
-     ╱    ╲                               •   •
-    ╱      ╲        ╭──                 •       •         •
-───╱────────╲──────╱───── t     ───•─────────────•─────•───•──── n
-  ╱          ╲    ╱                                •   •
- ╱            ╲──╯                                   •
-                                 |←T→|   T = 1 / fs
-```
+![Left: a continuous sound wave x(t). Right: the same wave sampled as dots x[n], one every T = 1/fs.](images/sampling-continuous-vs-sampled.svg)
 
 A very common misconception: "the sound between the samples is lost, so digital audio is stair-stepped and lossy". As long as the signal contains no component above $`f_s/2`$, these points determine the original smooth curve **uniquely** (this is the Nyquist theorem of the next section); on output the DAC uses a reconstruction filter to recover the smooth curve, not a staircase.
 
@@ -176,16 +180,7 @@ $`A`$ is the amplitude (how loud) and $`f`$ is the frequency (what pitch). After
 
 **Any sound can be decomposed into a sum of many sine waves.** This is the core idea of Fourier analysis: a guitar, a human voice or a drum hit is equivalent to "many sine waves of different frequencies and amplitudes added together". Plotting "how large the sine wave at each frequency is" gives the **spectrum**: frequency on the horizontal axis, amplitude on the vertical axis.
 
-```
-Amplitude                               Amplitude
- │  █                                    │  █
- │  █                                    │  █   █
- │  █                                    │  █   █   █
- │  █                                    │  █   █   █   █   ▄   ▂
- └──┴──────────────────── Frequency      └──┴───┴───┴───┴───┴───┴─── Frequency
-   440                                     110 220 330 440 550 660
- Sine wave: a single bar                 Pluck (fundamental 110 Hz): a fundamental plus a row of harmonics
-```
+![Left: the spectrum of a sine wave is a single bar at 440 Hz. Right: the spectrum of a 110 Hz pluck is a fundamental plus a row of harmonics at 220, 330, 440 Hz and so on, getting smaller.](images/spectrum-sine-vs-pluck.svg)
 
 The spectrum of a real instrument usually looks like the right-hand plot: the lowest bar is the **fundamental**, which determines the pitch we hear; the row of components above it whose frequencies are exactly **integer multiples** (2×, 3×, 4×, ...) of the fundamental are the **harmonics**, and the $`k`$-th harmonic has frequency $`k \cdot f_0`$. The fundamental itself counts as the first harmonic (H1), the 2× component is H2, and so on; components at odd multiples of the fundamental are **odd harmonics** (H3, H5, ...), and those at even multiples are **even harmonics** (H2, H4, ...).
 
@@ -234,18 +229,7 @@ The two sets of samples are identical except for the sign; the computer has no w
     at 18 kHz (|30000 - 48000|) the amplitude is 0.5000  <- all the energy has folded here
 ```
 
-```
-Amplitude
- │                       Nyquist = 24 kHz
- │                            │
- │                            │   30 kHz (original)
- │   18 kHz (alias)           │        ╎
- │        █                   │        ╎
- │        █                   │        ╎
- │        █   ◄──── fold back ┼────────╎
- └────────┴───────────────────┴────────┴──── Frequency
-          18k                24k      30k
-```
+![Spectrum of a 30 kHz sine sampled at 48 kHz: the component beyond Nyquist (24 kHz) folds back and appears at 18 kHz.](images/aliasing-fold-back.svg)
 
 **Why should you care?** There are two places where components above Nyquist can be created:
 
@@ -380,13 +364,7 @@ $$
 y[n] = \begin{cases} 1 & x[n] > 1 \\ x[n] & -1 \le x[n] \le 1 \\ -1 & x[n] < -1 \end{cases}
 $$
 
-```
-  1.0 ┤  ╭───────╮            ╭───   ← the part that gets flattened
-      │ ╱         ╲          ╱
-  0.0 ┼╱───────────╲────────╱──────
-      │             ╲      ╱
- -1.0 ┤              ╰────╯
-```
+![A sine wave of amplitude 1.5 hard-clipped at plus and minus 1.0: the tops are flattened.](images/clipping-sine.svg)
 
 A flattened waveform amounts to adding high-order harmonics that were not there before; it sounds harsh and "broken". `l00_db_math` hard-clips a 1 kHz sine wave of amplitude 1.5 and measures:
 
@@ -427,22 +405,18 @@ This course's `AudioBuffer` is non-interleaved. `WavFile.h` does the conversion 
 
 A real audio program does **not** "read the whole song in and process it all at once". Every so often the audio driver hands you one **block** (also called a buffer) of samples, and you must process it and hand it back **before the next one arrives**. The function the driver calls is the **audio callback**:
 
-```
-          ┌────────────┐   called once every blockSize / fs seconds
-          │ audio      │ ────────────────────────────────┐
-          │ driver     │                                 ▼
-          │ (hardware  │ ◄──────────────────  void audioCallback(float** in, float** out, int n)
-          │  clock)    │   n samples must be  {
-          └────────────┘   returned in time,    // your DSP: gain, filter, compressor...
-                           or you hear a glitch }
+```mermaid
+flowchart LR
+    D["Audio driver<br/>(hardware clock)"] -->|"calls once every<br/>blockSize / fs seconds"| CB["void audioCallback(float#42;#42; in, float#42;#42; out, int n)<br/>your DSP: gain, filter, compressor, ..."]
+    CB -->|"n samples must be returned in time,<br/>or you hear a glitch"| D
 ```
 
-```
-time ──────────────────────────────────────────────────────►
-block 0   │ block 1   │ block 2   │ block 3   │ ...
-processing│ processing│ processing│ processing│
-          ▲           ▲           ▲
-          the driver takes block 0 and sends it to the DAC; at the same time it hands you block 1
+```mermaid
+flowchart LR
+    B0["block 0<br/>processing"] -->|"driver sends block 0 to the DAC<br/>and hands you block 1"| B1["block 1<br/>processing"]
+    B1 -->|"time"| B2["block 2<br/>processing"]
+    B2 -->|"time"| B3["block 3<br/>processing"]
+    B3 --> MORE["..."]
 ```
 
 Because once you receive a block of samples, the earliest it can be played is after the whole block has been processed, the **latency** is at least

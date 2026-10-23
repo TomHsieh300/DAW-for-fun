@@ -10,9 +10,22 @@
 
 章節依編號順序前進，一條直線走到底：
 
-```
-00 → 01 → 02 → 03 → 04 → 05 → 06 → 07
-  → 08 → 09 → 10 → 11 → 12 → 13 → 14
+```mermaid
+flowchart LR
+    C00["00"] --> C01["01"]
+    C01["01"] --> C02["02"]
+    C02["02"] --> C03["03"]
+    C03["03"] --> C04["04"]
+    C04["04"] --> C05["05"]
+    C05["05"] --> C06["06"]
+    C06["06"] --> C07["07"]
+    C07["07"] --> C08["08"]
+    C08["08"] --> C09["09"]
+    C09["09"] --> C10["10"]
+    C10["10"] --> C11["11"]
+    C11["11"] --> C12["12"]
+    C12["12"] --> C13["13"]
+    C13["13"] --> C14["14"]
 ```
 
 | 章 | 主題 | 你會做出什麼 |
@@ -147,16 +160,7 @@ Linux 上只有 JUCE 章節（13、14）需要額外套件（ALSA、X11、freety
 
 結果就是一串數字 $`x[n] = x(nT)`$，$`n = 0, 1, 2, \ldots`$。這一串數字就是「聲音在電腦裡的樣子」——沒有別的了。一秒鐘的立體聲 48 kHz 音訊就是 2 × 48000 = 96000 個數字。
 
-```
-連續的聲波 x(t)                      取樣後的 x[n]（每格一個 sample）
-      ╭──╮                                  •
-     ╱    ╲                               •   •
-    ╱      ╲        ╭──                 •       •         •
-───╱────────╲──────╱───── t     ───•─────────────•─────•───•──── n
-  ╱          ╲    ╱                                •   •
- ╱            ╲──╯                                   •
-                                 |←T→|   T = 1 / fs
-```
+![左：連續的聲波 x(t)。右：同一條波形取樣後的點 x[n]，每隔 T = 1/fs 一個 sample。](images/sampling-continuous-vs-sampled.svg)
 
 一個很常見的誤解：「sample 之間的聲音不見了，所以數位音訊是階梯狀的、有損的」。只要訊號裡沒有超過 $`f_s/2`$ 的成分，這些點**唯一地**決定了原本那條平滑曲線（這就是下一節的 Nyquist 定理）；DAC 輸出時會用一個 reconstruction filter 把平滑曲線還原回來，不是輸出階梯。
 
@@ -176,16 +180,7 @@ $`A`$ 是振幅（決定多大聲），$`f`$ 是頻率（決定音高）。取�
 
 **任何聲音都可以拆成很多正弦波疊加**。這是 Fourier（傅立葉）的核心觀念：一把吉他、一句人聲、一個鼓聲，都等於「很多個不同頻率、不同振幅的正弦波加在一起」。把「每個頻率的正弦波有多大」畫成圖，就叫**頻譜（spectrum）**：橫軸是頻率，縱軸是振幅。
 
-```
-振幅                                    振幅
- │  █                                    │  █
- │  █                                    │  █   █
- │  █                                    │  █   █   █
- │  █                                    │  █   █   █   █   ▄   ▂
- └──┴──────────────────── 頻率           └──┴───┴───┴───┴───┴───┴─── 頻率
-   440                                     110 220 330 440 550 660
- 正弦波：只有一根柱子                    撥弦（基頻 110 Hz）：一根基頻 + 一排諧波
-```
+![左：正弦波的頻譜只有 440 Hz 一根柱子。右：110 Hz 撥弦的頻譜是一根基頻加上 220、330、440 Hz… 一排越來越小的諧波。](images/spectrum-sine-vs-pluck.svg)
 
 真實樂器的頻譜通常像右圖：最低的那根叫**基頻（fundamental）**，決定我們聽到的音高；上面一排頻率剛好是基頻**整數倍**（2、3、4…倍）的成分叫**諧波（harmonics）**，第 $`k`$ 次諧波的頻率是 $`k \cdot f_0`$。基頻本身算第 1 次諧波（H1），2 倍的是 H2，以此類推；頻率是基頻奇數倍的叫**奇次諧波**（H3、H5…），偶數倍的叫**偶次諧波**（H2、H4…）。
 
@@ -234,18 +229,7 @@ $$
     at 18 kHz (|30000 - 48000|) the amplitude is 0.5000  <- all the energy has folded here
 ```
 
-```
-振幅
- │                       Nyquist = 24 kHz
- │                            │
- │                            │   30 kHz（原本）
- │   18 kHz（alias）          │        ╎
- │        █                   │        ╎
- │        █                   │        ╎
- │        █   ◄───── 折返 ────┼────────╎
- └────────┴───────────────────┴────────┴──── 頻率
-          18k                24k      30k
-```
+![30 kHz 正弦波以 48 kHz 取樣後的頻譜：超過 Nyquist（24 kHz）的成分折返，出現在 18 kHz。](images/aliasing-fold-back.svg)
 
 **為什麼要在乎？** 兩個地方會產生超過 Nyquist 的成分：
 
@@ -380,13 +364,7 @@ $$
 y[n] = \begin{cases} 1 & x[n] > 1 \\ x[n] & -1 \le x[n] \le 1 \\ -1 & x[n] < -1 \end{cases}
 $$
 
-```
-  1.0 ┤  ╭───────╮            ╭───   ← 被削平的部分
-      │ ╱         ╲          ╱
-  0.0 ┼╱───────────╲────────╱──────
-      │             ╲      ╱
- -1.0 ┤              ╰────╯
-```
+![振幅 1.5 的正弦波被硬切在 ±1.0：波峰被削平。](images/clipping-sine.svg)
 
 波形被削平，等於加入了原本沒有的高次諧波——聽起來刺耳、「破掉」。`l00_db_math` 把振幅 1.5 的 1 kHz 正弦波硬切，量到：
 
@@ -409,12 +387,14 @@ $`H_k`$ 是第 $`k`$ 次諧波的振幅。也就是「新增的諧波總共佔�
 
 立體聲有左右兩個 channel，每個 channel 是獨立的一串 sample。同一個時間點上所有 channel 的 sample 合稱一個 **frame**。兩個 channel 在記憶體裡有兩種排法：
 
-```
-non-interleaved（planar）：每個 channel 一段連續記憶體
+下面第一種叫 non-interleaved（planar）：每個 channel 一段連續記憶體；第二種叫 interleaved：所有 channel 交錯在同一段記憶體。
+
+```text
+non-interleaved (planar): one contiguous block of memory per channel
    L: [L0 L1 L2 L3 L4 L5 ...]
    R: [R0 R1 R2 R3 R4 R5 ...]
 
-interleaved：所有 channel 交錯在同一段記憶體
+interleaved: all channels alternate within one block of memory
    [L0 R0 L1 R1 L2 R2 L3 R3 ...]
 ```
 
@@ -427,22 +407,18 @@ interleaved：所有 channel 交錯在同一段記憶體
 
 真正的 audio 程式**不會**「把整首歌讀進來、一次處理完」。audio driver 每隔一小段時間就把一塊 **block**（也叫 buffer）的 sample 交給你，要你在**下一塊到來之前**處理完交回去。這個被 driver 呼叫的函式叫 **audio callback**：
 
-```
-          ┌────────────┐   每隔 blockSize / fs 秒呼叫一次
-          │ audio      │ ────────────────────────────────┐
-          │ driver     │                                 ▼
-          │ (硬體計時) │ ◄──────────────────  void audioCallback(float** in, float** out, int n)
-          └────────────┘   在期限內交回 n 個   {
-                           sample，否則爆音       // 你的 DSP：gain、filter、compressor…
-                                                }
+```mermaid
+flowchart LR
+    D["audio driver<br/>(硬體計時)"] -->|"每隔 blockSize / fs 秒<br/>呼叫一次"| CB["void audioCallback(float#42;#42; in, float#42;#42; out, int n)<br/>你的 DSP：gain、filter、compressor..."]
+    CB -->|"在期限內交回 n 個 sample，<br/>否則爆音"| D
 ```
 
-```
-時間 ──────────────────────────────────────────────────────►
-block 0   │ block 1   │ block 2   │ block 3   │ ...
- 處理中   │ 處理中    │ 處理中    │ 處理中    │
-          ▲           ▲           ▲
-          driver 取走 block 0，送給 DAC；同時交給你 block 1
+```mermaid
+flowchart LR
+    B0["block 0<br/>處理中"] -->|"driver 取走 block 0 送給 DAC，<br/>同時交給你 block 1"| B1["block 1<br/>處理中"]
+    B1 -->|"時間"| B2["block 2<br/>處理中"]
+    B2 -->|"時間"| B3["block 3<br/>處理中"]
+    B3 --> MORE["..."]
 ```
 
 因為你拿到一塊 sample 之後，最快也要等整塊處理完才能播出去，**延遲**（latency）至少是
@@ -615,11 +591,13 @@ pluck sequence   2 ch   192000 samples (4.00 s)  peak  -5.18 dBFS  RMS -19.71 dB
        0        0.0      -9.31     -14.01
       23      245.3     -19.13     -28.83
      ...
-     138     1472.0    -100.00    -100.00     <- 這段是靜音（-100 dB = kMinusInfinityDb）
+     138     1472.0    -100.00    -100.00     <- this stretch is silent (-100 dB = kMinusInfinityDb)
      ...
 Input peak -2.92 dBFS -> output peak -8.92 dBFS (largest block peak -8.92 dBFS)
 Max difference between block-wise and whole-signal processing = 0 (gain has no state, so it should be 0)
 ```
+
+其中 block 138 附近那一段是靜音（-100 dB = `kMinusInfinityDb`）。
 
 注意程式結構：`stats` 這個 `std::vector` 在進迴圈前就配好大小，`audioCallback()` 本身是 `noexcept` 而且只有乘法與比較——這就是 2.10 說的紀律。
 
