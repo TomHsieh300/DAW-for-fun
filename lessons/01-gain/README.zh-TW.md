@@ -79,35 +79,20 @@ $$
 
 UI 上的推桿永遠是一個 0..1 的位置 $`p`$（滑鼠拖到哪就是哪）。如果直接拿 $`p`$ 當倍率（linear taper）會發生什麼事？
 
-```
-位置 p    倍率   dB
-1.00      1.00    0.0
-0.75      0.75   -2.5
-0.50      0.50   -6.0
-0.25      0.25  -12.0
-0.10      0.10  -20.0
-0.01      0.01  -40.0
-```
+| 位置 $`p`$ | 倍率 | dB |
+|---:|---:|---:|
+| 1.00 | 1.00 | 0.0 |
+| 0.75 | 0.75 | −2.5 |
+| 0.50 | 0.50 | −6.0 |
+| 0.25 | 0.25 | −12.0 |
+| 0.10 | 0.10 | −20.0 |
+| 0.01 | 0.01 | −40.0 |
 
 整支推桿的上半截只涵蓋 6 dB，而最下面 1% 的行程卻要塞進 −40 dB 到 −∞——你幾乎不可能把一軌精準地調到 −30 dB。反過來，如果整支推桿「dB 對位置線性」（例如 0 → −90 dB、1 → +6 dB），每格 1 dB 很均勻，但推桿永遠到不了 −∞（真正的靜音），而且最底下將近三分之一的行程（−60 dB 以下，30/96 ≈ 31%）根本聽不到差別。
 
 實務上 DAW 的推桿都是**分段（piecewise）曲線**：上半段 dB 對位置線性而且很「密」（0 dB 附近一格只有零點幾 dB，方便微調），下半段越往下每格的 dB 越大，最底端再接一小段「倍率線性」讓它真的能到 0。本章練習 4 用的是這一組分段點：
 
-```
-dB
- +6 ┤                                              ● 1.00
-  0 ┤                                   ●  0.75  ⟋
-    │                                 ⟋
--12 ┤                       ● 0.50  ⟋
-    │                     ⟋
--30 ┤           ● 0.25  ⟋            每一段「dB 對位置線性」
-    │         ⟋
--60 ┤ ● 0.05⟋
-    │ │                                最底段 [0, 0.05]：
- -∞ ┤ ● 0.00                           「倍率對位置線性」→ p = 0 時倍率剛好是 0
-    └─┴───────┴─────────┴────────────┴─────────── 位置 p
-     0  0.05   0.25      0.50         0.75     1.00
-```
+![練習 4 的推桿分段曲線：推桿位置 p 對 dB，分段點為 p = 1.00（+6 dB）、0.75（0 dB）、0.50（−12 dB）、0.25（−30 dB）、0.05（−60 dB），p = 0 時為 −∞](images/fader-taper.svg)
 
 | 位置 $`p`$ | dB | 這一段的「密度」 |
 |---:|---:|---|
@@ -128,14 +113,7 @@ $$
 y[n] = x[n] \cdot g[n],\qquad g[n] = g_1 + (g_2 - g_1)\,u[n - n_0]
 $$
 
-```
- g[n]
- g1 ─────────────┐
-                 │   ← 這個垂直的「牆」就是問題所在
- g2              └──────────────
- ────────────────┴────────────── n
-                 n0
-```
+![gain g[n] 的階梯函數：在 sample n0 瞬間從 g1 掉到 g2，形成一道垂直的牆](images/gain-step.svg)
 
 **先建立直覺：振幅調變（amplitude modulation）與 sideband。** 把一個正弦波乘上一個「會變的 gain」，就是在調變它的振幅。最簡單的例子是讓 gain 以頻率 $`f_m`$ 緩慢起伏：
 
@@ -160,17 +138,7 @@ $$
 
 **Zipper noise** 是同一件事的連續版本。使用者拖推桿時，UI 大約每個 audio block（本教材 512 sample ≈ 10.7 ms，更新率 $`f_b = 93.75`$ Hz）送一次新的 gain 值，於是 gain 變成一條**樓梯**（staircase）。樓梯 = 一條平滑的斜坡 + 一個週期為 $`1/f_b`$ 的鋸齒狀誤差；這個鋸齒是週期訊號，可以拆成頻率 $`f_b, 2f_b, 3f_b, \dots`$ 的正弦波之和（就是第 00 章的「諧波」，數學上叫 Fourier 級數），而鋸齒波第 $`k`$ 個諧波的振幅正比於 $`1/k`$。套用上面「振幅調變」的直覺，每一個諧波 $`k f_b`$ 都在載波兩側生出一對 sideband，所以輸出會在載波兩側出現間隔 $`f_b`$ 的 **sideband**，每倍頻程掉 6 dB。這些 sideband 落在 1 kHz 旁邊 94 Hz、188 Hz、375 Hz……的地方，聽起來就是拉拉鍊的「茲茲茲」。
 
-```
- 階梯式（每 block 跳一階）              平滑（每個 sample 走一小步）
- g                                      g
- ┐                                      ╲
- └─┐                                      ╲
-   └─┐                                      ╲
-     └─┐                                      ╲
-       └─┐                                      ╲
- ─────────── n                           ─────────── n
- 頻譜：sideband 以 1/k 衰減（6 dB/oct）  頻譜：sideband 以 1/k² 衰減（12 dB/oct），而且小約 40 dB
-```
+![拖動推桿時的 gain：階梯式（每個 block 跳一階，sideband 每倍頻程掉 6 dB）與 50 ms 線性 ramp 平滑後（每倍頻程掉 12 dB，小約 40 dB）的對照](images/zipper-stepped-vs-smoothed.svg)
 
 為什麼平滑之後是 $`1/k^2`$？因為線性 ramp 之後 gain 是**連續**的（只有斜率不連續），連續的分段線性函數頻譜以 $`1/f^2`$ 衰減。範例 1 的 sideband 表格會讓你親眼看到這兩個斜率（階梯式每倍頻程 −6 dB、平滑每倍頻程 −12 dB）。
 
@@ -214,17 +182,7 @@ $`\tau`$ 是**時間常數**（time constant）：走到 63.2%（$`1 - e^{-1}`$�
 - 優點：一開始走得快、接近目標時變慢，像電容充電 / 類比推桿，聽起來「更自然」；而且只在起點有一個斜率轉折（目標一改變，斜率就從 0 跳到 $`a\cdot(g_\text{target} - g)`$），終點是漸近、沒有轉折（linear ramp 起點和終點各有一個）。
 - 缺點：理論上永遠到不了目標，實作時要在誤差夠小時「snap」到目標，否則 `isSmoothing()` 永遠是 true，而且殘餘的極小值會變成 denormal。還有一個精度陷阱：狀態用 float 存時，接近目標的增量 $`a\cdot d`$ 會小於 float 的半個 ulp（unit in the last place：float 在該數值附近相鄰兩個可表示數的間距；1.0 附近 $`\varepsilon = 2^{-23} \approx 1.19 \times 10^{-7}`$，略小於 1 的地方是它的一半），狀態會「卡」在離目標約 $`\varepsilon/(4a)`$ 的地方（$`\tau`$ = 10 ms 時約 $`1.4 \times 10^{-5}`$）——練習 3 會讓你親手踩到並修好它。
 
-```
- g
- 1.0 ┤            ╭────────────────── linear ramp：N 個 sample 後剛好到達
-     │          ╱ ╭───────────────── exponential：τ 時 63.2%，4.6τ 時 99%
-     │        ╱ ╱
- 0.63┤      ╱╱ ·
-     │    ╱╱
-     │  ╱╱
-   0 ┼╱╱─────┴────────┴──────────── n
-     0       τ        N
-```
+![線性 ramp 在 N 個 sample 後剛好到達目標，與 one-pole 指數平滑器（τ 時達到 63.2%、4.6τ 時達到 99%）的對照](images/linear-ramp-vs-exponential.svg)
 
 **該用多長的 ramp？** 太短（< 1 ms）仍然會 click；太長（> 100 ms）推桿會有「慢半拍」的感覺，mute 鍵按下去聲音還拖一下。經驗值：gain / pan 用 **10–50 ms**；本章 `Gain` 與 `Panner` 預設 50 ms（API 合約規定）。像 filter cutoff 這種參數改變會重算係數，通常用更短的 ramp 加上每個 sample（或每幾個 sample）更新一次係數，第 02、03 章再談。
 
@@ -266,17 +224,7 @@ $$
 
 這是 RMS 的成長；**peak 介於兩者之間**——運氣不好時各軌的峰值仍然可能同時出現，最壞情況就是各軌 peak 的線性總和。範例 3 用數字驗證這三條線。
 
-```
- dB
- +18 ┤                                 ● coherent：20·log10(N)
-     │                             ●
- +12 ┤                         ●                 ○ 實際 peak 落在這兩條線之間
-     │                     ●         ○
-  +6 ┤                 ●         ○ ─ ─ ─ ─ ● incoherent RMS：10·log10(N)
-     │             ●   ○     ●
-   0 ┼─────────●───●─────────────────────── N
-     1         2         4         8
-```
+![加總 N 軌時的電平成長（dB）：coherent 依 20·log10(N)，incoherent RMS 依 10·log10(N)，實際 peak 落在兩條線之間](images/headroom-growth.svg)
 
 **Headroom** 是「目前的 peak 距離 0 dBFS 還有多少 dB」。**Gain staging** 是在訊號鏈的每一級都保留足夠 headroom 的習慣：各軌先拉低（例如 −12 到 −18 dB），讓 mix bus 的 peak 落在 −6 dBFS 左右，最後再由 master / limiter（第 05 章）決定成品音量。
 
@@ -346,19 +294,7 @@ $$
 | Constant power | 0.7071 | −3.01 | 1（0 dB，平） | 1.414（+3.01 dB，凸） |
 | −4.5 dB | 0.5946 | −4.52 | 0.7071（−1.51 dB） | 1.189（+1.51 dB） |
 
-```
- gain
- 1.0 ┤●─╮                                        ╭─●   ── linear
-     │   ╲ ╲                                  ╱ ╱       ·· constant power
-     │    ╲  ·╲                             ╱·  ╱
- 0.71┤     ╲   ·╲·· ·· ·· ·· ·· ·· ·· ·· ··╱·   ╱  ← constant power 在中央 0.707（−3 dB）
-     │      ╲     ╲                      ╱     ╱
- 0.5 ┤       ╲      ╲──────────╳──────╱      ╱    ← linear 在中央 0.5（−6 dB）
-     │        ╲    ╱                    ╲    ╱
-     │         ╲ ╱   gL                 gR ╲ ╱
-   0 ┼──────────●─────────────────────────────●──── pan
-    -1                      0                      +1
-```
+![三種 pan law（linear、constant power、−4.5 dB）的左右 gain 對 pan 位置曲線，中央值分別為 0.500、0.707、0.595](images/pan-laws.svg)
 
 **Mono pan vs stereo balance**——這是初學者最常混淆的地方：
 
@@ -370,12 +306,12 @@ $$
 ```mermaid
 flowchart LR
     subgraph Pan["mono pan"]
-        X[mono x] --> GL1["× gL"] --> L1[L]
-        X --> GR1["× gR"] --> R1[R]
+        X["mono x"] --> GL1["× gL"] --> L1["L"]
+        X --> GR1["× gR"] --> R1["R"]
     end
     subgraph Balance["stereo balance"]
-        LIN[L in] --> GL2["× gL"] --> L2[L out]
-        RIN[R in] --> GR2["× gR"] --> R2[R out]
+        LIN["L in"] --> GL2["× gL"] --> L2["L out"]
+        RIN["R in"] --> GR2["× gR"] --> R2["R out"]
     end
 ```
 
@@ -389,24 +325,20 @@ flowchart LR
 
 **Master / stereo out** 一定是立體聲，它的 pan 也是 balance，理由相同：一個完成的立體聲混音放在「中央」時必須原封不動地輸出，而不是小 3 dB。如果那裡用 pan law，每一首混音都會只因為旋鈕停在中間就被調小 3 dB。
 
+```mermaid
+flowchart LR
+    subgraph MT["Mono track：到 panner 為止只有 1 個聲道"]
+        MC["clip"] -->|"1 ch"| MG["input gain"] -->|"1 ch"| MI1["insert 1"] -->|"1 ch"| MI2["insert 2"] -->|"1 ch"| MF["fader"] -->|"1 ch"| MP["panner<br/>(pan law)"]
+    end
+    MP -->|"L + R：從這裡開始是立體聲"| MB["send / group / FX bus"] --> MO["stereo out<br/>(balance)"]
 ```
- Mono track：到 panner 為止只有 1 個聲道
 
-   clip ─► [input gain] ─► [insert 1] ─► [insert 2] ─► [fader] ─► (panner：pan law) ─┬─► L ─┐
-            (1 ch)          (1 ch)        (1 ch)        (1 ch)                        └─► R ─┤
-                                                                                             │ 從這裡開始是立體聲
-                                                         send / group / FX bus ◄─────────────┘
-                                                                    │
-                                                                    ▼
-                                                         stereo out (balance)
-
- Stereo track：一路都是 2 個聲道
-
-   clip L ─► [input gain] ─► [insert 1] ─► [insert 2] ─► [fader] ─► (balance) ─► L ─┐
-   clip R ─► [input gain] ─► [insert 1] ─► [insert 2] ─► [fader] ─► (balance) ─► R ─┤
-              (每個 stereo insert 同時看到 L 與 R，                                  │
-               可以對左右做不同的處理)                                               ▼
-                                                         send / group / FX bus ─► stereo out (balance)
+```mermaid
+flowchart LR
+    subgraph ST["Stereo track：一路都是 2 個聲道"]
+        SC["clip<br/>(L 與 R)"] -->|"2 ch"| SG["input gain"] -->|"2 ch"| SI1["insert 1<br/>(每個 stereo insert 同時看到 L 與 R，<br/>可以對左右做不同的處理)"] -->|"2 ch"| SI2["insert 2"] -->|"2 ch"| SF["fader"] -->|"2 ch"| SB["balance"]
+    end
+    SB -->|"L + R"| SBUS["send / group / FX bus"] --> SO["stereo out<br/>(balance)"]
 ```
 
 **數字。** 使用 constant power law 與本教材的線性 balance law（第 14 章的 mixer 用的是同一條）：

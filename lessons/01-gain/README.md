@@ -79,35 +79,20 @@ In other words, **dB exists so that "one notch of the fader" corresponds to "abo
 
 The fader in a UI is always a position $`p`$ between 0 and 1 (wherever the mouse drags it). What happens if we use $`p`$ directly as the factor (a linear taper)?
 
-```
-position p   factor   dB
-1.00         1.00      0.0
-0.75         0.75     -2.5
-0.50         0.50     -6.0
-0.25         0.25    -12.0
-0.10         0.10    -20.0
-0.01         0.01    -40.0
-```
+| Position $`p`$ | Factor | dB |
+|---:|---:|---:|
+| 1.00 | 1.00 | 0.0 |
+| 0.75 | 0.75 | −2.5 |
+| 0.50 | 0.50 | −6.0 |
+| 0.25 | 0.25 | −12.0 |
+| 0.10 | 0.10 | −20.0 |
+| 0.01 | 0.01 | −40.0 |
 
 The entire upper half of the fader covers only 6 dB, while the bottom 1% of travel has to squeeze in everything from −40 dB to −∞ -- you can hardly ever set a track precisely to −30 dB. Conversely, if the whole fader were "linear in dB versus position" (say 0 → −90 dB, 1 → +6 dB), each notch would be a uniform 1 dB, but the fader could never reach −∞ (true silence), and nearly a third of the travel at the very bottom (below −60 dB, 30/96 ≈ 31%) would make no audible difference at all.
 
 In practice DAW faders are all **piecewise** curves: the upper part is linear in dB and very "dense" (near 0 dB one notch is only a fraction of a dB, convenient for fine adjustment), the lower part has more dB per notch the further down you go, and the very bottom attaches a short stretch that is "linear in factor" so that it really can reach 0. Exercise 4 of this chapter uses this set of breakpoints:
 
-```
-dB
- +6 ┤                                              ● 1.00
-  0 ┤                                   ●  0.75  ⟋
-    │                                 ⟋
--12 ┤                       ● 0.50  ⟋
-    │                     ⟋
--30 ┤           ● 0.25  ⟋            each segment is "linear in dB vs. position"
-    │         ⟋
--60 ┤ ● 0.05⟋
-    │ │                                bottom segment [0, 0.05]:
- -∞ ┤ ● 0.00                           "factor linear in position" → at p = 0 the factor is exactly 0
-    └─┴───────┴─────────┴────────────┴─────────── position p
-     0  0.05   0.25      0.50         0.75     1.00
-```
+![Fader taper of exercise 4: fader level in dB against fader position p, with breakpoints at p = 1.00 (+6 dB), 0.75 (0 dB), 0.50 (-12 dB), 0.25 (-30 dB), 0.05 (-60 dB) and minus infinity at p = 0](images/fader-taper.svg)
 
 | Position $`p`$ | dB | "Density" of this segment |
 |---:|---:|---|
@@ -128,14 +113,7 @@ $$
 y[n] = x[n] \cdot g[n],\qquad g[n] = g_1 + (g_2 - g_1)\,u[n - n_0]
 $$
 
-```
- g[n]
- g1 ─────────────┐
-                 │   ← this vertical "wall" is the problem
- g2              └──────────────
- ────────────────┴────────────── n
-                 n0
-```
+![Gain g[n] as a step function: it drops instantly from g1 to g2 at sample n0, a vertical wall](images/gain-step.svg)
 
 **First, some intuition: amplitude modulation and sidebands.** Multiplying a sine wave by a "changing gain" modulates its amplitude. The simplest example lets the gain wobble slowly at frequency $`f_m`$:
 
@@ -160,17 +138,7 @@ $$
 
 **Zipper noise** is the continuous version of the same thing. When the user drags a fader, the UI sends a new gain value about once per audio block (in this course 512 samples ≈ 10.7 ms, an update rate of $`f_b = 93.75`$ Hz), so the gain becomes a **staircase**. A staircase = a smooth ramp + a sawtooth error of period $`1/f_b`$; this sawtooth is a periodic signal that can be decomposed into a sum of sine waves at frequencies $`f_b, 2f_b, 3f_b, \dots`$ (these are the "harmonics" of chapter 00; mathematically this is a Fourier series), and the amplitude of the $`k`$-th harmonic of a sawtooth is proportional to $`1/k`$. Applying the "amplitude modulation" intuition above, every harmonic $`k f_b`$ grows a pair of sidebands on either side of the carrier, so the output shows **sidebands** spaced $`f_b`$ apart on both sides of the carrier, dropping 6 dB per octave. These sidebands land 94 Hz, 188 Hz, 375 Hz... away from 1 kHz, and what you hear is the "zzzzz" of a zipper being pulled.
 
-```
- stepped (one step per block)           smooth (one tiny step per sample)
- g                                      g
- ┐                                      ╲
- └─┐                                      ╲
-   └─┐                                      ╲
-     └─┐                                      ╲
-       └─┐                                      ╲
- ─────────── n                           ─────────── n
- spectrum: sidebands fall as 1/k (6 dB/oct)  spectrum: sidebands fall as 1/k² (12 dB/oct), and are about 40 dB smaller
-```
+![Gain while dragging a fader: a staircase with one step per block (sidebands fall 6 dB per octave) next to a smoothed gain from 50 ms linear ramps (12 dB per octave, about 40 dB lower)](images/zipper-stepped-vs-smoothed.svg)
 
 Why is it $`1/k^2`$ after smoothing? Because after a linear ramp the gain is **continuous** (only the slope is discontinuous), and the spectrum of a continuous piecewise-linear function falls off as $`1/f^2`$. The sideband table in example 1 lets you see these two slopes for yourself (−6 dB per octave for the stepped version, −12 dB per octave for the smoothed one).
 
@@ -214,17 +182,7 @@ $`\tau`$ is the **time constant**: the time needed to cover 63.2% ($`1 - e^{-1}`
 - Advantages: it moves fast at first and slows down near the target, like a capacitor charging or an analog fader, which sounds "more natural"; and it has a slope corner only at the start (the moment the target changes, the slope jumps from 0 to $`a\cdot(g_\text{target} - g)`$), while the end is asymptotic with no corner (a linear ramp has one at each end).
 - Disadvantages: in theory it never reaches the target, so an implementation must "snap" to the target once the error is small enough; otherwise `isSmoothing()` is true forever and the tiny residual values become denormals. There is also a precision trap: when the state is stored as a float, the increment $`a\cdot d`$ near the target becomes smaller than half an ulp (unit in the last place: the spacing between two adjacent representable floats near that value; near 1.0 it is $`\varepsilon = 2^{-23} \approx 1.19 \times 10^{-7}`$, and just below 1 it is half of that), and the state gets "stuck" about $`\varepsilon/(4a)`$ short of the target (about $`1.4 \times 10^{-5}`$ for $`\tau`$ = 10 ms) -- exercise 3 makes you step on this yourself and fix it.
 
-```
- g
- 1.0 ┤            ╭────────────────── linear ramp: arrives exactly after N samples
-     │          ╱ ╭───────────────── exponential: 63.2% at τ, 99% at 4.6τ
-     │        ╱ ╱
- 0.63┤      ╱╱ ·
-     │    ╱╱
-     │  ╱╱
-   0 ┼╱╱─────┴────────┴──────────── n
-     0       τ        N
-```
+![A linear ramp that arrives exactly after N samples, compared with a one-pole exponential smoother that reaches 63.2% at tau and 99% at 4.6 tau](images/linear-ramp-vs-exponential.svg)
 
 **How long should the ramp be?** Too short (< 1 ms) still clicks; too long (> 100 ms) and the fader feels "half a beat behind", and a pressed mute button lets the sound trail on. Rule of thumb: **10–50 ms** for gain / pan; this chapter's `Gain` and `Panner` default to 50 ms (stipulated by the API contract). A parameter like a filter cutoff recomputes coefficients whenever it changes, and usually uses a shorter ramp together with updating the coefficients every sample (or every few samples); we come back to that in chapters 02 and 03.
 
@@ -266,17 +224,7 @@ $$
 
 This is the growth of the RMS; **the peak lies between the two** -- with bad luck the peaks of the tracks can still occur at the same moment, and the worst case is the linear sum of the per-track peaks. Example 3 verifies these three lines with numbers.
 
-```
- dB
- +18 ┤                                 ● coherent: 20·log10(N)
-     │                             ●
- +12 ┤                         ●                 ○ the actual peak lands between these two lines
-     │                     ●         ○
-  +6 ┤                 ●         ○ ─ ─ ─ ─ ● incoherent RMS: 10·log10(N)
-     │             ●   ○     ●
-   0 ┼─────────●───●─────────────────────── N
-     1         2         4         8
-```
+![Level growth in dB when summing N tracks: coherent tracks follow 20 log10(N), incoherent RMS follows 10 log10(N), and the actual peak lands between the two lines](images/headroom-growth.svg)
 
 **Headroom** is "how many dB the current peak is below 0 dBFS". **Gain staging** is the habit of keeping enough headroom at every stage of the signal chain: first pull the tracks down (for example −12 to −18 dB) so that the mix bus peaks around −6 dBFS, and finally let the master / limiter (chapter 05) decide the loudness of the finished product.
 
@@ -346,19 +294,7 @@ Putting the numbers of the three laws at the center side by side:
 | Constant power | 0.7071 | −3.01 | 1 (0 dB, flat) | 1.414 (+3.01 dB, bulges) |
 | −4.5 dB | 0.5946 | −4.52 | 0.7071 (−1.51 dB) | 1.189 (+1.51 dB) |
 
-```
- gain
- 1.0 ┤●─╮                                        ╭─●   ── linear
-     │   ╲ ╲                                  ╱ ╱       ·· constant power
-     │    ╲  ·╲                             ╱·  ╱
- 0.71┤     ╲   ·╲·· ·· ·· ·· ·· ·· ·· ·· ··╱·   ╱  ← constant power at the center: 0.707 (−3 dB)
-     │      ╲     ╲                      ╱     ╱
- 0.5 ┤       ╲      ╲──────────╳──────╱      ╱    ← linear at the center: 0.5 (−6 dB)
-     │        ╲    ╱                    ╲    ╱
-     │         ╲ ╱   gL                 gR ╲ ╱
-   0 ┼──────────●─────────────────────────────●──── pan
-    -1                      0                      +1
-```
+![Pan laws: left and right gains against pan position for the linear, constant power and -4.5 dB laws, with the center values 0.500, 0.707 and 0.595](images/pan-laws.svg)
 
 **Mono pan vs. stereo balance** -- this is where beginners confuse things most often:
 
@@ -370,12 +306,12 @@ What this chapter's `Panner::process(block)` does to a stereo block is the secon
 ```mermaid
 flowchart LR
     subgraph Pan["mono pan"]
-        X[mono x] --> GL1["× gL"] --> L1[L]
-        X --> GR1["× gR"] --> R1[R]
+        X["mono x"] --> GL1["× gL"] --> L1["L"]
+        X --> GR1["× gR"] --> R1["R"]
     end
     subgraph Balance["stereo balance"]
-        LIN[L in] --> GL2["× gL"] --> L2[L out]
-        RIN[R in] --> GR2["× gR"] --> R2[R out]
+        LIN["L in"] --> GL2["× gL"] --> L2["L out"]
+        RIN["R in"] --> GR2["× gR"] --> R2["R out"]
     end
 ```
 
@@ -389,24 +325,20 @@ Section 2.9 separated pan from balance mathematically. A DAW turns that distinct
 
 **The master / stereo out** is always stereo and its pan is a balance, for the same reason: a finished stereo mix left at "center" must come out unchanged, not 3 dB quieter. A pan law there would turn every mix down by 3 dB just because the knob sits in the middle.
 
+```mermaid
+flowchart LR
+    subgraph MT["Mono track: 1 channel until the panner"]
+        MC["clip"] -->|"1 ch"| MG["input gain"] -->|"1 ch"| MI1["insert 1"] -->|"1 ch"| MI2["insert 2"] -->|"1 ch"| MF["fader"] -->|"1 ch"| MP["panner<br/>(pan law)"]
+    end
+    MP -->|"L + R: stereo from here on"| MB["sends / group / FX bus"] --> MO["stereo out<br/>(balance)"]
 ```
- Mono track: 1 channel until the panner
 
-   clip ─► [input gain] ─► [insert 1] ─► [insert 2] ─► [fader] ─► (panner: pan law) ─┬─► L ─┐
-            (1 ch)          (1 ch)        (1 ch)        (1 ch)                        └─► R ─┤
-                                                                                             │ stereo from here on
-                                                         sends / group / FX bus ◄────────────┘
-                                                                    │
-                                                                    ▼
-                                                         stereo out (balance)
-
- Stereo track: 2 channels all the way
-
-   clip L ─► [input gain] ─► [insert 1] ─► [insert 2] ─► [fader] ─► (balance) ─► L ─┐
-   clip R ─► [input gain] ─► [insert 1] ─► [insert 2] ─► [fader] ─► (balance) ─► R ─┤
-              (each stereo insert sees both L and R                                 │
-               and may treat them differently)                                      ▼
-                                                         sends / group / FX bus ─► stereo out (balance)
+```mermaid
+flowchart LR
+    subgraph ST["Stereo track: 2 channels all the way"]
+        SC["clip<br/>(L and R)"] -->|"2 ch"| SG["input gain"] -->|"2 ch"| SI1["insert 1<br/>(each stereo insert sees both L and R<br/>and may treat them differently)"] -->|"2 ch"| SI2["insert 2"] -->|"2 ch"| SF["fader"] -->|"2 ch"| SB["balance"]
+    end
+    SB -->|"L + R"| SBUS["sends / group / FX bus"] --> SO["stereo out<br/>(balance)"]
 ```
 
 **The numbers.** With the constant power law and the linear balance law used in this course (the chapter 14 mixer uses the same one):

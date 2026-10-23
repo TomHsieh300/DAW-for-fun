@@ -50,12 +50,12 @@ float getNextValue() noexcept {
 量測時間常數就是對階梯 0 → 1 逐 sample 呼叫、數到第幾個 sample 第一次 ≥ 0.632 / 0.99 / 0.999。執行輸出：
 
 ```
-τ = 10.0 ms = 480 samples，a = 0.002081（理論 1 − e^(−1/480) = 0.002081）
-到達 63.2%：480 samples（1.00 τ，期望 1.00 τ）
-到達 99%  ：2211 samples（4.61 τ，期望 ln(100) = 4.605 τ）
-到達 99.9%：3316 samples（6.91 τ，期望 ln(1000) = 6.908 τ）
-與解析解 1 − (1−a)^n 的最大誤差：4.29e-08；單調遞增：yes；沒有超過目標：yes
-50 ms 後：線性 ramp = 1.000，指數（τ = 50 ms）= 0.632
+tau = 10.0 ms = 480 samples, a = 0.002081 (theory 1 - e^(-1/480) = 0.002081)
+Reaches 63.2%: 480 samples (1.00 tau, expected 1.00 tau)
+Reaches 99%  : 2211 samples (4.61 tau, expected ln(100) = 4.605 tau)
+Reaches 99.9%: 3316 samples (6.91 tau, expected ln(1000) = 6.908 tau)
+Max error vs. the closed form 1 - (1-a)^n: 4.29e-08; monotonically increasing: yes; never exceeds the target: yes
+After 50 ms: linear ramp = 1.000, exponential (tau = 50 ms) = 0.632
 [PASS] l01_ex3 (11 checks passed)
 ```
 
@@ -79,16 +79,18 @@ for (int i = 1; i < kNumPoints; ++i)
 
 ```
 position         dB       gain
-    0.00    -100.00    0.00000      ← 真正的 0（印成本教材的 −∞ = −100 dB）
+    0.00    -100.00    0.00000      <- a true 0 (printed as this course's −∞ = −100 dB)
     0.05     -60.00    0.00100
     0.25     -30.00    0.03162
     0.50     -12.00    0.25119
     0.75       0.00    1.00000
     0.90       3.60    1.51356
     1.00       6.00    1.99526
-round-trip gainToFader(faderToGain(p)) 的最大誤差：5.96e-08
+round-trip max error of gainToFader(faderToGain(p)): 5.96e-08
 [PASS] l01_ex4 (16 checks passed)
 ```
+
+第一列是真正的 0，本教材把它印成 −∞ = −100 dB。
 
 觀察：推桿上 1/4 行程（0.75 → 1.0）只有 6 dB，每 0.05 的行程 1.2 dB，適合微調；0.25 → 0.5 這一段每 0.05 有 3.6 dB；0.05 → 0.25 每 0.05 有 7.5 dB。這就是「上密下疏」。`dbToFader(-200)` 得到 0、`dbToFader(20)` 得到 1：超出範圍要夾住，UI 才不會畫出推桿外面的位置。
 
@@ -107,15 +109,15 @@ multiplier_ = std::pow(to / from, 1.0 / static_cast<double>(rampSamples_));
 執行輸出：
 
 ```
-multiplier r = 0.998562（每個 sample -0.0125 dB）
-走到一半（2400 samples）：multiplicative -30.00 dB，linear -6.01 dB
-與 dB 直線的最大偏差：0.00000 dB
-ramp 期間在 -20 dB 以上的時間：multiplicative 33.3%，linear 90.1%
-相鄰 sample 最大 |ΔdB|：multiplicative 0.0125 dB，linear 1.381 dB（最後幾個 sample）
-mute：一半 -50.00 dB，倒數第二個 -99.98 dB，最後一個 = 0
-unmute：第一個 sample 1.002e-05（-99.9792 dB），最後一個 1.000000
-走到 -15.00 dB 時改回 0 dB：下一個 sample 只前進 +0.0031 dB
-輸出 dawlab_output/l01_ex5_multiplicative_ramp.wav（前半 linear、後半 multiplicative fade-out）
+multiplier r = 0.998562 (-0.0125 dB per sample)
+Halfway (2400 samples): multiplicative -30.00 dB, linear -6.01 dB
+Max deviation from the straight line in dB: 0.00000 dB
+Time spent above -20 dB during the ramp: multiplicative 33.3%, linear 90.1%
+Max |delta dB| between adjacent samples: multiplicative 0.0125 dB, linear 1.381 dB (in the last few samples)
+mute: halfway -50.00 dB, second-to-last -99.98 dB, last = 0
+unmute: first sample 1.002e-05 (-99.9792 dB), last sample 1.000000
+Switching back to 0 dB at -15.00 dB: the next sample advances only +0.0031 dB
+Wrote dawlab_output/l01_ex5_multiplicative_ramp.wav (first half: linear fade-out, second half: multiplicative fade-out)
 [PASS] l01_ex5 (17 checks passed)
 ```
 
@@ -135,16 +137,16 @@ audible[i] = !t.mute && (!anySolo || t.solo || t.soloSafe);
 執行輸出：
 
 ```
-全部正常                       [0:---→on ] [1:---→on ] [2:---→on ] [3:---→on ]
-mute 1                             [0:---→on ] [1:M--→off] [2:---→on ] [3:---→on ]
-solo 2                             [0:---→off] [1:---→off] [2:-S-→on ] [3:---→off]
-solo 0 + solo 2                    [0:-S-→on ] [1:---→off] [2:-S-→on ] [3:---→off]
-solo 0 + solo 2 + mute 2（mute 優先） [0:-S-→on ] [1:---→off] [2:MS-→off] [3:---→off]
-solo 1 + 3 是 solo-safe           [0:---→off] [1:-S-→on ] [2:---→off] [3:--F→on ]
-solo 1 + 3 solo-safe 但 mute      [0:---→off] [1:-S-→on ] [2:---→off] [3:M-F→off]
-沒有人 solo，3 是 solo-safe   [0:---→on ] [1:---→on ] [2:---→on ] [3:--F→on ]
-mute/unmute 經過 Gain（50 ms ramp）：一階差分最大值 0.0653（正弦波自然值 0.0654），mute 期間 peak = -100.0 dBFS
-對照組（ramp = 0，瞬間跳）：一階差分最大值 0.5000（自然值的 7.6 倍）→ 證明這個檢查抓得到 click
+all normal                               [0:---->on ] [1:---->on ] [2:---->on ] [3:---->on ]
+mute 1                                   [0:---->on ] [1:M--->off] [2:---->on ] [3:---->on ]
+solo 2                                   [0:---->off] [1:---->off] [2:-S-->on ] [3:---->off]
+solo 0 + solo 2                          [0:-S-->on ] [1:---->off] [2:-S-->on ] [3:---->off]
+solo 0 + solo 2 + mute 2 (mute wins)     [0:-S-->on ] [1:---->off] [2:MS-->off] [3:---->off]
+solo 1 + 3 is solo-safe                  [0:---->off] [1:-S-->on ] [2:---->off] [3:--F->on ]
+solo 1 + 3 solo-safe but muted           [0:---->off] [1:-S-->on ] [2:---->off] [3:M-F->off]
+nobody soloed, 3 is solo-safe            [0:---->on ] [1:---->on ] [2:---->on ] [3:--F->on ]
+mute/unmute through Gain (50 ms ramp): max first difference 0.0653 (natural value of the sine 0.0654), peak during the mute = -100.0 dBFS
+Control case (ramp = 0, instant jump): max first difference 0.5000 (7.6x the natural value) -> proves this check can catch a click
 [PASS] l01_ex6 (13 checks passed)
 ```
 
@@ -170,10 +172,10 @@ r[i] = mid - side;
 執行輸出：
 
 ```
-width 0/1/2：L peak 0.250 / 0.500 / 0.750，R peak 0.250 / 0.000 / 0.250（mono 和不變）
-不相關雜訊 width 2：mid -19.83 → -19.83 dB，side -19.83 → -13.81 dB（+6.02 dB）
-balance +0.5：L -6.02 dB、R 0.00 dB；balance +1：L peak = -100.0 dBFS
-輸出 dawlab_output/l01_ex7_width.wav（width 0 → 1 → 2 各 2 秒）
+width 0/1/2: L peak 0.250 / 0.500 / 0.750, R peak 0.250 / 0.000 / 0.250 (the mono sum is unchanged)
+Uncorrelated noise, width 2: mid -19.83 -> -19.83 dB, side -19.83 -> -13.81 dB (+6.02 dB)
+balance +0.5: L -6.02 dB, R 0.00 dB; balance +1: L peak = -100.0 dBFS
+Wrote dawlab_output/l01_ex7_width.wav (width 0 -> 1 -> 2, 2 seconds each)
 [PASS] l01_ex7 (17 checks passed)
 ```
 
