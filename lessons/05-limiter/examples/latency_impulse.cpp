@@ -1,20 +1,22 @@
-// 範例 3：latency——impulse 通過 limiter 會晚多久出來？gain 真的「提前」下降嗎？
+// Example 3: latency -- how late does an impulse come out of the limiter? Does the gain really come down "ahead of time"?
 //
-// 示範什麼：
-//   (1) 把一個 impulse 送進 limiter，輸出的 impulse 會晚 getLatencySamples() 個 sample 出現，
-//       而且這個數字 = round(lookaheadMs × sampleRate / 1000)，在 44.1k / 48k / 96k 都成立。
-//   (2) 把輸出往前移 latency 個 sample、跟輸入相減（null test）：低於 ceiling 的訊號應該完全抵消，
-//       證明 limiter 在不需要動作時是「透明」的，只是晚了一點。
-//   (3) 觀察 gain 曲線：訊號在第 s 個 sample 突然變大，但 gain 從第 s - L 個 sample 就開始線性下降，
-//       在大聲的部分抵達輸出時剛好降到位——這就是 lookahead 的意義。
+// What it shows:
+//   (1) Send an impulse into the limiter: the output impulse appears getLatencySamples() samples
+//       late, and that number = round(lookaheadMs * sampleRate / 1000), at 44.1k / 48k / 96k alike.
+//   (2) Shift the output earlier by `latency` samples and subtract it from the input (null test):
+//       a signal below the ceiling should cancel completely, proving the limiter is "transparent"
+//       when it has nothing to do -- just a little late.
+//   (3) Look at the gain curve: the signal suddenly gets louder at sample s, but the gain starts
+//       falling linearly from sample s - L and reaches its target exactly when the loud part
+//       arrives at the output -- that is what lookahead means.
 //
-// 怎麼執行：l05_latency_impulse（不需要參數）
+// How to run: l05_latency_impulse (no arguments)
 //
-// 輸出檔案（在 dawlab_output/）：
-//   l05_latency_impulse.wav   impulse 的輸出（48 kHz、lookahead 5 ms：第 240 個 sample 才有值）
-//   l05_latency_burst.wav     左聲道 = 輸入 tone burst、右聲道 = limiter 輸出，拉進 DAW 看波形可以直接比對延遲與 gain ramp
+// Output files (in dawlab_output/):
+//   l05_latency_impulse.wav   the impulse output (48 kHz, lookahead 5 ms: the first value appears at sample 240)
+//   l05_latency_burst.wav     left channel = input tone burst, right channel = limiter output; drag it into a DAW to compare the delay and gain ramp on the waveform
 //
-// 該聽到：impulse 本身只是「喀」一聲；重點是看印出的表格與 WAV 的波形。
+// What to listen for: the impulse itself is just a "click"; the point is the printed table and the WAV waveforms.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Limiter.h>
@@ -48,12 +50,12 @@ int indexOfPeak(const dawlab::AudioBuffer& b, int channel) {
 int main() {
     bool ok = true;
 
-    // ---- (1) impulse 在不同 sample rate / lookahead 下的延遲 ----
-    std::printf("(1) impulse 的輸出位置 vs getLatencySamples()\n");
-    std::printf("%10s %12s %18s %16s %10s\n", "sampleRate", "lookahead", "getLatencySamples", "impulse 出現在", "一致?");
+    // ---- (1) impulse delay at different sample rates / lookaheads ----
+    std::printf("(1) impulse output position vs getLatencySamples()\n");
+    std::printf("%10s %12s %18s %16s %10s\n", "sampleRate", "lookahead", "getLatencySamples", "impulse at", "match?");
     for (double sr : {44100.0, 48000.0, 96000.0}) {
         for (float lookaheadMs : {1.5f, 5.0f, 10.0f}) {
-            dawlab::AudioBuffer impulse = dawlab::makeImpulse(4096, 1, 0, 0.5f); // 0.5 < ceiling，不會被壓
+            dawlab::AudioBuffer impulse = dawlab::makeImpulse(4096, 1, 0, 0.5f); // 0.5 < ceiling, so it is not reduced
             dawlab::dsp::Limiter limiter;
             limiter.prepare(sr, kBlockSize, 1);
             limiter.setCeilingDb(-1.0f);
@@ -72,7 +74,7 @@ int main() {
         }
     }
 
-    // ---- (2) null test：低於 ceiling 的訊號，補償 latency 後應完全抵消 ----
+    // ---- (2) null test: a signal below the ceiling should cancel completely once latency is compensated ----
     {
         const double sr = 48000.0;
         dawlab::AudioBuffer in = dawlab::makePluckSequence(sr, 2.0, 0.3f);
@@ -88,12 +90,12 @@ int main() {
         for (int ch = 0; ch < 2; ++ch)
             for (int i = 0; i + L < out.getNumSamples(); ++i)
                 residual = std::max(residual, std::abs(out.getSample(ch, i + L) - in.getSample(ch, i)));
-        std::printf("\n(2) null test（pluck 序列 peak %.2f dBFS < ceiling -1 dBFS）：補償 %d samples 後殘差 = %.3g（應為 0）\n",
+        std::printf("\n(2) null test (pluck sequence peak %.2f dBFS < ceiling -1 dBFS): residual after compensating %d samples = %.3g (should be 0)\n",
                     dawlab::gainToDb(dawlab::peakAbs(in)), L, residual);
         ok = ok && residual == 0.0f && limiter.getSafetyClipCount() == 0;
     }
 
-    // ---- (3) gain 提前下降：tone burst -30 → 0 dBFS，ceiling -6 dBFS ----
+    // ---- (3) gain comes down ahead of time: tone burst -30 -> 0 dBFS, ceiling -6 dBFS ----
     {
         const double sr = 48000.0;
         const float ceilingDb = -6.0f;
@@ -106,23 +108,23 @@ int main() {
         limiter.setReleaseMs(100.0f);
         processInBlocks(out, limiter);
         const int L = limiter.getLatencySamples();
-        const int step = dawlab::secondsToSamples(0.25, sr); // 輸入在這裡變大；在輸出端是 step + L
+        const int step = dawlab::secondsToSamples(0.25, sr); // the input gets louder here; at the output it is step + L
 
-        // gain = 輸出 / 延遲後的輸入；取每 1 ms 內的最大 |輸出| 除以最大 |輸入| 比較穩
-        std::printf("\n(3) gain ramp：輸入在 sample %d 變大 30 dB；輸出端對應位置是 %d（= %d + L=%d）\n", step,
+        // gain = output / delayed input; dividing the largest |output| by the largest |input| within each window is more robust
+        std::printf("\n(3) gain ramp: the input gets 30 dB louder at sample %d; the corresponding output position is %d (= %d + L=%d)\n", step,
                     step + L, step, L);
-        std::printf("%22s %12s %12s\n", "輸出位置相對 step+L", "gain (dB)", "輸出 (dBFS)");
+        std::printf("%27s %12s %14s\n", "Output pos. rel. to step+L", "gain (dB)", "output (dBFS)");
         const int win = dawlab::msToSamples(0.5, sr);
         for (int rel : {-2 * L, -L, -3 * L / 4, -L / 2, -L / 4, 0, L / 2, L, 2 * L, 20 * L}) {
             const int outStart = step + L + rel;
             const int inStart = outStart - L;
             const float outPeak = dawlab::peakAbs(out.getReadPointer(0) + outStart, win);
             const float inPeak = dawlab::peakAbs(in.getReadPointer(0) + inStart, win);
-            std::printf("%+10d samples %12.2f %12.2f\n", rel, dawlab::gainToDb(outPeak / inPeak), dawlab::gainToDb(outPeak));
+            std::printf("%+15d samples %12.2f %14.2f\n", rel, dawlab::gainToDb(outPeak / inPeak), dawlab::gainToDb(outPeak));
         }
-        std::printf("輸出 peak %.2f dBFS（ceiling %.0f），safety clamp %llu 次\n", dawlab::gainToDb(dawlab::peakAbs(out)),
+        std::printf("Output peak %.2f dBFS (ceiling %.0f), safety clamp fired %llu times\n", dawlab::gainToDb(dawlab::peakAbs(out)),
                     ceilingDb, static_cast<unsigned long long>(limiter.getSafetyClipCount()));
-        // safety clamp 會把演算法的錯誤夾回 ceiling，所以也要求它沒觸發
+        // the safety clamp pulls algorithm errors back to the ceiling, so we also require that it never fired
         ok = ok && dawlab::peakAbs(out) <= dawlab::dbToGain(ceilingDb) * (1.0f + 1.0e-6f) &&
              limiter.getSafetyClipCount() == 0;
 
@@ -132,7 +134,7 @@ int main() {
         dawlab::writeWav(dawlab::outputPath("l05_latency_burst.wav"), both, sr);
     }
 
-    std::printf("\n已輸出 dawlab_output/l05_latency_impulse.wav、l05_latency_burst.wav\n");
-    std::printf("%s\n", ok ? "全部一致。" : "[FAIL] 有項目不一致！");
+    std::printf("\nWrote dawlab_output/l05_latency_impulse.wav and l05_latency_burst.wav\n");
+    std::printf("%s\n", ok ? "Everything matches." : "[FAIL] Some item does not match!");
     return ok ? 0 : 1;
 }

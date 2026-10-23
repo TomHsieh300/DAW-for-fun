@@ -1,9 +1,9 @@
-// 練習 3 起始碼：O(1) amortized 的 sliding window minimum（monotonic deque）
+// Exercise 3 starter: O(1) amortized sliding window minimum (monotonic deque)
 //
-// 目標：完成 MonotonicWindowMin::push()，讓它和暴力法 BruteForceWindowMin 在所有輸入上回傳一樣的值，
-// 但每個 sample 平均只做 O(1) 的工作。
+// Goal: complete MonotonicWindowMin::push() so that it returns the same values as the brute-force
+// BruteForceWindowMin on every input, while doing only O(1) work per sample on average.
 //
-// 執行：l05_ex3_starter → 完成前會印出 FAIL（預期）。
+// Run: l05_ex3_starter -> it prints FAIL until you finish (expected).
 
 #include <dawlab/Common.h>
 
@@ -14,7 +14,7 @@
 
 namespace {
 
-// ---- 暴力法（已完成）：環形緩衝存最近 W 個值，每次掃一遍 → O(W) / sample ----
+// ---- Brute force (already done): a circular buffer holds the last W values and each push scans them all -> O(W) per sample ----
 class BruteForceWindowMin {
 public:
     void prepare(int window) {
@@ -41,11 +41,11 @@ private:
     std::vector<float> ring_;
 };
 
-// ---- Monotonic deque（請完成 push）----
+// ---- Monotonic deque (complete push) ----
 //
-//   視窗 = 最近 W 個 index：(n - W, n]
-//   不變量：deque 由前到後 index 遞增、value 嚴格遞增；最前面就是視窗最小值。
-//   deque 用長度 W 的環形陣列實作（head_ = 前端位置，count_ = 元素數）。
+//   Window = the most recent W indices: (n - W, n]
+//   Invariant: from front to back the deque has increasing index and strictly increasing value; the front is the window minimum.
+//   The deque is implemented as a circular array of length W (head_ = front position, count_ = number of elements).
 //
 class MonotonicWindowMin {
 public:
@@ -62,10 +62,10 @@ public:
     }
     float push(float v) {
         const int64_t n = n_++;
-        // TODO 1：從尾端丟掉所有 value >= v 的元素（提示：back() 給你尾端的 slot；丟掉 = --count_）
-        // TODO 2：從前端丟掉所有 index <= n - window_ 的元素（提示：head_ = (head_ + 1) % window_; --count_）
-        // TODO 3：把 (v, n) 放到尾端 slot = (head_ + count_) % window_，++count_
-        // TODO 4：回傳前端的 value
+        // TODO 1: drop from the back every element with value >= v (hint: back() gives the back slot; dropping = --count_)
+        // TODO 2: drop from the front every element with index <= n - window_ (hint: head_ = (head_ + 1) % window_; --count_)
+        // TODO 3: put (v, n) into the back slot = (head_ + count_) % window_, then ++count_
+        // TODO 4: return the value at the front
         (void)v;
         (void)n;
         return 0.0f;
@@ -96,7 +96,7 @@ int main() {
     const int n = 20000;
     std::vector<float> data(static_cast<size_t>(n));
     for (float& v : data)
-        v = std::round(rng.next() * 8.0f) / 8.0f; // 很多重複值：測試 >= 的處理
+        v = std::round(rng.next() * 8.0f) / 8.0f; // lots of repeated values: tests the handling of >=
 
     for (int window : {1, 2, 3, 7, 64, 241, 961, 5000, n}) {
         BruteForceWindowMin brute;
@@ -107,7 +107,7 @@ int main() {
         for (float v : data)
             if (brute.push(v) != mono.push(v))
                 ++mismatches;
-        std::printf("window %5d：mismatches = %d\n", window, mismatches);
+        std::printf("window %5d: mismatches = %d\n", window, mismatches);
         DAWLAB_CHECK(mismatches == 0);
     }
 

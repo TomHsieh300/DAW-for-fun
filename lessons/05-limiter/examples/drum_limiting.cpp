@@ -1,21 +1,23 @@
-// 範例 2：把 drum loop 推進 limiter——「更大聲但不爆」
+// Example 2: push a drum loop into the limiter -- "louder without clipping"
 //
-// 示範什麼：
-//   鼓的 peak 很高、RMS 卻不高（crest factor 大）。把 input gain 推 +6、+12 dB 之後交給
-//   limiter（ceiling -1 dBFS），peak 被壓回 -1 dBFS，RMS 卻真的變大了——這就是 mastering
-//   limiter「增加 loudness」的原理。對照組是直接 hard clip（截掉超過 ±1 的部分）。
+// What it shows:
+//   Drums have a high peak but a modest RMS (large crest factor). After raising the input gain
+//   by +6 and +12 dB and handing the signal to the limiter (ceiling -1 dBFS), the peak is held
+//   at -1 dBFS while the RMS really does go up -- this is how a mastering limiter "adds
+//   loudness". The control case is plain hard clipping (cutting off everything beyond +/-1).
 //
-// 怎麼執行：l05_drum_limiting（不需要參數）；可選 argv[1] = 自己的 WAV 檔路徑
+// How to run: l05_drum_limiting (no arguments); optional argv[1] = path to your own WAV file
 //
-// 輸出檔案（在 dawlab_output/）：
-//   l05_drums_dry.wav            原始 drum loop
-//   l05_drums_limited_6dB.wav    +6 dB → limiter
-//   l05_drums_limited_12dB.wav   +12 dB → limiter
-//   l05_drums_clipped_12dB.wav   +12 dB → hard clip（對照：聽得到破音）
+// Output files (in dawlab_output/):
+//   l05_drums_dry.wav            the original drum loop
+//   l05_drums_limited_6dB.wav    +6 dB -> limiter
+//   l05_drums_limited_12dB.wav   +12 dB -> limiter
+//   l05_drums_clipped_12dB.wav   +12 dB -> hard clip (control: audible distortion)
 //
-// 該聽到：
-//   limited 版本明顯比 dry 大聲，+12 dB 的版本 kick 的「衝擊感」開始變鈍（gain reduction
-//   會把 transient 壓扁），但沒有破音；clipped 版本的 kick / snare 則會有明顯的沙沙破音。
+// What to listen for:
+//   The limited versions are clearly louder than dry. In the +12 dB version the kick's "punch"
+//   starts to dull (gain reduction flattens the transients), but there is no distortion; the
+//   clipped version's kick / snare have an obvious gritty crackle.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Limiter.h>
@@ -62,11 +64,11 @@ int main(int argc, char** argv) {
     const float lookaheadMs = 5.0f;
     const float releaseMs = 80.0f;
 
-    std::printf("Drum loop：%d samples @ %.0f Hz，peak %.2f dBFS，RMS %.2f dBFS，crest factor %.2f dB\n\n",
+    std::printf("Drum loop: %d samples @ %.0f Hz, peak %.2f dBFS, RMS %.2f dBFS, crest factor %.2f dB\n\n",
                 dry.getNumSamples(), sampleRate, peakDb(dry), rmsDb(dry), peakDb(dry) - rmsDb(dry));
-    std::printf("Limiter：ceiling %.1f dBFS, lookahead %.1f ms, release %.0f ms\n\n", ceilingDb, lookaheadMs,
+    std::printf("Limiter: ceiling %.1f dBFS, lookahead %.1f ms, release %.0f ms\n\n", ceilingDb, lookaheadMs,
                 releaseMs);
-    std::printf("%-10s %12s %12s %12s %12s %12s\n", "input gain", "in peak", "out peak", "out RMS", "RMS 增加",
+    std::printf("%-10s %12s %12s %12s %12s %12s\n", "input gain", "in peak", "out peak", "out RMS", "RMS gain",
                 "max GR");
 
     bool ok = true;
@@ -78,29 +80,29 @@ int main(int argc, char** argv) {
         limiter.setLookaheadMs(lookaheadMs);
         limiter.setReleaseMs(releaseMs);
         limiter.setInputGainDb(gainDb);
-        limiter.reset(); // 讓 input gain 直接就定位（不要在開頭 ramp）
+        limiter.reset(); // put the input gain in place immediately (no ramp at the start)
 
         float maxGr = 0.0f;
         dawlab::AudioBlock whole(out);
         for (int start = 0; start < out.getNumSamples(); start += kBlockSize) {
             const int len = std::min(kBlockSize, out.getNumSamples() - start);
             limiter.process(whole.getSubBlock(start, len));
-            maxGr = std::max(maxGr, limiter.getGainReductionDb()); // UI 的 gain reduction meter 就是這樣讀
+            maxGr = std::max(maxGr, limiter.getGainReductionDb()); // this is how a UI gain reduction meter reads it
         }
 
         const float inPeak = peakDb(dry) + gainDb;
         std::printf("%+7.0f dB %10.2f dB %10.2f dB %10.2f dB %+10.2f dB %10.2f dB\n", gainDb, inPeak, peakDb(out),
                     rmsDb(out), rmsDb(out) - rmsDb(dry), maxGr);
 
-        // 只看 peak 不夠：safety clamp 會把演算法的任何錯誤夾回 ceiling，所以也要求 clamp 從未觸發
+        // Checking the peak alone is not enough: the safety clamp pulls any algorithm error back to the ceiling, so we also require that it never fired
         if (dawlab::peakAbs(out) > dawlab::dbToGain(ceilingDb) * (1.0f + 1.0e-6f) || dawlab::hasNanOrInf(out) ||
             limiter.getSafetyClipCount() != 0)
             ok = false;
-        // lookahead 讓 gain「剛好」到位：最大 GR 應該 = max(0, 輸入 peak − ceiling)，不多不少。
-        // （最大的峰值有最小的 g，它周圍 L+1 個視窗最小值都等於這個 g，平均出來剛好就是 g）
+        // Lookahead brings the gain down "exactly" far enough: the max GR should be max(0, input peak - ceiling), no more and no less.
+        // (The largest peak has the smallest g; the L+1 window minima around it all equal that g, so their average is exactly g.)
         const float expectedGr = std::max(0.0f, inPeak - ceilingDb);
         if (std::abs(maxGr - expectedGr) > 0.05f) {
-            std::printf("  [FAIL] max GR %.2f dB，預期 %.2f dB\n", maxGr, expectedGr);
+            std::printf("  [FAIL] max GR %.2f dB, expected %.2f dB\n", maxGr, expectedGr);
             ok = false;
         }
 
@@ -111,7 +113,7 @@ int main(int argc, char** argv) {
                              out, sampleRate);
     }
 
-    // 對照組：+12 dB 之後直接 hard clip 到 ±1
+    // Control case: after +12 dB, hard clip straight to +/-1
     {
         dawlab::AudioBuffer clipped = dry;
         clipped.applyGain(dawlab::dbToGain(12.0f));
@@ -125,8 +127,8 @@ int main(int argc, char** argv) {
         dawlab::writeWav(dawlab::outputPath("l05_drums_clipped_12dB.wav"), clipped, sampleRate);
     }
 
-    std::printf("\n已輸出 dawlab_output/l05_drums_{dry,limited_6dB,limited_12dB,clipped_12dB}.wav\n");
-    std::printf("%s\n", ok ? "所有 limited 輸出都 ≤ ceiling、safety clamp 未觸發，max GR = 輸入 peak − ceiling。"
-                          : "[FAIL] 有輸出超過 ceiling、safety clamp 有觸發，或 max GR 不對！");
+    std::printf("\nWrote dawlab_output/l05_drums_{dry,limited_6dB,limited_12dB,clipped_12dB}.wav\n");
+    std::printf("%s\n", ok ? "All limited outputs are <= ceiling, the safety clamp never fired, and max GR = input peak - ceiling."
+                          : "[FAIL] An output exceeded the ceiling, the safety clamp fired, or max GR is wrong!");
     return ok ? 0 : 1;
 }

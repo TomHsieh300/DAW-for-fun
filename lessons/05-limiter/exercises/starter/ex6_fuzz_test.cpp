@@ -1,11 +1,11 @@
-// 練習 6 起始碼：fuzz test——隨機訊號 + 隨機參數 + 隨機 block size，驗證 ceiling 保證
+// Exercise 6 starter: fuzz test -- random signals + random parameters + random block sizes, verifying the ceiling guarantee
 //
-// 目標：完成 makeRandomSignal() 與 main() 裡的 fuzz 迴圈，對 Limiter 做幾百次隨機測試，檢查：
-//   (a) 輸出 sample peak ≤ ceiling（線性值，精確比較）
-//   (b) 輸出沒有 NaN / Inf
-//   (c) limiter.getSafetyClipCount() == 0（演算法本身沒超過，不是靠最後的 clamp）
+// Goal: complete makeRandomSignal() and the fuzz loop in main(), run the Limiter through a few hundred random tests, and check:
+//   (a) the output sample peak is <= the ceiling (linear value, exact comparison)
+//   (b) the output contains no NaN / Inf
+//   (c) limiter.getSafetyClipCount() == 0 (the algorithm itself stayed under the ceiling, not just the final clamp)
 //
-// 執行：l05_ex6_starter → 完成前會印出 FAIL（預期）。
+// Run: l05_ex6_starter -> it prints FAIL until you finish (expected).
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Limiter.h>
@@ -31,16 +31,16 @@ private:
 
 enum class SignalKind { Noise, Sine, Bursts, Impulses, Dc, Square, Mixed, Count };
 
-// TODO 1：產生一段隨機訊號——長度 1 個 sample ～ 0.3 秒、振幅 -40..+60 dB、頻率 20 Hz..0.45 fs，
-//         依 kind 產生 noise / sine / 開關的 bursts / 正負交替的 impulses / DC / 方波 / 混合。
+// TODO 1: generate a random signal -- length 1 sample to 0.3 s, amplitude -40..+60 dB, frequency 20 Hz..0.45 fs,
+//         producing noise / sine / on-off bursts / alternating-sign impulses / DC / square wave / a mix, depending on kind.
 dawlab::AudioBuffer makeRandomSignal(Random& rng, double sampleRate, int numChannels, SignalKind kind) {
     (void)kind;
     const int n = rng.integer(1, dawlab::secondsToSamples(0.3, sampleRate));
     dawlab::AudioBuffer b(numChannels, n);
-    return b; // 目前是全 0：limiter 當然不會超過 ceiling，但也什麼都沒測到
+    return b; // all zeros for now: the limiter of course never exceeds the ceiling, but nothing is being tested either
 }
 
-// 用隨機長度（1..maxBlock）的 block 餵 limiter（已完成）
+// Feed the limiter blocks of random length (1..maxBlock) (already done)
 void processRandomBlocks(dawlab::AudioBuffer& buffer, dawlab::dsp::Limiter& limiter, Random& rng, int maxBlock) {
     dawlab::AudioBlock whole(buffer);
     int start = 0;
@@ -56,13 +56,13 @@ void processRandomBlocks(dawlab::AudioBuffer& buffer, dawlab::dsp::Limiter& limi
 int main() {
     Random rng(20240521);
     int cases = 0, failures = 0;
-    float worstMarginDb = 1.0e9f; // ceiling − 輸出 peak 的最小值（dB）
+    float worstMarginDb = 1.0e9f; // the minimum of (ceiling - output peak), in dB
 
     const int kCases = 400;
     for (int c = 0; c < kCases; ++c) {
-        // TODO 2：隨機參數——sample rate（44.1k / 48k / 96k）、channel 數 1..2、
-        //         maxLookaheadMs 0..30、lookaheadMs（故意可以超出範圍）、ceiling -30..0 dB、
-        //         release 0..1000 ms、input gain -10..+40 dB、maxBlock 1..1024、隨機 SignalKind
+        // TODO 2: random parameters -- sample rate (44.1k / 48k / 96k), channel count 1..2,
+        //         maxLookaheadMs 0..30, lookaheadMs (deliberately allowed to go out of range), ceiling -30..0 dB,
+        //         release 0..1000 ms, input gain -10..+40 dB, maxBlock 1..1024, a random SignalKind
         const double sampleRate = 48000.0;
         const int numChannels = 2;
         const float ceilingDb = -1.0f;
@@ -75,24 +75,24 @@ int main() {
         limiter.prepare(sampleRate, 1024, numChannels);
         limiter.setCeilingDb(ceilingDb);
         limiter.setLookaheadMs(lookaheadMs);
-        // TODO 3：setReleaseMs、setInputGainDb；一半的 case 呼叫 reset() 讓 input gain 直接就位
+        // TODO 3: setReleaseMs, setInputGainDb; in half of the cases call reset() so the input gain is in place immediately
 
         dawlab::AudioBuffer signal = makeRandomSignal(rng, sampleRate, numChannels, kind);
         processRandomBlocks(signal, limiter, rng, 1024);
 
-        // TODO 4：檢查 (a)(b)(c)，失敗時印出 case 的參數；更新 cases / failures / worstMarginDb
-        //         並用 DAWLAB_CHECK 驗證 getLatencySamples() == clamp(msToSamples(lookaheadMs), 0, msToSamples(maxLookaheadMs))
+        // TODO 4: check (a)(b)(c) and print the case's parameters on failure; update cases / failures / worstMarginDb
+        //         and use DAWLAB_CHECK to verify getLatencySamples() == clamp(msToSamples(lookaheadMs), 0, msToSamples(maxLookaheadMs))
         ++cases;
     }
-    std::printf("固定參數：%d cases，%d 失敗；最小 margin = %.4f dB\n", cases, failures, worstMarginDb);
+    std::printf("Fixed parameters: %d cases, %d failures; minimum margin = %.4f dB\n", cases, failures, worstMarginDb);
     DAWLAB_CHECK(failures == 0);
-    DAWLAB_CHECK(worstMarginDb < 0.01f); // 至少要有 case 真的頂到 ceiling，否則測試沒測到東西
+    DAWLAB_CHECK(worstMarginDb < 0.01f); // at least one case must actually reach the ceiling, otherwise the test is not testing anything
 
-    // TODO 5（進階）：
-    //   - 在 block 之間隨機改 setReleaseMs / setInputGainDb，保證應該仍然成立
-    //   - 播放中把 ceiling 往下調：輸出仍 ≤ 新 ceiling，但 getSafetyClipCount() 會 > 0（為什麼？）
-    //   - 在輸入裡塞 NaN / Inf：輸出必須仍然有限且 ≤ ceiling
-    //   - 每個 block 都呼叫一次 setInputGainDb(同一個值)（模擬 plugin host），確認約 20 ms 後輸出達到目標增益
+    // TODO 5 (advanced):
+    //   - randomly change setReleaseMs / setInputGainDb between blocks; the guarantee should still hold
+    //   - lower the ceiling during playback: the output is still <= the new ceiling, but getSafetyClipCount() will be > 0 (why?)
+    //   - put NaN / Inf into the input: the output must still be finite and <= the ceiling
+    //   - call setInputGainDb(the same value) once per block (simulating a plugin host) and confirm the output reaches the target gain after about 20 ms
 
     return dawlab::test::summary("l05_ex6");
 }

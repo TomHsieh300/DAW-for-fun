@@ -1,11 +1,11 @@
-// 練習 5 起始碼：soft clipper，並與 limiter 比較
+// Exercise 5 starter: a soft clipper, compared with the limiter
 //
-// 目標：完成 softClip()：
-//   |x| ≤ t：     y = x
-//   |x| > t：     y = sign(x) · [ t + (1 - t) · tanh((|x| - t) / (1 - t)) ]
-// 要求：線性區完全不動、在 t 處連續且斜率連續、|y| ≤ 1、奇對稱、單調遞增。
+// Goal: complete softClip():
+//   |x| <= t:     y = x
+//   |x| > t:      y = sign(x) * [ t + (1 - t) * tanh((|x| - t) / (1 - t)) ]
+// Requirements: the linear region is left completely untouched, continuous with continuous slope at t, |y| <= 1, odd symmetry, monotonically increasing.
 //
-// 執行：l05_ex5_starter → 完成前會印出 FAIL（預期）。
+// Run: l05_ex5_starter -> it prints FAIL until you finish (expected).
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Limiter.h>
@@ -20,7 +20,7 @@ constexpr int kBlockSize = 512;
 
 float softClip(float x, float threshold) noexcept {
     const float t = std::clamp(threshold, 1.0e-3f, 0.999f);
-    // TODO：依上面的公式實作（提示：std::tanh、std::copysign、std::abs）
+    // TODO: implement the formula above (hint: std::tanh, std::copysign, std::abs)
     (void)t;
     return x;
 }
@@ -46,7 +46,7 @@ float rmsDb(const dawlab::AudioBuffer& b) { return dawlab::gainToDb(dawlab::rms(
 } // namespace
 
 int main() {
-    // ---- (1) 曲線本身的性質 ----
+    // ---- (1) Properties of the curve itself ----
     {
         const float t = 0.5f;
         DAWLAB_CHECK(softClip(0.3f, t) == 0.3f);
@@ -68,11 +68,11 @@ int main() {
         const float slopeAbove = (softClip(t + h, t) - softClip(t, t)) / h;
         DAWLAB_CHECK_NEAR(slopeBelow, 1.0, 1.0e-3);
         DAWLAB_CHECK_NEAR(slopeAbove, 1.0, 1.0e-2);
-        std::printf("softClip(x, 0.5)：x=0.6 → %.4f，x=1.0 → %.4f，x=2.0 → %.4f，x=10 → %.4f\n", softClip(0.6f, t),
+        std::printf("softClip(x, 0.5): x=0.6 -> %.4f, x=1.0 -> %.4f, x=2.0 -> %.4f, x=10 -> %.4f\n", softClip(0.6f, t),
                     softClip(1.0f, t), softClip(2.0f, t), softClip(10.0f, t));
     }
 
-    // ---- (2) 正弦波 +6 dB：clipper 產生諧波、limiter 不會 ----
+    // ---- (2) Sine +6 dB: the clipper generates harmonics, the limiter does not ----
     {
         const double freq = 1000.0;
         dawlab::AudioBuffer sine = dawlab::makeSine(freq, kSampleRate, 1.0, dawlab::dbToGain(6.0f), 1);
@@ -94,10 +94,10 @@ int main() {
         const double thdLim = dawlab::thdPercent(limited.getReadPointer(0) + skip, n, freq, kSampleRate);
         const auto harmonics = dawlab::harmonicLevelsDb(clipped.getReadPointer(0) + skip, n, freq, kSampleRate, 5);
 
-        std::printf("\n1 kHz sine +6 dBFS：\n");
-        std::printf("  soft clip (t=0.5)：peak %6.2f dBFS，THD %6.2f %%，諧波 H2 %.1f / H3 %.1f / H4 %.1f / H5 %.1f dB\n",
+        std::printf("\n1 kHz sine +6 dBFS:\n");
+        std::printf("  soft clip (t=0.5): peak %6.2f dBFS, THD %6.2f %%, harmonics H2 %.1f / H3 %.1f / H4 %.1f / H5 %.1f dB\n",
                     peakDb(clipped), thdClip, harmonics[1], harmonics[2], harmonics[3], harmonics[4]);
-        std::printf("  limiter (-0.5 dB)：peak %6.2f dBFS，THD %6.4f %%\n", peakDb(limited), thdLim);
+        std::printf("  limiter (-0.5 dB): peak %6.2f dBFS, THD %6.4f %%\n", peakDb(limited), thdLim);
         DAWLAB_CHECK(dawlab::peakAbs(clipped) <= 1.0f);
         DAWLAB_CHECK(dawlab::peakAbs(limited) <= dawlab::dbToGain(-0.5f));
         DAWLAB_CHECK(thdClip > 5.0);
@@ -127,7 +127,7 @@ int main() {
         limiter.reset();
         processInBlocks(limited, limiter);
 
-        std::printf("\ndrum loop +12 dB（輸入 peak %.2f dBFS）：\n", peakDb(hot));
+        std::printf("\ndrum loop +12 dB (input peak %.2f dBFS):\n", peakDb(hot));
         std::printf("  %-20s peak %6.2f dBFS  RMS %6.2f dBFS\n", "dry", peakDb(dry), rmsDb(dry));
         std::printf("  %-20s peak %6.2f dBFS  RMS %6.2f dBFS\n", "soft clip (t=0.6)", peakDb(clipped), rmsDb(clipped));
         std::printf("  %-20s peak %6.2f dBFS  RMS %6.2f dBFS\n", "limiter (-0.1 dB)", peakDb(limited), rmsDb(limited));

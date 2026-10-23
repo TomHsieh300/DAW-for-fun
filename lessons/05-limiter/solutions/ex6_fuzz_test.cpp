@@ -1,16 +1,16 @@
-// 練習 6 解答：fuzz test——隨機訊號 + 隨機參數 + 隨機 block size，驗證 ceiling 保證
+// Exercise 6 solution: fuzz test -- random signals + random parameters + random block sizes, verifying the ceiling guarantee
 //
-// 「證明」告訴我們演算法在數學上不會超過 ceiling，但程式碼可能有 off-by-one、浮點捨入、
-// 環形緩衝繞回、block 邊界等問題。Fuzz test 的精神是：用大量隨機（但可重現）的輸入去轟它，
-// 任何一次違反承諾都算 bug。
+// A "proof" tells us the algorithm cannot exceed the ceiling mathematically, but the code may still have off-by-one errors,
+// floating-point rounding, circular-buffer wrap-around, block-boundary problems and so on. The spirit of a fuzz test is to
+// hammer the code with a large amount of random (but reproducible) input; any single violation of the promise counts as a bug.
 //
-// 我們檢查三件事：
-//   (a) 輸出 sample peak ≤ ceiling（線性值，精確比較、不留餘地）
-//   (b) 輸出沒有 NaN / Inf
-//   (c) getSafetyClipCount() == 0：演算法本身就沒超過，不是靠最後一道 clamp 救回來的
+// We check three things:
+//   (a) the output sample peak is <= the ceiling (linear value, exact comparison, no slack)
+//   (b) the output contains no NaN / Inf
+//   (c) getSafetyClipCount() == 0: the algorithm itself stayed under the ceiling, rather than being rescued by the final clamp
 //
-// 執行：l05_ex6_solution（約 400 個隨機 case，Debug 建置幾秒內跑完）
-// 輸出：無 WAV（純數字檢查）
+// Run: l05_ex6_solution (about 400 random cases; finishes within a few seconds in a Debug build)
+// Output: no WAV (pure numeric checks)
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Limiter.h>
@@ -49,7 +49,7 @@ const char* kindName(SignalKind k) {
     }
 }
 
-// 產生一段隨機訊號：種類、長度、振幅（最大可到 +60 dB）都隨機
+// Generate a random signal: the kind, length and amplitude (up to +60 dB) are all random
 dawlab::AudioBuffer makeRandomSignal(Random& rng, double sampleRate, int numChannels, SignalKind kind) {
     const int n = rng.integer(1, dawlab::secondsToSamples(0.3, sampleRate));
     const float amp = dawlab::dbToGain(rng.uniform(-40.0f, 60.0f));
@@ -81,7 +81,7 @@ dawlab::AudioBuffer makeRandomSignal(Random& rng, double sampleRate, int numChan
     return b;
 }
 
-// 用隨機長度（1..maxBlock）的 block 餵 limiter
+// Feed the limiter blocks of random length (1..maxBlock)
 void processRandomBlocks(dawlab::AudioBuffer& buffer, dawlab::dsp::Limiter& limiter, Random& rng, int maxBlock) {
     dawlab::AudioBlock whole(buffer);
     int start = 0;
@@ -95,7 +95,7 @@ void processRandomBlocks(dawlab::AudioBuffer& buffer, dawlab::dsp::Limiter& limi
 struct Stats {
     int cases = 0;
     int failures = 0;
-    float worstMarginDb = 1.0e9f; // ceiling - 輸出 peak 的最小值（dB）；越接近 0 表示 limiter 真的頂到 ceiling
+    float worstMarginDb = 1.0e9f; // the minimum of (ceiling - output peak), in dB; the closer to 0, the more the limiter really reached the ceiling
 };
 
 void report(Stats& s, const char* label, bool pass, float ceilingDb, float outPeakDb) {
@@ -103,7 +103,7 @@ void report(Stats& s, const char* label, bool pass, float ceilingDb, float outPe
     s.worstMarginDb = std::min(s.worstMarginDb, ceilingDb - outPeakDb);
     if (!pass) {
         ++s.failures;
-        std::printf("  [FAIL] %s：ceiling %.3f dB，輸出 peak %.3f dB\n", label, ceilingDb, outPeakDb);
+        std::printf("  [FAIL] %s: ceiling %.3f dB, output peak %.3f dB\n", label, ceilingDb, outPeakDb);
     }
 }
 
@@ -113,13 +113,13 @@ int main() {
     Random rng(20240521);
     Stats stats;
 
-    // ---- (1) 主要 fuzz：每個 case 的參數在處理前固定 ----
+    // ---- (1) Main fuzz: each case's parameters are fixed before processing ----
     const int kCases = 400;
     for (int c = 0; c < kCases; ++c) {
         const double sampleRate = (c % 3 == 0) ? 44100.0 : (c % 3 == 1) ? 48000.0 : 96000.0;
         const int numChannels = rng.integer(1, 2);
         const float maxLookaheadMs = rng.uniform(0.0f, 30.0f);
-        const float lookaheadMs = rng.uniform(-5.0f, maxLookaheadMs + 5.0f); // 故意超出範圍，看 clamp
+        const float lookaheadMs = rng.uniform(-5.0f, maxLookaheadMs + 5.0f); // deliberately out of range, to exercise the clamp
         const float ceilingDb = rng.uniform(-30.0f, 0.0f);
         const float releaseMs = rng.uniform(0.0f, 1000.0f);
         const float inputGainDb = rng.uniform(-10.0f, 40.0f);
@@ -134,7 +134,7 @@ int main() {
         limiter.setReleaseMs(releaseMs);
         limiter.setInputGainDb(inputGainDb);
         if (c % 2 == 0)
-            limiter.reset(); // 一半的 case 讓 input gain 直接就位，一半讓它 ramp
+            limiter.reset(); // in half of the cases the input gain is placed immediately, in the other half it ramps
 
         dawlab::AudioBuffer signal = makeRandomSignal(rng, sampleRate, numChannels, kind);
         processRandomBlocks(signal, limiter, rng, maxBlock);
@@ -147,17 +147,17 @@ int main() {
                       kindName(kind), sampleRate, numChannels, lookaheadMs, maxLookaheadMs, releaseMs, inputGainDb, maxBlock);
         report(stats, label, pass, ceilingDb, dawlab::gainToDb(outPeak));
 
-        // lookahead 的 clamp 與 latency 回報要一致
+        // The lookahead clamp and the reported latency must agree
         const int expected = std::clamp(dawlab::msToSamples(lookaheadMs, sampleRate), 0,
                                         dawlab::msToSamples(maxLookaheadMs, sampleRate));
         DAWLAB_CHECK(limiter.getLatencySamples() == expected);
     }
-    std::printf("(1) 固定參數：%d cases，%d 失敗；最小 margin（ceiling − 輸出 peak）= %.4f dB\n", stats.cases, stats.failures,
+    std::printf("(1) Fixed parameters: %d cases, %d failures; minimum margin (ceiling - output peak) = %.4f dB\n", stats.cases, stats.failures,
                 stats.worstMarginDb);
     DAWLAB_CHECK(stats.failures == 0);
-    DAWLAB_CHECK(stats.worstMarginDb < 0.01f); // 至少有 case 真的頂到 ceiling（否則測試沒測到東西）
+    DAWLAB_CHECK(stats.worstMarginDb < 0.01f); // at least one case actually reached the ceiling (otherwise the test is not testing anything)
 
-    // ---- (2) 播放中改 release / input gain：證明仍然成立（這兩個參數不影響推導）----
+    // ---- (2) Changing release / input gain during playback: the guarantee still holds (these two parameters do not affect the derivation) ----
     {
         Stats s2;
         for (int c = 0; c < 50; ++c) {
@@ -180,14 +180,14 @@ int main() {
             }
             const bool pass = dawlab::peakAbs(signal) <= dawlab::dbToGain(ceilingDb) && !dawlab::hasNanOrInf(signal) &&
                               limiter.getSafetyClipCount() == 0;
-            report(s2, "release/gain 隨 block 變化", pass, ceilingDb, dawlab::gainToDb(dawlab::peakAbs(signal)));
+            report(s2, "release/gain varying per block", pass, ceilingDb, dawlab::gainToDb(dawlab::peakAbs(signal)));
         }
-        std::printf("(2) 播放中改 release / input gain：%d cases，%d 失敗\n", s2.cases, s2.failures);
+        std::printf("(2) Changing release / input gain during playback: %d cases, %d failures\n", s2.cases, s2.failures);
         DAWLAB_CHECK(s2.failures == 0);
     }
 
-    // ---- (3) 播放中把 ceiling 往下調：pipeline 裡已經算好 gain 的 sample 會超過新 ceiling，
-    //          這時 safety clamp 會接手（clip count > 0），輸出仍然 ≤ 當下的 ceiling ----
+    // ---- (3) Lowering the ceiling during playback: samples in the pipeline whose gain has already been computed will exceed the new ceiling,
+    //          so the safety clamp takes over (clip count > 0) and the output is still <= the current ceiling ----
     {
         const double sampleRate = 48000.0;
         dawlab::dsp::Limiter limiter;
@@ -201,14 +201,14 @@ int main() {
         limiter.setCeilingDb(-12.0f);
         limiter.process(whole.getSubBlock(half, signal.getNumSamples() - half));
         const float secondHalfPeak = dawlab::peakAbs(signal.getReadPointer(0) + half, signal.getNumSamples() - half);
-        std::printf("(3) ceiling -1 → -12 dB 中途切換：後半段 peak %.2f dBFS，safety clamp 觸發 %llu 次（預期 > 0）\n",
+        std::printf("(3) Switching ceiling -1 -> -12 dB midway: second-half peak %.2f dBFS, safety clamp fired %llu times (expected > 0)\n",
                     dawlab::gainToDb(secondHalfPeak), static_cast<unsigned long long>(limiter.getSafetyClipCount()));
         DAWLAB_CHECK(secondHalfPeak <= dawlab::dbToGain(-12.0f));
         DAWLAB_CHECK(limiter.getSafetyClipCount() > 0);
         DAWLAB_CHECK(!dawlab::hasNanOrInf(signal));
     }
 
-    // ---- (4) 惡意輸入：NaN / Inf 混進來，輸出必須仍然有限且 ≤ ceiling ----
+    // ---- (4) Hostile input: NaN / Inf mixed in; the output must still be finite and <= the ceiling ----
     {
         const double sampleRate = 48000.0;
         dawlab::dsp::Limiter limiter;
@@ -220,14 +220,14 @@ int main() {
         signal.setSample(1, 2000, std::numeric_limits<float>::infinity());
         signal.setSample(0, 3000, -std::numeric_limits<float>::infinity());
         processRandomBlocks(signal, limiter, rng, 512);
-        std::printf("(4) NaN / Inf 注入：輸出 peak %.2f dBFS，有 NaN/Inf？%s\n", dawlab::gainToDb(dawlab::peakAbs(signal)),
-                    dawlab::hasNanOrInf(signal) ? "有" : "無");
+        std::printf("(4) NaN / Inf injection: output peak %.2f dBFS, contains NaN/Inf? %s\n", dawlab::gainToDb(dawlab::peakAbs(signal)),
+                    dawlab::hasNanOrInf(signal) ? "yes" : "no");
         DAWLAB_CHECK(!dawlab::hasNanOrInf(signal));
         DAWLAB_CHECK(dawlab::peakAbs(signal) <= dawlab::dbToGain(-3.0f));
     }
 
-    // ---- (5) host 每個 block 都重設同一個 input gain（第 13 章的 plugin 就是這樣做）：
-    //          ramp 仍然要在約 20 ms 內走完，不能因為「重設」而越走越慢 ----
+    // ---- (5) The host re-sets the same input gain every block (the Chapter 13 plugin does exactly this):
+    //          the ramp must still finish in about 20 ms and must not get slower and slower because of the "re-setting" ----
     {
         const double sampleRate = 48000.0;
         dawlab::dsp::Limiter limiter;
@@ -236,15 +236,15 @@ int main() {
         limiter.setLookaheadMs(0.0f);
         dawlab::AudioBuffer signal(1, dawlab::secondsToSamples(0.05, sampleRate));
         for (int i = 0; i < signal.getNumSamples(); ++i)
-            signal.setSample(0, i, 0.1f); // DC 0.1，+6 dB 之後 ≈ 0.2，遠低於 ceiling
+            signal.setSample(0, i, 0.1f); // DC 0.1; after +6 dB that is about 0.2, far below the ceiling
         dawlab::AudioBlock whole(signal);
         for (int start = 0; start < signal.getNumSamples(); start += 64) {
-            limiter.setInputGainDb(6.0f); // 每個 block 都設一次
+            limiter.setInputGainDb(6.0f); // set once per block
             limiter.process(whole.getSubBlock(start, std::min(64, signal.getNumSamples() - start)));
         }
-        const int after = dawlab::secondsToSamples(0.025, sampleRate); // 20 ms ramp + 餘裕
+        const int after = dawlab::secondsToSamples(0.025, sampleRate); // 20 ms ramp + margin
         const float expected = 0.1f * dawlab::dbToGain(6.0f);
-        std::printf("(5) 每個 block 重設 input gain +6 dB：25 ms 後輸出 %.6f（目標 %.6f）\n", signal.getSample(0, after),
+        std::printf("(5) Re-setting input gain +6 dB every block: output after 25 ms is %.6f (target %.6f)\n", signal.getSample(0, after),
                     expected);
         DAWLAB_CHECK_NEAR(signal.getSample(0, after), expected, 1.0e-6);
     }

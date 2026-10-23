@@ -1,21 +1,25 @@
-// 練習 4 起始碼：簡易 4x oversampling true-peak meter
+// Exercise 4 starter: a simple 4x oversampling true-peak meter
 //
-// 目標：完成 TruePeakMeter 的 designFilter() 與 process()，讓它量出 inter-sample peak（dBTP）。
+// Goal: complete TruePeakMeter's designFilter() and process() so that it measures the inter-sample peak (dBTP).
 //
-// 開始之前請先讀 README 2.8 節的「升頻 4 倍怎麼做？」小節（零插入 → image → lowpass 插值 → polyphase）。
-// 那一節只講直覺；halfband、Kaiser window、latency 等完整理論在第 06 章 2.6 節，做這題不需要先讀。
+// Before you start, read the "How do we upsample by 4?" subsection of README section 2.8
+// (zero insertion -> image -> lowpass interpolation -> polyphase).
+// That section covers only the intuition; the full theory of halfband filters, Kaiser windows, latency and so on
+// is in Chapter 06 section 2.6, which you do not need to read first for this exercise.
 //
-// 四個想法串起來就是這題：
-//   1. 零插入：每個 sample 後面插 3 個 0，sample rate 變 4 倍（48 kHz → 192 kHz）。
-//      波形變成「原始 sample + 一堆 0」，還不是我們要的平滑曲線。
-//   2. image：插 0 等於乘上「1,0,0,0,1,0,0,0…」這串脈衝，頻譜會在 fs、2fs 附近多出原訊號的複本（image），
-//      而且原本那份（baseband）的振幅只剩 1/4。
-//   3. lowpass 插值：用 cutoff = 原本 fs/2 的 lowpass 把 image 濾掉、增益乘 4 補回振幅，
-//      0 的位置就被「補」成平滑曲線上的值。理想 lowpass 的 impulse response 是 sinc。
-//   4. polyphase：插 0 之後跑 FIR，大部分乘法都是「× 0」。只保留非零項，每個輸入 sample 只算 4 個短內積。
+// Four ideas chain together into this exercise:
+//   1. Zero insertion: insert 3 zeros after every sample, so the sample rate becomes 4x (48 kHz -> 192 kHz).
+//      The waveform becomes "the original samples plus a lot of zeros", which is not yet the smooth curve we want.
+//   2. Image: inserting zeros is the same as multiplying by the pulse train "1,0,0,0,1,0,0,0...", so the spectrum
+//      gains copies (images) of the original signal around fs, 2fs, and the original (baseband) copy has only 1/4 of its amplitude.
+//   3. Lowpass interpolation: a lowpass with cutoff = the original fs/2 removes the images, and a gain of 4 restores
+//      the amplitude, so the zero positions get "filled in" with values on the smooth curve. The impulse response of an
+//      ideal lowpass is a sinc.
+//   4. Polyphase: when an FIR runs after zero insertion, most of the multiplications are "x 0". Keep only the non-zero
+//      terms and compute just 4 short dot products per input sample.
 //
-// 執行：l05_ex4_starter → 完成前會印出 FAIL（預期）。先完成 TODO 1，self-check (0) 會先變成 PASS；
-//       再完成 TODO 2，(1)～(4) 才會 PASS。
+// Run: l05_ex4_starter -> it prints FAIL until you finish (expected). Complete TODO 1 and self-check (0) turns PASS first;
+//      complete TODO 2 as well and (1)-(4) turn PASS.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Limiter.h>
@@ -51,7 +55,7 @@ public:
         truePeak_ = 0.0f;
     }
 
-    // 只清掉量到的 peak、保留濾波器的歷史：用在「濾波器暖機之後才開始量」（已完成）
+    // Clear only the measured peaks and keep the filter history: used to "start measuring after the filter has warmed up" (already done)
     void resetPeaks() noexcept {
         samplePeak_ = 0.0f;
         truePeak_ = 0.0f;
@@ -66,24 +70,26 @@ public:
             for (int i = 0; i < block.getNumSamples(); ++i) {
                 samplePeak_ = std::max(samplePeak_, std::abs(x[i]));
 
-                // TODO 2：polyphase 插值，每個輸入 sample 產生 4 個升頻後的 sample
+                // TODO 2: polyphase interpolation; each input sample produces 4 upsampled samples
                 //
-                //   先想清楚「為什麼只要 16 個輸入」：升頻後的 FIR 是 y[m] = Σ_k h[k]·u[m - k]，
-                //   u 是零插入後的訊號，只有 m - k 是 4 的倍數時才不是 0。寫 m = 4n + p（p = 0..3），
-                //   非零項只剩 k = 4j + p，而 u[4(n - j)] 就是原本的 x[n - j]，所以
-                //       y[4n + p] = Σ_j h[4j + p] · x[n - j]，j = 0..kTapsPerPhase-1
-                //   每個 phase p 是一個 16 tap 的子濾波器（coeffs_[p]），吃的都是最近 16 個「原始」輸入。
-                //   全部 4 個 phase = 64 次乘法；若真的做出 4 倍長的零插入訊號再跑 64 tap FIR，要 256 次。
+                //   First work out "why only 16 inputs are needed": the upsampled FIR is y[m] = sum_k h[k]*u[m - k],
+                //   where u is the zero-inserted signal, and u is non-zero only when m - k is a multiple of 4.
+                //   Write m = 4n + p (p = 0..3); the only non-zero terms are k = 4j + p, and u[4(n - j)] is just
+                //   the original x[n - j], so
+                //       y[4n + p] = sum_j h[4j + p] * x[n - j],  j = 0..kTapsPerPhase-1
+                //   Each phase p is a 16-tap sub-filter (coeffs_[p]) that consumes the most recent 16 "original" inputs.
+                //   All 4 phases together = 64 multiplications; actually building the 4x-long zero-inserted signal and
+                //   running a 64-tap FIR would take 256.
                 //
-                //   實作步驟：
-                //   (a) 把 x[i] 存進環形緩衝 hist（長度 kTapsPerPhase，寫入位置 w）。
-                //       之後 x[n - j] 在哪一格？（想想 w 往回數 j 格、小於 0 時怎麼繞回）
-                //   (b) 對每個 phase p：用 coeffs_[p][j] 與 x[n - j] 做內積（建議用 double 累加），
-                //       把 |內積| 與 truePeak_ 取 max。
-                //   (c) w 往前推一格，到尾端繞回 0。
+                //   Steps:
+                //   (a) Store x[i] in the circular buffer hist (length kTapsPerPhase, write position w).
+                //       Afterwards, which slot holds x[n - j]? (Think about counting j slots back from w and wrapping when it goes below 0.)
+                //   (b) For each phase p: take the dot product of coeffs_[p][j] and x[n - j] (accumulating in double is recommended),
+                //       and take the max of |dot product| and truePeak_.
+                //   (c) Advance w by one slot, wrapping back to 0 at the end.
                 //
-                //   自我檢查：輸入是 DC（常數 c）時，每個 phase 的輸出應該都是 c——這正是 TODO 1 要求
-                //   「每個 phase 的係數總和 ≈ 1」的原因。
+                //   Self-check: when the input is DC (a constant c), every phase's output should be c -- which is exactly why
+                //   TODO 1 requires that "each phase's coefficients sum to about 1".
                 (void)hist;
                 (void)w;
             }
@@ -94,30 +100,30 @@ public:
     float getTruePeak() const noexcept { return truePeak_; }
     float getSamplePeakDb() const noexcept { return dawlab::gainToDb(samplePeak_); }
     float getTruePeakDb() const noexcept { return dawlab::gainToDb(truePeak_); }
-    // coeffs[p][j] = h[4j + p]（給 self-check 檢查濾波器設計用，已完成）
+    // coeffs[p][j] = h[4j + p] (for the self-check that verifies the filter design; already done)
     const std::array<std::array<float, kTapsPerPhase>, kOversample>& getCoefficients() const noexcept { return coeffs_; }
 
 private:
     void designFilter() {
-        // TODO 1：設計 64 tap 的 windowed-sinc lowpass 原型，再拆成 4 個 phase
+        // TODO 1: design a 64-tap windowed-sinc lowpass prototype, then split it into 4 phases
         //
-        //   (a) 理想 lowpass：在新的取樣率 4·fs 下，cutoff = 原本的 fs/2 = 新取樣率的 1/8。
-        //       cutoff 為 fc 的理想 lowpass，impulse response 是 (2fc/fs')·sinc(2fc·n/fs')，fs' = 4·fs。
-        //       代入 2fc/fs' = 1/4、再乘上補償零插入的增益 4，就得到 h[n] = sinc(n / 4)，
-        //       其中 sinc(t) = sin(πt) / (πt)，t = 0 時為 1。
-        //       觀察：sinc(n/4) 在 n = ±4, ±8, … 時是 0——也就是「原始 sample 的位置不被改動，只補中間的 0」。
-        //   (b) 截斷與置中：只取 kNumTaps 個 tap（k = 0..kNumTaps-1），中心放在 M = (kNumTaps - 1) / 2，
-        //       所以用 sinc((k - M) / 4)。注意 kNumTaps = 64 是偶數，M = 31.5 不是整數——
-        //       self-check (2) 的 -6.19 dBTP 就是這個半格偏移造成的（solutions/README.md 有解釋）。
-        //   (c) window：直接截斷會讓頻率響應出現漣波（第 11 章 2.9 節詳談）。乘上 Hann window
-        //       w[k] = 0.5 - 0.5·cos(2πk / (kNumTaps - 1))，讓係數在兩端平滑地降到 0。
-        //   (d) 正規化：window 會讓總增益偏離 4，把所有 h[k] 除以總和再乘 4，讓 Σh = 4
-        //       （這樣 4 個 phase 加起來的 DC gain 剛好是 4，每個 phase 約為 1）。
-        //   (e) polyphase 分解：phase p 用的是 h[p], h[p+4], h[p+8], …，也就是 coeffs_[p][j] = h[4j + p]
-        //       （換個寫法：coeffs_[k % 4][k / 4] = h[k]）。為什麼是這樣分？看 TODO 2 的推導。
+        //   (a) Ideal lowpass: at the new sample rate 4*fs, cutoff = the original fs/2 = 1/8 of the new sample rate.
+        //       An ideal lowpass with cutoff fc has impulse response (2fc/fs')*sinc(2fc*n/fs'), with fs' = 4*fs.
+        //       Substituting 2fc/fs' = 1/4 and multiplying by the gain of 4 that compensates the zero insertion gives h[n] = sinc(n / 4),
+        //       where sinc(t) = sin(pi*t) / (pi*t), equal to 1 at t = 0.
+        //       Observe: sinc(n/4) is 0 at n = +/-4, +/-8, ... -- that is, "the original sample positions are left untouched and only the zeros in between are filled in".
+        //   (b) Truncation and centering: keep only kNumTaps taps (k = 0..kNumTaps-1) with the center at M = (kNumTaps - 1) / 2,
+        //       so use sinc((k - M) / 4). Note that kNumTaps = 64 is even, so M = 31.5 is not an integer --
+        //       the -6.19 dBTP in self-check (2) is caused by exactly this half-slot offset (explained in solutions/README.md).
+        //   (c) Window: plain truncation makes ripples in the frequency response (discussed in Chapter 11 section 2.9). Multiply by a Hann window
+        //       w[k] = 0.5 - 0.5*cos(2*pi*k / (kNumTaps - 1)) so the coefficients taper smoothly to 0 at both ends.
+        //   (d) Normalization: the window moves the total gain away from 4; divide all h[k] by the sum and multiply by 4 so that sum(h) = 4
+        //       (then the DC gain of the 4 phases combined is exactly 4, and each phase is about 1).
+        //   (e) Polyphase decomposition: phase p uses h[p], h[p+4], h[p+8], ..., that is, coeffs_[p][j] = h[4j + p]
+        //       (written another way: coeffs_[k % 4][k / 4] = h[k]). Why split it this way? See the derivation in TODO 2.
         //
-        //   建議用 double 計算，最後再轉成 float 存進 coeffs_。可用 dawlab::kPi、dawlab::kTwoPi。
-        //   完成後 self-check (0) 會檢查：Σh = 4、每個 phase 的總和 ≈ 1、h[k] = h[63 - k]（對稱 = 線性相位）。
+        //   Compute in double and convert to float only when storing into coeffs_. You can use dawlab::kPi and dawlab::kTwoPi.
+        //   When done, self-check (0) verifies: sum(h) = 4, each phase sums to about 1, h[k] = h[63 - k] (symmetric = linear phase).
     }
 
     int numChannels_ = 0;
@@ -128,8 +134,9 @@ private:
     float truePeak_ = 0.0f;
 };
 
-// warmupSamples > 0：前面這幾個 sample 只用來填滿濾波器的歷史，不計入 peak（已完成）。
-// 訊號「從 0 突然開始」時，插值濾波器會在開頭產生 onset 暫態（Gibbs ringing），量到的會是暫態而不是穩態。
+// warmupSamples > 0: these first samples only fill the filter history and do not count toward the peak (already done).
+// When the signal "starts suddenly from 0", the interpolation filter produces an onset transient (Gibbs ringing) at the beginning,
+// and what gets measured would be the transient instead of the steady state.
 void measure(const char* name, dawlab::AudioBuffer& buffer, float& samplePeakDb, float& truePeakDb,
              int warmupSamples = 0) {
     TruePeakMeter meter;
@@ -144,7 +151,7 @@ void measure(const char* name, dawlab::AudioBuffer& buffer, float& samplePeakDb,
         meter.process(whole.getSubBlock(start, std::min(kBlockSize, buffer.getNumSamples() - start)));
     samplePeakDb = meter.getSamplePeakDb();
     truePeakDb = meter.getTruePeakDb();
-    std::printf("%-34s sample peak %7.2f dBFS   true peak %7.2f dBTP   差 %+5.2f dB\n", name, samplePeakDb, truePeakDb,
+    std::printf("%-34s sample peak %7.2f dBFS   true peak %7.2f dBTP   diff %+5.2f dB\n", name, samplePeakDb, truePeakDb,
                 truePeakDb - samplePeakDb);
 }
 
@@ -160,10 +167,10 @@ void processInBlocks(dawlab::AudioBuffer& buffer, Processor& processor) {
 int main() {
     float sp = 0.0f, tp = 0.0f;
 
-    // (0) 先檢查濾波器本身（不用跑訊號；只需要完成 TODO 1）（已完成）：
-    //     - 所有 tap 總和 = 4：零插入讓 baseband 振幅變成 1/4，lowpass 要乘 4 補回來
-    //     - 每個 phase 的總和 ≈ 1：輸入是 DC（常數）時，4 個插值點都應該等於那個常數
-    //     - 左右對稱 h[k] = h[63 - k]：線性相位，插值不會把波形「拉歪」
+    // (0) First check the filter itself (no signal needed; only TODO 1 must be done) (already done):
+    //     - all taps sum to 4: zero insertion cuts the baseband amplitude to 1/4, and the lowpass has to multiply by 4 to restore it
+    //     - each phase sums to about 1: for a DC (constant) input, all 4 interpolated points should equal that constant
+    //     - left-right symmetry h[k] = h[63 - k]: linear phase, so the interpolation does not "skew" the waveform
     {
         TruePeakMeter meter;
         meter.prepare(1);
@@ -186,7 +193,7 @@ int main() {
         DAWLAB_CHECK(maxAsym < 1.0e-6);
     }
 
-    // (1) 1 kHz 正弦波 -6 dBFS：兩種 peak 應該差不多
+    // (1) 1 kHz sine at -6 dBFS: the two kinds of peak should be about equal
     {
         dawlab::AudioBuffer sine = dawlab::makeSine(1000.0, kSampleRate, 0.5, 0.5f, 1);
         measure("1 kHz sine, amp 0.5", sine, sp, tp);
@@ -194,10 +201,10 @@ int main() {
         DAWLAB_CHECK_NEAR(tp, -6.02, 0.15);
     }
 
-    // (2) fs/4 的正弦波、相位偏 45°：sample peak 低估 3.01 dB。
-    //     64 tap（偶數長度）的插值點落在 1/8、3/8、5/8、7/8 sample 處，碰不到正中間的峰值，
-    //     所以量到的 true peak 會比真正的 -6.02 dBTP 低約 0.17 dB（想想為什麼；答案在 solutions/README.md）。
-    //     前 kTapsPerPhase 個 sample 是濾波器暖機，不計入。
+    // (2) A sine at fs/4 with a 45 degree phase offset: the sample peak underestimates by 3.01 dB.
+    //     The interpolation points of a 64-tap (even-length) filter fall at 1/8, 3/8, 5/8 and 7/8 of a sample and never hit the
+    //     peak exactly in the middle, so the measured true peak is about 0.17 dB below the real -6.02 dBTP (think about why; the answer is in solutions/README.md).
+    //     The first kTapsPerPhase samples are filter warm-up and are not counted.
     {
         dawlab::AudioBuffer sine(1, dawlab::secondsToSamples(0.5, kSampleRate));
         for (int i = 0; i < sine.getNumSamples(); ++i)
@@ -209,7 +216,7 @@ int main() {
         dawlab::writeWav(dawlab::outputPath("l05_ex4_intersample.wav"), sine, kSampleRate);
     }
 
-    // (3) hard clip 的 drum loop：true peak 會超過 sample peak
+    // (3) Hard-clipped drum loop: the true peak exceeds the sample peak
     {
         dawlab::AudioBuffer drums = dawlab::makeDrumLoop(kSampleRate, 1);
         drums.applyGain(dawlab::dbToGain(12.0f));
@@ -223,7 +230,7 @@ int main() {
         DAWLAB_CHECK(tp > sp);
     }
 
-    // (4) Limiter 輸出：sample peak ≤ ceiling，但 true peak 明顯更高（超過 -1 dBTP）
+    // (4) Limiter output: sample peak <= ceiling, but the true peak is clearly higher (above -1 dBTP)
     {
         const float ceilingDb = -1.0f;
         dawlab::AudioBuffer drums = dawlab::makeDrumLoop(kSampleRate, 1);

@@ -1,28 +1,30 @@
 #pragma once
-// DelayLine：整數 sample 延遲線（circular buffer），第 05 章 Limiter 的 lookahead 用它把音訊延後。
+// DelayLine: an integer-sample delay line (circular buffer). The Chapter 05 Limiter uses it to
+// delay the audio for lookahead.
 //
-// 觀念：
-//   延遲 D 個 sample 的系統 y[n] = x[n - D]。要做到這件事，我們必須「記住」最近 D 個輸入，
-//   所以需要一塊長度 ≥ D + 1 的記憶體。用 circular buffer（環形緩衝）的話，每次 push 只要
-//   寫一格、把寫入指標往前推一格，讀取時往回數 D 格即可，不需要搬動資料。
+// Idea:
+//   A system that delays by D samples is y[n] = x[n - D]. To do this we must "remember" the
+//   last D inputs, so we need a block of memory of length >= D + 1. With a circular buffer,
+//   each push only writes one slot and advances the write index by one; reading counts back D
+//   slots. No data ever needs to be moved.
 //
-//   write index  w  →  最新一個 sample 寫在 buffer[w-1]
+//   write index  w  ->  the newest sample is stored at buffer[w-1]
 //   read(ch, d)      =  buffer[(w - 1 - d) mod size]
 //
-//        ┌───┬───┬───┬───┬───┬───┬───┬───┐
-//        │   │ x[n-5] x[n-4] x[n-3] x[n-2] x[n-1] x[n] │   │
-//        └───┴───┴───┴───┴───┴───┴───┴───┘
-//                                        ↑ w 下次寫這裡
-//                      ↑ read(3)         ↑ read(0)
+//        +---+---+---+---+---+---+---+---+
+//        |   | x[n-5] x[n-4] x[n-3] x[n-2] x[n-1] x[n] |   |
+//        +---+---+---+---+---+---+---+---+
+//                                        ^ w: the next write goes here
+//                      ^ read(3)         ^ read(0)
 //
-// 介面（API 合約，第 09 章的 FractionalDelayLine 會沿用同樣的設計）：
-//   prepare(maxDelaySamples, numChannels)  配置記憶體（唯一會 allocate 的地方）
-//   reset()                                清成 0
-//   push(ch, x)                            把一個新 sample 推進第 ch 個 channel
-//   read(ch, d)                            讀出「d 次 push 之前」的 sample；d = 0 是剛 push 的那個
+// Interface (the API contract; Chapter 09's FractionalDelayLine keeps the same design):
+//   prepare(maxDelaySamples, numChannels)  allocate memory (the only place that allocates)
+//   reset()                                clear to 0
+//   push(ch, x)                            push one new sample into channel ch
+//   read(ch, d)                            read the sample from "d pushes ago"; d = 0 is the one just pushed
 //
-// 每個 channel 有自己的 write index，所以 push 的順序與次數可以各 channel 獨立
-// （例如只處理 mono 時只 push channel 0）。
+// Each channel has its own write index, so the order and number of pushes can differ per
+// channel (for example, when processing mono you only push channel 0).
 
 #include <algorithm>
 #include <cassert>
@@ -32,12 +34,12 @@ namespace dawlab::dsp {
 
 class DelayLine {
 public:
-    // maxDelaySamples：之後 read() 允許的最大 delay。會 allocate，不可在 audio thread 呼叫。
+    // maxDelaySamples: the largest delay read() will later allow. Allocates, so do not call it on the audio thread.
     void prepare(int maxDelaySamples, int numChannels) {
         assert(maxDelaySamples >= 0 && numChannels >= 0);
         maxDelay_ = maxDelaySamples;
         numChannels_ = numChannels;
-        size_ = maxDelaySamples + 1; // 要能同時存「現在」與「maxDelay 之前」，所以長度 +1
+        size_ = maxDelaySamples + 1; // must hold both "now" and "maxDelay ago", hence length + 1
         buffer_.assign(static_cast<size_t>(size_) * static_cast<size_t>(numChannels), 0.0f);
         writeIndex_.assign(static_cast<size_t>(numChannels), 0);
     }
@@ -50,22 +52,22 @@ public:
     int getMaxDelaySamples() const noexcept { return maxDelay_; }
     int getNumChannels() const noexcept { return numChannels_; }
 
-    // 推進一個新 sample。O(1)，不 allocate。
+    // Push one new sample. O(1), no allocation.
     void push(int channel, float x) noexcept {
         assert(channel >= 0 && channel < numChannels_);
         int& w = writeIndex_[static_cast<size_t>(channel)];
         channelData(channel)[w] = x;
-        if (++w >= size_) // 環形：到尾端就繞回開頭
+        if (++w >= size_) // circular: wrap back to the start at the end
             w = 0;
     }
 
-    // 讀出 delaySamples 次 push 之前的 sample（0 = 最新的那個）。
-    // delaySamples 超過 maxDelay 會被夾住（clamp），避免讀到不該讀的位置。
+    // Read the sample from delaySamples pushes ago (0 = the newest one).
+    // A delaySamples above maxDelay is clamped so we never read from a position we shouldn't.
     float read(int channel, int delaySamples) const noexcept {
         assert(channel >= 0 && channel < numChannels_);
         const int d = std::clamp(delaySamples, 0, maxDelay_);
         int idx = writeIndex_[static_cast<size_t>(channel)] - 1 - d;
-        if (idx < 0) // 往回數超過開頭就從尾端接回來（等價於 mod size，但避免負數取餘數的陷阱）
+        if (idx < 0) // counting back past the start: wrap around from the end (same as mod size, without the negative-remainder trap)
             idx += size_;
         return channelData(channel)[idx];
     }
@@ -81,8 +83,8 @@ private:
     int maxDelay_ = 0;
     int numChannels_ = 0;
     int size_ = 1;
-    std::vector<float> buffer_;   // 所有 channel 連續排列：[ch0 的 size_ 格][ch1 的 size_ 格]...
-    std::vector<int> writeIndex_; // 每個 channel 自己的寫入位置
+    std::vector<float> buffer_;   // all channels laid out contiguously: [ch0's size_ slots][ch1's size_ slots]...
+    std::vector<int> writeIndex_; // each channel's own write position
 };
 
 } // namespace dawlab::dsp
