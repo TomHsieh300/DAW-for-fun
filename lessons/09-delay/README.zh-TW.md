@@ -54,21 +54,19 @@ delay time 的長短決定我們的耳朵把它聽成什麼。下表是大略的
 
 Circular buffer（環形緩衝區）的想法是：**資料不動，指標動**。有一個 write index 指著「下一個要寫的位置」，每寫一個 sample 就往前一格，走到尾巴就繞回開頭：
 
-```
-  buffer（長度 N = 8）
-  index:   0     1     2     3     4     5     6     7
-        ┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐
-        │x[n-5]│x[n-4]│x[n-3]│x[n-2]│x[n-1]│ x[n] │x[n-7]│x[n-6]│
-        └─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┘
-                                             ▲     ▲
-                          最後一次寫入的位置 ─┘     └─ write index w（下一次要寫這裡，
-                                                       同時也是「最舊」的資料）
+| index | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|---|
+| 內容 | `x[n-5]` | `x[n-4]` | `x[n-3]` | `x[n-2]` | `x[n-1]` | `x[n]` | `x[n-7]` | `x[n-6]` |
+| 指標 | | | | | | 最後一次寫入 | write index `w` | |
 
-  讀 d 個 sample 以前的值：index = (w − 1 − d) mod N
-     d = 0 → index 5 → x[n]
-     d = 2 → index 3 → x[n-2]
-     d = 7 → index 6 → x[n-7]   ← 長度 N 的 buffer 最多只能往回讀 N − 1 個 sample
-```
+Buffer 長度 N = 8。Index 5 存著最近一次寫入的 `x[n]`；index 6 是 write index $`w`$：下一次要寫這裡，同時也是「最舊」的資料。
+
+讀 $`d`$ 個 sample 以前的值：$`\text{index} = (w - 1 - d) \bmod N`$
+
+- $`d = 0`$：index 5，即 `x[n]`
+- $`d = 2`$：index 3，即 `x[n-2]`
+- $`d = 7`$：index 6，即 `x[n-7]`（長度 N 的 buffer 最多只能往回讀 N - 1 個 sample）
+
 
 **wrap 的寫法與陷阱。** 讀取位置 $`w - 1 - d`$ 可能是負數。C++ 的 `%` 對負數的結果是負的（`-3 % 8 == -3`），直接拿來當 index 會越界。兩種正確寫法：
 
@@ -240,12 +238,17 @@ $$
 
 Echo 效果器的核心是把延遲後的輸出乘上 $`g`$（feedback）再加回輸入：
 
-```
-            ┌──────────────────────────────────────── (1 − mix) ──┐
-            │                                                       ▼
-  x[n] ─────┴──►(+)── s[n] ──►[ z^{−D} ]──┬── w[n]（wet）── mix ──►(+)──► y[n]
-                 ▲                         │
-                 └──────── × g ◄───────────┘
+```mermaid
+flowchart LR
+    X["x[n]"] -->|"x[n]"| ADD["+"]
+    ADD -->|"s[n]"| DL["z^-D<br/>（延遲 D 個 sample）"]
+    DL -->|"w[n]（wet）"| MX["x mix"]
+    DL --> FB["x g<br/>（feedback）"]
+    FB --> ADD
+    X --> DRY["x (1 - mix)"]
+    DRY --> SUM["+"]
+    MX --> SUM
+    SUM -->|"y[n]"| Y["y[n]"]
 ```
 
 寫成方程式：$`s[n] = x[n] + g\,w[n]`$、$`w[n] = s[n - D]`$，所以
@@ -268,10 +271,15 @@ $`D = 375`$ ms、$`g = 0.5`$ → 3.74 s；$`g = 0.7`$ → 7.26 s。反過來，�
 
 **迴路裡的 filter：tape echo 的質感。** 類比磁帶每繞一圈都會損失高頻（磁頭、磁帶）與一點低頻（變壓器、耦合電容）。在數位上，我們把 one-pole lowpass $`H_{LP}`$ 與 highpass $`H_{HP}`$（第 02 章 `OnePole`）放進 feedback 路徑：
 
-```
-  x ──►(+)──►[ z^{−D} ]──┬──► wet
-        ▲                 │
-        └─ × g ◄─ LP ◄─ HP ◄┘
+```mermaid
+flowchart LR
+    X["x"] --> ADD["+"]
+    ADD --> DL["z^-D"]
+    DL --> WET["wet"]
+    DL --> HP["HP"]
+    HP --> LP["LP"]
+    LP --> FB["x g"]
+    FB --> ADD
 ```
 
 第 $`k`$ 個 echo 的頻譜是 $`(g\,H_{HP}H_{LP})^{k-1}`$——每一圈都比上一圈更暗、更薄。因為 one-pole 的 $`|H| \le 1`$，迴路增益 $`|g\,H_{HP}H_{LP}| \le |g| < 1`$，**加 filter 不會讓穩定的迴路變不穩定**。這點在換成有 resonance 的 filter 時就不成立了：Q = 4 的 biquad lowpass 在 cutoff 附近有 +12 dB（4 倍），$`g = 0.5`$ 的迴路增益在那裡就是 2——`l09_ex7_solution` 實測這樣的迴路 3 秒內溢位成 inf，而 one-pole、$`g = 0.99`$ 的迴路同時間已衰減到 $`3\times10^{-5}`$（練習 2）。練習 4 量到：fb 0.7、LP 2 kHz、HP 100 Hz 時，第二個 echo 相對第一個在 500 Hz 剩 66.5%、在 8 kHz 只剩 17.7%，和理論 $`g\,|H_{HP}||H_{LP}|`$（用數位 one-pole 的實際頻率響應算：0.666 與 0.178）吻合。若改用類比 one-pole 的公式 $`1/\sqrt{1+(f/f_c)^2}`$ 近似，8 kHz 會得到 0.170——數位 one-pole 在接近 Nyquist 時和類比原型不同，高頻差約 4%。
@@ -291,17 +299,16 @@ $`D = 375`$ ms、$`g = 0.5`$ → 3.74 s；$`g = 0.7`$ → 7.26 s。反過來，�
 
 **Ping-pong**：echo 在左右之間來回彈跳。`Delay` 的做法：
 
-```
-                    ┌───────────────┐
-  (L+R)/2 ───►(+)──►│ delay line L  ├──┬──────────────► wet L   （echo 1、3、5…）
-               ▲    └───────────────┘  │
-               │                        │ × g · filter
-               │                        ▼
-               │    ┌───────────────┐
-               │    │ delay line R  │◄─┘
-               │    └───────┬───────┘
-               │            ├─────────────────────────► wet R   （echo 2、4、6…）
-               └── × g · filter ◄──┘
+```mermaid
+flowchart LR
+    IN["(L+R)/2"] --> ADD["+"]
+    ADD --> DLL["Delay line L"]
+    DLL --> WL["wet L<br/>（echo 1、3、5...）"]
+    DLL --> GR["x g . filter"]
+    GR --> DLR["Delay line R"]
+    DLR --> WR["wet R<br/>（echo 2、4、6...）"]
+    DLR --> GL["x g . filter"]
+    GL --> ADD
 ```
 
 輸入先混成 mono 送進左邊；左邊的輸出（乘 $`g`$）送進右邊；右邊的輸出（乘 $`g`$）回到左邊。impulse（只打在左聲道、振幅 1，mono 混合後是 0.5）經過 375 ms、$`g = 0.5`$ 的 ping-pong，範例 `l09_pingpong_tempo` 量到：

@@ -54,21 +54,18 @@ To compute $`x[n-D]`$ we need to remember the most recent $`D`$ samples. The mos
 
 The idea of a circular buffer is: **the data stays put, the pointer moves**. A write index points at "the next position to write"; after every write it advances one slot, and when it reaches the end it wraps back to the beginning:
 
-```
-  buffer (length N = 8)
-  index:   0     1     2     3     4     5     6     7
-        ┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐
-        │x[n-5]│x[n-4]│x[n-3]│x[n-2]│x[n-1]│ x[n] │x[n-7]│x[n-6]│
-        └─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┘
-                                             ▲     ▲
-                          position of the ───┘     └─ write index w (the next write goes here,
-                          most recent write           and it is also the "oldest" data)
+| index | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|---|
+| content | `x[n-5]` | `x[n-4]` | `x[n-3]` | `x[n-2]` | `x[n-1]` | `x[n]` | `x[n-7]` | `x[n-6]` |
+| pointer | | | | | | last write | write index `w` | |
 
-  Read the value d samples ago: index = (w − 1 − d) mod N
-     d = 0 → index 5 → x[n]
-     d = 2 → index 3 → x[n-2]
-     d = 7 → index 6 → x[n-7]   ← a buffer of length N can look back at most N − 1 samples
-```
+The buffer has length N = 8. Index 5 holds the most recent write `x[n]`. Index 6 is the write index $`w`$: the next write goes there, and it is also the "oldest" data.
+
+Read the value $`d`$ samples ago: $`\text{index} = (w - 1 - d) \bmod N`$
+
+- $`d = 0`$: index 5, which is `x[n]`
+- $`d = 2`$: index 3, which is `x[n-2]`
+- $`d = 7`$: index 6, which is `x[n-7]` (a buffer of length N can look back at most N - 1 samples)
 
 **How to write the wrap, and a pitfall.** The read position $`w - 1 - d`$ may be negative. In C++, `%` returns a negative result for a negative operand (`-3 % 8 == -3`), and using that directly as an index goes out of bounds. There are two correct ways to write it:
 
@@ -240,12 +237,17 @@ Measured in exercise 6: after a crossfade switch the largest difference between 
 
 The core of an echo effect is to multiply the delayed output by $`g`$ (the feedback) and add it back to the input:
 
-```
-            ┌──────────────────────────────────────── (1 − mix) ──┐
-            │                                                       ▼
-  x[n] ─────┴──►(+)── s[n] ──►[ z^{−D} ]──┬── w[n] (wet) ── mix ──►(+)──► y[n]
-                 ▲                         │
-                 └──────── × g ◄───────────┘
+```mermaid
+flowchart LR
+    X["x[n]"] -->|"x[n]"| ADD["+"]
+    ADD -->|"s[n]"| DL["z^-D<br/>(delay of D samples)"]
+    DL -->|"w[n] (wet)"| MX["x mix"]
+    DL --> FB["x g<br/>(feedback)"]
+    FB --> ADD
+    X --> DRY["x (1 - mix)"]
+    DRY --> SUM["+"]
+    MX --> SUM
+    SUM -->|"y[n]"| Y["y[n]"]
 ```
 
 As equations: $`s[n] = x[n] + g\,w[n]`$, $`w[n] = s[n - D]`$, so
@@ -268,10 +270,15 @@ $`D = 375`$ ms, $`g = 0.5`$ → 3.74 s; $`g = 0.7`$ → 7.26 s. Conversely, to h
 
 **Filters in the loop: the character of tape echo.** An analog tape loses high frequencies (heads, tape) and a little low frequency (transformers, coupling capacitors) on every trip around the loop. In the digital domain we put a one-pole lowpass $`H_{LP}`$ and a highpass $`H_{HP}`$ (the chapter 02 `OnePole`) in the feedback path:
 
-```
-  x ──►(+)──►[ z^{−D} ]──┬──► wet
-        ▲                 │
-        └─ × g ◄─ LP ◄─ HP ◄┘
+```mermaid
+flowchart LR
+    X["x"] --> ADD["+"]
+    ADD --> DL["z^-D"]
+    DL --> WET["wet"]
+    DL --> HP["HP"]
+    HP --> LP["LP"]
+    LP --> FB["x g"]
+    FB --> ADD
 ```
 
 The spectrum of the $`k`$-th echo is $`(g\,H_{HP}H_{LP})^{k-1}`$ -- each trip darker and thinner than the last. Since a one-pole has $`|H| \le 1`$, the loop gain satisfies $`|g\,H_{HP}H_{LP}| \le |g| < 1`$, so **adding filters cannot make a stable loop unstable**. This no longer holds once you switch to a filter with resonance: a Q = 4 biquad lowpass has +12 dB (a factor of 4) near its cutoff, so a loop with $`g = 0.5`$ has a loop gain of 2 there -- `l09_ex7_solution` measures such a loop overflowing to inf within 3 seconds, while a one-pole loop with $`g = 0.99`$ has decayed to $`3\times10^{-5}`$ in the same time (exercise 2). Exercise 4 measures: with fb 0.7, LP 2 kHz and HP 100 Hz, the second echo relative to the first retains 66.5% at 500 Hz and only 17.7% at 8 kHz, in agreement with the theoretical $`g\,|H_{HP}||H_{LP}|`$ (computed from the actual frequency response of the digital one-pole: 0.666 and 0.178). If you approximate with the analog one-pole formula $`1/\sqrt{1+(f/f_c)^2}`$ instead, 8 kHz gives 0.170 -- the digital one-pole differs from the analog prototype near Nyquist, by about 4% at high frequencies.
@@ -291,17 +298,16 @@ Note: the first echo does not pass through the filters in the loop (it comes str
 
 **Ping-pong**: the echoes bounce back and forth between left and right. How `Delay` does it:
 
-```
-                    ┌───────────────┐
-  (L+R)/2 ───►(+)──►│ delay line L  ├──┬──────────────► wet L   (echoes 1, 3, 5...)
-               ▲    └───────────────┘  │
-               │                        │ × g · filter
-               │                        ▼
-               │    ┌───────────────┐
-               │    │ delay line R  │◄─┘
-               │    └───────┬───────┘
-               │            ├─────────────────────────► wet R   (echoes 2, 4, 6...)
-               └── × g · filter ◄──┘
+```mermaid
+flowchart LR
+    IN["(L+R)/2"] --> ADD["+"]
+    ADD --> DLL["Delay line L"]
+    DLL --> WL["wet L<br/>(echoes 1, 3, 5...)"]
+    DLL --> GR["x g . filter"]
+    GR --> DLR["Delay line R"]
+    DLR --> WR["wet R<br/>(echoes 2, 4, 6...)"]
+    DLR --> GL["x g . filter"]
+    GL --> ADD
 ```
 
 The input is first mixed down to mono and fed into the left side; the left output (multiplied by $`g`$) goes to the right side; the right output (multiplied by $`g`$) returns to the left. For an impulse (on the left channel only, amplitude 1, which is 0.5 after the mono mix) through a ping-pong of 375 ms and $`g = 0.5`$, the example `l09_pingpong_tempo` measures:
