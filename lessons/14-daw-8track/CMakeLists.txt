@@ -60,3 +60,12 @@ foreach(t l14_ex3_starter l14_ex4_starter l14_ex5_starter
     target_link_libraries(${t} PRIVATE dawlab::engine)
 endforeach()
 
+# ---- stage 2: the JUCE application "DawLab 8" and the JUCE exercises ---------------------------
+# Needs -DDAWLAB_WITH_JUCE=ON (build.ps1 -Juce). Without JUCE the chapter stops here.
+if(NOT DAWLAB_WITH_JUCE)
+    message(STATUS "14-daw-8track: the JUCE app (DawLab8) and exercises 8-13 are skipped (use -Juce)")
+    return()
+endif()
+
+add_subdirectory(app)   # targets: l14_daw_app (static library), DawLab8 (the application)
+
