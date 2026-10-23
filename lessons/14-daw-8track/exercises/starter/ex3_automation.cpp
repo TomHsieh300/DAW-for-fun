@@ -190,7 +190,7 @@ AudioBuffer renderFade(int blockSize, bool loop) {
     Engine e;
     e.prepare(kSampleRate, kBlockSize);
     e.setTrackClips(0, {Clip::fromBuffer(makeDc(1.0f, 144000), 0)});
-    e.getMixer().getTrack(0).setPanMode(PanMode::Balance); // unity at the centre
+    e.getMixer().getTrack(0).setFormat(TrackFormat::Stereo); // stereo track: balance, unity at the centre
     e.addInsert(ChannelRef::track(0), -1, std::make_unique<VolumeAutomationEffect>(lane));
     e.applyPendingCommandsOffline();
     if (!loop) {
@@ -264,7 +264,7 @@ int main() {
     Engine e;
     e.prepare(kSampleRate, kBlockSize);
     e.setTrackClips(0, {Clip::fromBuffer(makeDc(0.5f, 60000), 0)});
-    e.getMixer().getTrack(0).setPanMode(PanMode::Balance);
+    e.getMixer().getTrack(0).setFormat(TrackFormat::Stereo); // inserts on both channels, balance
     e.addInsert(ChannelRef::track(0), -1, std::make_unique<PanAutomationEffect>(panLane));
     RenderOptions o;
     o.numSamples = 60000;

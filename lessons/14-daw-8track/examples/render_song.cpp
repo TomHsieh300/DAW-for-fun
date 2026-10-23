@@ -257,20 +257,26 @@ void buildSong(Engine& engine) {
     add(ChannelRef::master(), EffectType::Compressor, {{"Threshold", -12.0f}, {"Ratio", 2.0f}, {"Attack", 30.0f}, {"Release", 200.0f}});
     add(ChannelRef::master(), EffectType::Limiter, {{"Ceiling", -1.0f}, {"Lookahead", 5.0f}, {"Input Gain", 2.0f}});
 
-    // ---- faders, pans, sends ----
-    struct StripSetup { float gainDb, pan, sendReverbDb, sendDelayDb; };
+    // ---- track formats, faders, pans, sends (the same as DemoSong.h) ----
+    // Mono sources on mono tracks (pan law), the stereo pad and wind on stereo tracks (balance).
+    // Hits is a mono source on a stereo track so that its convolution reverb stays wide. A stereo
+    // track has no -3 dB pan-law centre, so those three faders sit 3 dB lower (Step 4).
+    struct StripSetup { TrackFormat format; float gainDb, pan, sendReverbDb, sendDelayDb; };
+    constexpr auto M = TrackFormat::Mono;
+    constexpr auto S = TrackFormat::Stereo;
     const StripSetup setup[kNumTracks] = {
-        {-2.0f, 0.0f, -18.0f, kMinusInfinityDb},  // Drums
-        {-3.0f, 0.0f, kMinusInfinityDb, kMinusInfinityDb}, // Bass: dry
-        {-2.0f, -0.35f, -14.0f, -8.0f},           // Arp
-        {-4.0f, 0.0f, -8.0f, kMinusInfinityDb},   // Pad
-        {-10.0f, 0.5f, -12.0f, kMinusInfinityDb}, // Wind
-        {-5.0f, 0.2f, -12.0f, -6.0f},             // Lead
-        {-8.0f, 0.6f, -20.0f, kMinusInfinityDb},  // Shaker
-        {-6.0f, -0.6f, kMinusInfinityDb, kMinusInfinityDb}, // Hits (own convolution reverb)
+        {M, -2.0f, 0.0f, -18.0f, kMinusInfinityDb},  // Drums
+        {M, -3.0f, 0.0f, kMinusInfinityDb, kMinusInfinityDb}, // Bass: dry
+        {M, -2.0f, -0.35f, -14.0f, -8.0f},           // Arp
+        {S, -7.0f, 0.0f, -8.0f, kMinusInfinityDb},   // Pad: stereo chords
+        {S, -13.0f, 0.5f, -12.0f, kMinusInfinityDb}, // Wind: stereo noise
+        {M, -5.0f, 0.2f, -12.0f, -6.0f},             // Lead
+        {M, -8.0f, 0.6f, -20.0f, kMinusInfinityDb},  // Shaker
+        {S, -9.0f, -0.6f, kMinusInfinityDb, kMinusInfinityDb}, // Hits (own convolution reverb)
     };
     for (int t = 0; t < kNumTracks; ++t) {
-        ChannelStrip& s = mix.getTrack(t);
+        Track& s = mix.getTrack(t);
+        s.setFormat(setup[t].format);
         s.setGainDb(setup[t].gainDb);
         s.setPan(setup[t].pan);
         s.setSendLevelDb(0, setup[t].sendReverbDb);

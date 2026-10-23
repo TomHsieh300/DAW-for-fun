@@ -221,7 +221,20 @@ public:
             track.renderClips(tb, segments, numSegments);
             track.beginBlock(!track.isMuted() && (!anySolo || track.isSoloed()));
             track.getInserts().setPlayHead(playHead);
-            track.processInserts(tb); // inserts + PDC delay
+            if (track.getFormat() == TrackFormat::Mono) {
+                // Mono track: fold the clips to one channel ((L+R)/2: exact for a mono file,
+                // which the loader stores as L = R), run the inserts and the PDC delay on that
+                // one channel, then copy it to the right side. From here on the strip is
+                // stereo and the pan law places the mono source.
+                float* l = tb.getChannelPointer(0);
+                const float* r = tb.getChannelPointer(1);
+                for (int i = 0; i < n; ++i)
+                    l[i] = 0.5f * (l[i] + r[i]);
+                track.processInserts(tb.getChannelSubset(0, 1));
+                std::copy_n(l, n, tb.getChannelPointer(1));
+            } else {
+                track.processInserts(tb); // inserts + PDC delay on both channels
+            }
             track.applyMuteSolo(tb);
             for (int b = 0; b < kNumBuses; ++b)
                 if (track.isSendPreFader(b))

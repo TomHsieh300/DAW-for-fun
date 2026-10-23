@@ -105,10 +105,13 @@ void testClipPlacement() {
         DAWLAB_CHECK_NEAR(out.getSample(0, 2300), 0.0, 1e-9);
     }
 
-    // a stereo clip keeps its channels; a clip that is longer than its source pads silence
+    // a stereo clip on a stereo track keeps its channels (balance: unity at the centre); a clip
+    // that is longer than its source pads silence. (A mono track would fold it to (L+R)/2:
+    // test_track_format.)
     {
         Engine e;
         e.prepare(kSampleRate, 512);
+        e.getMixer().getTrack(0).setFormat(TrackFormat::Stereo);
         auto st = std::make_shared<AudioBuffer>(2, 100);
         for (int i = 0; i < 100; ++i) {
             st->setSample(0, i, 0.2f);
@@ -118,8 +121,8 @@ void testClipPlacement() {
         c.length = 200;
         e.setTrackClips(0, {c});
         AudioBuffer out = render(e, 300);
-        DAWLAB_CHECK_NEAR(out.getSample(0, 50), 0.2 * kCentre, 1e-5);
-        DAWLAB_CHECK_NEAR(out.getSample(1, 50), -0.4 * kCentre, 1e-5);
+        DAWLAB_CHECK_NEAR(out.getSample(0, 50), 0.2, 1e-5);
+        DAWLAB_CHECK_NEAR(out.getSample(1, 50), -0.4, 1e-5);
         DAWLAB_CHECK_NEAR(out.getSample(0, 150), 0.0, 1e-9);
     }
 

@@ -70,6 +70,7 @@ struct DemoSong {
     std::array<std::vector<Clip>, kNumTracks> clips;
     std::vector<DemoInsert> inserts; // in the order they are added
 
+    std::array<TrackFormat, kNumTracks> trackFormat{}; // Mono / Stereo (Step 4)
     std::array<float, kNumTracks> trackGainDb{};
     std::array<float, kNumTracks> trackPan{};
     std::array<std::array<float, kNumBuses>, kNumTracks> sendDb{};
@@ -290,21 +291,30 @@ inline DemoSong makeDemoSong(double sampleRate) {
     };
 
     // ---- faders, pans, sends (bus A = reverb, bus B = delay) ----
+    // Track formats follow the material: mono sources on mono tracks (pan law), the stereo pad
+    // and wind on stereo tracks (balance). Hits is a mono source on a stereo track on purpose:
+    // its convolution reverb insert can then stay wide, the usual reason to put a mono source
+    // on a stereo track. A stereo track has no -3 dB pan-law centre, so those faders sit 3 dB
+    // lower to keep the mix balance.
     struct StripSetup {
+        TrackFormat format;
         float gainDb, pan, sendReverbDb, sendDelayDb;
     };
+    constexpr auto M = TrackFormat::Mono;
+    constexpr auto S = TrackFormat::Stereo;
     const StripSetup setup[kNumTracks] = {
-        {-2.0f, 0.0f, -18.0f, kMinusInfinityDb},            // Drums
-        {-3.0f, 0.0f, kMinusInfinityDb, kMinusInfinityDb},  // Bass: dry
-        {-2.0f, -0.35f, -14.0f, -8.0f},                     // Arp
-        {-4.0f, 0.0f, -8.0f, kMinusInfinityDb},             // Pad
-        {-10.0f, 0.5f, -12.0f, kMinusInfinityDb},           // Wind
-        {-5.0f, 0.2f, -12.0f, -6.0f},                       // Lead
-        {-8.0f, 0.6f, -20.0f, kMinusInfinityDb},            // Shaker
-        {-6.0f, -0.6f, kMinusInfinityDb, kMinusInfinityDb}, // Hits (own convolution reverb)
+        {M, -2.0f, 0.0f, -18.0f, kMinusInfinityDb},            // Drums
+        {M, -3.0f, 0.0f, kMinusInfinityDb, kMinusInfinityDb},  // Bass: dry
+        {M, -2.0f, -0.35f, -14.0f, -8.0f},                     // Arp
+        {S, -7.0f, 0.0f, -8.0f, kMinusInfinityDb},             // Pad: stereo chords
+        {S, -13.0f, 0.5f, -12.0f, kMinusInfinityDb},           // Wind: stereo noise
+        {M, -5.0f, 0.2f, -12.0f, -6.0f},                       // Lead
+        {M, -8.0f, 0.6f, -20.0f, kMinusInfinityDb},            // Shaker
+        {S, -9.0f, -0.6f, kMinusInfinityDb, kMinusInfinityDb}, // Hits (own convolution reverb)
     };
     for (int t = 0; t < kNumTracks; ++t) {
         const StripSetup& s = setup[t];
+        song.trackFormat[static_cast<size_t>(t)] = s.format;
         song.trackGainDb[static_cast<size_t>(t)] = s.gainDb;
         song.trackPan[static_cast<size_t>(t)] = s.pan;
         auto& sends = song.sendDb[static_cast<size_t>(t)];
@@ -352,7 +362,8 @@ inline int applyDemoSong(Engine& engine, const DemoSong& song) {
         engine.addInsert(d.channel, -1, createDemoEffect(d, &unknown));
 
     for (int t = 0; t < kNumTracks; ++t) {
-        ChannelStrip& s = mix.getTrack(t);
+        Track& s = mix.getTrack(t);
+        s.setFormat(song.trackFormat[static_cast<size_t>(t)]);
         s.setGainDb(song.trackGainDb[static_cast<size_t>(t)]);
         s.setPan(song.trackPan[static_cast<size_t>(t)]);
         for (int b = 0; b < kNumBuses; ++b)

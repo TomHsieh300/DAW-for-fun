@@ -43,6 +43,7 @@ l14_add_test(l14_test_pdc               tests/test_pdc.cpp)
 l14_add_test(l14_test_block_invariance  tests/test_block_invariance.cpp)
 l14_add_test(l14_test_realtime_safety   tests/test_realtime_safety.cpp)
 l14_add_test(l14_test_demo_song         tests/test_demo_song.cpp)        # DemoSong.h == the Step 9 song
+l14_add_test(l14_test_track_format       tests/test_track_format.cpp)     # mono / stereo tracks (Steps 4-5)
 
 # ---- build-along route: Steps 1-10 as small snapshots (l14_stepNN_starter / _solution) -------
 add_subdirectory(steps)

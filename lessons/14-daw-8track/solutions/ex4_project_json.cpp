@@ -271,7 +271,11 @@ std::string saveStrip(const Engine& e, ChannelRef ref, const MediaPool& pool, co
          jsonString(s.getName()) + ",\n";
     j += in + "\"gainDb\": " + num(s.getGainDb()) + ", \"pan\": " + num(s.getPan()) + ", \"panLaw\": " +
          jsonString(lawToString(s.getPanLaw())) + ", \"panMode\": " +
-         jsonString(s.getPanMode() == PanMode::Balance ? "Balance" : "PanLaw") + ",\n";
+         jsonString(s.getPanMode() == PanMode::Balance ? "Balance" : "PanLaw") +
+         (ref.kind == ChannelKind::Track
+              ? ", \"format\": " + jsonString(trackFormatName(e.getMixer().getTrack(ref.index).getFormat()))
+              : std::string()) +
+         ",\n";
     j += in + "\"mute\": " + boolean(s.isMuted()) + ", \"solo\": " + boolean(s.isSoloed()) + ",\n";
     j += in + "\"sends\": [";
     for (int b = 0; b < kNumBuses; ++b)
@@ -375,6 +379,9 @@ bool loadProject(Engine& e, const std::string& text, const MediaPool& pool, std:
         s->setGainDb(static_cast<float>(sj.num("gainDb", 0.0)));
         s->setPan(static_cast<float>(sj.num("pan", 0.0)));
         s->setPanLaw(lawFromString(sj.str("panLaw", "ConstantPower")));
+        if (kind == "track") // setFormat() also selects a pan mode, so panMode is restored after it
+            e.getMixer().getTrack(index).setFormat(sj.str("format", "Mono") == "Stereo" ? TrackFormat::Stereo
+                                                                                       : TrackFormat::Mono);
         s->setPanMode(sj.str("panMode", "PanLaw") == "Balance" ? PanMode::Balance : PanMode::PanLaw);
         s->setMute(sj.flag("mute", false));
         s->setSolo(sj.flag("solo", false));
