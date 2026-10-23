@@ -37,17 +37,9 @@ $$
 
 Each sample looks only at itself and is fed through a curve $`f`$. As long as $`f`$ is not a straight line, a sine is "bent", and a bent periodic signal expanded in a Fourier series contains integer multiples of the fundamental: **harmonics**.
 
-```
- Input: sine wave             transfer curve f(x)            Output: tops flattened
-                                    y
-   ╭─╮       ╭─╮                    │      ___________               ╭──╮      ╭──╮
-  ╱   ╲     ╱   ╲                   │    ╱                          ╱    ╲    ╱    ╲
- ╱     ╲   ╱     ╲      ──>   ──────┼──╱──────── x     ──>        │      │  │      │
-        ╲ ╱       ╲ ╱               │╱                                    ╲╱        ╲╱
-         ╰         ╰          _____╱│
-                                    │
-        Small signal: on the straight part, almost no distortion; large signal: enters the curved region and produces harmonics
-```
+![Left to right: a sine wave of amplitude 3, the tanh transfer curve with its straight part near the origin, and the output sine with flattened tops](images/saturation-sine-through-curve.svg)
+
+Small signal: on the straight part, almost no distortion; large signal: enters the curved region and produces harmonics.
 
 Two key observations here are used throughout the chapter:
 
@@ -220,13 +212,9 @@ $$
 
 Intuitively, you fold the frequency axis back and forth like paper, using $`f_s/2`$ as the mirror:
 
-```
- 0          fs/2          fs          3fs/2         2fs
- |------------|------------|------------|------------|
- |  originally |  mirrored   |  mirrored   |  ...
- |  here       |  f → fs - f |  f → f - fs |
- |<====== the audible range is only this segment ======>|  (folded back into 0..fs/2)
-```
+![Alias frequency versus true frequency for fs = 48 kHz: a triangle wave between 0 and fs/2, with the 3rd to 13th harmonics of 7 kHz marked on it](images/aliasing-fold.svg)
+
+The horizontal axis is the true frequency and the vertical axis is where it lands after sampling. From 0 to $`f_s/2`$ it is unchanged; from $`f_s/2`$ to $`f_s`$ it is mirrored ($`f \to f_s - f`$); from $`f_s`$ to $`3f_s/2`$ it is mirrored again ($`f \to f - f_s`$), and so on. Only the segment $`0 \sim f_s/2`$ is audible, so whatever is above Nyquist is folded back into it. The dots are the harmonics of the 7 kHz example below.
 
 **Example: a 7 kHz sine + tanh, $`f_s`$ = 48 kHz.** tanh is an odd function and has only odd harmonics:
 
@@ -549,10 +537,10 @@ public:
 
 **Signal flow:**
 
-```
- x ──> drive(dB) ──> [Oversampler ×L] ──> shape(curve) ──> [÷L] ──> DC blocker ──> output gain ──┐
- │                                                                                                 mix ──> y
- └──> delay by latency samples (aligned with wet) ─────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    X["x"] --> DR["drive (dB)"] --> OS["Oversampler ×L"] --> SH["shape (curve)"] --> DN["÷L"] --> DCB["DC blocker"] --> OG["output gain"] --> MIX["mix"] --> Y["y"]
+    X -->|"dry"| DL["delay by latency samples<br/>(aligned with wet)"] --> MIX
 ```
 
 `process()` first cuts the block into chunks of at most `maxBlockSize` (normally just one chunk) and hands each to `processChunk()`, which has three parts:
