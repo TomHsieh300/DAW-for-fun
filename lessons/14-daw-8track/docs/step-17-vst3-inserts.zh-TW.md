@@ -36,6 +36,35 @@ Engine 對這些一無所知；它只認得 `InsertEffect`。`VstInsert` 就是 
 
 Mixer 在每個 block 開頭向每個 insert 詢問 `getLatencySamples()`（Step 8），並重新計算補償 delay。因此帶有 lookahead 的 plugin 在被插入的那一刻就得到補償，而當它改變 latency 時（許多 plugin 在你改變品質或 lookahead 設定時會這樣）也會再次補償——在一個 block 之內完成，app 裡不需要任何程式碼。
 
+### Mono track：包在 mono 訊號外面的 stereo plugin
+
+在 mono track（Step 4）上，insert chain 拿到的是*單一 channel* 的 block。內建 effect 能處理這種情況（Step 5），但被 host 的 plugin 是以 stereo bus layout prepare 的：交給它單一 channel 的 buffer，會讓它讀寫一個不存在的 channel。因此 `VstInsert::process()` 在 plugin 外面包了一層小小的 fold：
+
+```
+mono block --+--> scratch L --+                 +--> L --+
+             |                +--> [plugin] ----+        +--> (L + R) / 2 --> mono block
+             +--> scratch R --+                 +--> R --+
+```
+
+```cpp
+void VstInsert::process(AudioBlock block) noexcept {
+    const int n = block.getNumSamples();
+    if (block.getNumChannels() >= 2 || n > monoScratch_.getNumSamples()) {
+        plugin_->process(block);                       // stereo track: straight through
+        return;
+    }
+    float* mono = block.getChannelPointer(0);
+    AudioBlock stereo = AudioBlock(monoScratch_).getSubBlock(0, n).getChannelSubset(0, 2);
+    std::copy_n(mono, n, stereo.getChannelPointer(0)); // L = R
+    std::copy_n(mono, n, stereo.getChannelPointer(1));
+    plugin_->process(stereo);
+    for (int i = 0; i < n; ++i)                        // fold back
+        mono[i] = 0.5f * (stereo.getChannelPointer(0)[i] + stereo.getChannelPointer(1)[i]);
+}
+```
+
+Scratch buffer 在 `prepare()` 中配置（message thread，`max(2, numChannels)` x `maxBlockSize`），所以 audio thread 只做複製。對兩側處理方式相同的 plugin 而言，這個 fold 是精確的：輸入 L = R 就得到輸出 L = R，而 $`(L + R)/2`$ 會原封不動地還原這個訊號。會加寬聲像的 plugin 則會塌縮成 mono，這和 mono track 上每個 insert 所做的取捨相同；想保留寬度，就把它放在 stereo track 上。
+
 ### 為什麼 `reset()` 什麼都不做
 
 `Engine::requestReset()` 會在 audio thread 上對每個 insert 呼叫 `reset()`。對 VST3 plugin 而言，JUCE 的 `reset()` 會經過 `setActive(false)` / `setActive(true)`，這可能 allocate，且不是 real-time safe。我們不去動 plugin 的 state：在 bounce 或「新 project」之後，它的 tail 會自然響完，而不是被切斷。（需要 hard reset 的 host 會在 plugin 脫離 chain 時，於 message thread 上停用並重新 prepare 它。）
@@ -79,22 +108,30 @@ openInsertEditor(ref, slot, false);   // -> VstInsert::openEditor() -> host::Plu
 - 透過 `InsertEffect::setParameter()` 把它的參數設為 0.25，會讓輸出降低 6.02 dB（$`20\log_{10} 0.5`$）。
 - 在 `clearInsert()` + `collectGarbage()` 之後，沒有任何測試 plugin 的實例仍然存活，且 mix latency 回到 752。
 
+第 5a 節把同一個測試 plugin（latency 100、unity gain）放進 **drum track** 的 slot 4；drum track 在 demo song 中是 mono track，所以 `VstInsert::process()` 拿到的是單一 channel 的 block，走的是 mono fold 的路徑：
+
+```
+5a. test plugin on the mono drum track: |with - without| = 0
+```
+
+Plugin 看到的是 L = R，回傳的也是 L = R（delay 了 100 個 sample，由 PDC 補償），fold $`(L+R)/2`$ 把這個訊號原封不動地還原，而 1 秒的 bounce 與不帶 plugin 的 bounce 逐 bit 相同。如果 fold 讀了不存在的 channel，或與過時的 scratch channel 取平均，這裡就會出現非零的差異。
+
 當 chapter 13 是建置的一部分時，smoke test 也會載入真正的 VST3 檔案（第 5b 節）；以 `build.ps1 -Only 13-vst-hosting,14-daw-8track -Juce`，作者得到
 
 ```
 5b. VST3 DawLabCompressor on the drums: 8 parameters, latency 0, 1 s render peak -1.00 dBFS
 5b. VST3 DawLabLimiter on track 8 (insert latency now 752): plugin latency 240, mix latency 752 -> 992,
-    |with - without| = 0 (the two compared 240 samples apart: 1.33)
-[PASS] l14_app_smoke_test (127 checks passed)
+    |with - without| = 0 (the two compared 240 samples apart: 1.34)
+[PASS] l14_app_smoke_test (134 checks passed)
 ```
 
 Compressor 沒有 latency，所以它只證明真正的 bundle 能載入、處理，並在 message thread 上被刪除。Limiter 才是真正的 PDC 測試——再次是第 5 節，但用的是會自行計算並回報 latency 的 plugin：
 
 - 它被放進 insert latency 已是最大的那個 track 的 slot 4（track 8，convolution reverb：512 個 sample），所以該 track 的路徑變成 $`512 + 240 = 752`$，其他每個 track 現在都必須再多 delay 240 個 sample。Mix latency 必須剛好增加 plugin 透過 `AudioProcessor::getLatencySamples()` 所回報的量：$`752 \to 992`$，$`+240`$。
-- 它的 ceiling 設為 0 dB（normalized 1.0），高於該 track 的電平，所以對這個訊號而言，limiter 是 240 個 sample 的純 delay。帶著它的 1 秒 bounce 因此與不帶它的 bounce 逐 bit 相同：PDC 對齊了全部八個 track，而 renderer 移除了較大的 mix latency。把同樣的兩個 bounce 錯開 240 個 sample 比較——也就是未補償的 plugin 會對該 track 造成的結果——差異為 1.33，所以這項檢查能抓出缺少的補償。
+- 它的 ceiling 設為 0 dB（normalized 1.0），高於該 track 的電平，所以對這個訊號而言，limiter 是 240 個 sample 的純 delay。帶著它的 1 秒 bounce 因此與不帶它的 bounce 逐 bit 相同：PDC 對齊了全部八個 track，而 renderer 移除了較大的 mix latency。把同樣的兩個 bounce 錯開 240 個 sample 比較——也就是未補償的 plugin 會對該 track 造成的結果——差異為 1.34，所以這項檢查能抓出缺少的補償。
 - 在 `clearInsert()` 之後，mix latency 回到 752。
 
-（127 = stand-alone build 的 114 項檢查（它針對第 5b 節印出兩行 "not built in this tree"），加上 compressor 的 5 項與 limiter 的 8 項。測試 plugin 的 192 次 process 呼叫，是兩次 1 秒的 render，每次 $`48\,000 + 852`$ 個 sample，以 512 個 sample 的 block 處理，$`2 \lceil 48\,852 / 512 \rceil = 2 \cdot 96`$。）
+（134 = stand-alone build 的 121 項檢查（它針對第 5b 節印出兩行 "not built in this tree"），加上 compressor 的 5 項與 limiter 的 8 項。測試 plugin 的 192 次 process 呼叫，是兩次 1 秒的 render，每次 $`48\,000 + 852`$ 個 sample，以 512 個 sample 的 block 處理，$`2 \lceil 48\,852 / 512 \rceil = 2 \cdot 96`$。）
 
 在 app 中：把 chapter 13 的 DawLab Compressor 插在 drum 上，開啟它的 editor，把 threshold 拉低——plugin 自己 GUI 裡的 meter 會隨著 song 移動。把 DawLab Limiter 插在 Hits track 上，並觀察 mixer 下方的 "Mix latency (PDC)"：752 -> 992 個 sample；轉動它的 lookahead 旋鈕，這個數字會在一個 block 之內跟著變動，同時所有 track 都保持對拍。（在 bass 上，它的 insert 回報 31 個 sample，$`31 + 240 = 271`$ 仍低於 Hits track 的 512：bass 只是被 delay 得較少，mix latency 並不改變。）
 
@@ -102,9 +139,9 @@ Compressor 沒有 latency，所以它只證明真正的 bundle 能載入、處�
 
 | | |
 |---|---|
-| 你要寫 | `app/Source/VstInsert.cpp` 中的 `VstInsert::process()` 與 `VstInsert::getLatencySamples()`（轉發給 hosted plugin；負的 latency 視為 0） |
+| 你要寫 | `app/Source/VstInsert.cpp` 中的 `VstInsert::process()` 與 `VstInsert::getLatencySamples()`（轉發給 hosted plugin；遇到單一 channel 的 block 時，在 `monoScratch_` 中以 L = R 執行它，再把結果 fold 回來；負的 latency 視為 0） |
 | 建置 + 檢查 | `.\scripts\build.ps1 -Only 13-vst-hosting,14-daw-8track -Juce -TestLabel test`（連同 chapter 13，讓第 5b 節也載入真正的 VST3 limiter） |
-| 預期 | 第 5 節：`mix latency 752 -> 852, |with - without| = 0`；第 5b 節：`mix latency 752 -> 992`；`[PASS] l14_app_smoke_test`——PDC 跟隨你的 adapter 所回報的 latency |
+| 預期 | 第 5 節：`mix latency 752 -> 852, |with - without| = 0`；第 5a 節：mono drum track 上 `|with - without| = 0`；第 5b 節：`mix latency 752 -> 992`；`[PASS] l14_app_smoke_test`——PDC 跟隨你的 adapter 所回報的 latency |
 
 ## 你學到了什麼
 
@@ -112,3 +149,4 @@ Compressor 沒有 latency，所以它只證明真正的 bundle 能載入、處�
 - 每個 block 都重新計算的 PDC，能處理 latency 會改變的 plugin。
 - Plugin API 提供的並非全都是 real-time safe：逐個呼叫決定它可以在哪裡執行。
 - In-process 的假 plugin 讓 hosting 路徑在不需要檔案的情況下也能測試。
+- Mono track 上的 stereo plugin 會在預先配置的 scratch buffer 中以 L = R 執行，再 fold 回來。

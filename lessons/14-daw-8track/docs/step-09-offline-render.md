@@ -80,19 +80,28 @@ flight never fills the garbage queue.
 
 ### The song (`examples/render_song.cpp`)
 
-| Track | Material (Signals.h) | Inserts | Fader / pan | Sends |
-|---|---|---|---|---|
-| 1 Drums | `makeDrumLoop` 2 bars x 4 clips | TransientShaper, Compressor | -2 dB / C | reverb -18 |
-| 2 Bass | `makePluck` A1 F1 C2 G1, 16 clips | ParametricEQ (low cut 35 Hz, +3 dB @ 120 Hz), Saturation | -3 / C | - |
-| 3 Arp | `makePluckSequence` from bar 3, 1-bar fade-in | Gain -3, Phaser | -2 / L 0.35 | reverb -14, delay -8 |
-| 4 Pad | detuned harmonic chords Am F C G | ParametricEQ (150 Hz low cut, 5 kHz high cut), Chorus | -4 / C | reverb -8 |
-| 5 Wind | low-passed noise, bars 5-8 | Tremolo (8 Hz square), Gate | -10 / R 0.5 | reverb -12 |
-| 6 Lead | vibrato sine melody, bars 5-8 | Distortion (fuzz), Flanger | -5 / R 0.2 | reverb -12, delay -6 |
-| 7 Shaker | high-passed noise bursts, 16ths | Expander, DeEsser | -8 / R 0.6 | reverb -20 |
-| 8 Hits | noise bursts on bars 1, 3, 5, 7 | ConvolutionReverb | -6 / L 0.6 | - |
-| Bus A | | Reverb (100 % wet, 2.2 s) | -2 | |
-| Bus B | | Delay (100 % wet, dotted 1/8 = 375 ms, ping-pong) | -4 | |
-| Master | | Compressor (2:1 at -12 dB), Limiter (-1 dBFS, 5 ms) | 0 | |
+| Track | Material (Signals.h) | Format | Inserts | Fader / pan | Sends |
+|---|---|---|---|---|---|
+| 1 Drums | `makeDrumLoop` 2 bars x 4 clips | Mono | TransientShaper, Compressor | -2 dB / C | reverb -18 |
+| 2 Bass | `makePluck` A1 F1 C2 G1, 16 clips | Mono | ParametricEQ (low cut 35 Hz, +3 dB @ 120 Hz), Saturation | -3 / C | - |
+| 3 Arp | `makePluckSequence` from bar 3, 1-bar fade-in | Mono | Gain -3, Phaser | -2 / L 0.35 | reverb -14, delay -8 |
+| 4 Pad | detuned harmonic chords Am F C G (stereo) | Stereo | ParametricEQ (150 Hz low cut, 5 kHz high cut), Chorus | -7 / C | reverb -8 |
+| 5 Wind | low-passed noise, bars 5-8 (stereo) | Stereo | Tremolo (8 Hz square), Gate | -13 / R 0.5 | reverb -12 |
+| 6 Lead | vibrato sine melody, bars 5-8 | Mono | Distortion (fuzz), Flanger | -5 / R 0.2 | reverb -12, delay -6 |
+| 7 Shaker | high-passed noise bursts, 16ths | Mono | Expander, DeEsser | -8 / R 0.6 | reverb -20 |
+| 8 Hits | noise bursts on bars 1, 3, 5, 7 | Stereo | ConvolutionReverb | -9 / L 0.6 | - |
+| Bus A | | (stereo) | Reverb (100 % wet, 2.2 s) | -2 | |
+| Bus B | | (stereo) | Delay (100 % wet, dotted 1/8 = 375 ms, ping-pong) | -4 | |
+| Master | | (stereo) | Compressor (2:1 at -12 dB), Limiter (-1 dBFS, 5 ms) | 0 | |
+
+The track formats (Step 4) follow the material: mono sources on mono tracks (pan law), the stereo
+pad and wind on stereo tracks (balance). Hits is a mono source on a stereo track on purpose, so that
+its convolution reverb insert stays wide - on a mono track it would collapse to mono (Step 5).
+A stereo track has no -3 dB pan-law centre, so the Pad, Wind and Hits faders sit 3 dB lower than
+they did before the song had formats (-7, -13 and -9 dB instead of -4, -10 and -6). The Pad, at the
+centre, measures exactly what it did then (pan law x0.7071 at -4 dB = balance x1 at -7 dB); Wind and
+Hits are panned, where balance and pan law differ, and come out 2.0-2.6 dB lower. The master stays
+at -15.5 LUFS.
 
 17 effect types appear once or more - all of them except Filter and AmpChain, which were added to
 the catalog (Step 5) after this song was written.
@@ -148,12 +157,12 @@ Step 9: offline bounce of an 8-track song (8 bars at 120 BPM + 3 s tail)
   Drums     -3.3   -27.4    -24.8    -2.0 dB  0.00   TransientShaper, Compressor
   Bass      -8.9   -22.6    -16.8    -3.0 dB  0.00   ParametricEQ, Saturation
   Arp      -11.9   -33.9    -27.0    -2.0 dB -0.35   Gain, Phaser
-  Pad      -19.6   -33.5    -30.5    -4.0 dB  0.00   ParametricEQ, Chorus
-  Wind     -20.3   -42.3    -34.7   -10.0 dB  0.50   Tremolo, Gate
+  Pad      -19.6   -33.5    -30.5    -7.0 dB  0.00   ParametricEQ, Chorus
+  Wind     -22.6   -44.3    -36.7   -13.0 dB  0.50   Tremolo, Gate
   Lead     -12.6   -27.7    -21.4    -5.0 dB  0.20   Distortion, Flanger
   Shaker   -17.9   -47.1    -38.8    -8.0 dB  0.60   Expander, DeEsser
-  Hits     -16.6   -46.0    -31.9    -6.0 dB -0.60   ConvolutionReverb
-  Reverb   -19.6   -36.9    -33.8    -2.0 dB  0.00   Reverb
+  Hits     -19.2   -48.4    -34.3    -9.0 dB -0.60   ConvolutionReverb
+  Reverb   -19.7   -36.9    -33.8    -2.0 dB  0.00   Reverb
   Delay    -20.7   -39.7    -34.3    -4.0 dB  0.00   Delay
   Master    -1.0   -20.2    -15.5     0.0 dB  0.00   Compressor, Limiter
 

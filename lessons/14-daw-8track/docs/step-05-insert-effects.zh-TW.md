@@ -139,6 +139,22 @@ UI 的「Add insert」選單提供 19 種使用者類型；專案檔則儲存名
 delay 相加）。結構性變更只由 audio thread 進行（Step 7）；atomic 只是讓 UI
 能夠*查看* chain 而不產生 data race。
 
+### Mono track 上的 insert
+
+每個 effect 都是以 `kNumChannels = 2` 來 prepare，但在 **mono track**（Step 4）上，mixer 先把 clip
+fold 成 $`(L+R)/2`$，再交給 chain 一個*單一 channel* 的 block：`tb.getChannelSubset(0, 1)`。
+chain 與 PDC delay 只是處理 block 擁有的那些 channel，所以 `process()` 必須能處理不超過 prepare
+時數量的任何 channel 數。十九個 adapter 都把 block 交給第 01-12 章的 DSP class，它們只處理 block
+擁有的 channel，從不碰不存在的 channel；`l14_test_track_format` 會把每個 effect 都放在單一 channel 的
+block 上執行來確認這一點。以 mono 執行也讓這種 track 的 insert CPU 減半。
+
+代價是：會*產生* stereo 的 effect 沒有地方放它的立體聲。開了 Stereo Spread 的 chorus、stereo delay
+或寬廣的 reverb，在 mono track 上只產生一個 channel，接著被複製到兩側 - effect **塌縮成 mono**
+（L = R，完全相同）。這和 Cubase 的 mono track 做的取捨一樣；想保留 effect 的寬度，就把 source 放在
+stereo track 上。demo song 的 Hits 正是這樣做的：mono source 放在 stereo track 上，讓它的
+convolution reverb insert 保持寬廣（Step 9）。被 host 的 VST3 plugin 還需要多一個技巧，因為它們是以
+stereo bus layout prepare 的：見 [Step 17](step-17-vst3-inserts.zh-TW.md) 中 `VstInsert` 的 mono fold。
+
 ## 程式碼
 
 | 檔案 | 區段 |
@@ -272,6 +288,17 @@ reverb 回報 512 個 sample（它的 partition 是 >= 512-sample block 的下�
 Saturation、Distortion 與 AmpChain 回報非零的 oversampling latency（此處分別為 31、36 與 72 個 sample；
 Filter 回報 0），其餘 14 個 effect 回報 0；transient shaper 的 +9 dB attack 讓 peak 提高超過 6 dB。
 
+`l14_test_track_format`（已驗證）檢查本步驟中與 mono track 有關的部分：19 個 effect 都以兩個 channel prepare，
+每一個都能在單一 channel 的 block 上執行——輸出是有限值、latency 不變——而 Stereo Spread 為 1 的 chorus
+在 mono track 上完全是 mono（L = R），在 stereo track 上則是寬廣的（它也檢查 Step 4 的 pan mode）：
+
+```
+mono file at the centre: mono track 0.3536, stereo track 0.5000 -> 3.01 dB
+19 of 19 effects run on a one-channel block
+chorus (spread 1): max |L - R| mono track 0.000000, stereo track 0.3279
+[PASS] l14_test_track_format (75 checks passed)
+```
+
 聽聽這份 catalog：每個 effect 聽起來都應該符合它那一章的承諾（順序以及該聽什麼，
 寫在 `examples/effect_catalog.cpp` 頂端的註解中）。
 
@@ -283,3 +310,4 @@ Filter 回報 0），其餘 14 個 effect 回報 0；transient shaper 的 +9 dB 
 - 每個參數一個 atomic 加上 dirty bit mask，就能不用 lock、不用 queue，把數值從任何 thread
   交給 audio thread。
 - Adapter 只依賴有文件記載的 API 契約，並*詢問* DSP 物件它的 latency。
+- Insert 必須接受比 prepare 時更少的 channel：在 mono track 上它只拿到一個，而它原本會產生的 stereo 就此消失。

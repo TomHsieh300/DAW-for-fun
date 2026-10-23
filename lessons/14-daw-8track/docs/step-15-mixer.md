@@ -5,8 +5,8 @@
 
 ## Goal
 
-Eight track strips, the FX bus strips and a master section, each strip with: name, Load button,
-four insert slots, send knobs, pan, a vertical fader with a dB scale, mute / solo and a stereo
+Eight track strips, the FX bus strips and a master section, each strip with: name, Load button
+(and on tracks a Mono / Stereo format button), four insert slots, send knobs, pan, a vertical fader with a dB scale, mute / solo and a stereo
 peak meter. Every control writes straight into the engine's atomics; every display reads them.
 
 ## Design
@@ -20,13 +20,34 @@ and the mixer simply has twelve strips.
 
 | strip kind | Load | inserts | sends | pan | fader | M | S | extra |
 |---|---|---|---|---|---|---|---|---|
-| track | yes | 4 | one per bus (post-fader by default; a pre-fader send shows "A pre" and says so in its tooltip) | pan law (constant power) | yes | yes | yes | - |
+| track | yes | 4 | one per bus (post-fader by default; a pre-fader send shows "A pre" and says so in its tooltip) | mono track: pan law (constant power), stereo track: balance | yes | yes | yes | format button (Mono / Stereo) |
 | bus | - | 4 | - | balance | yes | yes | - (solo-safe) | - |
 | master | - | 4 | - | balance | yes | - | - | limiter ceiling, spectrum, LUFS |
 
-The distinctions come from stage 1: tracks use the constant-power pan law, buses and master use
-balance (Step 4, "Everything 3 dB too quiet" in the debugging table); buses are solo-safe, so they
-have no solo button (Step 6).
+The distinctions come from stage 1: mono tracks use the constant-power pan law, stereo tracks,
+buses and master use balance (Step 4, "Mono and stereo tracks", and "Everything 3 dB too quiet" in
+the debugging table); buses are solo-safe, so they have no solo button (Step 6).
+
+### The format button and the Pan / Bal label
+
+Next to Load, a track strip has a small toggle button that shows the track's format, **Mono** or
+**Stereo** (`ChannelStripView::format_`). A click calls `Session::setTrackFormat()`, which writes
+the track's format atomic through `Track::setFormat()` - no engine command is needed, the audio
+thread reads it once per block - and with it the pan mode (Step 4). The pan position stays where
+it is; only its meaning changes. Loading a file sets the format automatically from the file's
+channel count (Step 18), so the button is mostly for overriding that, e.g. putting a mono source on
+a stereo track so that a widening insert keeps its width (Step 5).
+
+The label under the pan knob follows the format, because the knob does two different things:
+
+| format | label | tooltip | knob at the centre |
+|---|---|---|---|
+| Mono | `Pan` | "Pan (constant-power law: centre -3 dB per side)" | x0.7071 per side |
+| Stereo | `Bal` | "Balance (centre: unity; turning right lowers the left side)" | x1 per side |
+
+Button text, toggle state, label and tooltip are set in `refreshStructure()`, which runs after
+every `Session` change message - so a format set by the loader, by a project file or by an exercise
+shows up the same way as a click.
 
 ### The fader law
 
@@ -97,9 +118,13 @@ fader_.onValueChange = [this] {
 - `FaderLaw::dbToPosition(0) = 0.5918` and `positionToDb(dbToPosition(-12)) = -12`;
 - moving track 1's fader to the position of -6 dB sets `ChannelStrip::getGainDb()` to -6.00;
 - clicking S on track 1 solos it in the engine;
-- 11 strips, each track strip with `kNumBuses` send knobs.
+- 11 strips, each track strip with `kNumBuses` send knobs;
+- clicking track 2's format button switches it Mono -> Stereo -> Mono, and the engine's pan mode
+  follows (pan law for mono, balance for stereo); the test prints
+  `format button: track 2 Mono -> Stereo -> Mono`.
 
-The snapshot shows the demo song's mix: faders at their song values (-2 dB drums, -10 dB wind...),
+The snapshot shows the demo song's mix: faders at their song values (-2 dB drums, -13 dB wind...),
+the format buttons (Pad, Wind and Hits are stereo, labelled `Bal`),
 send knobs (orange) where tracks feed the reverb and delay buses, meters with level.
 
 ## Your turn
@@ -115,3 +140,4 @@ send knobs (orange) where tracks feed the reverb and delay buses, meters with le
 - Generate GUI structure from the engine's constants, not from literals.
 - A good fader law is a formula; use its inverse for the scale.
 - Let the GUI re-read the engine instead of keeping a second copy of values in sync.
+- When one knob means two things (pan law or balance), let its label say which.

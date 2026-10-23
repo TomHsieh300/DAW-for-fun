@@ -6,7 +6,7 @@
 
 ## 目標
 
-八個 track strip、FX bus strip 與一個 master 區段，每個 strip 都有：名稱、Load 按鈕、四個 insert slot、send 旋鈕、pan、帶 dB 刻度的垂直 fader、mute / solo，以及 stereo peak meter。每個控制項都直接寫入 engine 的 atomic；每個顯示都讀取它們。
+八個 track strip、FX bus strip 與一個 master 區段，每個 strip 都有：名稱、Load 按鈕（track 上還有 Mono / Stereo format 按鈕）、四個 insert slot、send 旋鈕、pan、帶 dB 刻度的垂直 fader、mute / solo，以及 stereo peak meter。每個控制項都直接寫入 engine 的 atomic；每個顯示都讀取它們。
 
 ## 設計
 
@@ -16,11 +16,24 @@
 
 | strip 種類 | Load | insert | send | pan | fader | M | S | 額外 |
 |---|---|---|---|---|---|---|---|---|
-| track | 有 | 4 | 每個 bus 一個（預設為 post-fader；pre-fader send 會顯示 "A pre"，並在 tooltip 中說明） | pan law（constant power） | 有 | 有 | 有 | - |
+| track | 有 | 4 | 每個 bus 一個（預設為 post-fader；pre-fader send 會顯示 "A pre"，並在 tooltip 中說明） | mono track：pan law（constant power），stereo track：balance | 有 | 有 | 有 | format 按鈕（Mono / Stereo） |
 | bus | - | 4 | - | balance | 有 | 有 | -（solo-safe） | - |
 | master | - | 4 | - | balance | 有 | - | - | limiter ceiling、spectrum、LUFS |
 
-這些差異來自 stage 1：track 使用 constant-power pan law，bus 與 master 使用 balance（Step 4，debugging 表中的「Everything 3 dB too quiet」）；bus 是 solo-safe，所以沒有 solo 按鈕（Step 6）。
+這些差異來自 stage 1：mono track 使用 constant-power pan law，stereo track、bus 與 master 使用 balance（Step 4 的「Mono 與 stereo track」，以及 debugging 表中的「Everything 3 dB too quiet」）；bus 是 solo-safe，所以沒有 solo 按鈕（Step 6）。
+
+### Format 按鈕與 Pan / Bal 標籤
+
+Track strip 在 Load 旁邊有一個小的切換按鈕，顯示 track 的 format：**Mono** 或 **Stereo**（`ChannelStripView::format_`）。點一下會呼叫 `Session::setTrackFormat()`，它透過 `Track::setFormat()` 寫入 track 的 format atomic - 不需要 engine command，audio thread 每個 block 讀一次 - 同時也設定 pan mode（Step 4）。pan 的位置維持不變，改變的只是它的意義。載入檔案時會依檔案的 channel 數自動設定 format（Step 18），所以這個按鈕主要是用來覆寫它，例如把 mono source 放到 stereo track 上，讓會加寬聲像的 insert 保持寬度（Step 5）。
+
+pan 旋鈕下方的標籤會跟著 format 改變，因為這個旋鈕做的是兩件不同的事：
+
+| format | 標籤 | tooltip | 旋鈕置中時 |
+|---|---|---|---|
+| Mono | `Pan` | "Pan (constant-power law: centre -3 dB per side)" | 每側 x0.7071 |
+| Stereo | `Bal` | "Balance (centre: unity; turning right lowers the left side)" | 每側 x1 |
+
+按鈕文字、切換狀態、標籤與 tooltip 都在 `refreshStructure()` 中設定，它會在每次 `Session` 的 change message 之後執行 - 所以由 loader、專案檔或 exercise 設定的 format，顯示方式都和點擊一樣。
 
 ### Fader law
 
@@ -73,9 +86,10 @@ fader_.onValueChange = [this] {
 - `FaderLaw::dbToPosition(0) = 0.5918`，且 `positionToDb(dbToPosition(-12)) = -12`；
 - 把 track 1 的 fader 移到 -6 dB 的位置，會讓 `ChannelStrip::getGainDb()` 變成 -6.00；
 - 點擊 track 1 的 S 會在 engine 中將它 solo；
-- 11 個 strip，每個 track strip 有 `kNumBuses` 個 send 旋鈕。
+- 11 個 strip，每個 track strip 有 `kNumBuses` 個 send 旋鈕；
+- 點擊 track 2 的 format 按鈕會讓它 Mono -> Stereo -> Mono 切換，engine 的 pan mode 也跟著改變（mono 為 pan law，stereo 為 balance）；測試會印出 `format button: track 2 Mono -> Stereo -> Mono`。
 
-Snapshot 顯示 demo song 的混音：fader 位於 song 的設定值（drum -2 dB、wind -10 dB……）、track 送往 reverb 與 delay bus 之處的 send 旋鈕（橘色）、有訊號的 meter。
+Snapshot 顯示 demo song 的混音：fader 位於 song 的設定值（drum -2 dB、wind -13 dB……）、format 按鈕（Pad、Wind 與 Hits 是 stereo，標籤為 `Bal`）、track 送往 reverb 與 delay bus 之處的 send 旋鈕（橘色）、有訊號的 meter。
 
 ## 換你動手
 
@@ -90,3 +104,4 @@ Snapshot 顯示 demo song 的混音：fader 位於 song 的設定值（drum -2 d
 - 從 engine 的常數而不是字面值來產生 GUI 結構。
 - 好的 fader law 就是一條公式；用它的反函式來畫刻度。
 - 讓 GUI 重新讀取 engine，而不是保留第二份需要同步的值。
+- 一個旋鈕代表兩件事（pan law 或 balance）時，讓它的標籤說出是哪一個。

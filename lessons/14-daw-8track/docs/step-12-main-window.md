@@ -132,7 +132,7 @@ that file. It shows the playhead at bar 2 beat 3 - the position you *hear*: the 
 until the transport is 752 samples (the mix latency) past it, see Step 13 - meters with level
 (the numbers in the second line are what the transport bar and the master section display), the
 master spectrum, and in
-the status line "No audio device (offline)". The CPU figure in the transport bar (77 % in this
+the status line "No audio device (offline)". The CPU figure in the transport bar (72 % in this
 run, it varies) is honest but means something slightly different here: `simulatePlayback()`
 renders as fast as it can, so it is "time spent rendering / duration of the audio rendered" for
 this Debug build.

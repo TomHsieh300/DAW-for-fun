@@ -54,6 +54,39 @@ Buses and the master are stereo strips; for them a "pan" is a **balance** contro
 $`p_L = \min(1, 1-p)`$, $`p_R = \min(1, 1+p)`$ (`PanMode::Balance`). A master at its default must not
 drop the mix by 3 dB.
 
+### Mono and stereo tracks
+
+Which of the two a *track* uses depends on its **format**, like the mono and stereo audio tracks
+of Cubase (`enum class TrackFormat { Mono, Stereo }` in `Track.h`):
+
+```
+Mono    clips -> (L+R)/2 -> [inserts, PDC on ONE channel] -> copy to R -> [mute/solo] -> fader x PAN LAW
+Stereo  clips ----------> [inserts, PDC on TWO channels] --------------> [mute/solo] -> fader x BALANCE
+                                                                                          |
+                                      from here on everything is stereo: sends, buses, master
+```
+
+- A **mono track** carries one signal. The clips are folded to $`(L+R)/2`$ (exact for a mono file,
+  which the loader stores as L = R), the inserts and the PDC delay run on a one-channel block
+  (`tb.getChannelSubset(0, 1)`), and the channel is copied to the right side. The pan control then
+  *positions* the mono source with the pan law: centre = -3.01 dB per side, hard left = L only.
+- A **stereo track** already has an image. Its inserts run on both channels and the pan control is
+  a balance: centre = unity on both sides, turning right only lowers the left side, L != R is kept.
+- `Track::setFormat(f)` also selects the pan mode that belongs to the format (Mono ->
+  `PanMode::PanLaw`, Stereo -> `PanMode::Balance`); `setPanMode()` can still override it
+  afterwards. The default is Mono, which is what every track was before formats existed.
+  `getNumProcessingChannels()` gives 1 or 2.
+
+Consequence worth remembering: the **same mono file is 3.01 dB louder at the centre on a stereo
+track** (balance: x1) than on a mono track (pan law: x0.7071). That is why the demo song's Pad, Wind
+and Hits faders went 3 dB down when those tracks became stereo (Step 9).
+
+Buses and the master stay `Balance` and have no format: they always receive a stereo mix (track
+sums, reverb and delay returns), and a pan law there would drop everything by 3 dB at the centre
+and fold nothing useful. Why the pan law and the balance control are two different things - and why
+"mono source panned" and "stereo source balanced" are different operations - is the theory part of
+[chapter 01](../../01-gain/README.md); this chapter only wires it into the mixer.
+
 ### Smoothing: no zipper noise, no clicks
 
 The UI writes the fader value to an atomic. Once per block the audio thread computes the target
@@ -110,7 +143,13 @@ for (auto& track : tracks_) {
     track.renderClips(tb, segments, numSegments);                 // Step 3
     track.beginBlock(!track.isMuted() && (!anySolo || track.isSoloed()));
     track.getInserts().setPlayHead(playHead);                     // Step 5
-    track.processInserts(tb);                                     // Steps 5 + 8
+    if (track.getFormat() == TrackFormat::Mono) {                 // see "Mono and stereo tracks"
+        fold tb to (L+R)/2 in channel 0;
+        track.processInserts(tb.getChannelSubset(0, 1));          // Steps 5 + 8, one channel
+        copy channel 0 to channel 1;
+    } else {
+        track.processInserts(tb);                                 // Steps 5 + 8, two channels
+    }
     track.applyMuteSolo(tb);
     ... pre-fader sends ...                                       // Step 6
     track.applyFaderAndPan(tb);
@@ -176,10 +215,26 @@ the bottom (-100 dB) means silence, not $`10^{-5}`$.
 | solo both, then mute track 2 | 0.75 x 0.7071, then 0.5 x 0.7071 |
 | fader 0 -> -20 dB while playing | max step < 0.001, settles at 0.7071 x 0.1 |
 
+`l14_test_track_format` checks the formats with a stereo clip L = 0.6, R = 0.2 (verified):
+
+| case | expected `out_L`, `out_R` |
+|---|---|
+| mono track, centre | both 0.4 x 0.7071 (folded, pan law) |
+| mono track, pan hard right | 0, 0.4 |
+| stereo track, centre | 0.6, 0.2 (balance: unity, image kept) |
+| stereo track, balance +0.5 | 0.3, 0.2 |
+| a mono file (L = R = 0.5), stereo vs mono track | +3.01 dB |
+
+The build-along `minidaw.h` has no formats: its tracks behave like mono-format tracks fed with
+stereo audio (pan law, no fold). [Exercise 14](../exercises/README.md)
+has you write the format-dependent part of a track yourself.
+
 ## What you learned
 
 - One strip class serves tracks, buses and master; its processing order is the mixer's design.
 - Fader and pan collapse into one smoothed gain per side; pan laws trade centre level against
   constant loudness; stereo buses use balance.
+- A track has a format: a mono track folds to one channel, runs its inserts in mono and is placed
+  with the pan law; a stereo track keeps its image and pans as balance.
 - Solo is a property of the whole mixer, not of a track.
 - Every parameter change is a ramp, and every meter value is an atomic the UI can read.

@@ -80,19 +80,27 @@ bool bounceToWav(Engine&, const std::string& path, const RenderOptions&, int bit
 
 ### 歌曲（`examples/render_song.cpp`）
 
-| Track | 素材（Signals.h） | Insert | Fader / pan | Send |
-|---|---|---|---|---|
-| 1 Drums | `makeDrumLoop` 2 小節 x 4 個 clip | TransientShaper、Compressor | -2 dB / C | reverb -18 |
-| 2 Bass | `makePluck` A1 F1 C2 G1，16 個 clip | ParametricEQ（low cut 35 Hz，120 Hz 處 +3 dB）、Saturation | -3 / C | - |
-| 3 Arp | 從第 3 小節開始的 `makePluckSequence`，1 小節 fade-in | Gain -3、Phaser | -2 / L 0.35 | reverb -14、delay -8 |
-| 4 Pad | detuned 的和聲和弦 Am F C G | ParametricEQ（150 Hz low cut、5 kHz high cut）、Chorus | -4 / C | reverb -8 |
-| 5 Wind | 經過 low-pass 的 noise，第 5-8 小節 | Tremolo（8 Hz square）、Gate | -10 / R 0.5 | reverb -12 |
-| 6 Lead | 帶 vibrato 的 sine 旋律，第 5-8 小節 | Distortion（fuzz）、Flanger | -5 / R 0.2 | reverb -12、delay -6 |
-| 7 Shaker | 經過 high-pass 的 noise burst，16 分音符 | Expander、DeEsser | -8 / R 0.6 | reverb -20 |
-| 8 Hits | 在第 1、3、5、7 小節的 noise burst | ConvolutionReverb | -6 / L 0.6 | - |
-| Bus A | | Reverb（100 % wet，2.2 秒） | -2 | |
-| Bus B | | Delay（100 % wet，附點 1/8 = 375 ms，ping-pong） | -4 | |
-| Master | | Compressor（-12 dB 處 2:1）、Limiter（-1 dBFS，5 ms） | 0 | |
+| Track | 素材（Signals.h） | Format | Insert | Fader / pan | Send |
+|---|---|---|---|---|---|
+| 1 Drums | `makeDrumLoop` 2 小節 x 4 個 clip | Mono | TransientShaper、Compressor | -2 dB / C | reverb -18 |
+| 2 Bass | `makePluck` A1 F1 C2 G1，16 個 clip | Mono | ParametricEQ（low cut 35 Hz，120 Hz 處 +3 dB）、Saturation | -3 / C | - |
+| 3 Arp | 從第 3 小節開始的 `makePluckSequence`，1 小節 fade-in | Mono | Gain -3、Phaser | -2 / L 0.35 | reverb -14、delay -8 |
+| 4 Pad | detuned 的和聲和弦 Am F C G（stereo） | Stereo | ParametricEQ（150 Hz low cut、5 kHz high cut）、Chorus | -7 / C | reverb -8 |
+| 5 Wind | 經過 low-pass 的 noise，第 5-8 小節（stereo） | Stereo | Tremolo（8 Hz square）、Gate | -13 / R 0.5 | reverb -12 |
+| 6 Lead | 帶 vibrato 的 sine 旋律，第 5-8 小節 | Mono | Distortion（fuzz）、Flanger | -5 / R 0.2 | reverb -12、delay -6 |
+| 7 Shaker | 經過 high-pass 的 noise burst，16 分音符 | Mono | Expander、DeEsser | -8 / R 0.6 | reverb -20 |
+| 8 Hits | 在第 1、3、5、7 小節的 noise burst | Stereo | ConvolutionReverb | -9 / L 0.6 | - |
+| Bus A | | （stereo） | Reverb（100 % wet，2.2 秒） | -2 | |
+| Bus B | | （stereo） | Delay（100 % wet，附點 1/8 = 375 ms，ping-pong） | -4 | |
+| Master | | （stereo） | Compressor（-12 dB 處 2:1）、Limiter（-1 dBFS，5 ms） | 0 | |
+
+Track format（Step 4）跟隨素材：mono source 放在 mono track 上（pan law），stereo 的 pad 與 wind
+放在 stereo track 上（balance）。Hits 刻意是放在 stereo track 上的 mono source，讓它的 convolution
+reverb insert 保持寬廣——放在 mono track 上它會塌縮成 mono（Step 5）。stereo track 沒有 pan law 的
+中央 -3 dB，所以 Pad、Wind 與 Hits 的 fader 比這首歌還沒有 format 時低 3 dB（-7、-13 與 -9 dB，
+原本是 -4、-10 與 -6）。置中的 Pad 量到的數值與當時完全相同（-4 dB 的 pan law x0.7071 = -7 dB 的
+balance x1）；Wind 與 Hits 有 pan，而 balance 與 pan law 在 pan 不置中時並不相同，所以它們低了
+2.0-2.6 dB。master 維持在 -15.5 LUFS。
 
 有 17 種 effect 類型出現一次或多次 - 除了 Filter 與 AmpChain 之外全部，那兩個是在這首歌寫好之後
 才加進 catalog（Step 5）的。
@@ -148,12 +156,12 @@ Step 9: offline bounce of an 8-track song (8 bars at 120 BPM + 3 s tail)
   Drums     -3.3   -27.4    -24.8    -2.0 dB  0.00   TransientShaper, Compressor
   Bass      -8.9   -22.6    -16.8    -3.0 dB  0.00   ParametricEQ, Saturation
   Arp      -11.9   -33.9    -27.0    -2.0 dB -0.35   Gain, Phaser
-  Pad      -19.6   -33.5    -30.5    -4.0 dB  0.00   ParametricEQ, Chorus
-  Wind     -20.3   -42.3    -34.7   -10.0 dB  0.50   Tremolo, Gate
+  Pad      -19.6   -33.5    -30.5    -7.0 dB  0.00   ParametricEQ, Chorus
+  Wind     -22.6   -44.3    -36.7   -13.0 dB  0.50   Tremolo, Gate
   Lead     -12.6   -27.7    -21.4    -5.0 dB  0.20   Distortion, Flanger
   Shaker   -17.9   -47.1    -38.8    -8.0 dB  0.60   Expander, DeEsser
-  Hits     -16.6   -46.0    -31.9    -6.0 dB -0.60   ConvolutionReverb
-  Reverb   -19.6   -36.9    -33.8    -2.0 dB  0.00   Reverb
+  Hits     -19.2   -48.4    -34.3    -9.0 dB -0.60   ConvolutionReverb
+  Reverb   -19.7   -36.9    -33.8    -2.0 dB  0.00   Reverb
   Delay    -20.7   -39.7    -34.3    -4.0 dB  0.00   Delay
   Master    -1.0   -20.2    -15.5     0.0 dB  0.00   Compressor, Limiter
 

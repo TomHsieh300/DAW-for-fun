@@ -53,6 +53,37 @@ Bus 與 master 是 stereo strip；對它們而言，「pan」是 **balance** 控
 $`p_L = \min(1, 1-p)`$，$`p_R = \min(1, 1+p)`$（`PanMode::Balance`）。預設狀態的 master 不能
 讓 mix 掉 3 dB。
 
+### Mono 與 stereo track
+
+*Track* 用這兩者中的哪一個，由它的 **format** 決定，就像 Cubase 的 mono 與 stereo audio track
+（`Track.h` 中的 `enum class TrackFormat { Mono, Stereo }`）：
+
+```
+Mono    clips -> (L+R)/2 -> [inserts, PDC on ONE channel] -> copy to R -> [mute/solo] -> fader x PAN LAW
+Stereo  clips ----------> [inserts, PDC on TWO channels] --------------> [mute/solo] -> fader x BALANCE
+                                                                                          |
+                                      from here on everything is stereo: sends, buses, master
+```
+
+- **Mono track** 只承載一個訊號。clip 會先 fold 成 $`(L+R)/2`$（對 mono 檔案來說是精確的，因為
+  loader 把它存成 L = R），insert 與 PDC delay 在單一 channel 的 block 上執行
+  （`tb.getChannelSubset(0, 1)`），然後把這個 channel 複製到右側。接著 pan 控制用 pan law
+  *定位* 這個 mono source：中央 = 每側 -3.01 dB，最左 = 只有 L。
+- **Stereo track** 本身已經有立體聲像。它的 insert 在兩個 channel 上執行，pan 控制是 balance：
+  中央 = 兩側都是 unity，往右轉只會降低左側，L != R 會被保留。
+- `Track::setFormat(f)` 也會選擇與 format 對應的 pan mode（Mono -> `PanMode::PanLaw`，
+  Stereo -> `PanMode::Balance`）；之後仍可用 `setPanMode()` 覆寫。預設是 Mono，也就是
+  format 出現之前每個 track 的行為。`getNumProcessingChannels()` 回傳 1 或 2。
+
+值得記住的結果：**同一個 mono 檔案放在 stereo track 上，中央會比放在 mono track 上大聲 3.01 dB**
+（balance：x1；pan law：x0.7071）。這就是為什麼 demo song 的 Pad、Wind 與 Hits 變成 stereo track
+之後，它們的 fader 都降了 3 dB（Step 9）。
+
+Bus 與 master 維持 `Balance`，也沒有 format：它們接收的永遠是 stereo mix（track 加總、reverb 與
+delay return），在那裡用 pan law 只會讓中央的一切掉 3 dB，fold 也沒有任何好處。pan law 與
+balance 控制為什麼是兩回事，以及「pan 一個 mono source」與「balance 一個 stereo source」為什麼是
+不同的運算，是 [第 01 章](../../01-gain/README.zh-TW.md) 的理論部分；本章只是把它接進 mixer。
+
 ### Smoothing：沒有 zipper noise，沒有 click
 
 UI 把 fader 的值寫入 atomic。audio thread 每個 block 計算一次目標
@@ -109,7 +140,13 @@ for (auto& track : tracks_) {
     track.renderClips(tb, segments, numSegments);                 // Step 3
     track.beginBlock(!track.isMuted() && (!anySolo || track.isSoloed()));
     track.getInserts().setPlayHead(playHead);                     // Step 5
-    track.processInserts(tb);                                     // Steps 5 + 8
+    if (track.getFormat() == TrackFormat::Mono) {                 // see "Mono and stereo tracks"
+        fold tb to (L+R)/2 in channel 0;
+        track.processInserts(tb.getChannelSubset(0, 1));          // Steps 5 + 8, one channel
+        copy channel 0 to channel 1;
+    } else {
+        track.processInserts(tb);                                 // Steps 5 + 8, two channels
+    }
     track.applyMuteSolo(tb);
     ... pre-fader sends ...                                       // Step 6
     track.applyFaderAndPan(tb);
@@ -175,10 +212,26 @@ Step 4: the mixer (build-along)
 | 兩者都 solo，然後 mute track 2 | 0.75 x 0.7071，然後 0.5 x 0.7071 |
 | 播放時 fader 0 -> -20 dB | 最大階躍 < 0.001，穩定在 0.7071 x 0.1 |
 
+`l14_test_track_format` 用一個 L = 0.6、R = 0.2 的 stereo clip 檢查各種 format（已驗證）：
+
+| 情況 | 預期的 `out_L`、`out_R` |
+|---|---|
+| mono track、置中 | 兩側都是 0.4 x 0.7071（fold 後套 pan law） |
+| mono track、pan 完全向右 | 0、0.4 |
+| stereo track、置中 | 0.6、0.2（balance：unity，保留聲像） |
+| stereo track、balance +0.5 | 0.3、0.2 |
+| mono 檔案（L = R = 0.5），stereo 與 mono track 相比 | +3.01 dB |
+
+build-along 的 `minidaw.h` 沒有 format：它的 track 行為就像餵入 stereo 音訊的 mono-format track
+（pan law，不做 fold）。[Exercise 14](../exercises/README.zh-TW.md) 讓你自己寫出 track 中與
+format 有關的那一部分。
+
 ## 你學到了什麼
 
 - 一個 strip class 服務 track、bus 與 master；它的處理順序就是 mixer 的設計。
 - Fader 與 pan 合併成每一側一個經過 smoothing 的 gain；pan law 在中央音量與
   恆定響度之間取捨；stereo bus 使用 balance。
+- Track 有 format：mono track fold 成單一 channel、以 mono 執行 insert，並用 pan law 定位；
+  stereo track 保留聲像，pan 以 balance 運作。
 - Solo 是整個 mixer 的屬性，而不是某個 track 的屬性。
 - 每個參數的變更都是一段 ramp，而每個 meter 值都是 UI 可以讀取的 atomic。

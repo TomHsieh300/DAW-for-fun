@@ -43,6 +43,26 @@ Loader 從不碰 session 或 engine；它只產生一個 immutable 的 buffer，
 
 `Session::setTrackAudio()` 為 clip 加上 5 ms 的 fade（檔案很少剛好在 zero crossing 開始與結束；Step 3 解釋了 click），並以檔名為 track 命名。
 
+### Track format 跟隨檔案
+
+就像 Cubase 會詢問要建立 mono 或 stereo track，並把檔案匯入與它 channel 數相同的 track，載入檔案時也會設定 **track format**（Step 4）。reader 在建立 engine 用的副本之前就知道檔案的 channel 數，所以 `LoadedMedia` 以 `fileNumChannels` 帶著它，而 `MainComponent::loadAudioFile()` 的 callback 會在交出 audio 之前先設定 format：
+
+```cpp
+// Like Cubase: a mono file makes a mono track (inserts in mono, pan law), anything with
+// two or more channels a stereo track (balance).
+safe->session_.setTrackFormat(media.track, media.fileNumChannels == 1 ? engine::TrackFormat::Mono
+                                                                       : engine::TrackFormat::Stereo);
+safe->session_.setTrackAudio(media.track, media.audio, media.name);
+```
+
+| 檔案 | engine buffer | track format | pan 控制 |
+|---|---|---|---|
+| 1 個 channel | 2 個 channel，L = R（fold 成 $`(L+R)/2`$ 會精確還原檔案） | Mono | pan law（`Pan`） |
+| 2 個 channel | 2 個 channel | Stereo | balance（`Bal`） |
+| 3 個以上 channel | 前兩個 channel | Stereo | balance（`Bal`） |
+
+engine buffer 永遠是 stereo，所以 clip 與 arrangement 不在乎 format；只有 track 的處理方式會因此不同。新 project 會把每個 track 重設為 Mono（`Session::resetMixerSettings()`），demo song 會設定它自己的 format（Step 9），而 strip 的 format 按鈕（Step 15）可以覆寫自動的選擇——例如把 mono drum loop 放到 stereo track 上，讓 reverb insert 保持寬廣。
+
 ### Resampling：band-limited interpolation
 
 44.1 kHz 的檔案由 48 kHz 的 engine 播放，會快 8.8 %、高 1.5 個半音（$`12\log_2(48000/44100) = 1.47`$）。它必須被轉換。輸出 sample $`m`$ 位於輸入位置 $`t_m = m \cdot f_{\text{in}} / f_{\text{out}}`$，介於兩個輸入 sample 之間。Band-limited 訊號的理想重建（sampling theorem）是 sinc 函數之和；我們用加窗、低通過的 sinc kernel 在 $`t_m`$ 處求值：
@@ -61,7 +81,7 @@ Kernel 只製表一次（每個 zero crossing 512 個點，點與點之間用 li
 
 ### 把 demo song 當成資料
 
-`engine/include/dawlab/engine/DemoSong.h` 描述的是與 `l14_render_song`（Step 9）手工建出的同一首 8-track song，只是以資料表示：`makeDemoSong(sampleRate)` 產生所有 audio 與 clip 清單、insert 清單（effect 類型 + *以名稱表示*的參數）、fader、pan 與 send——一個 pure function，在 loader thread 上執行（在 48 kHz 下會 allocate 約 40 MB）。接著 message thread 呼叫 `Session::applyDemoSong(song)`，它把每個 insert 放進其 strip 下一個空閒的 GUI slot，並把一切送給 engine。同一個 header 中的 `applyDemoSong(engine, song)` 則在沒有 GUI 的情況下做同樣的事（供 console 程式使用）。
+`engine/include/dawlab/engine/DemoSong.h` 描述的是與 `l14_render_song`（Step 9）手工建出的同一首 8-track song，只是以資料表示：`makeDemoSong(sampleRate)` 產生所有 audio 與 clip 清單、insert 清單（effect 類型 + *以名稱表示*的參數）、track format、fader、pan 與 send——一個 pure function，在 loader thread 上執行（在 48 kHz 下會 allocate 約 40 MB）。接著 message thread 呼叫 `Session::applyDemoSong(song)`，它把每個 insert 放進其 strip 下一個空閒的 GUI slot，並把一切送給 engine。同一個 header 中的 `applyDemoSong(engine, song)` 則在沒有 GUI 的情況下做同樣的事（供 console 程式使用）。
 
 因為 song 是以 engine 的 sample rate 產生的，44.1 kHz 的 device 會得到 44.1 kHz 的 song——不需要 resampling。如果 device 在 song 產生期間改變，結果會被丟棄並重新產生。檔案也受到同樣的保護：`loadAudioFile()` 會要求 session 的 *clip rate*（`Session::getClipSampleRate()`，通常就是 engine 的 rate，Step 11），而它的 callback 在結果抵達時，會比較 `media.targetSampleRate` 與 clip rate。如果 device 在這期間改變了 rate，檔案就直接依新的 rate 重新讀取——否則以舊 rate 表示的 audio 會進到 project 裡，永遠以錯誤的音高播放。
 
@@ -69,7 +89,7 @@ Kernel 只製表一次（每個 zero crossing 512 個點，點與點之間用 li
 
 - `app/Source/MediaLoader.h/.cpp`：`resampleBuffer()`、`MediaLoader::readAudioFile()`（同步的部分，可從測試使用）、`loadFile()`、`loadDemoSong()`、`convertBuffers()`（同一個 resampler 在 loader thread 上執行，當 device 的 sample rate 改變時使用，Step 11）。
 - `app/Source/Session.cpp`：`setTrackAudio()`、`applyDemoSong()`、`applySampleRateConversion()`、`handleSampleRateChange()`（Step 11）。
-- `app/Source/MainComponent.cpp`：`chooseAudioFileForTrack()`、`loadAudioFile()`、`loadDemoSongAsync()`（啟動時與 Ctrl+D）、`loadDemoSongNow()`（同步，供測試使用）。
+- `app/Source/MainComponent.cpp`：`chooseAudioFileForTrack()`、`loadAudioFile()`（依 `fileNumChannels` 設定 track format）、`loadDemoSongAsync()`（啟動時與 Ctrl+D）、`loadDemoSongNow()`（同步，供測試使用）。
 
 ## 驗證
 
@@ -102,3 +122,4 @@ Kernel 只製表一次（每個 zero crossing 512 個點，點與點之間用 li
 - 慢的工作交給 worker thread；結果透過 message thread 以 immutable 物件的形式回來；audio thread 永遠只看到完成的資料。
 - Resampling 就是 filtering：cutoff 跟隨較低的 Nyquist frequency，而有限長度的 kernel 需要 transition band——去量測它在哪裡結束，而不是假設它是 brick wall。
 - 把內容描述成資料，讓同一份描述既能由 GUI 套用，也能由測試套用。
+- 讓素材決定 track format（mono 檔案 -> mono track），並讓使用者可以覆寫它。

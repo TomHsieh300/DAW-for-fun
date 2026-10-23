@@ -16,6 +16,7 @@ This page is for whoever writes a front end for the engine - in particular the s
 | `Engine::processBlock()` | only offline (no device running) | **yes** | real-time safe |
 | `Transport` setters / getters | yes | (advance only) | atomics |
 | `ChannelStrip` parameter setters / getters, meters | yes | (read in `beginBlock`) | atomics |
+| `Track::setFormat()` / `getFormat()` | yes | (read once per block in `Mixer::process`) | atomic; also sets the pan mode |
 | `InsertEffect::setParameter()`, `get...`, `setBypassed()`, `getMeterDb()` | yes | yes | atomics |
 | `Engine::addInsert / replaceInsert / removeInsert / moveInsert / setTrackClips` | yes (single producer!) | no | commands |
 | `Engine::getInsert()`, `getNumInserts()`, `Track::getClips()` | yes | - | see "observer pointers" |
@@ -130,8 +131,14 @@ float fadeGain(FadeShape shape, float t) noexcept;
 float clipFadeAt(const Clip& clip, int64_t i) noexcept;
 void renderClip(const Clip& clip, int64_t timelineStart, AudioBlock dest) noexcept;
 
+enum class TrackFormat { Mono, Stereo };             // Step 4; default Mono
+const char* trackFormatName(TrackFormat) noexcept;  // "Mono" / "Stereo"
+
 class Track : public ChannelStrip {
 public:
+    void setFormat(TrackFormat) noexcept;            // any thread; Mono -> PanMode::PanLaw, Stereo -> PanMode::Balance
+    TrackFormat getFormat() const noexcept;
+    int getNumProcessingChannels() const noexcept;   // 1 (Mono) or 2 (Stereo): channels the inserts see
     const std::vector<Clip>* exchangeClips(const std::vector<Clip>* newClips) noexcept; // audio thread (Engine)
     const std::vector<Clip>* getClips() const noexcept;
     int getNumClips() const noexcept;
@@ -143,7 +150,7 @@ public:
 ### ChannelStrip.h
 
 ```cpp
-enum class PanMode { PanLaw, Balance };            // tracks: PanLaw; buses and master: Balance
+enum class PanMode { PanLaw, Balance };            // mono tracks: PanLaw; stereo tracks, buses, master: Balance
 struct StripStats { float peakDb, rmsDb, integratedLufs; };
 
 class ChannelStrip {
@@ -200,7 +207,13 @@ public:
 `getMaxPdcSamples()` (= `prepare()`'s `maxPdcSamples`) samples. When the largest track or bus
 latency is larger, the mixer aligns on `min(max, limit)`, `getMaxTrackLatencySamples()` /
 `getMaxBusLatencySamples()` / `getTotalLatencySamples()` report the delay actually applied, a path
-slower than the target arrives late, and `hasPdcOverflow()` is true (Step 8). Default names: "Track 1".."Track 8", "Bus A",
+slower than the target arrives late, and `hasPdcOverflow()` is true (Step 8). Per track,
+`process()` follows the track's format: a **mono** track folds its clips to $`(L+R)/2`$, runs its
+inserts and PDC delay on a one-channel block (`getChannelSubset(0, 1)`) and copies the result to
+the right channel before mute/solo, sends and fader x pan; a **stereo** track runs them on both
+channels. Everything after the panner (sends, buses, master) is stereo. An `InsertEffect` on a mono
+track must therefore accept a one-channel block although it was prepared for `kNumChannels`; all
+built-in effects do (`l14_test_track_format`). Default names: "Track 1".."Track 8", "Bus A",
 "Bus B", "Master".
 
 ### InsertEffect.h / EffectBase.h / Effects.h
@@ -276,6 +289,7 @@ struct DemoSong {   // the 8-track song of l14_render_song (Step 9), as data
     double sampleRate, bpm; int beatsPerBar, bars;
     std::array<std::string, kNumTracks> trackNames;  std::array<std::string, kNumBuses> busNames;
     std::array<std::vector<Clip>, kNumTracks> clips;  std::vector<DemoInsert> inserts;
+    std::array<TrackFormat, kNumTracks> trackFormat;   // Mono / Stereo, applied before the faders
     std::array<float, kNumTracks> trackGainDb, trackPan;
     std::array<std::array<float, kNumBuses>, kNumTracks> sendDb;  std::array<float, kNumBuses> busGainDb;
     int64_t songEndSample() const noexcept;

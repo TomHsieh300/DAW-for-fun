@@ -44,6 +44,42 @@ recomputes the compensation delays. So a plugin with a lookahead is compensated 
 inserted, and again when it changes its latency (many plugins do when you change their quality or
 lookahead setting) - within one block, without any code in the app.
 
+### Mono tracks: a stereo plugin around a mono signal
+
+On a mono track (Step 4) the insert chain gets a *one-channel* block. The built-in effects handle
+that (Step 5), but a hosted plugin was prepared with a stereo bus layout: handing it a one-channel
+buffer would let it read or write a channel that does not exist. `VstInsert::process()` therefore
+wraps the plugin in a small fold:
+
+```
+mono block --+--> scratch L --+                 +--> L --+
+             |                +--> [plugin] ----+        +--> (L + R) / 2 --> mono block
+             +--> scratch R --+                 +--> R --+
+```
+
+```cpp
+void VstInsert::process(AudioBlock block) noexcept {
+    const int n = block.getNumSamples();
+    if (block.getNumChannels() >= 2 || n > monoScratch_.getNumSamples()) {
+        plugin_->process(block);                       // stereo track: straight through
+        return;
+    }
+    float* mono = block.getChannelPointer(0);
+    AudioBlock stereo = AudioBlock(monoScratch_).getSubBlock(0, n).getChannelSubset(0, 2);
+    std::copy_n(mono, n, stereo.getChannelPointer(0)); // L = R
+    std::copy_n(mono, n, stereo.getChannelPointer(1));
+    plugin_->process(stereo);
+    for (int i = 0; i < n; ++i)                        // fold back
+        mono[i] = 0.5f * (stereo.getChannelPointer(0)[i] + stereo.getChannelPointer(1)[i]);
+}
+```
+
+The scratch buffer is allocated in `prepare()` (message thread, `max(2, numChannels)` x
+`maxBlockSize`), so the audio thread only copies. For a plugin that treats both sides alike the
+fold is exact: L = R in gives L = R out, and $`(L + R)/2`$ returns that signal unchanged. A
+stereo-widening plugin collapses to mono, the same trade-off every insert on a mono track makes;
+put it on a stereo track to keep its width.
+
 ### Why `reset()` does nothing
 
 `Engine::requestReset()` calls `reset()` on every insert, on the audio thread. For a VST3 plugin
@@ -111,14 +147,27 @@ slot 4 (after the master limiter):
 - After `clearInsert()` + `collectGarbage()` no instance of the test plugin is alive, and the mix
   latency is back to 752.
 
+Section 5a puts the same test plugin (latency 100, unity gain) into slot 4 of the **drum track**,
+a mono track in the demo song, so `VstInsert::process()` gets one-channel blocks and takes the
+mono-fold path:
+
+```
+5a. test plugin on the mono drum track: |with - without| = 0
+```
+
+The plugin sees L = R and returns L = R (delayed by 100 samples, which PDC compensates), the fold
+$`(L+R)/2`$ gives that signal back unchanged, and the 1-second bounce is bit-identical to the one
+without the plugin. A fold that read a missing channel, or averaged with a stale scratch channel,
+would show up here as a non-zero difference.
+
 When chapter 13 is part of the build, the smoke test also loads the real VST3 files (section 5b);
 with `build.ps1 -Only 13-vst-hosting,14-daw-8track -Juce` the author got
 
 ```
 5b. VST3 DawLabCompressor on the drums: 8 parameters, latency 0, 1 s render peak -1.00 dBFS
 5b. VST3 DawLabLimiter on track 8 (insert latency now 752): plugin latency 240, mix latency 752 -> 992,
-    |with - without| = 0 (the two compared 240 samples apart: 1.33)
-[PASS] l14_app_smoke_test (127 checks passed)
+    |with - without| = 0 (the two compared 240 samples apart: 1.34)
+[PASS] l14_app_smoke_test (134 checks passed)
 ```
 
 The compressor has no latency, so it only proves that a real bundle loads, processes and is
@@ -133,11 +182,11 @@ that computes and reports its own latency:
   the limiter is a pure delay of 240 samples. A 1-second bounce **with** it is then bit-identical
   to the bounce **without** it: PDC aligned all eight tracks, and the renderer removed the larger
   mix latency. Comparing the same two bounces 240 samples apart - what an uncompensated plugin
-  would do to that track - gives a difference of 1.33, so the check would catch a missing
+  would do to that track - gives a difference of 1.34, so the check would catch a missing
   compensation.
 - After `clearInsert()` the mix latency is back to 752.
 
-(127 = the 114 checks of the stand-alone build, which prints two "not built in this tree" lines for
+(134 = the 121 checks of the stand-alone build, which prints two "not built in this tree" lines for
 section 5b, plus 5 checks for the compressor and 8 for the limiter. The 192 process calls of the
 test plugin are two 1-second renders of $`48\,000 + 852`$ samples in 512-sample blocks,
 $`2 \lceil 48\,852 / 512 \rceil = 2 \cdot 96`$.)
@@ -153,9 +202,9 @@ the bass is simply delayed less, and the mix latency does not change.)
 
 | | |
 |---|---|
-| You write | `VstInsert::process()` and `VstInsert::getLatencySamples()` in `app/Source/VstInsert.cpp` (forward to the hosted plugin; a negative latency counts as 0) |
+| You write | `VstInsert::process()` and `VstInsert::getLatencySamples()` in `app/Source/VstInsert.cpp` (forward to the hosted plugin; on a one-channel block run it on L = R in `monoScratch_` and fold the result back; a negative latency counts as 0) |
 | Build + check | `.\scripts\build.ps1 -Only 13-vst-hosting,14-daw-8track -Juce -TestLabel test` (with chapter 13, so section 5b loads the real VST3 limiter too) |
-| Expected | section 5: `mix latency 752 -> 852, |with - without| = 0`; section 5b: `mix latency 752 -> 992`; `[PASS] l14_app_smoke_test` - PDC follows your adapter's latency report |
+| Expected | section 5: `mix latency 752 -> 852, |with - without| = 0`; section 5a: `|with - without| = 0` on the mono drum track; section 5b: `mix latency 752 -> 992`; `[PASS] l14_app_smoke_test` - PDC follows your adapter's latency report |
 
 ## What you learned
 
@@ -163,3 +212,4 @@ the bass is simply delayed less, and the mix latency does not change.)
 - PDC that is recomputed every block handles plugins whose latency changes.
 - Not everything a plugin API offers is real-time safe: decide per call where it may run.
 - An in-process fake plugin makes the hosting path testable without files.
+- A stereo plugin on a mono track runs on L = R in a preallocated scratch buffer and is folded back.

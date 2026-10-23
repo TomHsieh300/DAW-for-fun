@@ -16,6 +16,7 @@
 | `Engine::processBlock()` | 僅限 offline（沒有 device 在執行） | **是** | real-time safe |
 | `Transport` setter / getter | 是 | （只有 advance） | atomic |
 | `ChannelStrip` 參數 setter / getter、meter | 是 | （在 `beginBlock` 中讀取） | atomic |
+| `Track::setFormat()` / `getFormat()` | 是 | （在 `Mixer::process` 中每個 block 讀取一次） | atomic；同時設定 pan mode |
 | `InsertEffect::setParameter()`、`get...`、`setBypassed()`、`getMeterDb()` | 是 | 是 | atomic |
 | `Engine::addInsert / replaceInsert / removeInsert / moveInsert / setTrackClips` | 是（single producer！） | 否 | command |
 | `Engine::getInsert()`、`getNumInserts()`、`Track::getClips()` | 是 | - | 見「observer pointer」 |
@@ -129,8 +130,14 @@ float fadeGain(FadeShape shape, float t) noexcept;
 float clipFadeAt(const Clip& clip, int64_t i) noexcept;
 void renderClip(const Clip& clip, int64_t timelineStart, AudioBlock dest) noexcept;
 
+enum class TrackFormat { Mono, Stereo };             // Step 4; default Mono
+const char* trackFormatName(TrackFormat) noexcept;  // "Mono" / "Stereo"
+
 class Track : public ChannelStrip {
 public:
+    void setFormat(TrackFormat) noexcept;            // any thread; Mono -> PanMode::PanLaw, Stereo -> PanMode::Balance
+    TrackFormat getFormat() const noexcept;
+    int getNumProcessingChannels() const noexcept;   // 1 (Mono) or 2 (Stereo): channels the inserts see
     const std::vector<Clip>* exchangeClips(const std::vector<Clip>* newClips) noexcept; // audio thread (Engine)
     const std::vector<Clip>* getClips() const noexcept;
     int getNumClips() const noexcept;
@@ -142,7 +149,7 @@ public:
 ### ChannelStrip.h
 
 ```cpp
-enum class PanMode { PanLaw, Balance };            // tracks: PanLaw; buses and master: Balance
+enum class PanMode { PanLaw, Balance };            // mono tracks: PanLaw; stereo tracks, buses, master: Balance
 struct StripStats { float peakDb, rmsDb, integratedLufs; };
 
 class ChannelStrip {
@@ -199,7 +206,12 @@ public:
 `getMaxPdcSamples()`（= `prepare()` 的 `maxPdcSamples`）個 sample。當最大的 track 或 bus
 latency 比它更大時，mixer 會以 `min(max, limit)` 對齊，`getMaxTrackLatencySamples()` /
 `getMaxBusLatencySamples()` / `getTotalLatencySamples()` 回報實際套用的 delay，比目標更慢的
-路徑會晚到，而且 `hasPdcOverflow()` 為 true（Step 8）。預設名稱："Track 1".."Track 8"、"Bus A"、
+路徑會晚到，而且 `hasPdcOverflow()` 為 true（Step 8）。對每個 track，`process()` 依照
+track 的 format 處理：**mono** track 把 clip fold 成 $`(L+R)/2`$，在單一 channel 的 block
+（`getChannelSubset(0, 1)`）上執行 insert 與 PDC delay，再把結果複製到右 channel，然後才是
+mute/solo、send 與 fader x pan；**stereo** track 則在兩個 channel 上執行它們。panner 之後的一切
+（send、bus、master）都是 stereo。因此 mono track 上的 `InsertEffect` 雖然是以 `kNumChannels`
+prepare，仍必須接受單一 channel 的 block；所有內建 effect 都做得到（`l14_test_track_format`）。預設名稱："Track 1".."Track 8"、"Bus A"、
 "Bus B"、"Master"。
 
 ### InsertEffect.h / EffectBase.h / Effects.h
@@ -275,6 +287,7 @@ struct DemoSong {   // the 8-track song of l14_render_song (Step 9), as data
     double sampleRate, bpm; int beatsPerBar, bars;
     std::array<std::string, kNumTracks> trackNames;  std::array<std::string, kNumBuses> busNames;
     std::array<std::vector<Clip>, kNumTracks> clips;  std::vector<DemoInsert> inserts;
+    std::array<TrackFormat, kNumTracks> trackFormat;   // Mono / Stereo, applied before the faders
     std::array<float, kNumTracks> trackGainDb, trackPan;
     std::array<std::array<float, kNumBuses>, kNumTracks> sendDb;  std::array<float, kNumBuses> busGainDb;
     int64_t songEndSample() const noexcept;

@@ -63,6 +63,32 @@ destructor of `MediaLoader` waits for a running job.
 `Session::setTrackAudio()` gives the clip 5 ms fades (files rarely start and end at a zero
 crossing; Step 3 explains the click) and names the track after the file.
 
+### The track format follows the file
+
+Like Cubase, which asks for a mono or a stereo track and imports a file into a track of its own
+channel count, loading a file also sets the **track format** (Step 4). The reader knows the file's
+channel count before the engine copy is made, so `LoadedMedia` carries it as `fileNumChannels`, and
+`MainComponent::loadAudioFile()`'s callback sets the format before it hands over the audio:
+
+```cpp
+// Like Cubase: a mono file makes a mono track (inserts in mono, pan law), anything with
+// two or more channels a stereo track (balance).
+safe->session_.setTrackFormat(media.track, media.fileNumChannels == 1 ? engine::TrackFormat::Mono
+                                                                       : engine::TrackFormat::Stereo);
+safe->session_.setTrackAudio(media.track, media.audio, media.name);
+```
+
+| file | engine buffer | track format | pan control |
+|---|---|---|---|
+| 1 channel | 2 channels, L = R (the fold $`(L+R)/2`$ gives the file back exactly) | Mono | pan law (`Pan`) |
+| 2 channels | 2 channels | Stereo | balance (`Bal`) |
+| 3+ channels | the first two channels | Stereo | balance (`Bal`) |
+
+The engine buffer is always stereo, so the clip and the arrangement do not care about the format;
+only the track's processing does. New projects reset every track to Mono (`Session::resetMixerSettings()`),
+the demo song sets its own formats (Step 9), and the strip's format button (Step 15) overrides the
+automatic choice - e.g. a mono drum loop on a stereo track for a wide reverb insert.
+
 ### Resampling: band-limited interpolation
 
 A 44.1 kHz file played by a 48 kHz engine would be 8.8 % too fast and 1.5 semitones too high
@@ -98,7 +124,7 @@ production libraries use polyphase filters - same mathematics, different bookkee
 
 `engine/include/dawlab/engine/DemoSong.h` describes the same 8-track song that `l14_render_song`
 (Step 9) builds by hand, but as data: `makeDemoSong(sampleRate)` generates all audio and the clip
-lists, the insert list (effect type + parameters *by name*), faders, pans and sends - a pure
+lists, the insert list (effect type + parameters *by name*), track formats, faders, pans and sends - a pure
 function, run on the loader thread (it allocates about 40 MB at 48 kHz). The message thread then
 calls `Session::applyDemoSong(song)`, which puts every insert into the next free GUI slot of its
 strip and sends everything to the engine. `applyDemoSong(engine, song)` in the same header does
@@ -119,7 +145,7 @@ audio at the old rate would end up in the project and play at the wrong pitch fo
   same resampler on the loader thread, used when the device's sample rate changes, Step 11).
 - `app/Source/Session.cpp`: `setTrackAudio()`, `applyDemoSong()`, `applySampleRateConversion()`,
   `handleSampleRateChange()` (Step 11).
-- `app/Source/MainComponent.cpp`: `chooseAudioFileForTrack()`, `loadAudioFile()`,
+- `app/Source/MainComponent.cpp`: `chooseAudioFileForTrack()`, `loadAudioFile()` (sets the track format from `fileNumChannels`),
   `loadDemoSongAsync()` (startup and Ctrl+D), `loadDemoSongNow()` (synchronous, for tests).
 
 ## Verify
@@ -162,3 +188,4 @@ unknown parameter names, mix latency 752 samples - the same numbers as `l14_rend
 - Resampling is filtering: the cutoff follows the lower Nyquist frequency, and a finite kernel
   needs a transition band - measure where it ends instead of assuming a brick wall.
 - Describe content as data, so that one description can be applied by a GUI and by a test.
+- Let the material choose the track format (mono file -> mono track), and let the user override it.

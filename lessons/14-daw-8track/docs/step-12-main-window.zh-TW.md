@@ -96,7 +96,7 @@ meters at that point: master peak -9.4 / -9.6 dBFS, loudness M -17.2  S -15.8  I
 panel snapshot: ...\dawlab_output\l14_app_snapshot_panel.png (drum compressor, gain reduction 12.1 dB)
 ```
 
-ctest 以 `l14_app_snapshot`（label `example`）執行它。本頁頂端的圖片就是那個檔案。它顯示 playhead 位於 bar 2 beat 3——你*聽到*的位置：snapshot 會播放到 transport 超過該位置 752 個 sample（mix latency）為止，見 Step 13——meter 有訊號（第二行的數字就是 transport bar 與 master 區段所顯示的）、master spectrum，以及狀態列中的 "No audio device (offline)"。Transport bar 中的 CPU 數字（這次執行為 77 %，會變動）是誠實的，但在這裡的意義略有不同：`simulatePlayback()` 以最快速度 render，所以它是這個 Debug build 的「render 所花時間 / 所 render audio 的長度」。
+ctest 以 `l14_app_snapshot`（label `example`）執行它。本頁頂端的圖片就是那個檔案。它顯示 playhead 位於 bar 2 beat 3——你*聽到*的位置：snapshot 會播放到 transport 超過該位置 752 個 sample（mix latency）為止，見 Step 13——meter 有訊號（第二行的數字就是 transport bar 與 master 區段所顯示的）、master spectrum，以及狀態列中的 "No audio device (offline)"。Transport bar 中的 CPU 數字（這次執行為 72 %，會變動）是誠實的，但在這裡的意義略有不同：`simulatePlayback()` 以最快速度 render，所以它是這個 Debug build 的「render 所花時間 / 所 render audio 的長度」。
 
 ## 換你動手
 

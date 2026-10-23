@@ -77,8 +77,9 @@ snapshot，所以這裡你直接在完成版的 app 裡作業：每個「Your tu
   （小節、拍、tick）- 並在兩者之間精確換算；
 - 以 **sample 精度**把音訊 **clip** 放到 timeline 上，附帶 clip gain 與 fade，並用**loop** 播放，
   而且 loop 的結尾可以落在一個 audio block 的中間；
-- 建立一個 **8 軌 mixer**，具備 fader、pan law、mute / solo 邏輯、送往兩條
-  **FX bus** 的 **pre/post-fader send**、一條 master bus，以及 **meter**（peak、RMS，以及來自第 11 章的 LUFS）；
+- 建立一個 **8 軌 mixer**，具備 fader、pan law、mute / solo 邏輯、**mono 與 stereo track**
+  （像 Cubase 一樣：mono track 在單一 channel 上執行 insert 並以 pan law 定位，stereo track 保留聲像並以
+  balance 調整）、送往兩條 **FX bus** 的 **pre/post-fader send**、一條 master bus，以及 **meter**（peak、RMS，以及來自第 11 章的 LUFS）；
 - 把第 01-12 章的**全部十九個 effect DSP class** 包在同一個 `InsertEffect` interface 後面，
   並提供**自我描述的參數 API**，讓 UI 可以自動產生旋鈕；
 - 從另一條 thread 修改執行中的 mix，**不用 lock、也不在 audio thread 上配置記憶體**：
@@ -139,8 +140,8 @@ DAW 是一個 concurrent 程式，有一條鐵律：**audio thread** 必須在�
 ```mermaid
 flowchart LR
     subgraph T["8 tracks"]
-        C1["clips 1"] --> S1["inserts -> PDC -> mute/solo -> fader x pan"]
-        C8["clips 8"] --> S8["inserts -> PDC -> mute/solo -> fader x pan"]
+        C1["clips 1 (mono track: fold to 1 channel)"] --> S1["inserts -> PDC -> mute/solo -> fader x pan law"]
+        C8["clips 8 (stereo track)"] --> S8["inserts -> PDC -> mute/solo -> fader x balance"]
     end
     S1 -- "post-fader send" --> BA["Bus A: inserts (reverb) -> PDC -> fader"]
     S8 -- "pre-fader send" --> BB["Bus B: inserts (delay) -> PDC -> fader"]
@@ -285,10 +286,17 @@ $$
 
 pan 的過程中聲學功率保持不變；在中央時每一側得到
 $`\cos(\pi/4) = 0.7071`$（-3.01 dB）。第 01 章的 `dsp::Panner::computeGains` 也提供
-**linear** law（中央 -6.02 dB，響度會凹下去）與 **-4.5 dB** 的折衷方案。Track 使用
-pan law；bus 與 master 承載的已經是 stereo mix，所以它們使用 **balance**：中央 = unity，
+**linear** law（中央 -6.02 dB，響度會凹下去）與 **-4.5 dB** 的折衷方案。Mono track 使用
+pan law；stereo track、bus 與 master 承載的已經是 stereo 聲像，所以它們使用 **balance**：中央 = unity，
 往右轉只會衰減左側，$`g_L = \min(1, 1-p)`$、$`g_R = \min(1, 1+p)`$。否則
 master 在預設設定下就會把整個 mix 壓低 3 dB。
+
+Track 的 **format**（`TrackFormat::Mono` / `Stereo`，Step 4）決定它使用兩者中的哪一個，以及它的 insert
+看到幾個 channel：mono track 把 clip fold 成 $`(L+R)/2`$，在單一 channel 上執行 insert 與 PDC，再在
+pan law 之前複製到兩側；stereo track 則全部在兩個 channel 上執行。載入檔案時會像 Cubase 一樣，依它的
+channel 數選擇 format（Step 18）。因此同一個 mono 檔案在 stereo track 上中央會大聲 3.01 dB，而會產生
+stereo 的 effect（chorus spread、寬廣的 reverb）在 mono track 上會塌縮成 mono。第 01 章關於
+[pan law 與 balance](../01-gain/README.zh-TW.md) 的理論段落解釋了這兩種控制為什麼不同。
 
 | 設定 | $`g_L`$ | $`g_R`$ |
 |---|---|---|
@@ -297,6 +305,7 @@ master 在預設設定下就會把整個 mix 壓低 3 dB。
 | pan 完全向左 | 1 | 0 |
 | pan +0.5、fader -6 dB | 0.1918 (-14.34 dB) | 0.4630 (-6.69 dB) |
 | balance 模式、置中 | 1 | 1 |
+| balance +0.5 | 0.5 | 1 |
 
 ### 3.4 加總、mute 與 solo
 
@@ -436,7 +445,7 @@ turn -> verify -> what you learned**。Step 1-10 建立 engine（不需 JUCE）�
 | 1 | [docs/step-01-skeleton.zh-TW.md](docs/step-01-skeleton.zh-TW.md) | 專案骨架、`Engine`、`processBlock(AudioBlock)` | `step01-skeleton`：`Engine::processBlock`、`processChunk` | `Engine.h`、`Constants.h`、`CMakeLists.txt` | `l14_hello_engine` |
 | 2 | [docs/step-02-transport.zh-TW.md](docs/step-02-transport.zh-TW.md) | play / stop / seek / loop / tempo、bars:beats | `step02-transport`：`barsBeatsToSamples`、`samplesToBarsBeats`、`Transport::advance` | `Transport.h` | `l14_test_timeline`、`l14_transport_clips` |
 | 3 | [docs/step-03-clips.zh-TW.md](docs/step-03-clips.zh-TW.md) | sample 精度的 clip、clip gain、fade | `step03-clips`：`clipFadeAt`、`renderClip` | `Clip.h`、`Track.h` | `l14_test_timeline`、`l14_transport_clips` |
-| 4 | [docs/step-04-mixer.zh-TW.md](docs/step-04-mixer.zh-TW.md) | 8 軌 mixer、fader / pan / mute / solo、master、meter | `step04-mixer`：`computeStripGains`、`isTrackAudible`、`Mixer::processTrack` | `ChannelStrip.h`、`Mixer.h` | `l14_test_mixer` |
+| 4 | [docs/step-04-mixer.zh-TW.md](docs/step-04-mixer.zh-TW.md) | 8 軌 mixer、fader / pan / mute / solo、mono / stereo track、master、meter | `step04-mixer`：`computeStripGains`、`isTrackAudible`、`Mixer::processTrack` | `ChannelStrip.h`、`Track.h`、`Mixer.h` | `l14_test_mixer`、`l14_test_track_format` |
 | 5 | [docs/step-05-insert-effects.zh-TW.md](docs/step-05-insert-effects.zh-TW.md) | `InsertEffect`、參數 API、19 個 adapter、factory | `step05-insert-effects`：`ParameterInfo` taper、`EffectBase` dirty mask、`InsertChain::process` | `InsertEffect.h`、`EffectBase.h`、`Effects.h` | `l14_test_effects`、`l14_effect_catalog` |
 | 6 | [docs/step-06-sends-buses.zh-TW.md](docs/step-06-sends-buses.zh-TW.md) | 2 條 FX bus、pre/post-fader send | `step06-sends-buses`：`addSend`、兩種 send 取樣點 | `ChannelStrip.h`、`Mixer.h` | `l14_test_mixer` |
 | 7 | [docs/step-07-commands.zh-TW.md](docs/step-07-commands.zh-TW.md) | lock-free command queue、garbage queue | `step07-commands`：`SpscQueue::push` / `pop`、`Engine::applyCommands` | `SpscQueue.h`、`Commands.h`、`Engine.h` | `l14_test_commands` |
@@ -487,7 +496,8 @@ unit test 帶有 ctest label `test`。程式會輸出到 `build/bin/Debug/`，WA
 | `l14_test_block_invariance` | test | 512 vs 64 vs 隨機 block size | - |
 | `l14_test_realtime_safety` | test | audio thread 上不做配置、concurrency | - |
 | `l14_test_demo_song` | test | `DemoSong.h`（app 的 demo song 資料）能重現 `l14_render_song` 的報告 | - |
-| `l14_ex2_solution` ... `l14_ex5_solution` | solution | 習題 2-5 | `l14_ex4_project.json` |
+| `l14_test_track_format` | test | mono / stereo track：pan mode、mono fold + pan law、balance 保留聲像、+3.01 dB、全部 19 個 effect 在單一 channel 上執行、chorus 塌縮 | - |
+| `l14_ex2_solution` ... `l14_ex5_solution`、`l14_ex14_solution` | solution | 習題 2-5 與 14 | `l14_ex4_project.json` |
 | `l14_step01_solution` ... `l14_step10_solution` | solution | Step 1-10 跟著做的 snapshot（`steps/`），各自只檢查自己的 step | `l14_step01.wav`、`l14_step09.wav` |
 | `l14_step01_starter` ... `l14_step10_starter` | （只 build） | 同樣的 snapshot，但帶有你的 TODO；在 step 完成前會印出 `[FAIL]` | - |
 
@@ -519,7 +529,8 @@ device。沒有 audio device 時，app 會以 offline 模式執行（狀態列�
 
 `l14_render_song` 用產生出來的素材建立 120 BPM、A minor 的 8 個小節（鼓 loop、撥奏
 bass、琶音、detuned pad、經過 filter 的 noise「風聲」、fuzzy lead、shaker，以及一下經過
-convolution reverb 的敲擊），使用 19 個 effect 中的 17 個（除了 Filter 與 AmpChain 之外全部），送到一條 reverb bus 與一條 ping-pong delay
+convolution reverb 的敲擊），放在五個 mono track 與三個 stereo track 上（Pad、Wind，以及為了讓
+convolution reverb 保持寬廣的 Hits），使用 19 個 effect 中的 17 個（除了 Filter 與 AmpChain 之外全部），送到一條 reverb bus 與一條 ping-pong delay
 bus，用 compressor 與 -1 dBFS limiter 在 master 上做 glue，然後 bounce 出 19 秒。它在
 作者的機器上（Debug build）的報告如下：
 
@@ -592,6 +603,8 @@ Release build 印出相同的報告，並在 1.38 秒內 render 完這 19 秒（
 | clip 晚了或早了一個 block | 位置取自*前一個* block，或 seek 在 block 中途才套用 | `Transport::advance()` 在 block 開頭套用 seek |
 | Loop「卡頓」或跳過幾個 sample | loop 結尾只在 block 邊界處理 | timeline segment：block 在 loop 結尾處被切開 |
 | 整體小了 3 dB | pan law 被套用在 master（stereo）bus 上 | bus 與 master 使用 `PanMode::Balance` |
+| 切換 Mono / Stereo 之後某個 track 大聲或小聲了 3 dB | pan law（中央 x0.7071）與 balance（中央 x1）的差別 | 這是預期的：把 fader 修正 3 dB（Step 4、`l14_test_track_format`） |
+| 某個 track 上的 chorus / stereo delay / 寬廣 reverb 聽起來是 mono | 這是 mono track：它的 insert 在單一 channel 上執行 | 把它改成 stereo track（format 按鈕，Step 15） |
 | 加入 effect 後出現 flam、空洞 / 相位怪異的聲音 | 缺少 PDC 或 PDC 錯誤 | `Mixer::updateLatencies()`、`l14_pdc_demo` |
 | UI 忙碌時出現 glitch | audio thread 上有 lock 或配置 | `l14_test_realtime_safety`；絕不要在 `processBlock` 中呼叫 `new`、`std::vector::push_back`、`printf` 或 mutex |
 | 移除 effect 後過一陣子 crash | UI 刪除了 audio thread 還在使用的 effect | 走 `removeInsert()` + `collectGarbage()` |
@@ -613,6 +626,8 @@ Release build 印出相同的報告，並在 1.38 秒內 render 完這 19 秒（
 請見 [exercises/README.zh-TW.md](exercises/README.zh-TW.md)。本章的習題集是 Exercise 1-7，內容關於 engine（概念、
 計算、實作與設計）：automation envelope、把專案存成與載入 JSON、
 帶 crossfade 的 clip 移動、一個 input 錄音設計，以及一個 time-stretch 設計題。
+Exercise 14（engine，不用 JUCE）讓你寫出 track 中與 format 有關的處理——fold、mono insert、pan law 與
+balance——並量測 3.01 dB 與塌縮的 chorus。
 Exercise 8-13 是擴充應用程式的**選做專案**（各自附有 starter 與
 可自我檢查的 solution，以 `-Juce` build）：在 GUI 中繪製的 automation lane、從 audio input 錄音到 track、
 帶 polyphonic synthesizer 的 MIDI track、File 選單中的專案儲存 / 開啟、第三條 FX bus，

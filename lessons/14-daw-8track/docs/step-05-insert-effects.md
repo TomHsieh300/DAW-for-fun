@@ -143,6 +143,24 @@ processed in order, skips bypassed effects, and sums latencies (effects in serie
 delays). Structural changes are made only by the audio thread (Step 7); the atomics just let the UI
 *look* at the chain without a data race.
 
+### Inserts on a mono track
+
+Every effect is prepared for `kNumChannels = 2`, but on a **mono track** (Step 4) the mixer hands
+the chain a *one-channel* block: `tb.getChannelSubset(0, 1)` after folding the clips to
+$`(L+R)/2`$. The chain and the PDC delay simply process the channels the block has, so
+`process()` must work for any channel count up to the prepared one. All nineteen adapters hand the
+block to a chapter 01-12 DSP class that processes the channels the block has and never touches one
+that is not there; `l14_test_track_format` runs every effect on a one-channel block to make sure. Running in mono also
+halves the insert CPU of such a track.
+
+The price: an effect that *creates* stereo has nowhere to put it. A chorus with Stereo Spread, a
+stereo delay or a wide reverb produce one channel on a mono track, which is then copied to both
+sides - the effect **collapses to mono** (L = R exactly). That is the same trade-off a mono track
+makes in Cubase; to keep an effect's width, put the source on a stereo track. The demo song does
+exactly that with Hits, a mono source on a stereo track so that its convolution reverb insert stays
+wide (Step 9). Hosted VST3 plugins need one more trick, because they were prepared with a stereo
+bus layout: see `VstInsert`'s mono fold in [Step 17](step-17-vst3-inserts.md).
+
 ## The code
 
 | File | Section |
@@ -277,6 +295,18 @@ reverb reports 512 samples (its partition is the next power of two >= the 512-sa
 Saturation, Distortion and AmpChain report a non-zero oversampling latency (31, 36 and 72 samples
 here; the Filter reports 0) and the other 14 effects report 0; the transient shaper's +9 dB attack raises the peak by more than 6 dB.
 
+`l14_test_track_format` (verified) checks the mono-track side of this step: every one of the 19
+effects, prepared for two channels, runs on a one-channel block - finite output, the same latency -
+and a chorus with Stereo Spread 1 is exactly mono (L = R) on a mono track but wide on a stereo
+track (it also checks the Step 4 pan modes):
+
+```
+mono file at the centre: mono track 0.3536, stereo track 0.5000 -> 3.01 dB
+19 of 19 effects run on a one-channel block
+chorus (spread 1): max |L - R| mono track 0.000000, stereo track 0.3279
+[PASS] l14_test_track_format (75 checks passed)
+```
+
 Listen to the catalog: each effect should sound like its chapter promised (the order and what to
 listen for are in the comment at the top of `examples/effect_catalog.cpp`).
 
@@ -288,3 +318,5 @@ listen for are in the comment at the top of `examples/effect_catalog.cpp`).
 - A per-parameter atomic plus a dirty bit mask hands values from any thread to the audio thread
   with no lock and no queue.
 - Adapters depend only on the documented API contract and *ask* the DSP object for its latency.
+- An insert must accept fewer channels than it was prepared for: on a mono track it gets one, and
+  whatever stereo it would create is lost.

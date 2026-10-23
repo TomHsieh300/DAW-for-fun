@@ -48,8 +48,9 @@ setApplicationCommandManagerToWatch(&commandManager_);   // the menu bar shows s
 3. 透過 `Exporter::renderToFile()` 的 2 秒 export：不是靜音、沒有 NaN、peak <= ceiling——Step 19；
 4. device callback（`AudioHost::processOffline`、512 與 480 個 frame、3 個 output）與 bounce 完全相等——Step 11；
 5. master 上帶有 latency 的 hosted plugin：PDC、逐 bit 相同的 bounce、參數、清理——Step 17；
+   5a. 同一個 plugin 放在 mono 的 drum track 上：`VstInsert` 的 mono fold，bounce 不變 - Step 4、17；
    5b. 當 chapter 13 在同一棵 tree 中建置時：drum 上它真正的 DawLab Compressor VST3，以及最大 latency 的 track 上它的 DawLab Limiter VST3（latency 240）：mix latency +240，bounce 不變；
-6. GUI offline：strip 數量、fader -> engine、solo 按鈕、產生的面板 -> engine、透過 key mapping 的 Space / L、一旦聽到 beat 2 時的 transport 顯示與 playhead（經過 latency 補償：transport position 減去 mix 與 device latency）——Step 12-16、21；
+6. GUI offline：strip 數量、fader -> engine、solo 按鈕、track format 按鈕（Mono -> Stereo -> Mono，pan mode 跟著改變）、產生的面板 -> engine、透過 key mapping 的 Space / L、一旦聽到 beat 2 時的 transport 顯示與 playhead（經過 latency 補償：transport position 減去 mix 與 device latency）——Step 12-16、21；
 7. 切換到 44.1 kHz 的 device 變更：`Engine::prepare()` + `Session::handleSampleRateChange()` 把一個 clip 從 96 000 移到 88 200 個 sample（新 rate 下的 bar 2），並對其 buffer 做 resampling——Step 11；
 8. spectrum 顯示：位於 bin 中心的 sine 出現在它的頻率與電平，對數軸正確——Step 20；
 9. 透過 `MainComponent::exportMixdown()` 的 File > Export mixdown：`ExportJob` thread、被停用的 command、透過 message loop 回傳的結果、19 秒的檔案——Step 19；
@@ -77,24 +78,30 @@ DawLab 8 smoke test (no audio device)
    20 kHz 48k->22.05k alias at 2050 Hz: -122.2 dB below the input
    22.3 kHz 48k->44.1k (transition band) alias at 21800 Hz: -54.3 dB relative to the input
    file 44.1 kHz mono -> 2 channels, 48000 samples at 48 kHz, 1 kHz amplitude 0.5000
+   l14_app_smoke_44k.flac -> 2 channels at 48 kHz, 1 kHz amplitude 0.5000
+   l14_app_smoke_44k.ogg -> 2 channels at 48 kHz, 1 kHz amplitude 0.5049
+   readable formats: *.wav;*.bwf;*.aiff;*.aif;*.flac;*.ogg;*.opus;*.mp3;*.wmv;*.asf;*.wm;*.wma
 2. demo song: 140 clips on 28 distinct buffers, 19 inserts in GUI slots, 0 unknown parameter names,
    mix latency 752 samples
 3. export: ok, 2.00 s, peak -1.00 dBFS, RMS -20.3 dBFS, ...\dawlab_output\l14_app_smoke.wav
-4. device callback, 512-sample blocks, 3 outputs: max |callback - bounce| = 0, CPU load 68.1%
-4. device callback, 480-sample blocks, 3 outputs: max |callback - bounce| = 0, CPU load 81.5%
+4. device callback, 512-sample blocks, 3 outputs: max |callback - bounce| = 0, CPU load 59.8%
+4. device callback, 480-sample blocks, 3 outputs: max |callback - bounce| = 0, CPU load 60.2%
 5. test plugin on the master (latency 100): mix latency 752 -> 852, |with - without| = 0, gain 0.25 -> -6.02 dB, 192 process calls
+5a. test plugin on the mono drum track: |with - without| = 0
 5b. chapter 13's DawLab Compressor not built in this tree: VST3 file test skipped
 5b. chapter 13's DawLab Limiter not built in this tree: VST3 PDC test skipped
+   format button: track 2 Mono -> Stereo -> Mono
+   drag and drop: 2 of 3 dragged files accepted, dropped on track 3
 6. GUI offline: 11 strips, position 1.2.000 (playhead 24000, transport 24752 = + mix latency 752),
    master peak -11.8 dBFS, status "Demo song loaded"
 7. device change 48 -> 44.1 kHz: bass clip 3 moved 96000 -> 88200 samples (bar 2 = 88200)
 8. spectrum view: 996.09 Hz sine at 0.5 -> peak at 996.09 Hz, -6.02 dBFS (-6.02 expected); 632.5 Hz at x = 0.500
 9. GUI export (ExportJob thread): ok, 19.00 s, peak -1.00 dBFS, -15.5 LUFS integrated, latency 752 removed;
-   rendered in 14.0 s while the message loop kept running; status line "Exported ..."
+   rendered in 13.4 s while the message loop kept running; status line "Exported ..."
 10. GUI device change 48 -> 44.1 kHz (loader thread): engine 44100 Hz, transport stopped at once: yes, bass clip 3 96000 -> 88200,
-    converted in 5010 ms with 457 message-loop turns meanwhile, playback resumed: yes, status "Sample rate changed to 44100 Hz: clips converted"
+    converted in 4457 ms with 405 message-loop turns meanwhile, playback resumed: yes, status "Sample rate changed to 44100 Hz: clips converted"
 
-[PASS] l14_app_smoke_test (114 checks passed)
+[PASS] l14_app_smoke_test (121 checks passed)
 ```
 
 （Debug build；CPU 數字與第 9 節的 render 時間隨機器而異；第 6 行的 master peak 與第 9 行的 loudness 取決於 chapter 01-12 的 DSP 實作。所有被精確檢查的東西——長度、latency、零差異——都不會變動。）Exercise 13 對 app 的 18 個 command 加上它自己的 10 個（共 28 個）增加了衝突檢查：預設的 map 沒有衝突。

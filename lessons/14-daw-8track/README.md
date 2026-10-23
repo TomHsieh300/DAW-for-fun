@@ -77,8 +77,10 @@ After working through this chapter you can
   clock (bars, beats, ticks) - and convert between them exactly;
 - place audio **clips** on a timeline with **sample accuracy**, with clip gain and fades, and play
   them with a **loop** whose end falls in the middle of an audio block;
-- build an **8-track mixer** with fader, pan law, mute / solo logic, **pre/post-fader sends** to two
-  **FX buses**, a master bus and **meters** (peak, RMS, LUFS from chapter 11);
+- build an **8-track mixer** with fader, pan law, mute / solo logic, **mono and stereo tracks**
+  (like Cubase: a mono track runs its inserts on one channel and pans with the pan law, a stereo
+  track keeps its image and pans as balance), **pre/post-fader sends** to two **FX buses**, a master
+  bus and **meters** (peak, RMS, LUFS from chapter 11);
 - wrap **all nineteen effect DSP classes** of chapters 01-12 behind one `InsertEffect` interface with a
   **self-describing parameter API**, so that a UI can generate knobs automatically;
 - change a running mix from another thread **without locks and without allocating on the audio
@@ -141,8 +143,8 @@ anything. Everybody else - GUI, file loading, plugin scanning - lives on other t
 ```mermaid
 flowchart LR
     subgraph T["8 tracks"]
-        C1["clips 1"] --> S1["inserts -> PDC -> mute/solo -> fader x pan"]
-        C8["clips 8"] --> S8["inserts -> PDC -> mute/solo -> fader x pan"]
+        C1["clips 1 (mono track: fold to 1 channel)"] --> S1["inserts -> PDC -> mute/solo -> fader x pan law"]
+        C8["clips 8 (stereo track)"] --> S8["inserts -> PDC -> mute/solo -> fader x balance"]
     end
     S1 -- "post-fader send" --> BA["Bus A: inserts (reverb) -> PDC -> fader"]
     S8 -- "pre-fader send" --> BB["Bus B: inserts (delay) -> PDC -> fader"]
@@ -287,10 +289,19 @@ $$
 
 The acoustic power stays constant while you pan; at the centre each side gets
 $`\cos(\pi/4) = 0.7071`$ (-3.01 dB). Chapter 01's `dsp::Panner::computeGains` also offers the
-**linear** law (centre -6.02 dB, a dip in loudness) and the **-4.5 dB** compromise. Tracks use the
-pan law; buses and the master already carry a stereo mix, so they use **balance**: centre = unity,
-turning right only attenuates the left side, $`g_L = \min(1, 1-p)`$, $`g_R = \min(1, 1+p)`$. Otherwise
-the master would lower the whole mix by 3 dB at its default setting.
+**linear** law (centre -6.02 dB, a dip in loudness) and the **-4.5 dB** compromise. Mono tracks use
+the pan law; stereo tracks, buses and the master already carry a stereo image, so they use
+**balance**: centre = unity, turning right only attenuates the left side, $`g_L = \min(1, 1-p)`$,
+$`g_R = \min(1, 1+p)`$. Otherwise the master would lower the whole mix by 3 dB at its default
+setting.
+
+A track's **format** (`TrackFormat::Mono` / `Stereo`, Step 4) decides which of the two it uses, and
+how many channels its inserts see: a mono track folds its clips to $`(L+R)/2`$, runs inserts and PDC
+on one channel and copies it to both sides before the pan law; a stereo track runs everything on two
+channels. Loading a file chooses the format from its channel count, as Cubase does (Step 18). The
+same mono file is therefore 3.01 dB louder at the centre on a stereo track, and a stereo-generating
+effect (chorus spread, a wide reverb) collapses to mono on a mono track. Chapter 01's theory section
+on [pan law and balance](../01-gain/README.md) explains why the two controls differ.
 
 | setting | $`g_L`$ | $`g_R`$ |
 |---|---|---|
@@ -299,6 +310,7 @@ the master would lower the whole mix by 3 dB at its default setting.
 | pan hard left | 1 | 0 |
 | pan +0.5, fader -6 dB | 0.1918 (-14.34 dB) | 0.4630 (-6.69 dB) |
 | balance mode, centre | 1 | 1 |
+| balance +0.5 | 0.5 | 1 |
 
 ### 3.4 Summing, mute and solo
 
@@ -438,7 +450,7 @@ run its check; **reference** = read the main files and run the reference checks.
 | 1 | [docs/step-01-skeleton.md](docs/step-01-skeleton.md) | project skeleton, `Engine`, `processBlock(AudioBlock)` | `step01-skeleton`: `Engine::processBlock`, `processChunk` | `Engine.h`, `Constants.h`, `CMakeLists.txt` | `l14_hello_engine` |
 | 2 | [docs/step-02-transport.md](docs/step-02-transport.md) | play / stop / seek / loop / tempo, bars:beats | `step02-transport`: `barsBeatsToSamples`, `samplesToBarsBeats`, `Transport::advance` | `Transport.h` | `l14_test_timeline`, `l14_transport_clips` |
 | 3 | [docs/step-03-clips.md](docs/step-03-clips.md) | sample-accurate clips, clip gain, fades | `step03-clips`: `clipFadeAt`, `renderClip` | `Clip.h`, `Track.h` | `l14_test_timeline`, `l14_transport_clips` |
-| 4 | [docs/step-04-mixer.md](docs/step-04-mixer.md) | 8-track mixer, fader / pan / mute / solo, master, meters | `step04-mixer`: `computeStripGains`, `isTrackAudible`, `Mixer::processTrack` | `ChannelStrip.h`, `Mixer.h` | `l14_test_mixer` |
+| 4 | [docs/step-04-mixer.md](docs/step-04-mixer.md) | 8-track mixer, fader / pan / mute / solo, mono / stereo tracks, master, meters | `step04-mixer`: `computeStripGains`, `isTrackAudible`, `Mixer::processTrack` | `ChannelStrip.h`, `Track.h`, `Mixer.h` | `l14_test_mixer`, `l14_test_track_format` |
 | 5 | [docs/step-05-insert-effects.md](docs/step-05-insert-effects.md) | `InsertEffect`, parameter API, 19 adapters, factory | `step05-insert-effects`: `ParameterInfo` tapers, `EffectBase` dirty mask, `InsertChain::process` | `InsertEffect.h`, `EffectBase.h`, `Effects.h` | `l14_test_effects`, `l14_effect_catalog` |
 | 6 | [docs/step-06-sends-buses.md](docs/step-06-sends-buses.md) | 2 FX buses, pre/post-fader sends | `step06-sends-buses`: `addSend`, the two send taps | `ChannelStrip.h`, `Mixer.h` | `l14_test_mixer` |
 | 7 | [docs/step-07-commands.md](docs/step-07-commands.md) | lock-free command queue, garbage queue | `step07-commands`: `SpscQueue::push` / `pop`, `Engine::applyCommands` | `SpscQueue.h`, `Commands.h`, `Engine.h` | `l14_test_commands` |
@@ -489,7 +501,8 @@ The unit tests carry the ctest label `test`. Programs land in `build/bin/Debug/`
 | `l14_test_block_invariance` | test | 512 vs 64 vs random block sizes | - |
 | `l14_test_realtime_safety` | test | no allocation on the audio thread, concurrency | - |
 | `l14_test_demo_song` | test | `DemoSong.h` (the app's demo song as data) reproduces the `l14_render_song` report | - |
-| `l14_ex2_solution` ... `l14_ex5_solution` | solution | exercises 2-5 | `l14_ex4_project.json` |
+| `l14_test_track_format` | test | mono / stereo tracks: pan mode, mono fold + pan law, balance keeps the image, +3.01 dB, all 19 effects on one channel, chorus collapse | - |
+| `l14_ex2_solution` ... `l14_ex5_solution`, `l14_ex14_solution` | solution | exercises 2-5 and 14 | `l14_ex4_project.json` |
 | `l14_step01_solution` ... `l14_step10_solution` | solution | the build-along snapshots of Steps 1-10 (`steps/`), each checking only its own step | `l14_step01.wav`, `l14_step09.wav` |
 | `l14_step01_starter` ... `l14_step10_starter` | (build only) | the same snapshots with your TODOs; they print `[FAIL]` until the step is done | - |
 
@@ -521,7 +534,8 @@ device. Without an audio device the app runs in offline mode (status line).
 
 `l14_render_song` builds 8 bars at 120 BPM in A minor from generated material (drum loop, plucked
 bass, arpeggio, detuned pad, filtered-noise "wind", fuzzy lead, shaker, a hit through a
-convolution reverb), uses 17 of the 19 effects (all but Filter and AmpChain), sends to a reverb bus and a ping-pong delay
+convolution reverb) on five mono and three stereo tracks (Pad, Wind, and Hits so that its
+convolution reverb stays wide), uses 17 of the 19 effects (all but Filter and AmpChain), sends to a reverb bus and a ping-pong delay
 bus, glues the master with a compressor and a -1 dBFS limiter, and bounces 19 s. Its report on the
 author's machine (Debug build):
 
@@ -594,6 +608,8 @@ In the application (stage 2):
 | Clip one block late / early | position taken from the *previous* block, or the seek applied mid-block | `Transport::advance()` applies seeks at the block start |
 | Loop "stutters" or skips a few samples | the loop end handled only at block boundaries | timeline segments: the block is split at the loop end |
 | Everything 3 dB too quiet | pan law applied on the master (stereo) bus | buses and master use `PanMode::Balance` |
+| A track 3 dB louder / quieter after switching Mono / Stereo | pan law (centre x0.7071) vs balance (centre x1) | expected: correct the fader by 3 dB (Step 4, `l14_test_track_format`) |
+| A chorus / stereo delay / wide reverb sounds mono on one track | the track is mono: its inserts run on one channel | make it a stereo track (format button, Step 15) |
 | Flams, hollow / phasey sound when an effect is added | missing or wrong PDC | `Mixer::updateLatencies()`, `l14_pdc_demo` |
 | Glitches when the UI is busy | lock or allocation on the audio thread | `l14_test_realtime_safety`; never call `new`, `std::vector::push_back`, `printf` or a mutex in `processBlock` |
 | Crash a while after removing an effect | the UI deleted an effect the audio thread still used | go through `removeInsert()` + `collectGarbage()` |
@@ -615,6 +631,8 @@ In the application (stage 2):
 See [exercises/README.md](exercises/README.md). The chapter's exercise set is Exercises 1-7, about the engine (concept,
 calculation, implementation and design): automation envelopes, saving and loading projects as JSON,
 clip moves with crossfades, an input-recording design and a time-stretch design question.
+Exercise 14 (engine, no JUCE) has you write a track's format-dependent processing - fold, mono
+inserts, pan law vs balance - and measure the 3.01 dB and a collapsing chorus.
 Exercises 8-13 are **optional projects** that extend the application (each with a starter and a
 self-checking solution, built with `-Juce`): an automation lane drawn in the GUI, recording from the audio input into a track, a
 MIDI track with a polyphonic synthesizer, project save / open in the File menu, a third FX bus,

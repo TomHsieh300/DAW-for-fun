@@ -67,10 +67,12 @@ It builds the real classes and checks them with `DAWLAB_CHECK`:
    bounce exactly - Step 11;
 5. a hosted plugin with latency on the master: PDC, bit-identical bounce, parameter, cleanup -
    Step 17;
+   5a. the same plugin on the mono drum track: `VstInsert`'s mono fold, bounce unchanged - Steps 4, 17;
    5b. when chapter 13 was built in the same tree: its real DawLab Compressor VST3 on the drums,
    and its DawLab Limiter VST3 (latency 240) on the track with the largest latency: mix latency
    +240, bounce unchanged;
-6. the GUI offline: strip count, fader -> engine, solo button, generated panel -> engine, Space /
+6. the GUI offline: strip count, fader -> engine, solo button, the track format button (Mono ->
+   Stereo -> Mono, pan mode follows), generated panel -> engine, Space /
    L through the key mappings, the transport display and the playhead once beat 2 is heard
    (latency-compensated: transport position minus mix and device latency) - Steps 12-16, 21.
 7. a device change to 44.1 kHz: `Engine::prepare()` + `Session::handleSampleRateChange()` move a
@@ -118,24 +120,30 @@ DawLab 8 smoke test (no audio device)
    20 kHz 48k->22.05k alias at 2050 Hz: -122.2 dB below the input
    22.3 kHz 48k->44.1k (transition band) alias at 21800 Hz: -54.3 dB relative to the input
    file 44.1 kHz mono -> 2 channels, 48000 samples at 48 kHz, 1 kHz amplitude 0.5000
+   l14_app_smoke_44k.flac -> 2 channels at 48 kHz, 1 kHz amplitude 0.5000
+   l14_app_smoke_44k.ogg -> 2 channels at 48 kHz, 1 kHz amplitude 0.5049
+   readable formats: *.wav;*.bwf;*.aiff;*.aif;*.flac;*.ogg;*.opus;*.mp3;*.wmv;*.asf;*.wm;*.wma
 2. demo song: 140 clips on 28 distinct buffers, 19 inserts in GUI slots, 0 unknown parameter names,
    mix latency 752 samples
 3. export: ok, 2.00 s, peak -1.00 dBFS, RMS -20.3 dBFS, ...\dawlab_output\l14_app_smoke.wav
-4. device callback, 512-sample blocks, 3 outputs: max |callback - bounce| = 0, CPU load 68.1%
-4. device callback, 480-sample blocks, 3 outputs: max |callback - bounce| = 0, CPU load 81.5%
+4. device callback, 512-sample blocks, 3 outputs: max |callback - bounce| = 0, CPU load 59.8%
+4. device callback, 480-sample blocks, 3 outputs: max |callback - bounce| = 0, CPU load 60.2%
 5. test plugin on the master (latency 100): mix latency 752 -> 852, |with - without| = 0, gain 0.25 -> -6.02 dB, 192 process calls
+5a. test plugin on the mono drum track: |with - without| = 0
 5b. chapter 13's DawLab Compressor not built in this tree: VST3 file test skipped
 5b. chapter 13's DawLab Limiter not built in this tree: VST3 PDC test skipped
+   format button: track 2 Mono -> Stereo -> Mono
+   drag and drop: 2 of 3 dragged files accepted, dropped on track 3
 6. GUI offline: 11 strips, position 1.2.000 (playhead 24000, transport 24752 = + mix latency 752),
    master peak -11.8 dBFS, status "Demo song loaded"
 7. device change 48 -> 44.1 kHz: bass clip 3 moved 96000 -> 88200 samples (bar 2 = 88200)
 8. spectrum view: 996.09 Hz sine at 0.5 -> peak at 996.09 Hz, -6.02 dBFS (-6.02 expected); 632.5 Hz at x = 0.500
 9. GUI export (ExportJob thread): ok, 19.00 s, peak -1.00 dBFS, -15.5 LUFS integrated, latency 752 removed;
-   rendered in 14.0 s while the message loop kept running; status line "Exported ..."
+   rendered in 13.4 s while the message loop kept running; status line "Exported ..."
 10. GUI device change 48 -> 44.1 kHz (loader thread): engine 44100 Hz, transport stopped at once: yes, bass clip 3 96000 -> 88200,
-    converted in 5010 ms with 457 message-loop turns meanwhile, playback resumed: yes, status "Sample rate changed to 44100 Hz: clips converted"
+    converted in 4457 ms with 405 message-loop turns meanwhile, playback resumed: yes, status "Sample rate changed to 44100 Hz: clips converted"
 
-[PASS] l14_app_smoke_test (114 checks passed)
+[PASS] l14_app_smoke_test (121 checks passed)
 ```
 
 (Debug build; the CPU figures and the render time in section 9 vary with the machine; the master
