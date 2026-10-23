@@ -113,10 +113,10 @@ Self-check：門開時（0.02–0.10 s）gated ≈ ungated（差 < 1 dB）；門
 
 `measureRt60()` 用 windowed RMS 的 envelope 做回歸，但單一次 impulse response 的 envelope 起伏很大。Schroeder（1965）的方法是對 IR 的平方**從尾巴往回積分**：
 
-$$
+```math
 \mathrm{EDC}[n] = \sum_{k=n}^{N-1} h[k]^2,\qquad
 \mathrm{EDC}_{\mathrm{dB}}[n] = 10\log_{10}\frac{\mathrm{EDC}[n]}{\mathrm{EDC}[0]}
-$$
+```
 
 1. 完成 `schroederDecayDb()`：一次 O(N) 的迴圈（從尾巴往回累加）。
 2. 完成 `estimateRt60()`：在 EDC_dB 介於 −5 與 −25 dB 的區段，對 (t, dB) 做最小平方法線性回歸，RT60 = −60 / slope（T20）。

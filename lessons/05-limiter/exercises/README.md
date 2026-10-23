@@ -67,9 +67,9 @@ Starter code: `starter/ex5_soft_clipper.cpp`
 
 Complete `softClip(x, t)`:
 
-$$
+```math
 y = \begin{cases} x & |x| \le t \\ \mathrm{sign}(x)\,\bigl[\,t + (1-t)\tanh\!\frac{|x|-t}{1-t}\,\bigr] & |x| > t \end{cases}
-$$
+```
 
 Requirements: the linear region is left completely untouched, continuous with continuous slope (C¹) at $`t`$, $`|y| \le 1`$, odd symmetry, monotonically increasing. The starter code compares the THD and harmonics (H2–H5) of the clipper and the limiter using a 1 kHz +6 dBFS sine, then compares peak / RMS using the drum loop at +12 dB, and writes WAV files for you to listen to.
 

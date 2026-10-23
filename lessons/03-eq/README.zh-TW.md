@@ -67,9 +67,9 @@ EQ 做的事情一句話就講完：**對不同頻率給不同的 gain**。數�
 
 **LowCut / HighCut 的 slope。** 一顆 2 階 highpass / lowpass 在遠離 cutoff 的地方是 $`|H| \propto (f/f_c)^{\pm 2}`$，也就是每 octave 變化 $`20\log_{10} 2^2 \approx 12`$ dB，所以叫 12 dB/oct。要 24 dB/oct 就要 4 階。直覺做法是「兩顆 Q = 0.707 串接」，但那樣在 $`f_c`$ 是 −6 dB，而且轉角變圓。正確做法是 **4 階 Butterworth**：它的 4 個極點平均分佈在 s 平面左半圓上（每 45° 一個），拆成兩組共軛對，兩顆 biquad 的 Q 分別是
 
-$$
+```math
 Q_k = \frac{1}{2\cos\left(\frac{(2k+1)\pi}{2N}\right)},\quad N = 4:\ Q_0 = 0.5412,\ Q_1 = 1.3066
-$$
+```
 
 （第 02 章 `butterworthQ(order, stage)`）。每一顆在 $`f_c`$ 都不是 −3 dB——Q = 0.5412 那顆是 −5.33 dB、Q = 1.3066 那顆是 +2.32 dB——但兩者相加剛好 −3.01 dB（練習 6 的輸出）。`ParametricEq` 用 `EqSlope::Db24` 選這個模式，此時 band 的 `q` 被忽略。
 
@@ -83,38 +83,38 @@ $$
 
 **類比原型。** 以 $`\Omega = f/f_0`$ 表示正規化頻率，二階 bandpass 原型是
 
-$$
+```math
 H_{BP}(s) = \frac{s/Q}{s^2 + s/Q + 1},\qquad s = j\Omega
-$$
+```
 
-$$
+```math
 |H_{BP}(j\Omega)|^2 = \frac{(\Omega/Q)^2}{(1-\Omega^2)^2 + (\Omega/Q)^2}
-$$
+```
 
 −3 dB（$`|H|^2 = 1/2`$）的條件是 $`(1-\Omega^2)^2 = (\Omega/Q)^2`$，也就是 $`|\Omega - 1/\Omega| = 1/Q`$。解這個二次方程：
 
-$$
+```math
 \Omega^2 \mp \frac{\Omega}{Q} - 1 = 0 \quad\Rightarrow\quad \Omega_{1,2} = \sqrt{1 + \frac{1}{4Q^2}} \mp \frac{1}{2Q}
-$$
+```
 
 兩個重要的性質直接從根與係數的關係讀出來：
 
-$$
+```math
 \Omega_1 \Omega_2 = 1 \quad(\text{幾何對稱：} f_1 f_2 = f_0^2),\qquad \Omega_2 - \Omega_1 = \frac{1}{Q} \quad(f_2 - f_1 = f_0/Q)
-$$
+```
 
 **換成 octave。** 頻寬 $`N`$ octave 的意思是 $`f_2/f_1 = 2^N`$。由幾何對稱，$`\Omega_2 = 2^{N/2}`$、$`\Omega_1 = 2^{-N/2}`$，代入 $`\Omega_2 - \Omega_1 = 1/Q`$：
 
-$$
+```math
 \frac{1}{Q} = 2^{N/2} - 2^{-N/2} = 2\sinh\left(\frac{N\ln 2}{2}\right)
-$$
+```
 
 所以
 
-$$
+```math
 \boxed{Q = \frac{1}{2\sinh(N\ln 2 / 2)} = \frac{2^{N/2}}{2^N - 1}}\qquad
 \boxed{N = \frac{2}{\ln 2}\,\mathrm{asinh}\left(\frac{1}{2Q}\right)}
-$$
+```
 
 常用值（練習 2 的輸出）：
 
@@ -130,45 +130,45 @@ $$
 
 RBJ cookbook 的 peaking EQ 類比原型是
 
-$$
+```math
 H(s) = \frac{s^2 + s\,\dfrac{A}{Q} + 1}{s^2 + s\,\dfrac{1}{AQ} + 1}
-$$
+```
 
 逐一看三個位置：
 
 1. **遠離中心**（$`s \to 0`$ 或 $`s \to \infty`$）：分子分母都趨近 1 或 $`s^2`$，$`|H| \to 1`$，0 dB。✔
 2. **中心** $`s = j`$：$`s^2 + 1 = 0`$，剩下 $`\dfrac{jA/Q}{j/(AQ)} = A^2`$。所以**中心的線性增益是 $`A^2`$**。要中心是 $`g`$ dB，就要 $`20\log_{10}A^2 = g`$，也就是
 
-$$
+```math
 A = 10^{g/40}
-$$
+```
 
    這就是 $`/40`$ 的由來：$`A`$ 是「中心增益的平方根」。
 3. **頻寬邊緣**（上一節的 $`|1-\Omega^2| = \Omega/Q`$）：
 
-$$
+```math
 |H|^2 = \frac{(1-\Omega^2)^2 + (\Omega A/Q)^2}{(1-\Omega^2)^2 + (\Omega/(AQ))^2} = \frac{(\Omega/Q)^2(1 + A^2)}{(\Omega/Q)^2(1 + A^{-2})} = A^2
-$$
+```
 
    所以邊緣的增益是 $`|H| = A`$，**剛好是中心 dB 的一半**。這就是 2.4 節說的「中點增益」頻寬——它跟 bandpass 的 −3 dB 點是同一組頻率。
 
 為什麼要這樣參數化？看分子和分母：阻尼項分別是 $`A/Q`$ 與 $`1/(AQ)`$。把 $`g`$ 換成 $`-g`$（$`A \to 1/A`$），分子和分母**剛好互換**：
 
-$$
+```math
 H_{-g}(s) = \frac{1}{H_{+g}(s)}
-$$
+```
 
 也就是 **+6 dB 和 −6 dB（同頻率、同 Q）串接會完全抵銷**——不只 magnitude，連相位都還原。這是對稱、好用的性質：boost 和 cut 的曲線形狀是鏡像。練習 3 用數字驗證：+6 dB 與 −6 dB @ 1 kHz、Q = 1 串接，20 Hz–20 kHz 最大偏差 $`10^{-13}`$ dB。
 
 **數位化。** 第 02 章講過：RBJ 用 bilinear transform（$`s \leftarrow \frac{1}{\tan(\omega_0/2)}\cdot\frac{1-z^{-1}}{1+z^{-1}}`$，在 $`\omega_0`$ 處 prewarp），整理後得到
 
-$$
+```math
 \begin{aligned}
 \omega_0 &= 2\pi f_0/f_s,\quad \alpha = \frac{\sin\omega_0}{2Q},\quad A = 10^{g/40}\\
 b_0 &= 1 + \alpha A,\quad b_1 = -2\cos\omega_0,\quad b_2 = 1 - \alpha A\\
 a_0 &= 1 + \alpha / A,\quad a_1 = -2\cos\omega_0,\quad a_2 = 1 - \alpha / A
 \end{aligned}
-$$
+```
 
 （全部除以 $`a_0`$ 正規化，`BiquadCoefficients::makePeak` 就是這幾行。）手算一個例子（練習 1）：$`f_s = 48`$ kHz、$`f_0 = 12`$ kHz（$`\omega_0 = \pi/2`$，$`\cos = 0`$、$`\sin = 1`$）、Q = 1、+6 dB：$`\alpha = 0.5`$、$`A = 1.4125`$，正規化後 $`b_0 = 1.26019`$、$`b_2 = 0.21694`$、$`a_2 = 0.47713`$、$`b_1 = a_1 = 0`$。
 
@@ -176,9 +176,9 @@ $$
 
 RBJ low shelf 的類比原型是
 
-$$
+```math
 H_{LS}(s) = A\,\frac{s^2 + \dfrac{\sqrt{A}}{Q}s + A}{A s^2 + \dfrac{\sqrt{A}}{Q}s + 1}
-$$
+```
 
 - $`s \to 0`$（DC）：$`A \cdot A / 1 = A^2`$ → 低頻端增益 = $`g`$ dB。
 - $`s \to \infty`$：$`A \cdot s^2 / (A s^2) = 1`$ → 高頻端 0 dB。
@@ -188,9 +188,9 @@ High shelf 把 $`s`$ 換成 $`1/s`$（高低頻對調），同樣的結論。這
 
 **Slope 參數 S。** RBJ cookbook 給 shelf 的第三個參數不一定用 Q，也可以用「shelf slope」S：
 
-$$
+```math
 \frac{1}{Q} = \sqrt{\left(A + \frac{1}{A}\right)\left(\frac{1}{S} - 1\right) + 2}
-$$
+```
 
 S = 1 時，不管 gain 多少都得到 $`Q = 1/\sqrt{2}`$——cookbook 的描述是：這是「仍保持單調（不過衝）的最陡 slope」。S 小於 1 轉折更緩；Q 大於 0.707（等效 S > 1）則會在轉折附近出現一個反向的小凹陷與過衝（有些類比 EQ 刻意保留這個「bump」當作音色）。`ParametricEq::shelfSlopeToQ(S, gainDb)` 就是這條公式；本章的 shelf 預設 Q = 0.707（S = 1）。
 
@@ -211,27 +211,27 @@ S = 1 時，不管 gain 多少都得到 $`Q = 1/\sqrt{2}`$——cookbook 的描�
 
 六個 band 是**串接**（cascade）：訊號先過 band 0、再過 band 1……。兩個 LTI 系統串接，轉移函數相乘：
 
-$$
+```math
 H(z) = H_0(z)\,H_1(z)\cdots H_5(z)
-$$
+```
 
 取大小再取 dB，乘法變加法：
 
-$$
+```math
 20\log_{10}|H| = \sum_k 20\log_{10}|H_k| \qquad\text{（dB 相加）}
-$$
+```
 
-$$
+```math
 \angle H = \sum_k \angle H_k \qquad\text{（相位也相加）}
-$$
+```
 
 因為乘法可交換，**串接順序不影響頻率響應**（在 float 下數值上也幾乎沒差，見第 4 節）。注意「dB 相加」不是「線性振幅相加」：兩顆 +6 dB（2 倍）疊起來是 +12 dB（4 倍），不是 2 + 2。
 
 所以 `getMagnitudeDb(f)` 的實作就是把每個 enabled band 的 `magnitudeDb(f, fs)` 加起來——每個 band 的 `magnitudeDb` 又是把 $`z = e^{j\omega}`$ 代入 $`H(z)`$：
 
-$$
+```math
 H(e^{j\omega}) = \frac{b_0 + b_1 e^{-j\omega} + b_2 e^{-2j\omega}}{1 + a_1 e^{-j\omega} + a_2 e^{-2j\omega}},\qquad \omega = 2\pi f/f_s
-$$
+```
 
 UI 只要在 log 頻率軸上取幾百個點呼叫 `getMagnitudeDb()` 就能畫出曲線（範例 1 用 72 個點畫 ASCII 圖）。範例 1 的表格逐 band 列出貢獻，例如 18 kHz 處：band 3 +0.04、band 4（high shelf +2 dB @ 10 kHz）+1.98、band 5（high cut @ 18 kHz）−3.01，總和 −1.00 dB，跟 `getMagnitudeDb(18000)` 以及正弦波實測完全一致。
 
@@ -322,9 +322,9 @@ UI 只要在 log 頻率軸上取幾百個點呼叫 `getMagnitudeDb()` 就能畫�
 
 第 02 章 2.14 節看過 lowpass 接近 Nyquist 時的 cramping（bilinear warping），這裡看它對 peak 的影響。bilinear transform 把類比的整條頻率軸 $`[0, \infty)`$ 壓進數位的 $`[0, f_s/2]`$：類比的 $`\Omega = \infty`$ 對應到 Nyquist。prewarp 保證**中心頻率**對準，但鐘形的右半邊被硬擠進剩下的空間。對 RBJ peak，可以直接驗證 $`z = -1`$（Nyquist）處：
 
-$$
+```math
 H(-1) = \frac{b_0 - b_1 + b_2}{a_0 - a_1 + a_2} = \frac{2 + 2\cos\omega_0}{2 + 2\cos\omega_0} = 1
-$$
+```
 
 **任何** RBJ peak 在 Nyquist 都被強迫回到 0 dB。範例 4 的 B 段（44.1 kHz、+6 dB @ 10 kHz、Q = 1）：
 

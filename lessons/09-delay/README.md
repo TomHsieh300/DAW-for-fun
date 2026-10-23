@@ -31,9 +31,9 @@ After reading this chapter and doing the exercises, you will be able to:
 
 The purest delay does just one thing:
 
-$$
+```math
 y[n] = x[n - D] \qquad\Longleftrightarrow\qquad H(z) = z^{-D}
-$$
+```
 
 Its frequency response is $`H(e^{j\omega}) = e^{-j\omega D}`$: the **magnitude is 1 at all frequencies**, and the phase falls linearly with frequency. Listening to a delay on its own, you just hear "a bit late". A delay becomes interesting because it is usually **mixed with the original** (dry/wet mix) or **fed back into its own input** (feedback).
 
@@ -93,30 +93,30 @@ The chapter 05 `DelayLine` supports only integer delays, which is enough for the
 
 Split the delay into an integer part $`d`$ and a fractional part $`\Delta \in [0, 1)`$: $`D = d + \Delta`$. Linear interpolation draws a straight line between two adjacent samples:
 
-$$
+```math
 y[n] = (1 - \Delta)\,x[n-d] + \Delta\,x[n-d-1]
-$$
+```
 
 This is a 2-tap FIR filter (followed by an integer delay $`z^{-d}`$). Its frequency response is:
 
-$$
+```math
 H(e^{j\omega}) = e^{-j\omega d}\bigl[(1-\Delta) + \Delta e^{-j\omega}\bigr]
-$$
+```
 
 Take the squared magnitude, expanding with $`e^{-j\omega} = \cos\omega - j\sin\omega`$:
 
-$$
+```math
 |H|^2 = (1 - \Delta + \Delta\cos\omega)^2 + (\Delta\sin\omega)^2 = 1 - 2\Delta(1-\Delta)(1 - \cos\omega)
-$$
+```
 
 Reading this expression:
 
 - $`\Delta = 0`$ or $`\Delta = 1`$: $`|H| = 1`$, an integer delay with no distortion.
 - $`\Delta = 0.5`$ is the **worst** case ($`\Delta(1-\Delta)`$ is largest). Substituting $`1 - \cos\omega = 2\sin^2(\omega/2)`$:
 
-$$
+```math
 |H|^2 = 1 - \sin^2(\omega/2) = \cos^2(\omega/2) \quad\Longrightarrow\quad |H| = \left|\cos\frac{\omega}{2}\right| = \left|\cos\frac{\pi f}{f_s}\right|
-$$
+```
 
 **Intuition.** At $`\Delta = 0.5`$, linear interpolation is "the average of two adjacent samples" -- a 2-point moving average, which is the simplest lowpass filter. At Nyquist ($`f = f_s/2`$) the signal is $`+1, -1, +1, -1\ldots`$, and averaging two neighbours gives exactly 0, so $`|H| = \cos(\pi/2) = 0`$. At $`f_s/4`$ it is $`\cos(\pi/4) = 0.707`$, i.e. −3.01 dB.
 
@@ -134,19 +134,19 @@ For a flatter high end, use more points. Two common cubics using four points ($`
 
 **3rd-order Lagrange**: the unique cubic polynomial that **passes through all four points**.
 
-$$
+```math
 y(t) = \sum_{k=-1}^{2} h_k(t)\, y_k, \qquad h_k(t) = \prod_{m \ne k} \frac{t - m}{k - m}
-$$
+```
 
 Expanded, this is
 
-$$
+```math
 h_{-1} = -\frac{t(t-1)(t-2)}{6},\quad h_0 = \frac{(t+1)(t-1)(t-2)}{2},\quad h_1 = -\frac{(t+1)\,t\,(t-2)}{2},\quad h_2 = \frac{(t+1)\,t\,(t-1)}{6}
-$$
+```
 
 **Cubic Hermite (Catmull-Rom)**: the curve is only required to pass through $`y_0`$ and $`y_1`$, with **slopes** at those two points taken as central differences, $`m_0 = (y_1 - y_{-1})/2`$ and $`m_1 = (y_2 - y_0)/2`$. Written as a polynomial:
 
-$$
+```math
 y(t) = c_0 + c_1 t + c_2 t^2 + c_3 t^3,\qquad
 \begin{aligned}
 c_0 &= y_0 \\
@@ -154,21 +154,21 @@ c_1 &= \tfrac12(y_1 - y_{-1}) \\
 c_2 &= y_{-1} - \tfrac52 y_0 + 2y_1 - \tfrac12 y_2 \\
 c_3 &= \tfrac12(y_2 - y_{-1}) + \tfrac32(y_0 - y_1)
 \end{aligned}
-$$
+```
 
 The difference between them: Lagrange passes through four points on each segment, but the slopes of adjacent segments at their joint are not necessarily equal; Hermite has continuous slope at the joints ($`C^1`$), so the waveform is smoother as the read position moves continuously, which is why Hermite is more common in audio (especially modulation). The `readCubic()` of `FractionalDelayLine` is Hermite, and `readLagrange()` is Lagrange (for teaching comparison).
 
 **At $`\Delta = 0.5`$ the two are identical.** Substituting $`t = 0.5`$, both sets of coefficients are
 
-$$
+```math
 \left(-\tfrac{1}{16},\ \tfrac{9}{16},\ \tfrac{9}{16},\ -\tfrac{1}{16}\right)
-$$
+```
 
 (The example `l09_interpolation_compare` pushes an impulse through a delay of 2.5, and the output of all three methods is this kernel.) Writing the frequency response of this symmetric 4-tap FIR with the centre as origin:
 
-$$
+```math
 |H(e^{j\omega})| = \left|\tfrac{9}{8}\cos\tfrac{\omega}{2} - \tfrac{1}{8}\cos\tfrac{3\omega}{2}\right|
-$$
+```
 
 At $`f_s/4`$: $`\tfrac98 \cdot 0.7071 + \tfrac18 \cdot 0.7071 = 0.884`$, i.e. **−1.07 dB** (linear is −3.01 dB). The full comparison (48 kHz, measured = theory):
 
@@ -185,20 +185,20 @@ Cubic is nearly flat below 8 kHz, but it is **still a lowpass** -- any finite-le
 
 Another route: instead of using an FIR to "estimate" the in-between value, use a first-order allpass filter whose **magnitude is 1 at all frequencies** and which only adjusts the phase so that its low-frequency delay is exactly $`\Delta`$:
 
-$$
+```math
 H(z) = \frac{\eta + z^{-1}}{1 + \eta z^{-1}}, \qquad \eta = \frac{1 - \Delta}{1 + \Delta}
-$$
+```
 
-$$
+```math
 y[n] = \eta\,\bigl(v[n] - y[n-1]\bigr) + v[n-1], \qquad v[n] = x[n - d]
-$$
+```
 
 Its phase delay (in samples) is
 
-$$
+```math
 \tau(\omega) = -\frac{\angle H}{\omega} = 1 - \frac{2}{\omega}\arctan\frac{\eta\sin\omega}{1 + \eta\cos\omega}
 \;\xrightarrow{\ \omega \to 0\ }\; \frac{1-\eta}{1+\eta} = \Delta
-$$
+```
 
 The advantage: no high-frequency attenuation at all (exercise 3 measures 0.00 dB even at 20 kHz). The drawbacks:
 
@@ -212,9 +212,9 @@ Exercise 3 implements it and compares it with linear / cubic.
 
 When the delay time is $`\tau(t)`$, the output is $`y(t) = x(t - \tau(t))`$. With a sine of frequency $`f`$, $`\sin(2\pi f t)`$, as input, the output phase is $`2\pi f\,(t - \tau(t))`$, and differentiating with respect to time gives the **instantaneous frequency**:
 
-$$
+```math
 f_\text{out} = f_\text{in}\left(1 - \frac{d\tau}{dt}\right)
-$$
+```
 
 This is the Doppler effect: when the delay lengthens (the read head "flees" the write head) the pitch falls; when it shortens (the read head "chases" the write head) the pitch rises. The "wooooo" you hear when you turn the delay-time knob on a tape echo is exactly this.
 
@@ -252,9 +252,9 @@ flowchart LR
 
 As equations: $`s[n] = x[n] + g\,w[n]`$, $`w[n] = s[n - D]`$, so
 
-$$
+```math
 W(z) = \frac{z^{-D}}{1 - g\,z^{-D}} = z^{-D} + g\,z^{-2D} + g^2 z^{-3D} + \cdots
-$$
+```
 
 **Impulse response**: the $`k`$-th echo appears at $`kD`$ with amplitude $`g^{k-1}`$. With $`g = 0.5`$ each trip is −6.02 dB (exercise 1 measures 1, 0.5, 0.25, 0.125... using an impulse).
 
@@ -262,9 +262,9 @@ $$
 
 **The decay time of the echoes.** The number of trips needed to decay by 60 dB is $`60 / (-20\log_{10} g)`$, and multiplying by the time per trip $`D`$ gives:
 
-$$
+```math
 T_{60} = \frac{3D}{-\log_{10} g}
-$$
+```
 
 $`D = 375`$ ms, $`g = 0.5`$ → 3.74 s; $`g = 0.7`$ → 7.26 s. Conversely, to have echoes with $`D = 500`$ ms vanish within 2 seconds: $`g = 10^{-3D/T_{60}} = 10^{-0.75} = 0.178`$. This is the same formula chapter 12's reverb uses to set RT60.
 
@@ -325,9 +325,9 @@ The reason for mixing to mono first: if the input is already panned left, the pi
 
 The length of one beat (a quarter note) is $`60/\text{BPM}`$ seconds:
 
-$$
+```math
 t_\text{ms} = \text{beats} \times \frac{60000}{\text{BPM}}
-$$
+```
 
 beats is counted with a quarter note as 1: eighth note 0.5, sixteenth note 0.25. A **dotted** note is the original length × 1.5 (dotted eighth = 0.75 beat), and a **triplet** is the original length × 2/3 (eighth triplet = 1/3 beat; quarter triplet = 2/3 beat). `Delay::noteToMs(bpm, beats)` is exactly this formula.
 
@@ -350,9 +350,9 @@ The dotted eighth is the most common delay setting for pop and rock guitar: afte
 
 ### 2.11 Dry/wet mix
 
-$$
+```math
 y = (1 - m)\,x + m\cdot\text{wet}, \qquad m \in [0, 1]
-$$
+```
 
 $`m = 0`$ is only the original sound and $`m = 1`$ is only the delay. This is a linear crossfade: when dry and wet are correlated (for example a very short delay) the total level is unchanged; when they are uncorrelated (an ordinary echo) the total energy is about 3 dB lower near $`m = 0.5`$ (exercise 6 feeds white noise into `CrossfadeDelay` and measures −2.98 dB at the midpoint of the fade). The alternative is an equal-power ($`\cos`$ / $`\sin`$) crossfade; both are used, and this chapter takes linear because the dry signal stays almost exactly at 0 dB when $`m`$ is small, which best fits the use case of "adding a little echo on an insert".
 
@@ -380,17 +380,17 @@ Shrink the delay time to a few ms and the echoes are no longer "individual echoe
 
 **Feedforward comb**: $`y[n] = x[n] + g\,x[n-D]`$, $`H(z) = 1 + g\,z^{-D}`$.
 
-$$
+```math
 |H(e^{j\omega})|^2 = 1 + g^2 + 2g\cos(\omega D)
-$$
+```
 
 Where $`\cos(\omega D) = 1`$, i.e. $`f = k\,f_s/D`$, there is a peak of $`1 + g`$; where $`\cos(\omega D) = -1`$, i.e. $`f = (k + \tfrac12) f_s/D`$, there is a notch of $`1 - g`$. The frequency response looks like the teeth of a comb, with tooth spacing $`f_s/D`$ -- hence the name.
 
 **Feedback comb**: $`y[n] = x[n] + g\,y[n-D]`$, $`H(z) = 1/(1 - g\,z^{-D})`$.
 
-$$
+```math
 |H(e^{j\omega})| = \frac{1}{\sqrt{1 + g^2 - 2g\cos(\omega D)}}
-$$
+```
 
 The peaks are again at $`k\,f_s/D`$, with height $`1/(1 - g)`$; the notches are at $`(k+\tfrac12) f_s/D`$ with depth $`1/(1 + g)`$.
 

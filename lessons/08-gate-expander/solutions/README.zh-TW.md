@@ -40,9 +40,9 @@ $`-65 = -40 + R(-50 + 40) \Rightarrow -25 = -10R \Rightarrow R = 2.5`$（1:2.5�
 
 ### 4. Gate attack 斜率
 
-$$
+```math
 \Delta_a = \frac{|\text{range}|}{t_a f_s} = \frac{80}{0.002 \times 48000} = \frac{80}{96} \approx 0.833\ \text{dB/sample}
-$$
+```
 
 0.5 ms = 24 samples → 爬了 $`24 \times 0.833 = 20`$ dB → gain = $`-80 + 20 = -60`$ dB。注意 0.5 ms 時線性 gain 只有 0.001——attack 的前半段幾乎還是靜音，這就是「頭被吃掉」的來源（練習 6）。
 
@@ -79,9 +79,9 @@ envelope 從 -6 dB 掉到 -32 dB：$`\frac{26\ \text{dB}}{60\ \text{dB/s}} \appr
 
 envelope 的平均值以 60 dB/s 下降，平均值落在 $`[T - 1.5,\ T + 1.5]`$ 的期間，漣漪都可能跨過門檻：
 
-$$
+```math
 \frac{3\ \text{dB}}{60\ \text{dB/s}} = 50\ \text{ms}
-$$
+```
 
 漣漪來自 185 Hz 全波整流的波峰，每秒 370 個，50 ms 內約 **18 個**波峰，所以最多可能開關約 18 次——聽起來像尾音末端有一段 370 Hz 的「嗡」或碎裂聲。範例 1 的鼓組 loop 實測：hysteresis 0 + hold 0 有 70 次 state 轉換，hysteresis 6 dB + hold 20 ms 只有 43 次。
 

@@ -26,9 +26,9 @@ After reading this chapter and doing the exercises, you should be able to:
 
 **The time-domain view:** a filter takes a weighted sum of "the current input" and "past inputs and past outputs". The simplest example is "average the most recent 4 samples":
 
-$$
+```math
 y[n] = \tfrac14\big(x[n] + x[n-1] + x[n-2] + x[n-3]\big)
-$$
+```
 
 Averaging smooths out fast up-and-down jitter (high frequencies get smaller) while slow changes are barely affected (low frequencies pass) -- this is already a lowpass filter.
 
@@ -68,17 +68,17 @@ Feed an **impulse** (sample 0 is 1 and all the rest are 0, written $`\delta[n]`$
 
 Why is it so important? Because any input can be decomposed into "a series of scaled, shifted impulses": $`x[n] = \sum_k x[k]\,\delta[n-k]`$. An LTI system responds to each impulse with a shifted, scaled copy of $`h`$, and stacking them all up gives the output:
 
-$$
+```math
 y[n] = \sum_{k=0}^{\infty} h[k]\, x[n-k] \qquad\text{(convolution)}
-$$
+```
 
 The conclusion: **$`h[n]`$ completely describes an LTI filter**. The impulse response of the 4-point average above is $`\{0.25, 0.25, 0.25, 0.25, 0, 0, \dots\}`$.
 
 And the frequency response is the DTFT (discrete-time Fourier transform) of the impulse response:
 
-$$
+```math
 H(e^{j\omega}) = \sum_{n} h[n]\, e^{-j\omega n},\qquad \omega = 2\pi \frac{f}{f_s}
-$$
+```
 
 $`\omega`$ is the digital angular frequency, "how many radians per sample": DC is $`\omega = 0`$ and Nyquist ($`f_s/2`$) is $`\omega = \pi`$. The example `l02_impulse_response` uses exactly this formula to compute the frequency response directly from the measured $`h[n]`$ and compare it with `magnitudeDb()`.
 
@@ -86,16 +86,16 @@ $`\omega`$ is the digital angular frequency, "how many radians per sample": DC i
 
 The $`N`$-point moving average:
 
-$$
+```math
 y[n] = \frac1N \sum_{k=0}^{N-1} x[n-k]
-$$
+```
 
 The impulse response is $`N`$ values of $`1/N`$ followed by all zeros. Substituting into the DTFT (summing a geometric series):
 
-$$
+```math
 H(e^{j\omega}) = \frac1N\sum_{k=0}^{N-1} e^{-j\omega k}
 = \frac{1}{N}\,\frac{\sin(N\omega/2)}{\sin(\omega/2)}\; e^{-j\omega (N-1)/2}
-$$
+```
 
 All the personality of the moving average can be read off this formula:
 
@@ -115,9 +115,9 @@ A filter whose impulse response has finite length is called an **FIR** (finite i
 
 Writing a filter as "output = a linear combination of the input and past values" is called a **difference equation**:
 
-$$
+```math
 y[n] = \sum_{k=0}^{M} b_k\, x[n-k] \;-\; \sum_{k=1}^{N} a_k\, y[n-k]
-$$
+```
 
 - Only $`b_k`$ (feed-forward): the output depends only on the input → the impulse response has finite length → **FIR**.
 - With $`a_k`$ (feedback, using past **outputs**): after an impulse goes in it keeps circulating in the loop → the impulse response is in theory infinitely long → **IIR** (infinite impulse response).
@@ -130,26 +130,26 @@ The advantage of IIR is that it is **cheap**: a one-pole with only 2 multiplicat
 
 Consider a "complex sinusoid" input $`x[n] = e^{j\omega n}`$. Delaying by one sample gives
 
-$$
+```math
 x[n-1] = e^{j\omega(n-1)} = e^{-j\omega}\cdot x[n]
-$$
+```
 
 That is, **for a single frequency, "delaying by one sample" is the same as "multiplying by $`e^{-j\omega}`$"**. Generalizing $`e^{j\omega}`$ to a complex variable $`z`$, a delay of one sample is written as multiplication by $`z^{-1}`$. Both sides of the difference equation can then be written as "$`X`$ times a polynomial":
 
-$$
+```math
 Y(z)\,(1 + a_1 z^{-1} + a_2 z^{-2}) = X(z)\,(b_0 + b_1 z^{-1} + b_2 z^{-2})
-$$
+```
 
-$$
+```math
 H(z) = \frac{Y(z)}{X(z)} = \frac{b_0 + b_1 z^{-1} + b_2 z^{-2}}{1 + a_1 z^{-1} + a_2 z^{-2}}
-$$
+```
 
 This is called the **transfer function**. To get the response at frequency $`f`$, substitute $`z = e^{j\omega}`$ ($`\omega = 2\pi f/f_s`$):
 
-$$
+```math
 H(e^{j\omega}) = \frac{b_0 + b_1 e^{-j\omega} + b_2 e^{-2j\omega}}{1 + a_1 e^{-j\omega} + a_2 e^{-2j\omega}},\qquad
 \text{gain(dB)} = 20\log_{10}\lvert H(e^{j\omega})\rvert
-$$
+```
 
 This is exactly what `BiquadCoefficients::response()` / `magnitudeDb()` do (see section 3.2). The relationship among the three descriptions:
 
@@ -165,16 +165,16 @@ flowchart LR
 
 Factor the numerator and denominator (second order as the example, $`b_0 \ne 0`$):
 
-$$
+```math
 H(z) = b_0\,\frac{(1 - q_1 z^{-1})(1 - q_2 z^{-1})}{(1 - p_1 z^{-1})(1 - p_2 z^{-1})}
 = b_0\,\frac{(z - q_1)(z - q_2)}{(z - p_1)(z - p_2)}
-$$
+```
 
 The $`q_k`$ that make the numerator 0 are called **zeros**, and the $`p_k`$ that make the denominator 0 are called **poles**. Taking the magnitude at $`z = e^{j\omega}`$:
 
-$$
+```math
 \lvert H(e^{j\omega})\rvert = \lvert b_0\rvert\;\frac{\lvert e^{j\omega} - q_1\rvert\,\lvert e^{j\omega} - q_2\rvert}{\lvert e^{j\omega} - p_1\rvert\,\lvert e^{j\omega} - p_2\rvert}
-$$
+```
 
 $`e^{j\omega}`$ is a point on the **unit circle** of the complex plane: as $`\omega`$ goes from 0 (DC, at $`z = 1`$) counterclockwise to $`\pi`$ (Nyquist, at $`z = -1`$). The magnitude of the frequency response = "the product of the distances to the zeros" ÷ "the product of the distances to the poles". So:
 
@@ -191,15 +191,15 @@ In the figure, × is a pole (they come in conjugate pairs, inside the circle) an
 
 For a second-order denominator $`1 + a_1 z^{-1} + a_2 z^{-2}`$, the poles are the roots of $`z^2 + a_1 z + a_2 = 0`$:
 
-$$
+```math
 p_{1,2} = \frac{-a_1 \pm \sqrt{a_1^2 - 4a_2}}{2}
-$$
+```
 
 When the discriminant is negative the poles are a complex-conjugate pair with radius $`r = \sqrt{a_2}`$ and angle $`\theta = \arccos\!\big(-a_1 / (2r)\big)`$. $`\theta`$ determines "at which frequency it resonates" ($`f \approx \theta f_s / 2\pi`$), and $`r`$ determines "how fast it decays": the envelope of the impulse response is $`r^n`$, with time constant $`\tau = -1/\ln r`$ samples. You can judge stability without solving for the roots -- the stability region of a second-order system on the $`(a_1, a_2)`$ plane is a triangle:
 
-$$
+```math
 |a_2| < 1 \quad\text{and}\quad |a_1| < 1 + a_2
-$$
+```
 
 Exercise 5 actually computes the poles of several coefficient sets and verifies them with an impulse: for example, for a 1 kHz, Q = 8 lowpass, the pole radius is $`r = 0.991875`$, the angle corresponds to 998.1 Hz, and $`\tau = 123`$ samples; after 1000 samples the impulse response has decayed by about 70 dB (theory $`20\log_{10} r^{1000} = -70.86`$ dB).
 
@@ -219,52 +219,52 @@ Section [3] of the example `l02_filter_response` actually measures it: the biqua
 
 The most commonly used IIR is a lowpass with a single pole:
 
-$$
+```math
 y[n] = (1-a)\,x[n] + a\,y[n-1]
 \qquad\Longleftrightarrow\qquad
 H(z) = \frac{1-a}{1 - a z^{-1}}
-$$
+```
 
 Intuition: on each sample the output moves toward the input by a fraction $`(1-a)`$ of the remaining distance. The closer $`a`$ is to 1, the slower it approaches and the smoother it is (the lower the cutoff). The exponential smoother of Chapter 01 is exactly this -- but note that **the sign convention is exactly the opposite**: the $`a`$ of Chapter 01 is "the fraction of the remaining distance covered each step" ($`g[n] = (1-a)\,g[n-1] + a\,g_\text{target}`$), which corresponds to the $`1-a`$ here; the $`a`$ here is "the fraction of the old value kept". The time constants of the two chapters are the same thing: Chapter 01's $`1 - a_{01} = e^{-1/(\tau f_s)}`$ ($`\tau`$ in seconds) is the $`a = e^{-T/\tau}`$ derived below ($`T = 1/f_s`$).
 
 **How is $`a`$ determined by the cutoff?** Start from the analog RC lowpass: time constant $`\tau = RC`$, cutoff $`f_c = 1/(2\pi\tau)`$, and the impulse response is $`\frac{1}{\tau} e^{-t/\tau}`$ -- every time $`T`$ that passes, it decays by a factor of $`e^{-T/\tau}`$. The impulse response of the digital version is
 
-$$
+```math
 h[n] = (1-a)\,a^n
-$$
+```
 
 To make it **the same shape** as the analog one at the sampling instants (the same decay ratio per sample, $`T = 1/f_s`$), we require
 
-$$
+```math
 a = e^{-T/\tau} = e^{-2\pi f_c / f_s}
-$$
+```
 
 This design method, "making the digital impulse response equal to the sampled analog impulse response", is called **impulse invariance**. The factor $`(1-a)`$ in front makes the DC gain $`H(1) = (1-a)/(1-a) = 1`$.
 
 A hand calculation ($`f_c = 1`$ kHz, $`f_s = 48`$ kHz):
 
-$$
+```math
 \frac{2\pi \cdot 1000}{48000} = 0.130900,\qquad a = e^{-0.130900} = 0.877306,\qquad 1 - a = 0.122694
-$$
+```
 
 The first value of the one-pole impulse response printed by the example `l02_impulse_response` is exactly 0.1227, and each sample after that is multiplied by 0.8773.
 
 **Is its −3 dB point really at $`f_c`$?** Only approximately, and only when $`f_c \ll f_s`$. Setting $`|H|^2 = 1/2`$:
 
-$$
+```math
 \lvert H(e^{j\omega})\rvert^2 = \frac{(1-a)^2}{1 - 2a\cos\omega + a^2} = \frac12
 \quad\Longrightarrow\quad
 \cos\omega_{3\text{dB}} = 1 - \frac{(1-a)^2}{2a}
-$$
+```
 
 At $`f_c = 1`$ kHz this gives 1001.4 Hz (off by 0.14%), and at $`f_c = 10`$ kHz it is 11895 Hz (off by about 19%). The problem is at Nyquist: the exp version's gain at $`z = -1`$ is $`(1-a)/(1+a)`$, **not 0** (−23.69 dB at $`f_c = 1`$ kHz), and the higher the cutoff, the less cleanly it "shuts off"; at $`f_c = 15`$ kHz the entire curve is above −3 dB (even at Nyquist it is only −2.45 dB), and the −3 dB point does not exist at all.
 
 **The bilinear version.** Another approach is to use the **bilinear transform** (detailed in section 2.11) to convert the analog $`H(s) = 1/(1 + s/\Omega_c)`$ directly to digital. The result is:
 
-$$
+```math
 g = \tan\!\left(\frac{\pi f_c}{f_s}\right),\qquad
 H(z) = \frac{g\,(1 + z^{-1})}{(1+g) - (1-g)\,z^{-1}}
-$$
+```
 
 It has an extra zero at $`z = -1`$, so the Nyquist gain is 0 (−∞ dB) and the −3 dB point always lands exactly on $`f_c`$; the price is one extra multiply-add, and the shape at the high-frequency end is "squeezed" toward Nyquist (cramping, section 2.14). At $`f_c = 1`$ kHz, $`g = 0.065543`$ and the pole $`= (1-g)/(1+g) = 0.876976`$ -- almost the same as the exp version's 0.877306, so for a low cutoff there is no real difference between the two.
 
@@ -282,23 +282,23 @@ It has an extra zero at $`z = -1`$, so the Nyquist gain is 0 (−∞ dB) and the
 
 **Highpass.** The intuitive approach is "the original signal minus the lowpass": $`x - \text{LP}(x)`$. Working it out:
 
-$$
+```math
 1 - \frac{1-a}{1-az^{-1}} = \frac{a\,(1 - z^{-1})}{1 - a z^{-1}}
-$$
+```
 
 It has a zero at DC ($`z = 1`$), so DC vanishes completely; but its gain at Nyquist ($`z = -1`$) is $`2a/(1+a)`$, so when the cutoff is high (small $`a`$) the passband falls below 0 dB. So `OnePole` replaces the leading constant with $`h = (1+a)/2`$, making Nyquist exactly 0 dB:
 
-$$
+```math
 y[n] = h\,\big(x[n] - x[n-1]\big) + a\,y[n-1],\qquad h = \frac{1+a}{2}
-$$
+```
 
 Check: at $`z = -1`$, $`H = h \cdot 2/(1+a) = 1`$. ✓ The example measures a 1 kHz highpass at −33.97 dB at 20 Hz (the 6 dB/oct extrapolation: $`20\log_{10}(20/1000) = -33.98`$ dB), −3.00 dB at 1 kHz and 0.00 dB at 20 kHz.
 
 The **DC blocker** is a special case with the same structure but a pole very close to 1:
 
-$$
+```math
 y[n] = x[n] - x[n-1] + R\,y[n-1],\qquad H(z) = \frac{1 - z^{-1}}{1 - R z^{-1}},\quad R \approx 0.995
-$$
+```
 
 The zero at $`z = 1`$ kills DC; the pole at $`z = R`$ sits right next to it, leaving frequencies other than DC almost untouched (their distances to the two are almost equal for other points on the unit circle, so the ratio ≈ 1). The −3 dB point is about $`f_s(1-R)/2\pi`$: with $`R = 0.995`$ and $`f_s = 48`$ kHz → 38.2 Hz. Uses: removing the DC offset of a microphone / audio interface, or the DC produced by asymmetric distortion (Chapter 07). Exercise 2 implements and verifies it.
 
@@ -306,13 +306,13 @@ The zero at $`z = 1`$ kills DC; the pole at $`z = R`$ sits right next to it, lea
 
 The **biquad** (bi-quadratic: both numerator and denominator are quadratics) is the standard building block of audio filters:
 
-$$
+```math
 y[n] = b_0 x[n] + b_1 x[n-1] + b_2 x[n-2] - a_1 y[n-1] - a_2 y[n-2]
-$$
+```
 
-$$
+```math
 H(z) = \frac{b_0 + b_1 z^{-1} + b_2 z^{-2}}{1 + a_1 z^{-1} + a_2 z^{-2}}
-$$
+```
 
 (If a formula gives $`a_0 \ne 1`$, divide all five coefficients by $`a_0`$ -- this is called normalizing.)
 
@@ -351,32 +351,32 @@ where $`A = 10^{\text{gainDb}/40}`$ (note that it is **40**, not 20: the gain of
 
 The **bilinear transform** maps the $`s`$-plane to the $`z`$-plane:
 
-$$
+```math
 s \;\leftarrow\; \frac{2}{T}\,\frac{1 - z^{-1}}{1 + z^{-1}}
-$$
+```
 
 It maps the entire analog imaginary axis ($`\Omega`$ from 0 to ∞) one-to-one onto the upper half of the unit circle ($`\omega`$ from 0 to π), so a stable analog filter always maps to a stable digital one and there is no aliasing. The price is that the frequency axis is compressed non-linearly. Substituting $`z = e^{j\omega}`$:
 
-$$
+```math
 \frac{1 - e^{-j\omega}}{1 + e^{-j\omega}} = j\tan\frac{\omega}{2}
 \qquad\Longrightarrow\qquad
 \Omega = \frac{2}{T}\tan\frac{\omega}{2}
-$$
+```
 
 At low frequencies $`\tan(\omega/2) \approx \omega/2`$, so $`\Omega \approx \omega/T`$ (they line up); the closer to Nyquist, the larger the deviation. **Prewarping** works like this: when designing the analog prototype, deliberately set $`\Omega_0`$ to $`\frac2T\tan(\omega_0/2)`$, so that after the transform $`f_0`$ lands **exactly** where you want it.
 
 **Deriving the LPF once.** Let $`K = \tan(\omega_0/2)`$; after prewarping the substitution is $`s \leftarrow \frac{1}{K}\frac{1 - z^{-1}}{1 + z^{-1}}`$. Substitute into $`1/(s^2 + s/Q + 1)`$ and multiply numerator and denominator by $`K^2(1 + z^{-1})^2`$:
 
-$$
+```math
 H(z) = \frac{K^2(1 + 2z^{-1} + z^{-2})}{(1 + K/Q + K^2) + (2K^2 - 2)\,z^{-1} + (1 - K/Q + K^2)\,z^{-2}}
-$$
+```
 
 Then use the trigonometric identities $`K = \frac{\sin\omega_0}{1 + \cos\omega_0}`$ and $`1 + K^2 = \frac{2}{1 + \cos\omega_0}`$, multiply everything by $`\frac{1 + \cos\omega_0}{2}`$, and define $`\alpha = \frac{\sin\omega_0}{2Q}`$ to arrive at the cookbook form:
 
-$$
+```math
 b_0 = \frac{1 - \cos\omega_0}{2},\; b_1 = 1 - \cos\omega_0,\; b_2 = \frac{1 - \cos\omega_0}{2},\quad
 a_0 = 1 + \alpha,\; a_1 = -2\cos\omega_0,\; a_2 = 1 - \alpha
-$$
+```
 
 **The coefficients of all 8 types** (sharing the intermediate quantities $`\omega_0 = 2\pi f_0/f_s`$, $`\alpha = \sin\omega_0/(2Q)`$, $`A = 10^{\text{gainDb}/40}`$; everything is divided by $`a_0`$ at the end):
 
@@ -393,23 +393,23 @@ The shelf coefficients are longer (let $`\beta = 2\sqrt A\,\alpha`$):
 
 Low shelf:
 
-$$
+```math
 \begin{aligned}
 b_0 &= A\big[(A+1) - (A-1)\cos\omega_0 + \beta\big] & a_0 &= (A+1) + (A-1)\cos\omega_0 + \beta\\
 b_1 &= 2A\big[(A-1) - (A+1)\cos\omega_0\big] & a_1 &= -2\big[(A-1) + (A+1)\cos\omega_0\big]\\
 b_2 &= A\big[(A+1) - (A-1)\cos\omega_0 - \beta\big] & a_2 &= (A+1) + (A-1)\cos\omega_0 - \beta
 \end{aligned}
-$$
+```
 
 High shelf:
 
-$$
+```math
 \begin{aligned}
 b_0 &= A\big[(A+1) + (A-1)\cos\omega_0 + \beta\big] & a_0 &= (A+1) - (A-1)\cos\omega_0 + \beta\\
 b_1 &= -2A\big[(A-1) + (A+1)\cos\omega_0\big] & a_1 &= 2\big[(A-1) - (A+1)\cos\omega_0\big]\\
 b_2 &= A\big[(A+1) + (A-1)\cos\omega_0 - \beta\big] & a_2 &= (A+1) - (A-1)\cos\omega_0 - \beta
 \end{aligned}
-$$
+```
 
 The cookbook defines a separate "shelf slope" $`S`$ for shelves; $`S = 1`$ (the steepest slope without overshoot) is equivalent to $`Q = 1/\sqrt2`$ here.
 
@@ -442,20 +442,20 @@ When two filters are cascaded, the total response = the product of the two, and 
 
 The definition of an $`N`$-th order Butterworth is "maximally flat in the passband":
 
-$$
+```math
 \lvert H(j\Omega)\rvert^2 = \frac{1}{1 + (\Omega/\Omega_c)^{2N}}
-$$
+```
 
 It is always −3.01 dB at the cutoff, and far from the cutoff it attenuates at $`6N`$ dB/oct. Its $`N`$ poles are equally spaced (separated by $`\pi/N`$) on the left half-circle of the $`s`$-plane, symmetric about the real axis. Let a conjugate pole pair make an angle $`\varphi_k`$ with the negative real axis, i.e. $`-\cos\varphi_k \pm j\sin\varphi_k`$; multiplying out gives $`s^2 + 2\cos\varphi_k\,s + 1`$, and comparing with the biquad's $`s^2 + s/Q + 1`$:
 
-$$
+```math
 Q_k = \frac{1}{2\cos\varphi_k},\qquad
 \varphi_k =
 \begin{cases}
 \dfrac{(2k+1)\pi}{2N}, & N \text{ even},\; k = 0, 1, \dots, \tfrac N2 - 1\\[2ex]
 \dfrac{(k+1)\pi}{N}, & N \text{ odd},\; k = 0, 1, \dots, \tfrac{N-3}{2}
 \end{cases}
-$$
+```
 
 Why do odd and even differ? The poles must be symmetric about the real axis and separated by $`\pi/N`$: for even $`N`$ no pole lies on the real axis, and the pair closest to it is at $`\pm\pi/(2N)`$; for odd $`N`$ there is a **real pole** right in the middle ($`\varphi = 0`$), and the others pair up at $`\pm\pi/N, \pm2\pi/N, \dots`$. That real pole is a first-order filter $`1/(s + 1)`$ -- so an odd order needs one more **one-pole** stage in the cascade, and it must be the bilinear version (section 2.8) with the same cutoff as the biquad stages, so that the −3 dB point lands exactly on $`f_c`$.
 
@@ -520,21 +520,21 @@ flowchart LR
 
 **Direct Form II (DF-II)** -- does the feedback (poles) first and then the feed-forward (zeros), with the two sharing one delay line, so only 2 states are needed:
 
-$$
+```math
 w[n] = x[n] - a_1 w[n-1] - a_2 w[n-2],\qquad y[n] = b_0 w[n] + b_1 w[n-1] + b_2 w[n-2]
-$$
+```
 
 The problem is the intermediate variable $`w[n]`$: it is the signal that has passed through "only the pole part", and for a lowpass with a low cutoff it gets amplified by a very large factor.
 
 **Transposed Direct Form II (TDF-II)** -- reverses the signal flow of DF-II (transposition), again with 2 states:
 
-$$
+```math
 \begin{aligned}
 y[n] &= b_0\,x[n] + s_1[n-1]\\
 s_1[n] &= b_1\,x[n] - a_1\,y[n] + s_2[n-1]\\
 s_2[n] &= b_2\,x[n] - a_2\,y[n]
 \end{aligned}
-$$
+```
 
 ```mermaid
 flowchart LR
@@ -594,20 +594,20 @@ In a plugin, when the user turns the cutoff knob, or an LFO or envelope modulate
 
 The **TPT State Variable Filter (SVF)** is the common remedy for fast modulation. It discretizes the analog state-variable filter (two integrators + feedback) with trapezoidal integration (equivalent to bilinear), but **keeps the original circuit structure** (the topology-preserving transform, TPT):
 
-$$
+```math
 g = \tan\!\left(\frac{\pi f_c}{f_s}\right),\quad k = \frac1Q,\quad
 a_1 = \frac{1}{1 + g(g + k)},\; a_2 = g\,a_1,\; a_3 = g\,a_2
-$$
+```
 
 For each sample:
 
-$$
+```math
 \begin{aligned}
 v_3 &= x - ic_2, \quad v_1 = a_1\,ic_1 + a_2\,v_3, \quad v_2 = ic_2 + a_2\,ic_1 + a_3\,v_3\\
 ic_1 &\leftarrow 2v_1 - ic_1, \quad ic_2 \leftarrow 2v_2 - ic_2\\
 \text{low} &= v_2,\quad \text{band} = k\,v_1,\quad \text{high} = x - k\,v_1 - v_2,\quad \text{notch} = x - k\,v_1
 \end{aligned}
-$$
+```
 
 Advantages: the states $`ic_1, ic_2`$ correspond to the integrators' "capacitor voltages", have physical meaning, and do not become "mismatched" with the coefficients when the cutoff changes; a per-sample update costs just one `tan`; and the same set of states gives LP / BP / HP / notch at the same time. When **static**, it is exactly the same as RBJ's filters of the same name (the same analog prototype + bilinear); section [C] of `l02_cutoff_modulation` verifies that the two agree at every frequency for 1 kHz, Q = 6 (for example both give +15.56 dB at 1 kHz).
 

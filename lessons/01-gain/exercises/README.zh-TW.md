@@ -75,9 +75,9 @@ Self-check 會驗證：每個分段點精確、段內中點（0.875 → +3 dB、
 
 本章的 `dsp::SmoothedValue` 是 linear ramp：倍率對時間是直線。用它做長的 fade-out（例如 automation 把 fader 從 0 dB 拉到 −60 dB），聽起來會「一直很大聲、最後突然消失」，因為耳朵聽的是 dB。這一題實作另一種平滑器 `MultiplicativeRamp`：每個 sample **乘**同一個倍率
 
-$$
+```math
 r = \left(\frac{\text{target}}{\text{current}}\right)^{1/N},\qquad g[n] = g[0]\,r^n,\qquad \text{dB}[n] = \text{dB}[0] + n \cdot 20\log_{10} r
-$$
+```
 
 也就是在 dB 上走直線（JUCE 的 `SmoothedValue<float, ValueSmoothingTypes::Multiplicative>` 就是這個做法）。0 沒辦法用乘的到達、也乘不出任何東西，所以把 0 換成地板 `kFloorGain`（−100 dB），最後一個 sample 再 snap 成精確的目標值。
 
@@ -111,9 +111,9 @@ Self-check 有 8 組真值表案例，最後把結果餵給 `dsp::Gain`：在約
 
 起始碼：`starter/ex7_stereo_width.cpp`　解答：`../solutions/ex7_stereo_width.cpp`　target：`l01_ex7_starter` / `l01_ex7_solution`
 
-$$
+```math
 M = \tfrac{1}{2}(L + R),\quad S = \tfrac{1}{2}(L - R);\qquad L' = M + w\,S,\quad R' = M - w\,S
-$$
+```
 
 實作：
 

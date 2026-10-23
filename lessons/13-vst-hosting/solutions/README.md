@@ -24,9 +24,9 @@ Formulas: $`n = \left(\dfrac{v - s}{e - s}\right)^{k}`$, $`v = s + (e - s)\,n^{1
 
 We require $`v = c`$ when $`n = 0.5`$:
 
-$$
+```math
 0.5 = \left(\frac{c - s}{e - s}\right)^{k} \;\Longrightarrow\; \ln 0.5 = k \ln\frac{c - s}{e - s} \;\Longrightarrow\; k = \frac{\ln 0.5}{\ln\!\left(\frac{c - s}{e - s}\right)}
-$$
+```
 
 - Attack (0.1 … 200 ms, centre 10): $`\dfrac{9.9}{199.9} = 0.049525`$, $`\ln = -3.00527`$, $`k = \dfrac{-0.693147}{-3.00527} = 0.23064`$
 - Release (5 … 2000 ms, centre 100): $`\dfrac{95}{1995} = 0.047619`$, $`\ln = -3.04452`$, $`k = 0.22767`$
@@ -35,9 +35,9 @@ $$
 
 $`n^{1/k} = (0.5^2)^{1/k} = \left(0.5^{1/k}\right)^2`$, and by definition $`0.5^{1/k} = \dfrac{c - s}{e - s}`$, so
 
-$$
+```math
 v = s + (e - s)\left(\frac{c - s}{e - s}\right)^2 = s + \frac{(c - s)^2}{e - s} = 5 + \frac{95^2}{1995} = 5 + 4.524 = 9.524\ \text{ms}
-$$
+```
 
 Likewise, for $`n = 0.5^m`$, $`v = s + (e - s)\left(\frac{c-s}{e-s}\right)^m`$: every time the knob is "halved" toward the left, the real value (minus $`s`$) is multiplied by $`\frac{c-s}{e-s} \approx 0.0476`$ -- this is exactly how the skew widens the small-value region.
 
@@ -127,9 +127,9 @@ The total latency of the whole project = 1024 samples = 21.33 ms (during playbac
 
 **3.** Without PDC: Track A is 240 samples = 5 ms later than C. Adding two identical kicks: $`y[n] = x[n] + x[n - D]`$, $`|H(f)| = 2\left|\cos\!\left(\dfrac{\pi f D}{f_s}\right)\right|`$, with zeros at $`\dfrac{\pi f D}{f_s} = \dfrac{\pi}{2} + k\pi`$, that is,
 
-$$
+```math
 f_k = \frac{(2k+1) f_s}{2D} = \frac{(2k+1) \times 48000}{480} = 100,\ 300,\ 500,\ \dots\ \text{Hz}
-$$
+```
 
 The kick's fundamental (about 45–120 Hz, see `makeDrumLoop`) lands right around the 100 Hz zero: the low end is largely cancelled and the kick gets thin. (Exercise 6 measures DawLabLimiter's 240 samples with an impulse.)
 

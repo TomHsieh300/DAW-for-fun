@@ -68,9 +68,9 @@ struct ParameterInfo {
 A knob is a position $`n \in [0, 1]`$. For a linear parameter $`v = v_{\min} + n (v_{\max} - v_{\min})`$.
 For frequencies and times equal knob movements should be equal *ratios*, so the log taper is
 
-$$
+```math
 v = v_{\min}\left(\frac{v_{\max}}{v_{\min}}\right)^{n}, \qquad n = \frac{\ln(v / v_{\min})}{\ln(v_{\max} / v_{\min})}
-$$
+```
 
 With 20 Hz .. 20 kHz the knob's middle is $`\sqrt{20 \cdot 20000} = 632`$ Hz instead of 10 kHz.
 `clamp()` also rounds Int / Bool / Choice values and replaces NaN with the default - one bad value

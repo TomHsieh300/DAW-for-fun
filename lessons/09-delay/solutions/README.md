@@ -39,7 +39,9 @@ Formula: $`t_\text{ms} = \text{beats} \times 60000 / \text{BPM}`$; dotted × 1.5
 4. The amplitude of the $`k`$-th echo is $`g^{k-1}`$: 1, 0.5, 0.25, 0.125, i.e. **0, −6.02, −12.04, −18.06 dB**. (The first echo is the original signal delayed directly and has not yet gone through the feedback.)
 5. Each trip attenuates by $`-20\log_{10} g`$ dB, so decaying by 60 dB takes $`60/(-20\log_{10}g) = 3/(-\log_{10} g)`$ trips, each lasting $`D`$ seconds:
 
-   $$T_{60} = \frac{3D}{-\log_{10} g}$$
+   ```math
+   T_{60} = \frac{3D}{-\log_{10} g}
+   ```
 
    - $`D = 0.375`$, $`g = 0.5`$: $1.125 / 0.30103 = $ **3.737 s** (about 10 trips)
    - $`D = 0.375`$, $`g = 0.7`$: $1.125 / 0.15490 = $ **7.263 s**
@@ -131,9 +133,9 @@ float feedbackPath(int ch, float wet) noexcept {
 
 **Predicting the amplitude: the describing function.** The signal going around the loop is approximated by a sine. If the tanh input is $`X\sin\theta`$, the amplitude of the fundamental of the output is
 
-$$
+```math
 F_1(X) = \frac{2}{\pi}\int_0^\pi \tanh(X\sin\theta)\sin\theta\,d\theta
-$$
+```
 
 For small signals $`F_1(X) \approx X`$, and for large signals it approaches $`4/\pi`$. The fundamental gain of one trip around the loop $`= G \cdot F_1(X)/X`$ ($`G`$ = the linear loop gain). Steady oscillation ⇔ this gain = 1 ⇔ $`F_1(X)/X = 1/G`$. $`F_1(X)/X`$ decreases monotonically from 1, so $`X`$ is found by bisection, and the peak of the loop signal (= wet) is $`\text{fb}\cdot\tanh(X)/\text{drive}`$. The program computes 0.298 and the measurement is 0.305 (the difference comes from the 3rd harmonic also going around the loop, so it is not a pure sine).
 

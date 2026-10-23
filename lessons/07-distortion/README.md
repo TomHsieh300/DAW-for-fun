@@ -47,9 +47,9 @@ That is why soft clip sounds "round" and hard clip sounds "harsh" -- the harshne
 
 ### 2.2 Hard clipping and its spectrum
 
-$$
+```math
 y = \mathrm{clip}(u) = \begin{cases} 1, & u > 1 \\ u, & |u| \le 1 \\ -1, & u < -1 \end{cases}
-$$
+```
 
 In code this is simply `std::clamp(u, -1.0f, 1.0f)`.
 
@@ -57,17 +57,17 @@ In code this is simply `std::clamp(u, -1.0f, 1.0f)`.
 
 **As drive → ∞ it approaches a square wave.** Multiply a sine by a very large $`g`$ and clip, and almost the whole period is stuck at ±1 -- a square wave:
 
-$$
+```math
 \text{square}(t) = \frac{4}{\pi}\sum_{n = 1, 3, 5, \dots} \frac{\sin(n\omega t)}{n}
-$$
+```
 
 The fundamental amplitude is $`4/\pi \approx 1.273`$ (+2.1 dBFS -- larger than the clip limit of 1!), and the $`n`$-th harmonic is $`1/n`$ of the fundamental: H3 = −9.5 dB, H5 = −14.0 dB, H7 = −16.9 dB (relative to the fundamental).
 
 THD is fastest to compute with Parseval's theorem. Parseval's theorem says: **the total power of a signal (RMS²) equals the sum of the powers of its frequency components**, and a sine of amplitude $`a`$ has power $`a^2/2`$. So "the total power of all harmonics = total power − fundamental power", and there is no need to add infinitely many harmonics one by one. The square wave has RMS = 1 (power = 1) and the fundamental's power is $`(4/\pi)^2 / 2 = 8/\pi^2`$, so
 
-$$
+```math
 \text{THD} = \sqrt{\frac{P_\text{total} - P_1}{P_1}} = \sqrt{\frac{1 - 8/\pi^2}{8/\pi^2}} = \sqrt{\frac{\pi^2}{8} - 1} \approx 0.483 = 48.3\%
-$$
+```
 
 If we sum only up to the 50th harmonic (the example's `thdPercent(..., 50)`), we must subtract the tail $`\sum_{n \text{ odd} \ge 51} 1/n^2 \approx 0.01`$ for $`n \ge 51`$, giving $`\sqrt{(\pi^2/8 - 1 - 0.01)} \approx 47.3\%`$. What Example 1 measured (220 Hz, −6 dBFS sine):
 
@@ -89,10 +89,10 @@ Where hard clip "cuts off" anything beyond ±1, foldback "folds it back", like l
 
 Mathematically, $`u`$ is mapped onto a triangle wave of period $`4`$:
 
-$$
+```math
 t = (u + 1) \bmod 4 \in [0, 4), \qquad
 y = \begin{cases} t - 1, & t < 2 \\ 3 - t, & t \ge 2 \end{cases}
-$$
+```
 
 For $`|u| \le 1`$, $`y = u`$ (perfectly transparent); for $`u \in [1, 3]`$, $`y = 2 - u`$; for $`u \in [3, 5]`$, $`y = u - 4`$ ... no matter how large $`u`$ is it folds correctly many times, which is more robust than the one-fold `if (u > 1) u = 2 - u;` (Exercise 3 generalizes this to an arbitrary threshold).
 
@@ -104,13 +104,13 @@ Foldback is also an odd function, so it too has only odd harmonics.
 
 The fuzz pedals of the 1960s (Fuzz Face, Tone Bender) had only two or three transistors, enormous gain, and a transistor bias that was often not centered. This gives three characteristics, which this chapter's `Distortion::fuzz()` models with the simplest piecewise-linear function:
 
-$$
+```math
 y = \begin{cases}
 0, & |u| \le d \quad \text{(dead zone, }d = 0.1\text{)}\\
 \min(u - d,\; 1.0), & u > d \\
 -\min(|u| - d,\; 0.6), & u < -d
 \end{cases}
-$$
+```
 
 ![Fuzz transfer curve: dead zone of width 0.1 around zero, positive ceiling +1.0 and negative ceiling -0.6](images/transfer-fuzz.svg)
 
@@ -144,10 +144,10 @@ Rectification comes from power-supply circuits: turning AC into DC. In audio the
 
 **Why does full-wave rectify raise the pitch an octave?** Intuition: after the negative half-cycle of $`|\sin\omega t|`$ is flipped up, the waveform **repeats every half-cycle**; the period goes from $`T`$ to $`T/2`$ and the frequency doubles = an octave up. Written more precisely with a Fourier series:
 
-$$
+```math
 |\sin\omega t| = \frac{2}{\pi} - \frac{4}{\pi}\sum_{k=1}^{\infty} \frac{\cos(2k\omega t)}{4k^2 - 1}
 = \frac{2}{\pi} - \frac{4}{3\pi}\cos 2\omega t - \frac{4}{15\pi}\cos 4\omega t - \cdots
-$$
+```
 
 Only DC and the **even** harmonics ($`2\omega, 4\omega, 6\omega, \dots`$) remain, and the fundamental $`\omega`$ disappears completely. The pitch the ear hears is determined by the "common divisor of the harmonics": the common divisor of $`2\omega, 4\omega, 6\omega`$ is $`2\omega`$, so it sounds an octave above the original.
 
@@ -155,9 +155,9 @@ Measurement (Example 1, drive 6.02 dB so that a −6 dBFS sine just reaches a pe
 
 **Half-wave** is
 
-$$
+```math
 \max(\sin\omega t, 0) = \frac{1}{\pi} + \frac{1}{2}\sin\omega t - \frac{2}{\pi}\sum_{k=1}^{\infty}\frac{\cos(2k\omega t)}{4k^2-1}
-$$
+```
 
 The fundamental is still there (amplitude 1/2), plus the even harmonics and DC: the pitch is unchanged, but the sound becomes "hollow, like a square wave with a nasal quality". `Distortion` switches with `setRectifyMode(RectifyMode::HalfWave)`.
 
@@ -171,15 +171,15 @@ A bitcrusher deliberately cuts down the two "resolutions" of digital audio: **am
 
 A signed $`N`$-bit integer has $`2^N`$ codes, mapped onto the amplitude range $`[-1, 1)`$, so the size of each step is
 
-$$
+```math
 \Delta = \frac{2}{2^N} = 2^{1-N}
-$$
+```
 
 8 bit: $`\Delta = 2/256 = 0.0078`$; 16 bit: $`\Delta = 2/65536 \approx 3.05 \times 10^{-5}`$. Quantization is "rounding to the nearest step" (a mid-tread quantizer):
 
-$$
+```math
 Q(u) = \Delta \cdot \mathrm{clamp}\!\left(\left\lfloor \frac{u}{\Delta} + \frac{1}{2} \right\rfloor,\; -M,\; M - 1\right), \qquad M = \left\lfloor 2^{N-1} \right\rfloor
-$$
+```
 
 Note that the upper limit is $`M - 1`$: just like real 16-bit PCM (−32768 ... 32767), the largest positive value is $`1 - \Delta`$, not 1. When $`N`$ is an integer, $`M = 2^{N-1}`$; when $`N`$ is fractional (allowed by `setBitDepth()`, for example 5.5 bit), $`M`$ takes the integer part (5.5 bit: $`2^{4.5} = 22.6 \to M = 22`$, codes −22 ... 21), so the output always lands on integer multiples of $`\Delta`$, with a maximum positive value of $`21\Delta = 0.928`$ and a minimum of $`-22\Delta = -0.972`$.
 
@@ -187,20 +187,20 @@ Note that the upper limit is $`M - 1`$: just like real 16-bit PCM (−32768 ... 
 
 **Deriving the SNR formula.** Treat the quantization error $`e = Q(u) - u`$ as noise uniformly distributed over $`[-\Delta/2, \Delta/2]`$ (valid when the signal is large and "busy" enough); its power (variance) is
 
-$$
+```math
 \sigma_e^2 = \frac{1}{\Delta}\int_{-\Delta/2}^{\Delta/2} e^2\, de = \frac{\Delta^2}{12}
-$$
+```
 
 A sine of amplitude $`A`$ has power $`A^2/2`$. So
 
-$$
+```math
 \text{SNR} = 10\log_{10}\frac{A^2/2}{\Delta^2/12} = 10\log_{10}\frac{6A^2}{\Delta^2}
 = 10\log_{10}\left(6A^2 \cdot 2^{2N-2}\right) = 10\log_{10}1.5 + 20N\log_{10}2 + 20\log_{10}A
-$$
+```
 
-$$
+```math
 \boxed{\text{SNR} \approx 6.02\,N + 1.76 + 20\log_{10}A \;\text{dB}}
-$$
+```
 
 Each extra bit adds 6.02 dB of SNR; every 20 dB the signal gets quieter, SNR also drops by 20 dB -- **the size of the quantization noise is fixed and does not change with the signal**. Example 3 measured (997 Hz sine):
 
@@ -225,15 +225,15 @@ The "correct" way to reduce the sample rate is to lowpass first and then drop sa
 
 The effective sample rate is $`f_s' = f_s / D`$. In the world of $`f_s'`$, any frequency above $`f_s'/2`$ aliases:
 
-$$
+```math
 f_\text{alias} = |f - k f_s'|, \quad k = \mathrm{round}(f / f_s')
-$$
+```
 
 The hold action itself is a zero-order hold (ZOH), whose frequency response is a sinc:
 
-$$
+```math
 |H_\text{ZOH}(f)| = \left|\frac{\sin(\pi f / f_s')}{\pi f / f_s'}\right|
-$$
+```
 
 So the level of each component = its original level × the ZOH value at that frequency. (Strictly speaking, in discrete time the response of "holding for $`D`$ samples" is the Dirichlet kernel $`\left|\frac{\sin(\pi f D / f_s)}{D \sin(\pi f / f_s)}\right|`$; for large $`D`$ and $`f \ll f_s`$ it approaches the sinc above. The example uses the sinc as the theoretical value, with an error within 0.3 dB.) Example 3's measurement: a 5 kHz, −6 dBFS sine, $`D = 8`$ ($`f_s' = 6`$ kHz):
 
@@ -302,9 +302,9 @@ The true harmonics (H columns) are completely unaffected; the aliases (A columns
    Twice 96 kHz is exactly 192 kHz, so 2x and 4x are folded back by the **same set of harmonics**, and the aliases differ by only 2-4 dB; at 8x the folding starts only at the 150th harmonic or above, another 24-31 dB smaller. The 39th harmonic of an ideal square wave is $`1/39`$ of the fundamental (−31.8 dB); but the clipped waveform at drive 20 dB is really a "trapezoid" (the rising edge has a finite slope), so the high harmonics decay faster than $`1/n`$ (closer to $`1/n^2`$, see Section 2.1), and the aliases actually measured (about −46 to −49 dB relative to H1) are smaller still. This also shows that the size of the aliasing **depends on the input frequency**: with a different fundamental, the gap between 2x and 4x would be different.
 3. **Where the latency comes from.** In the Chapter 06 Oversampler, each halfband stage has $`2K_i`$ odd-numbered taps (32, 12, and 8 for the three stages), and the group delay of upsampling + downsampling is $`2(2K_i - 1)`$ samples "at that stage's high sample rate". Converted back to the original sample rate and truncated to an integer:
 
-   $$
+   ```math
    \text{latency} = \left\lfloor \frac{1}{2^S}\sum_{i=1}^{S} 2(2K_i - 1)\, 2^{S-i} \right\rfloor
-   $$
+   ```
 
    2x: $`62/2 = 31`$; 4x: $`(124 + 22)/4 = 36.5 \to 36`$; 8x: $`(248 + 44 + 14)/8 = 38.25 \to 38`$. Doubling the factor adds only a few samples of latency, because the later stages work at ever higher sample rates and their filters get ever shorter. The self-check of Example 4 recomputes this formula with `Oversampler::kOddTapsStage1..3` and compares it with `Distortion::getLatencySamples()`.
 
@@ -327,9 +327,9 @@ So the noise gate belongs **before** the distortion: while the signal has not ye
 
 **Output level compensation.** Distortion almost always makes the sound **louder**: the pluck sequence in Example 1 (RMS −19.7 dBFS) has an RMS of −3.5 dBFS after HardClip at 20 dB -- 16 dB louder! The human ear has a louder-is-better bias, and if you compare timbres without compensation you will always feel more drive is better. The examples all use **RMS match** to pull the output back to the same RMS as the input before comparing:
 
-$$
+```math
 g_\text{comp} = \frac{\text{RMS}_\text{in}}{\text{RMS}_\text{out}}
-$$
+```
 
 | type | RMS after processing | Compensation needed |
 |---|---|---|

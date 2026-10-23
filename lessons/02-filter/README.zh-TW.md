@@ -26,9 +26,9 @@ DAW 裡幾乎每一個效果都藏著 filter：EQ 是一排 biquad、compressor 
 
 **時域的角度：** filter 把「現在的輸入」和「過去的輸入、過去的輸出」做加權相加。最簡單的例子是「取最近 4 個 sample 的平均」：
 
-$$
+```math
 y[n] = \tfrac14\big(x[n] + x[n-1] + x[n-2] + x[n-3]\big)
-$$
+```
 
 平均會把快速的上下抖動抹平（高頻變小），緩慢的變化則幾乎不受影響（低頻通過）——這已經是一個 lowpass filter 了。
 
@@ -68,17 +68,17 @@ $$
 
 為什麼它這麼重要？因為任何輸入都可以拆成「一連串放大、平移過的 impulse」：$`x[n] = \sum_k x[k]\,\delta[n-k]`$。LTI 系統對每一個 impulse 的反應都是一份平移、放大過的 $`h`$，全部疊起來就是輸出：
 
-$$
+```math
 y[n] = \sum_{k=0}^{\infty} h[k]\, x[n-k] \qquad\text{（convolution，摺積）}
-$$
+```
 
 結論：**$`h[n]`$ 完整描述了一個 LTI filter**。上面 4 點平均的 impulse response 就是 $`\{0.25, 0.25, 0.25, 0.25, 0, 0, \dots\}`$。
 
 而頻率響應就是 impulse response 的 DTFT（discrete-time Fourier transform）：
 
-$$
+```math
 H(e^{j\omega}) = \sum_{n} h[n]\, e^{-j\omega n},\qquad \omega = 2\pi \frac{f}{f_s}
-$$
+```
 
 $`\omega`$ 是「每個 sample 轉幾個弧度」的數位角頻率：DC 是 $`\omega = 0`$，Nyquist（$`f_s/2`$）是 $`\omega = \pi`$。範例 `l02_impulse_response` 就是用這條式子，從量到的 $`h[n]`$ 直接算出頻率響應，再和 `magnitudeDb()` 對照。
 
@@ -86,16 +86,16 @@ $`\omega`$ 是「每個 sample 轉幾個弧度」的數位角頻率：DC 是 $`\
 
 $`N`$ 點 moving average：
 
-$$
+```math
 y[n] = \frac1N \sum_{k=0}^{N-1} x[n-k]
-$$
+```
 
 impulse response 是 $`N`$ 個 $`1/N`$，然後全是 0。把它代入 DTFT（等比級數求和）：
 
-$$
+```math
 H(e^{j\omega}) = \frac1N\sum_{k=0}^{N-1} e^{-j\omega k}
 = \frac{1}{N}\,\frac{\sin(N\omega/2)}{\sin(\omega/2)}\; e^{-j\omega (N-1)/2}
-$$
+```
 
 從這條式子可以讀出 moving average 的所有個性：
 
@@ -115,9 +115,9 @@ $$
 
 把 filter 寫成「輸出 = 輸入與過去值的線性組合」，叫做 **difference equation**（差分方程）：
 
-$$
+```math
 y[n] = \sum_{k=0}^{M} b_k\, x[n-k] \;-\; \sum_{k=1}^{N} a_k\, y[n-k]
-$$
+```
 
 - 只有 $`b_k`$（feed-forward）：輸出只看輸入 → impulse response 有限長 → **FIR**。
 - 有 $`a_k`$（feedback，用到過去的**輸出**）：impulse 進去之後會在迴路裡一直繞 → impulse response 理論上無限長 → **IIR**（infinite impulse response）。
@@ -130,26 +130,26 @@ IIR 的好處是**便宜**：一個只有 2 個乘法（一次乘加加一個乘
 
 考慮一個「複數正弦」輸入 $`x[n] = e^{j\omega n}`$。延遲一個 sample 會變成
 
-$$
+```math
 x[n-1] = e^{j\omega(n-1)} = e^{-j\omega}\cdot x[n]
-$$
+```
 
 也就是說，**對單一頻率而言，「延遲一個 sample」等於「乘上 $`e^{-j\omega}`$」**。把 $`e^{j\omega}`$ 推廣成一個複數變數 $`z`$，延遲一個 sample 就記作乘上 $`z^{-1}`$。於是 difference equation 兩邊都可以寫成「$`X`$ 乘上一個多項式」：
 
-$$
+```math
 Y(z)\,(1 + a_1 z^{-1} + a_2 z^{-2}) = X(z)\,(b_0 + b_1 z^{-1} + b_2 z^{-2})
-$$
+```
 
-$$
+```math
 H(z) = \frac{Y(z)}{X(z)} = \frac{b_0 + b_1 z^{-1} + b_2 z^{-2}}{1 + a_1 z^{-1} + a_2 z^{-2}}
-$$
+```
 
 這叫做 **transfer function**。要知道頻率 $`f`$ 的響應，就把 $`z = e^{j\omega}`$（$`\omega = 2\pi f/f_s`$）代進去：
 
-$$
+```math
 H(e^{j\omega}) = \frac{b_0 + b_1 e^{-j\omega} + b_2 e^{-2j\omega}}{1 + a_1 e^{-j\omega} + a_2 e^{-2j\omega}},\qquad
 \text{gain(dB)} = 20\log_{10}\lvert H(e^{j\omega})\rvert
-$$
+```
 
 這正是 `BiquadCoefficients::response()` / `magnitudeDb()` 做的事（見 3.2 節）。三種描述方式的關係：
 
@@ -165,16 +165,16 @@ flowchart LR
 
 把分子、分母因式分解（以二階為例，$`b_0 \ne 0`$）：
 
-$$
+```math
 H(z) = b_0\,\frac{(1 - q_1 z^{-1})(1 - q_2 z^{-1})}{(1 - p_1 z^{-1})(1 - p_2 z^{-1})}
 = b_0\,\frac{(z - q_1)(z - q_2)}{(z - p_1)(z - p_2)}
-$$
+```
 
 讓分子為 0 的 $`q_k`$ 叫 **zero**（零點），讓分母為 0 的 $`p_k`$ 叫 **pole**（極點）。在 $`z = e^{j\omega}`$ 上取大小：
 
-$$
+```math
 \lvert H(e^{j\omega})\rvert = \lvert b_0\rvert\;\frac{\lvert e^{j\omega} - q_1\rvert\,\lvert e^{j\omega} - q_2\rvert}{\lvert e^{j\omega} - p_1\rvert\,\lvert e^{j\omega} - p_2\rvert}
-$$
+```
 
 $`e^{j\omega}`$ 是複數平面上**單位圓**的一個點：$`\omega`$ 從 0（DC，在 $`z = 1`$）逆時針走到 $`\pi`$（Nyquist，在 $`z = -1`$）。頻率響應的大小 = 「到各個 zero 的距離乘積」÷「到各個 pole 的距離乘積」。於是：
 
@@ -191,15 +191,15 @@ $`e^{j\omega}`$ 是複數平面上**單位圓**的一個點：$`\omega`$ 從 0�
 
 對二階分母 $`1 + a_1 z^{-1} + a_2 z^{-2}`$，pole 是 $`z^2 + a_1 z + a_2 = 0`$ 的根：
 
-$$
+```math
 p_{1,2} = \frac{-a_1 \pm \sqrt{a_1^2 - 4a_2}}{2}
-$$
+```
 
 判別式為負時是一對共軛複數 pole，半徑 $`r = \sqrt{a_2}`$，角度 $`\theta = \arccos\!\big(-a_1 / (2r)\big)`$。$`\theta`$ 決定「在哪個頻率共振」（$`f \approx \theta f_s / 2\pi`$），$`r`$ 決定「衰減多快」：impulse response 的包絡是 $`r^n`$，時間常數 $`\tau = -1/\ln r`$ 個 sample。不用解根也能判斷穩定性——二階系統的穩定區域在 $`(a_1, a_2)`$ 平面上是一個三角形：
 
-$$
+```math
 |a_2| < 1 \quad\text{且}\quad |a_1| < 1 + a_2
-$$
+```
 
 練習 5 會實際算出幾組係數的 pole，並用 impulse 驗證：例如 1 kHz、Q = 8 的 lowpass，pole 半徑 $`r = 0.991875`$、角度對應 998.1 Hz、$`\tau = 123`$ samples；1000 個 sample 後 impulse response 衰減了約 70 dB（理論 $`20\log_{10} r^{1000} = -70.86`$ dB）。
 
@@ -219,52 +219,52 @@ $$
 
 最常用的 IIR 是只有一個 pole 的 lowpass：
 
-$$
+```math
 y[n] = (1-a)\,x[n] + a\,y[n-1]
 \qquad\Longleftrightarrow\qquad
 H(z) = \frac{1-a}{1 - a z^{-1}}
-$$
+```
 
 直覺：輸出每個 sample 往輸入「靠近 $`(1-a)`$ 的比例」。$`a`$ 越接近 1，靠得越慢，越平滑（cutoff 越低）。第 01 章的 exponential smoother 就是它——但注意**符號剛好相反**：第 01 章的 $`a`$ 是「每步走剩餘距離的比例」（$`g[n] = (1-a)\,g[n-1] + a\,g_\text{target}`$），對應這裡的 $`1-a`$；這裡的 $`a`$ 是「留下舊值的比例」。兩章的時間常數是同一件事：第 01 章的 $`1 - a_{01} = e^{-1/(\tau f_s)}`$（$`\tau`$ 以秒計）就是下面推導的 $`a = e^{-T/\tau}`$（$`T = 1/f_s`$）。
 
 **$`a`$ 怎麼由 cutoff 決定？** 從 analog 的 RC lowpass 出發：時間常數 $`\tau = RC`$，cutoff $`f_c = 1/(2\pi\tau)`$，impulse response 是 $`\frac{1}{\tau} e^{-t/\tau}`$——每經過時間 $`T`$，衰減 $`e^{-T/\tau}`$ 倍。數位版本的 impulse response 是
 
-$$
+```math
 h[n] = (1-a)\,a^n
-$$
+```
 
 要讓它和 analog 版本在取樣點上**形狀一樣**（每個 sample 衰減的比例一樣，$`T = 1/f_s`$），就要求
 
-$$
+```math
 a = e^{-T/\tau} = e^{-2\pi f_c / f_s}
-$$
+```
 
 這種「讓數位 impulse response 等於 analog impulse response 的取樣」的設計法叫 **impulse invariance**。前面的 $`(1-a)`$ 則讓 DC gain $`H(1) = (1-a)/(1-a) = 1`$。
 
 手算一次（$`f_c = 1`$ kHz、$`f_s = 48`$ kHz）：
 
-$$
+```math
 \frac{2\pi \cdot 1000}{48000} = 0.130900,\qquad a = e^{-0.130900} = 0.877306,\qquad 1 - a = 0.122694
-$$
+```
 
 範例 `l02_impulse_response` 印出的 one-pole impulse response 第一個值正是 0.1227，之後每個 sample 乘 0.8773。
 
 **它的 −3 dB 點真的在 $`f_c`$ 嗎？** 只有在 $`f_c \ll f_s`$ 時才近似成立。設 $`|H|^2 = 1/2`$：
 
-$$
+```math
 \lvert H(e^{j\omega})\rvert^2 = \frac{(1-a)^2}{1 - 2a\cos\omega + a^2} = \frac12
 \quad\Longrightarrow\quad
 \cos\omega_{3\text{dB}} = 1 - \frac{(1-a)^2}{2a}
-$$
+```
 
 $`f_c = 1`$ kHz 時算出 1001.4 Hz（偏 0.14%），$`f_c = 10`$ kHz 時是 11895 Hz（偏約 19%）。問題出在 Nyquist：exp 版在 $`z = -1`$ 的增益是 $`(1-a)/(1+a)`$，**不是 0**（$`f_c = 1`$ kHz 時是 −23.69 dB），cutoff 越高越「關不乾淨」；$`f_c = 15`$ kHz 時整條曲線都在 −3 dB 以上（Nyquist 處也只有 −2.45 dB），−3 dB 點根本不存在。
 
 **Bilinear 版本。** 另一種做法是用 **bilinear transform**（2.11 節詳述）把 analog 的 $`H(s) = 1/(1 + s/\Omega_c)`$ 直接轉成數位。結果是：
 
-$$
+```math
 g = \tan\!\left(\frac{\pi f_c}{f_s}\right),\qquad
 H(z) = \frac{g\,(1 + z^{-1})}{(1+g) - (1-g)\,z^{-1}}
-$$
+```
 
 它多了一個在 $`z = -1`$ 的 zero，所以 Nyquist 增益是 0（−∞ dB），−3 dB 點永遠精準落在 $`f_c`$；代價是多一個乘加，而且高頻端的形狀被「擠」向 Nyquist（cramping，2.14 節）。$`f_c = 1`$ kHz 時 $`g = 0.065543`$，pole $`= (1-g)/(1+g) = 0.876976`$——和 exp 版的 0.877306 幾乎一樣，低 cutoff 時兩者沒有實質差別。
 
@@ -282,23 +282,23 @@ $$
 
 **Highpass。** 直覺做法是「原訊號減掉 lowpass」：$`x - \text{LP}(x)`$。算一下：
 
-$$
+```math
 1 - \frac{1-a}{1-az^{-1}} = \frac{a\,(1 - z^{-1})}{1 - a z^{-1}}
-$$
+```
 
 它在 DC（$`z = 1`$）有一個 zero，所以 DC 完全消失；但在 Nyquist（$`z = -1`$）的增益是 $`2a/(1+a)`$，cutoff 高時（$`a`$ 小）通帶會掉到 0 dB 以下。所以 `OnePole` 把前面的常數換成 $`h = (1+a)/2`$，讓 Nyquist 剛好 0 dB：
 
-$$
+```math
 y[n] = h\,\big(x[n] - x[n-1]\big) + a\,y[n-1],\qquad h = \frac{1+a}{2}
-$$
+```
 
 檢查：$`z = -1`$ 時 $`H = h \cdot 2/(1+a) = 1`$。✓ 範例量到 1 kHz highpass 在 20 Hz 是 −33.97 dB（6 dB/oct 外插：$`20\log_{10}(20/1000) = -33.98`$ dB）、1 kHz 是 −3.00 dB、20 kHz 是 0.00 dB。
 
 **DC blocker** 是同樣結構、但 pole 非常靠近 1 的特例：
 
-$$
+```math
 y[n] = x[n] - x[n-1] + R\,y[n-1],\qquad H(z) = \frac{1 - z^{-1}}{1 - R z^{-1}},\quad R \approx 0.995
-$$
+```
 
 zero 在 $`z = 1`$ 殺掉 DC；pole 在 $`z = R`$ 緊貼著它，讓 DC 以外的頻率幾乎不受影響（兩者到單位圓上其他點的距離幾乎相等，相除 ≈ 1）。−3 dB 點約為 $`f_s(1-R)/2\pi`$：$`R = 0.995`$、$`f_s = 48`$ kHz → 38.2 Hz。用途：去掉麥克風 / 錄音介面的直流偏移、非對稱 distortion（第 07 章）產生的 DC。練習 2 會實作並驗證它。
 
@@ -306,13 +306,13 @@ zero 在 $`z = 1`$ 殺掉 DC；pole 在 $`z = R`$ 緊貼著它，讓 DC 以外�
 
 **Biquad**（bi-quadratic，分子分母都是二次式）是音訊 filter 的標準積木：
 
-$$
+```math
 y[n] = b_0 x[n] + b_1 x[n-1] + b_2 x[n-2] - a_1 y[n-1] - a_2 y[n-2]
-$$
+```
 
-$$
+```math
 H(z) = \frac{b_0 + b_1 z^{-1} + b_2 z^{-2}}{1 + a_1 z^{-1} + a_2 z^{-2}}
-$$
+```
 
 （若公式給出的 $`a_0 \ne 1`$，要把五個係數都除以 $`a_0`$——這叫 normalize。）
 
@@ -351,32 +351,32 @@ flowchart LR
 
 **Bilinear transform** 把 $`s`$ 平面映射到 $`z`$ 平面：
 
-$$
+```math
 s \;\leftarrow\; \frac{2}{T}\,\frac{1 - z^{-1}}{1 + z^{-1}}
-$$
+```
 
 它把 analog 的整條虛軸（$`\Omega`$ 從 0 到 ∞）一對一地映射到單位圓的上半圈（$`\omega`$ 從 0 到 π），所以穩定的 analog filter 轉過來一定穩定，也不會有 aliasing。代價是頻率軸被非線性地壓縮了。把 $`z = e^{j\omega}`$ 代入：
 
-$$
+```math
 \frac{1 - e^{-j\omega}}{1 + e^{-j\omega}} = j\tan\frac{\omega}{2}
 \qquad\Longrightarrow\qquad
 \Omega = \frac{2}{T}\tan\frac{\omega}{2}
-$$
+```
 
 低頻時 $`\tan(\omega/2) \approx \omega/2`$，所以 $`\Omega \approx \omega/T`$（對得上）；越接近 Nyquist，偏差越大。**Prewarping** 的作法是：在設計 analog prototype 時，故意把 $`\Omega_0`$ 設成 $`\frac2T\tan(\omega_0/2)`$，這樣轉換後 $`f_0`$ 會**精準**落在想要的位置。
 
 **實際推導一次 LPF。** 令 $`K = \tan(\omega_0/2)`$，prewarp 後的代換是 $`s \leftarrow \frac{1}{K}\frac{1 - z^{-1}}{1 + z^{-1}}`$。代入 $`1/(s^2 + s/Q + 1)`$，上下同乘 $`K^2(1 + z^{-1})^2`$：
 
-$$
+```math
 H(z) = \frac{K^2(1 + 2z^{-1} + z^{-2})}{(1 + K/Q + K^2) + (2K^2 - 2)\,z^{-1} + (1 - K/Q + K^2)\,z^{-2}}
-$$
+```
 
 再用三角恆等式 $`K = \frac{\sin\omega_0}{1 + \cos\omega_0}`$、$`1 + K^2 = \frac{2}{1 + \cos\omega_0}`$，全部乘上 $`\frac{1 + \cos\omega_0}{2}`$，並定義 $`\alpha = \frac{\sin\omega_0}{2Q}`$，就得到 cookbook 的形式：
 
-$$
+```math
 b_0 = \frac{1 - \cos\omega_0}{2},\; b_1 = 1 - \cos\omega_0,\; b_2 = \frac{1 - \cos\omega_0}{2},\quad
 a_0 = 1 + \alpha,\; a_1 = -2\cos\omega_0,\; a_2 = 1 - \alpha
-$$
+```
 
 **全部 8 種的係數**（共用中間量 $`\omega_0 = 2\pi f_0/f_s`$、$`\alpha = \sin\omega_0/(2Q)`$、$`A = 10^{\text{gainDb}/40}`$；最後都要除以 $`a_0`$）：
 
@@ -393,23 +393,23 @@ Shelf 的係數比較長（令 $`\beta = 2\sqrt A\,\alpha`$）：
 
 Low shelf：
 
-$$
+```math
 \begin{aligned}
 b_0 &= A\big[(A+1) - (A-1)\cos\omega_0 + \beta\big] & a_0 &= (A+1) + (A-1)\cos\omega_0 + \beta\\
 b_1 &= 2A\big[(A-1) - (A+1)\cos\omega_0\big] & a_1 &= -2\big[(A-1) + (A+1)\cos\omega_0\big]\\
 b_2 &= A\big[(A+1) - (A-1)\cos\omega_0 - \beta\big] & a_2 &= (A+1) + (A-1)\cos\omega_0 - \beta
 \end{aligned}
-$$
+```
 
 High shelf：
 
-$$
+```math
 \begin{aligned}
 b_0 &= A\big[(A+1) + (A-1)\cos\omega_0 + \beta\big] & a_0 &= (A+1) - (A-1)\cos\omega_0 + \beta\\
 b_1 &= -2A\big[(A-1) + (A+1)\cos\omega_0\big] & a_1 &= 2\big[(A-1) - (A+1)\cos\omega_0\big]\\
 b_2 &= A\big[(A+1) + (A-1)\cos\omega_0 - \beta\big] & a_2 &= (A+1) - (A-1)\cos\omega_0 - \beta
 \end{aligned}
-$$
+```
 
 Cookbook 對 shelf 另外定義了「shelf slope」$`S`$；$`S = 1`$（最陡但不過衝）等價於這裡的 $`Q = 1/\sqrt2`$。
 
@@ -442,20 +442,20 @@ $`Q`$（quality factor）控制 pole 離單位圓多近，也就是「峰有多�
 
 $`N`$ 階 Butterworth 的定義是「通帶最平坦」：
 
-$$
+```math
 \lvert H(j\Omega)\rvert^2 = \frac{1}{1 + (\Omega/\Omega_c)^{2N}}
-$$
+```
 
 它在 cutoff 永遠是 −3.01 dB，遠離 cutoff 後以 $`6N`$ dB/oct 衰減。它的 $`N`$ 個 pole 等距（相隔 $`\pi/N`$）分布在 $`s`$ 平面左半邊的半圓上，對實軸對稱。設一對共軛 pole 和負實軸的夾角是 $`\varphi_k`$，也就是 $`-\cos\varphi_k \pm j\sin\varphi_k`$，乘開得到 $`s^2 + 2\cos\varphi_k\,s + 1`$，和 biquad 的 $`s^2 + s/Q + 1`$ 比對：
 
-$$
+```math
 Q_k = \frac{1}{2\cos\varphi_k},\qquad
 \varphi_k =
 \begin{cases}
 \dfrac{(2k+1)\pi}{2N}, & N \text{ 偶數},\; k = 0, 1, \dots, \tfrac N2 - 1\\[2ex]
 \dfrac{(k+1)\pi}{N}, & N \text{ 奇數},\; k = 0, 1, \dots, \tfrac{N-3}{2}
 \end{cases}
-$$
+```
 
 為什麼奇偶不同？pole 要對實軸對稱、彼此相隔 $`\pi/N`$：$`N`$ 偶數時沒有 pole 落在實軸上，最靠近實軸的一對在 $`\pm\pi/(2N)`$；$`N`$ 奇數時正中間（$`\varphi = 0`$）有一個**實數 pole**，其餘成對的在 $`\pm\pi/N, \pm2\pi/N, \dots`$。那個實數 pole 就是一個一階 filter $`1/(s + 1)`$——所以奇數階要再串一級 **one-pole**，而且必須是 bilinear 版（2.8 節），cutoff 和各級 biquad 相同，−3 dB 點才會精準落在 $`f_c`$。
 
@@ -520,21 +520,21 @@ flowchart LR
 
 **Direct Form II（DF-II）**——先做 feedback（pole）再做 feed-forward（zero），兩段共用同一條延遲線，只要 2 個狀態：
 
-$$
+```math
 w[n] = x[n] - a_1 w[n-1] - a_2 w[n-2],\qquad y[n] = b_0 w[n] + b_1 w[n-1] + b_2 w[n-2]
-$$
+```
 
 問題在中間變數 $`w[n]`$：它是「只經過 pole 部分」的訊號，對低 cutoff 的 lowpass 會被放大非常多倍。
 
 **Transposed Direct Form II（TDF-II）**——把 DF-II 的訊號流向反過來（transpose），一樣 2 個狀態：
 
-$$
+```math
 \begin{aligned}
 y[n] &= b_0\,x[n] + s_1[n-1]\\
 s_1[n] &= b_1\,x[n] - a_1\,y[n] + s_2[n-1]\\
 s_2[n] &= b_2\,x[n] - a_2\,y[n]
 \end{aligned}
-$$
+```
 
 ```mermaid
 flowchart LR
@@ -594,20 +594,20 @@ DF-II 的 $`w[n]`$ 峰值達 18908，是輸出（0.289）的 65422 倍；換係�
 
 **TPT State Variable Filter（SVF）** 是快速調變時的常見解法。它把 analog 的 state-variable filter（兩個積分器 + feedback）用 trapezoidal integration（等價於 bilinear）離散化，但**保留原本的電路結構**（topology-preserving transform，TPT）：
 
-$$
+```math
 g = \tan\!\left(\frac{\pi f_c}{f_s}\right),\quad k = \frac1Q,\quad
 a_1 = \frac{1}{1 + g(g + k)},\; a_2 = g\,a_1,\; a_3 = g\,a_2
-$$
+```
 
 每個 sample：
 
-$$
+```math
 \begin{aligned}
 v_3 &= x - ic_2, \quad v_1 = a_1\,ic_1 + a_2\,v_3, \quad v_2 = ic_2 + a_2\,ic_1 + a_3\,v_3\\
 ic_1 &\leftarrow 2v_1 - ic_1, \quad ic_2 \leftarrow 2v_2 - ic_2\\
 \text{low} &= v_2,\quad \text{band} = k\,v_1,\quad \text{high} = x - k\,v_1 - v_2,\quad \text{notch} = x - k\,v_1
 \end{aligned}
-$$
+```
 
 優點：狀態 $`ic_1, ic_2`$ 對應積分器的「電容電壓」，有物理意義，換 cutoff 時不會和係數「不匹配」；每個 sample 更新只要一次 `tan`；同一組狀態同時給出 LP / BP / HP / notch。**靜態**時它和 RBJ 的同名 filter 完全一樣（同一個 analog prototype + bilinear），`l02_cutoff_modulation` 的 [C] 驗證了兩者在 1 kHz、Q = 6 時每個頻率都一致（例如 1 kHz 都是 +15.56 dB）。
 

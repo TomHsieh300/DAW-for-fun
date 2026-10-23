@@ -172,9 +172,9 @@ What does "a component above $`f_s/2`$" mean? To answer that, we first have to b
 
 A **sine wave** is the "purest" sound, with a single frequency; it sounds like a tuning fork or the "beeeep" of a test tone:
 
-$$
+```math
 x(t) = A \sin(2\pi f t)
-$$
+```
 
 $`A`$ is the amplitude (how loud) and $`f`$ is the frequency (what pitch). After sampling it becomes $`x[n] = A\sin(2\pi f n / f_s)`$, which is exactly what `makeSine()` in `Signals.h` computes.
 
@@ -192,9 +192,9 @@ To hear the difference: `l00_sine_440.wav`, written by `l00_test_signals`, is a 
 
 **The Nyquist–Shannon sampling theorem**: if the highest frequency in a signal is $`f_{max}`$, then as long as $`f_s > 2 f_{max}`$, the original signal can be reconstructed perfectly from the samples. Put the other way round, at sample rate $`f_s`$ the highest frequency that can be represented correctly is
 
-$$
+```math
 f_{Nyquist} = \frac{f_s}{2}
-$$
+```
 
 The upper limit of human hearing is about 20 kHz, so CDs use 44.1 kHz (Nyquist 22.05 kHz), and professional audio commonly uses 48 kHz (Nyquist 24 kHz), 96 kHz and 192 kHz.
 
@@ -202,25 +202,25 @@ The upper limit of human hearing is about 20 kHz, so CDs use 44.1 kHz (Nyquist 2
 
 As a formula: a sine wave of frequency $`f_{in}`$, once sampled, produces **exactly the same** samples as all of the following frequencies:
 
-$$
+```math
 f_{alias} = \left| f_{in} - k \cdot f_s \right|,\quad k = 0, \pm 1, \pm 2, \ldots
-$$
+```
 
 The one that falls within $`[0, f_s/2]`$ is the frequency you will "hear".
 
 **Calculation: what does 30 kHz become when sampled at 48 kHz?**
 
-$$
+```math
 f_{alias} = |30000 - 1 \times 48000| = 18000\ \text{Hz}
-$$
+```
 
 30 kHz is 6 kHz above Nyquist (24 kHz), so it "folds back" to 6 kHz below Nyquist, which is 18 kHz. You can verify this with trigonometry ($`n`$ is an integer):
 
-$$
+```math
 \sin\!\left(2\pi \tfrac{30000}{48000} n\right)
 = \sin\!\left(2\pi n - 2\pi \tfrac{18000}{48000} n\right)
 = -\sin\!\left(2\pi \tfrac{18000}{48000} n\right)
-$$
+```
 
 The two sets of samples are identical except for the sign; the computer has no way to tell them apart. The example `l00_db_math` uses Goertzel (an algorithm that measures only the amplitude of a *single frequency*; see 3.4) on a 30 kHz sine wave, and the amplitude measured at 18 kHz is the full 0.5:
 
@@ -244,18 +244,18 @@ The number of bits used to store each sample is the **bit depth**. N-bit integer
 
 Quantization means rounding the true value to the nearest level; the error $`e[n]`$ lies within $`\pm \Delta/2`$, where $`\Delta`$ is the level spacing. For most signals this error behaves like uniformly distributed random noise (quantization noise), with power
 
-$$
+```math
 P_{noise} = \frac{\Delta^2}{12}
-$$
+```
 
 (the variance of a uniform distribution on $`[-\Delta/2, \Delta/2]`$). Dividing the power of a full-scale sine wave, $`P_{signal} = A^2/2`$, by it gives the best-case **SNR (signal-to-noise ratio)**. If the range of levels is $`[-1, 1]`$, then $`\Delta = 2 / 2^N = 2^{1-N}`$ and $`A = 1`$:
 
-$$
+```math
 \text{SNR} = 10\log_{10}\frac{1/2}{2^{2-2N}/12}
 = 10\log_{10}\left(1.5 \cdot 2^{2N}\right)
 = 20N\log_{10}2 + 10\log_{10}1.5
 \approx 6.02N + 1.76\ \text{dB}
-$$
+```
 
 **Intuition: every extra bit lowers the noise by 6 dB.** 16 bit gives about 98 dB and 24 bit about 146 dB. `l00_db_math` actually quantizes a sine wave and measures the SNR, and it matches the formula closely:
 
@@ -288,9 +288,9 @@ A float can exceed 1.0 without breaking, but when it is written to an integer WA
 
 Human perception of loudness is logarithmic: going from 0.1 to 0.2 sounds like "about the same size step" as going from 0.5 to 1.0. So audio almost always uses **dB (decibel)**:
 
-$$
+```math
 L_{dB} = 20\log_{10}\frac{A}{A_{ref}} \qquad\Longleftrightarrow\qquad \frac{A}{A_{ref}} = 10^{L_{dB}/20}
-$$
+```
 
 This is the formula for **amplitude**. If you are comparing **power** (proportional to amplitude squared), the factor is 10 instead of 20: $`10\log_{10}(P/P_{ref}) = 10\log_{10}(A^2/A_{ref}^2) = 20\log_{10}(A/A_{ref})`$. The two formulas give the same answer; which one you use only depends on whether you are holding an amplitude or a power.
 
@@ -360,9 +360,9 @@ The drum loop's peak is only -2.9 dBFS, yet its RMS is just -17.4 dBFS: the ener
 
 When a signal with $`|x[n]| > 1.0`$ is converted to integers (written to a WAV, sent to a DAC), the excess is **hard-cut** at ±1.0:
 
-$$
+```math
 y[n] = \begin{cases} 1 & x[n] > 1 \\ x[n] & -1 \le x[n] \le 1 \\ -1 & x[n] < -1 \end{cases}
-$$
+```
 
 ![A sine wave of amplitude 1.5 hard-clipped at plus and minus 1.0: the tops are flattened.](images/clipping-sine.svg)
 
@@ -375,9 +375,9 @@ A flattened waveform amounts to adding high-order harmonics that were not there 
 
 **THD (Total Harmonic Distortion)** is a single number that measures "how much harmonic content has been added in total":
 
-$$
+```math
 \text{THD} = \frac{\sqrt{H_2^2 + H_3^2 + H_4^2 + \cdots}}{H_1} \times 100\%
-$$
+```
 
 $`H_k`$ is the amplitude of the $`k`$-th harmonic. In other words, it is "the total of the added harmonics as a fraction of the fundamental": 0% means perfectly clean (only the original sine wave), and the larger the number, the heavier the distortion. `thdPercent()` in `Analysis.h` uses Goertzel to measure H2 to H10 (the ones below Nyquist) and then applies this formula. The 15.22% above comes mainly from H3 (-16.5 dB ≈ 0.15×).
 
@@ -421,9 +421,9 @@ flowchart LR
 
 Because once you receive a block of samples, the earliest it can be played is after the whole block has been processed, the **latency** is at least
 
-$$
+```math
 \text{latency} = \frac{\text{blockSize}}{f_s}
-$$
+```
 
 The table printed by `l00_block_processing`:
 
@@ -621,9 +621,9 @@ After processing:
 
 Normalizing means "find the peak, work out the gain that makes the peak exactly equal to the target, and multiply the whole signal by it":
 
-$$
+```math
 g = \frac{10^{-1/20}}{\text{peak}} \quad\Rightarrow\quad \text{new peak} = g \cdot \text{peak} = 10^{-1/20} = 0.891 = -1\ \text{dBFS}
-$$
+```
 
 Note that the crest factor is unchanged (peak and RMS both gain 6.68 dB), and the DC offset is also multiplied by 2.157. DC offset is the mean of the signal and ideally 0; this pluck has a tiny negative DC because the mean of the Karplus-Strong initial random numbers is not zero, and in practice you would filter it out with the highpass of chapter 02.
 

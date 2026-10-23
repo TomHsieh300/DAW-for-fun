@@ -29,9 +29,9 @@ flowchart LR
 
 ### Fader and pan are one gain per side
 
-$$
+```math
 g_L = 10^{\text{dB}/20}\cdot p_L, \qquad g_R = 10^{\text{dB}/20}\cdot p_R
-$$
+```
 
 With the constant-power law (chapter 01, `dsp::Panner::computeGains`):
 $`\theta = \frac{\pi}{4}(p + 1)`$, $`p_L = \cos\theta`$, $`p_R = \sin\theta`$, so $`p_L^2 + p_R^2 = 1`$:
@@ -102,9 +102,9 @@ fading in.
 
 ### Mute and solo
 
-$$
+```math
 \text{audible}_t = \lnot\,\text{mute}_t \ \land\ \big(\lnot\,\text{anySolo} \ \lor\ \text{solo}_t\big)
-$$
+```
 
 - solo on several tracks: all of them are heard;
 - mute wins over solo on the same track;

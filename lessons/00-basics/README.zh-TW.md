@@ -172,9 +172,9 @@ Linux 上只有 JUCE 章節（13、14）需要額外套件（ALSA、X11、freety
 
 **正弦波（sine wave）** 是最「純」的聲音，只有單一頻率，聽起來像音叉或測試音的「嗶——」：
 
-$$
+```math
 x(t) = A \sin(2\pi f t)
-$$
+```
 
 $`A`$ 是振幅（決定多大聲），$`f`$ 是頻率（決定音高）。取樣後就是 $`x[n] = A\sin(2\pi f n / f_s)`$——`Signals.h` 的 `makeSine()` 做的就是這件事。
 
@@ -192,9 +192,9 @@ $`A`$ 是振幅（決定多大聲），$`f`$ 是頻率（決定音高）。取�
 
 **Nyquist–Shannon 取樣定理**：如果訊號最高頻率是 $`f_{max}`$，那麼只要 $`f_s > 2 f_{max}`$，就可以從 sample 完美重建原訊號。反過來說，在 sample rate $`f_s`$ 之下，能正確表示的最高頻率是
 
-$$
+```math
 f_{Nyquist} = \frac{f_s}{2}
-$$
+```
 
 人耳聽覺上限約 20 kHz，所以 CD 用 44.1 kHz（Nyquist 22.05 kHz），專業音訊常用 48 kHz（Nyquist 24 kHz）、96 kHz、192 kHz。
 
@@ -202,25 +202,25 @@ $$
 
 把它寫成公式：一個頻率 $`f_{in}`$ 的正弦波取樣後，和下列所有頻率產生**完全相同**的 sample：
 
-$$
+```math
 f_{alias} = \left| f_{in} - k \cdot f_s \right|,\quad k = 0, \pm 1, \pm 2, \ldots
-$$
+```
 
 其中落在 $`[0, f_s/2]`$ 內的那一個，就是你會「聽到」的頻率。
 
 **計算：30 kHz 在 48 kHz 取樣下會變成幾 Hz？**
 
-$$
+```math
 f_{alias} = |30000 - 1 \times 48000| = 18000\ \text{Hz}
-$$
+```
 
 30 kHz 超過 Nyquist（24 kHz）6 kHz，就「折返」到 Nyquist 以下 6 kHz 的位置，也就是 18 kHz。可以用三角函數驗證（$`n`$ 是整數）：
 
-$$
+```math
 \sin\!\left(2\pi \tfrac{30000}{48000} n\right)
 = \sin\!\left(2\pi n - 2\pi \tfrac{18000}{48000} n\right)
 = -\sin\!\left(2\pi \tfrac{18000}{48000} n\right)
-$$
+```
 
 兩組 sample 除了正負號完全相同——電腦根本無法分辨它們。範例 `l00_db_math` 用 Goertzel（一個只量「單一頻率振幅」的演算法，見 3.4）量測一個 30 kHz 正弦波，在 18 kHz 量到的振幅就是完整的 0.5：
 
@@ -244,18 +244,18 @@ $$
 
 量化就是把真實的值四捨五入到最近的刻度，誤差 $`e[n]`$ 介於 $`\pm \Delta/2`$，$`\Delta`$ 是刻度間距。對大多數訊號，這個誤差像是均勻分布的隨機雜訊（quantization noise），功率是
 
-$$
+```math
 P_{noise} = \frac{\Delta^2}{12}
-$$
+```
 
 （均勻分布在 $`[-\Delta/2, \Delta/2]`$ 的變異數。）把全幅（full-scale）正弦波的功率 $`P_{signal} = A^2/2`$ 除以它，就得到最好情況的 **SNR（signal-to-noise ratio）**。若刻度範圍是 $`[-1, 1]`$，則 $`\Delta = 2 / 2^N = 2^{1-N}`$，$`A = 1`$：
 
-$$
+```math
 \text{SNR} = 10\log_{10}\frac{1/2}{2^{2-2N}/12}
 = 10\log_{10}\left(1.5 \cdot 2^{2N}\right)
 = 20N\log_{10}2 + 10\log_{10}1.5
 \approx 6.02N + 1.76\ \text{dB}
-$$
+```
 
 **直覺：每多 1 bit，雜訊就低 6 dB。** 16 bit 約 98 dB、24 bit 約 146 dB。`l00_db_math` 實際把正弦波量化後量 SNR，跟公式幾乎一樣：
 
@@ -288,9 +288,9 @@ float 可以超過 1.0 而不壞，但寫成整數 WAV 或送到 DAC 時，超�
 
 人耳對音量的感覺是對數的：從 0.1 到 0.2 跟從 0.5 到 1.0 聽起來「差不多大一步」。所以音訊幾乎都用 **dB（decibel）**：
 
-$$
+```math
 L_{dB} = 20\log_{10}\frac{A}{A_{ref}} \qquad\Longleftrightarrow\qquad \frac{A}{A_{ref}} = 10^{L_{dB}/20}
-$$
+```
 
 這是**振幅**（amplitude）的公式。如果比較的是**功率**（power，正比於振幅平方），係數是 10 而不是 20：$`10\log_{10}(P/P_{ref}) = 10\log_{10}(A^2/A_{ref}^2) = 20\log_{10}(A/A_{ref})`$。兩個公式算出來一樣，只是看你手上拿的是振幅還是功率。
 
@@ -360,9 +360,9 @@ drum loop        ...  peak  -2.92 dBFS  RMS -17.43 dBFS  crest 14.51 dB
 
 當 $`|x[n]| > 1.0`$ 的訊號被轉成整數（寫 WAV、送到 DAC），超過的部分會被**硬切**在 ±1.0：
 
-$$
+```math
 y[n] = \begin{cases} 1 & x[n] > 1 \\ x[n] & -1 \le x[n] \le 1 \\ -1 & x[n] < -1 \end{cases}
-$$
+```
 
 ![振幅 1.5 的正弦波被硬切在 ±1.0：波峰被削平。](images/clipping-sine.svg)
 
@@ -375,9 +375,9 @@ $$
 
 **THD（Total Harmonic Distortion，總諧波失真）** 是衡量「多出來的諧波總共有多少」的單一數字：
 
-$$
+```math
 \text{THD} = \frac{\sqrt{H_2^2 + H_3^2 + H_4^2 + \cdots}}{H_1} \times 100\%
-$$
+```
 
 $`H_k`$ 是第 $`k`$ 次諧波的振幅。也就是「新增的諧波總共佔基頻多少比例」：0% 代表完全乾淨（只有原本的正弦波），數字越大失真越重。`Analysis.h` 的 `thdPercent()` 用 Goertzel 量 H2～H10（低於 Nyquist 的部分）再套這個公式。上面的 15.22% 主要來自 H3（-16.5 dB ≈ 0.15 倍）。
 
@@ -423,9 +423,9 @@ flowchart LR
 
 因為你拿到一塊 sample 之後，最快也要等整塊處理完才能播出去，**延遲**（latency）至少是
 
-$$
+```math
 \text{latency} = \frac{\text{blockSize}}{f_s}
-$$
+```
 
 `l00_block_processing` 印出的表：
 
@@ -625,9 +625,9 @@ After processing:
 
 normalize 是「找到 peak，算出讓 peak 剛好等於目標的 gain，整段乘上去」：
 
-$$
+```math
 g = \frac{10^{-1/20}}{\text{peak}} \quad\Rightarrow\quad \text{新 peak} = g \cdot \text{peak} = 10^{-1/20} = 0.891 = -1\ \text{dBFS}
-$$
+```
 
 注意 crest factor 不變（peak 與 RMS 同時加 6.68 dB），DC offset 也被乘了 2.157 倍。DC offset 是訊號的平均值，理想上是 0；這段撥弦有一點點負的 DC，是 Karplus-Strong 初始亂數的平均不是零造成的，實務上會用第 02 章的 highpass 把它濾掉。
 

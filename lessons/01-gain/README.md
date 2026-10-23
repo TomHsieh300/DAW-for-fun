@@ -26,20 +26,20 @@ After reading this chapter and doing the exercises, you should be able to:
 
 A gain element does just one thing:
 
-$$
+```math
 y[n] = g \cdot x[n]
-$$
+```
 
 $`g`$ is the linear gain: $`g = 1`$ leaves the signal unchanged, $`g = 0.5`$ halves the amplitude, $`g = 0`$ silences it, $`g = 2`$ doubles the amplitude, and $`g < 0`$ inverts the polarity.
 Yet the fader scales you see in a DAW are never 0.5 and 2; they are −6 dB and +6 dB. There are two reasons: **the ear perceives loudness logarithmically** (section 2.2), and **multiplication becomes addition** -- when two gains are cascaded the factors multiply, while in dB you simply add.
 
 The dB (decibel) is defined on a *power ratio*: $`10 \log_{10}(P / P_0)`$. Audio processing deals with amplitudes (sample values), and power is proportional to the square of the amplitude, $`P \propto A^2`$, so
 
-$$
+```math
 L_\text{dB} = 10 \log_{10}\frac{A^2}{A_0^2} = 20 \log_{10}\frac{A}{A_0}
 \qquad\Longleftrightarrow\qquad
 g = 10^{L_\text{dB}/20}
-$$
+```
 
 This is exactly what `dawlab::gainToDb()` / `dawlab::dbToGain()` (`common/include/dawlab/DspMath.h`) do. **Use 20·log10 for amplitude, and 10·log10 for power (or the square of an RMS, or energy).** Remember this; the pan law and mixing derivations below all rely on it.
 
@@ -109,18 +109,18 @@ Within a segment we interpolate linearly: when $`p`$ falls in $`[p_i, p_{i+1}]`$
 
 Suppose the gain changes instantly from $`g_1`$ to $`g_2`$ at sample $`n_0`$. This is equivalent to multiplying the signal by a **step function**:
 
-$$
+```math
 y[n] = x[n] \cdot g[n],\qquad g[n] = g_1 + (g_2 - g_1)\,u[n - n_0]
-$$
+```
 
 ![Gain g[n] as a step function: it drops instantly from g1 to g2 at sample n0, a vertical wall](images/gain-step.svg)
 
 **First, some intuition: amplitude modulation and sidebands.** Multiplying a sine wave by a "changing gain" modulates its amplitude. The simplest example lets the gain wobble slowly at frequency $`f_m`$:
 
-$$
+```math
 \sin(2\pi f t)\cdot\bigl(1 + m\cos(2\pi f_m t)\bigr)
 = \sin(2\pi f t) + \frac{m}{2}\sin\bigl(2\pi (f + f_m) t\bigr) + \frac{m}{2}\sin\bigl(2\pi (f - f_m) t\bigr)
-$$
+```
 
 (Expand it with the product-to-sum identity $`\sin A\cos B = \tfrac{1}{2}[\sin(A+B) + \sin(A-B)]`$.) The spectrum originally had a single bar at $`f`$; after multiplying by a changing gain, two new bars grow at $`f \pm f_m`$. The original bar at $`f`$ is called the **carrier**, and the bars that grow beside it are called **sidebands**. The faster the gain changes (the larger $`f_m`$), the farther the sidebands lie from the carrier; the more "violent" the change in gain (the more high-frequency content it has), the more and the wider the sidebands.
 
@@ -130,9 +130,9 @@ Back to the step: the spectrum of a pure tone $`x`$ is a single line, and after 
 
 The time-domain view is more direct: between two adjacent samples the signal shows an unwanted "steep slope". For a sine of amplitude $`A`$ and frequency $`f`$, the largest difference between adjacent samples is
 
-$$
+```math
 \max |x[n] - x[n-1]| \approx A \cdot \frac{2\pi f}{f_s}
-$$
+```
 
 (for $`A = 0.5`$, $`f = 1`$ kHz, $`f_s = 48`$ kHz it equals 0.0654). A jump produces a difference of $`|x[n_0]|\cdot|g_2 - g_1|`$, which can be many times larger than this value. Example 1 uses the "maximum first difference" to quantify a click: the more times it exceeds the sine's natural value, the more obvious the click.
 
@@ -150,9 +150,9 @@ The fix is not to let $`g[n]`$ jump, but to let it "walk" to the target over a p
 
 **(a) Linear ramp** -- finishes in a fixed $`N`$ samples, advancing by a fixed step per sample:
 
-$$
+```math
 g[n] = g[n-1] + \frac{g_\text{target} - g_\text{start}}{N},\qquad N = \mathrm{round}(T_\text{ramp} \cdot f_s)
-$$
+```
 
 - Advantages: predictable (50 ms is 50 ms), it always reaches the target, and the implementation is a single addition.
 - Disadvantage: the slope is discontinuous at the start and end (spectrum $`1/f^2`$, which in practice is already clean enough).
@@ -160,15 +160,15 @@ $$
 
 **(b) One-pole exponential smoothing** -- each sample covers a fixed fraction $`a`$ of the "remaining distance":
 
-$$
+```math
 g[n] = g[n-1] + a\,(g_\text{target} - g[n-1]) = (1-a)\,g[n-1] + a\,g_\text{target}
-$$
+```
 
 This is actually a first-order IIR low-pass filter (chapter 02 introduces it formally). For a step input (going from 0 to 1) the closed-form solution is
 
-$$
+```math
 g[n] = 1 - (1-a)^n = 1 - e^{-n/(\tau f_s)},\qquad a = 1 - e^{-1/(\tau f_s)} \approx \frac{1}{\tau f_s}
-$$
+```
 
 $`\tau`$ is the **time constant**: the time needed to cover 63.2% ($`1 - e^{-1}`$) of the distance. Handy milestones:
 
@@ -212,15 +212,15 @@ The core of a mixer is addition: $`y = \sum_i g_i x_i`$. The question is whether
 
 **Fully correlated** (N identical tracks, for example the same signal copied N times): the amplitudes add directly
 
-$$
+```math
 A_\text{sum} = N \cdot A \quad\Rightarrow\quad +20\log_{10} N\ \text{dB}\qquad(N = 2: +6.02,\ N = 8: +18.06)
-$$
+```
 
 **Fully uncorrelated** (N independent noises, or different instruments): the powers add and the amplitude grows as $`\sqrt{N}`$
 
-$$
+```math
 P_\text{sum} = N \cdot P \quad\Rightarrow\quad A_\text{rms,sum} = \sqrt{N}\,A_\text{rms} \quad\Rightarrow\quad +10\log_{10} N\ \text{dB}\qquad(N = 8: +9.03)
-$$
+```
 
 This is the growth of the RMS; **the peak lies between the two** -- with bad luck the peaks of the tracks can still occur at the same moment, and the worst case is the linear sum of the per-track peaks. Example 3 verifies these three lines with numbers.
 
@@ -240,9 +240,9 @@ Every track has three switches: **mute**, **solo**, and **solo-safe** (some DAWs
 
 Condensed into one expression ($`S`$ = whether any track is soloed):
 
-$$
+```math
 \text{audible}_i = \neg\text{mute}_i \land (\neg S \lor \text{solo}_i \lor \text{soloSafe}_i)
-$$
+```
 
 | mute | solo | soloSafe | Anyone soloed? | Audible |
 |---|---|---|---|---|
@@ -260,9 +260,9 @@ The job of a pan: distribute a mono signal between the left and right speakers, 
 
 **Linear**
 
-$$
+```math
 g_L = 1 - \theta,\qquad g_R = \theta
-$$
+```
 
 - Center: $`g_L = g_R = 0.5`$ → **−6.02 dB**.
 - The amplitude sum $`g_L + g_R = 1`$ always holds → when left and right are summed to mono the level does not change (**mono compatible**).
@@ -270,9 +270,9 @@ $$
 
 **Constant power**
 
-$$
+```math
 g_L = \cos\!\left(\theta\frac{\pi}{2}\right),\qquad g_R = \sin\!\left(\theta\frac{\pi}{2}\right)
-$$
+```
 
 - The power sum $`g_L^2 + g_R^2 = \cos^2 + \sin^2 = 1`$ **always holds** (which is why it is called constant power) → when listening on speakers the level stays steady during a sweep.
 - Center: $`g_L = g_R = \cos(\pi/4) = 1/\sqrt{2} = 0.7071`$ → **−3.01 dB**.
@@ -280,9 +280,9 @@ $$
 
 **−4.5 dB (the compromise)**
 
-$$
+```math
 g_L = \sqrt{(1-\theta)\cos\!\left(\theta\tfrac{\pi}{2}\right)},\qquad g_R = \sqrt{\theta\,\sin\!\left(\theta\tfrac{\pi}{2}\right)}
-$$
+```
 
 This takes the **geometric mean** of the two laws, so its dB value is exactly the arithmetic mean of the two: at the center $`\sqrt{0.5 \times 0.7071} = 0.5946`$ → **−4.52 dB** (= (−6.02 − 3.01)/2). The power sum at the center is $`2 \times 0.5 \times 0.7071 = 0.7071`$ → −1.51 dB; the amplitude sum at the center is 1.189 → +1.51 dB. On speakers it dips 1.5 dB and in mono it bulges 1.5 dB, each side giving up one step. DAWs such as Cubase, Pro Tools and Reaper all offer −4.5 dB as one of their pan law options (the default differs from DAW to DAW and changes with versions, so go by the version you use), and large analog consoles such as the SSL use similar values.
 
@@ -343,10 +343,10 @@ flowchart LR
 
 **The numbers.** With the constant power law and the linear balance law used in this course (the chapter 14 mixer uses the same one):
 
-$$
+```math
 \text{pan law: } g_L = \cos\!\left(\theta\tfrac{\pi}{2}\right),\ g_R = \sin\!\left(\theta\tfrac{\pi}{2}\right);\qquad
 \text{balance: } g_L = \min(1,\ 1 - p),\ g_R = \min(1,\ 1 + p)
-$$
+```
 
 | Position $`p`$ | Mono track, constant power ($`g_L`$ / $`g_R`$) | Stereo track, balance ($`g_L`$ / $`g_R`$) |
 |---|---|---|
@@ -370,9 +370,9 @@ So **the same mono file at the center is 3.01 dB louder per side on a stereo tra
 
 **The other direction: folding a stereo file onto a mono track.** The stereo file has to be downmixed, usually as
 
-$$
+```math
 x_{\mathrm{mono}} = \frac{L + R}{2}
-$$
+```
 
 This is exact for $`L = R`$ (you get the original signal back). **Correlated** material (the same content, with the same polarity, on both sides) keeps its level; **uncorrelated** material of equal level (for example the two sides of a wide reverb, or two different microphones) drops by about **3 dB**, because the powers add while the amplitude is halved ($`\sqrt{2}/2 = 0.7071`$); and material with **opposite polarity** on the two sides ($`R = -L`$, a pure side signal) **cancels** completely. This is the same mono-compatibility question as in exercise 7: $`(L + R)/2`$ is exactly the mid signal $`M`$.
 

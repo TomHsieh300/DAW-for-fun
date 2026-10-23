@@ -68,9 +68,9 @@ self-check：(a)(b) 的數值點；drive 0 dB、振幅 0.25 時 THD < 0.1%（$`|
 
 打開 `exercises/starter/ex4_cab_sim.cpp`，完成 `CabSim`：
 
-$$
+```math
 H_\text{cab} = H_\text{HPF}(70\text{ Hz}, Q = \tfrac{1}{\sqrt 2}) \cdot H_\text{peak}(100\text{ Hz}, Q = 1.5, +4\text{ dB}) \cdot H_\text{LPF}(4.5\text{ kHz}, Q = \tfrac{1}{\sqrt 2})^2
-$$
+```
 
 四顆都是第 02 章的 `Biquad`（`BiquadCoefficients::makeHighpass` / `makePeak` / `makeLowpass`）。還要寫 `double magnitudeDb(double freq) const`，把各級的 `magnitudeDb()` 相加。
 
@@ -87,15 +87,15 @@ self-check：
 
 打開 `exercises/starter/ex5_auto_gain.cpp`，完成 `AutoGain::process(const AudioBlock& dry, AudioBlock wet)`：
 
-$$
+```math
 \overline{x^2}[n] = a\,\overline{x^2}[n-1] + (1-a)\,x^2[n], \qquad a = e^{-1/(\tau f_s)}
-$$
+```
 
 對 dry 與 wet 各算一個 mean square（$`\tau`$ = 100 ms），然後
 
-$$
+```math
 g[n] = \mathrm{clamp}\left(\sqrt{\frac{\overline{x_\text{dry}^2}[n]}{\max(\overline{x_\text{wet}^2}[n], 10^{-12})}},\; 0.01,\; 100\right), \qquad y[n] = g[n] \cdot x_\text{wet}[n]
-$$
+```
 
 self-check：
 

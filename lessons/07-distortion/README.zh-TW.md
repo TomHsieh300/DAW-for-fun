@@ -47,9 +47,9 @@
 
 ### 2.2 Hard clipping 與它的頻譜
 
-$$
+```math
 y = \mathrm{clip}(u) = \begin{cases} 1, & u > 1 \\ u, & |u| \le 1 \\ -1, & u < -1 \end{cases}
-$$
+```
 
 程式裡就是 `std::clamp(u, -1.0f, 1.0f)`。
 
@@ -57,17 +57,17 @@ $$
 
 **drive → ∞ 時趨近方波。** 正弦乘上一個很大的 $`g`$ 再 clip，幾乎整個週期都卡在 ±1，就是方波：
 
-$$
+```math
 \text{square}(t) = \frac{4}{\pi}\sum_{n = 1, 3, 5, \dots} \frac{\sin(n\omega t)}{n}
-$$
+```
 
 基頻振幅是 $`4/\pi \approx 1.273`$（+2.1 dBFS——比 clip 的上限 1 還大！），第 $`n`$ 次諧波是基頻的 $`1/n`$：H3 = −9.5 dB、H5 = −14.0 dB、H7 = −16.9 dB（相對基頻）。
 
 THD 用 Parseval 定理算最快。Parseval 定理說的是：**訊號的總功率（RMS²）等於各個頻率成分功率的總和**，而振幅 $`a`$ 的正弦功率是 $`a^2/2`$。所以「所有諧波的總功率 = 總功率 − 基頻功率」，不必把無窮多個諧波一個一個加起來。方波的 RMS = 1（功率 = 1），基頻的功率 = $`(4/\pi)^2 / 2 = 8/\pi^2`$，所以
 
-$$
+```math
 \text{THD} = \sqrt{\frac{P_\text{total} - P_1}{P_1}} = \sqrt{\frac{1 - 8/\pi^2}{8/\pi^2}} = \sqrt{\frac{\pi^2}{8} - 1} \approx 0.483 = 48.3\%
-$$
+```
 
 如果只加到第 50 次諧波（範例的 `thdPercent(..., 50)`），要扣掉 $`n \ge 51`$ 的尾巴 $`\sum_{n \text{ odd} \ge 51} 1/n^2 \approx 0.01`$，得到 $`\sqrt{(\pi^2/8 - 1 - 0.01)} \approx 47.3\%`$。範例 1 量到的（220 Hz、−6 dBFS 正弦）：
 
@@ -89,10 +89,10 @@ hard clip 在超過 ±1 時「切掉」，foldback 則是「折回來」，像�
 
 數學上就是把 $`u`$ 映射到一個週期 $`4`$ 的三角波上：
 
-$$
+```math
 t = (u + 1) \bmod 4 \in [0, 4), \qquad
 y = \begin{cases} t - 1, & t < 2 \\ 3 - t, & t \ge 2 \end{cases}
-$$
+```
 
 $`|u| \le 1`$ 時 $`y = u`$（完全透明）；$`u \in [1, 3]`$ 時 $`y = 2 - u`$；$`u \in [3, 5]`$ 時 $`y = u - 4`$ ……不管 $`u`$ 多大都能正確折很多次，這是比「`if (u > 1) u = 2 - u;`」只折一次更穩健的寫法（練習 3 會推廣到任意 threshold）。
 
@@ -104,13 +104,13 @@ foldback 也是奇函數，所以同樣只有奇次諧波。
 
 1960 年代的 fuzz 踏板（Fuzz Face、Tone Bender）只有兩三顆電晶體，增益非常大，而且電晶體的偏壓（bias）常常不在正中央。這帶來三個特徵，本章的 `Distortion::fuzz()` 用最簡單的分段線性函數模擬它們：
 
-$$
+```math
 y = \begin{cases}
 0, & |u| \le d \quad \text{（dead zone，}d = 0.1\text{）}\\
 \min(u - d,\; 1.0), & u > d \\
 -\min(|u| - d,\; 0.6), & u < -d
 \end{cases}
-$$
+```
 
 ![Fuzz 的 transfer curve：零點附近寬 0.1 的 dead zone，正向上限 +1.0、負向上限 -0.6](images/transfer-fuzz.svg)
 
@@ -144,10 +144,10 @@ $$
 
 **為什麼 full-wave rectify 讓音高高八度？** 直覺：$`|\sin\omega t|`$ 的負半週被翻上來之後，**每半個週期就重複一次**，週期從 $`T`$ 變成 $`T/2`$，頻率加倍 = 高八度。用 Fourier 級數寫得更精確：
 
-$$
+```math
 |\sin\omega t| = \frac{2}{\pi} - \frac{4}{\pi}\sum_{k=1}^{\infty} \frac{\cos(2k\omega t)}{4k^2 - 1}
 = \frac{2}{\pi} - \frac{4}{3\pi}\cos 2\omega t - \frac{4}{15\pi}\cos 4\omega t - \cdots
-$$
+```
 
 只剩 DC 和**偶次**諧波（$`2\omega, 4\omega, 6\omega, \dots`$），基頻 $`\omega`$ 完全消失。耳朵聽到的音高由「諧波的公因數」決定：$`2\omega, 4\omega, 6\omega`$ 的公因數是 $`2\omega`$，所以聽起來是原本的八度上方。
 
@@ -155,9 +155,9 @@ $$
 
 **half-wave** 則是
 
-$$
+```math
 \max(\sin\omega t, 0) = \frac{1}{\pi} + \frac{1}{2}\sin\omega t - \frac{2}{\pi}\sum_{k=1}^{\infty}\frac{\cos(2k\omega t)}{4k^2-1}
-$$
+```
 
 基頻還在（振幅 1/2），再加上偶次諧波和 DC：音高不變，但聲音變得「空洞、像方波加了鼻音」。`Distortion` 用 `setRectifyMode(RectifyMode::HalfWave)` 切換。
 
@@ -171,15 +171,15 @@ bitcrusher 把數位音訊的兩個「解析度」故意砍低：**振幅解析�
 
 $`N`$ bit 的 signed 整數有 $`2^N`$ 個 code，對應到 $`[-1, 1)`$ 的振幅範圍，所以每一階的大小（step）是
 
-$$
+```math
 \Delta = \frac{2}{2^N} = 2^{1-N}
-$$
+```
 
 8 bit：$`\Delta = 2/256 = 0.0078`$；16 bit：$`\Delta = 2/65536 \approx 3.05 \times 10^{-5}`$。量化就是「四捨五入到最近的階」（mid-tread quantizer）：
 
-$$
+```math
 Q(u) = \Delta \cdot \mathrm{clamp}\!\left(\left\lfloor \frac{u}{\Delta} + \frac{1}{2} \right\rfloor,\; -M,\; M - 1\right), \qquad M = \left\lfloor 2^{N-1} \right\rfloor
-$$
+```
 
 注意上限是 $`M - 1`$：跟真正的 16 bit PCM 一樣（−32768 … 32767），最大正值是 $`1 - \Delta`$，不是 1。$`N`$ 是整數時 $`M = 2^{N-1}`$；$`N`$ 是小數時（`setBitDepth()` 允許，例如 5.5 bit）$`M`$ 取整數部分（5.5 bit：$`2^{4.5} = 22.6 \to M = 22`$，code 為 −22 … 21），這樣輸出永遠落在 $`\Delta`$ 的整數倍上，最大正值 $`21\Delta = 0.928`$、最小值 $`-22\Delta = -0.972`$。
 
@@ -187,20 +187,20 @@ $$
 
 **SNR 公式推導。** 把量化誤差 $`e = Q(u) - u`$ 當作在 $`[-\Delta/2, \Delta/2]`$ 均勻分布的雜訊（訊號夠大、夠「亂」時成立），它的功率（變異數）是
 
-$$
+```math
 \sigma_e^2 = \frac{1}{\Delta}\int_{-\Delta/2}^{\Delta/2} e^2\, de = \frac{\Delta^2}{12}
-$$
+```
 
 振幅 $`A`$ 的正弦功率是 $`A^2/2`$。所以
 
-$$
+```math
 \text{SNR} = 10\log_{10}\frac{A^2/2}{\Delta^2/12} = 10\log_{10}\frac{6A^2}{\Delta^2}
 = 10\log_{10}\left(6A^2 \cdot 2^{2N-2}\right) = 10\log_{10}1.5 + 20N\log_{10}2 + 20\log_{10}A
-$$
+```
 
-$$
+```math
 \boxed{\text{SNR} \approx 6.02\,N + 1.76 + 20\log_{10}A \;\text{dB}}
-$$
+```
 
 每多 1 bit，SNR 多 6.02 dB；訊號每小 20 dB，SNR 也少 20 dB——**量化雜訊的大小是固定的，不隨訊號變**。範例 3 量到（997 Hz 正弦）：
 
@@ -225,15 +225,15 @@ $$
 
 等效取樣率 $`f_s' = f_s / D`$。在 $`f_s'`$ 的世界裡，任何高於 $`f_s'/2`$ 的頻率都會 alias：
 
-$$
+```math
 f_\text{alias} = |f - k f_s'|, \quad k = \mathrm{round}(f / f_s')
-$$
+```
 
 hold 的動作本身是一個 zero-order hold（ZOH），頻率響應是 sinc：
 
-$$
+```math
 |H_\text{ZOH}(f)| = \left|\frac{\sin(\pi f / f_s')}{\pi f / f_s'}\right|
-$$
+```
 
 所以每個成分的大小 = 原本的大小 × ZOH 在那個頻率的值。（嚴格說，在離散時間裡「hold $`D`$ 個 sample」的響應是 Dirichlet kernel $`\left|\frac{\sin(\pi f D / f_s)}{D \sin(\pi f / f_s)}\right|`$；$`D`$ 大、$`f \ll f_s`$ 時它就趨近上面的 sinc。範例用 sinc 當理論值，誤差在 0.3 dB 以內。）範例 3 的量測：5 kHz、−6 dBFS 正弦、$`D = 8`$（$`f_s' = 6`$ kHz）：
 
@@ -302,9 +302,9 @@ flowchart LR
    96 kHz 的 2 倍剛好是 192 kHz，所以 2x 與 4x 被**同一批諧波**折回來，alias 只差 2–4 dB；8x 要到第 150 次以上才折回來，又小了 24–31 dB。理想方波的第 39 次諧波是基頻的 $`1/39`$（−31.8 dB）；而 drive 20 dB 的 clip 波形其實是「梯形」（上升段有有限的斜率），高次諧波衰減得比 $`1/n`$ 更快（接近 $`1/n^2`$，見 2.1 節），所以實際量到的 alias（相對 H1 約 −46 ~ −49 dB）又更小。這也說明 alias 的大小**跟輸入頻率有關**：換一個基頻，2x 與 4x 的差距就不一樣了。
 3. **latency 怎麼來的。** 第 06 章的 Oversampler 每一級 halfband 有 $`2K_i`$ 個奇數 tap（三級分別是 32、12、8），升頻 + 降頻的 group delay 是 $`2(2K_i - 1)`$ 個「該級的高取樣率 sample」。換算回原始取樣率再取整數：
 
-   $$
+   ```math
    \text{latency} = \left\lfloor \frac{1}{2^S}\sum_{i=1}^{S} 2(2K_i - 1)\, 2^{S-i} \right\rfloor
-   $$
+   ```
 
    2x：$`62/2 = 31`$；4x：$`(124 + 22)/4 = 36.5 \to 36`$；8x：$`(248 + 44 + 14)/8 = 38.25 \to 38`$。倍率加倍、latency 卻只多幾個 sample，因為後面幾級在越來越高的取樣率下運作、filter 也越來越短。範例 4 的 self-check 用 `Oversampler::kOddTapsStage1..3` 重算這個公式，與 `Distortion::getLatencySamples()` 比對。
 
@@ -327,9 +327,9 @@ flowchart LR
 
 **輸出音量補償。** 失真幾乎一定讓聲音**變大聲**：範例 1 的 pluck sequence（RMS −19.7 dBFS）經過 HardClip 20 dB 之後 RMS 變成 −3.5 dBFS，大了 16 dB！人耳有「越大聲越好聽」的偏見（louder-is-better bias），不補償就比較音色，你永遠會覺得 drive 越大越好。範例都用 **RMS match** 把輸出拉回跟輸入一樣的 RMS 再比較：
 
-$$
+```math
 g_\text{comp} = \frac{\text{RMS}_\text{in}}{\text{RMS}_\text{out}}
-$$
+```
 
 | type | 處理後 RMS | 需要補償 |
 |---|---|---|

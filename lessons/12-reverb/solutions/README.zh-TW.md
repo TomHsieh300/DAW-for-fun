@@ -21,9 +21,9 @@
 
 **1.** D = 1557、fs = 48000：
 
-$$
+```math
 g = 10^{-3\cdot1557/(2.0\cdot48000)} = 10^{-0.048656} = 0.89401
-$$
+```
 
 RT60 = 0.5 s：$`g = 10^{-3\cdot1557/24000} = 10^{-0.194625} = 0.63881`$。
 
@@ -31,10 +31,10 @@ RT60 = 0.5 s：$`g = 10^{-3\cdot1557/24000} = 10^{-0.194625} = 0.63881`$。
 
 **2.** 44.1 kHz、g = 0.84，$`\log_{10}0.84 = -0.075721`$：
 
-$$
+```math
 \mathrm{RT60}_{1116} = \frac{-3\cdot1116}{44100\cdot(-0.075721)} = 1.003\ \text{s},\qquad
 \mathrm{RT60}_{1617} = \frac{-3\cdot1617}{44100\cdot(-0.075721)} = 1.453\ \text{s}
-$$
+```
 
 同一個 g 下，RT60 與 D 成正比：最長的 comb 比最短的多 45%。所以 Freeverb 的 roomsize 只是「feedback 大小」，不是嚴格的 RT60：整體衰減的前段由所有 comb 一起決定，後段被最長（衰減最慢）的那幾條主導，衰減曲線會微微「下凹」（前快後慢）。要每條 comb 都同一 RT60，就要各自用 $`g_i = 10^{-3D_i/(\mathrm{RT60}f_s)}`$，這正是 FDN（`Reverb.h`）的做法。
 
@@ -173,11 +173,11 @@ for (int i = n - 1; i >= 0; --i) {   // 從尾巴往回累加：EDC[i] = EDC[i+1
 
 **為什麼 EDC 是直線**：若 $`h(t) = A e^{-kt}\cdot w(t)`$（w 是單位功率的雜訊或正弦），$`h^2`$ 的平均是 $`A^2 e^{-2kt}`$，
 
-$$
+```math
 \mathrm{EDC}(t) = \int_t^\infty A^2 e^{-2k\tau}d\tau = \frac{A^2}{2k}e^{-2kt}
 \;\Longrightarrow\;
 \mathrm{EDC}_{\mathrm{dB}}(t) = 10\log_{10}e^{-2kt} = -\frac{20k}{\ln 10}t
-$$
+```
 
 RT60 的定義 $`e^{-k\cdot\mathrm{RT60}} = 10^{-3}`$ → $`k = 3\ln10/\mathrm{RT60}`$，代入得 $`\mathrm{EDC}_{\mathrm{dB}}(t) = -60\,t/\mathrm{RT60}`$：斜率正好是 −60/RT60，跟振幅 envelope 的 dB 斜率相同，但**平滑得多**。Schroeder 證明了：這個積分等於「用同一個房間做無限多次雜訊中斷量測再平均」的結果，所以一次 IR 就能得到 ensemble average。
 

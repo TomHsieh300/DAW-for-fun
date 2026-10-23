@@ -36,16 +36,16 @@
 
 **6.** 量化誤差 $`e`$ 均勻分布在 $`[-\Delta/2, \Delta/2]`$：
 
-$$
+```math
 \sigma_e^2 = \frac{1}{\Delta}\int_{-\Delta/2}^{\Delta/2} e^2\,de = \frac{1}{\Delta}\cdot\frac{e^3}{3}\Big|_{-\Delta/2}^{\Delta/2} = \frac{1}{\Delta}\cdot\frac{2}{3}\cdot\frac{\Delta^3}{8} = \frac{\Delta^2}{12}
-$$
+```
 
 訊號功率 $`A^2/2`$，$`\Delta = 2^{1-N}`$，所以 $`\Delta^2 = 4 \cdot 2^{-2N}`$：
 
-$$
+```math
 \text{SNR} = 10\log_{10}\frac{A^2/2}{4 \cdot 2^{-2N}/12} = 10\log_{10}\left(1.5 \cdot 2^{2N} \cdot A^2\right)
 = \underbrace{10\log_{10}1.5}_{1.76} + N \cdot \underbrace{20\log_{10}2}_{6.02} + 20\log_{10}A
-$$
+```
 
 ---
 
@@ -55,9 +55,9 @@ $$
 
 **2. Fourier 級數。**
 
-$$
+```math
 |\sin\omega t| = \frac{2}{\pi} - \frac{4}{\pi}\sum_{k=1}^{\infty}\frac{\cos(2k\omega t)}{4k^2-1}
-$$
+```
 
 只有 DC（$`2/\pi \approx 0.637`$）與 $`2\omega, 4\omega, 6\omega, \dots`$。**$`\omega`$ 的係數是 0**。$`2\omega`$ 的振幅 $`4/(3\pi) = 0.424`$（−7.4 dB）、$`4\omega`$ 的振幅 $`4/(15\pi) = 0.085`$（−21.4 dB），範例 `l07_distortion_types` 的 Rectify 列量到的正是 H2 = −7.4、H4 = −21.4 dBFS、H1 = −100（量不到）。
 
@@ -65,9 +65,9 @@ $$
 
 **3.** $`\max(\sin\omega t, 0)`$ 的週期仍然是 $`T`$——正半週保留、負半週變成 0，兩個半週不一樣，所以沒有 $`T/2`$ 的週期性：
 
-$$
+```math
 \max(\sin\omega t, 0) = \frac{1}{\pi} + \frac{1}{2}\sin\omega t - \frac{2}{\pi}\sum_{k=1}^{\infty}\frac{\cos(2k\omega t)}{4k^2-1}
-$$
+```
 
 基頻還在（振幅 1/2），多了 DC（$`1/\pi`$）和偶次諧波。其實它就是 $`\frac{1}{2}(\sin\omega t + |\sin\omega t|)`$：一半原訊號 + 一半 full-wave，所以聽起來是「原音高 + 一點八度上方的鼻音」。
 
@@ -126,9 +126,9 @@ return t < 2.0f * T ? t - T : 3.0f * T - t;
 - **100 Hz 是 +3.07 而不是 +4**：peak filter 本身在 100 Hz 是 +4 dB，但 70 Hz 的 highpass 在 100 Hz 還有約 −0.9 dB 的損失。
 - **9 kHz 的 frequency warping**：類比 2 階 Butterworth lowpass $`|H(j\Omega)|^2 = 1/(1 + (\Omega/\Omega_c)^4)`$；一個 octave 上方 $`\Omega/\Omega_c = 2`$，兩顆串接是 $`-20\log_{10}(1 + 16) = -24.6`$ dB。但 RBJ cookbook 用 bilinear transform，數位頻率 $`f`$ 對應到類比頻率 $`\propto \tan(\pi f / f_s)`$，所以等效比例是
 
-  $$
+  ```math
   r = \frac{\tan(\pi \cdot 9000/48000)}{\tan(\pi \cdot 4500/48000)} = \frac{0.6682}{0.3033} = 2.203
-  $$
+  ```
 
   $`-20\log_{10}(1 + r^4) = -20\log_{10}(1 + 23.56) = -27.80`$ dB，和量測完全一致。越接近 Nyquist 掉得越快（在 $`f_s/2`$ 是 $`-\infty`$）。對 cab sim 來說這反而是好事。
 
@@ -155,10 +155,10 @@ y[i] *= g;
 
 **估算 (1) 的增益**：輸入 $`0.1\sin\theta`$，RMS $`= 0.0707`$（−23.01 dBFS）。drive 30 dB 後 $`u = 3.16\sin\theta`$，$`|u| < 1`$ 只在 $`\theta < \theta_0 = \arcsin(1/3.16) = 0.3217`$ rad 時成立，其餘被 clip 在 ±1。在四分之一週期上平均：
 
-$$
+```math
 \overline{y^2} = \frac{2}{\pi}\left[\int_0^{\theta_0} 10\sin^2\theta\,d\theta + \left(\frac{\pi}{2} - \theta_0\right)\right]
 = \frac{2}{\pi}\left[10\left(\frac{\theta_0}{2} - \frac{\sin 2\theta_0}{4}\right) + 1.249\right] \approx 0.864
-$$
+```
 
 RMS $`\approx 0.930`$（−0.63 dBFS）。增益 $`= -23.01 - (-0.63) = -22.38`$ dB；解答量到 −22.38 dB。（如果把輸出當作純方波，RMS = 1，會估成 −23.0 dB——差 0.6 dB，因為 drive 30 dB 的 clip 還不是完美的方波。）
 

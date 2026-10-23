@@ -78,7 +78,9 @@ Starter code: `exercises/starter/ex4_vu_meter.cpp` (target `l11_ex4_starter`)
 A VU meter is a needle with mass and damping: when a 0 VU sine suddenly appears, the needle must reach 99% of its final reading in 300 ms
 and overshoot by 1–1.5%. Model it with a second-order system:
 
-$$\ddot p + 2\zeta\omega_n \dot p + \omega_n^2 p = \omega_n^2\, u(t),\qquad u = |x| \cdot \text{inputScale}$$
+```math
+\ddot p + 2\zeta\omega_n \dot p + \omega_n^2 p = \omega_n^2\, u(t),\qquad u = |x| \cdot \text{inputScale}
+```
 
 Complete two TODOs: the per-sample semi-implicit Euler integration, and the calibration scale for "a -18 dBFS sine = 0 VU".
 
@@ -110,7 +112,9 @@ and it is faster than direct convolution for large blocks. This is the foundatio
 
 Starter code: `exercises/starter/ex7_correlation_meter.cpp` (target `l11_ex7_starter`)
 
-$$r = \frac{E[L R]}{\sqrt{E[L^2]\,E[R^2]}}$$
+```math
+r = \frac{E[L R]}{\sqrt{E[L^2]\,E[R^2]}}
+```
 
 Estimate the three expectations with an exponential moving average (time constant 300 ms). Complete `process()`.
 

@@ -41,16 +41,16 @@ use, the audio thread can read it without any synchronization.
 
 For a timeline segment $`[T_0, T_0 + N)`$ and a clip $`[S, S + L)`$:
 
-$$
+```math
 \text{from} = \max(T_0, S), \qquad \text{to} = \min(T_0 + N, S + L)
-$$
+```
 
 If $`\text{to} \le \text{from}`$ the clip is not in this block. Otherwise, for
 $`T \in [\text{from}, \text{to})`$:
 
-$$
+```math
 \text{dest}[T - T_0] \mathrel{+}= \text{src}[O + T - S] \cdot g_{\text{clip}} \cdot g_{\text{fade}}(T - S)
-$$
+```
 
 All integers: no rounding, no drift, the same result for every block size. Mono sources feed both
 channels; a clip longer than its source pads with silence.
@@ -59,11 +59,11 @@ channels; a clip longer than its source pads with silence.
 
 For clip-internal index $`i`$ and remaining samples $`r = L - 1 - i`$:
 
-$$
+```math
 g_{\text{fade}}(i) = \underbrace{\text{shape}\Big(\frac{i+1}{F_{\text{in}}+1}\Big)}_{i < F_{\text{in}}}
 \cdot \underbrace{\text{shape}\Big(\frac{r+1}{F_{\text{out}}+1}\Big)}_{r < F_{\text{out}}},
 \qquad \text{shape}(x) = \begin{cases} x & \text{Linear} \\ \sin(\pi x / 2) & \text{EqualPower} \end{cases}
-$$
+```
 
 The $`+1`$ in numerator and denominator means a fade never contains an exact 0 or an exact 1 inside
 the fade region (a 4-sample fade-in is 0.2, 0.4, 0.6, 0.8), and it makes a fade-out and a fade-in of

@@ -47,11 +47,11 @@
 
 因為 late reverb 是指數衰減，「dB 對時間」會是一條直線：
 
-$$
+```math
 L(t) = L_0 - 60\cdot\frac{t}{\mathrm{RT60}}\ \ \text{dB}
 \qquad\Longleftrightarrow\qquad
 a(t) = a_0\cdot 10^{-3t/\mathrm{RT60}} = a_0\, e^{-\ln(1000)\,t/\mathrm{RT60}}
-$$
+```
 
 （振幅掉 60 dB = 掉到 1/1000，所以 $`a(\mathrm{RT60}) = a_0/1000`$。）
 
@@ -59,9 +59,9 @@ $$
 
 **Sabine 公式**：一個房間的 RT60 可以粗略用體積 V（m³）與總吸音量 A（m²，各表面面積 × 吸音係數 α 的總和）估計：
 
-$$
+```math
 \mathrm{RT60} \approx 0.161\cdot\frac{V}{A},\qquad A = \sum_i S_i\,\alpha_i
-$$
+```
 
 直覺：房間越大（V 大），聲音要走越久才撞牆、才被吸收 → 殘響越長；牆越吸音（α 大）→ 殘響越短。例如 6 × 4 × 3 m 的房間（V = 72 m³、表面積 108 m²），平均 α = 0.3 → A = 32.4 m² → RT60 ≈ 0.36 s（一般客廳）；音樂廳的 RT60 大約 1.8–2.2 s。
 
@@ -71,9 +71,9 @@ $$
 
 如果把房間（聲源位置 → 聽者位置）當成一個 LTI（線性非時變）系統，那它完全由 **impulse response** $`h[n]`$ 描述：拍手（≈ impulse）錄下來的東西就是 $`h`$，而任何聲音 $`x`$ 經過這個房間的結果是卷積：
 
-$$
+```math
 y[n] = (h * x)[n] = \sum_{k=0}^{M-1} h[k]\,x[n-k]
-$$
+```
 
 這給了兩條路：
 
@@ -98,11 +98,11 @@ flowchart LR
     D -->|"× g"| S
 ```
 
-$$
+```math
 y[n] = x[n-D] + g\,y[n-D]
 \qquad\Longrightarrow\qquad
 H(z) = \frac{z^{-D}}{1 - g\,z^{-D}}
-$$
+```
 
 餵一個 impulse，輸出是 $`\delta[n-D] + g\,\delta[n-2D] + g^2\,\delta[n-3D] + \dots`$：**每繞一圈（D 個 sample）振幅乘 g**。
 
@@ -110,7 +110,7 @@ $$
 
 經過 t 秒，總共繞了 $`t\cdot f_s / D`$ 圈，振幅是 $`g^{t f_s / D}`$。要求 t = RT60 時振幅是 $`10^{-60/20} = 10^{-3}`$：
 
-$$
+```math
 g^{\mathrm{RT60}\cdot f_s / D} = 10^{-3}
 \;\Longrightarrow\;
 \frac{\mathrm{RT60}\cdot f_s}{D}\log_{10} g = -3
@@ -118,7 +118,7 @@ g^{\mathrm{RT60}\cdot f_s / D} = 10^{-3}
 \boxed{\,g = 10^{-3D/(\mathrm{RT60}\cdot f_s)}\,}
 \qquad
 \boxed{\,\mathrm{RT60} = \frac{-3D}{f_s\log_{10} g}\,}
-$$
+```
 
 例：D = 1557 samples、fs = 48 kHz、RT60 = 2 s → $`g = 10^{-3\cdot1557/96000} = 10^{-0.04866} = 0.89401`$。範例 `l12_comb_rt60` 會用這個 g 餵 impulse：從第一個 echo（t = D/fs，振幅 1，當作 0 dB 的參考點）起算，衰減到 −60 dB 以下花了 62 圈 = 2.011 s（量化到 D/fs = 32.4 ms 的整數倍，所以略大於 2.000 s）。
 
@@ -139,17 +139,17 @@ $`|H(e^{j\omega})| = 1/|1 - g e^{-j\omega D}|`$。當 $`\omega D = 2\pi k`$（�
 
 真實房間高頻衰減較快。在迴路裡放一個 lowpass（Freeverb 用 one-pole）：
 
-$$
+```math
 y[n] = x[n-D] + g\cdot \mathrm{LP}\{y\}[n-D],\qquad
 \mathrm{LP}(z) = \frac{1-d}{1-d\,z^{-1}}
-$$
+```
 
 現在每繞一圈的增益變成與頻率有關的 $`g\,|\mathrm{LP}(e^{j\omega})|`$。把它代進 RT60 公式：
 
-$$
+```math
 \mathrm{RT60}(\omega) = \frac{-3D}{f_s\log_{10}\!\big(g\,|\mathrm{LP}(e^{j\omega})|\big)},\qquad
 |\mathrm{LP}(e^{j\omega})| = \frac{1-d}{\sqrt{1 - 2d\cos\omega + d^2}}
-$$
+```
 
 DC 時 $`|\mathrm{LP}| = 1`$（低頻 RT60 不變），Nyquist 時 $`|\mathrm{LP}| = (1-d)/(1+d)`$。代 d = 0.5、g = 0.894、D = 1557，在 4008 Hz（ω = 0.5246）：$`|\mathrm{LP}| = 0.5/\sqrt{1.25 - \cos 0.5246} = 0.806`$，RT60 = 0.685 s。範例量到 0.685 s。
 
@@ -167,11 +167,11 @@ flowchart LR
     S2 --> Y["y[n]"]
 ```
 
-$$
+```math
 v[n] = x[n] + g\,v[n-D],\qquad y[n] = -g\,v[n] + v[n-D]
 \qquad\Longrightarrow\qquad
 H(z) = \frac{-g + z^{-D}}{1 - g\,z^{-D}}
-$$
+```
 
 **為什麼 |H| = 1**：令 $`u = e^{-j\omega D}`$（$`|u| = 1`$），分子 $`u - g = u\,(1 - g\,\bar u)`$，所以 $`|u - g| = |1 - g\bar u| = |\overline{1 - g u}| = |1 - g u|`$，分子分母大小相同。振幅響應在每個頻率都是 0 dB（範例會量給你看：100 Hz 到 12 kHz 都是 ±0.00 dB）。
 
@@ -249,7 +249,9 @@ flowchart LR
 
 - **8 個 lowpass-feedback comb（LBCF）並聯**：迴路裡的 one-pole lowpass 就是 2.3 節的 damping。Freeverb 的實作是 `filterstore = output·(1−damp) + filterstore·damp`、`buffer = input + filterstore·feedback` —— 本章 `CombFilter` 用同樣的寫法。
 - **4 個 allpass 串聯**，g = 0.5。細節：Freeverb 的 allpass 程式碼是 `output = bufout − input`、`buffer = input + bufout·g`，也就是 $`v[n] = x[n] + g\,v[n-D]`$、$`y[n] = v[n-D] - x[n]`$，transfer function
-  $$H(z) = \frac{-1 + (1+g)\,z^{-D}}{1 - g\,z^{-D}}$$
+  ```math
+  H(z) = \frac{-1 + (1+g)\,z^{-D}}{1 - g\,z^{-D}}
+  ```
   要成為 allpass，分子係數必須是分母係數「倒過來」的倍數：$`[-1,\ 1+g] = c\,[-g,\ 1]`$ ⇒ $`c = 1/g`$、$`1 + g = 1/g`$ ⇒ $`g^2 + g - 1 = 0`$ ⇒ $`g = (\sqrt5 - 1)/2 \approx 0.618`$。Freeverb 用 g = 0.5，所以它**不是**嚴格的 allpass（在 $`f_s/D`$ 的整數倍是 0 dB，半整數倍是 $`2.5/1.5`$ → +4.4 dB 的起伏）；它在實務上「聽起來對」，但不要拿它當 allpass 的定義（J. O. Smith 的 *Physical Audio Signal Processing*「Freeverb Allpass Approximation」一節有同樣的分析）。我們的 `AllpassDiffuser` 用的是 2.4 節的標準式。
 - **Stereo spread**：右聲道每一條 delay 都比左聲道長 23 samples，兩聲道的殘響因此去相關（decorrelated），聽起來很寬。
 - **參數映射**：`roomsize` 0..1 → feedback = roomsize·0.28 + 0.7（0.7–0.98），`damp` 0..1 → damping 係數 = damp·0.4。注意 Freeverb 的 roomsize 直接控制 feedback，**不是** RT60：8 個 comb 用同一個 g，所以長的 comb 衰減得比短的慢一點，RT60 依 comb 而異（例如 g = 0.84 時，1116 samples 的 comb RT60 = 1.00 s，1617 的是 1.45 s）。
@@ -276,11 +278,11 @@ flowchart LR
 
 狀態方程式（N 條線，第 i 條長 $`L_i`$）：
 
-$$
+```math
 v_i[n] = s_i[n - L_i],\qquad
 \mathbf s[n] = \boldsymbol\Gamma\,\mathbf A\,\mathbf v[n] + \mathbf b\,x[n],\qquad
 y[n] = \mathbf c^{\mathsf T}\mathbf v[n]
-$$
+```
 
 $`\boldsymbol\Gamma = \mathrm{diag}(g_0,\dots,g_{N-1})`$ 是每條線的衰減（之後再加 damping）。
 
@@ -288,9 +290,9 @@ $`\boldsymbol\Gamma = \mathrm{diag}(g_0,\dots,g_{N-1})`$ 是每條線的衰減�
 
 先看 $`\boldsymbol\Gamma = \mathbf I`$、沒有輸入的情況。整個系統的「能量」是所有 delay line 裡面存的 sample 平方和 $`E[n]`$。每過一個 sample，每條線吐出一個 $`v_i`$、吃進一個 $`s_i`$：
 
-$$
+```math
 E[n+1] - E[n] = \sum_i s_i^2 - \sum_i v_i^2 = \|\mathbf A\mathbf v\|^2 - \|\mathbf v\|^2
-$$
+```
 
 如果 $`\mathbf A`$ 是**正交矩陣**（$`\mathbf A^{\mathsf T}\mathbf A = \mathbf I`$），則 $`\|\mathbf A\mathbf v\|^2 = \mathbf v^{\mathsf T}\mathbf A^{\mathsf T}\mathbf A\mathbf v = \|\mathbf v\|^2`$，能量**完全不變**：系統既不會爆掉、也不會自己衰減，是一個「無損（lossless）」的原型。所有 decay 都由我們刻意加入的 $`g_i`$ 與 damping 控制。練習 4 會驗證：g = 1 時 1.0 s 與 2.5 s 的 RMS 只差 0.01 dB。
 
@@ -306,11 +308,11 @@ $$
 
 我們希望每個頻率都以同一個 RT60 衰減。Jot 的做法：讓每條線的衰減與它的長度成正比 —— 在 dB 上，每「一個 sample」都衰減一樣多：
 
-$$
+```math
 g_i = \gamma^{L_i},\qquad \gamma = 10^{-3/(\mathrm{RT60}\cdot f_s)}
 \quad\Longrightarrow\quad
 g_i = 10^{-3L_i/(\mathrm{RT60}\cdot f_s)}
-$$
+```
 
 為什麼這樣就對：把無損系統的每一個 $`z^{-1}`$ 換成 $`\gamma z^{-1}`$，等於把每條 delay $`z^{-L_i}`$ 乘上 $`\gamma^{L_i}`$ —— 正好是我們加的 $`g_i`$。而「$`z^{-1} \to \gamma z^{-1}`$」的效果是把系統所有的 pole 半徑乘以 γ：無損系統的 pole 全在單位圓上，現在全在半徑 γ 的圓上，**每個 mode 每個 sample 都衰減 γ 倍**，所以 RT60 全部相同。這跟 comb 的公式長得一樣，只是現在每條線各自代入自己的 $`L_i`$。
 
@@ -358,16 +360,16 @@ $$
 - **Pre-delay**：在 reverb 最前面放一條純 delay（0–250 ms）。聽感上，pre-delay 讓直達音的 transient 先完整出來、殘響晚一點才跟上 → 人聲、鼓更清楚，不會被殘響糊掉；同時暗示「空間很大、牆很遠」。混音常見做法是把 pre-delay 對齊歌曲 tempo 的小音符（例如 1/64 或 1/32 音符）。
 - **Early reflections（ER）**：用一條 **tapped delay line** 實作 —— 一條 delay、多個讀取點（tap），每個 tap 有自己的 delay 與 gain：
 
-$$
+```math
 y_{\mathrm{ER}}[n] = \sum_{k} a_k\, x[n - d_k]
-$$
+```
 
 tap 的位置可以手調，也可以用幾何算：**image-source 法**（Allen & Berkley 1979）把聲源對每一面牆做鏡射，牆面反射就等於從鏡像位置發出的虛擬聲源。一階反射有 6 個（shoebox 房間的 6 面牆），每個的
 
-$$
+```math
 d_k = \frac{|\mathbf r_{\mathrm{img},k} - \mathbf r_{\mathrm{listener}}| - |\mathbf r_{\mathrm{src}} - \mathbf r_{\mathrm{listener}}|}{c},\qquad
 a_k = \sqrt{1-\alpha}\cdot\frac{|\mathbf r_{\mathrm{src}} - \mathbf r_{\mathrm{listener}}|}{|\mathbf r_{\mathrm{img},k} - \mathbf r_{\mathrm{listener}}|}
-$$
+```
 
 （相對直達音的延遲與增益；$`\sqrt{1-\alpha}`$ 是牆面的振幅反射係數，距離比是 1/r 的球面擴散。）練習 3 就是實作這個，並把 ER 接上 FDN（pre-delay = 最晚的一個 ER）組成完整的「ER + late」reverb。
 
@@ -422,22 +424,22 @@ flowchart LR
 
 單純的 FFT 卷積要求 N ≥ B + M − 1：IR 很長時 FFT 也很長，而且要等到湊滿一大塊輸入才能算 → latency 太大。解法是**把 IR 也切段**：
 
-$$
+```math
 h = [\,h_0 \,|\, h_1 \,|\, \cdots \,|\, h_{K-1}\,],\quad\text{每段長 } P,\quad K = \lceil M/P\rceil
-$$
+```
 
 卷積是線性的，所以
 
-$$
+```math
 y = h * x = \sum_{k=0}^{K-1} \big(h_k * x\big)\ \text{延遲 } kP
-$$
+```
 
 每一段 $`h_k`$ 只有 P 長，配上長 P 的輸入塊，用 N = 2P 的 FFT 就夠（overlap-save：frame = [上一塊 P 個 | 這一塊 P 個]）。關鍵觀察：「延遲 kP 再跟 $`h_k`$ 卷積」在頻域就是「**k 塊以前的輸入頻譜** $`X_{j-k}`$ 乘上 $`H_k`$」。所以只要把每一塊輸入的頻譜存起來（**frequency-domain delay line，FDL**），每一塊輸出就是：
 
-$$
+```math
 Y_j = \sum_{k=0}^{K-1} H_k \cdot X_{j-k}
 \qquad\text{（逐 bin 的 complex 乘加）}
-$$
+```
 
 ```mermaid
 flowchart LR
@@ -461,10 +463,10 @@ flowchart LR
 
 每 P 個輸出 sample：1 次 N 點實數 FFT + K·(N/2 + 1) 次 complex 乘加 + 1 次 N 點 IFFT。N = 2P 時，每個輸出 sample 平均：
 
-$$
+```math
 \underbrace{\frac{K(P+1)}{P}}_{\approx K\ \text{次 complex MAC}} \approx \frac{M}{P}\ \text{次 complex MAC}\ \approx \frac{4M}{P}\ \text{次實數乘法}
 \;+\;\underbrace{O(\log_2 P)}_{\text{兩次 FFT 攤提}}
-$$
+```
 
 相對於直接卷積的 M 次乘加，大約省 **P/4 倍**。P = 512、M = 15840（K = 31）：直接 15840 次 vs. partitioned 約 31 次 complex MAC ≈ 124 次實數乘法，理論 128 倍；範例 3 在 Release build 量到約 114 倍（多次執行約在 110–140 倍之間，依機器與當下負載而異；Debug build 沒有最佳化，`std::complex` 的運算與 `std::vector` 的索引都不會被 inline，只有約 15–20 倍）。
 

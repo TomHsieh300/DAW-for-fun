@@ -17,9 +17,9 @@ in the middle of a block.
 
 The position is an `int64_t` number of samples. Musical time is computed from it:
 
-$$
+```math
 N_{\text{beat}} = \frac{60\, f_s}{B}, \qquad N_{\text{bar}} = n \cdot N_{\text{beat}}
-$$
+```
 
 with tempo $`B`$ in beats per minute, sample rate $`f_s`$, numerator $`n`$. A beat is the note value
 named by the denominator (in 7/8 a beat is an eighth note), which is what DAWs display.
@@ -27,10 +27,10 @@ named by the denominator (in 7/8 a beat is an eighth note), which is what DAWs d
 Positions are 1-based like on screen, with 960 ticks per beat (a common PPQ resolution; PPQ = pulses per quarter note, the number of
 timing ticks a sequencer divides one beat into):
 
-$$
+```math
 \text{beats}(b, k, t) = (b-1)\,n + (k-1) + \frac{t}{960}, \qquad
 \text{samples} = \mathrm{round}\big(\text{beats} \cdot N_{\text{beat}}\big)
-$$
+```
 
 The inverse takes the floor of the beat count; a tiny epsilon ($`10^{-9}`$ beats) keeps exact grid
 positions from becoming "tick 959 of the previous beat" through floating-point rounding.

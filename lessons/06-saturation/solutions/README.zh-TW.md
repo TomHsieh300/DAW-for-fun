@@ -16,9 +16,9 @@
 
 正弦波有半波對稱：$`x(t + T/2) = -x(t)`$。tanh 是奇函式：$`\tanh(-u) = -\tanh(u)`$。所以
 
-$$
+```math
 y(t + T/2) = \tanh\big(x(t+T/2)\big) = \tanh\big(-x(t)\big) = -\tanh\big(x(t)\big) = -y(t)
-$$
+```
 
 輸出也半波對稱。把 $`y`$ 寫成 Fourier series $`\sum_k c_k e^{jk\omega_0 t}`$，平移半個週期後第 $`k`$ 項乘上 $`e^{jk\pi} = (-1)^k`$。要讓整體變號，只有 $`(-1)^k = -1`$ 的項可以不為 0——$`k`$ 必須是奇數。$`k = 0`$（DC）與所有偶數 $`k`$ 的係數都是 0。範例 `l06_harmonic_analysis` 的表格中，Tanh / Cubic / Arctan 的 H2、H4、H6、H8 全部低於 −99 dB、DC 為 0，正是這個結果。
 
@@ -26,9 +26,9 @@ $$
 
 把曲線拆成奇部與偶部：$`f(x) = f_{\text{odd}}(x) + f_{\text{even}}(x)`$。奇部只產生奇次諧波，所以 DC 只可能來自偶部。Asymmetric 的偶部是（$`t = \tanh|x|`$，用 $`\tanh 2u = 2\tanh u/(1+\tanh^2 u)`$）
 
-$$
+```math
 f_{\text{even}}(x) = \frac{f(x) + f(-x)}{2} = \frac{1}{2}\left(t - \frac{t}{1+t^2}\right) = \frac{t^3}{2(1+t^2)} \ge 0
-$$
+```
 
 它處處非負、且只在 $`x = 0`$ 時為 0，所以只要輸入不是全零，平均值（DC）就一定是正的。小訊號時 $`f_{\text{even}} \approx |x|^3/2`$，DC $`\approx 2A^3/(3\pi)`$（範例 `l06_harmonic_analysis`：$`A = 0.1`$ 時近似 0.00021、量測 0.00021）。更直觀地說：正半波可以到 +1，負半波只能到 −0.5，平均值當然大於 0（$`A = 1`$ 時 +0.0748）。
 
@@ -51,9 +51,9 @@ $$
 
 wet 經過 4x oversampler，延遲了 36 個 sample；dry 沒延遲。兩者相加 = 一個 feedforward comb filter：$`y = (1-m)\,x[n] + m\,x[n - D]`$。頻率 $`f`$ 時兩路的相位差是 $`2\pi f D / f_s`$，相位差為 $`\pi`$ 的奇數倍時互相抵消：
 
-$$
+```math
 f_{\text{notch}} = \frac{(2k+1) f_s}{2D} = \frac{(2k+1) \cdot 48000}{72} = 667,\ 2000,\ 3333,\ \ldots \text{ Hz}
-$$
+```
 
 第一個 notch 約 667 Hz。解法：dry 延遲 `getLatencySamples()` 個 sample（`Saturation` 內部的 `pushAndReadDry()` 就是這樣做的）。
 
@@ -126,9 +126,9 @@ $`|x| \le 1`$ 時只有三次諧波，所以 THD $`= H_3/H_1`$。程式量到的
 
 **手算振幅 0.5**：只有 $`T_2`$ 產生偶次成分（$`g_4 = 0`$）。
 
-$$
+```math
 T_2(A\cos\theta) = 2A^2\cos^2\theta - 1 = A^2\cos 2\theta + (A^2 - 1)
-$$
+```
 
 所以 DC $`= g_2(A^2 - 1) = 0.1 \times (0.25 - 1) = -0.075`$、H2 振幅 $`= g_2 A^2 = 0.025`$。程式量到 −0.0750 與 0.0250。這說明了 Chebyshev exciter 的限制：只在設計振幅下精確，振幅改變時諧波比例會變（H2/H1 從 0.1 變成 0.05），而且偶次項帶來 DC，後面要接 DC blocker。
 
@@ -144,9 +144,9 @@ $$
 - `DryDelay` 先寫再讀：`buf_[pos_] = x`，讀 `buf_[(pos_ - D + size) % size]`。長度 `maxDelay + 1` 才放得下 $`x[n]`$ 到 $`x[n - D]`$ 共 $`D + 1`$ 個 sample；先寫後讀才能讓 $`D = 0`$ 時輸出等於輸入。
 - 小訊號時 $`\tanh(gx)/g \approx x`$，wet 就是 $`x[n - L]`$，所以整個系統是 feedforward comb：$`y[n] = (1 - m)\,x[n - D] + m\,x[n - L]`$。令 $`\Delta = L - D`$，相位差 $`2\pi f\Delta/f_s = (2k + 1)\pi`$ 時兩路反相：
 
-$$
+```math
 f_k = \frac{(2k + 1)\,f_s}{2\Delta}
-$$
+```
 
 - notch 深度：兩路相量長度分別是 $`1 - m`$ 與 $`m`$，反相時剩 $`|1 - 2m|`$。$`m = 0.5`$ 時理論上無限深，$`m = 0.3`$ 時 $`20\log_{10} 0.4 = -7.96`$ dB。
 - 對齊後 $`|H| = |(1 - m) + m| = 1`$，與 $`m`$ 無關。
@@ -190,9 +190,9 @@ $$
 
 **1. 反導函式**
 
-$$
+```math
 F(x) = \begin{cases} x^2/2 & |x| \le 1 \\ |x| - 1/2 & |x| > 1 \end{cases}
-$$
+```
 
 $`|x| \le 1`$ 時 $`F' = x`$；$`x > 1`$ 時 $`F' = 1`$；$`x < -1`$ 時 $`F' = -1`$。在 $`x = \pm 1`$ 處兩段的值都是 1/2，所以連續。程式用數值微分在 −3～3 之間檢查 $`F' = f`$。
 

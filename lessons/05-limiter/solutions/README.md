@@ -62,7 +62,9 @@ Solution: [`ex4_true_peak_meter.cpp`](ex4_true_peak_meter.cpp)
 
 **Filter design.** Upsampling by 4 = zero insertion + lowpass. The prototype has its cutoff at $`f_s/2`$ at the new sample rate $`4f_s`$, i.e. 1/8 of the new sample rate, and is a windowed sinc:
 
-$$h[k] = \mathrm{sinc}\!\Bigl(\frac{k-M}{4}\Bigr)\, w[k],\qquad M = \frac{N-1}{2},\quad N = 64,\quad w = \text{Hann}$$
+```math
+h[k] = \mathrm{sinc}\!\Bigl(\frac{k-M}{4}\Bigr)\, w[k],\qquad M = \frac{N-1}{2},\quad N = 64,\quad w = \text{Hann}
+```
 
 Zero insertion drops the average level to 1/4, so we normalize to $`\sum h = 4`$ (the DC gain of each phase ≈ 1).
 

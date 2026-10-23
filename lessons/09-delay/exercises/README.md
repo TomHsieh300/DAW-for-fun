@@ -39,9 +39,9 @@ Starter code: `starter/ex3_allpass_interpolation.cpp`
 
 Complete `setDelay()` and `processSample()` of `AllpassInterpolator`:
 
-$$
+```math
 H(z) = \frac{\eta + z^{-1}}{1 + \eta z^{-1}},\qquad \eta = \frac{1 - \Delta}{1 + \Delta},\qquad y[n] = \eta\,(v[n] - y[n-1]) + v[n-1]
-$$
+```
 
 Requirements:
 

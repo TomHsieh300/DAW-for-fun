@@ -39,9 +39,9 @@ pan 旋鈕下方的標籤會跟著 format 改變，因為這個旋鈕做的是�
 
 Fader 的行程應該把大部分長度花在混音真正發生的區間（-20 .. +6 dB），而不是 -60 .. -40。App 以平方律把位置 $`p \in [0, 1]`$ 對應到 dB：
 
-$$
+```math
 \text{dB}(p) = 12 - 72\,(1 - p)^2, \qquad p(\text{dB}) = 1 - \sqrt{\frac{12 - \text{dB}}{72}}
-$$
+```
 
 | dB | +12 | +6 | 0 | -6 | -12 | -30 | -60（最底端 = $`-\infty`$） |
 |---|---|---|---|---|---|---|---|
@@ -57,9 +57,9 @@ Strip 的控制項不是 source of truth；engine 才是。`ChannelStripView::up
 
 每個 strip 的 `MeterBar` 顯示 `getPeakDb(ch)`（chapter 11 的 `LevelMeter`：instant attack，以 dB/秒衰減）與 `getPeakHoldDb(ch)`。在 -60 到 +6 dBFS 之間以 dB 線性呈現，低於 -18 為綠色，到 -6 為黃色，其上為紅色，0 dBFS 處有一道刻線：
 
-$$
+```math
 \text{position} = \frac{\text{dB} + 60}{66}
-$$
+```
 
 Meter 只有在某個值移動超過 0.1 dB 所對應的 pixel 數（高度的 1/660）時才重繪——11 個 meter 大多數時候大多是靜止的。
 

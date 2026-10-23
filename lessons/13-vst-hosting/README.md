@@ -123,17 +123,17 @@ Every VST3 parameter has a `ParamID` (a 32-bit integer), and its value is always
 
 The conversion is the plugin's job. The formula used by JUCE's `NormalisableRange<float>(start s, end e, interval, skew k)` is:
 
-$$
+```math
 n = \left(\frac{v - s}{e - s}\right)^{k}, \qquad v = s + (e - s)\, n^{1/k}
-$$
+```
 
 $`k = 1`$ is linear; $`k < 1`$ gives the first part of the slider to small values -- parameters such as attack, release and ratio, where "the small-value region matters more", should use $`k < 1`$.
 
 **Derivation of `setSkewForCentre(c)`**: we want the exact middle of the knob ($`n = 0.5`$) to be $`v = c`$:
 
-$$
+```math
 0.5 = \left(\frac{c - s}{e - s}\right)^{k} \;\Longrightarrow\; k = \frac{\ln 0.5}{\ln\!\left(\dfrac{c - s}{e - s}\right)}
-$$
+```
 
 The parameters of this chapter's plugin (`plugin/compressor/CompressorProcessor.cpp`):
 
@@ -281,17 +281,17 @@ Lookahead limiters, linear-phase EQs and oversampling all make the output $`L`$ 
 
 Let the total latency of the $`i`$-th path in the project (track + its inserts) be $`L_i`$. To align all the paths at the mix bus, the host adds to the $`i`$-th path an extra delay of
 
-$$
+```math
 d_i = L_{\max} - L_i, \qquad L_{\max} = \max_i L_i
-$$
+```
 
 and the output of the whole project is $`L_{\max}`$ later than the "ideal". During playback the host reads the timeline $`L_{\max}`$ early, so what the user hears is still on the beat.
 
 What happens without PDC? The same kick appears on two tracks, one of them $`D`$ samples late, and adding the two gives a comb filter:
 
-$$
+```math
 y[n] = x[n] + x[n - D] \;\Longrightarrow\; |H(f)| = 2\,\left|\cos\!\left(\frac{\pi f D}{f_s}\right)\right|
-$$
+```
 
 which cancels completely at $`f_k = \dfrac{(2k+1) f_s}{2D}`$. With $`D = 240`$ (5 ms) and $`f_s = 48`$ kHz, 100 Hz, 300 Hz, 500 Hz ... are all carved out -- the kick's low end simply disappears. Exercise 3 computes this, exercise 6 uses `AudioProcessorGraph` (which does PDC automatically) to measure the latency of a whole chain, and exercise 7 shows that bypass must compensate latency too -- and so must a plugin's own Bypass parameter: a plugin with latency must override `processBlockBypassed()` and output the original audio delayed by $`L`$ when bypassed (DawLabLimiter in §3.2); otherwise, the moment bypass is switched on, this track arrives $`L`$ earlier than PDC expects.
 
@@ -388,10 +388,10 @@ The manufacturer code + plugin code become part of the VST3 class ID and **can n
 
 **Signal flow** (`processChunk` in `CompressorProcessor.cpp`):
 
-$$
+```math
 \text{wet}[n] = g_{\text{makeup}}[n] \cdot \text{Compressor}(x)[n], \qquad
 y[n] = (1 - m[n])\,x[n] + m[n]\,\text{wet}[n]
-$$
+```
 
 $`m`$ is Mix (0..1, with 50 ms linear smoothing), and $`g_{\text{makeup}}`$ comes from chapter 01's `Gain` (which has its own 50 ms ramp). Mix is **parallel compression** (also called New York compression): blend a heavily compressed signal with the original, keeping the original's transients while gaining the density of compression. Because the compressor has no lookahead (latency 0), dry is aligned without any delay; if there were latency, dry would first have to be delayed by $`L`$ (the extension question of exercise 7). When `mix = 100 %` and it is not ramping, the blend is skipped entirely, so the output is **bit-exact** with `dsp::Compressor`.
 

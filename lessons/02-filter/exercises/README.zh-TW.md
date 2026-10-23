@@ -35,9 +35,9 @@ $`f_s = 48000`$ Hz。用計算機（或 Python）回答：
 
 實作一階 DC blocker：
 
-$$
+```math
 y[n] = x[n] - x[n-1] + R\,y[n-1],\qquad H(z) = \frac{1 - z^{-1}}{1 - R z^{-1}}
-$$
+```
 
 1. 完成 `processSample()`（更新 `x1`、`y1`）。
 2. 完成 `magnitudeDb()`：把 $`z = e^{j\omega}`$ 代入 $`H(z)`$。

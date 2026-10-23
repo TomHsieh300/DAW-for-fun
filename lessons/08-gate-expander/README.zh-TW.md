@@ -54,50 +54,50 @@
 
 **Hard knee**：令輸入 level 為 $`x`$（dB）、threshold 為 $`T`$、ratio 為 $`R \ge 1`$：
 
-$$
+```math
 y(x) = \begin{cases} x, & x \ge T \\ T + R\,(x - T), & x < T \end{cases}
-$$
+```
 
 因為 $`x - T < 0`$，$`R(x-T)`$ 比 $`x - T`$ 更負，所以輸出比輸入更小。gain（dB）為
 
-$$
+```math
 g(x) = y(x) - x = (R - 1)(x - T) \le 0 \quad (x < T)
-$$
+```
 
 > 名詞注意：compressor 的 ratio 「4:1」指輸入變 4 dB 輸出變 1 dB；expander 的 ratio 常寫成「1:2」，指輸入變 1 dB 輸出變 2 dB。本教材的 `Expander::setRatio(2)` 就是 1:2（合約：「2 代表低於 threshold 的每 1 dB 變成 2 dB」）。
 
 **Soft knee（與 compressor 對稱的推導）**：第 04 章 compressor 的 knee 是在 $`[T - W/2,\ T + W/2]`$ 內放一段二次曲線，讓它在**下緣**接上 $`y = x`$、在**上緣**接上斜率 $`1/R`$ 的直線。expander 剛好反過來：knee 的**上緣**要接 $`y = x`$（斜率 1），**下緣**要接斜率 $`R`$ 的直線。所以把二次項的「錨點」放在上緣：
 
-$$
+```math
 y(x) = x + a\,(x - T - W/2)^2
-$$
+```
 
 - 在上緣 $`x = T + W/2`$：第二項為 0，值 $`= x`$、斜率 $`= 1`$，自動接上 1:1 線。
 - 在下緣 $`x = T - W/2`$ 斜率要等於 $`R`$：
 
-$$
+```math
 y'(x) = 1 + 2a\,(x - T - W/2) \;\Rightarrow\; y'(T - W/2) = 1 - 2aW = R \;\Rightarrow\; a = \frac{1 - R}{2W}
-$$
+```
 
 - 檢查下緣的值：$`y(T - W/2) = T - \tfrac{W}{2} + \tfrac{1-R}{2W}W^2 = T - \tfrac{RW}{2}`$；而直線 $`T + R(x - T)`$ 在 $`x = T - W/2`$ 也是 $`T - \tfrac{RW}{2}`$。值與斜率都接上（$`C^1`$ 連續）。
 
 整理成三段（和第 04 章逐項對照：$`1/R - 1 \to 1 - R`$、$`+W/2 \to -W/2`$）：
 
-$$
+```math
 y(x) = \begin{cases}
 x, & x \ge T + W/2 \\[4pt]
 x + \dfrac{(1 - R)\,(x - T - W/2)^2}{2W}, & T - W/2 \le x < T + W/2 \\[8pt]
 T + R\,(x - T), & x < T - W/2
 \end{cases}
-$$
+```
 
 在 threshold 本身 $`x = T`$：$`y(T) = T + \frac{(1-R)W}{8}`$。$`R = 2`$、$`W = 6`$ 時 $`y = T - 0.75`$；$`W = 12`$ 時 $`y = T - 1.5`$。範例 2 印出的 soft knee 表就是這兩個值（-40.75、-41.50）。
 
 **Range**：如果不加限制，$`x = -100`$ dB 的底噪在 $`T = -40`$、$`R = 2`$ 時 gain 會是 $`-60`$ dB；ratio 一大，gain 會一路往 $`-\infty`$ 掉，expander 就變成 gate。**range** 是 gain 的下限：
 
-$$
+```math
 g_{\text{final}} = \max\big(\text{range},\ y(x) - x\big),\qquad \text{range} < 0
-$$
+```
 
 聽感上：range = -10 dB 是「讓串音退後一點」；range = -40 dB 以上幾乎等於關掉。範例 2 的 expander 用 range -40 dB，所以 -60 dBFS 的段落是 -60 + max(-40, -20) = -80 dB。
 
@@ -143,11 +143,11 @@ Gate 可以看成 ratio → ∞ 的 expander：低於 threshold 就直接衰減 
 **漣漪估算**。設輸入是振幅 $`A`$、頻率 $`f`$ 的正弦波，$`|x|`$ 每半個週期 $`\frac{1}{2f}`$ 出現一個波峰。波峰之後偵測器進入 release，第 04 章的 one-pole 平滑器是
 $`\tau_r\,\dot e = |x| - e`$——注意它是往**目前的 $`|x|`$** 衰減，不是往 0 衰減。在半個週期內 $`e \approx A`$，而 $`|x|`$ 的平均值是 $`\frac{2}{\pi}A`$，所以 envelope 在兩個波峰之間大約掉了
 
-$$
+```math
 \Delta e \approx \frac{1}{\tau_r}\int_0^{1/(2f)} \big(e - |x|\big)\,dt \approx \frac{A\,(1 - 2/\pi)}{2f\,\tau_r}
 \quad\Rightarrow\quad
 \text{ripple}_\text{dB} \approx 20\log_{10}\frac{A}{A - \Delta e} \approx 8.686\cdot\frac{1 - 2/\pi}{2f\,\tau_r}
-$$
+```
 
 （$`8.686 = 20/\ln 10`$，用到 $`\ln(1+u) \approx u`$。）45 Hz 的 kick、偵測器 release 20 ms：$`8.686 \times 0.363 / (2 \times 45 \times 0.02) \approx 1.75`$ dB。如果偵測器是「往 0 衰減」的類型（類比的 diode + RC peak detector），兩個波峰之間會掉 $`e^{-1/(2f\tau_r)}`$，也就是 $`8.686/(2f\tau_r) \approx 4.8`$ dB，大了 $`1/(1 - 2/\pi) \approx 2.75`$ 倍。範例 1 的 [4] 用 `Gate` 內部同款偵測器實測：
 
@@ -189,9 +189,9 @@ stateDiagram-v2
 
 **斜坡的數學**：attack 時間 $`t_a`$ 定義為「從 range 爬到 0 dB」所需時間。在 dB 域等速爬升：
 
-$$
+```math
 \Delta_a = \frac{|\text{range}|}{t_a \cdot f_s}\ \text{dB/sample},\qquad g_\text{dB}[n] = \text{range} + n\,\Delta_a
-$$
+```
 
 range -80 dB、attack 1 ms、48 kHz：$`\Delta_a = 80/48 \approx 1.67`$ dB/sample。dB 域等速 = 線性域指數變化（$`g = 10^{g_\text{dB}/20}`$），聽起來是自然的 fade，而不是線性 fade 那種「最後一下突然變大聲」的感覺。release 同理。
 
@@ -247,25 +247,25 @@ flowchart LR
 
 先用 analog prototype 估計 bandpass（0 dB peak）的 −3 dB 邊界：$`f_1, f_2`$ 滿足 $`f_1 f_2 = f_0^2`$、$`f_2 - f_1 = f_0 / Q`$。解這兩條式子：
 
-$$
+```math
 f_{1,2} = f_0\left(\sqrt{1 + \frac{1}{4Q^2}} \mp \frac{1}{2Q}\right)
-$$
+```
 
 $`Q = 1.5`$：$`f_1 = 0.7208\,f_0`$、$`f_2 = 1.3874\,f_0`$。$`f_0 = 7`$ kHz → 約 5.05–9.71 kHz（0.945 octave）。
 
 這只是近似。數位的 RBJ bandpass 經過 bilinear transform，頻率軸被往 Nyquist 壓縮，同一個 $`Q`$ 的實際頻寬會變窄。RBJ Cookbook 給的關係是
 
-$$
+```math
 \frac{1}{Q} = 2\sinh\!\left(\frac{\ln 2}{2}\cdot \text{BW}\cdot\frac{\omega_0}{\sin\omega_0}\right),\qquad \omega_0 = 2\pi f_0 / f_s
-$$
+```
 
 （BW 以 octave 計）。$`f_0 = 7`$ kHz、$`f_s = 48`$ kHz 時 $`\omega_0/\sin\omega_0 = 1.155`$，代入 $`Q = 1.5`$ 得 BW ≈ 0.82 octave，比 analog 的 0.945 octave 窄。用 `BiquadCoefficients::magnitudeDb()` 實測，48 kHz 的 −3 dB 邊界是 **5218–9168 Hz**（44.1 kHz：5251–9083 Hz；96 kHz：5088–9561 Hz，sample rate 越高越接近 analog）。範例 3 會同時印出 analog 公式的 5046–9712 Hz 與數位實測值。兩者都蓋住齒音的主要範圍，所以偵測效果差不多。
 
 gain computer 用最直覺的 **∞:1、上限 range**：偵測 level 超過 threshold 幾 dB 就壓幾 dB，最多壓 range dB。
 
-$$
+```math
 \text{GR} = \mathrm{clamp}(L_\text{det} - T,\ 0,\ \text{range})
-$$
+```
 
 range（`setRangeDb`，正值）不要設太大：齒音壓過頭，人聲會變得像「大舌頭」（lisp）。6–10 dB 通常就夠。
 
@@ -276,16 +276,16 @@ range（`setRangeDb`，正值）不要設太大：齒音壓過頭，人聲會變
 
 split-band 的分頻器必須滿足「gain = 1 時，LP + HP = 原訊號」，否則 de-esser 沒在動作時也會改變音色。**Linkwitz-Riley 4 階（LR4）** = 兩個相同的 2 階 Butterworth 串聯。以 analog prototype（$`s`$ 以 $`\omega_c`$ 正規化）推導：
 
-$$
+```math
 H_{LP}(s) = \left(\frac{1}{s^2 + \sqrt2\,s + 1}\right)^2,\qquad
 H_{HP}(s) = \left(\frac{s^2}{s^2 + \sqrt2\,s + 1}\right)^2
-$$
+```
 
-$$
+```math
 H_{LP} + H_{HP} = \frac{1 + s^4}{(s^2 + \sqrt2\,s + 1)^2}
 = \frac{(s^2 + \sqrt2\,s + 1)(s^2 - \sqrt2\,s + 1)}{(s^2 + \sqrt2\,s + 1)^2}
 = \frac{s^2 - \sqrt2\,s + 1}{s^2 + \sqrt2\,s + 1}
-$$
+```
 
 （用到 $`s^4 + 1 = (s^2 + \sqrt2 s + 1)(s^2 - \sqrt2 s + 1)`$。）最後的形式是一個 2 階 **allpass**：分子與分母的根對 $`j\omega`$ 軸鏡像對稱，所以 $`|H_{LP} + H_{HP}| = 1`$——振幅完全平坦，只有相位改變。在分頻點 $`s = j`$：每個 Butterworth 是 −3 dB、相位 ∓90°，平方後 LP、HP 都是 −6 dB、相位都是 ∓180°（同相），相加 = 0.5 + 0.5 = 1。bilinear transform 對 LP、HP 用同一個頻率映射，所以數位版本也保有這個性質。練習 7 會實測：100 Hz–15 kHz 的 $`|LP + HP|`$ 全部在 0.000 dB。
 
@@ -293,9 +293,9 @@ $$
 
 `DeEsser` 的分頻點放在 analog prototype 的下 −3 dB 點 $`0.7208 f_0`$（7 kHz 時約 5.05 kHz，比數位 bandpass 實際的下緣 5.22 kHz 低一點，等於把高頻段多留一點餘裕）。注意分頻器的 transition 不是無限陡：7 kHz 在 5.05 kHz 分頻點上方只有半個八度，LP 段在 7 kHz 仍有一部分殘留不會被壓。analog LR4 的 $`|H_{LP}| = 1/(1 + (f/f_c)^4)`$，$`f/f_c = 1.387`$ 時為 0.213（-13.4 dB）；bilinear transform 會把高頻往 Nyquist 壓縮，數位版本在 48 kHz 時是 0.189（-14.5 dB）。因為 LR4 的 LP 與 HP 同相、$`|H_{LP}| + |H_{HP}| = 1`$，套上 HP 段的 gain $`g`$ 後 7 kHz 的總增益是
 
-$$
+```math
 |H_{LP}| + (1 - |H_{LP}|)\,g = 0.189 + 0.811 \times 10^{-10.94/20} \approx 0.420 \;\Rightarrow\; -7.55\ \text{dB}
-$$
+```
 
 範例 3 實測 split-band 把 7 kHz 壓了 $`49.91 - 42.31 = 7.60`$ dB，wideband 壓了 10.94 dB（≈ 齒音期間 GR 的平均；上式用的就是這個值）。這是 split-band 的典型取捨：音色更乾淨，壓得比較「淺」；要壓得更深，可以把分頻點往下移，或把 range 加大。
 
@@ -316,32 +316,32 @@ compressor 和 expander 都看「絕對音量」：超過或低於某個 thresho
 
 定義差值（dB）：
 
-$$
+```math
 d[n] = 20\log_{10}\frac{e_\text{fast}[n]}{e_\text{slow}[n]}
-$$
+```
 
 **Attack 階段，$`d > 0`$**：設訊號在 $`t = 0`$ 從 0 跳到振幅 $`A`$（step）。兩個 follower 都在 attack 模式，one-pole 的 step response 是 $`A(1 - e^{-t/\tau})`$：
 
-$$
+```math
 d(t) = 20\log_{10}\frac{1 - e^{-t/\tau_{fa}}}{1 - e^{-t/\tau_{sa}}}
-$$
+```
 
 因為 $`\tau_{fa} < \tau_{sa}`$，對所有 $`t > 0`$ 都有 $`e^{-t/\tau_{fa}} < e^{-t/\tau_{sa}}`$，所以分子 > 分母、$`d > 0`$。$`t \to 0`$ 時用 $`1 - e^{-u} \approx u`$，$`d \to 20\log_{10}(\tau_{sa}/\tau_{fa}) = 20\log_{10}(10/0.5) = 26`$ dB；$`t \to \infty`$ 時兩者都到 $`A`$，$`d \to 0`$。所以 $`d`$ 在起音瞬間最大、隨後遞減，持續時間大約是 slow 的 attack 的幾倍。
 
 **Sustain / 衰減階段，$`d < 0`$**：起音過後，訊號以時間常數 $`\tau_d`$ 指數衰減 $`x(t) = A e^{-t/\tau_d}`$，兩個 follower 都進入 release 模式。一階系統 $`\tau_r\,\dot e = x - e`$ 對指數輸入的穩態解為 $`e(t) = K A e^{-t/\tau_d}`$，代入得
 
-$$
+```math
 -\frac{K}{\tau_d} = \frac{1 - K}{\tau_r} \;\Rightarrow\; K = \frac{\tau_d}{\tau_d - \tau_r}\quad(\tau_d > \tau_r)
-$$
+```
 
 - 若 $`\tau_d > \tau_r`$：envelope 跟得上訊號，只是落後一點（高出 $`K`$ 倍）。
 - 若 $`\tau_d < \tau_r`$：訊號掉得比 release 快，envelope 跟不上，以自己的 $`e^{-t/\tau_r}`$ 衰減。
 
 fast 的 release（30 ms）比鼓的衰減（`makeDrumLoop` 的 kick 包絡是 $`e^{-8t}`$，$`\tau_d = 125`$ ms）快，所以 fast 貼著訊號掉；slow 的 release（150 ms）比 $`\tau_d`$ 慢，所以 slow「撐在高處」。fast < slow，$`d < 0`$，而且 $`|d|`$ 隨時間增加（兩者的衰減率不同）：
 
-$$
+```math
 d(t) \approx \text{常數} - 8.686\,t\left(\frac{1}{\tau_d} - \frac{1}{\tau_{sr}}\right)
-$$
+```
 
 實測會比這個理想值掉得更快：peak detector 吃的是 $`|x|`$，每個波峰都會讓 slow 用 attack 再「充電」一次，slow 實際上掉得比 150 ms 還慢。範例 4 印出第一個 kick 的 $`d`$：第 0 個 sample 是 +25.8 dB（≈ 上面算的 26 dB）、20 ms 時 +3.7 dB、約 55 ms 過零、之後一路往負走（195 ms 時約 −5.3 dB）。同一張表裡 fast 從 −8.3 dB（50 ms）掉到 −18.0 dB（195 ms），約 67 dB/s（$`\tau \approx 130`$ ms，貼著 kick 的 125 ms）；slow 只掉了約 30 dB/s（等效 $`\tau \approx 290`$ ms，比它自己的 150 ms release 還慢）。正是「起音 $`d > 0`$、延音 $`d < 0`$」。
 
@@ -349,12 +349,12 @@ $$
 
 把 $`d`$ 線性映射成增益，並在 $`|d| = 6`$ dB 時飽和：
 
-$$
+```math
 g_\text{dB} = \begin{cases}
 \text{attackDb}\cdot\min(d / 6,\ 1), & d > 0 \\
 \text{sustainDb}\cdot\min(-d / 6,\ 1), & d \le 0
 \end{cases}
-$$
+```
 
 再用 0.5 ms 的 one-pole 平滑 $`g_\text{dB}`$，避免 envelope 漣漪直接變成 gain 的抖動（zipper noise、低頻 kick 上會變成失真）。slow envelope 低於 −80 dBFS 時視為靜音、不處理（否則底噪的隨機起伏也會被當成 transient 放大）。
 
@@ -369,13 +369,13 @@ $$
 - **Upward compression**：threshold **以下**的訊號被**拉大**，往 1:1 線靠近（動態變小）。效果類似 parallel compression（第 04 章練習 3）：小聲的細節浮上來，大聲的不動。實作時一定要有 range（最大 boost），否則靜音時的底噪會被拉大 40 dB。
 - **Upward expansion**：threshold **以上**的訊號被**推得更大**（動態變大）。常用來「還原」被過度壓縮的素材，或讓鼓的打擊更突出。靜態曲線：
 
-$$
+```math
 y(x) = \begin{cases}
 x, & x \le T - W/2 \\
 x + \dfrac{(R - 1)(x - T + W/2)^2}{2W}, & T - W/2 < x < T + W/2 \\
 T + R\,(x - T), & x \ge T + W/2
 \end{cases}
-$$
+```
 
 （推導方式與 2.2 節相同，只是錨點換到 knee 下緣。）同樣要用 range 限制最大 boost，否則一個 transient 就會被推到 clipping。練習 5 會實作它並以 tone burst 驗證：T = -30、R = 1.5、range +12 時，-20 dB 的段落輸出 -15.01 dB（理論 -15）。
 

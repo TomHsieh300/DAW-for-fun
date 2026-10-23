@@ -15,10 +15,10 @@ cd build
 
 **1.** $`f_c = 1`$ kHz：
 
-$$
+```math
 \frac{2\pi f_c}{f_s} = \frac{2\pi\cdot1000}{48000} = 0.130900,\qquad
 a = e^{-0.130900} = 0.877306,\qquad 1 - a = 0.122694
-$$
+```
 
 $`f_c = 100`$ Hz：指數是 0.0130900，$`a = e^{-0.0130900} = 0.986995`$，$`1 - a = 0.013005`$。cutoff 降 10 倍，$`1-a`$ 也大約降 10 倍（低 cutoff 時 $`1 - a \approx 2\pi f_c/f_s`$）。
 
@@ -26,29 +26,29 @@ $`f_c = 100`$ Hz：指數是 0.0130900，$`a = e^{-0.0130900} = 0.986995`$，$`1
 
 **3.** 把 $`z = -1`$ 代入 $`H(z) = (1-a)/(1 - a z^{-1})`$：
 
-$$
+```math
 H(-1) = \frac{1-a}{1+a} = \frac{0.122694}{1.877306} = 0.065357 \;\Rightarrow\; -23.69\text{ dB}
-$$
+```
 
 它不是 $`-\infty`$，因為這個 $`H(z)`$ 沒有任何 zero 在 $`z = -1`$（分子是常數）。analog RC lowpass 要到「無限高頻」才會衰減到 0，而 impulse invariance 只是在取樣點上複製 impulse response，並沒有把「無限高頻」搬到 Nyquist。
 
 **4.** bilinear 版：
 
-$$
+```math
 g = \tan\frac{\pi\cdot1000}{48000} = \tan(0.065450) = 0.065543,\quad
 \text{pole} = \frac{1-g}{1+g} = 0.876976,\quad
 b_0 = b_1 = \frac{g}{1+g} = 0.061512
-$$
+```
 
 pole 和 exp 版的 $`a`$（0.877306）只差 0.00033，低 cutoff 時兩者幾乎一樣。主要差別在分子：bilinear 版是 $`b_0(1 + z^{-1})`$，多了一個在 $`z = -1`$ 的 zero，所以 Nyquist 是 $`-\infty`$ dB，DC 增益則是 $`2b_0/(1 - \text{pole}) = 0.123024/0.123024 = 1`$。
 
 **5.** $`f_c = 10`$ kHz：$`a = e^{-1.308997} = 0.270091`$。
 
-$$
+```math
 \cos\omega_{3\text{dB}} = 1 - \frac{(1-a)^2}{2a} = 1 - \frac{0.532767}{0.540182} = 0.013727
 \;\Rightarrow\; \omega = 1.55707 \text{ rad}
 \;\Rightarrow\; f = \frac{\omega f_s}{2\pi} = 11895 \text{ Hz}
-$$
+```
 
 比設定值高了 19%。
 

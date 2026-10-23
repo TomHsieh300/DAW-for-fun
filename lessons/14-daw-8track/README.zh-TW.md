@@ -234,16 +234,16 @@ audio device 數的是 **sample**；音樂家數的是**小節、拍與 tick**�
 2^31 / 48000 s = 12.4 小時後就會溢位），並從 tempo $`B`$（每分鐘拍數）、sample
 rate $`f_s`$ 與拍號分子 $`n`$ 推導出音樂時間：
 
-$$
+```math
 N_{\text{beat}} = \frac{60\,f_s}{B}, \qquad N_{\text{bar}} = n\,N_{\text{beat}}
-$$
+```
 
 在 120 BPM、48 kHz 下，一拍是 24 000 個 sample，一個 4/4 小節是 96 000 個 sample。位置
 「第 $`b`$ 小節、第 $`k`$ 拍、tick $`t`$」（小節與拍從 1 起算，每拍 960 tick）為
 
-$$
+```math
 \text{samples} = \mathrm{round}\Big( \big[(b-1)\,n + (k-1) + t/960\big]\, N_{\text{beat}} \Big)
-$$
+```
 
 在網格上往返轉換是精確的（`l14_transport_clips` 會印出一張表）。在 96 BPM / 44.1 kHz 下，一
 拍是 27 562.5 個 sample - 不是整數 - 這就是為什麼換算只在
@@ -255,20 +255,20 @@ clip 是 source buffer 的一個視窗，放在 timeline 的 sample $`S`$ 處，
 offset 為 $`O`$。一個 block 涵蓋 timeline 範圍 $`[T_0, T_0 + N)`$。要 render 的部分是
 兩者的交集
 
-$$
+```math
 \text{from} = \max(T_0, S), \qquad \text{to} = \min(T_0 + N, S + L)
-$$
+```
 
 而 timeline sample $`T \in [\text{from}, \text{to})`$ 會寫到 block 索引 $`T - T_0`$，並讀取 source
 索引 $`O + (T - S)`$。一切都是整數運算，所以起點在 sample 12 345 的 clip 在*任何* block size 下
 都會落在輸出 sample 12 345（`tests/test_timeline.cpp` 檢查了 block size 1、64、512
 與 1000）。Fade 把每個 sample 乘上
 
-$$
+```math
 g_{\text{in}}(i) = \text{shape}\Big(\frac{i+1}{F_{\text{in}}+1}\Big), \quad
 g_{\text{out}}(i) = \text{shape}\Big(\frac{L-i}{F_{\text{out}}+1}\Big), \quad
 \text{shape}(x) = x \ \text{or}\ \sin\big(\tfrac{\pi}{2}x\big)
-$$
+```
 
 這樣選的目的是讓長度同為 $`F`$ 且重疊的 fade-out 與 fade-in 永遠滿足
 $`x_{\text{in}} + x_{\text{out}} = 1`$ - 這是 crossfade 的基礎（Exercise 5）。
@@ -279,9 +279,9 @@ $`x_{\text{in}} + x_{\text{out}} = 1`$ - 這是 crossfade 的基礎（Exercise 5
 放在 stereo 聲場中、pan 為 $`p \in [-1, 1]`$ 的 mono source，**constant-power law** 使用角度
 $`\theta = \frac{\pi}{4}(p+1)`$：
 
-$$
+```math
 g_L = \cos\theta, \qquad g_R = \sin\theta, \qquad g_L^2 + g_R^2 = 1
-$$
+```
 
 pan 的過程中聲學功率保持不變；在中央時每一側得到
 $`\cos(\pi/4) = 0.7071`$（-3.01 dB）。第 01 章的 `dsp::Panner::computeGains` 也提供
@@ -313,9 +313,9 @@ master 是一個加總器。$`N`$ 個相同（coherent）的訊號以振幅相�
 +3.01 dB）。這就是為什麼 mix 需要 headroom，也是 master 最後要接 limiter 的原因。
 Solo 是一條涵蓋整個 mixer 的規則：
 
-$$
+```math
 \text{audible}_t = \lnot\,\text{mute}_t \ \land\ \big(\lnot\,\exists u:\text{solo}_u \ \lor\ \text{solo}_t\big)
-$$
+```
 
 Bus 是 *solo-safe* 的（它們只有 mute），所以被 solo 的人聲仍然能和它的 reverb 一起被聽到。
 每一次開關變更都以 10 ms ramp，每一次 fader 移動以 50 ms ramp：沒有 click，也沒有 zipper noise。
@@ -326,10 +326,10 @@ send 把一個 track 以自己的 gain $`s`$ 複製到一條 bus。**Post-fader*
 pan 之後取樣（把 track 推低時，它的 reverb 也跟著變小 - 這是通常的選擇）；**pre-fader** send 則在
 它們之前取樣（耳機 mix，或是在你把 dry 訊號 fade out 時仍然保留的 reverb）：
 
-$$
+```math
 \text{bus}_b = \sum_t s_{t,b}\cdot
 \begin{cases} g_t\, x_t & \text{post-fader} \\ x_t & \text{pre-fader} \end{cases}
-$$
+```
 
 Mute/solo 位於兩種取樣點*之前*：被 mute 的 track 什麼也不送。
 
@@ -340,18 +340,18 @@ convolution（第 12 章）在看到 input $`n + D`$ 之前，無法產生 outpu
 訊號延遲 $`D`$ 個 sample，並透過 `getLatencySamples()` 回報 $`D`$。如果 track 1 有一個 240-sample
 的 limiter 而 track 2 什麼都沒有，它們的和是
 
-$$
+```math
 y[n] = x[n] + x[n - D] \quad\Rightarrow\quad |H(f)| = 2\,\big|\cos(\pi f D / f_s)\big|
-$$
+```
 
 這是一個 **comb filter**，notch 位於 $`f = (2k+1)\,f_s / (2D)`$：在 48 kHz、$`D = 240`$ 時，位於 100、300、
 500 Hz ……，再加上每一下鼓擊都會出現 flam。PDC 會延遲所有其他路徑，讓所有路徑
 都一樣晚：
 
-$$
+```math
 c_t = \max_u L_u - L_t, \qquad c_b = \max_v L_v - L_b, \qquad
 L_{\text{total}} = \max_u L_u + \max_v L_v + L_{\text{master}}
-$$
+```
 
 （track $`t`$，bus $`b`$；乾的 track sum 要為最慢的 bus 等待 $`\max_v L_v`$。）`l14_pdc_demo`
 會量測它，並讓你聽到兩種版本。每個補償用的 delay 最多容納
@@ -385,9 +385,9 @@ thread 沒有任何成本。控制項寫入 atomic；engine 會對每一個變�
 fader 位置 $`p \in [0, 1]`$ 以平方律對應到 gain，讓大部分行程都落在
 0 dB 附近（Step 15）：
 
-$$
+```math
 \text{dB}(p) = 12 - 72\,(1 - p)^2, \qquad p(\text{dB}) = 1 - \sqrt{(12 - \text{dB}) / 72}
-$$
+```
 
 0 dB 位於 $`p = 0.592`$，-6 dB 恰好在 0.5，最底部代表 $`-\infty`$。Meter 在 -60 .. +6 dBFS 範圍內對 dB 呈線性：
 $`\text{position} = (\text{dB} + 60) / 66`$。
@@ -398,10 +398,10 @@ $`\text{position} = (\text{dB} + 60) / 66`$。
 （$`12 \log_2 (48000/44100)`$）。輸出 sample $`m`$ 位於 input 位置 $`t_m = m\,f_{\text{in}}/f_{\text{out}}`$；
 頻寬受限的 interpolation 計算（Step 18）
 
-$$
+```math
 y[m] = \sum_k x[k]\,g(t_m - k), \qquad g(x) = 2 f_c\, \mathrm{sinc}(2 f_c x)\, w(x / W),
 \qquad f_c = 0.46 \min\!\Big(1, \frac{f_{\text{out}}}{f_{\text{in}}}\Big)
-$$
+```
 
 其中 $`w`$ 是涵蓋 $`W = 24 / (2 f_c)`$ 個 input sample 的 Blackman window。cutoff 跟隨*較低*的
 Nyquist 頻率，並留有餘裕（downsampling 時用 $`0.46 f_{\text{out}}`$ 而不是 $`0.5 f_{\text{out}}`$）。
@@ -424,9 +424,9 @@ master spectrum 是 4096 點的 FFT（第 11 章）：在 48 kHz 下，每個 bi
 **最大值**。在寬 $`W`$ 像素的 view 中，頻率 $`f`$ 處的像素
 涵蓋 $`f\,(1000^{1/W} - 1)`$ Hz，所以在
 
-$$
+```math
 f < \frac{f_s / N}{1000^{1/W} - 1}
-$$
+```
 
 以下，一個像素不到一個 bin：以 snapshot 285 像素寬的 view 來說約為 480 Hz（$`W = 300`$ 時為
 500 Hz）。在 10 kHz，同樣一個像素涵蓋約 20 個 bin（Step 20）。

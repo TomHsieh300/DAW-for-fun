@@ -21,10 +21,10 @@ level.
 
 ### Pre- or post-fader
 
-$$
+```math
 \text{bus}_b[n] = \sum_{t=1}^{8} s_{t,b}[n]\cdot
 \begin{cases} g_t[n]\,x_t[n] & \text{post-fader (default)} \\ x_t[n] & \text{pre-fader} \end{cases}
-$$
+```
 
 - **Post-fader** (after fader *and* pan): pulling the fader down pulls the reverb down too; the
   wet/dry ratio stays. That is what you want for effects.
@@ -115,11 +115,11 @@ Step 6: sends and buses (build-along)
 Track 2: DC 0.25, fader at $`-\infty`$, pre-fader send to bus A at 0 dB. With $`g = 0.7071`$ (track
 centre pan) and buses / master at unity balance:
 
-$$
+```math
 \text{direct} = 0.5\,g = 0.3536,\qquad
 \text{bus A} = \underbrace{0.5\,g \cdot 0.5}_{\text{post}} + \underbrace{0.25 \cdot 1}_{\text{pre}} = 0.4268,\qquad
 \text{out} = 0.3536 + 0.4268 = 0.7803
-$$
+```
 
 The test checks `out`, the bus A meter (`getMaxPeakLinear() = 0.4268`), that muting bus A leaves
 only `direct`, that muting track 2 also removes its pre-fader contribution, and that one track

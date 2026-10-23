@@ -15,38 +15,38 @@ All the numbers below are the values the solution programs actually print (48 kH
 
 **1. The A values.**
 
-$$
+```math
 A = 10^{g/40}:\quad A(+6) = 10^{0.15} = 1.4125,\qquad A(-12) = 10^{-0.3} = 0.5012
-$$
+```
 
 The linear gain at the center of a +6 dB peak is $`A^2 = 10^{6/20} = 1.9953`$ (about 2x). $`A`$ is "the square root of the center gain", and it is also the gain at the bandwidth edges (README Section 2.5).
 
 **2. Q ↔ bandwidth.**
 
-$$
+```math
 Q(N = 2/3) = \frac{2^{1/3}}{2^{2/3} - 1} = \frac{1.2599}{0.5874} = 2.1449
-$$
+```
 
-$$
+```math
 N(Q = 2) = \frac{2}{\ln 2}\mathrm{asinh}\left(\frac{1}{4}\right) = 2.8854 \times 0.24747 = 0.7140\ \text{octave}
-$$
+```
 
 **3. Bandwidth edges.** $`\frac{1}{2Q} = \frac{1}{2\sqrt2} = 0.35355`$ and $`\sqrt{1 + \frac{1}{4Q^2}} = \sqrt{1.125} = 1.06066`$:
 
-$$
+```math
 f_1 = 1000 \times (1.06066 - 0.35355) = 707.1\ \text{Hz},\qquad f_2 = 1000 \times (1.06066 + 0.35355) = 1414.2\ \text{Hz}
-$$
+```
 
 These are exactly $`f_0 / \sqrt2`$ and $`f_0 \cdot \sqrt2`$ (1 octave wide, with $`f_0`$ as the geometric center). With +12 dB, the gain at the edges is the midpoint gain, +6 dB (the digital version measures +5.989 / +5.978 dB; the difference comes from bilinear warping).
 
 **4. RBJ coefficients.** $`\omega_0 = 2\pi \cdot 12000/48000 = \pi/2`$, so $`\cos\omega_0 = 0`$, $`\sin\omega_0 = 1`$, $`\alpha = \frac{1}{2Q} = 0.5`$, and $`A = 1.41254`$:
 
-$$
+```math
 \begin{aligned}
 b_0 &= 1 + \alpha A = 1.70627, & b_1 &= 0, & b_2 &= 1 - \alpha A = 0.29373\\
 a_0 &= 1 + \alpha/A = 1.35397, & a_1 &= 0, & a_2 &= 1 - \alpha/A = 0.64603
 \end{aligned}
-$$
+```
 
 Dividing by $`a_0`$: $`b_0 = 1.26019`$, $`b_2 = 0.21694`$, $`a_2 = 0.47713`$, and $`b_1 = a_1 = 0`$.
 

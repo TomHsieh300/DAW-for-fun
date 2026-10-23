@@ -27,9 +27,9 @@
 
 另一個常用的量是 **crest factor**（峰值因數）：
 
-$$
+```math
 \text{crest factor (dB)} = 20\log_{10}\frac{\text{peak}}{\text{RMS}}
-$$
+```
 
 鼓組的 crest factor 很大（本章合成鼓組是 14.5 dB），正弦波只有 3.01 dB。Compressor 一般會降低 crest factor——但我們在範例 3 會看到，這只有在 attack 夠快時才成立。
 
@@ -62,19 +62,19 @@ flowchart LR
 
 令輸入 level 為 $`x`$（dB）、threshold 為 $`T`$（dB）、ratio 為 $`R`$。**Hard knee** 的靜態曲線是一條折線：
 
-$$
+```math
 y_{\text{hard}}(x) =
 \begin{cases}
 x, & x \le T \\
 T + \dfrac{x - T}{R}, & x > T
 \end{cases}
-$$
+```
 
 threshold 以上，輸入每多 1 dB，輸出只多 $`1/R`$ dB。$`R = 1`$ 是直線（不壓縮），$`R = \infty`$ 時輸出被釘在 $`T`$（這就是 limiter 的靜態曲線）。**Gain reduction**（GR，本教材一律用**正值**）是輸入與輸出的差：
 
-$$
+```math
 \text{GR}(x) = x - y(x) = \left(1 - \frac{1}{R}\right)(x - T) \quad (x > T)
-$$
+```
 
 例如 $`T = -20`$、$`R = 4`$、$`x = -10`$：$`y = -20 + (-10 + 20)/4 = -17.5`$ dB，GR = 7.5 dB。範例 1 會印出這一行。
 
@@ -82,26 +82,26 @@ $$
 
 設 knee 內的曲線為 $`y(x) = x + a\,(x - T + W/2)^2`$（knee 下緣 $`x = T - W/2`$ 時，第二項為 0，值與斜率都跟 $`y = x`$ 一致）。在上緣 $`x = T + W/2`$，斜率要等於 $`1/R`$：
 
-$$
+```math
 y'(x) = 1 + 2a\,(x - T + W/2) \;\Rightarrow\; 1 + 2aW = \frac{1}{R} \;\Rightarrow\; a = \frac{1/R - 1}{2W}
-$$
+```
 
 把 $`a`$ 代回去檢查上緣的值：$`y = T + W/2 + \frac{1/R - 1}{2W}W^2 = T + \frac{W}{2R}`$，而直線 $`T + (x - T)/R`$ 在 $`x = T + W/2`$ 的值也是 $`T + \frac{W}{2R}`$，確實接上。整理成三段（Giannoulis, Massberg & Reiss 2012 的寫法）：
 
-$$
+```math
 y_{\text{soft}}(x) =
 \begin{cases}
 x, & 2(x - T) < -W \\[4pt]
 x + \dfrac{(1/R - 1)\,(x - T + W/2)^2}{2W}, & 2\,\lvert x - T \rvert \le W \\[8pt]
 T + \dfrac{x - T}{R}, & 2(x - T) > W
 \end{cases}
-$$
+```
 
 $`W = 0`$ 就退化成 hard knee。一個好記的對照點：在 threshold 本身 $`x = T`$，soft knee 已經在壓了：
 
-$$
+```math
 y_{\text{soft}}(T) = T + \frac{(1/R - 1)\,W}{8}
-$$
+```
 
 $`T = -20`$、$`R = 4`$、$`W = 10`$：$`y = -20 + (-0.75)(10/8) = -20.9375`$ dB，也就是 threshold 處已經有 0.94 dB 的 GR。
 
@@ -139,15 +139,15 @@ Compressor 壓的是 **threshold 以上**；**expander** 反過來，把 thresho
 
 平滑器的核心是一階遞迴（one-pole lowpass）：
 
-$$
+```math
 y[n] = \alpha\, y[n-1] + (1 - \alpha)\, x[n]
-$$
+```
 
 對一個 step 輸入（$`x`$ 從 0 跳到 1），解析解是 $`y[n] = 1 - \alpha^n`$。我們希望「經過 $`\tau`$ 秒」等於「經過 $`\tau f_s`$ 個 sample」時，$`y`$ 到達 $`1 - e^{-1} = 63.2\%`$，所以要求 $`\alpha^{\tau f_s} = e^{-1}`$：
 
-$$
+```math
 \alpha = \exp\!\left(-\frac{1}{\tau f_s}\right)
-$$
+```
 
 這就是 `attackReleaseCoefficient()`。$`\tau = 10`$ ms、$`f_s = 48`$ kHz：$`\alpha = e^{-1/480} = 0.997919`$。
 
@@ -172,12 +172,12 @@ Attack 與 release 用不同的 $`\alpha`$：目標值比目前狀態**高**（�
 
 **Decoupled** 平滑先做一個「瞬間上升、以 release 衰減」的 peak-hold，再用 attack 係數平滑它：
 
-$$
+```math
 \begin{aligned}
 y_1[n] &= \max\!\big(x[n],\; \alpha_R\, y_1[n-1] + (1 - \alpha_R)\, x[n]\big) \\
 y[n] &= \alpha_A\, y[n-1] + (1 - \alpha_A)\, y_1[n]
 \end{aligned}
-$$
+```
 
 peak-hold 把週期訊號的 ripple 填平，所以穩態 GR 精確等於靜態曲線（B1 量到 7.49 dB），attack 曲線也精確是 $`1 - e^{-t/\tau_A}`$。代價是 release 變成兩級串聯（先 peak-hold 衰減、再過 attack 濾波器），量到的 release 時間約是 $`\tau_R + \tau_A`$（B1：110.8 ms 對標稱 100 ms）。`Compressor` 預設用 decoupled；`EnvelopeFollower` 預設 branching（給第 08 章 gate 用，gate 不在乎 ripple，反而要「真的掉下去」）。
 
@@ -208,9 +208,9 @@ peak-hold 把週期訊號的 ripple 填平，所以穩態 GR 精確等於靜態�
 
 用 hard knee 的穩態分析：令 gain computer 的斜率為 $`s`$（GR 每超過 threshold 1 dB 增加 $`s`$ dB；feedforward 時 $`s = 1 - 1/R`$）。Feedback 時 $`Y = X - \text{GR}`$ 且 $`\text{GR} = s\,(Y - T)`$：
 
-$$
+```math
 \text{GR} = s\,(X - \text{GR} - T) \;\Rightarrow\; \text{GR} = \frac{s}{1 + s}(X - T) \;\Rightarrow\; Y - T = \frac{X - T}{1 + s}
-$$
+```
 
 所以 feedback 的**有效 ratio 是 $`1 + s`$**。把 feedforward 的 4:1 設定（$`s = 0.75`$）直接搬到 feedback 只有 1.75:1；要真的 4:1 得把斜率設成 3（比 1 還大，意思是 detector 看到超過 1 dB 就想壓 3 dB，靠迴路收斂到 0.75）。行為上，feedback 的 detector 一開始看到「還沒被壓」的大輸出，GR 目標值一開始遠大於穩態 → attack 前段特別快、之後慢慢收斂（**program-dependent attack**）；練習 6 會量到 t63 從 10.8 ms 縮到 2.8 ms。這是 feedback 機器「聽起來比較順」的原因之一；代價是無法做 lookahead（輸出還沒算出來）、ratio 無法無限大。
 
@@ -222,9 +222,9 @@ $$
 
 壓完之後整體變小聲，**makeup gain** 把它補回來。最常見的 auto makeup 公式是「讓 0 dBFS 的輸入回到 0 dBFS」：
 
-$$
+```math
 \text{makeup} = -\,y(0) = -\,\text{computeOutputDb}(0, T, R, W)
-$$
+```
 
 $`T = -20`$、$`R = 4`$、hard knee：$`y(0) = -20 + 20/4 = -15`$ → makeup = 15 dB。很多 plugin 只補一半，因為真實音樂很少一直頂在 0 dBFS，補滿會太大聲。練習 5 會驗證這個公式，並用真的 `Compressor` 跑 0 dBFS 正弦波確認輸出回到 0.01 dBFS。
 
@@ -240,9 +240,9 @@ GR meter 顯示「現在壓了幾 dB」，是使用 compressor 時最重要的�
 
 把 dry 訊號和**重壓**過的 wet 訊號混在一起：
 
-$$
+```math
 y = (1 - \text{mix})\, x_{\text{dry}} + \text{mix}\, x_{\text{wet}}
-$$
+```
 
 Wet 提供厚度與「身體」，dry 保留 transient 與動態，是鼓組 bus 與人聲最常用的技巧之一。練習 3 實作它，並驗證 mix = 0.5 的 crest factor 介於 dry 與 wet 之間。
 

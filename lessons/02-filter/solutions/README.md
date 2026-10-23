@@ -15,10 +15,10 @@ cd build
 
 **1.** $`f_c = 1`$ kHz:
 
-$$
+```math
 \frac{2\pi f_c}{f_s} = \frac{2\pi\cdot1000}{48000} = 0.130900,\qquad
 a = e^{-0.130900} = 0.877306,\qquad 1 - a = 0.122694
-$$
+```
 
 $`f_c = 100`$ Hz: the exponent is 0.0130900, $`a = e^{-0.0130900} = 0.986995`$, $`1 - a = 0.013005`$. When the cutoff drops by a factor of 10, $`1-a`$ also drops by roughly a factor of 10 (for a low cutoff $`1 - a \approx 2\pi f_c/f_s`$).
 
@@ -26,29 +26,29 @@ $`f_c = 100`$ Hz: the exponent is 0.0130900, $`a = e^{-0.0130900} = 0.986995`$, 
 
 **3.** Substitute $`z = -1`$ into $`H(z) = (1-a)/(1 - a z^{-1})`$:
 
-$$
+```math
 H(-1) = \frac{1-a}{1+a} = \frac{0.122694}{1.877306} = 0.065357 \;\Rightarrow\; -23.69\text{ dB}
-$$
+```
 
 It is not $`-\infty`$ because this $`H(z)`$ has no zero at $`z = -1`$ (the numerator is a constant). An analog RC lowpass only reaches 0 at "infinitely high frequency", and impulse invariance merely copies the impulse response at the sampling instants; it does not move "infinitely high frequency" to Nyquist.
 
 **4.** The bilinear version:
 
-$$
+```math
 g = \tan\frac{\pi\cdot1000}{48000} = \tan(0.065450) = 0.065543,\quad
 \text{pole} = \frac{1-g}{1+g} = 0.876976,\quad
 b_0 = b_1 = \frac{g}{1+g} = 0.061512
-$$
+```
 
 The pole differs from the exp version's $`a`$ (0.877306) by only 0.00033, so for a low cutoff the two are almost identical. The main difference is in the numerator: the bilinear version is $`b_0(1 + z^{-1})`$, which adds a zero at $`z = -1`$, so Nyquist is $`-\infty`$ dB, and the DC gain is $`2b_0/(1 - \text{pole}) = 0.123024/0.123024 = 1`$.
 
 **5.** $`f_c = 10`$ kHz: $`a = e^{-1.308997} = 0.270091`$.
 
-$$
+```math
 \cos\omega_{3\text{dB}} = 1 - \frac{(1-a)^2}{2a} = 1 - \frac{0.532767}{0.540182} = 0.013727
 \;\Rightarrow\; \omega = 1.55707 \text{ rad}
 \;\Rightarrow\; f = \frac{\omega f_s}{2\pi} = 11895 \text{ Hz}
-$$
+```
 
 That is 19% higher than the set value.
 

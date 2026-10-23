@@ -70,9 +70,9 @@ master 上有 loudness meter，EQ 外掛背後有一片即時的頻譜。這些�
 
 在 dB 域「每秒下降 $`D`$ dB」是一條直線；換回線性域就是**每個 sample 乘上同一個係數 $`g`$**：
 
-$$
+```math
 20\log_{10}\left(g^{f_s}\right) = -D \quad\Longrightarrow\quad g = 10^{-D / (20 f_s)}
-$$
+```
 
 $`D = 24`$ dB/s、$`f_s = 48`$ kHz → $`g = 10^{-24/960000} \approx 0.9999424`$（精確一點是 0.9999424370；
 `LevelMeter` 用 float 存，所以 `l11_level_meter` 第一段印出的 float 值是 0.99994242——float 在 1 附近的間距約 $`6\times10^{-8}`$）。
@@ -90,9 +90,9 @@ else:                hold = max(hold * g, peak)      // hold never falls below p
 
 ### 2.3 RMS 與視窗長度
 
-$$
+```math
 \text{RMS}[n] = \sqrt{\frac{1}{W}\sum_{i=0}^{W-1} x[n-i]^2}
-$$
+```
 
 - 視窗 $`W`$ 太短（例如 10 ms）：低頻正弦的一個週期都裝不滿，讀數會跟著波形抖動。
   經驗法則：$`W`$ 至少要涵蓋最低關心頻率的好幾個週期。
@@ -111,9 +111,9 @@ VU meter（volume unit，IEC 60268-17）是 1939 年為電話與廣播設計的�
 **全波整流後的平均**，再通過指針本身的機械慣性：一個 0 VU 的正弦突然出現時，指針要在 **300 ms** 到達最終讀數的 99%，
 並且過衝 1~1.5%。在數位系統裡用一個二階系統（彈簧 + 阻尼）模擬：
 
-$$
+```math
 \ddot p + 2\zeta\omega_n \dot p + \omega_n^2\,p = \omega_n^2\,u(t)
-$$
+```
 
 $`\zeta`$ 決定過衝（$`M_p = e^{-\pi\zeta/\sqrt{1-\zeta^2}}`$，$`\zeta = 0.82`$ → 1.11%），$`\omega_n`$ 決定快慢。
 練習 4 會把它做出來。0 VU 在數位系統裡通常校準成 **-18 dBFS**（EBU R68）或 -20 dBFS 的正弦。
@@ -207,9 +207,9 @@ flowchart LR
 要回到類比原型重新做 bilinear transform。把上表反推回類比參數（libebur128 等開源實作也用同一組）。
 stage 1 的類比原型是一個二階 high shelf（$`s`$ 已對 $`\omega_0 = 2\pi f_0`$ 正規化）：
 
-$$
+```math
 H_1(s) = \frac{V_h\, s^2 + V_b\, s/Q + 1}{s^2 + s/Q + 1}
-$$
+```
 
 - $`s \to 0`$（DC）時 $`H_1 = 1`$（0 dB）；$`s \to \infty`$（高頻）時 $`H_1 = V_h`$。所以 **$`V_h`$ 是高頻端的線性增益**：
   $`V_h = 10^{G/20}`$，$`G = 3.99984`$ dB（約 +4 dB）。
@@ -224,10 +224,10 @@ $$
 bilinear transform 用 $`s = \frac{1}{K}\cdot\frac{1 - z^{-1}}{1 + z^{-1}}`$、$`K = \tan(\pi f_0 / f_s)`$（這個 $`K`$ 讓 $`f_0`$ 剛好映射到 $`f_0`$）。
 代入 $`H_1(s)`$、上下同乘 $`K^2(1+z^{-1})^2`$，展開成 $`z^{-1}`$ 的多項式就得到：
 
-$$
+```math
 b_0 = \frac{V_h + V_b K/Q + K^2}{a_0},\quad b_1 = \frac{2(K^2 - V_h)}{a_0},\quad b_2 = \frac{V_h - V_b K/Q + K^2}{a_0},\quad
 a_1 = \frac{2(K^2-1)}{a_0},\quad a_2 = \frac{1 - K/Q + K^2}{a_0}
-$$
+```
 
 其中 $`a_0 = 1 + K/Q + K^2`$。
 
@@ -251,15 +251,15 @@ $$
 
 對每個 channel $`i`$，在一段時間 $`T`$ 內算 K-weighted 訊號 $`y_i`$ 的 mean square：
 
-$$
+```math
 z_i = \frac{1}{T}\int_0^T y_i^2(t)\,dt \;\approx\; \frac{1}{N}\sum_n y_i[n]^2
-$$
+```
 
 再加權相加、換成對數：
 
-$$
+```math
 L_K = -0.691 + 10\log_{10}\sum_i G_i\, z_i \quad \text{[LUFS]}
-$$
+```
 
 - **$`G_i`$**：L、R、C = 1.0；左右環繞 Ls、Rs = 1.41（約 +1.5 dB，後方的聲音聽起來比較大聲）；LFE 不計。
 - **為什麼是 $`10\log_{10}`$ 而不是 $`20\log_{10}`$**：$`z`$ 已經是「平方」（功率）了。
@@ -289,10 +289,10 @@ momentary = 最近 4 個子區塊、short-term = 最近 30 個子區塊的平均
 2. **relative gate**：算出通過第一道的 block 的平均 $`\bar L`$（**在功率域平均**），丟掉 < $`\bar L - 10`$ LU 的 block。
 3. integrated = 通過兩道 gate 的 block 的功率平均：
 
-$$
+```math
 \Gamma_r = -0.691 + 10\log_{10}\Big(\frac{1}{|J_a|}\sum_{j\in J_a}\sum_i G_i z_{ij}\Big) - 10,\qquad
 L_{\text{int}} = -0.691 + 10\log_{10}\Big(\frac{1}{|J_g|}\sum_{j\in J_g}\sum_i G_i z_{ij}\Big)
-$$
+```
 
 $`J_a`$ 是通過 absolute gate 的 block，$`J_g`$ 是兩道都通過的。`l11_loudness` 第 4 段：3 s 的 −20 dBFS → 3 s 靜音 → 3 s 的 −50 dBFS：
 
@@ -338,32 +338,32 @@ sample peak 會到 −0.24 dBFS，已經超過 −1 dBTP——這時候就需要
 這就是**相關**（correlation）。問題是相位：如果 $`x`$ 的 440 Hz 是 cos 而我們拿 sin 去比，總和也會是 0。
 解法是同時跟 cos 和 sin 比——用複數 $`e^{-j\omega n} = \cos\omega n - j\sin\omega n`$ 一次做完：
 
-$$
+```math
 X[k] = \sum_{n=0}^{N-1} x[n]\, e^{-j 2\pi k n / N},\qquad k = 0, 1, \dots, N-1
-$$
+```
 
 $`|X[k]|`$ 是「第 $`k`$ 個頻率有多少」，$`\arg X[k]`$ 是它的相位。第 $`k`$ 個 bin 的頻率是
 
-$$
+```math
 f_k = k \cdot \frac{f_s}{N}
-$$
+```
 
 所以 **bin 寬（頻率解析度）$`\Delta f = f_s / N`$**。48 kHz、N = 2048 → 23.4375 Hz。想要更細的解析度，只能加大 N，
 也就是**看更長的一段時間**——頻率解析度和時間解析度是一個蹺蹺板。
 
 逆轉換（IDFT）幾乎一模一樣，只差旋轉方向與 $`1/N`$：
 
-$$
+```math
 x[n] = \frac{1}{N}\sum_{k=0}^{N-1} X[k]\, e^{+j 2\pi k n / N}
-$$
+```
 
 #### 實數訊號的對稱性
 
 音訊是實數。把 $`k`$ 換成 $`N-k`$：$`e^{-j2\pi(N-k)n/N} = e^{+j2\pi kn/N}`$，所以
 
-$$
+```math
 X[N-k] = \overline{X[k]}\qquad(\text{共軛對稱})
-$$
+```
 
 後半段完全是前半段的鏡像，**只需要保留 $`k = 0 \dots N/2`$，共 $`N/2 + 1`$ 個 bin**：bin 0 是 DC，bin $`N/2`$ 是 Nyquist（$`f_s/2`$），
 這兩個是實數。`Fft::forwardReal()` 只輸出這 $`N/2+1`$ 個 bin，`inverseReal()` 用對稱性把另一半補回來。
@@ -372,9 +372,9 @@ $$
 
 一個振幅 $`A`$、正好落在 bin $`k`$ 中心的正弦 $`A\cos(2\pi k n/N)`$，能量平分在 bin $`k`$ 與 bin $`N-k`$，每邊 $`|X[k]| = AN/2`$。所以
 
-$$
+```math
 A = \frac{2\,|X[k]|}{N} \qquad(\text{DC 與 Nyquist 沒有鏡像，係數是 } 1/N)
-$$
+```
 
 加了 window 之後還要再除以 coherent gain（2.9 節）。換成 dB：$`20\log_{10} A`$（振幅）或 $`10\log_{10}|X|^2`$（功率），兩者相同。
 
@@ -386,21 +386,21 @@ $$
 
 令 $`W_N = e^{-j2\pi/N}`$（旋轉因子，twiddle factor）。把 $`x[n]`$ 拆成偶數項與奇數項（decimation in time）：
 
-$$
+```math
 X[k] = \sum_{m=0}^{N/2-1} x[2m]\,W_N^{2mk} + \sum_{m=0}^{N/2-1} x[2m+1]\,W_N^{(2m+1)k}
-$$
+```
 
 因為 $`W_N^{2mk} = W_{N/2}^{mk}`$：
 
-$$
+```math
 X[k] = \underbrace{\sum_m x[2m]\,W_{N/2}^{mk}}_{E[k]\text{：偶數項的 } N/2 \text{ 點 DFT}} + W_N^k \underbrace{\sum_m x[2m+1]\,W_{N/2}^{mk}}_{O[k]\text{：奇數項的 } N/2 \text{ 點 DFT}}
-$$
+```
 
 $`E`$、$`O`$ 以 $`N/2`$ 為週期，而且 $`W_N^{k+N/2} = -W_N^k`$，所以後半段不用重算：
 
-$$
+```math
 \boxed{X[k] = E[k] + W_N^k\,O[k],\qquad X[k + N/2] = E[k] - W_N^k\,O[k]},\qquad k = 0 \dots N/2-1
-$$
+```
 
 這一對式子叫 **butterfly**（蝴蝶）：
 
@@ -415,9 +415,9 @@ flowchart LR
 
 一個 N 點 DFT = 兩個 N/2 點 DFT + N/2 個 butterfly。遞迴下去：
 
-$$
+```math
 T(N) = 2\,T(N/2) + O(N) \;\Longrightarrow\; T(N) = O(N\log_2 N)
-$$
+```
 
 總共 $`\log_2 N`$ 層、每層 $`N/2`$ 個 butterfly（各一次複數乘法）。N = 4096：$`N^2 / (N\log_2 N) = 4096/12 \approx 341`$ 倍的差距。
 
@@ -553,9 +553,9 @@ Hann 的 bin 44 是 −6 dB：那是 main lobe 本身比較寬（±2 bin），�
 
 window 把訊號整體縮小了：bin 中心正弦的讀數變成原本的 $`\text{CG} = \frac1N\sum w[n]`$ 倍（Hann 0.5 = −6.02 dB）。補償：
 
-$$
+```math
 A = \frac{2\,|X[k]|}{N \cdot \text{CG}}
-$$
+```
 
 `SpectrumAnalyzer` 這樣正規化，所以 full-scale 正弦讀 0 dBFS（第二張表每個 window 的 bin 43 都是 0.000 dB）。
 
@@ -584,9 +584,9 @@ flowchart LR
   同理，範例裡 440 Hz 的正弦（落在 bin 37.55，偏 0.45 bin）讀 −7.2 dB 而不是 −6.0 dB。
 - **對數頻率軸**：人耳對音高是對數感知的（每個八度同樣重要）。線性軸上 20 Hz~1 kHz 只佔 5% 的寬度，所以頻譜分析儀幾乎都用對數軸：
 
-$$
+```math
 \text{column}(f) = C \cdot \frac{\ln f - \ln f_{\text{low}}}{\ln f_{\text{high}} - \ln f_{\text{low}}}
-$$
+```
 
   高頻區好幾個 bin 擠在同一欄（取最大值），低頻區一個 bin 橫跨好幾欄（N = 4096 時 bin 寬 11.7 Hz，20~40 Hz 只有兩個 bin）。
   所以想看清楚低頻就要更大的 N——這又回到時間 / 頻率解析度的取捨。

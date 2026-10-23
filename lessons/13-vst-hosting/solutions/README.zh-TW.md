@@ -24,9 +24,9 @@
 
 要求 $`n = 0.5`$ 時 $`v = c`$：
 
-$$
+```math
 0.5 = \left(\frac{c - s}{e - s}\right)^{k} \;\Longrightarrow\; \ln 0.5 = k \ln\frac{c - s}{e - s} \;\Longrightarrow\; k = \frac{\ln 0.5}{\ln\!\left(\frac{c - s}{e - s}\right)}
-$$
+```
 
 - Attack（0.1 … 200 ms，centre 10）：$`\dfrac{9.9}{199.9} = 0.049525`$，$`\ln = -3.00527`$，$`k = \dfrac{-0.693147}{-3.00527} = 0.23064`$
 - Release（5 … 2000 ms，centre 100）：$`\dfrac{95}{1995} = 0.047619`$，$`\ln = -3.04452`$，$`k = 0.22767`$
@@ -35,9 +35,9 @@ $$
 
 $`n^{1/k} = (0.5^2)^{1/k} = \left(0.5^{1/k}\right)^2`$，而由定義 $`0.5^{1/k} = \dfrac{c - s}{e - s}`$，所以
 
-$$
+```math
 v = s + (e - s)\left(\frac{c - s}{e - s}\right)^2 = s + \frac{(c - s)^2}{e - s} = 5 + \frac{95^2}{1995} = 5 + 4.524 = 9.524\ \text{ms}
-$$
+```
 
 同理，$`n = 0.5^m`$ 時 $`v = s + (e - s)\left(\frac{c-s}{e-s}\right)^m`$：旋鈕每往左「減半」，實際值（扣掉 $`s`$）就乘上 $`\frac{c-s}{e-s} \approx 0.0476`$——這就是 skew 讓小數值區域變寬的效果。
 
@@ -127,9 +127,9 @@ editor（`AudioProcessorEditor`）持有 processor 的參考；它的解構子�
 
 **3.** 沒有 PDC：Track A 比 C 晚 240 samples = 5 ms。兩個相同的 kick 相加：$`y[n] = x[n] + x[n - D]`$，$`|H(f)| = 2\left|\cos\!\left(\dfrac{\pi f D}{f_s}\right)\right|`$，零點在 $`\dfrac{\pi f D}{f_s} = \dfrac{\pi}{2} + k\pi`$，即
 
-$$
+```math
 f_k = \frac{(2k+1) f_s}{2D} = \frac{(2k+1) \times 48000}{480} = 100,\ 300,\ 500,\ \dots\ \text{Hz}
-$$
+```
 
 kick 的基頻（約 45–120 Hz，見 `makeDrumLoop`）正好落在 100 Hz 的零點附近：低頻被大量抵消，kick 變薄。（練習 6 用 impulse 實際量到 DawLabLimiter 的 240 samples。）
 

@@ -70,11 +70,11 @@ engine buffer 永遠是 stereo，所以 clip 與 arrangement 不在乎 format；
 
 44.1 kHz 的檔案由 48 kHz 的 engine 播放，會快 8.8 %、高 1.5 個半音（$`12\log_2(48000/44100) = 1.47`$）。它必須被轉換。輸出 sample $`m`$ 位於輸入位置 $`t_m = m \cdot f_{\text{in}} / f_{\text{out}}`$，介於兩個輸入 sample 之間。Band-limited 訊號的理想重建（sampling theorem）是 sinc 函數之和；我們用加窗、低通過的 sinc kernel 在 $`t_m`$ 處求值：
 
-$$
+```math
 y[m] = \sum_k x[k]\; g(t_m - k), \qquad
 g(x) = 2f_c\,\mathrm{sinc}(2 f_c x)\; w\!\left(\frac{x}{W}\right), \qquad
 \mathrm{sinc}(u) = \frac{\sin \pi u}{\pi u}
-$$
+```
 
 - $`f_c`$ 是以「每個輸入 sample 的 cycle 數」計的 cutoff，$`f_c = 0.5 \cdot \min(1, f_{\text{out}}/f_{\text{in}}) \cdot 0.92`$：剛好低於兩個 Nyquist frequency 中*較低*者。Downsample（$`f_{\text{out}} < f_{\text{in}}`$）時，這會移除原本會 alias 的成分；upsample 時，它移除 spectral image。"移除" 只是近似：加窗的 kernel 在 $`f_c`$ 附近有約 $`5.5 / (2W) = 0.23 f_c`$ 的 transition band，所以它的 stopband 在 $`1.115 f_c = 0.513 f_{\text{out}}`$ 附近才開始，剛好高於輸出的 Nyquist frequency。介於 $`0.5`$ 與 $`0.513 f_{\text{out}}`$ 之間的成分（44.1 kHz 輸出時為 22.05-22.6 kHz）仍會折返到 21.5-22.05 kHz（頻帶最上方的 2.6 %），至少約低 54 dB（README 第 3.10 節推導了這些數字）。
 - $`W = Z / (2 f_c)`$ 是以輸入 sample 計的半寬，其中兩側各有 $`Z = 24`$ 個 sinc zero crossing；$`w`$ 是定義在 $`[-1, 1]`$ 上的 Blackman window。

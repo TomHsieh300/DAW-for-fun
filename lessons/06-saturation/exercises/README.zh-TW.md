@@ -86,9 +86,9 @@ sample rate $`f_s = 44.1`$ kHz，一個 5 kHz 正弦波經過很重的 hard clip
 
 起始碼已經寫好一個 parallel saturator：wet 路徑是 4x `Oversampler` + $`\tanh(g x)/g`$（除以 drive，讓小訊號時 dry 與 wet 一樣大），dry 路徑經過一個可以設定延遲 $`D`$ 的 `DryDelay`。小訊號時整個系統是
 
-$$
+```math
 y[n] = (1 - m)\,x[n - D] + m\,x[n - L],\qquad |H(f)| = \left|(1 - m) + m\,e^{-j2\pi f (L - D)/f_s}\right|
-$$
+```
 
 1. 實作 `DryDelay::processSample()`：長度 `maxDelay + 1` 的 ring buffer，先寫入 $`x[n]`$、再讀 $`x[n - D]`$；$`D = 0`$ 時輸出等於輸入（TODO 1）。
 2. 實作 `predictedNotchHz(k, Δ, fs)`：$`\Delta = L - D`$ 時第 $`k`$ 個 notch 的頻率（TODO 2）。

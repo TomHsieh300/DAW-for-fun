@@ -252,7 +252,9 @@ A design that fits this engine:
    $`L_{\text{pdc}} + L_{\text{out}}`$ samples after the engine rendered $`T`$; their playing reaches the
    engine $`L_{\text{in}}`$ later. So the input sample that arrives while the engine renders position
    $`P`$ belongs to timeline position
-   $$T = P - (L_{\text{in}} + L_{\text{out}} + L_{\text{pdc}})$$
+   ```math
+   T = P - (L_{\text{in}} + L_{\text{out}} + L_{\text{pdc}})
+   ```
    i.e. the recorded clip must be placed $`L_{\text{in}} + L_{\text{out}} + L_{\text{pdc}}`$ samples
    *earlier* than the playhead position at which recording started (JUCE reports the device latencies
    via `AudioIODevice::getInputLatencyInSamples()` / `getOutputLatencyInSamples()`). Verify it with a

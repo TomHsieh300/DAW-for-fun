@@ -66,9 +66,9 @@ struct ParameterInfo {
 旋鈕是一個位置 $`n \in [0, 1]`$。線性參數為 $`v = v_{\min} + n (v_{\max} - v_{\min})`$。
 對於頻率與時間，相等的旋鈕移動應該對應相等的*比例*，所以 log taper 為
 
-$$
+```math
 v = v_{\min}\left(\frac{v_{\max}}{v_{\min}}\right)^{n}, \qquad n = \frac{\ln(v / v_{\min})}{\ln(v_{\max} / v_{\min})}
-$$
+```
 
 在 20 Hz .. 20 kHz 的範圍內，旋鈕的中間是 $`\sqrt{20 \cdot 20000} = 632`$ Hz，而不是 10 kHz。
 `clamp()` 也會把 Int / Bool / Choice 的值四捨五入，並把 NaN 換成預設值 - 來自 UI 或損毀專案檔的

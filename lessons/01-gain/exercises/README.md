@@ -75,9 +75,9 @@ Starter: `starter/ex5_multiplicative_ramp.cpp` Solution: `../solutions/ex5_multi
 
 This chapter's `dsp::SmoothedValue` is a linear ramp: the factor is a straight line in time. Using it for a long fade-out (for example automation pulling a fader from 0 dB to −60 dB) sounds "loud the whole time and then suddenly gone", because the ear hears dB. This exercise implements another kind of smoother, `MultiplicativeRamp`: every sample **multiplies** by the same factor
 
-$$
+```math
 r = \left(\frac{\text{target}}{\text{current}}\right)^{1/N},\qquad g[n] = g[0]\,r^n,\qquad \text{dB}[n] = \text{dB}[0] + n \cdot 20\log_{10} r
-$$
+```
 
 that is, it runs in a straight line in dB (JUCE's `SmoothedValue<float, ValueSmoothingTypes::Multiplicative>` does exactly this). 0 cannot be reached by multiplying and nothing can be multiplied up from it, so 0 is replaced by a floor `kFloorGain` (−100 dB), and the last sample snaps to the exact target value.
 
@@ -111,9 +111,9 @@ The self-check has 8 truth-table cases, and finally feeds the result into `dsp::
 
 Starter: `starter/ex7_stereo_width.cpp` Solution: `../solutions/ex7_stereo_width.cpp` Targets: `l01_ex7_starter` / `l01_ex7_solution`
 
-$$
+```math
 M = \tfrac{1}{2}(L + R),\quad S = \tfrac{1}{2}(L - R);\qquad L' = M + w\,S,\quad R' = M - w\,S
-$$
+```
 
 Implement:
 

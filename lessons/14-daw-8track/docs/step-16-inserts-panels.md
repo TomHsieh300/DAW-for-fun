@@ -22,9 +22,9 @@ A mixer, however, has *fixed* slots - an EQ in slot 3 stays in slot 3 when slot 
 `Session` keeps the GUI view, `std::array<InsertSlotState, 4>` per strip
 (kind Empty / Builtin / Vst3, effect type, observer pointer, display name), and translates:
 
-$$
+```math
 \text{chainIndex}(s) = \#\{\, k < s : \text{slot } k \text{ occupied} \,\}
-$$
+```
 
 ```
 GUI slots:   [ EQ ][    ][Comp][    ]

@@ -122,7 +122,9 @@ mix 1.00: peak  -2.92 dBFS, crest 11.03 dB
 解答：`ex4_sidechain_hpf.cpp`。
 
 **HPF**：$`lp[n] = lp[n-1] + b\,(x[n] - lp[n-1])`$、$`b = 1 - e^{-2\pi f_c / f_s}`$、$`hp = x - lp`$。這是一階 lowpass 的「互補」，所以在 $`f_c`$ 附近是 -3 dB、低於 $`f_c`$ 以每 octave 6 dB 衰減。實測（用 `measureGainDb`）：50 Hz -18.36 dB、400 Hz -3.24 dB、3 kHz -0.30 dB。（400 Hz 處是 -3.24 dB 而不是 -3.01 dB。lowpass 本身在 $`f_c`$ 是精確的 -3.01 dB（$`\lvert H_{lp}\rvert = 0.7074`$），偏差來自 $`hp = x - lp`$ 這個互補結構：令 $`a = 1 - b`$，lowpass 是 $`H_{lp}(z) = \dfrac{b}{1 - a z^{-1}}`$，所以
-$$H_{hp}(z) = 1 - H_{lp}(z) = \frac{a\,(1 - z^{-1})}{1 - a z^{-1}}$$
+```math
+H_{hp}(z) = 1 - H_{lp}(z) = \frac{a\,(1 - z^{-1})}{1 - a z^{-1}}
+```
 它在高頻（$`z = -1`$，Nyquist）的增益只到 $`2a/(1+a) \approx 0.974`$（約 -0.23 dB），而不是類比一階 HPF 的 1，相位也和類比版不同，所以整條 HPF 曲線略低一點：$`f_c`$ 處 -3.24 dB、3 kHz 處 -0.30 dB（類比一階 HPF 在 3 kHz 只會是 -0.08 dB）。對 sidechain 用途完全足夠。）
 
 **流程**：sidechain buffer 在迴圈外配置一次（模擬 `prepare()`），每個 block：`sc.copyFrom(block)` → `hpf->process(sc)` → `comp.process(block, sc)`。gain 永遠套在**原始**訊號上，HPF 只影響 detector「聽到什麼」。
@@ -140,9 +142,9 @@ $$H_{hp}(z) = 1 - H_{lp}(z) = \frac{a\,(1 - z^{-1})}{1 - a z^{-1}}$$
 
 解答：`ex5_auto_makeup.cpp`。
 
-$$
+```math
 \text{makeup} = -\,y(0) = -\,\text{computeOutputDb}(0, T, R, W)
-$$
+```
 
 | 設定 | 算式 | makeup |
 |---|---|---|

@@ -72,13 +72,13 @@ Starter code: `exercises/starter/ex5_upward_expander.cpp` (target `l08_ex5_start
 
 Push signals **above** the threshold louder. The static curve ($`R \ge 1`$, knee width $`W`$):
 
-$$
+```math
 y(x) = \begin{cases}
 x, & x \le T - W/2 \\
 x + \dfrac{(R - 1)(x - T + W/2)^2}{2W}, & T - W/2 < x < T + W/2 \\
 T + R\,(x - T), & x \ge T + W/2
 \end{cases}
-$$
+```
 
 1. Complete `UpwardExpander::computeOutputDb()`.
 2. Complete `nextGain()`: envelope → dB → static curve → boost = $`\min(\text{range},\ y - x)`$ → linear gain (compute `dbToGain` only when the boost changes).

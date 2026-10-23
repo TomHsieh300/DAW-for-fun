@@ -31,9 +31,9 @@ A linear system can do only two things: change the **magnitude** of each frequen
 
 Saturation is different. It is a **memoryless nonlinear function**:
 
-$$
+```math
 y[n] = f\big(x[n]\big)
-$$
+```
 
 Each sample looks only at itself and is fed through a curve $`f`$. As long as $`f`$ is not a straight line, a sine is "bent", and a bent periodic signal expanded in a Fourier series contains integer multiples of the fundamental: **harmonics**.
 
@@ -52,17 +52,17 @@ The simplest nonlinearity is a polynomial. Let the input be $`x = A \sin\theta`$
 
 **The square term $`x^2`$.** Using the double-angle formula $`\sin^2\theta = \dfrac{1 - \cos 2\theta}{2}`$:
 
-$$
+```math
 x^2 = A^2 \sin^2\theta = \frac{A^2}{2} - \frac{A^2}{2}\cos 2\theta
-$$
+```
 
 Result: **a DC component ($`A^2/2`$) plus a 2nd harmonic (amplitude $`A^2/2`$)**, and the fundamental itself disappears. Two things are worth remembering: squaring produces **even harmonics**, and it **always comes with DC** (because $`x^2 \ge 0`$, the mean cannot be 0).
 
 **The cubic term $`x^3`$.** Using the triple-angle formula $`\sin 3\theta = 3\sin\theta - 4\sin^3\theta`$, rearranged to $`\sin^3\theta = \dfrac{3\sin\theta - \sin 3\theta}{4}`$:
 
-$$
+```math
 x^3 = A^3 \sin^3\theta = \frac{3A^3}{4}\sin\theta - \frac{A^3}{4}\sin 3\theta
-$$
+```
 
 Result: **the fundamental (amplitude $`3A^3/4`$) plus the 3rd harmonic (amplitude $`A^3/4`$)**, with no DC and no even harmonics. Note that the 3rd harmonic relative to the fundamental is $`\frac{1}{3}`$, i.e. $`20\log_{10}(1/3) = -9.54`$ dB, independent of $`A`$.
 
@@ -70,16 +70,16 @@ Generalization: $`\sin^n\theta`$ produces only harmonics that "have the same par
 
 **The practical soft clip: $`y = x - x^3/3`$.** Substituting the result above:
 
-$$
+```math
 y = A\sin\theta - \frac{1}{3}\left(\frac{3A^3}{4}\sin\theta - \frac{A^3}{4}\sin 3\theta\right)
   = \left(A - \frac{A^3}{4}\right)\sin\theta + \frac{A^3}{12}\sin 3\theta
-$$
+```
 
 so
 
-$$
+```math
 \frac{H_3}{H_1} = \frac{A^3/12}{A - A^3/4} = \frac{A^2}{12 - 3A^2}
-$$
+```
 
 | $`A`$ | $`H_1 = A - A^3/4`$ | $`H_3 = A^3/12`$ | $`H_3/H_1`$ | THD |
 |---|---|---|---|---|
@@ -146,31 +146,31 @@ and the harmonics (relative to the fundamental) for a 100 Hz sine of amplitude $
 
 **Why does a symmetric curve produce only odd harmonics?** The precise meaning of "symmetric" is an **odd function**: $`f(-x) = -f(x)`$. A sine has **half-wave symmetry**: $`x(t + T/2) = -x(t)`$. Substituting:
 
-$$
+```math
 y(t + T/2) = f\big(x(t + T/2)\big) = f\big(-x(t)\big) = -f\big(x(t)\big) = -y(t)
-$$
+```
 
 The output also has half-wave symmetry. The $`k`$-th harmonic of a periodic signal is multiplied by $`e^{j\pi k} = (-1)^k`$ when shifted by half a period; to satisfy $`y(t+T/2) = -y(t)`$, only components with $`(-1)^k = -1`$ can exist, that is, $`k`$ odd. DC ($`k = 0`$) is excluded as well.
 
 An **asymmetric curve** (for example `Asymmetric`, where the positive half saturates at +1 and the negative half already saturates at −0.5) breaks the half-wave symmetry, so even harmonics and DC both appear. Any curve can be split into an odd part and an even part:
 
-$$
+```math
 f(x) = \underbrace{\frac{f(x) - f(-x)}{2}}_{\text{odd part → odd harmonics}} + \underbrace{\frac{f(x) + f(-x)}{2}}_{\text{even part → even harmonics + DC}}
-$$
+```
 
 The odd part is an odd function, so by the argument above it produces only odd harmonics; therefore **all even harmonics and DC come from the even part**. The even part is an even function ($`g(-x) = g(x)`$), and $`|\sin\theta|`$ has period $`T/2`$, so $`g(A\sin\theta)`$ also has period $`T/2`$: its frequency components can only be integer multiples of $`2f_0`$: DC, 2nd, 4th, ...
 
 Take `Asymmetric` as an example. Let $`t = \tanh|x|`$ and use $`\tanh 2u = \dfrac{2\tanh u}{1 + \tanh^2 u}`$:
 
-$$
+```math
 g(x) = \frac{f(x) + f(-x)}{2} = \frac{1}{2}\left(t - \frac{t}{1 + t^2}\right) = \frac{t^3}{2(1 + t^2)} \;\ge\; 0
-$$
+```
 
 The even part is $`\ge 0`$ everywhere, so the mean (DC) is necessarily positive. For small signals $`t \approx |x|`$ and $`g(x) \approx |x|^3/2`$; the mean of $`|\sin\theta|^3`$ is $`\frac{4}{3\pi}`$, so
 
-$$
+```math
 \text{DC} \approx \frac{A^3}{2}\cdot\frac{4}{3\pi} = \frac{2A^3}{3\pi}
-$$
+```
 
 The example `l06_harmonic_analysis` prints this approximation next to the measurement: 0.00021 vs 0.00021 at $`A = 0.1`$, 0.00332 vs 0.00301 at $`A = 0.25`$; at $`A = 0.5`$ the approximation 0.0265 is already clearly too high (measured 0.0188), because $`t^3/(1+t^2)`$ grows more slowly than $`|x|^3`$ as $`|x|`$ gets larger. Note that the even part of `Asymmetric` starts at $`|x|^3`$ rather than $`x^2`$ (both sides have the same slope and curvature at the origin), which is also why its H2 is much weaker for small signals than that of a curve containing an $`x^2`$ term: for example, for the $`x + kx^2`$ of exercise 2, $`H_2/H_1 = kA/2`$, proportional to $`A`$, whereas the even content of `Asymmetric` only begins at $`A^3`$.
 
@@ -191,9 +191,9 @@ The example `l06_harmonic_analysis` prints this approximation next to the measur
 
 The solution is a **DC blocker**: a highpass with a very low cutoff (5 to 20 Hz). The classic form:
 
-$$
+```math
 y[n] = x[n] - x[n-1] + R\, y[n-1], \qquad H(z) = \frac{1 - z^{-1}}{1 - R z^{-1}}, \qquad R \approx 1 - \frac{2\pi f_c}{f_s}
-$$
+```
 
 The zero is at $`z = 1`$ (the DC gain is exactly 0) and the pole is at $`z = R`$, very close to the zero, so apart from the very lowest frequencies the signal is almost unaffected. Under the small-angle approximation $`|H(e^{j\omega_c})| \approx \omega_c / \sqrt{(1-R)^2 + \omega_c^2} = 1/\sqrt{2}`$, i.e. −3 dB at $`f_c`$. With $`f_c = 10`$ Hz and $`f_s = 48`$ kHz, $`R = 0.998691`$; a DC step decays to 1% in $`\ln 0.01 / \ln R \approx 3516`$ samples ≈ 73 ms (the DC blocker implementation and the step-response measurement are in [Chapter 02, exercise 2](../02-filter/exercises/README.md), which uses $`R = 0.995`$). `Saturation` internally uses Chapter 02's `OnePole` highpass (10 Hz), which differs in two places: the pole is $`a = e^{-2\pi f_c/f_s}`$ instead of the first-order approximation $`1 - 2\pi f_c/f_s`$ (at 10 Hz the two differ only on the order of $`10^{-6}`$), and there is an extra constant $`h = (1+a)/2`$ that makes the gain exactly 0 dB at Nyquist.
 
@@ -206,9 +206,9 @@ flowchart LR
 
 Chapter 00 covered the sampling theorem: a sample rate $`f_s`$ can represent only frequencies within $`0 \sim f_s/2`$ (Nyquist). The key point is that **a digital nonlinearity is applied at the sample points**. The harmonics produced by the curve do not "automatically disappear"; those above Nyquist are folded back into $`0 \sim f_s/2`$ by the sampling process. A frequency $`f`$ is recorded as:
 
-$$
+```math
 f_{\text{alias}} = \left|\, \Big( (f + f_s/2) \bmod f_s \Big) - f_s/2 \,\right|
-$$
+```
 
 Intuitively, you fold the frequency axis back and forth like paper, using $`f_s/2`$ as the mirror:
 
@@ -273,9 +273,9 @@ flowchart LR
 
 **Halfband filter.** The lowpass used for 2x upsampling / downsampling has its cutoff at exactly 1/4 of the new sample rate ($`f_s/2`$ is 1/4 at $`2f_s`$). A filter with "its cutoff at 1/4 of the sample rate and symmetric passband and stopband" is called a **halfband**, and its ideal impulse response is
 
-$$
+```math
 h[n] = \frac{\sin(\pi n / 2)}{\pi n}, \qquad h[0] = \frac{1}{2}
-$$
+```
 
 For non-zero even $`n`$, $`\sin(\pi n/2) = 0`$, so **all non-zero even taps are 0**!
 
@@ -324,9 +324,9 @@ Frequency response of stage 1 (at 96 kHz): passband error < 0.01 dB up to 20.3 k
 
 **Latency.** A linear-phase FIR of length $`2M+1`$ has a delay of $`M`$ samples ($`M = 2K - 1`$ is the half-length of the FIR; note that it is a different thing from the factor $`L`$ above). Upsampling once and downsampling once, stage 1 costs a round trip of $`2 \times 31 = 62`$ samples at 96 kHz = **31 samples at 48 kHz**. With several stages, the delay of each stage must be converted back to the original sample rate and summed:
 
-$$
+```math
 \text{latency} = \sum_{i=1}^{S} \frac{2M_i - \varphi_i}{2^i}
-$$
+```
 
 At 4x this is $`\frac{62}{2} + \frac{22}{4} = 36.5`$; to make the latency an **integer** (the host's latency compensation accepts only whole samples), downsampling may keep either the even or the odd samples of the filter output (the decimation phase $`\varphi_i \in \{0, 1\}`$; choosing 1 removes one sample of that stage's delay). `Oversampler::prepare()` computes each $`\varphi_i`$ automatically, giving 2x = 31, 4x = 36, 8x = 38 samples, all confirmed by the example with impulse measurements.
 
@@ -336,17 +336,17 @@ At 4x this is $`\frac{62}{2} + \frac{22}{4} = 36.5`$; to make the latency an **i
 
 Oversampling is effective but expensive. The idea of ADAA (antiderivative anti-aliasing, Parker et al. 2016, Bilbao et al. 2017) is this: the naive $`y[n] = f(x[n])`$ looks only at the sample points and has no idea what happens between two samples (for example, the signal hitting the corner of the clip between the two points). If we assume the input is a **straight line** between $`x[n-1]`$ and $`x[n]`$, and take the **average value** of $`f`$ over that segment:
 
-$$
+```math
 y[n] = \frac{1}{x[n] - x[n-1]} \int_{x[n-1]}^{x[n]} f(u)\, du = \frac{F(x[n]) - F(x[n-1])}{x[n] - x[n-1]}
-$$
+```
 
 where $`F`$ is the antiderivative of $`f`$ ($`F' = f`$). This is equivalent to "applying the nonlinearity in continuous time, then averaging with a rectangular filter one sample wide and sampling"; the rectangular filter is a lowpass and reduces the high harmonics before they fold back.
 
 **The antiderivative of the hard clip**: $`f(x) = \text{clamp}(x, -1, 1)`$,
 
-$$
+```math
 F(x) = \begin{cases} x^2/2 & |x| \le 1 \\ |x| - 1/2 & |x| > 1 \end{cases}
-$$
+```
 
 Both the value (1/2) and the slope (±1) are continuous at $`|x| = 1`$. The antiderivative of tanh is $`\ln\cosh x`$ (for large $`|x|`$ use $`|x| - \ln 2`$ to avoid overflow).
 
@@ -371,19 +371,19 @@ ADAA 1x is already cleaner than naive 2x, and the CPU cost is only one extra sub
 
 If you want to "add only a 2nd harmonic at −20 dB and nothing else", there is a beautiful tool: the Chebyshev polynomials of the first kind $`T_n`$, defined by
 
-$$
+```math
 T_n(\cos\theta) = \cos(n\theta)
-$$
+```
 
 In other words, **a sine of amplitude 1 fed into $`T_n`$ comes out as a pure $`n`$-th harmonic**. The recurrence:
 
-$$
+```math
 T_0 = 1,\quad T_1 = x,\quad T_{n+1}(x) = 2x\,T_n(x) - T_{n-1}(x)
-$$
+```
 
-$$
+```math
 T_2 = 2x^2 - 1,\quad T_3 = 4x^3 - 3x,\quad T_4 = 8x^4 - 8x^2 + 1,\quad T_5 = 16x^5 - 20x^3 + 5x
-$$
+```
 
 A harmonic exciter is then $`y = x + \sum_n g_n T_n(x)`$. At amplitude 1, $`H_n/H_1 = g_n`$ exactly (exercise 4: setting $`g_2 = 0.1`$ measures −20.00 dB). But note:
 
@@ -414,9 +414,9 @@ A practical approximation is "**pre-emphasis EQ -> nonlinearity -> de-emphasis E
 
 **Parallel saturation**: mix a heavily saturated signal back into the original at 20 to 40%. The benefit is that the dry transients and dynamics are preserved, and only harmonics and density are "added"; it is the familiar "New York" technique in mixing.
 
-$$
+```math
 y = (1 - \text{mix}) \cdot \text{dry} + \text{mix} \cdot \text{wet}
-$$
+```
 
 The pitfall: the wet signal passes through the oversampler and is **delayed by latency samples**; if the dry is not delayed too, adding the two is a comb filter, with notches at $`f = \frac{2k+1}{2\tau}`$ for a delay $`\tau`$. For 4x, $`\tau = 36/48000 = 0.75`$ ms -> the first notch is at 667 Hz, then 2 kHz, 3.33 kHz, ... and the tone becomes hollow (this is the principle of the flanger, Chapter 10). So `Saturation` internally delays the dry by `getLatencySamples()` samples as well, and the whole plugin reports the same latency to the host so that the host can align the other tracks.
 

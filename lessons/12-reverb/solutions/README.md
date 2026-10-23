@@ -21,9 +21,9 @@ For the problems, see [`../exercises/README.md`](../exercises/README.md). Comple
 
 **1.** D = 1557, fs = 48000:
 
-$$
+```math
 g = 10^{-3\cdot1557/(2.0\cdot48000)} = 10^{-0.048656} = 0.89401
-$$
+```
 
 For RT60 = 0.5 s: $`g = 10^{-3\cdot1557/24000} = 10^{-0.194625} = 0.63881`$.
 
@@ -31,10 +31,10 @@ Both values agree with the g printed by Example 1 (`l12_comb_rt60`). Shortening 
 
 **2.** 44.1 kHz, g = 0.84, $`\log_{10}0.84 = -0.075721`$:
 
-$$
+```math
 \mathrm{RT60}_{1116} = \frac{-3\cdot1116}{44100\cdot(-0.075721)} = 1.003\ \text{s},\qquad
 \mathrm{RT60}_{1617} = \frac{-3\cdot1617}{44100\cdot(-0.075721)} = 1.453\ \text{s}
-$$
+```
 
 For the same g, RT60 is proportional to D: the longest comb decays 45% longer than the shortest. So Freeverb's roomsize is merely a "feedback amount", not a strict RT60: the early part of the overall decay is determined by all the combs together, while the later part is dominated by the longest (slowest-decaying) ones, so the decay curve bends slightly "downward" (fast at first, slow later). To give every comb the same RT60 you need a separate $`g_i = 10^{-3D_i/(\mathrm{RT60}f_s)}`$ for each, which is exactly what the FDN (`Reverb.h`) does.
 
@@ -195,11 +195,11 @@ Regression: take only the points where EDC_dB is within [−25, −5] dB; the le
 
 **Why the EDC is a straight line**: if $`h(t) = A e^{-kt}\cdot w(t)`$ (w is unit-power noise or a sinusoid), the mean of $`h^2`$ is $`A^2 e^{-2kt}`$, so
 
-$$
+```math
 \mathrm{EDC}(t) = \int_t^\infty A^2 e^{-2k\tau}d\tau = \frac{A^2}{2k}e^{-2kt}
 \;\Longrightarrow\;
 \mathrm{EDC}_{\mathrm{dB}}(t) = 10\log_{10}e^{-2kt} = -\frac{20k}{\ln 10}t
-$$
+```
 
 The definition of RT60, $`e^{-k\cdot\mathrm{RT60}} = 10^{-3}`$, gives $`k = 3\ln10/\mathrm{RT60}`$; substituting yields $`\mathrm{EDC}_{\mathrm{dB}}(t) = -60\,t/\mathrm{RT60}`$: the slope is exactly −60/RT60, the same as the dB slope of the amplitude envelope, but **much smoother**. Schroeder proved that this integral equals the result of "averaging infinitely many interrupted-noise measurements in the same room", so a single IR gives you the ensemble average.
 

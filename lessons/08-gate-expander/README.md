@@ -54,50 +54,50 @@ The everyday "compressor", "expander", and "gate" are the two **downward** cells
 
 **Hard knee**: let the input level be $`x`$ (dB), the threshold $`T`$, and the ratio $`R \ge 1`$:
 
-$$
+```math
 y(x) = \begin{cases} x, & x \ge T \\ T + R\,(x - T), & x < T \end{cases}
-$$
+```
 
 Because $`x - T < 0`$, $`R(x-T)`$ is more negative than $`x - T`$, so the output is lower than the input. The gain (dB) is
 
-$$
+```math
 g(x) = y(x) - x = (R - 1)(x - T) \le 0 \quad (x < T)
-$$
+```
 
 > A note on terminology: a compressor's ratio "4:1" means a 4 dB change at the input gives a 1 dB change at the output; an expander's ratio is usually written "1:2", meaning a 1 dB change at the input gives a 2 dB change at the output. In this course `Expander::setRatio(2)` means 1:2 (the contract: "2 means every 1 dB below the threshold becomes 2 dB").
 
 **Soft knee (derived symmetrically to the compressor)**: the knee of the Chapter 04 compressor places a quadratic segment inside $`[T - W/2,\ T + W/2]`$, so that it joins $`y = x`$ at the **lower edge** and a line of slope $`1/R`$ at the **upper edge**. The expander is exactly the reverse: the **upper edge** of the knee must join $`y = x`$ (slope 1), and the **lower edge** must join a line of slope $`R`$. So we put the quadratic term's "anchor" at the upper edge:
 
-$$
+```math
 y(x) = x + a\,(x - T - W/2)^2
-$$
+```
 
 - At the upper edge $`x = T + W/2`$: the second term is 0, so the value $`= x`$ and the slope $`= 1`$, joining the 1:1 line automatically.
 - At the lower edge $`x = T - W/2`$ the slope must equal $`R`$:
 
-$$
+```math
 y'(x) = 1 + 2a\,(x - T - W/2) \;\Rightarrow\; y'(T - W/2) = 1 - 2aW = R \;\Rightarrow\; a = \frac{1 - R}{2W}
-$$
+```
 
 - Check the value at the lower edge: $`y(T - W/2) = T - \tfrac{W}{2} + \tfrac{1-R}{2W}W^2 = T - \tfrac{RW}{2}`$; and the line $`T + R(x - T)`$ at $`x = T - W/2`$ is also $`T - \tfrac{RW}{2}`$. Value and slope both match ($`C^1`$ continuity).
 
 Putting it into three pieces (compare term by term with Chapter 04: $`1/R - 1 \to 1 - R`$, $`+W/2 \to -W/2`$):
 
-$$
+```math
 y(x) = \begin{cases}
 x, & x \ge T + W/2 \\[4pt]
 x + \dfrac{(1 - R)\,(x - T - W/2)^2}{2W}, & T - W/2 \le x < T + W/2 \\[8pt]
 T + R\,(x - T), & x < T - W/2
 \end{cases}
-$$
+```
 
 At the threshold itself, $`x = T`$: $`y(T) = T + \frac{(1-R)W}{8}`$. With $`R = 2`$ and $`W = 6`$, $`y = T - 0.75`$; with $`W = 12`$, $`y = T - 1.5`$. The soft-knee table printed by Example 2 shows exactly these two values (-40.75, -41.50).
 
 **Range**: without a limit, a noise floor at $`x = -100`$ dB with $`T = -40`$, $`R = 2`$ would get a gain of $`-60`$ dB; with a larger ratio the gain keeps falling toward $`-\infty`$ and the expander turns into a gate. The **range** is a floor on the gain:
 
-$$
+```math
 g_{\text{final}} = \max\big(\text{range},\ y(x) - x\big),\qquad \text{range} < 0
-$$
+```
 
 Audibly: range = -10 dB means "push the bleed back a little"; range = -40 dB or more is practically switching it off. The expander in Example 2 uses range -40 dB, so the -60 dBFS segment comes out at -60 + max(-40, -20) = -80 dB.
 
@@ -143,11 +143,11 @@ The condition is simple: **the hysteresis must be larger than the peak-to-peak f
 **Ripple estimate.** Let the input be a sine wave of amplitude $`A`$ and frequency $`f`$; $`|x|`$ has a peak every half period $`\frac{1}{2f}`$. After a peak the detector enters release. The one-pole smoother from Chapter 04 is
 $`\tau_r\,\dot e = |x| - e`$; note that it decays toward the **current $`|x|`$**, not toward 0. Within a half period $`e \approx A`$, and the mean of $`|x|`$ is $`\frac{2}{\pi}A`$, so between two peaks the envelope falls by about
 
-$$
+```math
 \Delta e \approx \frac{1}{\tau_r}\int_0^{1/(2f)} \big(e - |x|\big)\,dt \approx \frac{A\,(1 - 2/\pi)}{2f\,\tau_r}
 \quad\Rightarrow\quad
 \text{ripple}_\text{dB} \approx 20\log_{10}\frac{A}{A - \Delta e} \approx 8.686\cdot\frac{1 - 2/\pi}{2f\,\tau_r}
-$$
+```
 
 ($`8.686 = 20/\ln 10`$, using $`\ln(1+u) \approx u`$.) For a 45 Hz kick and a detector release of 20 ms: $`8.686 \times 0.363 / (2 \times 45 \times 0.02) \approx 1.75`$ dB. If the detector were of the "decay toward 0" type (an analog diode + RC peak detector), it would fall by $`e^{-1/(2f\tau_r)}`$ between two peaks, i.e. $`8.686/(2f\tau_r) \approx 4.8`$ dB, which is $`1/(1 - 2/\pi) \approx 2.75`$ times larger. Part [4] of Example 1 measures this with the same detector `Gate` uses internally:
 
@@ -189,9 +189,9 @@ stateDiagram-v2
 
 **Ramp mathematics**: the attack time $`t_a`$ is defined as the time needed to climb "from range to 0 dB". Climbing at a constant rate in the dB domain:
 
-$$
+```math
 \Delta_a = \frac{|\text{range}|}{t_a \cdot f_s}\ \text{dB/sample},\qquad g_\text{dB}[n] = \text{range} + n\,\Delta_a
-$$
+```
 
 With range -80 dB, attack 1 ms, 48 kHz: $`\Delta_a = 80/48 \approx 1.67`$ dB/sample. A constant rate in dB is an exponential change in the linear domain ($`g = 10^{g_\text{dB}/20}`$), which sounds like a natural fade rather than the "suddenly louder at the very end" feel of a linear fade. Release works the same way.
 
@@ -247,25 +247,25 @@ flowchart LR
 
 First estimate the −3 dB edges of the bandpass (0 dB peak) with an analog prototype: $`f_1, f_2`$ satisfy $`f_1 f_2 = f_0^2`$ and $`f_2 - f_1 = f_0 / Q`$. Solving these two equations:
 
-$$
+```math
 f_{1,2} = f_0\left(\sqrt{1 + \frac{1}{4Q^2}} \mp \frac{1}{2Q}\right)
-$$
+```
 
 For $`Q = 1.5`$: $`f_1 = 0.7208\,f_0`$, $`f_2 = 1.3874\,f_0`$. For $`f_0 = 7`$ kHz that is about 5.05-9.71 kHz (0.945 octave).
 
 This is only an approximation. The digital RBJ bandpass goes through the bilinear transform, which compresses the frequency axis toward Nyquist, so the actual bandwidth for the same $`Q`$ is narrower. The relationship given in the RBJ Cookbook is
 
-$$
+```math
 \frac{1}{Q} = 2\sinh\!\left(\frac{\ln 2}{2}\cdot \text{BW}\cdot\frac{\omega_0}{\sin\omega_0}\right),\qquad \omega_0 = 2\pi f_0 / f_s
-$$
+```
 
 (BW in octaves). For $`f_0 = 7`$ kHz and $`f_s = 48`$ kHz, $`\omega_0/\sin\omega_0 = 1.155`$; substituting $`Q = 1.5`$ gives BW ≈ 0.82 octave, narrower than the analog 0.945 octave. Measured with `BiquadCoefficients::magnitudeDb()`, the −3 dB edges at 48 kHz are **5218-9168 Hz** (44.1 kHz: 5251-9083 Hz; 96 kHz: 5088-9561 Hz; the higher the sample rate, the closer to the analog result). Example 3 prints both the analog-formula 5046-9712 Hz and the digital measured values. Both cover the main range of sibilance, so detection behaves about the same.
 
 The gain computer uses the most intuitive **∞:1 with an upper limit of range**: for every dB the detected level exceeds the threshold, compress by 1 dB, up to a maximum of range dB.
 
-$$
+```math
 \text{GR} = \mathrm{clamp}(L_\text{det} - T,\ 0,\ \text{range})
-$$
+```
 
 Do not set the range (`setRangeDb`, a positive value) too large: if sibilance is over-compressed, the voice sounds as if it has a lisp. 6-10 dB is usually enough.
 
@@ -276,16 +276,16 @@ Do not set the range (`setRangeDb`, a positive value) too large: if sibilance is
 
 The split-band crossover must satisfy "with gain = 1, LP + HP = the original signal", otherwise the de-esser changes the tone even when it is not doing anything. The **4th-order Linkwitz-Riley (LR4)** is two identical 2nd-order Butterworth filters in cascade. Derived with the analog prototype ($`s`$ normalized to $`\omega_c`$):
 
-$$
+```math
 H_{LP}(s) = \left(\frac{1}{s^2 + \sqrt2\,s + 1}\right)^2,\qquad
 H_{HP}(s) = \left(\frac{s^2}{s^2 + \sqrt2\,s + 1}\right)^2
-$$
+```
 
-$$
+```math
 H_{LP} + H_{HP} = \frac{1 + s^4}{(s^2 + \sqrt2\,s + 1)^2}
 = \frac{(s^2 + \sqrt2\,s + 1)(s^2 - \sqrt2\,s + 1)}{(s^2 + \sqrt2\,s + 1)^2}
 = \frac{s^2 - \sqrt2\,s + 1}{s^2 + \sqrt2\,s + 1}
-$$
+```
 
 (using $`s^4 + 1 = (s^2 + \sqrt2 s + 1)(s^2 - \sqrt2 s + 1)`$.) The final form is a 2nd-order **allpass**: the roots of the numerator and denominator are mirror images of each other about the $`j\omega`$ axis, so $`|H_{LP} + H_{HP}| = 1`$, meaning the magnitude is perfectly flat and only the phase changes. At the crossover frequency $`s = j`$: each Butterworth is −3 dB with phase ∓90°; after squaring, LP and HP are both −6 dB with phases ∓180° (in phase), so the sum = 0.5 + 0.5 = 1. The bilinear transform uses the same frequency mapping for LP and HP, so the digital version keeps this property. Exercise 7 measures it: from 100 Hz to 15 kHz, $`|LP + HP|`$ is 0.000 dB everywhere.
 
@@ -293,9 +293,9 @@ $$
 
 The `DeEsser` crossover frequency is placed at the lower −3 dB point of the analog prototype, $`0.7208 f_0`$ (about 5.05 kHz for 7 kHz, slightly below the 5.22 kHz lower edge of the actual digital bandpass, which leaves a bit more margin for the high band). Note that the crossover's transition is not infinitely steep: 7 kHz is only half an octave above the 5.05 kHz crossover, so part of the LP band still remains at 7 kHz and is not compressed. For the analog LR4, $`|H_{LP}| = 1/(1 + (f/f_c)^4)`$, which is 0.213 (-13.4 dB) at $`f/f_c = 1.387`$; the bilinear transform compresses high frequencies toward Nyquist, so the digital version at 48 kHz gives 0.189 (-14.5 dB). Because the LP and HP of an LR4 are in phase and $`|H_{LP}| + |H_{HP}| = 1`$, after applying the gain $`g`$ to the HP band the total gain at 7 kHz is
 
-$$
+```math
 |H_{LP}| + (1 - |H_{LP}|)\,g = 0.189 + 0.811 \times 10^{-10.94/20} \approx 0.420 \;\Rightarrow\; -7.55\ \text{dB}
-$$
+```
 
 Example 3 measures that split-band reduces 7 kHz by $`49.91 - 42.31 = 7.60`$ dB, while wideband reduces it by 10.94 dB (≈ the average GR during the sibilance; the formula above uses this value). This is the typical split-band trade-off: a cleaner tone, but "shallower" reduction; to compress more deeply, move the crossover down or increase the range.
 
@@ -316,32 +316,32 @@ The same signal is fed to two `EnvelopeFollower`s:
 
 Define the difference (dB):
 
-$$
+```math
 d[n] = 20\log_{10}\frac{e_\text{fast}[n]}{e_\text{slow}[n]}
-$$
+```
 
 **During the attack, $`d > 0`$**: suppose the signal jumps from 0 to amplitude $`A`$ (a step) at $`t = 0`$. Both followers are in attack mode, and the one-pole step response is $`A(1 - e^{-t/\tau})`$:
 
-$$
+```math
 d(t) = 20\log_{10}\frac{1 - e^{-t/\tau_{fa}}}{1 - e^{-t/\tau_{sa}}}
-$$
+```
 
 Because $`\tau_{fa} < \tau_{sa}`$, for all $`t > 0`$ we have $`e^{-t/\tau_{fa}} < e^{-t/\tau_{sa}}`$, so the numerator > the denominator and $`d > 0`$. As $`t \to 0`$, using $`1 - e^{-u} \approx u`$, $`d \to 20\log_{10}(\tau_{sa}/\tau_{fa}) = 20\log_{10}(10/0.5) = 26`$ dB; as $`t \to \infty`$ both reach $`A`$ and $`d \to 0`$. So $`d`$ is largest at the instant of the attack and decreases afterwards, lasting about a few times the slow attack time.
 
 **During the sustain / decay, $`d < 0`$**: after the attack, the signal decays exponentially with time constant $`\tau_d`$, $`x(t) = A e^{-t/\tau_d}`$, and both followers enter release mode. The steady-state solution of the first-order system $`\tau_r\,\dot e = x - e`$ for an exponential input is $`e(t) = K A e^{-t/\tau_d}`$; substituting gives
 
-$$
+```math
 -\frac{K}{\tau_d} = \frac{1 - K}{\tau_r} \;\Rightarrow\; K = \frac{\tau_d}{\tau_d - \tau_r}\quad(\tau_d > \tau_r)
-$$
+```
 
 - If $`\tau_d > \tau_r`$: the envelope keeps up with the signal, just lagging slightly (higher by a factor $`K`$).
 - If $`\tau_d < \tau_r`$: the signal falls faster than the release, so the envelope cannot keep up and decays along its own $`e^{-t/\tau_r}`$.
 
 The fast release (30 ms) is quicker than the decay of the drum (the kick envelope in `makeDrumLoop` is $`e^{-8t}`$, $`\tau_d = 125`$ ms), so fast falls hugging the signal; the slow release (150 ms) is slower than $`\tau_d`$, so slow "holds up high". Fast < slow, so $`d < 0`$, and $`|d|`$ grows with time (the two decay at different rates):
 
-$$
+```math
 d(t) \approx \text{constant} - 8.686\,t\left(\frac{1}{\tau_d} - \frac{1}{\tau_{sr}}\right)
-$$
+```
 
 The measured value falls faster than this ideal: the peak detector consumes $`|x|`$, every peak "recharges" slow through its attack once more, so slow actually falls slower than its 150 ms. Example 4 prints $`d`$ for the first kick: sample 0 is +25.8 dB (≈ the 26 dB computed above), +3.7 dB at 20 ms, a zero crossing at about 55 ms, and then it keeps going negative (about −5.3 dB at 195 ms). In the same table, fast falls from −8.3 dB (50 ms) to −18.0 dB (195 ms), about 67 dB/s ($`\tau \approx 130`$ ms, hugging the kick's 125 ms); slow falls only about 30 dB/s (an effective $`\tau \approx 290`$ ms, slower than its own 150 ms release). This is exactly "attack $`d > 0`$, sustain $`d < 0`$".
 
@@ -349,12 +349,12 @@ The measured value falls faster than this ideal: the peak detector consumes $`|x
 
 $`d`$ is mapped linearly to gain and saturates at $`|d| = 6`$ dB:
 
-$$
+```math
 g_\text{dB} = \begin{cases}
 \text{attackDb}\cdot\min(d / 6,\ 1), & d > 0 \\
 \text{sustainDb}\cdot\min(-d / 6,\ 1), & d \le 0
 \end{cases}
-$$
+```
 
 $`g_\text{dB}`$ is then smoothed by a 0.5 ms one-pole so that envelope ripple does not turn directly into gain jitter (zipper noise, which becomes distortion on a low-frequency kick). When the slow envelope is below −80 dBFS the signal is treated as silence and left unprocessed (otherwise random fluctuations of the noise floor would also be amplified as if they were transients).
 
@@ -369,13 +369,13 @@ Back to the four-quadrant table in section 2.1:
 - **Upward compression**: signals **below** the threshold are **boosted**, moving toward the 1:1 line (reduced dynamics). The effect is similar to parallel compression (Chapter 04, Exercise 3): quiet details come up while loud parts stay put. An implementation must have a range (a maximum boost), otherwise the noise floor during silence is boosted by 40 dB.
 - **Upward expansion**: signals **above** the threshold are **pushed even louder** (increased dynamics). It is often used to "restore" over-compressed material, or to make drum hits stand out more. The static curve:
 
-$$
+```math
 y(x) = \begin{cases}
 x, & x \le T - W/2 \\
 x + \dfrac{(R - 1)(x - T + W/2)^2}{2W}, & T - W/2 < x < T + W/2 \\
 T + R\,(x - T), & x \ge T + W/2
 \end{cases}
-$$
+```
 
 (The derivation is the same as in section 2.2, only with the anchor moved to the lower edge of the knee.) Here too a range is needed to limit the maximum boost, otherwise a single transient is pushed into clipping. Exercise 5 implements it and verifies it with tone bursts: with T = -30, R = 1.5, range +12, the -20 dB segment outputs -15.01 dB (theory: -15).
 

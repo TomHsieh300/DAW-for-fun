@@ -68,9 +68,9 @@ Hints:
 
 Open `exercises/starter/ex4_cab_sim.cpp` and complete `CabSim`:
 
-$$
+```math
 H_\text{cab} = H_\text{HPF}(70\text{ Hz}, Q = \tfrac{1}{\sqrt 2}) \cdot H_\text{peak}(100\text{ Hz}, Q = 1.5, +4\text{ dB}) \cdot H_\text{LPF}(4.5\text{ kHz}, Q = \tfrac{1}{\sqrt 2})^2
-$$
+```
 
 All four are the `Biquad` from Chapter 02 (`BiquadCoefficients::makeHighpass` / `makePeak` / `makeLowpass`). You also need to write `double magnitudeDb(double freq) const`, which adds up the `magnitudeDb()` of the stages.
 
@@ -87,15 +87,15 @@ Food for thought: why does the digital filter fall further than the analog proto
 
 Open `exercises/starter/ex5_auto_gain.cpp` and complete `AutoGain::process(const AudioBlock& dry, AudioBlock wet)`:
 
-$$
+```math
 \overline{x^2}[n] = a\,\overline{x^2}[n-1] + (1-a)\,x^2[n], \qquad a = e^{-1/(\tau f_s)}
-$$
+```
 
 Compute a mean square for each of dry and wet ($`\tau`$ = 100 ms), and then
 
-$$
+```math
 g[n] = \mathrm{clamp}\left(\sqrt{\frac{\overline{x_\text{dry}^2}[n]}{\max(\overline{x_\text{wet}^2}[n], 10^{-12})}},\; 0.01,\; 100\right), \qquad y[n] = g[n] \cdot x_\text{wet}[n]
-$$
+```
 
 Self-check:
 

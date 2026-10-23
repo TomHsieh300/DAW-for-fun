@@ -41,16 +41,16 @@ audio thread 不需任何同步就能讀取它。
 
 對於 timeline segment $`[T_0, T_0 + N)`$ 與 clip $`[S, S + L)`$：
 
-$$
+```math
 \text{from} = \max(T_0, S), \qquad \text{to} = \min(T_0 + N, S + L)
-$$
+```
 
 如果 $`\text{to} \le \text{from}`$，這個 clip 就不在這個 block 中。否則，對於
 $`T \in [\text{from}, \text{to})`$：
 
-$$
+```math
 \text{dest}[T - T_0] \mathrel{+}= \text{src}[O + T - S] \cdot g_{\text{clip}} \cdot g_{\text{fade}}(T - S)
-$$
+```
 
 全部都是整數：沒有捨入、沒有漂移，每種 block size 都得到同樣的結果。Mono source 會餵給兩個
 channel；比 source 還長的 clip 則以靜音補足。
@@ -59,11 +59,11 @@ channel；比 source 還長的 clip 則以靜音補足。
 
 對於 clip 內部的索引 $`i`$ 與剩餘 sample 數 $`r = L - 1 - i`$：
 
-$$
+```math
 g_{\text{fade}}(i) = \underbrace{\text{shape}\Big(\frac{i+1}{F_{\text{in}}+1}\Big)}_{i < F_{\text{in}}}
 \cdot \underbrace{\text{shape}\Big(\frac{r+1}{F_{\text{out}}+1}\Big)}_{r < F_{\text{out}}},
 \qquad \text{shape}(x) = \begin{cases} x & \text{Linear} \\ \sin(\pi x / 2) & \text{EqualPower} \end{cases}
-$$
+```
 
 分子與分母的 $`+1`$ 表示 fade 區域內部永遠不會出現恰好為 0 或恰好為 1 的值
 （4-sample 的 fade-in 是 0.2、0.4、0.6、0.8），同時也讓相同長度的 fade-out 與 fade-in

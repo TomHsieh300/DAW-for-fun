@@ -72,13 +72,13 @@ self-check：ducking 期間（kick 後 15–60 ms）pad 比原本低 12 ± 1 dB�
 
 把 threshold **以上**的訊號推得更大。靜態曲線（$`R \ge 1`$、knee 寬 $`W`$）：
 
-$$
+```math
 y(x) = \begin{cases}
 x, & x \le T - W/2 \\
 x + \dfrac{(R - 1)(x - T + W/2)^2}{2W}, & T - W/2 < x < T + W/2 \\
 T + R\,(x - T), & x \ge T + W/2
 \end{cases}
-$$
+```
 
 1. 完成 `UpwardExpander::computeOutputDb()`。
 2. 完成 `nextGain()`：envelope → dB → 靜態曲線 → boost = $`\min(\text{range},\ y - x)`$ → 線性 gain（只有 boost 改變時才算 `dbToGain`）。

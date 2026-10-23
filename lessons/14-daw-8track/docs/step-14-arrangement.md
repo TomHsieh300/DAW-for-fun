@@ -16,16 +16,16 @@ to move it - snapped to the beat grid - and hear the result immediately.
 The view shows the timeline from `viewStart` (in samples) with `samplesPerPixel` samples per
 pixel, to the right of a 132-pixel lane header $`H`$:
 
-$$
+```math
 x(s) = H + \frac{s - s_{\text{view}}}{\text{spp}}, \qquad
 s(x) = s_{\text{view}} + (x - H)\cdot \text{spp}
-$$
+```
 
 Zooming is changing spp; zooming *around the mouse* keeps the sample under the mouse in place:
 
-$$
+```math
 s_m = s(x_m), \qquad \text{spp}' = \text{spp} / \text{factor}, \qquad s'_{\text{view}} = s_m - (x_m - H)\,\text{spp}'
-$$
+```
 
 `zoomToFit()` chooses spp so that the song (at least 4 bars) plus one bar fills the width. For
 the 8-bar demo song at 120 BPM / 48 kHz in a 1400-pixel window: $`9 \cdot 96000 / 1268 \approx 681`$
@@ -60,7 +60,9 @@ The playhead is drawn at `getPlayheadPosition()`, which is `AudioHost::getAudibl
 *rendering*; while playing, the listener hears it only after the mix latency (PDC, Step 8: 752
 samples = 15.7 ms in the demo song) plus the device's output latency:
 
-$$x_{\text{playhead}} = \text{sampleToX}\big(\max(0,\ \text{position} - L_{\text{mix}} - L_{\text{device}})\big)$$
+```math
+x_{\text{playhead}} = \text{sampleToX}\big(\max(0,\ \text{position} - L_{\text{mix}} - L_{\text{device}})\big)
+```
 
 Without that correction the line runs ahead of the sound - with a 20 ms device and the demo song,
 by almost 36 ms, more than one frame of the 30 Hz display, and very visible when you watch a

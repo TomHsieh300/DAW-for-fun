@@ -17,11 +17,11 @@ that tracks stay in time with each other no matter which effects they use.
 
 Track 1 and track 2 play the same snare; track 1 has an insert with latency $`D`$. The master gets
 
-$$
+```math
 y[n] = x[n] + x[n - D]
 \quad\Longrightarrow\quad
 H(e^{j\omega}) = 1 + e^{-j\omega D},\qquad |H| = 2\left|\cos\frac{\omega D}{2}\right| = 2\left|\cos\frac{\pi f D}{f_s}\right|
-$$
+```
 
 a comb filter with notches at $`f_k = \frac{(2k+1) f_s}{2D}`$. For a 5 ms lookahead ($`D = 240`$ at
 48 kHz) the notches are at 100, 300, 500, ... Hz: the kick and snare lose their body and every
@@ -33,15 +33,15 @@ hit is doubled ("flam"). Even when the two tracks play *different* parts, rhythm
 Every insert reports its latency $`L`$; a chain reports the sum of its non-bypassed inserts
 (effects in series add their delays). Then
 
-$$
+```math
 c_t = \max_u L_u - L_t \quad(\text{track } t), \qquad
 c_b = \max_v L_v - L_b \quad(\text{bus } b), \qquad
 c_{\text{sum}} = \max_v L_v
-$$
+```
 
-$$
+```math
 L_{\text{total}} = \max_u L_u + \max_v L_v + L_{\text{master}}
-$$
+```
 
 ```mermaid
 flowchart LR
@@ -73,9 +73,9 @@ know that it is silent. An unused latent effect is a waste.
 `LatencyCompensator` is an integer delay: a ring buffer of `maxDelay + 1` samples per channel,
 allocated in `prepare()`; `setDelaySamples()` only moves the read offset.
 
-$$
+```math
 y[n] = x[n - c], \qquad 0 \le c \le 16\,384
-$$
+```
 
 Changing $`c`$ makes the output jump (the read position skips or repeats samples) - a click, but it
 only happens when an insert is added, removed, bypassed or changes its latency. The ring is written
@@ -93,11 +93,11 @@ few of them in series on one track can exceed $`C`$. A compensator cannot delay 
 in that case not every path can be aligned. The mixer then aligns on the limit instead of the
 maximum:
 
-$$
+```math
 T_{\text{track}} = \min\!\big(\max_u L_u,\ C\big), \qquad
 T_{\text{bus}} = \min\!\big(\max_v L_v,\ C\big), \qquad
 c_t = \max(0,\ T_{\text{track}} - L_t)
-$$
+```
 
 and reports $`L_{\text{total}} = T_{\text{track}} + T_{\text{bus}} + L_{\text{master}}`$. Every path
 whose latency is at most the target stays aligned and lands exactly where a bounce expects it; a

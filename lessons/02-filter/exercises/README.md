@@ -35,9 +35,9 @@ File: `starter/ex2_dc_blocker.cpp` → target `l02_ex2_starter`
 
 Implement a first-order DC blocker:
 
-$$
+```math
 y[n] = x[n] - x[n-1] + R\,y[n-1],\qquad H(z) = \frac{1 - z^{-1}}{1 - R z^{-1}}
-$$
+```
 
 1. Complete `processSample()` (update `x1` and `y1`).
 2. Complete `magnitudeDb()`: substitute $`z = e^{j\omega}`$ into $`H(z)`$.

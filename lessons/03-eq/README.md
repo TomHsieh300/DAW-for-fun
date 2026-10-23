@@ -67,9 +67,9 @@ All six curves are drawn with f0 = 1 kHz at 48 kHz: Peak +6 dB with Q = 1; Low /
 
 **The slope of LowCut / HighCut.** Far from the cutoff, a 2nd-order highpass / lowpass behaves as $`|H| \propto (f/f_c)^{\pm 2}`$, i.e. it changes by $`20\log_{10} 2^2 \approx 12`$ dB per octave, hence "12 dB/oct". To get 24 dB/oct you need 4th order. The intuitive approach is "cascade two sections with Q = 0.707", but that gives −6 dB at $`f_c`$ and the corner becomes rounded. The correct approach is a **4th-order Butterworth**: its 4 poles are evenly distributed on the left half of a circle in the s-plane (one every 45°), and split into two conjugate pairs; the Q values of the two biquads are
 
-$$
+```math
 Q_k = \frac{1}{2\cos\left(\frac{(2k+1)\pi}{2N}\right)},\quad N = 4:\ Q_0 = 0.5412,\ Q_1 = 1.3066
-$$
+```
 
 (Chapter 02's `butterworthQ(order, stage)`). Neither section is −3 dB at $`f_c`$ -- the Q = 0.5412 section gives −5.33 dB and the Q = 1.3066 section gives +2.32 dB -- but together they come to exactly −3.01 dB (the output of Exercise 6). `ParametricEq` selects this mode with `EqSlope::Db24`, and the band's `q` is then ignored.
 
@@ -83,38 +83,38 @@ Mixing engineers say "1/3 octave wide", while the DSP formulas use Q. How do you
 
 **Analog prototype.** Write the normalized frequency as $`\Omega = f/f_0`$; the 2nd-order bandpass prototype is
 
-$$
+```math
 H_{BP}(s) = \frac{s/Q}{s^2 + s/Q + 1},\qquad s = j\Omega
-$$
+```
 
-$$
+```math
 |H_{BP}(j\Omega)|^2 = \frac{(\Omega/Q)^2}{(1-\Omega^2)^2 + (\Omega/Q)^2}
-$$
+```
 
 The −3 dB condition ($`|H|^2 = 1/2`$) is $`(1-\Omega^2)^2 = (\Omega/Q)^2`$, i.e. $`|\Omega - 1/\Omega| = 1/Q`$. Solving this quadratic:
 
-$$
+```math
 \Omega^2 \mp \frac{\Omega}{Q} - 1 = 0 \quad\Rightarrow\quad \Omega_{1,2} = \sqrt{1 + \frac{1}{4Q^2}} \mp \frac{1}{2Q}
-$$
+```
 
 Two important properties can be read directly from the relations between roots and coefficients:
 
-$$
+```math
 \Omega_1 \Omega_2 = 1 \quad(\text{geometric symmetry: } f_1 f_2 = f_0^2),\qquad \Omega_2 - \Omega_1 = \frac{1}{Q} \quad(f_2 - f_1 = f_0/Q)
-$$
+```
 
 **Converting to octaves.** A bandwidth of $`N`$ octaves means $`f_2/f_1 = 2^N`$. By the geometric symmetry, $`\Omega_2 = 2^{N/2}`$ and $`\Omega_1 = 2^{-N/2}`$; substituting into $`\Omega_2 - \Omega_1 = 1/Q`$:
 
-$$
+```math
 \frac{1}{Q} = 2^{N/2} - 2^{-N/2} = 2\sinh\left(\frac{N\ln 2}{2}\right)
-$$
+```
 
 so
 
-$$
+```math
 \boxed{Q = \frac{1}{2\sinh(N\ln 2 / 2)} = \frac{2^{N/2}}{2^N - 1}}\qquad
 \boxed{N = \frac{2}{\ln 2}\,\mathrm{asinh}\left(\frac{1}{2Q}\right)}
-$$
+```
 
 Common values (the output of Exercise 2):
 
@@ -130,45 +130,45 @@ Remembering two anchor points is enough: **Q = √2 ≈ 1.41 is 1 octave, and Q 
 
 The analog prototype of the RBJ cookbook's peaking EQ is
 
-$$
+```math
 H(s) = \frac{s^2 + s\,\dfrac{A}{Q} + 1}{s^2 + s\,\dfrac{1}{AQ} + 1}
-$$
+```
 
 Look at three places in turn:
 
 1. **Far from the center** ($`s \to 0`$ or $`s \to \infty`$): the numerator and denominator both approach 1 or $`s^2`$, so $`|H| \to 1`$, i.e. 0 dB. ✔
 2. **The center** $`s = j`$: $`s^2 + 1 = 0`$, which leaves $`\dfrac{jA/Q}{j/(AQ)} = A^2`$. So **the linear gain at the center is $`A^2`$**. For the center to be $`g`$ dB we need $`20\log_{10}A^2 = g`$, that is
 
-$$
+```math
 A = 10^{g/40}
-$$
+```
 
    This is where the $`/40`$ comes from: $`A`$ is "the square root of the center gain".
 3. **The bandwidth edges** (the previous section's $`|1-\Omega^2| = \Omega/Q`$):
 
-$$
+```math
 |H|^2 = \frac{(1-\Omega^2)^2 + (\Omega A/Q)^2}{(1-\Omega^2)^2 + (\Omega/(AQ))^2} = \frac{(\Omega/Q)^2(1 + A^2)}{(\Omega/Q)^2(1 + A^{-2})} = A^2
-$$
+```
 
    So the gain at the edges is $`|H| = A`$, **exactly half the center in dB**. This is the "midpoint gain" bandwidth mentioned in section 2.4 -- it is the same pair of frequencies as the −3 dB points of a bandpass.
 
 Why parameterize it this way? Look at the numerator and denominator: the damping terms are $`A/Q`$ and $`1/(AQ)`$ respectively. Replace $`g`$ with $`-g`$ ($`A \to 1/A`$) and the numerator and denominator **swap exactly**:
 
-$$
+```math
 H_{-g}(s) = \frac{1}{H_{+g}(s)}
-$$
+```
 
 That is, **+6 dB and −6 dB (same frequency, same Q) in cascade cancel perfectly** -- not just the magnitude, the phase is restored too. This is a symmetric, convenient property: the boost and cut curves are mirror images. Exercise 3 verifies it with numbers: +6 dB and −6 dB @ 1 kHz, Q = 1 in cascade have a maximum deviation of $`10^{-13}`$ dB over 20 Hz–20 kHz.
 
 **Digitization.** Chapter 02 explained that RBJ uses the bilinear transform ($`s \leftarrow \frac{1}{\tan(\omega_0/2)}\cdot\frac{1-z^{-1}}{1+z^{-1}}`$, prewarped at $`\omega_0`$); after simplification this gives
 
-$$
+```math
 \begin{aligned}
 \omega_0 &= 2\pi f_0/f_s,\quad \alpha = \frac{\sin\omega_0}{2Q},\quad A = 10^{g/40}\\
 b_0 &= 1 + \alpha A,\quad b_1 = -2\cos\omega_0,\quad b_2 = 1 - \alpha A\\
 a_0 &= 1 + \alpha / A,\quad a_1 = -2\cos\omega_0,\quad a_2 = 1 - \alpha / A
 \end{aligned}
-$$
+```
 
 (all divided by $`a_0`$ to normalize; `BiquadCoefficients::makePeak` is exactly these lines). A worked example (Exercise 1): $`f_s = 48`$ kHz, $`f_0 = 12`$ kHz ($`\omega_0 = \pi/2`$, $`\cos = 0`$, $`\sin = 1`$), Q = 1, +6 dB: $`\alpha = 0.5`$, $`A = 1.4125`$, and after normalization $`b_0 = 1.26019`$, $`b_2 = 0.21694`$, $`a_2 = 0.47713`$, $`b_1 = a_1 = 0`$.
 
@@ -176,9 +176,9 @@ $$
 
 The analog prototype of the RBJ low shelf is
 
-$$
+```math
 H_{LS}(s) = A\,\frac{s^2 + \dfrac{\sqrt{A}}{Q}s + A}{A s^2 + \dfrac{\sqrt{A}}{Q}s + 1}
-$$
+```
 
 - $`s \to 0`$ (DC): $`A \cdot A / 1 = A^2`$ → gain at the low end = $`g`$ dB.
 - $`s \to \infty`$: $`A \cdot s^2 / (A s^2) = 1`$ → 0 dB at the high end.
@@ -188,9 +188,9 @@ The high shelf replaces $`s`$ with $`1/s`$ (swapping high and low frequencies), 
 
 **The slope parameter S.** The cookbook does not always use Q as the third parameter of a shelf; it can use the "shelf slope" S instead:
 
-$$
+```math
 \frac{1}{Q} = \sqrt{\left(A + \frac{1}{A}\right)\left(\frac{1}{S} - 1\right) + 2}
-$$
+```
 
 With S = 1 you get $`Q = 1/\sqrt{2}`$ regardless of the gain -- the cookbook describes this as "the steepest slope that still stays monotonic (no overshoot)". An S below 1 makes the transition more gradual; a Q above 0.707 (equivalent to S > 1) produces a small opposite dip and overshoot near the transition (some analog EQs deliberately keep this "bump" as part of their character). `ParametricEq::shelfSlopeToQ(S, gainDb)` is exactly this formula; the shelves in this chapter default to Q = 0.707 (S = 1).
 
@@ -211,27 +211,27 @@ Three things to see at once: (1) whatever the Q, $`f_0`$ is at +3.00 dB (the mid
 
 The six bands are in **cascade**: the signal passes through band 0, then band 1, and so on. When two LTI systems are cascaded, their transfer functions multiply:
 
-$$
+```math
 H(z) = H_0(z)\,H_1(z)\cdots H_5(z)
-$$
+```
 
 Taking the magnitude and then the dB turns multiplication into addition:
 
-$$
+```math
 20\log_{10}|H| = \sum_k 20\log_{10}|H_k| \qquad\text{(dB values add)}
-$$
+```
 
-$$
+```math
 \angle H = \sum_k \angle H_k \qquad\text{(phases add too)}
-$$
+```
 
 Because multiplication is commutative, **the order of the cascade does not affect the frequency response** (and in float the numerical difference is also tiny; see section 4). Note that "dB values add" is not "linear amplitudes add": two +6 dB stages (2x each) stacked make +12 dB (4x), not 2 + 2.
 
 So the implementation of `getMagnitudeDb(f)` simply adds up the `magnitudeDb(f, fs)` of every enabled band -- and each band's `magnitudeDb` substitutes $`z = e^{j\omega}`$ into $`H(z)`$:
 
-$$
+```math
 H(e^{j\omega}) = \frac{b_0 + b_1 e^{-j\omega} + b_2 e^{-2j\omega}}{1 + a_1 e^{-j\omega} + a_2 e^{-2j\omega}},\qquad \omega = 2\pi f/f_s
-$$
+```
 
 A UI only needs to call `getMagnitudeDb()` at a few hundred points on a log frequency axis to draw the curve (Example 1 draws an ASCII plot with 72 points). The table in Example 1 lists the contribution of each band; at 18 kHz, for example: band 3 +0.04, band 4 (high shelf +2 dB @ 10 kHz) +1.98, band 5 (high cut @ 18 kHz) −3.01, summing to −1.00 dB, which agrees exactly with `getMagnitudeDb(18000)` and with the measurement using a sine wave.
 
@@ -322,9 +322,9 @@ For all three events the naive version has a sharp residual; `ParametricEq` is m
 
 Section 2.14 of Chapter 02 looked at cramping (bilinear warping) of a lowpass near Nyquist; here we look at its effect on a peak. The bilinear transform squeezes the whole analog frequency axis $`[0, \infty)`$ into the digital $`[0, f_s/2]`$: the analog $`\Omega = \infty`$ maps to Nyquist. Prewarping guarantees that the **center frequency** lines up, but the right half of the bell is forced into the remaining space. For an RBJ peak we can verify directly at $`z = -1`$ (Nyquist):
 
-$$
+```math
 H(-1) = \frac{b_0 - b_1 + b_2}{a_0 - a_1 + a_2} = \frac{2 + 2\cos\omega_0}{2 + 2\cos\omega_0} = 1
-$$
+```
 
 **Any** RBJ peak is forced back to 0 dB at Nyquist. Section B of Example 4 (44.1 kHz, +6 dB @ 10 kHz, Q = 1):
 

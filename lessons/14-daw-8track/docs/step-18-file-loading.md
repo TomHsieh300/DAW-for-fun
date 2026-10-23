@@ -100,11 +100,11 @@ position $`t_m = m \cdot f_{\text{in}} / f_{\text{out}}`$, between two input sam
 reconstruction of a band-limited signal (sampling theorem) is a sum of sinc functions; we
 evaluate it at $`t_m`$ with a windowed, low-passed sinc kernel:
 
-$$
+```math
 y[m] = \sum_k x[k]\; g(t_m - k), \qquad
 g(x) = 2f_c\,\mathrm{sinc}(2 f_c x)\; w\!\left(\frac{x}{W}\right), \qquad
 \mathrm{sinc}(u) = \frac{\sin \pi u}{\pi u}
-$$
+```
 
 - $`f_c`$ is the cutoff in cycles per input sample, $`f_c = 0.5 \cdot \min(1, f_{\text{out}}/f_{\text{in}}) \cdot 0.92`$:
   just below the *lower* of the two Nyquist frequencies. When downsampling ($`f_{\text{out}} < f_{\text{in}}`$)

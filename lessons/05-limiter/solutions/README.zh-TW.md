@@ -62,7 +62,9 @@ Clipper：零延遲、無狀態、實作最簡單，但它改變「波形」→ 
 
 **濾波器設計。** 升頻 4 倍 = 零插入 + lowpass。原型在新取樣率 $`4f_s`$ 下 cutoff 是 $`f_s/2`$，也就是新取樣率的 1/8，windowed sinc：
 
-$$h[k] = \mathrm{sinc}\!\Bigl(\frac{k-M}{4}\Bigr)\, w[k],\qquad M = \frac{N-1}{2},\quad N = 64,\quad w = \text{Hann}$$
+```math
+h[k] = \mathrm{sinc}\!\Bigl(\frac{k-M}{4}\Bigr)\, w[k],\qquad M = \frac{N-1}{2},\quad N = 64,\quad w = \text{Hann}
+```
 
 零插入會讓平均能量掉成 1/4，所以把 $`\sum h = 4`$（每個 phase 的 DC gain ≈ 1）。
 

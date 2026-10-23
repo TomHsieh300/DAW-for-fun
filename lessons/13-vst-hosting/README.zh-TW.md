@@ -123,17 +123,17 @@ VST3 的每個參數都有一個 `ParamID`（32-bit 整數），值一律是 **0
 
 換算由 plugin 負責。JUCE 的 `NormalisableRange<float>(start s, end e, interval, skew k)` 用的公式是：
 
-$$
+```math
 n = \left(\frac{v - s}{e - s}\right)^{k}, \qquad v = s + (e - s)\, n^{1/k}
-$$
+```
 
 $`k = 1`$ 是線性；$`k < 1`$ 讓滑桿前段分配給小數值——attack、release、ratio 這種「小值區域比較重要」的參數都該用 $`k < 1`$。
 
 **`setSkewForCentre(c)` 的推導**：我們想要旋鈕正中間（$`n = 0.5`$）剛好是 $`v = c`$：
 
-$$
+```math
 0.5 = \left(\frac{c - s}{e - s}\right)^{k} \;\Longrightarrow\; k = \frac{\ln 0.5}{\ln\!\left(\dfrac{c - s}{e - s}\right)}
-$$
+```
 
 本章 plugin 的參數（`plugin/compressor/CompressorProcessor.cpp`）：
 
@@ -283,17 +283,17 @@ lookahead limiter、linear-phase EQ、oversampling 都會讓輸出比輸入晚 $
 
 設專案裡第 $`i`$ 條路徑（track + 它的 insert）總 latency 是 $`L_i`$，為了讓所有路徑在 mix bus 對齊，host 在第 $`i`$ 條路徑額外加上
 
-$$
+```math
 d_i = L_{\max} - L_i, \qquad L_{\max} = \max_i L_i
-$$
+```
 
 的延遲，整個專案的輸出比「理想」晚 $`L_{\max}`$。播放時 host 會把 timeline 提早 $`L_{\max}`$ 讀取，所以使用者聽到的仍然對準節拍。
 
 沒有 PDC 會怎樣？同一個 kick 出現在兩條 track、一條晚了 $`D`$ 個 sample，兩者相加就是一個 comb filter：
 
-$$
+```math
 y[n] = x[n] + x[n - D] \;\Longrightarrow\; |H(f)| = 2\,\left|\cos\!\left(\frac{\pi f D}{f_s}\right)\right|
-$$
+```
 
 在 $`f_k = \dfrac{(2k+1) f_s}{2D}`$ 完全抵消。$`D = 240`$（5 ms）、$`f_s = 48`$ kHz 時，100 Hz、300 Hz、500 Hz……全部被挖掉——kick 的低頻直接消失。練習 3 會算這個，練習 6 用 `AudioProcessorGraph`（它會自動做 PDC）量測整條鏈的 latency，練習 7 示範 bypass 時也要補償 latency——plugin 自己的 Bypass 參數也一樣：有 latency 的 plugin 必須 override `processBlockBypassed()`，bypass 時輸出延遲 $`L`$ 的原音（§3.2 的 DawLabLimiter），否則 bypass 一打開，這條 track 就比 PDC 預期的提早 $`L`$。
 
@@ -400,10 +400,10 @@ manufacturer code + plugin code 會變成 VST3 的 class ID 的一部分，**發
 
 **訊號流程**（`CompressorProcessor.cpp` 的 `processChunk`）：
 
-$$
+```math
 \text{wet}[n] = g_{\text{makeup}}[n] \cdot \text{Compressor}(x)[n], \qquad
 y[n] = (1 - m[n])\,x[n] + m[n]\,\text{wet}[n]
-$$
+```
 
 $`m`$ 是 Mix（0..1，50 ms 線性平滑），$`g_{\text{makeup}}`$ 由第 01 章的 `Gain` 提供（自帶 50 ms ramp）。Mix 就是 **parallel compression**（又稱 New York compression）：把壓得很重的訊號跟原音混合，保留原音的 transient、又得到壓縮的密度。因為 compressor 沒有 lookahead（latency 0），dry 不需要延遲就能對齊；如果有 latency，dry 就要先延遲 $`L`$（練習 7 的延伸題）。`mix = 100 %` 而且沒在 ramp 時直接跳過混合，所以輸出與 `dsp::Compressor` **bit-exact**。
 

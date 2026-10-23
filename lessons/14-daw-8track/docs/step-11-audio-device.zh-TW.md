@@ -70,10 +70,10 @@ sequenceDiagram
 
 Callback 用 `juce::Time::getHighResolutionTicks()` 量測自己的耗時：
 
-$$
+```math
 \text{load} = \frac{t_{\text{callback}}}{N / f_s}, \qquad
 \overline{\text{load}}_k = \overline{\text{load}}_{k-1} + 0.1\,(\text{load}_k - \overline{\text{load}}_{k-1})
-$$
+```
 
 One-pole smoothing（係數 0.1，約 10 個 callback）讓顯示保持可讀。100 % 代表「剛好踩到 deadline」；任何接近它的情況，在下一次小卡頓時都會 dropout。這個值是 `std::atomic<float>`：transport bar 每秒讀取它 30 次。
 

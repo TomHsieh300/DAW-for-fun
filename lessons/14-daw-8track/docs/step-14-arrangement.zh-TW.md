@@ -14,16 +14,16 @@
 
 View 從 `viewStart`（以 sample 計）開始顯示 timeline，每個 pixel 對應 `samplesPerPixel` 個 sample，位於寬度 $`H`$ = 132 像素的 lane header 右側：
 
-$$
+```math
 x(s) = H + \frac{s - s_{\text{view}}}{\text{spp}}, \qquad
 s(x) = s_{\text{view}} + (x - H)\cdot \text{spp}
-$$
+```
 
 Zoom 就是改變 spp；*以滑鼠為中心*的 zoom 則讓滑鼠下方的那個 sample 保持原位：
 
-$$
+```math
 s_m = s(x_m), \qquad \text{spp}' = \text{spp} / \text{factor}, \qquad s'_{\text{view}} = s_m - (x_m - H)\,\text{spp}'
-$$
+```
 
 `zoomToFit()` 選擇 spp，使整首 song（至少 4 bar）再加一個 bar 剛好填滿寬度。對於 120 BPM / 48 kHz、1400 像素視窗中的 8 bar demo song：$`9 \cdot 96000 / 1268 \approx 681`$ 個 sample 每 pixel，一個 beat = 35 像素。
 
@@ -41,7 +41,9 @@ Snapping 取最近的 beat，$`\hat s = \mathrm{round}(s / N_{\text{beat}})\,N_{
 
 Playhead 繪製在 `getPlayheadPosition()` 處，那就是 `AudioHost::getAudiblePosition()`（Step 13），而不是 `Transport::getPosition()`。Transport position 是 engine 正在 *render* 的 sample；播放時，聽眾要在 mix latency（PDC，Step 8：demo song 中為 752 個 sample = 15.7 ms）加上 device 的 output latency 之後才聽到它：
 
-$$x_{\text{playhead}} = \text{sampleToX}\big(\max(0,\ \text{position} - L_{\text{mix}} - L_{\text{device}})\big)$$
+```math
+x_{\text{playhead}} = \text{sampleToX}\big(\max(0,\ \text{position} - L_{\text{mix}} - L_{\text{device}})\big)
+```
 
 沒有這項修正的話，那條線會跑在聲音前面——使用 20 ms 的 device 與 demo song 時，超前近 36 ms，超過 30 Hz 顯示的一個 frame，當你看著 drum hit 穿過那條線時非常明顯。翻頁使用同一個 position，所以 view 是在*聽到*的位置離開時才翻頁。`MainComponent` 把它的 `AudioHost` 傳給 constructor；沒有 `AudioHost` 時（exercise 的 test bench），view 顯示 transport position。
 

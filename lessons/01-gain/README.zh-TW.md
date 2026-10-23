@@ -26,20 +26,20 @@
 
 一個 gain 元件做的事只有一行：
 
-$$
+```math
 y[n] = g \cdot x[n]
-$$
+```
 
 $`g`$ 是線性倍率（linear gain）：$`g = 1`$ 不變、$`g = 0.5`$ 振幅減半、$`g = 0`$ 靜音、$`g = 2`$ 振幅加倍、$`g < 0`$ 反相。
 但你在 DAW 上看到的推桿刻度從來不是 0.5、2，而是 −6 dB、+6 dB。原因有兩個：**人耳是對數感知**（2.2 節），以及**乘法變加法**——串接兩個 gain 時倍率要相乘，dB 只要相加。
 
 dB（decibel）定義在「功率比」上：$`10 \log_{10}(P / P_0)`$。音訊處理的是振幅（sample 值），而功率正比於振幅平方 $`P \propto A^2`$，所以
 
-$$
+```math
 L_\text{dB} = 10 \log_{10}\frac{A^2}{A_0^2} = 20 \log_{10}\frac{A}{A_0}
 \qquad\Longleftrightarrow\qquad
 g = 10^{L_\text{dB}/20}
-$$
+```
 
 這就是 `dawlab::gainToDb()` / `dawlab::dbToGain()`（`common/include/dawlab/DspMath.h`）做的事。**振幅用 20·log10，功率（或 RMS 的平方、能量）用 10·log10**，記住這一點，後面 pan law 與 mixing 的推導都靠它。
 
@@ -109,18 +109,18 @@ UI 上的推桿永遠是一個 0..1 的位置 $`p`$（滑鼠拖到哪就是哪�
 
 假設 gain 在第 $`n_0`$ 個 sample 從 $`g_1`$ 瞬間變成 $`g_2`$。這等於把訊號乘上一個**階梯函數**（step function）：
 
-$$
+```math
 y[n] = x[n] \cdot g[n],\qquad g[n] = g_1 + (g_2 - g_1)\,u[n - n_0]
-$$
+```
 
 ![gain g[n] 的階梯函數：在 sample n0 瞬間從 g1 掉到 g2，形成一道垂直的牆](images/gain-step.svg)
 
 **先建立直覺：振幅調變（amplitude modulation）與 sideband。** 把一個正弦波乘上一個「會變的 gain」，就是在調變它的振幅。最簡單的例子是讓 gain 以頻率 $`f_m`$ 緩慢起伏：
 
-$$
+```math
 \sin(2\pi f t)\cdot\bigl(1 + m\cos(2\pi f_m t)\bigr)
 = \sin(2\pi f t) + \frac{m}{2}\sin\bigl(2\pi (f + f_m) t\bigr) + \frac{m}{2}\sin\bigl(2\pi (f - f_m) t\bigr)
-$$
+```
 
 （用積化和差 $`\sin A\cos B = \tfrac{1}{2}[\sin(A+B) + \sin(A-B)]`$ 展開即可。）原本頻譜上只有 $`f`$ 一根柱子，乘上一個會變的 gain 之後，在 $`f \pm f_m`$ 長出兩根新的柱子。原本那根 $`f`$ 叫 **carrier**（載波），旁邊長出來的柱子叫 **sideband**（旁波帶）。gain 變化得越快（$`f_m`$ 越大），sideband 離載波越遠；gain 的變化越「劇烈」（含有越多高頻成分），sideband 就越多、越寬。
 
@@ -130,9 +130,9 @@ $$
 
 時域的看法更直接：訊號在相鄰兩個 sample 之間出現一個不該有的「陡坡」。對一個振幅 $`A`$、頻率 $`f`$ 的正弦波，相鄰 sample 的差最多是
 
-$$
+```math
 \max |x[n] - x[n-1]| \approx A \cdot \frac{2\pi f}{f_s}
-$$
+```
 
 （$`A = 0.5`$、$`f = 1`$ kHz、$`f_s = 48`$ kHz 時 = 0.0654）。一個跳變產生的差分是 $`|x[n_0]|\cdot|g_2 - g_1|`$，可以比這個值大很多倍。範例 1 就是用「一階差分最大值」來量化 click：它超過正弦波自然值多少倍，click 就有多明顯。
 
@@ -150,9 +150,9 @@ $$
 
 **(a) Linear ramp**——固定在 $`N`$ 個 sample 內走完，每個 sample 前進固定的一步：
 
-$$
+```math
 g[n] = g[n-1] + \frac{g_\text{target} - g_\text{start}}{N},\qquad N = \mathrm{round}(T_\text{ramp} \cdot f_s)
-$$
+```
 
 - 優點：可預測（50 ms 就是 50 ms）、一定會到達目標、實作只有一個加法。
 - 缺點：斜率在起點與終點不連續（頻譜 $`1/f^2`$，實務上已經足夠乾淨）。
@@ -160,15 +160,15 @@ $$
 
 **(b) One-pole exponential smoothing**——每個 sample 走「剩餘距離」的固定比例 $`a`$：
 
-$$
+```math
 g[n] = g[n-1] + a\,(g_\text{target} - g[n-1]) = (1-a)\,g[n-1] + a\,g_\text{target}
-$$
+```
 
 這其實是一個一階 IIR 低通濾波器（第 02 章會正式介紹）。對階梯輸入（從 0 走到 1），解析解是
 
-$$
+```math
 g[n] = 1 - (1-a)^n = 1 - e^{-n/(\tau f_s)},\qquad a = 1 - e^{-1/(\tau f_s)} \approx \frac{1}{\tau f_s}
-$$
+```
 
 $`\tau`$ 是**時間常數**（time constant）：走到 63.2%（$`1 - e^{-1}`$）所需的時間。常用的里程碑：
 
@@ -212,15 +212,15 @@ Mixer 的核心就是加法：$`y = \sum_i g_i x_i`$。問題是加完會不會�
 
 **完全相關**（N 軌一模一樣，例如同一段訊號複製 N 份）：振幅直接相加
 
-$$
+```math
 A_\text{sum} = N \cdot A \quad\Rightarrow\quad +20\log_{10} N\ \text{dB}\qquad(N = 2: +6.02,\ N = 8: +18.06)
-$$
+```
 
 **完全不相關**（N 軌獨立的雜訊、或不同樂器）：功率相加、振幅以 $`\sqrt{N}`$ 成長
 
-$$
+```math
 P_\text{sum} = N \cdot P \quad\Rightarrow\quad A_\text{rms,sum} = \sqrt{N}\,A_\text{rms} \quad\Rightarrow\quad +10\log_{10} N\ \text{dB}\qquad(N = 8: +9.03)
-$$
+```
 
 這是 RMS 的成長；**peak 介於兩者之間**——運氣不好時各軌的峰值仍然可能同時出現，最壞情況就是各軌 peak 的線性總和。範例 3 用數字驗證這三條線。
 
@@ -240,9 +240,9 @@ $$
 
 整理成一條式子（$`S`$ = 是否有任何軌 solo）：
 
-$$
+```math
 \text{audible}_i = \neg\text{mute}_i \land (\neg S \lor \text{solo}_i \lor \text{soloSafe}_i)
-$$
+```
 
 | mute | solo | soloSafe | 有人 solo？ | 出聲 |
 |---|---|---|---|---|
@@ -260,9 +260,9 @@ Pan 的任務：把一個 mono 訊號分到左右兩個喇叭，用兩個 gain $
 
 **Linear（線性）**
 
-$$
+```math
 g_L = 1 - \theta,\qquad g_R = \theta
-$$
+```
 
 - 中央：$`g_L = g_R = 0.5`$ → **−6.02 dB**。
 - 振幅和 $`g_L + g_R = 1`$ 永遠成立 → 把左右加成 mono 時音量不變（**mono 相容**）。
@@ -270,9 +270,9 @@ $$
 
 **Constant power（等功率）**
 
-$$
+```math
 g_L = \cos\!\left(\theta\frac{\pi}{2}\right),\qquad g_R = \sin\!\left(\theta\frac{\pi}{2}\right)
-$$
+```
 
 - 功率和 $`g_L^2 + g_R^2 = \cos^2 + \sin^2 = 1`$ **永遠成立**（這就是它叫等功率的原因）→ 用喇叭聽掃動時音量平穩。
 - 中央：$`g_L = g_R = \cos(\pi/4) = 1/\sqrt{2} = 0.7071`$ → **−3.01 dB**。
@@ -280,9 +280,9 @@ $$
 
 **−4.5 dB（折衷）**
 
-$$
+```math
 g_L = \sqrt{(1-\theta)\cos\!\left(\theta\tfrac{\pi}{2}\right)},\qquad g_R = \sqrt{\theta\,\sin\!\left(\theta\tfrac{\pi}{2}\right)}
-$$
+```
 
 取兩種 law 的**幾何平均**，dB 剛好是兩者的算術平均：中央 $`\sqrt{0.5 \times 0.7071} = 0.5946`$ → **−4.52 dB**（= (−6.02 − 3.01)/2）。功率和在中央 = $`2 \times 0.5 \times 0.7071 = 0.7071`$ → −1.51 dB；振幅和在中央 = 1.189 → +1.51 dB。喇叭聽凹 1.5 dB、mono 凸 1.5 dB，兩邊各讓一步。Cubase、Pro Tools、Reaper 等 DAW 都提供 −4.5 dB 作為 pan law 選項之一（各家的預設值不同，而且會隨版本改變，請以你使用的版本為準），SSL 等大型類比 console 也採用類似的數值。
 
@@ -343,10 +343,10 @@ flowchart LR
 
 **數字。** 使用 constant power law 與本教材的線性 balance law（第 14 章的 mixer 用的是同一條）：
 
-$$
+```math
 \text{pan law: } g_L = \cos\!\left(\theta\tfrac{\pi}{2}\right),\ g_R = \sin\!\left(\theta\tfrac{\pi}{2}\right);\qquad
 \text{balance: } g_L = \min(1,\ 1 - p),\ g_R = \min(1,\ 1 + p)
-$$
+```
 
 | 位置 $`p`$ | Mono track，constant power（$`g_L`$ / $`g_R`$） | Stereo track，balance（$`g_L`$ / $`g_R`$） |
 |---|---|---|
@@ -370,9 +370,9 @@ $$
 
 **反方向：把立體聲檔放到 mono track 上。** 立體聲檔必須先 downmix，通常是
 
-$$
+```math
 x_{\mathrm{mono}} = \frac{L + R}{2}
-$$
+```
 
 對 $`L = R`$ 這是精確的（得到原本的訊號）。**相關**的素材（左右是相同內容、相同極性）保持原來的音量；音量相同但**不相關**的素材（例如寬廣 reverb 的左右兩邊，或兩支不同的麥克風）會降低約 **3 dB**，因為功率相加而振幅減半（$`\sqrt{2}/2 = 0.7071`$）；左右**極性相反**的素材（$`R = -L`$，純 side 訊號）則會完全**抵消**。這和練習 7 的 mono 相容問題是同一件事：$`(L + R)/2`$ 正好就是 mid 訊號 $`M`$。
 

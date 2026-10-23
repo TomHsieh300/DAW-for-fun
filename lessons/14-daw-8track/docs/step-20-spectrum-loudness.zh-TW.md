@@ -28,9 +28,9 @@ Chapter 11 的規則：audio thread 只*寫入*（sample 寫進 lock-free FIFO�
 
 音樂人聽的是 octave，所以 x 軸是對數的：
 
-$$
+```math
 x(f) = \frac{\ln(f / 20)}{\ln(20000 / 20)}, \qquad f(x) = 20 \cdot 1000^{x}
-$$
+```
 
 在低頻端，一個 pixel 涵蓋不到一個 bin（對 snapshot 中 285 像素寬的 view，約在 480 Hz 以下，README 第 3.11 節）；在高頻端，一個 pixel 涵蓋約 20 個 bin。因此 `SpectrumView::paint()` 逐個 pixel 欄走訪，取頻率落在該欄內的所有 bin 的**最大值**（讓窄的 peak 不會遺失在 pixel 之間），而當某一欄不含任何 bin 時，重複使用其上的下一個 bin——這就是為什麼 trace 在低頻端看起來像階梯。在 analyzer 自己的平滑之上再加顯示 ballistics：數值可以立即上升，但每個 frame 最多下降 1.5 dB（30 Hz 下為 45 dB/s）——平穩，但對 transient 永不延遲。Y 軸涵蓋 0 .. -90 dB，每 20 dB 一條線。標籤（頂端邊緣的 0 dB，然後是 -20、-40、……以及各頻率）最後才畫，底下襯深色底，讓 trace 永遠不會遮住它們。
 

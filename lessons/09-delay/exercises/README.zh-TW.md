@@ -39,9 +39,9 @@ cd build
 
 完成 `AllpassInterpolator` 的 `setDelay()` 與 `processSample()`：
 
-$$
+```math
 H(z) = \frac{\eta + z^{-1}}{1 + \eta z^{-1}},\qquad \eta = \frac{1 - \Delta}{1 + \Delta},\qquad y[n] = \eta\,(v[n] - y[n-1]) + v[n-1]
-$$
+```
 
 要求：
 

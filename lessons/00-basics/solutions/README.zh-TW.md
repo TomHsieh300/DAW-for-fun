@@ -37,9 +37,13 @@
 5. 真實世界的訊號（麥克風收到的）含有超音波成分與高頻雜訊；如果不先濾掉，它們在 ADC 取樣時全部 alias 到可聽範圍，變成無法事後移除的雜音（alias 之後跟真正的 18 kHz 訊號在數位上完全無法分辨）。
    44.1 kHz 而不是 40 kHz：anti-aliasing filter 不可能在 20 kHz 完全通過、20.001 kHz 完全阻擋；它需要一段過渡帶（transition band）。20 kHz 到 22.05 kHz 這 2 kHz 就是留給 filter 的過渡帶。（44100 這個具體數字來自早期用錄影機儲存數位音訊的歷史：$`3 \times 490 \times 30 = 44100`$。）
 6. 令 $`f_s = 48000`$，$`n`$ 為整數：
-   $$\sin\!\left(2\pi\frac{30000}{48000}n\right) = \sin\!\left(2\pi n \cdot \frac{48000 - 18000}{48000}\right) = \sin\!\left(2\pi n - 2\pi\frac{18000}{48000}n\right)$$
+   ```math
+   \sin\!\left(2\pi\frac{30000}{48000}n\right) = \sin\!\left(2\pi n \cdot \frac{48000 - 18000}{48000}\right) = \sin\!\left(2\pi n - 2\pi\frac{18000}{48000}n\right)
+   ```
    因為 $`\sin(2\pi n - \theta) = \sin(-\theta) = -\sin\theta`$（$`2\pi n`$ 是整數圈），所以
-   $$= -\sin\!\left(2\pi\frac{18000}{48000}n\right)$$
+   ```math
+   = -\sin\!\left(2\pi\frac{18000}{48000}n\right)
+   ```
    兩組 sample 只差正負號，振幅相同。負號只是 180° 的相位差，對單一正弦波聽不出來。`l00_db_math` 在 18 kHz 量到 0.5000 的振幅就是這個結果。
 
 ## 練習 4：normalize 與 clipping 計數

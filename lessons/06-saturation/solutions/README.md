@@ -16,9 +16,9 @@ Every solution program verifies its results numerically with `DAWLAB_CHECK` / `D
 
 A sine wave has half-wave symmetry: $`x(t + T/2) = -x(t)`$. tanh is an odd function: $`\tanh(-u) = -\tanh(u)`$. Therefore
 
-$$
+```math
 y(t + T/2) = \tanh\big(x(t+T/2)\big) = \tanh\big(-x(t)\big) = -\tanh\big(x(t)\big) = -y(t)
-$$
+```
 
 The output also has half-wave symmetry. Write $`y`$ as a Fourier series $`\sum_k c_k e^{jk\omega_0 t}`$; shifting by half a period multiplies the $`k`$-th term by $`e^{jk\pi} = (-1)^k`$. For the whole signal to change sign, only terms with $`(-1)^k = -1`$ may be nonzero, so $`k`$ must be odd. The coefficients for $`k = 0`$ (DC) and all even $`k`$ are zero. In the table of the `l06_harmonic_analysis` example, H2, H4, H6, and H8 of Tanh / Cubic / Arctan are all below −99 dB and DC is 0, which is exactly this result.
 
@@ -26,9 +26,9 @@ The output also has half-wave symmetry. Write $`y`$ as a Fourier series $`\sum_k
 
 Split the curve into odd and even parts: $`f(x) = f_{\text{odd}}(x) + f_{\text{even}}(x)`$. The odd part produces only odd harmonics, so DC can only come from the even part. The even part of Asymmetric is (with $`t = \tanh|x|`$ and $`\tanh 2u = 2\tanh u/(1+\tanh^2 u)`$)
 
-$$
+```math
 f_{\text{even}}(x) = \frac{f(x) + f(-x)}{2} = \frac{1}{2}\left(t - \frac{t}{1+t^2}\right) = \frac{t^3}{2(1+t^2)} \ge 0
-$$
+```
 
 It is non-negative everywhere and zero only at $`x = 0`$, so as long as the input is not all zeros, the mean (DC) is necessarily positive. For small signals $`f_{\text{even}} \approx |x|^3/2`$ and DC $`\approx 2A^3/(3\pi)`$ (example `l06_harmonic_analysis`: for $`A = 0.1`$ the approximation is 0.00021 and the measurement is 0.00021). More intuitively: the positive half-wave can reach +1 while the negative half-wave only reaches −0.5, so the average is of course greater than 0 (+0.0748 for $`A = 1`$).
 
@@ -51,9 +51,9 @@ Practical problems (any two will do):
 
 The wet signal passes through the 4x oversampler and is delayed by 36 samples; the dry signal is not delayed. Their sum is a feedforward comb filter: $`y = (1-m)\,x[n] + m\,x[n - D]`$. At frequency $`f`$ the phase difference between the two paths is $`2\pi f D / f_s`$, and they cancel when the phase difference is an odd multiple of $`\pi`$:
 
-$$
+```math
 f_{\text{notch}} = \frac{(2k+1) f_s}{2D} = \frac{(2k+1) \cdot 48000}{72} = 667,\ 2000,\ 3333,\ \ldots \text{ Hz}
-$$
+```
 
 The first notch is at about 667 Hz. The fix: delay the dry signal by `getLatencySamples()` samples (this is exactly what `pushAndReadDry()` inside `Saturation` does).
 
@@ -126,9 +126,9 @@ Solution program: `solutions/ex4_chebyshev_exciter.cpp` (target `l06_ex4_solutio
 
 **Hand calculation for amplitude 0.5**: only $`T_2`$ produces an even-order component ($`g_4 = 0`$).
 
-$$
+```math
 T_2(A\cos\theta) = 2A^2\cos^2\theta - 1 = A^2\cos 2\theta + (A^2 - 1)
-$$
+```
 
 So DC $`= g_2(A^2 - 1) = 0.1 \times (0.25 - 1) = -0.075`$ and the H2 amplitude $`= g_2 A^2 = 0.025`$. The program measures −0.0750 and 0.0250. This illustrates the limitation of a Chebyshev exciter: it is exact only at the design amplitude; when the amplitude changes the harmonic ratios change (H2/H1 goes from 0.1 to 0.05), and the even-order term brings DC, so a DC blocker must follow.
 
@@ -144,9 +144,9 @@ Solution program: `solutions/ex5_aligned_dry_wet.cpp` (target `l06_ex5_solution`
 - `DryDelay` writes first, then reads: `buf_[pos_] = x`, then it reads `buf_[(pos_ - D + size) % size]`. A length of `maxDelay + 1` is needed to hold the $`D + 1`$ samples from $`x[n]`$ to $`x[n - D]`$; writing before reading is what makes the output equal the input when $`D = 0`$.
 - For small signals $`\tanh(gx)/g \approx x`$, so the wet signal is just $`x[n - L]`$, and the whole system is a feedforward comb: $`y[n] = (1 - m)\,x[n - D] + m\,x[n - L]`$. Let $`\Delta = L - D`$; the two paths are in antiphase when the phase difference $`2\pi f\Delta/f_s = (2k + 1)\pi`$:
 
-$$
+```math
 f_k = \frac{(2k + 1)\,f_s}{2\Delta}
-$$
+```
 
 - Notch depth: the phasor lengths of the two paths are $`1 - m`$ and $`m`$; in antiphase what remains is $`|1 - 2m|`$. At $`m = 0.5`$ the notch is theoretically infinitely deep; at $`m = 0.3`$ it is $`20\log_{10} 0.4 = -7.96`$ dB.
 - After alignment $`|H| = |(1 - m) + m| = 1`$, independent of $`m`$.
@@ -190,9 +190,9 @@ Solution program: `solutions/ex6_adaa.cpp` (target `l06_ex6_solution`)
 
 **1. The antiderivative**
 
-$$
+```math
 F(x) = \begin{cases} x^2/2 & |x| \le 1 \\ |x| - 1/2 & |x| > 1 \end{cases}
-$$
+```
 
 For $`|x| \le 1`$, $`F' = x`$; for $`x > 1`$, $`F' = 1`$; for $`x < -1`$, $`F' = -1`$. At $`x = \pm 1`$ both pieces have the value 1/2, so $`F`$ is continuous. The program checks $`F' = f`$ between −3 and 3 using numerical differentiation.
 

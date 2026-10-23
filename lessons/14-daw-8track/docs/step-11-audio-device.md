@@ -94,10 +94,10 @@ for code that has no message loop or knows the clips are at `old` (tests, Exerci
 
 The callback measures its own duration with `juce::Time::getHighResolutionTicks()`:
 
-$$
+```math
 \text{load} = \frac{t_{\text{callback}}}{N / f_s}, \qquad
 \overline{\text{load}}_k = \overline{\text{load}}_{k-1} + 0.1\,(\text{load}_k - \overline{\text{load}}_{k-1})
-$$
+```
 
 The one-pole smoothing (coefficient 0.1, about 10 callbacks) keeps the display readable. 100 %
 means "the deadline is hit exactly"; anything close to it will drop out on the next hiccup. The

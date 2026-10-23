@@ -21,10 +21,10 @@ level。
 
 ### Pre-fader 或 post-fader
 
-$$
+```math
 \text{bus}_b[n] = \sum_{t=1}^{8} s_{t,b}[n]\cdot
 \begin{cases} g_t[n]\,x_t[n] & \text{post-fader (default)} \\ x_t[n] & \text{pre-fader} \end{cases}
-$$
+```
 
 - **Post-fader**（在 fader *以及* pan 之後）：把 fader 拉低，reverb 也跟著變小；
   wet/dry 比例保持不變。這是 effect 所需要的。
@@ -114,11 +114,11 @@ Step 6: sends and buses (build-along)
 Track 2：DC 0.25，fader 在 $`-\infty`$，以 0 dB 做 pre-fader send 到 bus A。其中 $`g = 0.7071`$（track
 置中 pan），bus / master 為 unity balance：
 
-$$
+```math
 \text{direct} = 0.5\,g = 0.3536,\qquad
 \text{bus A} = \underbrace{0.5\,g \cdot 0.5}_{\text{post}} + \underbrace{0.25 \cdot 1}_{\text{pre}} = 0.4268,\qquad
 \text{out} = 0.3536 + 0.4268 = 0.7803
-$$
+```
 
 測試檢查了 `out`、bus A 的 meter（`getMaxPeakLinear() = 0.4268`）、mute bus A 之後只剩
 `direct`、mute track 2 也會移除它的 pre-fader 貢獻，以及一個 track

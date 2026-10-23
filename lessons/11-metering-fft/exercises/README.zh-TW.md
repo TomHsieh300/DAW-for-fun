@@ -78,7 +78,9 @@ self-check 會驗證：
 VU meter 是一支有質量、有阻尼的指針：突然出現的 0 VU 正弦，指針要在 300 ms 到達最終讀數的 99%，
 過衝 1~1.5%。用二階系統模擬：
 
-$$\ddot p + 2\zeta\omega_n \dot p + \omega_n^2 p = \omega_n^2\, u(t),\qquad u = |x| \cdot \text{inputScale}$$
+```math
+\ddot p + 2\zeta\omega_n \dot p + \omega_n^2 p = \omega_n^2\, u(t),\qquad u = |x| \cdot \text{inputScale}
+```
 
 完成兩個 TODO：每個 sample 的 semi-implicit Euler 積分，以及「-18 dBFS 正弦 = 0 VU」的校準倍率。
 
@@ -110,7 +112,9 @@ self-check 會驗證：與直接卷積的誤差 < 1e-5（block 長度不固定�
 
 起始碼：`exercises/starter/ex7_correlation_meter.cpp`（target `l11_ex7_starter`）
 
-$$r = \frac{E[L R]}{\sqrt{E[L^2]\,E[R^2]}}$$
+```math
+r = \frac{E[L R]}{\sqrt{E[L^2]\,E[R^2]}}
+```
 
 用 exponential moving average（時間常數 300 ms）估計三個期望值。完成 `process()`。
 

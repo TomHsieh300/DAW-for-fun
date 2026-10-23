@@ -16,9 +16,9 @@
 
 Engine 的 `InsertChain` 沒有空洞：移除位置 1 的 effect，會讓位置 2 移到 1。然而 mixer 擁有的是*固定*的 slot——當 slot 1 被清空時，slot 3 的 EQ 仍然留在 slot 3。`Session` 為每個 strip 保存 GUI 檢視 `std::array<InsertSlotState, 4>`（種類 Empty / Builtin / Vst3、effect 類型、observer pointer、顯示名稱），並負責轉換：
 
-$$
+```math
 \text{chainIndex}(s) = \#\{\, k < s : \text{slot } k \text{ occupied} \,\}
-$$
+```
 
 ```
 GUI slots:   [ EQ ][    ][Comp][    ]

@@ -23,15 +23,15 @@
 
 回想第 04 章的靜態曲線（hard knee）：
 
-$$
+```math
 y_{\text{dB}} = \begin{cases} x_{\text{dB}} & x_{\text{dB}} \le T \\ T + \dfrac{x_{\text{dB}} - T}{R} & x_{\text{dB}} > T \end{cases}
-$$
+```
 
 $`R \to \infty`$ 時第二條變成 $`y_{\text{dB}} = T`$：threshold 以上的輸入不管多大，輸出都停在 $`T`$。這條水平線就是「ceiling」。以線性值寫，輸入 $`|x|`$ 超過 ceiling $`c`$ 時需要的 gain 是
 
-$$
+```math
 g = \min\!\Bigl(1,\ \frac{c}{|x|}\Bigr)
-$$
+```
 
 ![靜態曲線：輸入 dB 對輸出 dB。1:1 的直線在 threshold T = -20 dB 轉折：4:1 的 compressor 之後以較緩的斜率上升，limiter（ratio ∞）則在 ceiling 變成水平線。](images/limiter-static-curve.svg)
 
@@ -112,7 +112,9 @@ flowchart LR
 
 1. 由第 2 步，對所有 $`k`$：$`gr[k] \le g[k]`$（min 的結果不會比其中一項大）。
 2. 由第 3 步，$`m[n-k]`$ 是 $`\{gr[n-k-L], \dots, gr[n-k]\}`$ 的最小值。對 $`k = 0, 1, \dots, L`$，這個範圍都包含 index $`n-L`$（因為 $`n-k-L \le n-L \le n-k`$）。所以
-   $$m[n-k] \le gr[n-L] \le g[n-L],\qquad k = 0,\dots,L.$$
+   ```math
+   m[n-k] \le gr[n-L] \le g[n-L],\qquad k = 0,\dots,L.
+   ```
 3. 由第 4 步，$`s[n]`$ 是這 $`L+1`$ 個 $`m`$ 的平均，每一項都 $`\le g[n-L]`$，所以 $`s[n] \le g[n-L]`$。又每一項都在 $`[0, 1]`$，所以 $`0 \le s[n] \le 1`$。
 4. 由第 5 步，$`|y[n]| = |x_s[n-L]|\cdot s[n] \le |x_s[n-L]|\cdot g[n-L]`$。
    - 若 $`|x_s[n-L]| > c`$：$`g[n-L] = c/|x_s[n-L]|`$，乘起來 $`= c`$。
@@ -130,9 +132,9 @@ flowchart LR
 
 峰值過去之後，$`g[n]`$ 回到 1，但 $`gr[n]`$ 只能以 one-pole 的速度回去：
 
-$$
+```math
 gr[n] = gr[n-1] + (1 - gr[n-1])\,c_{\text{rel}},\qquad c_{\text{rel}} = 1 - e^{-1/(\tau f_s)}
-$$
+```
 
 $`\tau`$ 就是 `setReleaseMs()`：gain 在 $`\tau`$ 之後回復了「剩餘距離」的 63.2 %，$`2.3\tau`$ 之後 90 %。本章在**線性 gain** 上做 one-pole（第 04 章的 compressor 是在 dB 上做），好處是簡單、而且 $`gr \le g`$ 的不等式一眼就看得出來。
 
@@ -170,9 +172,9 @@ flowchart LR
 
 播放游標也要跟著修正。engine 的 transport position 是「正在**算**的那個 sample」，那個 sample 的聲音要先晚 PDC latency（這裡 240）才離開 engine，再晚音訊裝置的輸出 latency（driver 與 DA converter 的 buffer）才從喇叭出來。所以第 14 章 app 的 TransportBar（小節／時間計數器）與 ArrangementView（播放游標）顯示的是
 
-$$
+```math
 \text{顯示位置} = \max\bigl(0,\ \text{transport position} - \text{engine 的 PDC latency} - \text{裝置輸出 latency}\bigr)
-$$
+```
 
 （播放中才扣；停止時沒有聲音，直接顯示下次開始播放的位置），畫面才會和耳朵聽到的對齊。實作在 `AudioHost::getAudiblePosition()`，說明見第 14 章的 [Step 13](../14-daw-8track/docs/step-13-transport-bar.zh-TW.md) 與 [Step 14](../14-daw-8track/docs/step-14-arrangement.zh-TW.md)。這也是為什麼**不建議在播放中改 lookahead**：latency 變了 host 得重算整個 session 的 PDC，通常會打斷播放。本章的 `setLookaheadMs()` 會重設平滑器狀態，請在停止播放時呼叫。
 
@@ -202,31 +204,31 @@ ITU-R BS.1770-4 定義的 **true peak** 是把訊號升頻 4 倍（48 kHz → 19
 
 **(2) image。** 把「想要的」4x 訊號記成 $`v[m]`$。零插入的結果 $`u[m]`$ 其實就是 $`v[m]`$ 乘上一串「1, 0, 0, 0, 1, 0, 0, 0, …」的脈衝 $`p[m]`$（在 4 的倍數位置 $`v = x`$，其他位置被乘成 0）。這串脈衝可以寫成幾個餘弦的和：
 
-$$
+```math
 p[m] = \tfrac14\bigl[\,1 + 2\cos(\tfrac{\pi}{2}m) + \cos(\pi m)\,\bigr]
-$$
+```
 
 （代入 $`m = 0, 1, 2, 3`$ 驗算：1、0、0、0。）在 $`4f_s`$ 的取樣率下，$`\cos(\tfrac{\pi}{2}m)`$ 是頻率 $`f_s`$ 的餘弦、$`\cos(\pi m)`$ 是 $`2f_s`$。所以
 
-$$
+```math
 u = v\cdot p = \tfrac14 v + \tfrac12 v\cos(2\pi f_s t) + \tfrac14 v\cos(2\pi\cdot 2f_s t)
-$$
+```
 
 乘上一個餘弦等於把頻譜搬到那個頻率的兩側（和第 06 章「非線性產生新頻率」的三角恆等式是同一件事）。結果：$`u`$ 裡有一份振幅只剩 **1/4** 的 $`v`$（baseband），外加在 $`f_s`$、$`2f_s`$ 兩側的複本——**image**。例如 48 kHz 的 10 kHz 正弦，零插入之後在 192 kHz 下同時出現 10、38、58、86 kHz（$`48 \mp 10`$、$`96 - 10`$）。零插入那種「尖刺 + 一堆 0」的波形，就是這些高頻 image 疊出來的。
 
 **(3) lowpass 插值。** 既然 $`u = \tfrac14 v + \text{image}`$，只要用一個 cutoff 在原本 $`f_s/2`$（新取樣率的 1/8）的 lowpass 把 image 濾掉、再乘 4，就得到 $`v`$。理想 lowpass 的 impulse response 是 sinc；把 cutoff 與增益 4 代進去，剛好是
 
-$$
+```math
 h[n] = \mathrm{sinc}\!\Bigl(\frac{n}{4}\Bigr) = \frac{\sin(\pi n/4)}{\pi n/4}
-$$
+```
 
 它在 $`n = \pm 4, \pm 8, \dots`$ 時是 0：每個原始 sample 經過濾波後，在**其他原始 sample 的位置**貢獻 0、在中間的空格貢獻一點點——也就是「原始 sample 不動、只把 0 填起來」，這正是插值。理想 sinc 無限長，實作時只取 64 個 tap，並乘上 Hann window 讓截斷的邊緣變平滑（不然頻率響應會有漣波；window 的取捨在第 11 章 2.9 節）。
 
 **(4) polyphase：只算非零項。** 直接在 $`4f_s`$ 下跑 64 tap FIR，每個輸出要 64 次乘法、每個原始 sample 有 4 個輸出，共 256 次——但 $`u`$ 有 3/4 是 0，絕大部分乘法都是「× 0」。輸出寫成 $`m = 4n + p`$（$`p = 0..3`$），只有 $`u[m-k]`$ 落在 4 的倍數的項會留下，也就是 $`k = 4j + p`$：
 
-$$
+```math
 y[4n+p] = \sum_j h[4j+p]\; x[n-j]
-$$
+```
 
 | 輸出 | 用到的 tap | 乘上的輸入 |
 |---|---|---|

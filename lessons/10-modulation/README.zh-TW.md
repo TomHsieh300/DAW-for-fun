@@ -58,9 +58,9 @@ LFO（Low-Frequency Oscillator，低頻振盪器）的輸出不是拿來聽的�
 
 所有波形都從同一個東西出發：一個在 $`[0, 1)`$ 之間循環的**相位** $`p`$。每個 sample 前進 $`r / f_s`$（$`r`$ = rate，Hz）：
 
-$$
+```math
 p[n+1] = \mathrm{frac}\!\left(p[n] + \frac{r}{f_s}\right), \qquad \mathrm{frac}(x) = x - \lfloor x \rfloor
-$$
+```
 
 一個週期 = $`f_s / r`$ 個 sample。例如 $`r = 2`$ Hz、$`f_s = 48`$ kHz → 每個 sample 前進 $`4.17 \times 10^{-5}`$，24000 個 sample 繞一圈。
 
@@ -95,9 +95,9 @@ $$
 
 DAW 裡的 LFO 常常要跟著拍子走。一拍（四分音符）= $`60/\text{bpm}`$ 秒。如果一個 LFO 週期 = $`b`$ 拍（$`b = 1`$ 四分音符、0.5 八分、0.75 附點八分、$`1/3`$ 八分三連音的一個——三個八分三連音佔一拍；四分三連音則是 $`b = 2/3`$），則
 
-$$
+```math
 r = \frac{\text{bpm}}{60 \cdot b} \ \text{Hz}
-$$
+```
 
 | 音符長度 | $`b`$ | 90 bpm | 120 bpm | 140 bpm |
 |---|---:|---:|---:|---:|
@@ -123,9 +123,9 @@ LFO 不需要，原因有兩個：
 
 解法是把 square / saw / S&H 的邊緣用一個很短的 one-pole lowpass 平滑：
 
-$$
+```math
 s[n] = s[n-1] + k\,(m[n] - s[n-1]), \qquad k = 1 - e^{-1/(\tau f_s)}
-$$
+```
 
 $`\tau = 1`$ ms 時，等效 cutoff $`\approx 1/(2\pi\tau) = 159`$ Hz：LFO 的形狀幾乎不變（2 Hz 的 square 仍然是方的），但跳變被拉成約 5 ms 的滑坡，click 消失。`Lfo` 預設對 Square / Saw / S&H 開啟 1 ms 平滑（`setSmoothingMs(0)` 可關掉做對照），Sine / Triangle 本身連續，不平滑以保持精確的波形。`l10_lfo_shapes` 的實測：
 
@@ -147,23 +147,23 @@ Chorus、flanger、vibrato 都是「延遲時間被 LFO 推著走」。延遲時
 
 延遲線的輸出是 $`y(t) = x(t - d(t))`$。把 $`x`$ 換成一個正弦 $`x(t) = \sin(2\pi f t)`$：
 
-$$
+```math
 y(t) = \sin\!\big(2\pi f\,(t - d(t))\big)
-$$
+```
 
 瞬時頻率是相位對時間的微分除以 $`2\pi`$：
 
-$$
+```math
 f_{\text{inst}}(t) = \frac{1}{2\pi}\frac{d}{dt}\Big[2\pi f\,(t - d(t))\Big] = f\,\big(1 - d'(t)\big)
-$$
+```
 
 **延遲在變長時（$`d' > 0`$）音高變低，在變短時音高變高**——這就是救護車開近開遠的 Doppler 效應：讀取頭相對於寫入頭在「後退」或「前進」。
 
 用 sine LFO：$`d(t) = d_0 + D\sin(2\pi r t)`$，$`d'(t) = 2\pi r D \cos(2\pi r t)`$，所以
 
-$$
+```math
 \frac{f_{\text{inst}}}{f} = 1 - 2\pi r D\cos(2\pi r t) \in \big[\,1 - 2\pi r D,\ 1 + 2\pi r D\,\big]
-$$
+```
 
 換成 cents（100 cents = 一個半音）：向上最多 $`1200 \log_2(1 + 2\pi r D)`$、向下最多 $`1200 \log_2(1 - 2\pi r D)`$。因為 log 曲線向下彎（concave），向下的絕對值略大；$`2\pi r D`$ 很小時兩者幾乎對稱。
 
@@ -207,9 +207,9 @@ flowchart LR
     end
 ```
 
-$$
+```math
 y[n] = (1-\text{mix})\,x[n] + \frac{\text{mix}}{N}\sum_{v=0}^{N-1} x\!\left[n - d_v[n]\right], \qquad d_v[n] = d_0 + D\sin\!\left(2\pi\Big(p[n] + \tfrac{v}{N}\Big)\right)
-$$
+```
 
 #### 多 voice 與 stereo spread
 
@@ -244,15 +244,15 @@ $$
 
 把 chorus 的延遲縮短到 0.5–10 ms，事情就變了：這麼短的延遲和原音相加，耳朵不再聽到「兩個聲音」，而是聽到一個被**染色**的聲音——第 09 章 2.13 節的 feedforward comb filter（範例 `l09_comb_filter` 掃描過它的峰谷）。差別只在本章用 mix 加權 $`(1-m)`$、$`m`$，而第 09 章寫成 $`x[n] + g\,x[n-D]`$。
 
-$$
+```math
 y[n] = (1-m)\,x[n] + m\,x[n-D] \quad\Longrightarrow\quad H(e^{j\omega}) = (1-m) + m\,e^{-j\omega D}
-$$
+```
 
 $`m = 0.5`$ 時：
 
-$$
+```math
 H = \tfrac12\left(1 + e^{-j\omega D}\right) = e^{-j\omega D/2}\cos\!\left(\tfrac{\omega D}{2}\right) \;\Rightarrow\; |H(f)| = |\cos(\pi f d)|
-$$
+```
 
 （$`d = D/f_s`$ 是以秒計的延遲。）
 
@@ -294,15 +294,15 @@ flowchart LR
 
 延遲線裡的訊號 $`w[n] = x[n] + g\,w[n-D]`$，輸出 $`y = (1-m)x + m\,w[n-D]`$：
 
-$$
+```math
 H(z) = (1-m) + m\,\frac{z^{-D}}{1 - g\,z^{-D}}
-$$
+```
 
 在 peak 頻率（$`z^{-D} = 1`$）與 notch 頻率（$`z^{-D} = -1`$）：
 
-$$
+```math
 H_{\text{peak}} = (1-m) + \frac{m}{1-g}, \qquad H_{\text{notch}} = (1-m) - \frac{m}{1+g}
-$$
+```
 
 | feedback $`g`$ | peak（$`f = k/d`$） | 原 notch 位置（$`f = (2k+1)/2d`$） | 聽感 |
 |---|---|---|---|
@@ -323,9 +323,9 @@ d = 1 ms, mix 0.5: gain at each frequency (measured / theory, dB)
 
 本章的 `Flanger` 讓延遲在 $`[d_{\min}, d_{\min} + \text{depth}]`$ 之間掃：
 
-$$
+```math
 d(t) = \text{delayMs} + \text{depthMs}\cdot\frac{1 + m(t)}{2}
-$$
+```
 
 預設 1–3 ms：第一個 notch 從 $`1/(2 \cdot 0.001) = 500`$ Hz 掃到 $`1/(2 \cdot 0.003) = 167`$ Hz，整把梳子跟著走。注意 notch 頻率和 $`d`$ 成**反比**，延遲從 1 ms 到 3 ms 是 3 倍，notch 也移動 3 倍（約 1.6 個八度）。
 
@@ -337,9 +337,9 @@ Flanger 的 LFO 也會造成走音（2.3 節），但 rate 通常很低（0.05�
 
 數位模擬法：把乾訊號也延遲一個固定量 $`d_0`$，濕訊號的延遲在 $`d_0`$ 兩側掃：
 
-$$
+```math
 y = \tfrac12\big(x[n - d_0] - x[n - d(t)]\big), \qquad d(t) = d_0 + \Delta\sin(\cdot)
-$$
+```
 
 延遲差 $`\delta = d(t) - d_0`$ 經過 0 的瞬間，$`|H| = |\sin(\pi f \delta)| \to 0`$，**所有頻率同時消失**，聲音像被吸走再吐回來。`l10_flanger` 用 500 Hz 正弦實測：through-zero 時最安靜的 block（512 sample）相對乾訊號只剩 −34.4 dB（不是 −∞，因為一個 block 裡延遲差只有一瞬間剛好是 0）。代價是整個效果多了 $`d_0`$ 的 latency。
 
@@ -372,35 +372,35 @@ flowchart LR
 
 從類比原型開始。一階 allpass：
 
-$$
+```math
 H_a(s) = \frac{\omega_a - s}{\omega_a + s}
-$$
+```
 
 在 $`s = j\Omega`$ 上，分子 $`\omega_a - j\Omega`$ 和分母 $`\omega_a + j\Omega`$ 互為共軛，長度相同，所以 $`|H_a| = 1`$。相位 = 分子角度 − 分母角度：
 
-$$
+```math
 \angle H_a(j\Omega) = -\arctan\frac{\Omega}{\omega_a} - \arctan\frac{\Omega}{\omega_a} = -2\arctan\frac{\Omega}{\omega_a}
-$$
+```
 
 DC（$`\Omega = 0`$）時 0°；$`\Omega = \omega_a`$ 時 $`-2 \cdot 45° = -90°`$；$`\Omega \to \infty`$ 時 −180°。
 
 用 bilinear transform 轉成數位（第 02 章）：$`s = \dfrac{1 - z^{-1}}{1 + z^{-1}}`$，對應的頻率關係是 $`\Omega = \tan(\omega/2)`$（$`\omega = 2\pi f / f_s`$）。令 $`t = \tan(\omega_c/2) = \tan(\pi f_c / f_s)`$ 代替 $`\omega_a`$：
 
-$$
+```math
 H(z) = \frac{t - \frac{1 - z^{-1}}{1 + z^{-1}}}{t + \frac{1 - z^{-1}}{1 + z^{-1}}} = \frac{t(1+z^{-1}) - (1-z^{-1})}{t(1+z^{-1}) + (1-z^{-1})} = \frac{(t-1) + (t+1)z^{-1}}{(t+1) + (t-1)z^{-1}}
-$$
+```
 
 上下同除 $`(t+1)`$，令 $`a = \dfrac{t - 1}{t + 1}`$：
 
-$$
+```math
 \boxed{H(z) = \frac{a + z^{-1}}{1 + a\,z^{-1}}, \qquad a = \frac{\tan(\pi f_c/f_s) - 1}{\tan(\pi f_c/f_s) + 1}}
-$$
+```
 
 相位直接從類比版代入 $`\Omega = \tan(\omega/2)`$、$`\omega_a = \tan(\omega_c/2)`$：
 
-$$
+```math
 \boxed{\varphi(\omega) = -2\arctan\!\left(\frac{\tan(\omega/2)}{\tan(\omega_c/2)}\right)}
-$$
+```
 
 $`\omega = \omega_c`$ 時 $`\varphi = -2 \cdot \pi/4 = -\pi/2`$，也就是 **$`f_c`$ 處剛好 −90°**；DC 是 0°，Nyquist 是 −180°。這個 $`f_c`$ 就是 phaser 的「中心頻率」參數。
 
@@ -418,9 +418,9 @@ $`\omega = \omega_c`$ 時 $`\varphi = -2 \cdot \pi/4 = -\pi/2`$，也就是 **$`
 
 N 級都設在同一個 $`f_c`$，總相位是 $`N\varphi(\omega)`$，總振幅仍然是 1。和原音各一半相加：
 
-$$
+```math
 H_{\text{total}} = \tfrac12\left(1 + e^{jN\varphi}\right) \;\Rightarrow\; |H_{\text{total}}| = \left|\cos\frac{N\varphi}{2}\right|
-$$
+```
 
 notch 出現在 $`N\varphi = -(2k+1)\pi`$（反相）。因為 $`\varphi`$ 從 0 單調降到 $`-\pi`$，$`N\varphi`$ 掃過 $`(-N\pi, 0)`$，其中包含的奇數倍 $`\pi`$ 有 $`\pi, 3\pi, \ldots, (N-1)\pi`$，共 **$`N/2`$ 個**（N 為偶數）。所以：
 
@@ -435,9 +435,9 @@ notch 出現在 $`N\varphi = -(2k+1)\pi`$（反相）。因為 $`\varphi`$ 從 0
 
 **notch 的位置**：解 $`N \cdot \big(-2\arctan(\tan(\omega/2)/t)\big) = -(2k+1)\pi`$：
 
-$$
+```math
 \boxed{\tan\frac{\omega_k}{2} = \tan\frac{\omega_c}{2}\cdot\tan\frac{(2k+1)\pi}{2N}, \qquad k = 0, 1, \ldots, \tfrac{N}{2} - 1}
-$$
+```
 
 `l10_phaser` 掃描頻率找 notch 並對照公式（centre 1 kHz、mix 0.5、feedback 0）：
 
@@ -453,9 +453,9 @@ $$
 
 flanger 的相位差 $`2\pi f d`$ 對頻率是**線性**的，每多 $`1/d`$ Hz 就多轉一圈，notch 等間距。phaser 的相位 $`\varphi(\omega)`$ 是 arctan 形狀：**以對數頻率（八度）來看**，相位在 $`f_c`$ 附近轉得最快，離 $`f_c`$ 越多個八度轉得越慢（注意是「每八度」：在線性 Hz 軸上，每 Hz 的相位變化反而在 DC 附近最大，到 $`f_c`$ 只剩一半）。所以 notch 在對數軸上以 $`f_c`$ 為中心對稱，在線性 Hz 軸上則是低頻密、高頻疏。從上面的公式看，notch 由 $`\tan\frac{(2k+1)\pi}{2N}`$ 決定，在低頻（$`\tan(\omega/2) \approx \omega/2`$）時
 
-$$
+```math
 f_k \approx f_c \cdot \tan\frac{(2k+1)\pi}{2N}
-$$
+```
 
 而 $`\tan\theta \cdot \tan(\pi/2 - \theta) = 1`$，所以成對的 notch 滿足 $`f_k \cdot f_{N/2-1-k} \approx f_c^2`$——**以 $`f_c`$ 為中心幾何對稱**，既不等差、也不等比（8 stages 相鄰比值是 3.36、2.23、3.26）。例：4 stages 的 $`f_0 f_1 = 414.7042 \times 2397.7862 = 994372 \approx 10^6 = f_c^2`$（差 0.56%，來自 bilinear 的頻率扭曲）。改用不做近似的精確式就完全相等，`l10_phaser` 印出：
 
@@ -470,9 +470,9 @@ $$
 
 耳朵聽頻率是對數的：200 → 400 Hz 和 2000 → 4000 Hz 聽起來移動一樣多（都是一個八度）。如果 LFO 線性地推 $`f_c`$（例如 200–3200 Hz），大部分時間都花在高頻，低頻一閃而過。所以 phaser 用**指數刻度**：
 
-$$
+```math
 f_c(t) = f_{\text{centre}} \cdot 2^{\,\text{depth}\cdot\text{octaves}\cdot m(t)}
-$$
+```
 
 預設 octaves = 2、depth = 1：$`f_c`$ 在 $`f_{\text{centre}}/4`$ 到 $`4 f_{\text{centre}}`$ 之間掃，以八度來看是等速的。
 
@@ -480,9 +480,9 @@ $$
 
 和 flanger 一樣，把 allpass 鏈的輸出送回輸入讓 notch 之間的頻率共振。實作上有一點不同：allpass 鏈的輸出和「當下」的輸入有關（$`H(z)`$ 有 $`z^0`$ 項），如果不經過延遲直接回授，會變成 $`w = x + g \cdot A(w)`$ 的隱式方程。最簡單的作法是在回授路徑上放一個 sample 的延遲：
 
-$$
+```math
 W = X + g\,z^{-1}\,Y,\quad Y = A\,W \;\Rightarrow\; H = (1-\text{mix}) + \text{mix}\cdot\frac{A}{1 - g\,A\,z^{-1}}
-$$
+```
 
 $`A = 1`$ 的頻率（4 stages 時就是 $`f_c`$）被放大、notch 變淺。`l10_phaser` 的量測和含 $`z^{-1}`$ 的理論一致：
 
@@ -513,15 +513,15 @@ Effect of feedback on 4 stages (centre 1 kHz, mix 0.5) (measured / theory, dB):
 
 Tremolo 直接調變振幅：
 
-$$
+```math
 y(t) = x(t)\cdot g(t), \qquad g(t) = 1 - \text{depth}\cdot\frac{1 - m(t)}{2}
-$$
+```
 
 $`m = +1`$ 時 $`g = 1`$，$`m = -1`$ 時 $`g = 1 - \text{depth}`$。用 sine LFO，$`g(t) = (1 - \tfrac{D}{2}) + \tfrac{D}{2}\sin(2\pi r t)`$。輸入一個正弦 $`A\sin(2\pi f t)`$，用積化和差 $`\sin a \sin b = \tfrac12[\cos(a-b) - \cos(a+b)]`$：
 
-$$
+```math
 y(t) = A\left(1 - \tfrac{D}{2}\right)\sin(2\pi f t) + \frac{AD}{4}\Big[\cos\big(2\pi(f-r)t\big) - \cos\big(2\pi(f+r)t\big)\Big]
-$$
+```
 
 頻譜是**原本的頻率（振幅 × $`(1 - D/2)`$）加上兩個 sideband $`f \pm r`$（振幅各 × $`D/4`$）**——這就是 AM 廣播的頻譜。`l10_tremolo` 的 Goertzel 量測（1 kHz、$`A = 0.5`$、10 Hz、depth 1）：
 
@@ -538,9 +538,9 @@ rate 在 2–10 Hz 時，sideband 離載波太近，耳朵分不開，聽到的�
 
 左聲道用 $`m`$，右聲道用 $`-m`$：
 
-$$
+```math
 g_L = 1 - D\frac{1 - m}{2}, \qquad g_R = 1 - D\frac{1 + m}{2}, \qquad g_L + g_R = 2 - D
-$$
+```
 
 左大聲時右小聲，聲像左右來回，而且振幅和是常數（第 01 章的 linear pan law）。範例實測每個 block 的 $`|g_L + g_R - (2 - D)|`$ 最大 $`5.96 \times 10^{-8}`$（float 捨入）。若要 constant power，可以改成 $`g_L = \cos\theta`$、$`g_R = \sin\theta`$（第 01 章 `Panner`）。
 
@@ -548,9 +548,9 @@ $$
 
 把 tremolo 的 DC 偏移拿掉，直接乘上一個在 −1..+1 之間的載波：
 
-$$
+```math
 y(t) = x(t)\cdot\sin(2\pi f_c t) \quad\Rightarrow\quad A\sin(2\pi f t)\sin(2\pi f_c t) = \frac{A}{2}\Big[\cos\big(2\pi(f - f_c)t\big) - \cos\big(2\pi(f + f_c)t\big)\Big]
-$$
+```
 
 原本的頻率 $`f`$ **消失**了，只剩和頻 $`f + f_c`$ 與差頻 $`f - f_c`$（振幅各 $`A/2`$）。載波進入可聽頻率範圍（例如 500 Hz）時，和差頻與原音不成整數倍關係，就是金屬、鐘聲、Dalek 機器人那種不和諧的聲音。練習 4 會實作並用 Goertzel 驗證。
 
@@ -564,15 +564,15 @@ Modulation 效果的 aliasing 風險**不大**：
 
 真正影響音質的是**分數延遲的插值**（第 09 章）。延遲時間一直在變，讀取位置的小數部分 $`\Delta`$ 不斷掃過 0..1。linear 插值 $`y = (1-\Delta)x_0 + \Delta x_1`$ 是一個二點 FIR，
 
-$$
+```math
 |H(\omega)|^2 = (1-\Delta)^2 + \Delta^2 + 2\Delta(1-\Delta)\cos\omega
-$$
+```
 
 在 $`f_s/4`$（$`\omega = \pi/2`$，48 kHz 下是 12 kHz）cos 項為 0；$`\Delta`$ 均勻掃過 0..1 時平均功率
 
-$$
+```math
 \int_0^1\big[(1-\Delta)^2 + \Delta^2\big]\,d\Delta = \tfrac13 + \tfrac13 = \tfrac23 \;\Rightarrow\; 10\log_{10}\tfrac23 = -1.76\ \text{dB}
-$$
+```
 
 而且這個損失是**隨 LFO 起伏**的（$`\Delta = 0`$ 時無損、$`\Delta = 0.5`$ 時最暗），等於高頻在被額外調變。`l10_chorus` 的實測：linear −1.73 dB，cubic（Catmull-Rom）−0.52 dB。所以本章的 `Chorus` / `Flanger` 預設用 `readCubic`。
 

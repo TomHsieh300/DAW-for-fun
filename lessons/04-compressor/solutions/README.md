@@ -122,7 +122,9 @@ Observations:
 Solution: `ex4_sidechain_hpf.cpp`.
 
 **The HPF**: $`lp[n] = lp[n-1] + b\,(x[n] - lp[n-1])`$, $`b = 1 - e^{-2\pi f_c / f_s}`$, $`hp = x - lp`$. This is the "complement" of a first-order lowpass, so it is -3 dB around $`f_c`$ and attenuates 6 dB per octave below $`f_c`$. Measured (with `measureGainDb`): 50 Hz -18.36 dB, 400 Hz -3.24 dB, 3 kHz -0.30 dB. (At 400 Hz it is -3.24 dB rather than -3.01 dB. The lowpass itself is exactly -3.01 dB at $`f_c`$ ($`\lvert H_{lp}\rvert = 0.7074`$); the deviation comes from the complementary structure $`hp = x - lp`$: let $`a = 1 - b`$, then the lowpass is $`H_{lp}(z) = \dfrac{b}{1 - a z^{-1}}`$, so
-$$H_{hp}(z) = 1 - H_{lp}(z) = \frac{a\,(1 - z^{-1})}{1 - a z^{-1}}$$
+```math
+H_{hp}(z) = 1 - H_{lp}(z) = \frac{a\,(1 - z^{-1})}{1 - a z^{-1}}
+```
 Its gain at high frequency ($`z = -1`$, Nyquist) reaches only $`2a/(1+a) \approx 0.974`$ (about -0.23 dB) rather than the 1 of an analog first-order HPF, and its phase also differs from the analog version, so the whole HPF curve sits slightly lower: -3.24 dB at $`f_c`$ and -0.30 dB at 3 kHz (an analog first-order HPF would be only -0.08 dB at 3 kHz). This is entirely adequate for a sidechain.)
 
 **Flow**: the sidechain buffer is allocated once outside the loop (mimicking `prepare()`), and for each block: `sc.copyFrom(block)` → `hpf->process(sc)` → `comp.process(block, sc)`. The gain is always applied to the **original** signal; the HPF only affects "what the detector hears".
@@ -140,9 +142,9 @@ What it sounds like: in `l04_ex4_no_hpf.wav` the highs are "modulated" by every 
 
 Solution: `ex5_auto_makeup.cpp`.
 
-$$
+```math
 \text{makeup} = -\,y(0) = -\,\text{computeOutputDb}(0, T, R, W)
-$$
+```
 
 | Setting | Calculation | makeup |
 |---|---|---|

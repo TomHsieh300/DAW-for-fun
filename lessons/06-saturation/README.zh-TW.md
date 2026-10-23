@@ -31,9 +31,9 @@
 
 Saturation 不一樣。它是一個**無記憶（memoryless）的非線性函式**：
 
-$$
+```math
 y[n] = f\big(x[n]\big)
-$$
+```
 
 每個 sample 只看自己，丟進一條曲線 $`f`$。只要 $`f`$ 不是直線，正弦波就會被「壓彎」，而被壓彎的週期訊號，用 Fourier series 展開就會出現基頻的整數倍——**諧波（harmonics）**。
 
@@ -52,17 +52,17 @@ $$
 
 **平方項 $`x^2`$。** 用倍角公式 $`\sin^2\theta = \dfrac{1 - \cos 2\theta}{2}`$：
 
-$$
+```math
 x^2 = A^2 \sin^2\theta = \frac{A^2}{2} - \frac{A^2}{2}\cos 2\theta
-$$
+```
 
 結果：**一個 DC（$`A^2/2`$）加上一個二次諧波（振幅 $`A^2/2`$）**，基頻本身消失了。兩件事值得記住：平方會產生**偶次諧波**，而且**一定伴隨 DC**（因為 $`x^2 \ge 0`$，平均值不可能是 0）。
 
 **立方項 $`x^3`$。** 用三倍角公式 $`\sin 3\theta = 3\sin\theta - 4\sin^3\theta`$，移項得 $`\sin^3\theta = \dfrac{3\sin\theta - \sin 3\theta}{4}`$：
 
-$$
+```math
 x^3 = A^3 \sin^3\theta = \frac{3A^3}{4}\sin\theta - \frac{A^3}{4}\sin 3\theta
-$$
+```
 
 結果：**基頻（振幅 $`3A^3/4`$）加上三次諧波（振幅 $`A^3/4`$）**，沒有 DC、沒有偶次。注意三次諧波相對於基頻是 $`\frac{1}{3}`$，也就是 $`20\log_{10}(1/3) = -9.54`$ dB，跟 $`A`$ 無關。
 
@@ -70,16 +70,16 @@ $$
 
 **實際的 soft clip：$`y = x - x^3/3`$。** 代入上面的結果：
 
-$$
+```math
 y = A\sin\theta - \frac{1}{3}\left(\frac{3A^3}{4}\sin\theta - \frac{A^3}{4}\sin 3\theta\right)
   = \left(A - \frac{A^3}{4}\right)\sin\theta + \frac{A^3}{12}\sin 3\theta
-$$
+```
 
 所以
 
-$$
+```math
 \frac{H_3}{H_1} = \frac{A^3/12}{A - A^3/4} = \frac{A^2}{12 - 3A^2}
-$$
+```
 
 | $`A`$ | $`H_1 = A - A^3/4`$ | $`H_3 = A^3/12`$ | $`H_3/H_1`$ | THD |
 |---|---|---|---|---|
@@ -146,31 +146,31 @@ $$
 
 **為什麼對稱曲線只產生奇次諧波？** 「對稱」的精確說法是**奇函式**：$`f(-x) = -f(x)`$。正弦波有**半波對稱**：$`x(t + T/2) = -x(t)`$。代進去：
 
-$$
+```math
 y(t + T/2) = f\big(x(t + T/2)\big) = f\big(-x(t)\big) = -f\big(x(t)\big) = -y(t)
-$$
+```
 
 輸出也半波對稱。而一個週期訊號的第 $`k`$ 次諧波在平移半個週期後會乘上 $`e^{j\pi k} = (-1)^k`$；要滿足 $`y(t+T/2) = -y(t)`$，只有 $`(-1)^k = -1`$ 的成分可以存在——也就是 $`k`$ 為奇數。DC（$`k = 0`$）同樣被排除。
 
 **不對稱曲線**（例如 `Asymmetric`，正半波在 +1 飽和、負半波在 −0.5 就飽和）打破了半波對稱，所以偶次諧波與 DC 都會出現。可以把任何曲線拆成奇部與偶部：
 
-$$
+```math
 f(x) = \underbrace{\frac{f(x) - f(-x)}{2}}_{\text{奇部 → 奇次諧波}} + \underbrace{\frac{f(x) + f(-x)}{2}}_{\text{偶部 → 偶次諧波 + DC}}
-$$
+```
 
 奇部是奇函式，依上面的論證只產生奇次諧波；所以**偶次諧波與 DC 全部來自偶部**。偶部是偶函式（$`g(-x) = g(x)`$），而 $`|\sin\theta|`$ 的週期是 $`T/2`$，所以 $`g(A\sin\theta)`$ 的週期也是 $`T/2`$——它的頻率成分只能是 $`2f_0`$ 的整數倍：DC、2 次、4 次……
 
 以 `Asymmetric` 為例，令 $`t = \tanh|x|`$，利用 $`\tanh 2u = \dfrac{2\tanh u}{1 + \tanh^2 u}`$：
 
-$$
+```math
 g(x) = \frac{f(x) + f(-x)}{2} = \frac{1}{2}\left(t - \frac{t}{1 + t^2}\right) = \frac{t^3}{2(1 + t^2)} \;\ge\; 0
-$$
+```
 
 偶部處處 $`\ge 0`$，所以平均值（DC）一定是正的。小訊號時 $`t \approx |x|`$，$`g(x) \approx |x|^3/2`$；而 $`|\sin\theta|^3`$ 的平均值是 $`\frac{4}{3\pi}`$，所以
 
-$$
+```math
 \text{DC} \approx \frac{A^3}{2}\cdot\frac{4}{3\pi} = \frac{2A^3}{3\pi}
-$$
+```
 
 範例 `l06_harmonic_analysis` 有把這個近似跟量測並排：$`A = 0.1`$ 時 0.00021 vs 0.00021、$`A = 0.25`$ 時 0.00332 vs 0.00301；$`A = 0.5`$ 時近似值 0.0265 已經明顯高估（實測 0.0188），因為 $`t^3/(1+t^2)`$ 在 $`|x|`$ 變大後長得比 $`|x|^3`$ 慢。注意 `Asymmetric` 的偶部從 $`|x|^3`$ 開始而不是 $`x^2`$（兩邊在原點的斜率與曲率都相同），這也是小訊號時它的 H2 比含 $`x^2`$ 項的曲線弱得多的原因：例如練習 2 的 $`x + kx^2`$，$`H_2/H_1 = kA/2`$，跟 $`A`$ 成正比；而 `Asymmetric` 的偶次成分要從 $`A^3`$ 才開始。
 
@@ -191,9 +191,9 @@ $$
 
 解法是 **DC blocker**：一個 cutoff 很低（5～20 Hz）的 highpass。經典形式：
 
-$$
+```math
 y[n] = x[n] - x[n-1] + R\, y[n-1], \qquad H(z) = \frac{1 - z^{-1}}{1 - R z^{-1}}, \qquad R \approx 1 - \frac{2\pi f_c}{f_s}
-$$
+```
 
 零點在 $`z = 1`$（DC 增益正好 0），極點在 $`z = R`$，非常貼近零點，所以除了極低頻以外幾乎不影響訊號。小角度近似下 $`|H(e^{j\omega_c})| \approx \omega_c / \sqrt{(1-R)^2 + \omega_c^2} = 1/\sqrt{2}`$，也就是 $`f_c`$ 處 −3 dB。$`f_c = 10`$ Hz、$`f_s = 48`$ kHz 時 $`R = 0.998691`$；一個 DC step 衰減到 1% 需要 $`\ln 0.01 / \ln R \approx 3516`$ 個 sample ≈ 73 ms（DC blocker 本身的實作與 step response 量測見[第 02 章練習 2](../02-filter/exercises/README.zh-TW.md)，那裡用的是 $`R = 0.995`$）。`Saturation` 內部用的是第 02 章的 `OnePole` highpass（10 Hz），差別在兩處：極點用 $`a = e^{-2\pi f_c/f_s}`$ 而不是一階近似 $`1 - 2\pi f_c/f_s`$（10 Hz 時兩者只差 $`10^{-6}`$ 量級），以及多了一個讓 Nyquist 處剛好 0 dB 的常數 $`h = (1+a)/2`$。
 
@@ -206,9 +206,9 @@ flowchart LR
 
 第 00 章講過取樣定理：sample rate $`f_s`$ 只能表示 $`0 \sim f_s/2`$（Nyquist）以內的頻率。關鍵是：**數位的非線性是在取樣點上做的**。曲線產生的諧波不會「自動消失」，超過 Nyquist 的那些會被取樣過程摺回 $`0 \sim f_s/2`$。頻率 $`f`$ 被記錄成：
 
-$$
+```math
 f_{\text{alias}} = \left|\, \Big( (f + f_s/2) \bmod f_s \Big) - f_s/2 \,\right|
-$$
+```
 
 直覺上就是把頻率軸以 $`f_s/2`$ 為鏡子來回摺紙：
 
@@ -273,9 +273,9 @@ flowchart LR
 
 **Halfband filter。** 2x 升 / 降頻用的 lowpass 截止頻率剛好是新 sample rate 的 1/4（$`f_s/2`$ 在 $`2f_s`$ 下就是 1/4）。這種「cutoff 在 1/4 sample rate、通帶與阻帶對稱」的 filter 叫 **halfband**，它的理想 impulse response 是
 
-$$
+```math
 h[n] = \frac{\sin(\pi n / 2)}{\pi n}, \qquad h[0] = \frac{1}{2}
-$$
+```
 
 $`n`$ 為非零偶數時 $`\sin(\pi n/2) = 0`$，所以**所有非零偶數 tap 都是 0**！
 
@@ -324,9 +324,9 @@ h[0..7] = 0.50000, 0.31707, 0.00000, -0.10244, 0.00000, 0.05772, 0.00000, -0.037
 
 **Latency。** 線性相位 FIR 長度 $`2M+1`$ 的延遲是 $`M`$ 個 sample（$`M = 2K - 1`$ 是 FIR 的半長度；注意它和前面的倍率 $`L`$ 是不同的東西）。升頻一次、降頻一次，第 1 級來回 $`2 \times 31 = 62`$ 個 96 kHz 的 sample = **31 個 48 kHz 的 sample**。多級時要把每一級的延遲換算回原始 sample rate 加總：
 
-$$
+```math
 \text{latency} = \sum_{i=1}^{S} \frac{2M_i - \varphi_i}{2^i}
-$$
+```
 
 4x 時 $`= \frac{62}{2} + \frac{22}{4} = 36.5`$；為了讓 latency 是**整數**（host 的 latency compensation 只接受整數 sample），降頻時可以選擇取 filter 輸出的偶數或奇數 sample（decimation phase $`\varphi_i \in \{0, 1\}`$，選 1 會少延遲 1 個該級的 sample）。`Oversampler::prepare()` 自動算出每一級的 $`\varphi_i`$，結果是 2x = 31、4x = 36、8x = 38 samples，範例用 impulse 實測全部一致。
 
@@ -336,17 +336,17 @@ $$
 
 Oversampling 很有效但很貴。ADAA（antiderivative anti-aliasing，Parker et al. 2016、Bilbao et al. 2017）的想法是：naive 的 $`y[n] = f(x[n])`$ 只看取樣點，完全不知道兩個取樣點之間發生了什麼（例如訊號在兩點之間撞到 clip 的尖角）。如果我們假設輸入在 $`x[n-1]`$ 與 $`x[n]`$ 之間是**直線**，然後取 $`f`$ 在這段上的**平均值**：
 
-$$
+```math
 y[n] = \frac{1}{x[n] - x[n-1]} \int_{x[n-1]}^{x[n]} f(u)\, du = \frac{F(x[n]) - F(x[n-1])}{x[n] - x[n-1]}
-$$
+```
 
 其中 $`F`$ 是 $`f`$ 的反導函式（$`F' = f`$）。這等價於「在連續時間做非線性，再用一個寬度 1 sample 的矩形 filter 平均後取樣」——矩形 filter 是一個 lowpass，會在折返之前壓低高頻諧波。
 
 **Hard clip 的反導函式**：$`f(x) = \text{clamp}(x, -1, 1)`$，
 
-$$
+```math
 F(x) = \begin{cases} x^2/2 & |x| \le 1 \\ |x| - 1/2 & |x| > 1 \end{cases}
-$$
+```
 
 在 $`|x| = 1`$ 處值（1/2）與斜率（±1）都連續。tanh 的反導函式是 $`\ln\cosh x`$（大 $`|x|`$ 時用 $`|x| - \ln 2`$ 避免 overflow）。
 
@@ -371,19 +371,19 @@ ADAA 1x 已經比 naive 2x 更乾淨，而 CPU 只多了一次減法與除法。
 
 如果你想要「只加 −20 dB 的二次諧波，其他都不要」，有一個漂亮的工具：第一類 Chebyshev polynomial $`T_n`$，定義是
 
-$$
+```math
 T_n(\cos\theta) = \cos(n\theta)
-$$
+```
 
 也就是說，**振幅 1 的正弦波丟進 $`T_n`$，出來就是純粹的第 $`n`$ 次諧波**。遞迴式：
 
-$$
+```math
 T_0 = 1,\quad T_1 = x,\quad T_{n+1}(x) = 2x\,T_n(x) - T_{n-1}(x)
-$$
+```
 
-$$
+```math
 T_2 = 2x^2 - 1,\quad T_3 = 4x^3 - 3x,\quad T_4 = 8x^4 - 8x^2 + 1,\quad T_5 = 16x^5 - 20x^3 + 5x
-$$
+```
 
 一個 harmonic exciter 就是 $`y = x + \sum_n g_n T_n(x)`$。振幅 1 時 $`H_n/H_1 = g_n`$，完全精確（練習 4：設 $`g_2 = 0.1`$ 量到 −20.00 dB）。但要注意：
 
@@ -414,9 +414,9 @@ $$
 
 **Parallel saturation（平行飽和）**：把重度飽和的訊號以 20～40% 混回原訊號。好處是保留 dry 的 transient 與動態，只「加」上諧波與密度——混音上常見的「New York」式手法。
 
-$$
+```math
 y = (1 - \text{mix}) \cdot \text{dry} + \text{mix} \cdot \text{wet}
-$$
+```
 
 陷阱：wet 經過 oversampler，**延遲了 latency 個 sample**；如果 dry 沒有跟著延遲，兩者相加就是一個 comb filter：延遲 $`\tau`$ 時在 $`f = \frac{2k+1}{2\tau}`$ 處出現 notch。4x 的 $`\tau = 36/48000 = 0.75`$ ms → 第一個 notch 在 667 Hz、接著 2 kHz、3.33 kHz……音色會變得空洞（這就是 flanger 的原理，第 10 章）。所以 `Saturation` 內部把 dry 也延遲 `getLatencySamples()` 個 sample，並且整個 plugin 對 host 回報同樣的 latency，讓 host 對齊其他 track。
 

@@ -31,9 +31,9 @@
 
 最純粹的 delay 只做一件事：
 
-$$
+```math
 y[n] = x[n - D] \qquad\Longleftrightarrow\qquad H(z) = z^{-D}
-$$
+```
 
 它的頻率響應是 $`H(e^{j\omega}) = e^{-j\omega D}`$：**幅度全頻都是 1**，相位隨頻率線性下降。單獨聽一個 delay 只會覺得「晚了一點」。delay 之所以有趣，是因為它通常會**和原音混在一起**（dry/wet mix），或**回授到自己的輸入**（feedback）。
 
@@ -94,30 +94,30 @@ int idx = (w - 1 - d + N) & (N - 1);                  // N 必須是 2 的次方
 
 把延遲拆成整數部分 $`d`$ 與小數部分 $`\Delta \in [0, 1)`$：$`D = d + \Delta`$。Linear interpolation 在相鄰兩個 sample 之間畫一條直線：
 
-$$
+```math
 y[n] = (1 - \Delta)\,x[n-d] + \Delta\,x[n-d-1]
-$$
+```
 
 這是一個 2-tap 的 FIR filter（後面接一個整數 delay $`z^{-d}`$）。它的頻率響應：
 
-$$
+```math
 H(e^{j\omega}) = e^{-j\omega d}\bigl[(1-\Delta) + \Delta e^{-j\omega}\bigr]
-$$
+```
 
 取幅度平方，用 $`e^{-j\omega} = \cos\omega - j\sin\omega`$ 展開：
 
-$$
+```math
 |H|^2 = (1 - \Delta + \Delta\cos\omega)^2 + (\Delta\sin\omega)^2 = 1 - 2\Delta(1-\Delta)(1 - \cos\omega)
-$$
+```
 
 讀這條式子：
 
 - $`\Delta = 0`$ 或 $`\Delta = 1`$：$`|H| = 1`$，就是整數 delay，沒有失真。
 - $`\Delta = 0.5`$ 是**最壞**的情況（$`\Delta(1-\Delta)`$ 最大）。代入 $`1 - \cos\omega = 2\sin^2(\omega/2)`$：
 
-$$
+```math
 |H|^2 = 1 - \sin^2(\omega/2) = \cos^2(\omega/2) \quad\Longrightarrow\quad |H| = \left|\cos\frac{\omega}{2}\right| = \left|\cos\frac{\pi f}{f_s}\right|
-$$
+```
 
 **直覺。** $`\Delta = 0.5`$ 時，linear interpolation 就是「相鄰兩個 sample 取平均」——一個 2-point moving average，也就是最簡單的 lowpass filter。在 Nyquist（$`f = f_s/2`$）訊號是 $`+1, -1, +1, -1\ldots`$，相鄰兩點一平均剛好是 0，所以 $`|H| = \cos(\pi/2) = 0`$。在 $`f_s/4`$ 是 $`\cos(\pi/4) = 0.707`$，即 −3.01 dB。
 
@@ -135,19 +135,19 @@ $$
 
 **3 階 Lagrange**：唯一一條**通過四個點**的三次多項式。
 
-$$
+```math
 y(t) = \sum_{k=-1}^{2} h_k(t)\, y_k, \qquad h_k(t) = \prod_{m \ne k} \frac{t - m}{k - m}
-$$
+```
 
 展開就是
 
-$$
+```math
 h_{-1} = -\frac{t(t-1)(t-2)}{6},\quad h_0 = \frac{(t+1)(t-1)(t-2)}{2},\quad h_1 = -\frac{(t+1)\,t\,(t-2)}{2},\quad h_2 = \frac{(t+1)\,t\,(t-1)}{6}
-$$
+```
 
 **Cubic Hermite（Catmull-Rom）**：只要求曲線通過 $`y_0`$、$`y_1`$，而在這兩點的**斜率**取中央差分 $`m_0 = (y_1 - y_{-1})/2`$、$`m_1 = (y_2 - y_0)/2`$。寫成多項式：
 
-$$
+```math
 y(t) = c_0 + c_1 t + c_2 t^2 + c_3 t^3,\qquad
 \begin{aligned}
 c_0 &= y_0 \\
@@ -155,21 +155,21 @@ c_1 &= \tfrac12(y_1 - y_{-1}) \\
 c_2 &= y_{-1} - \tfrac52 y_0 + 2y_1 - \tfrac12 y_2 \\
 c_3 &= \tfrac12(y_2 - y_{-1}) + \tfrac32(y_0 - y_1)
 \end{aligned}
-$$
+```
 
 兩者的差別：Lagrange 每一段各自通過四點，但相鄰兩段在接點的斜率不一定相同；Hermite 的斜率在接點連續（$`C^1`$），當讀取位置連續移動時波形更平順，所以 audio 上（尤其 modulation）較常用 Hermite。`FractionalDelayLine` 的 `readCubic()` 是 Hermite，`readLagrange()` 是 Lagrange（教學比較用）。
 
 **$`\Delta = 0.5`$ 時兩者完全相同。** 代入 $`t = 0.5`$，兩組係數都是
 
-$$
+```math
 \left(-\tfrac{1}{16},\ \tfrac{9}{16},\ \tfrac{9}{16},\ -\tfrac{1}{16}\right)
-$$
+```
 
 （範例 `l09_interpolation_compare` 把 impulse 推過 delay 2.5，三種方法的輸出就是這組 kernel。）把這個對稱 4-tap FIR 的頻率響應以中心為原點寫出：
 
-$$
+```math
 |H(e^{j\omega})| = \left|\tfrac{9}{8}\cos\tfrac{\omega}{2} - \tfrac{1}{8}\cos\tfrac{3\omega}{2}\right|
-$$
+```
 
 在 $`f_s/4`$：$`\tfrac98 \cdot 0.7071 + \tfrac18 \cdot 0.7071 = 0.884`$，即 **−1.07 dB**（linear 是 −3.01 dB）。完整比較（48 kHz，實測 = 理論）：
 
@@ -186,20 +186,20 @@ cubic 在 8 kHz 以下幾乎是平的，但它**仍然是 lowpass**——任何�
 
 另一條路：不要用 FIR 去「估計」中間值，而是用一個**幅度全頻為 1** 的一階 allpass filter，只調整相位，讓它在低頻的延遲剛好是 $`\Delta`$：
 
-$$
+```math
 H(z) = \frac{\eta + z^{-1}}{1 + \eta z^{-1}}, \qquad \eta = \frac{1 - \Delta}{1 + \Delta}
-$$
+```
 
-$$
+```math
 y[n] = \eta\,\bigl(v[n] - y[n-1]\bigr) + v[n-1], \qquad v[n] = x[n - d]
-$$
+```
 
 它的相位延遲（單位 sample）是
 
-$$
+```math
 \tau(\omega) = -\frac{\angle H}{\omega} = 1 - \frac{2}{\omega}\arctan\frac{\eta\sin\omega}{1 + \eta\cos\omega}
 \;\xrightarrow{\ \omega \to 0\ }\; \frac{1-\eta}{1+\eta} = \Delta
-$$
+```
 
 優點：沒有任何高頻衰減（練習 3 實測 20 kHz 也是 0.00 dB）。缺點：
 
@@ -213,9 +213,9 @@ $$
 
 delay time 是 $`\tau(t)`$ 時，輸出是 $`y(t) = x(t - \tau(t))`$。輸入是頻率 $`f`$ 的正弦 $`\sin(2\pi f t)`$ 時，輸出的相位是 $`2\pi f\,(t - \tau(t))`$，對時間微分得到**瞬時頻率**：
 
-$$
+```math
 f_\text{out} = f_\text{in}\left(1 - \frac{d\tau}{dt}\right)
-$$
+```
 
 這就是 Doppler 效應：delay 變長（讀取頭「逃離」寫入頭）→ pitch 下降；delay 變短（讀取頭「追」寫入頭）→ pitch 上升。磁帶 echo 轉 delay time 旋鈕時聽到的「嗚——」就是這個。
 
@@ -253,9 +253,9 @@ flowchart LR
 
 寫成方程式：$`s[n] = x[n] + g\,w[n]`$、$`w[n] = s[n - D]`$，所以
 
-$$
+```math
 W(z) = \frac{z^{-D}}{1 - g\,z^{-D}} = z^{-D} + g\,z^{-2D} + g^2 z^{-3D} + \cdots
-$$
+```
 
 **Impulse response**：第 $`k`$ 個 echo 出現在 $`kD`$，振幅 $`g^{k-1}`$。$`g = 0.5`$ 時每一圈 −6.02 dB（練習 1 用 impulse 量到 1、0.5、0.25、0.125……）。
 
@@ -263,9 +263,9 @@ $$
 
 **Echo 的衰減時間。** 衰減 60 dB 需要的圈數是 $`60 / (-20\log_{10} g)`$，乘上每圈的時間 $`D`$：
 
-$$
+```math
 T_{60} = \frac{3D}{-\log_{10} g}
-$$
+```
 
 $`D = 375`$ ms、$`g = 0.5`$ → 3.74 s；$`g = 0.7`$ → 7.26 s。反過來，想要 $`D = 500`$ ms 的 echo 在 2 秒內消失：$`g = 10^{-3D/T_{60}} = 10^{-0.75} = 0.178`$。這和第 12 章 reverb 用來設定 RT60 的公式是同一條。
 
@@ -326,9 +326,9 @@ flowchart LR
 
 一拍（四分音符）的長度是 $`60/\text{BPM}`$ 秒：
 
-$$
+```math
 t_\text{ms} = \text{beats} \times \frac{60000}{\text{BPM}}
-$$
+```
 
 beats 以四分音符為 1：八分音符 0.5、十六分音符 0.25。**附點**是原長度 × 1.5（附點八分 = 0.75 拍），**三連音**是原長度 × 2/3（八分三連音 = 1/3 拍；四分三連音 = 2/3 拍）。`Delay::noteToMs(bpm, beats)` 就是這條公式。
 
@@ -351,9 +351,9 @@ beats 以四分音符為 1：八分音符 0.5、十六分音符 0.25。**附點*
 
 ### 2.11 Dry/wet mix
 
-$$
+```math
 y = (1 - m)\,x + m\cdot\text{wet}, \qquad m \in [0, 1]
-$$
+```
 
 $`m = 0`$ 只有原音，$`m = 1`$ 只有 delay。這是線性 crossfade：dry 與 wet 相關（例如極短的 delay）時總音量不變；不相關時（一般 echo）在 $`m = 0.5`$ 附近總能量會少約 3 dB（練習 6 把白雜訊送進 `CrossfadeDelay`，在 fade 中點實測 −2.98 dB）。另一種選擇是 equal-power（$`\cos`$ / $`\sin`$）crossfade；兩種都有人用，本章取線性，因為它在 $`m`$ 很小時 dry 幾乎保持 0 dB，最符合「在 insert 上加一點 echo」的用法。
 
@@ -381,17 +381,17 @@ $`m = 0`$ 只有原音，$`m = 1`$ 只有 delay。這是線性 crossfade：dry �
 
 **Feedforward comb**：$`y[n] = x[n] + g\,x[n-D]`$，$`H(z) = 1 + g\,z^{-D}`$。
 
-$$
+```math
 |H(e^{j\omega})|^2 = 1 + g^2 + 2g\cos(\omega D)
-$$
+```
 
 $`\cos(\omega D) = 1`$，即 $`f = k\,f_s/D`$ 時是峰 $`1 + g`$；$`\cos(\omega D) = -1`$，即 $`f = (k + \tfrac12) f_s/D`$ 時是谷 $`1 - g`$。頻率響應像梳子的齒，齒距 $`f_s/D`$——這就是名字的由來。
 
 **Feedback comb**：$`y[n] = x[n] + g\,y[n-D]`$，$`H(z) = 1/(1 - g\,z^{-D})`$。
 
-$$
+```math
 |H(e^{j\omega})| = \frac{1}{\sqrt{1 + g^2 - 2g\cos(\omega D)}}
-$$
+```
 
 峰同樣在 $`k\,f_s/D`$，高度 $`1/(1 - g)`$；谷在 $`(k+\tfrac12) f_s/D`$，深度 $`1/(1 + g)`$。
 

@@ -113,10 +113,10 @@ File: `exercises/starter/ex6_rt60_estimator.cpp` (target `l12_ex6_starter`).
 
 `measureRt60()` runs a regression on a windowed-RMS envelope, but the envelope of a single impulse response fluctuates a lot. Schroeder's (1965) method integrates the squared IR **backwards, from the tail**:
 
-$$
+```math
 \mathrm{EDC}[n] = \sum_{k=n}^{N-1} h[k]^2,\qquad
 \mathrm{EDC}_{\mathrm{dB}}[n] = 10\log_{10}\frac{\mathrm{EDC}[n]}{\mathrm{EDC}[0]}
-$$
+```
 
 1. Complete `schroederDecayDb()`: a single O(N) loop (accumulating from the tail backwards).
 2. Complete `estimateRt60()`: over the region where EDC_dB lies between −5 and −25 dB, fit a least-squares line to (t, dB); RT60 = −60 / slope (T20).

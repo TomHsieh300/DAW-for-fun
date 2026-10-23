@@ -90,7 +90,9 @@ A position display that ignores them runs ahead of the sound by $`L_{\text{mix}}
 `AudioHost::getAudiblePosition()` corrects it, and both the counters here and the playhead
 (Step 14) use it:
 
-$$\text{shown} = \begin{cases}\max(0,\ P - L_{\text{mix}} - L_{\text{device}}) & \text{playing}\\ P & \text{stopped}\end{cases}$$
+```math
+\text{shown} = \begin{cases}\max(0,\ P - L_{\text{mix}} - L_{\text{device}}) & \text{playing}\\ P & \text{stopped}\end{cases}
+```
 
 When the transport is stopped nothing sounds, so the display shows where playback will start (the
 moment you press Stop it therefore jumps forward by $`L_{\text{mix}} + L_{\text{device}}`$). The

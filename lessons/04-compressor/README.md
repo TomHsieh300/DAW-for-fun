@@ -27,9 +27,9 @@ Once the dynamic range has been reduced, the whole signal can be raised with mak
 
 Another commonly used quantity is the **crest factor**:
 
-$$
+```math
 \text{crest factor (dB)} = 20\log_{10}\frac{\text{peak}}{\text{RMS}}
-$$
+```
 
 A drum kit has a very large crest factor (the synthetic drum loop in this chapter has 14.5 dB), while a sine wave has only 3.01 dB. A compressor generally lowers the crest factor, but in example 3 we will see that this holds only when the attack is fast enough.
 
@@ -62,19 +62,19 @@ The path that controls the gain is called the **sidechain**. Normally the sidech
 
 Let the input level be $`x`$ (dB), the threshold $`T`$ (dB) and the ratio $`R`$. The static curve of a **hard knee** is a piecewise-linear line:
 
-$$
+```math
 y_{\text{hard}}(x) =
 \begin{cases}
 x, & x \le T \\
 T + \dfrac{x - T}{R}, & x > T
 \end{cases}
-$$
+```
 
 Above the threshold, every extra 1 dB of input yields only $`1/R`$ dB of extra output. $`R = 1`$ is a straight line (no compression), and with $`R = \infty`$ the output is pinned at $`T`$ (this is the static curve of a limiter). **Gain reduction** (GR; this course always uses a **positive value**) is the difference between input and output:
 
-$$
+```math
 \text{GR}(x) = x - y(x) = \left(1 - \frac{1}{R}\right)(x - T) \quad (x > T)
-$$
+```
 
 For example, with $`T = -20`$, $`R = 4`$, $`x = -10`$: $`y = -20 + (-10 + 20)/4 = -17.5`$ dB, so GR = 7.5 dB. Example 1 prints this line.
 
@@ -82,26 +82,26 @@ The polyline has a "corner" at $`T`$, so when the signal moves in and out of the
 
 Let the curve inside the knee be $`y(x) = x + a\,(x - T + W/2)^2`$ (at the lower edge of the knee, $`x = T - W/2`$, the second term is 0, so both value and slope agree with $`y = x`$). At the upper edge $`x = T + W/2`$, the slope must equal $`1/R`$:
 
-$$
+```math
 y'(x) = 1 + 2a\,(x - T + W/2) \;\Rightarrow\; 1 + 2aW = \frac{1}{R} \;\Rightarrow\; a = \frac{1/R - 1}{2W}
-$$
+```
 
 Substitute $`a`$ back and check the value at the upper edge: $`y = T + W/2 + \frac{1/R - 1}{2W}W^2 = T + \frac{W}{2R}`$, and the straight line $`T + (x - T)/R`$ at $`x = T + W/2`$ also has the value $`T + \frac{W}{2R}`$, so they do join. Written as three pieces (in the form of Giannoulis, Massberg & Reiss 2012):
 
-$$
+```math
 y_{\text{soft}}(x) =
 \begin{cases}
 x, & 2(x - T) < -W \\[4pt]
 x + \dfrac{(1/R - 1)\,(x - T + W/2)^2}{2W}, & 2\,\lvert x - T \rvert \le W \\[8pt]
 T + \dfrac{x - T}{R}, & 2(x - T) > W
 \end{cases}
-$$
+```
 
 $`W = 0`$ degenerates to the hard knee. A handy reference point: at the threshold itself, $`x = T`$, the soft knee is already compressing:
 
-$$
+```math
 y_{\text{soft}}(T) = T + \frac{(1/R - 1)\,W}{8}
-$$
+```
 
 With $`T = -20`$, $`R = 4`$, $`W = 10`$: $`y = -20 + (-0.75)(10/8) = -20.9375`$ dB, i.e. there is already 0.94 dB of GR at the threshold.
 
@@ -139,15 +139,15 @@ An **RMS detector** looks at the average energy over a stretch of time, $`\sqrt{
 
 The core of the smoother is a first-order recursion (a one-pole lowpass):
 
-$$
+```math
 y[n] = \alpha\, y[n-1] + (1 - \alpha)\, x[n]
-$$
+```
 
 For a step input ($`x`$ jumps from 0 to 1), the analytic solution is $`y[n] = 1 - \alpha^n`$. We want "$`\tau`$ seconds elapsed" = "$`\tau f_s`$ samples elapsed" to be the point where $`y`$ reaches $`1 - e^{-1} = 63.2\%`$, so we require $`\alpha^{\tau f_s} = e^{-1}`$:
 
-$$
+```math
 \alpha = \exp\!\left(-\frac{1}{\tau f_s}\right)
-$$
+```
 
 This is `attackReleaseCoefficient()`. With $`\tau = 10`$ ms and $`f_s = 48`$ kHz: $`\alpha = e^{-1/480} = 0.997919`$.
 
@@ -172,12 +172,12 @@ The formulation above, "switch the coefficient by direction", is called **branch
 
 **Decoupled** smoothing first applies a peak-hold that "rises instantly and decays with the release", then smooths that with the attack coefficient:
 
-$$
+```math
 \begin{aligned}
 y_1[n] &= \max\!\big(x[n],\; \alpha_R\, y_1[n-1] + (1 - \alpha_R)\, x[n]\big) \\
 y[n] &= \alpha_A\, y[n-1] + (1 - \alpha_A)\, y_1[n]
 \end{aligned}
-$$
+```
 
 The peak-hold fills in the ripple of the periodic signal, so the steady-state GR equals the static curve exactly (B1 measures 7.49 dB), and the attack curve is exactly $`1 - e^{-t/\tau_A}`$. The price is that release becomes two stages in cascade (first the peak-hold decay, then the attack filter), and the measured release time is about $`\tau_R + \tau_A`$ (B1: 110.8 ms against the nominal 100 ms). `Compressor` uses decoupled by default; `EnvelopeFollower` defaults to branching (for the chapter 08 gate, which does not care about ripple and actually wants the level to "really fall").
 
@@ -208,9 +208,9 @@ The block diagram above is **feedforward**: the detector looks at the input. A *
 
 Take a steady-state analysis of the hard knee: let the slope of the gain computer be $`s`$ (GR increases by $`s`$ dB for every 1 dB above the threshold; for feedforward $`s = 1 - 1/R`$). With feedback, $`Y = X - \text{GR}`$ and $`\text{GR} = s\,(Y - T)`$:
 
-$$
+```math
 \text{GR} = s\,(X - \text{GR} - T) \;\Rightarrow\; \text{GR} = \frac{s}{1 + s}(X - T) \;\Rightarrow\; Y - T = \frac{X - T}{1 + s}
-$$
+```
 
 So the **effective ratio of feedback is $`1 + s`$**. Moving a feedforward 4:1 setting ($`s = 0.75`$) straight to feedback gives only 1.75:1; to really get 4:1 you must set the slope to 3 (greater than 1, meaning that for every 1 dB over, the detector wants to squash 3 dB, converging to 0.75 through the loop). Behaviorally, the feedback detector at first sees a large output that has "not yet been squashed", so the GR target is initially far larger than at steady state → the early part of the attack is especially fast and then slowly converges (**program-dependent attack**); exercise 6 measures t63 shrinking from 10.8 ms to 2.8 ms. This is one reason feedback machines "sound smoother"; the price is that lookahead is impossible (the output has not been computed yet) and the ratio cannot be infinite.
 
@@ -222,9 +222,9 @@ If the left and right channels of a stereo signal are compressed separately, the
 
 After compression the whole signal gets quieter, and **makeup gain** brings it back. The most common auto makeup formula is "make a 0 dBFS input return to 0 dBFS":
 
-$$
+```math
 \text{makeup} = -\,y(0) = -\,\text{computeOutputDb}(0, T, R, W)
-$$
+```
 
 With $`T = -20`$, $`R = 4`$, hard knee: $`y(0) = -20 + 20/4 = -15`$ → makeup = 15 dB. Many plugins make up only half, because real music rarely sits at 0 dBFS all the time and full makeup would be too loud. Exercise 5 verifies this formula, and runs a 0 dBFS sine through a real `Compressor` to confirm that the output returns to 0.01 dBFS.
 
@@ -240,9 +240,9 @@ The GR meter shows "how many dB are being squashed right now", and is the most i
 
 Mix the dry signal with a **heavily compressed** wet signal:
 
-$$
+```math
 y = (1 - \text{mix})\, x_{\text{dry}} + \text{mix}\, x_{\text{wet}}
-$$
+```
 
 The wet signal supplies thickness and "body", while the dry signal preserves transients and dynamics; it is one of the most commonly used techniques on drum buses and vocals. Exercise 3 implements it and verifies that the crest factor at mix = 0.5 lies between dry and wet.
 

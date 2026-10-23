@@ -86,9 +86,9 @@ Starter code: `exercises/starter/ex5_aligned_dry_wet.cpp`
 
 The starter code already contains a parallel saturator: the wet path is a 4x `Oversampler` + $`\tanh(g x)/g`$ (divided by the drive so that dry and wet are equally loud for small signals), and the dry path goes through a `DryDelay` whose delay $`D`$ can be set. For small signals the whole system is
 
-$$
+```math
 y[n] = (1 - m)\,x[n - D] + m\,x[n - L],\qquad |H(f)| = \left|(1 - m) + m\,e^{-j2\pi f (L - D)/f_s}\right|
-$$
+```
 
 1. Implement `DryDelay::processSample()`: a ring buffer of length `maxDelay + 1`; write $`x[n]`$ first, then read $`x[n - D]`$; when $`D = 0`$ the output equals the input (TODO 1).
 2. Implement `predictedNotchHz(k, Δ, fs)`: the frequency of the $`k`$-th notch when $`\Delta = L - D`$ (TODO 2).

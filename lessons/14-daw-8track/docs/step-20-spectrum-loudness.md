@@ -37,9 +37,9 @@ $`f_s / N = 48000 / 4096 = 11.7`$ Hz, enough to separate the bass notes (A1 = 55
 
 Musicians hear octaves, so the x axis is logarithmic:
 
-$$
+```math
 x(f) = \frac{\ln(f / 20)}{\ln(20000 / 20)}, \qquad f(x) = 20 \cdot 1000^{x}
-$$
+```
 
 At the low end one pixel covers less than one bin (below about 480 Hz for the 285-pixel-wide view
 in the snapshot, README section 3.11); at the high end one pixel covers about 20 bins.

@@ -237,16 +237,16 @@ its position as an integer number of samples (`int64_t`: an `int32_t` would over
 2^31 / 48000 s = 12.4 hours) and derives musical time from tempo $`B`$ (beats per minute), sample
 rate $`f_s`$ and the time-signature numerator $`n`$:
 
-$$
+```math
 N_{\text{beat}} = \frac{60\,f_s}{B}, \qquad N_{\text{bar}} = n\,N_{\text{beat}}
-$$
+```
 
 At 120 BPM and 48 kHz one beat is 24 000 samples and a 4/4 bar is 96 000 samples. A position
 "bar $`b`$, beat $`k`$, tick $`t`$" (1-based bar and beat, 960 ticks per beat) is
 
-$$
+```math
 \text{samples} = \mathrm{round}\Big( \big[(b-1)\,n + (k-1) + t/960\big]\, N_{\text{beat}} \Big)
-$$
+```
 
 The round-trip is exact on the grid (`l14_transport_clips` prints a table). At 96 BPM / 44.1 kHz a
 beat is 27 562.5 samples - not an integer - which is why the conversion rounds only once, at the
@@ -258,20 +258,20 @@ A clip is a window of a source buffer placed at timeline sample $`S`$ with lengt
 offset $`O`$. A block covers the timeline range $`[T_0, T_0 + N)`$. The part to render is the
 intersection
 
-$$
+```math
 \text{from} = \max(T_0, S), \qquad \text{to} = \min(T_0 + N, S + L)
-$$
+```
 
 and timeline sample $`T \in [\text{from}, \text{to})`$ goes to block index $`T - T_0`$ and reads source
 index $`O + (T - S)`$. Everything is integer arithmetic, so a clip starting at sample 12 345 lands on
 output sample 12 345 for *any* block size (`tests/test_timeline.cpp` checks block sizes 1, 64, 512
 and 1000). Fades multiply each sample by
 
-$$
+```math
 g_{\text{in}}(i) = \text{shape}\Big(\frac{i+1}{F_{\text{in}}+1}\Big), \quad
 g_{\text{out}}(i) = \text{shape}\Big(\frac{L-i}{F_{\text{out}}+1}\Big), \quad
 \text{shape}(x) = x \ \text{or}\ \sin\big(\tfrac{\pi}{2}x\big)
-$$
+```
 
 chosen so that an overlapping fade-out and fade-in of equal length $`F`$ always satisfy
 $`x_{\text{in}} + x_{\text{out}} = 1`$ - the basis of crossfades (Exercise 5).
@@ -282,9 +282,9 @@ A fader in dB becomes a linear gain $`g = 10^{\,\text{dB}/20}`$ (-6.02 dB = x0.5
 placed in the stereo field with pan $`p \in [-1, 1]`$ the **constant-power law** uses an angle
 $`\theta = \frac{\pi}{4}(p+1)`$:
 
-$$
+```math
 g_L = \cos\theta, \qquad g_R = \sin\theta, \qquad g_L^2 + g_R^2 = 1
-$$
+```
 
 The acoustic power stays constant while you pan; at the centre each side gets
 $`\cos(\pi/4) = 0.7071`$ (-3.01 dB). Chapter 01's `dsp::Panner::computeGains` also offers the
@@ -318,9 +318,9 @@ The master is a sum. $`N`$ identical (coherent) signals add in amplitude, $`+20\
 +3.01 dB). That is why the mix needs headroom and why the master ends with a limiter.
 Solo is a rule over the whole mixer:
 
-$$
+```math
 \text{audible}_t = \lnot\,\text{mute}_t \ \land\ \big(\lnot\,\exists u:\text{solo}_u \ \lor\ \text{solo}_t\big)
-$$
+```
 
 Buses are *solo-safe* (they only have mute), so a soloed vocal is still heard with its reverb.
 Every on/off change is ramped over 10 ms, every fader move over 50 ms: no clicks, no zipper noise.
@@ -331,10 +331,10 @@ A send copies a track into a bus with its own gain $`s`$. **Post-fader** sends t
 pan (turning the track down also turns its reverb down - the usual choice); **pre-fader** sends tap
 before them (a headphone mix, or a reverb that stays when you fade the dry signal out):
 
-$$
+```math
 \text{bus}_b = \sum_t s_{t,b}\cdot
 \begin{cases} g_t\, x_t & \text{post-fader} \\ x_t & \text{pre-fader} \end{cases}
-$$
+```
 
 Mute/solo sit *before* both taps: a muted track sends nothing.
 
@@ -345,18 +345,18 @@ convolution (chapter 12) cannot produce output sample $`n`$ before seeing input 
 its signal by $`D`$ samples and reports $`D`$ via `getLatencySamples()`. If track 1 has a 240-sample
 limiter and track 2 has nothing, their sum is
 
-$$
+```math
 y[n] = x[n] + x[n - D] \quad\Rightarrow\quad |H(f)| = 2\,\big|\cos(\pi f D / f_s)\big|
-$$
+```
 
 a **comb filter** with notches at $`f = (2k+1)\,f_s / (2D)`$: for $`D = 240`$ at 48 kHz at 100, 300,
 500 Hz ... plus a flam on every drum hit. PDC delays every other path so that all paths are
 equally late:
 
-$$
+```math
 c_t = \max_u L_u - L_t, \qquad c_b = \max_v L_v - L_b, \qquad
 L_{\text{total}} = \max_u L_u + \max_v L_v + L_{\text{master}}
-$$
+```
 
 (track $`t`$, bus $`b`$; the dry track sum waits $`\max_v L_v`$ for the slowest bus). `l14_pdc_demo`
 measures it and lets you hear both versions. Each compensating delay holds at most
@@ -390,9 +390,9 @@ thread. Controls write atomics; the engine ramps every change.
 A fader position $`p \in [0, 1]`$ maps to gain with a square law that spends most of the travel near
 0 dB (Step 15):
 
-$$
+```math
 \text{dB}(p) = 12 - 72\,(1 - p)^2, \qquad p(\text{dB}) = 1 - \sqrt{(12 - \text{dB}) / 72}
-$$
+```
 
 0 dB sits at $`p = 0.592`$, -6 dB at exactly 0.5, the bottom means $`-\infty`$. Meters are linear in dB
 over -60 .. +6 dBFS: $`\text{position} = (\text{dB} + 60) / 66`$.
@@ -403,10 +403,10 @@ A 44.1 kHz file in a 48 kHz project must be converted, or it plays 1.47 semitone
 ($`12 \log_2 (48000/44100)`$). Output sample $`m`$ lies at input position $`t_m = m\,f_{\text{in}}/f_{\text{out}}`$;
 band-limited interpolation evaluates (Step 18)
 
-$$
+```math
 y[m] = \sum_k x[k]\,g(t_m - k), \qquad g(x) = 2 f_c\, \mathrm{sinc}(2 f_c x)\, w(x / W),
 \qquad f_c = 0.46 \min\!\Big(1, \frac{f_{\text{out}}}{f_{\text{in}}}\Big)
-$$
+```
 
 with a Blackman window $`w`$ over $`W = 24 / (2 f_c)`$ input samples. The cutoff follows the *lower*
 Nyquist frequency, with a margin ($`0.46 f_{\text{out}}`$ instead of $`0.5 f_{\text{out}}`$ when
@@ -429,9 +429,9 @@ The display maps frequency to $`x = \ln(f/20) / \ln(1000)`$ and, per pixel colum
 **maximum** of the bins that fall into it. In a view $`W`$ pixels wide, the pixel at frequency $`f`$
 spans $`f\,(1000^{1/W} - 1)`$ Hz, so below
 
-$$
+```math
 f < \frac{f_s / N}{1000^{1/W} - 1}
-$$
+```
 
 a pixel has less than one bin: about 480 Hz for the 285-pixel-wide view of the snapshot (500 Hz
 for $`W = 300`$). At 10 kHz the same pixel covers about 20 bins (Step 20).

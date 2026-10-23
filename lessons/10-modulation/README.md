@@ -58,9 +58,9 @@ The LFO (Low-Frequency Oscillator) output is not meant to be heard. Its frequenc
 
 Every waveform starts from the same thing: a **phase** $`p`$ that cycles through $`[0, 1)`$. On every sample it advances by $`r / f_s`$ ($`r`$ = rate, in Hz):
 
-$$
+```math
 p[n+1] = \mathrm{frac}\!\left(p[n] + \frac{r}{f_s}\right), \qquad \mathrm{frac}(x) = x - \lfloor x \rfloor
-$$
+```
 
 One cycle = $`f_s / r`$ samples. For example, with $`r = 2`$ Hz and $`f_s = 48`$ kHz, the phase advances $`4.17 \times 10^{-5}`$ per sample and goes around once every 24000 samples.
 
@@ -95,9 +95,9 @@ The starting phase $`p_0`$ decides where in the waveform the LFO begins. This ch
 
 In a DAW, an LFO often has to follow the beat. One beat (a quarter note) = $`60/\text{bpm}`$ seconds. If one LFO cycle = $`b`$ beats ($`b = 1`$ for a quarter note, 0.5 for an eighth, 0.75 for a dotted eighth, $`1/3`$ for one eighth triplet since three eighth triplets fill one beat; a quarter-note triplet is $`b = 2/3`$), then
 
-$$
+```math
 r = \frac{\text{bpm}}{60 \cdot b} \ \text{Hz}
-$$
+```
 
 | Note length | $`b`$ | 90 bpm | 120 bpm | 140 bpm |
 |---|---:|---:|---:|---:|
@@ -123,9 +123,9 @@ That does not mean the jumps are harmless. The problem is not the LFO's spectrum
 
 The fix is to smooth the edges of the square / saw / S&H with a very short one-pole lowpass:
 
-$$
+```math
 s[n] = s[n-1] + k\,(m[n] - s[n-1]), \qquad k = 1 - e^{-1/(\tau f_s)}
-$$
+```
 
 With $`\tau = 1`$ ms the equivalent cutoff is $`\approx 1/(2\pi\tau) = 159`$ Hz. The LFO shape barely changes (a 2 Hz square is still square), but each jump is stretched into a ramp of about 5 ms, and the click disappears. `Lfo` enables 1 ms smoothing by default for Square / Saw / S&H (`setSmoothingMs(0)` turns it off for comparison); Sine / Triangle are continuous already and are left unsmoothed to keep an exact waveform. Measured by `l10_lfo_shapes`:
 
@@ -147,23 +147,23 @@ Chorus, flanger and vibrato are all "a delay time pushed around by an LFO". What
 
 The output of a delay line is $`y(t) = x(t - d(t))`$. Replace $`x`$ with a sine $`x(t) = \sin(2\pi f t)`$:
 
-$$
+```math
 y(t) = \sin\!\big(2\pi f\,(t - d(t))\big)
-$$
+```
 
 The instantaneous frequency is the derivative of the phase with respect to time, divided by $`2\pi`$:
 
-$$
+```math
 f_{\text{inst}}(t) = \frac{1}{2\pi}\frac{d}{dt}\Big[2\pi f\,(t - d(t))\Big] = f\,\big(1 - d'(t)\big)
-$$
+```
 
 **When the delay is getting longer ($`d' > 0`$) the pitch goes down; when it is getting shorter the pitch goes up.** This is exactly the Doppler effect of an ambulance approaching and receding: the read head is "retreating from" or "advancing on" the write head.
 
 With a sine LFO, $`d(t) = d_0 + D\sin(2\pi r t)`$ and $`d'(t) = 2\pi r D \cos(2\pi r t)`$, so
 
-$$
+```math
 \frac{f_{\text{inst}}}{f} = 1 - 2\pi r D\cos(2\pi r t) \in \big[\,1 - 2\pi r D,\ 1 + 2\pi r D\,\big]
-$$
+```
 
 In cents (100 cents = one semitone), the maximum upward shift is $`1200 \log_2(1 + 2\pi r D)`$ and the maximum downward shift is $`1200 \log_2(1 - 2\pi r D)`$. Because the log curve bends downward (it is concave), the downward magnitude is slightly larger; when $`2\pi r D`$ is small the two are almost symmetric.
 
@@ -207,9 +207,9 @@ flowchart LR
     end
 ```
 
-$$
+```math
 y[n] = (1-\text{mix})\,x[n] + \frac{\text{mix}}{N}\sum_{v=0}^{N-1} x\!\left[n - d_v[n]\right], \qquad d_v[n] = d_0 + D\sin\!\left(2\pi\Big(p[n] + \tfrac{v}{N}\Big)\right)
-$$
+```
 
 #### Multiple voices and stereo spread
 
@@ -244,15 +244,15 @@ This result is worth thinking about: **for broadband material, a tiny left/right
 
 Shorten the chorus delay to 0.5–10 ms and things change: with such a short delay added to the dry signal, the ear no longer hears "two voices" but one **coloured** voice. This is the feedforward comb filter of Chapter 09, Section 2.13 (the example `l09_comb_filter` sweeps its peaks and valleys). The only difference is that this chapter weights the paths with the mix, $`(1-m)`$ and $`m`$, whereas Chapter 09 writes $`x[n] + g\,x[n-D]`$.
 
-$$
+```math
 y[n] = (1-m)\,x[n] + m\,x[n-D] \quad\Longrightarrow\quad H(e^{j\omega}) = (1-m) + m\,e^{-j\omega D}
-$$
+```
 
 For $`m = 0.5`$:
 
-$$
+```math
 H = \tfrac12\left(1 + e^{-j\omega D}\right) = e^{-j\omega D/2}\cos\!\left(\tfrac{\omega D}{2}\right) \;\Rightarrow\; |H(f)| = |\cos(\pi f d)|
-$$
+```
 
 ($`d = D/f_s`$ is the delay in seconds.)
 
@@ -294,15 +294,15 @@ flowchart LR
 
 The signal inside the delay line is $`w[n] = x[n] + g\,w[n-D]`$ and the output is $`y = (1-m)x + m\,w[n-D]`$:
 
-$$
+```math
 H(z) = (1-m) + m\,\frac{z^{-D}}{1 - g\,z^{-D}}
-$$
+```
 
 At the peak frequencies ($`z^{-D} = 1`$) and the notch frequencies ($`z^{-D} = -1`$):
 
-$$
+```math
 H_{\text{peak}} = (1-m) + \frac{m}{1-g}, \qquad H_{\text{notch}} = (1-m) - \frac{m}{1+g}
-$$
+```
 
 | feedback $`g`$ | peak ($`f = k/d`$) | former notch position ($`f = (2k+1)/2d`$) | Sound |
 |---|---|---|---|
@@ -323,9 +323,9 @@ d = 1 ms, mix 0.5: gain at each frequency (measured / theory, dB)
 
 The `Flanger` in this chapter sweeps the delay between $`[d_{\min}, d_{\min} + \text{depth}]`$:
 
-$$
+```math
 d(t) = \text{delayMs} + \text{depthMs}\cdot\frac{1 + m(t)}{2}
-$$
+```
 
 With the default 1–3 ms, the first notch sweeps from $`1/(2 \cdot 0.001) = 500`$ Hz down to $`1/(2 \cdot 0.003) = 167`$ Hz, and the whole comb follows. Note that the notch frequency is **inversely** proportional to $`d`$: going from 1 ms to 3 ms is a factor of 3, and the notch moves by a factor of 3 (about 1.6 octaves).
 
@@ -337,9 +337,9 @@ Flanging in the 1960s used two tape machines playing the same music at the same 
 
 The digital emulation: also delay the dry signal by a fixed amount $`d_0`$, and sweep the wet delay on both sides of $`d_0`$:
 
-$$
+```math
 y = \tfrac12\big(x[n - d_0] - x[n - d(t)]\big), \qquad d(t) = d_0 + \Delta\sin(\cdot)
-$$
+```
 
 At the instant the delay difference $`\delta = d(t) - d_0`$ passes through 0, $`|H| = |\sin(\pi f \delta)| \to 0`$ and **all frequencies vanish at once**, as if the sound were sucked away and spat back out. `l10_flanger` measures this with a 500 Hz sine: the quietest block (512 samples) of the through-zero version is only −34.4 dB relative to the dry signal (not −∞, because within one block the delay difference is exactly 0 for only an instant). The price is that the whole effect gains $`d_0`$ of latency.
 
@@ -372,35 +372,35 @@ flowchart LR
 
 Start from the analog prototype. The first-order allpass:
 
-$$
+```math
 H_a(s) = \frac{\omega_a - s}{\omega_a + s}
-$$
+```
 
 On $`s = j\Omega`$, the numerator $`\omega_a - j\Omega`$ and the denominator $`\omega_a + j\Omega`$ are complex conjugates of equal length, so $`|H_a| = 1`$. The phase = numerator angle − denominator angle:
 
-$$
+```math
 \angle H_a(j\Omega) = -\arctan\frac{\Omega}{\omega_a} - \arctan\frac{\Omega}{\omega_a} = -2\arctan\frac{\Omega}{\omega_a}
-$$
+```
 
 At DC ($`\Omega = 0`$) it is 0°; at $`\Omega = \omega_a`$ it is $`-2 \cdot 45° = -90°`$; as $`\Omega \to \infty`$ it is −180°.
 
 Convert to digital with the bilinear transform (Chapter 02): $`s = \dfrac{1 - z^{-1}}{1 + z^{-1}}`$, with the corresponding frequency relation $`\Omega = \tan(\omega/2)`$ ($`\omega = 2\pi f / f_s`$). Let $`t = \tan(\omega_c/2) = \tan(\pi f_c / f_s)`$ stand in for $`\omega_a`$:
 
-$$
+```math
 H(z) = \frac{t - \frac{1 - z^{-1}}{1 + z^{-1}}}{t + \frac{1 - z^{-1}}{1 + z^{-1}}} = \frac{t(1+z^{-1}) - (1-z^{-1})}{t(1+z^{-1}) + (1-z^{-1})} = \frac{(t-1) + (t+1)z^{-1}}{(t+1) + (t-1)z^{-1}}
-$$
+```
 
 Divide top and bottom by $`(t+1)`$ and let $`a = \dfrac{t - 1}{t + 1}`$:
 
-$$
+```math
 \boxed{H(z) = \frac{a + z^{-1}}{1 + a\,z^{-1}}, \qquad a = \frac{\tan(\pi f_c/f_s) - 1}{\tan(\pi f_c/f_s) + 1}}
-$$
+```
 
 The phase follows directly by substituting $`\Omega = \tan(\omega/2)`$ and $`\omega_a = \tan(\omega_c/2)`$ into the analog version:
 
-$$
+```math
 \boxed{\varphi(\omega) = -2\arctan\!\left(\frac{\tan(\omega/2)}{\tan(\omega_c/2)}\right)}
-$$
+```
 
 At $`\omega = \omega_c`$, $`\varphi = -2 \cdot \pi/4 = -\pi/2`$, i.e. **exactly −90° at $`f_c`$**; it is 0° at DC and −180° at Nyquist. This $`f_c`$ is the phaser's "centre frequency" parameter.
 
@@ -418,9 +418,9 @@ At $`\omega = \omega_c`$, $`\varphi = -2 \cdot \pi/4 = -\pi/2`$, i.e. **exactly 
 
 With all N stages at the same $`f_c`$, the total phase is $`N\varphi(\omega)`$ and the total amplitude is still 1. Adding equal parts of the dry signal:
 
-$$
+```math
 H_{\text{total}} = \tfrac12\left(1 + e^{jN\varphi}\right) \;\Rightarrow\; |H_{\text{total}}| = \left|\cos\frac{N\varphi}{2}\right|
-$$
+```
 
 Notches appear at $`N\varphi = -(2k+1)\pi`$ (antiphase). Since $`\varphi`$ falls monotonically from 0 to $`-\pi`$, $`N\varphi`$ sweeps $`(-N\pi, 0)`$, which contains the odd multiples of $`\pi`$: $`\pi, 3\pi, \ldots, (N-1)\pi`$, a total of **$`N/2`$** (for even N). So:
 
@@ -435,9 +435,9 @@ Notches appear at $`N\varphi = -(2k+1)\pi`$ (antiphase). Since $`\varphi`$ falls
 
 **Notch positions**: solve $`N \cdot \big(-2\arctan(\tan(\omega/2)/t)\big) = -(2k+1)\pi`$:
 
-$$
+```math
 \boxed{\tan\frac{\omega_k}{2} = \tan\frac{\omega_c}{2}\cdot\tan\frac{(2k+1)\pi}{2N}, \qquad k = 0, 1, \ldots, \tfrac{N}{2} - 1}
-$$
+```
 
 `l10_phaser` sweeps the frequency to find the notches and compares with the formula (centre 1 kHz, mix 0.5, feedback 0):
 
@@ -453,9 +453,9 @@ The middle notch of the 6-stage version sits exactly at $`f_c`$: $`6 \times (-90
 
 The flanger's phase difference $`2\pi f d`$ is **linear** in frequency: every additional $`1/d`$ Hz adds one more full turn, so the notches are evenly spaced. The phaser's phase $`\varphi(\omega)`$ has an arctan shape: **measured in log frequency (octaves)**, the phase turns fastest near $`f_c`$ and more slowly the more octaves you move away from $`f_c`$ (note this is "per octave": on a linear Hz axis, the phase change per Hz is actually largest near DC and only half as large at $`f_c`$). So the notches are symmetric about $`f_c`$ on a log axis, and on a linear Hz axis they are dense at low frequencies and sparse at high frequencies. From the formula above, the notches are set by $`\tan\frac{(2k+1)\pi}{2N}`$, and at low frequencies ($`\tan(\omega/2) \approx \omega/2`$)
 
-$$
+```math
 f_k \approx f_c \cdot \tan\frac{(2k+1)\pi}{2N}
-$$
+```
 
 Since $`\tan\theta \cdot \tan(\pi/2 - \theta) = 1`$, paired notches satisfy $`f_k \cdot f_{N/2-1-k} \approx f_c^2`$: they are **geometrically symmetric about $`f_c`$**, neither equally spaced in difference nor in ratio (for 8 stages the ratios of adjacent notches are 3.36, 2.23, 3.26). Example: for 4 stages, $`f_0 f_1 = 414.7042 \times 2397.7862 = 994372 \approx 10^6 = f_c^2`$ (off by 0.56%, from bilinear frequency warping). With the exact form, with no approximation, the two sides are exactly equal. `l10_phaser` prints:
 
@@ -470,9 +470,9 @@ Audibly, this is the biggest difference between a phaser and a flanger: a flange
 
 The ear hears frequency logarithmically: 200 → 400 Hz and 2000 → 4000 Hz sound like the same movement (one octave each). If the LFO pushed $`f_c`$ linearly (say 200–3200 Hz), most of the time would be spent in the high frequencies and the lows would flash by. So the phaser uses an **exponential scale**:
 
-$$
+```math
 f_c(t) = f_{\text{centre}} \cdot 2^{\,\text{depth}\cdot\text{octaves}\cdot m(t)}
-$$
+```
 
 With the defaults octaves = 2 and depth = 1, $`f_c`$ sweeps from $`f_{\text{centre}}/4`$ to $`4 f_{\text{centre}}`$, at a constant speed measured in octaves.
 
@@ -480,9 +480,9 @@ With the defaults octaves = 2 and depth = 1, $`f_c`$ sweeps from $`f_{\text{cent
 
 As with a flanger, send the output of the allpass chain back to the input so that the frequencies between the notches resonate. The implementation differs a little: the output of the allpass chain depends on the "current" input ($`H(z)`$ has a $`z^0`$ term), so feeding it back with no delay gives the implicit equation $`w = x + g \cdot A(w)`$. The simplest approach is to put a one-sample delay in the feedback path:
 
-$$
+```math
 W = X + g\,z^{-1}\,Y,\quad Y = A\,W \;\Rightarrow\; H = (1-\text{mix}) + \text{mix}\cdot\frac{A}{1 - g\,A\,z^{-1}}
-$$
+```
 
 Frequencies where $`A = 1`$ (with 4 stages, that is $`f_c`$) are boosted and the notches get shallower. The measurements of `l10_phaser` agree with the theory that includes $`z^{-1}`$:
 
@@ -513,15 +513,15 @@ Effect of feedback on 4 stages (centre 1 kHz, mix 0.5) (measured / theory, dB):
 
 Tremolo modulates the amplitude directly:
 
-$$
+```math
 y(t) = x(t)\cdot g(t), \qquad g(t) = 1 - \text{depth}\cdot\frac{1 - m(t)}{2}
-$$
+```
 
 When $`m = +1`$, $`g = 1`$; when $`m = -1`$, $`g = 1 - \text{depth}`$. With a sine LFO, $`g(t) = (1 - \tfrac{D}{2}) + \tfrac{D}{2}\sin(2\pi r t)`$. For an input sine $`A\sin(2\pi f t)`$, using the product-to-sum identity $`\sin a \sin b = \tfrac12[\cos(a-b) - \cos(a+b)]`$:
 
-$$
+```math
 y(t) = A\left(1 - \tfrac{D}{2}\right)\sin(2\pi f t) + \frac{AD}{4}\Big[\cos\big(2\pi(f-r)t\big) - \cos\big(2\pi(f+r)t\big)\Big]
-$$
+```
 
 The spectrum is the **original frequency (amplitude × $`(1 - D/2)`$) plus two sidebands at $`f \pm r`$ (each with amplitude × $`D/4`$)**, which is the spectrum of AM radio. The Goertzel measurement of `l10_tremolo` (1 kHz, $`A = 0.5`$, 10 Hz, depth 1):
 
@@ -538,9 +538,9 @@ At rates of 2–10 Hz the sidebands are too close to the carrier for the ear to 
 
 The left channel uses $`m`$ and the right channel uses $`-m`$:
 
-$$
+```math
 g_L = 1 - D\frac{1 - m}{2}, \qquad g_R = 1 - D\frac{1 + m}{2}, \qquad g_L + g_R = 2 - D
-$$
+```
 
 When the left is loud the right is quiet, the image moves back and forth, and the sum of the amplitudes is constant (the linear pan law of Chapter 01). The example measures the largest $`|g_L + g_R - (2 - D)|`$ per block as $`5.96 \times 10^{-8}`$ (float rounding). For constant power you can switch to $`g_L = \cos\theta`$, $`g_R = \sin\theta`$ (the Chapter 01 `Panner`).
 
@@ -548,9 +548,9 @@ When the left is loud the right is quiet, the image moves back and forth, and th
 
 Remove the DC offset of the tremolo and multiply directly by a carrier that swings between −1 and +1:
 
-$$
+```math
 y(t) = x(t)\cdot\sin(2\pi f_c t) \quad\Rightarrow\quad A\sin(2\pi f t)\sin(2\pi f_c t) = \frac{A}{2}\Big[\cos\big(2\pi(f - f_c)t\big) - \cos\big(2\pi(f + f_c)t\big)\Big]
-$$
+```
 
 The original frequency $`f`$ **disappears**, leaving only the sum $`f + f_c`$ and the difference $`f - f_c`$ (each with amplitude $`A/2`$). When the carrier is in the audible range (for example 500 Hz), the sum and difference frequencies are not integer multiples of the original, which gives the inharmonic sound of metal, bells and Dalek robots. Exercise 4 implements it and verifies it with Goertzel.
 
@@ -564,15 +564,15 @@ The aliasing risk of modulation effects is **small**:
 
 What really affects sound quality is the **fractional-delay interpolation** (Chapter 09). The delay time keeps changing, so the fractional part $`\Delta`$ of the read position keeps sweeping through 0..1. Linear interpolation $`y = (1-\Delta)x_0 + \Delta x_1`$ is a two-point FIR,
 
-$$
+```math
 |H(\omega)|^2 = (1-\Delta)^2 + \Delta^2 + 2\Delta(1-\Delta)\cos\omega
-$$
+```
 
 At $`f_s/4`$ ($`\omega = \pi/2`$, 12 kHz at 48 kHz) the cos term is 0; with $`\Delta`$ sweeping uniformly through 0..1, the average power is
 
-$$
+```math
 \int_0^1\big[(1-\Delta)^2 + \Delta^2\big]\,d\Delta = \tfrac13 + \tfrac13 = \tfrac23 \;\Rightarrow\; 10\log_{10}\tfrac23 = -1.76\ \text{dB}
-$$
+```
 
 Moreover this loss **fluctuates with the LFO** (no loss at $`\Delta = 0`$, darkest at $`\Delta = 0.5`$), which amounts to extra modulation of the high frequencies. Measured by `l10_chorus`: linear −1.73 dB, cubic (Catmull-Rom) −0.52 dB. This is why `Chorus` / `Flanger` in this chapter use `readCubic` by default.
 

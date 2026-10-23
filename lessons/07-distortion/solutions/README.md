@@ -36,16 +36,16 @@ Run all the solutions (Windows, from the project root):
 
 **6.** The quantization error $`e`$ is uniformly distributed over $`[-\Delta/2, \Delta/2]`$:
 
-$$
+```math
 \sigma_e^2 = \frac{1}{\Delta}\int_{-\Delta/2}^{\Delta/2} e^2\,de = \frac{1}{\Delta}\cdot\frac{e^3}{3}\Big|_{-\Delta/2}^{\Delta/2} = \frac{1}{\Delta}\cdot\frac{2}{3}\cdot\frac{\Delta^3}{8} = \frac{\Delta^2}{12}
-$$
+```
 
 The signal power is $`A^2/2`$ and $`\Delta = 2^{1-N}`$, so $`\Delta^2 = 4 \cdot 2^{-2N}`$:
 
-$$
+```math
 \text{SNR} = 10\log_{10}\frac{A^2/2}{4 \cdot 2^{-2N}/12} = 10\log_{10}\left(1.5 \cdot 2^{2N} \cdot A^2\right)
 = \underbrace{10\log_{10}1.5}_{1.76} + N \cdot \underbrace{20\log_{10}2}_{6.02} + 20\log_{10}A
-$$
+```
 
 ---
 
@@ -55,9 +55,9 @@ $$
 
 **2. The Fourier series.**
 
-$$
+```math
 |\sin\omega t| = \frac{2}{\pi} - \frac{4}{\pi}\sum_{k=1}^{\infty}\frac{\cos(2k\omega t)}{4k^2-1}
-$$
+```
 
 There is only DC ($`2/\pi \approx 0.637`$) and $`2\omega, 4\omega, 6\omega, \dots`$. **The coefficient of $`\omega`$ is 0**. The amplitude of $`2\omega`$ is $`4/(3\pi) = 0.424`$ (−7.4 dB) and that of $`4\omega`$ is $`4/(15\pi) = 0.085`$ (−21.4 dB); the Rectify row of the example `l07_distortion_types` measures exactly H2 = −7.4, H4 = −21.4 dBFS, and H1 = −100 (unmeasurable).
 
@@ -65,9 +65,9 @@ There is only DC ($`2/\pi \approx 0.637`$) and $`2\omega, 4\omega, 6\omega, \dot
 
 **3.** The period of $`\max(\sin\omega t, 0)`$ is still $`T`$ -- the positive half-cycle is kept and the negative becomes 0; the two half-cycles differ, so there is no $`T/2`$ periodicity:
 
-$$
+```math
 \max(\sin\omega t, 0) = \frac{1}{\pi} + \frac{1}{2}\sin\omega t - \frac{2}{\pi}\sum_{k=1}^{\infty}\frac{\cos(2k\omega t)}{4k^2-1}
-$$
+```
 
 The fundamental is still there (amplitude 1/2), plus DC ($`1/\pi`$) and the even harmonics. In fact it is just $`\frac{1}{2}(\sin\omega t + |\sin\omega t|)`$: half the original signal plus half full-wave, so it sounds like "the original pitch plus a bit of nasal tone an octave above".
 
@@ -126,9 +126,9 @@ Key points:
 - **100 Hz is +3.07 rather than +4**: the peak filter alone is +4 dB at 100 Hz, but the 70 Hz highpass still has a loss of about −0.9 dB at 100 Hz.
 - **Frequency warping at 9 kHz**: the analog 2nd-order Butterworth lowpass has $`|H(j\Omega)|^2 = 1/(1 + (\Omega/\Omega_c)^4)`$; one octave above, $`\Omega/\Omega_c = 2`$, and two in cascade give $`-20\log_{10}(1 + 16) = -24.6`$ dB. But the RBJ cookbook uses the bilinear transform, under which the digital frequency $`f`$ corresponds to an analog frequency $`\propto \tan(\pi f / f_s)`$, so the equivalent ratio is
 
-  $$
+  ```math
   r = \frac{\tan(\pi \cdot 9000/48000)}{\tan(\pi \cdot 4500/48000)} = \frac{0.6682}{0.3033} = 2.203
-  $$
+  ```
 
   $`-20\log_{10}(1 + r^4) = -20\log_{10}(1 + 23.56) = -27.80`$ dB, in perfect agreement with the measurement. The closer to Nyquist, the faster it falls (at $`f_s/2`$ it is $`-\infty`$). For a cab sim this is actually a good thing.
 
@@ -155,10 +155,10 @@ Design details:
 
 **Estimating the gain in (1)**: the input is $`0.1\sin\theta`$, with RMS $`= 0.0707`$ (−23.01 dBFS). After 30 dB of drive, $`u = 3.16\sin\theta`$, and $`|u| < 1`$ holds only for $`\theta < \theta_0 = \arcsin(1/3.16) = 0.3217`$ rad; the rest is clipped at ±1. Averaging over a quarter period:
 
-$$
+```math
 \overline{y^2} = \frac{2}{\pi}\left[\int_0^{\theta_0} 10\sin^2\theta\,d\theta + \left(\frac{\pi}{2} - \theta_0\right)\right]
 = \frac{2}{\pi}\left[10\left(\frac{\theta_0}{2} - \frac{\sin 2\theta_0}{4}\right) + 1.249\right] \approx 0.864
-$$
+```
 
 RMS $`\approx 0.930`$ (−0.63 dBFS). The gain $`= -23.01 - (-0.63) = -22.38`$ dB; the solution measures −22.38 dB. (If the output were treated as a pure square wave, RMS = 1 and you would estimate −23.0 dB -- 0.6 dB off, because the clip at 30 dB of drive is not yet a perfect square wave.)
 

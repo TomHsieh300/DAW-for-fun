@@ -72,7 +72,9 @@ flowchart LR
 
 忽略它們的位置顯示，會比聲音超前 $`L_{\text{mix}} + L_{\text{device}}`$。`AudioHost::getAudiblePosition()` 修正了這一點，這裡的計數器與 playhead（Step 14）都使用它：
 
-$$\text{shown} = \begin{cases}\max(0,\ P - L_{\text{mix}} - L_{\text{device}}) & \text{playing}\\ P & \text{stopped}\end{cases}$$
+```math
+\text{shown} = \begin{cases}\max(0,\ P - L_{\text{mix}} - L_{\text{device}}) & \text{playing}\\ P & \text{stopped}\end{cases}
+```
 
 Transport 停止時沒有任何聲音，所以顯示的是播放將開始的位置（因此你按下 Stop 的瞬間，它會向前跳 $`L_{\text{mix}} + L_{\text{device}}`$）。這個公式是一個 static 函式，`AudioHost::compensatePosition(position, playing, mixLatency, deviceLatency)`，所以 smoke test 可以用任意的 latency 來檢查它。（在 loop wrap 處，顯示會短暫地呈現 loop 起點之前的位置——持續 $`L`$ 個 sample，約為 30 Hz 顯示的半個 frame。）
 

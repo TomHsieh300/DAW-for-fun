@@ -35,9 +35,9 @@ restore the transport           the user's play position and loop survive the bo
 
 歌曲長度為 $`N_s`$，尾巴 $`N_t = \mathrm{round}(T_{\text{tail}} f_s)`$，mix latency 為 $`L`$：
 
-$$
+```math
 N_{\text{render}} = N_s + N_t + L, \qquad \text{file} = \text{render}[L,\; L + N_s + N_t)
-$$
+```
 
 所以檔案的 sample 0 就是 timeline 的 sample `startSample`，檔案長度恰好是 $`N_s + N_t`$。
 以本章的歌曲為例：120 BPM 下 8 個小節 = $`8 \cdot 96\,000 = 768\,000`$ 個 sample，3 秒的尾巴 = 144 000，

@@ -47,11 +47,11 @@ The most important parameter of reverberation is **RT60** (reverberation time): 
 
 Because late reverb decays exponentially, "dB against time" is a straight line:
 
-$$
+```math
 L(t) = L_0 - 60\cdot\frac{t}{\mathrm{RT60}}\ \ \text{dB}
 \qquad\Longleftrightarrow\qquad
 a(t) = a_0\cdot 10^{-3t/\mathrm{RT60}} = a_0\, e^{-\ln(1000)\,t/\mathrm{RT60}}
-$$
+```
 
 (An amplitude drop of 60 dB means dropping to 1/1000, so $`a(\mathrm{RT60}) = a_0/1000`$.)
 
@@ -59,9 +59,9 @@ In real measurements you rarely wait until -60 dB (the background noise swamps i
 
 **Sabine's formula**: the RT60 of a room can be estimated roughly from its volume V (m³) and its total absorption A (m², the sum over all surfaces of area × absorption coefficient α):
 
-$$
+```math
 \mathrm{RT60} \approx 0.161\cdot\frac{V}{A},\qquad A = \sum_i S_i\,\alpha_i
-$$
+```
 
 Intuition: the larger the room (large V), the longer the sound travels before it hits a wall and is absorbed -> the longer the reverb; the more absorptive the walls (large α) -> the shorter the reverb. For example, for a 6 × 4 × 3 m room (V = 72 m³, surface area 108 m²) with an average α = 0.3 -> A = 32.4 m² -> RT60 ≈ 0.36 s (an ordinary living room); a concert hall has an RT60 of about 1.8–2.2 s.
 
@@ -71,9 +71,9 @@ Absorption coefficients usually rise with frequency (carpets, curtains and the a
 
 If we treat the room (source position -> listener position) as an LTI (linear time-invariant) system, it is completely described by its **impulse response** $`h[n]`$: what you record after a clap (≈ an impulse) is $`h`$, and the result of any sound $`x`$ passing through this room is the convolution:
 
-$$
+```math
 y[n] = (h * x)[n] = \sum_{k=0}^{M-1} h[k]\,x[n-k]
-$$
+```
 
 This gives two routes:
 
@@ -98,11 +98,11 @@ flowchart LR
     D -->|"× g"| S
 ```
 
-$$
+```math
 y[n] = x[n-D] + g\,y[n-D]
 \qquad\Longrightarrow\qquad
 H(z) = \frac{z^{-D}}{1 - g\,z^{-D}}
-$$
+```
 
 Feed in an impulse and the output is $`\delta[n-D] + g\,\delta[n-2D] + g^2\,\delta[n-3D] + \dots`$: **each trip around the loop (D samples) multiplies the amplitude by g**.
 
@@ -110,7 +110,7 @@ Feed in an impulse and the output is $`\delta[n-D] + g\,\delta[n-2D] + g^2\,\del
 
 After t seconds the signal has made $`t\cdot f_s / D`$ trips and the amplitude is $`g^{t f_s / D}`$. We require the amplitude at t = RT60 to be $`10^{-60/20} = 10^{-3}`$:
 
-$$
+```math
 g^{\mathrm{RT60}\cdot f_s / D} = 10^{-3}
 \;\Longrightarrow\;
 \frac{\mathrm{RT60}\cdot f_s}{D}\log_{10} g = -3
@@ -118,7 +118,7 @@ g^{\mathrm{RT60}\cdot f_s / D} = 10^{-3}
 \boxed{\,g = 10^{-3D/(\mathrm{RT60}\cdot f_s)}\,}
 \qquad
 \boxed{\,\mathrm{RT60} = \frac{-3D}{f_s\log_{10} g}\,}
-$$
+```
 
 Example: D = 1557 samples, fs = 48 kHz, RT60 = 2 s -> $`g = 10^{-3\cdot1557/96000} = 10^{-0.04866} = 0.89401`$. The example `l12_comb_rt60` feeds an impulse through the comb with this g: counting from the first echo (at t = D/fs, amplitude 1, taken as the 0 dB reference), the decay to below -60 dB takes 62 trips = 2.011 s (quantized to an integer multiple of D/fs = 32.4 ms, hence slightly above 2.000 s).
 
@@ -139,17 +139,17 @@ These peaks are the comb's **modes (resonant frequencies)**. The impulse respons
 
 Real rooms attenuate high frequencies faster. Put a lowpass in the loop (Freeverb uses a one-pole):
 
-$$
+```math
 y[n] = x[n-D] + g\cdot \mathrm{LP}\{y\}[n-D],\qquad
 \mathrm{LP}(z) = \frac{1-d}{1-d\,z^{-1}}
-$$
+```
 
 Now the gain per trip becomes frequency dependent: $`g\,|\mathrm{LP}(e^{j\omega})|`$. Substituting this into the RT60 formula:
 
-$$
+```math
 \mathrm{RT60}(\omega) = \frac{-3D}{f_s\log_{10}\!\big(g\,|\mathrm{LP}(e^{j\omega})|\big)},\qquad
 |\mathrm{LP}(e^{j\omega})| = \frac{1-d}{\sqrt{1 - 2d\cos\omega + d^2}}
-$$
+```
 
 At DC $`|\mathrm{LP}| = 1`$ (the RT60 of the low frequencies is unchanged), and at Nyquist $`|\mathrm{LP}| = (1-d)/(1+d)`$. Plugging in d = 0.5, g = 0.894, D = 1557 at 4008 Hz (ω = 0.5246): $`|\mathrm{LP}| = 0.5/\sqrt{1.25 - \cos 0.5246} = 0.806`$, RT60 = 0.685 s. The example measures 0.685 s.
 
@@ -167,11 +167,11 @@ flowchart LR
     S2 --> Y["y[n]"]
 ```
 
-$$
+```math
 v[n] = x[n] + g\,v[n-D],\qquad y[n] = -g\,v[n] + v[n-D]
 \qquad\Longrightarrow\qquad
 H(z) = \frac{-g + z^{-D}}{1 - g\,z^{-D}}
-$$
+```
 
 **Why |H| = 1**: let $`u = e^{-j\omega D}`$ ($`|u| = 1`$). The numerator is $`u - g = u\,(1 - g\,\bar u)`$, so $`|u - g| = |1 - g\bar u| = |\overline{1 - g u}| = |1 - g u|`$, and the numerator and denominator have the same magnitude. The magnitude response is 0 dB at every frequency (the example measures it for you: ±0.00 dB from 100 Hz to 12 kHz).
 
@@ -249,7 +249,9 @@ flowchart LR
 
 - **8 lowpass-feedback combs (LBCF) in parallel**: the one-pole lowpass in the loop is the damping of section 2.3. Freeverb's implementation is `filterstore = output·(1−damp) + filterstore·damp`, `buffer = input + filterstore·feedback` -- this chapter's `CombFilter` is written the same way.
 - **4 allpasses in series**, with g = 0.5. A detail: Freeverb's allpass code is `output = bufout − input`, `buffer = input + bufout·g`, i.e. $`v[n] = x[n] + g\,v[n-D]`$, $`y[n] = v[n-D] - x[n]`$, with transfer function
-  $$H(z) = \frac{-1 + (1+g)\,z^{-D}}{1 - g\,z^{-D}}$$
+  ```math
+  H(z) = \frac{-1 + (1+g)\,z^{-D}}{1 - g\,z^{-D}}
+  ```
   For this to be an allpass, the numerator coefficients must be a multiple of the denominator coefficients reversed: $`[-1,\ 1+g] = c\,[-g,\ 1]`$ => $`c = 1/g`$, $`1 + g = 1/g`$ => $`g^2 + g - 1 = 0`$ => $`g = (\sqrt5 - 1)/2 \approx 0.618`$. Freeverb uses g = 0.5, so it is **not** a strict allpass (it is 0 dB at integer multiples of $`f_s/D`$ and has a ripple of $`2.5/1.5`$ -> +4.4 dB at half-integer multiples); in practice it "sounds right", but do not take it as the definition of an allpass (the section "Freeverb Allpass Approximation" in J. O. Smith's *Physical Audio Signal Processing* gives the same analysis). Our `AllpassDiffuser` uses the standard form of section 2.4.
 - **Stereo spread**: every delay of the right channel is 23 samples longer than that of the left channel, so the reverbs of the two channels are decorrelated and sound wide.
 - **Parameter mapping**: `roomsize` 0..1 -> feedback = roomsize·0.28 + 0.7 (0.7–0.98), `damp` 0..1 -> damping coefficient = damp·0.4. Note that Freeverb's roomsize controls the feedback directly and is **not** the RT60: the 8 combs share one g, so the longer combs decay a little more slowly than the shorter ones and the RT60 differs from comb to comb (e.g. for g = 0.84, the 1116-sample comb has an RT60 of 1.00 s and the 1617-sample one has 1.45 s).
@@ -276,11 +278,11 @@ flowchart LR
 
 The state equations (N lines, line i has length $`L_i`$):
 
-$$
+```math
 v_i[n] = s_i[n - L_i],\qquad
 \mathbf s[n] = \boldsymbol\Gamma\,\mathbf A\,\mathbf v[n] + \mathbf b\,x[n],\qquad
 y[n] = \mathbf c^{\mathsf T}\mathbf v[n]
-$$
+```
 
 $`\boldsymbol\Gamma = \mathrm{diag}(g_0,\dots,g_{N-1})`$ is the per-line attenuation (damping is added after it).
 
@@ -288,9 +290,9 @@ $`\boldsymbol\Gamma = \mathrm{diag}(g_0,\dots,g_{N-1})`$ is the per-line attenua
 
 First consider the case $`\boldsymbol\Gamma = \mathbf I`$ with no input. The "energy" of the whole system is the sum of squares of all the samples stored in the delay lines, $`E[n]`$. With every sample that passes, each line emits one $`v_i`$ and takes in one $`s_i`$:
 
-$$
+```math
 E[n+1] - E[n] = \sum_i s_i^2 - \sum_i v_i^2 = \|\mathbf A\mathbf v\|^2 - \|\mathbf v\|^2
-$$
+```
 
 If $`\mathbf A`$ is an **orthogonal matrix** ($`\mathbf A^{\mathsf T}\mathbf A = \mathbf I`$), then $`\|\mathbf A\mathbf v\|^2 = \mathbf v^{\mathsf T}\mathbf A^{\mathsf T}\mathbf A\mathbf v = \|\mathbf v\|^2`$, and the energy is **completely unchanged**: the system neither blows up nor decays by itself, which makes it a "lossless" prototype. All the decay is then controlled by the $`g_i`$ and the damping that we add deliberately. Exercise 4 verifies this: with g = 1 the RMS at 1.0 s and at 2.5 s differs by only 0.01 dB.
 
@@ -306,11 +308,11 @@ This chapter's `Reverb.h` uses the Householder matrix (simple, cheap, and the di
 
 We want every frequency to decay with the same RT60. Jot's approach: make the attenuation of each line proportional to its length -- in dB, every "single sample" attenuates by the same amount:
 
-$$
+```math
 g_i = \gamma^{L_i},\qquad \gamma = 10^{-3/(\mathrm{RT60}\cdot f_s)}
 \quad\Longrightarrow\quad
 g_i = 10^{-3L_i/(\mathrm{RT60}\cdot f_s)}
-$$
+```
 
 Why this is right: replacing every $`z^{-1}`$ of the lossless system by $`\gamma z^{-1}`$ multiplies each delay $`z^{-L_i}`$ by $`\gamma^{L_i}`$ -- exactly the $`g_i`$ we added. And the effect of "$`z^{-1} \to \gamma z^{-1}`$" is to multiply the radius of all the system's poles by γ: the poles of the lossless system all lie on the unit circle, and now they all lie on a circle of radius γ, so **every mode decays by a factor of γ per sample** and the RT60 is the same for all of them. This has the same form as the comb formula, except that now each line plugs in its own $`L_i`$.
 
@@ -358,16 +360,16 @@ Exercise 4 quantifies this: the standard deviation of the tail spectrum (in dB) 
 - **Pre-delay**: put a pure delay (0–250 ms) at the very front of the reverb. Perceptually, the pre-delay lets the transient of the direct sound come out in full first and the reverb follow a little later -> vocals and drums stay clearer and are not smeared by the reverb; it also suggests "a large space with distant walls". A common mixing practice is to align the pre-delay with a small note value of the song's tempo (e.g. a 1/64 or 1/32 note).
 - **Early reflections (ER)**: implemented with a **tapped delay line** -- one delay line with several read points (taps), each tap having its own delay and gain:
 
-$$
+```math
 y_{\mathrm{ER}}[n] = \sum_{k} a_k\, x[n - d_k]
-$$
+```
 
 The tap positions can be set by hand or computed geometrically: the **image-source method** (Allen & Berkley 1979) mirrors the source across each wall, so that a reflection off a wall is equivalent to a virtual source emitting from the mirrored position. There are 6 first-order reflections (the 6 walls of a shoebox room), and for each one
 
-$$
+```math
 d_k = \frac{|\mathbf r_{\mathrm{img},k} - \mathbf r_{\mathrm{listener}}| - |\mathbf r_{\mathrm{src}} - \mathbf r_{\mathrm{listener}}|}{c},\qquad
 a_k = \sqrt{1-\alpha}\cdot\frac{|\mathbf r_{\mathrm{src}} - \mathbf r_{\mathrm{listener}}|}{|\mathbf r_{\mathrm{img},k} - \mathbf r_{\mathrm{listener}}|}
-$$
+```
 
 (the delay and gain relative to the direct sound; $`\sqrt{1-\alpha}`$ is the wall's amplitude reflection coefficient and the distance ratio is the 1/r spherical spreading.) Exercise 3 implements this and connects the ER to the FDN (pre-delay = the latest ER) to form a complete "ER + late" reverb.
 
@@ -422,22 +424,22 @@ The two cost the same. This chapter uses overlap-save (no extra accumulation buf
 
 Plain FFT convolution requires N ≥ B + M − 1: when the IR is long the FFT is long too, and you have to wait until a large block of input has accumulated before you can compute anything -> too much latency. The fix is to **cut the IR into pieces as well**:
 
-$$
+```math
 h = [\,h_0 \,|\, h_1 \,|\, \cdots \,|\, h_{K-1}\,],\quad\text{each piece of length } P,\quad K = \lceil M/P\rceil
-$$
+```
 
 Convolution is linear, so
 
-$$
+```math
 y = h * x = \sum_{k=0}^{K-1} \big(h_k * x\big)\ \text{delayed by } kP
-$$
+```
 
 Each piece $`h_k`$ is only P long, and paired with an input block of length P an FFT with N = 2P is enough (overlap-save: frame = [previous P | this P]). The key observation: "delay by kP and then convolve with $`h_k`$" is, in the frequency domain, "**the input spectrum from k blocks ago** $`X_{j-k}`$ multiplied by $`H_k`$". So if we store the spectrum of every input block (a **frequency-domain delay line, FDL**), each output block is:
 
-$$
+```math
 Y_j = \sum_{k=0}^{K-1} H_k \cdot X_{j-k}
 \qquad\text{(complex multiply-accumulate, bin by bin)}
-$$
+```
 
 ```mermaid
 flowchart LR
@@ -461,10 +463,10 @@ The output of block j needs **all P inputs** of block j before it can be compute
 
 For every P output samples: one N-point real FFT + K·(N/2 + 1) complex multiply-adds + one N-point IFFT. With N = 2P, per output sample on average:
 
-$$
+```math
 \underbrace{\frac{K(P+1)}{P}}_{\approx K\ \text{complex MACs}} \approx \frac{M}{P}\ \text{complex MACs}\ \approx \frac{4M}{P}\ \text{real multiplications}
 \;+\;\underbrace{O(\log_2 P)}_{\text{two FFTs, amortized}}
-$$
+```
 
 Compared with the M multiply-adds of direct convolution, this saves roughly a factor of **P/4**. With P = 512 and M = 15840 (K = 31): 15840 for direct convolution vs. about 31 complex MACs ≈ 124 real multiplications for partitioned, a theoretical factor of 128; example 3 measures about 114 times in a Release build (repeated runs fall between about 110 and 140 times, depending on the machine and the current load; a Debug build has no optimization, neither the `std::complex` operations nor the `std::vector` indexing get inlined, and it reaches only about 15–20 times).
 

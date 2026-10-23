@@ -23,15 +23,15 @@ After reading this chapter and doing the exercises, you will be able to:
 
 Recall the static curve (hard knee) from Chapter 04:
 
-$$
+```math
 y_{\text{dB}} = \begin{cases} x_{\text{dB}} & x_{\text{dB}} \le T \\ T + \dfrac{x_{\text{dB}} - T}{R} & x_{\text{dB}} > T \end{cases}
-$$
+```
 
 As $`R \to \infty`$ the second branch becomes $`y_{\text{dB}} = T`$: no matter how large the input above the threshold, the output stays at $`T`$. This horizontal line is the "ceiling". Written in linear terms, when the input $`|x|`$ exceeds the ceiling $`c`$, the gain required is
 
-$$
+```math
 g = \min\!\Bigl(1,\ \frac{c}{|x|}\Bigr)
-$$
+```
 
 ![Static curve: input dB versus output dB. The 1:1 line bends at the threshold T = -20 dB: the 4:1 compressor continues with a shallow slope, the limiter (ratio infinity) goes flat at the ceiling.](images/limiter-static-curve.svg)
 
@@ -112,7 +112,9 @@ Fix an arbitrary time $`n`$.
 
 1. By step 2, for all $`k`$: $`gr[k] \le g[k]`$ (the result of a min is never larger than any of its arguments).
 2. By step 3, $`m[n-k]`$ is the minimum of $`\{gr[n-k-L], \dots, gr[n-k]\}`$. For $`k = 0, 1, \dots, L`$ this range always contains index $`n-L`$ (since $`n-k-L \le n-L \le n-k`$). Therefore
-   $$m[n-k] \le gr[n-L] \le g[n-L],\qquad k = 0,\dots,L.$$
+   ```math
+   m[n-k] \le gr[n-L] \le g[n-L],\qquad k = 0,\dots,L.
+   ```
 3. By step 4, $`s[n]`$ is the average of these $`L+1`$ values of $`m`$, each $`\le g[n-L]`$, so $`s[n] \le g[n-L]`$. Also each term lies in $`[0, 1]`$, so $`0 \le s[n] \le 1`$.
 4. By step 5, $`|y[n]| = |x_s[n-L]|\cdot s[n] \le |x_s[n-L]|\cdot g[n-L]`$.
    - If $`|x_s[n-L]| > c`$: $`g[n-L] = c/|x_s[n-L]|`$, and the product is $`c`$.
@@ -130,9 +132,9 @@ Note that the lower bound of the clamp is 0, not $`m[n]`$. Intuitively "the aver
 
 After the peak has passed, $`g[n]`$ returns to 1, but $`gr[n]`$ can only go back at one-pole speed:
 
-$$
+```math
 gr[n] = gr[n-1] + (1 - gr[n-1])\,c_{\text{rel}},\qquad c_{\text{rel}} = 1 - e^{-1/(\tau f_s)}
-$$
+```
 
 $`\tau`$ is `setReleaseMs()`: after $`\tau`$ the gain has recovered 63.2 % of the "remaining distance", and after $`2.3\tau`$, 90 %. This chapter applies the one-pole on the **linear gain** (the Chapter 04 compressor does it in dB); the benefit is simplicity, and the inequality $`gr \le g`$ is visible at a glance.
 
@@ -170,9 +172,9 @@ It finds the maximum latency over all paths and inserts compensating delay on th
 
 The playhead has to be corrected too. The engine's transport position is "the sample currently being *computed*"; the sound of that sample first has to wait the PDC latency (240 here) before it leaves the engine, and then the audio device's output latency (the driver and DA converter buffers) before it comes out of the speakers. So what the Chapter 14 app's TransportBar (bar/time counter) and ArrangementView (playhead) display is
 
-$$
+```math
 \text{displayed position} = \max\bigl(0,\ \text{transport position} - \text{engine PDC latency} - \text{device output latency}\bigr)
-$$
+```
 
 (subtracted only while playing; when stopped there is no sound, so the position where the next playback will start is shown directly), so that what is on screen lines up with what the ear hears. It is implemented in `AudioHost::getAudiblePosition()`, described in Chapter 14's [Step 13](../14-daw-8track/docs/step-13-transport-bar.md) and [Step 14](../14-daw-8track/docs/step-14-arrangement.md). This is also why it is **not recommended to change the lookahead during playback**: once the latency changes the host has to recompute the PDC of the whole session, which usually interrupts playback. This chapter's `setLookaheadMs()` resets the smoother state, so call it while playback is stopped.
 
@@ -202,31 +204,31 @@ What we want is the last row: the original samples stay put, and the three slots
 
 **(2) Images.** Call the "wanted" 4x signal $`v[m]`$. The zero-inserted result $`u[m]`$ is just $`v[m]`$ multiplied by the pulse train $`p[m]`$ = "1, 0, 0, 0, 1, 0, 0, 0, …" (at multiples of 4, $`v = x`$; everywhere else it is multiplied by 0). This pulse train can be written as a sum of a few cosines:
 
-$$
+```math
 p[m] = \tfrac14\bigl[\,1 + 2\cos(\tfrac{\pi}{2}m) + \cos(\pi m)\,\bigr]
-$$
+```
 
 (Check with $`m = 0, 1, 2, 3`$: 1, 0, 0, 0.) At a sample rate of $`4f_s`$, $`\cos(\tfrac{\pi}{2}m)`$ is a cosine at frequency $`f_s`$ and $`\cos(\pi m)`$ is at $`2f_s`$. Hence
 
-$$
+```math
 u = v\cdot p = \tfrac14 v + \tfrac12 v\cos(2\pi f_s t) + \tfrac14 v\cos(2\pi\cdot 2f_s t)
-$$
+```
 
 Multiplying by a cosine moves the spectrum to both sides of that frequency (the same trigonometric identity as in Chapter 06's "nonlinearity creates new frequencies"). The result: $`u`$ contains a copy of $`v`$ (the baseband) with only **1/4** of its amplitude, plus copies around $`f_s`$ and $`2f_s`$ — the **images**. For example, a 10 kHz sine at 48 kHz, after zero insertion, shows up at 192 kHz simultaneously as 10, 38, 58 and 86 kHz ($`48 \mp 10`$, $`96 - 10`$). That "spikes plus lots of zeros" look of the zero-inserted signal is exactly these high-frequency images stacked together.
 
 **(3) Lowpass interpolation.** Since $`u = \tfrac14 v + \text{images}`$, a lowpass with its cutoff at the original $`f_s/2`$ (1/8 of the new sample rate) removes the images, and multiplying by 4 gives $`v`$. The impulse response of an ideal lowpass is a sinc; plugging in the cutoff and the gain of 4 gives exactly
 
-$$
+```math
 h[n] = \mathrm{sinc}\!\Bigl(\frac{n}{4}\Bigr) = \frac{\sin(\pi n/4)}{\pi n/4}
-$$
+```
 
 It is 0 at $`n = \pm 4, \pm 8, \dots`$: after filtering, every original sample contributes 0 at the **positions of the other original samples** and a little at the slots in between — that is, "the original samples stay put and only the zeros get filled in", which is exactly interpolation. An ideal sinc is infinitely long; in practice we keep only 64 taps and multiply by a Hann window to smooth the truncated edges (otherwise the frequency response has ripples; the window trade-offs are in Chapter 11 section 2.9).
 
 **(4) Polyphase: compute only the non-zero terms.** Running a 64-tap FIR directly at $`4f_s`$ costs 64 multiplications per output and 4 outputs per original sample, 256 in total — but 3/4 of $`u`$ is zero, so the vast majority of multiplications are "× 0". Write the output as $`m = 4n + p`$ ($`p = 0..3`$); only terms where $`u[m-k]`$ falls on a multiple of 4 survive, i.e. $`k = 4j + p`$:
 
-$$
+```math
 y[4n+p] = \sum_j h[4j+p]\; x[n-j]
-$$
+```
 
 | Output | Taps used | Inputs multiplied |
 |---|---|---|

@@ -16,9 +16,9 @@
 
 position 是一個 `int64_t` 的 sample 數。音樂時間是從它計算出來的：
 
-$$
+```math
 N_{\text{beat}} = \frac{60\, f_s}{B}, \qquad N_{\text{bar}} = n \cdot N_{\text{beat}}
-$$
+```
 
 其中 tempo $`B`$ 以每分鐘拍數計，sample rate 為 $`f_s`$，分子為 $`n`$。一拍是
 分母所指的音符時值（在 7/8 中，一拍是八分音符），這也是 DAW 顯示的方式。
@@ -26,10 +26,10 @@ $$
 位置和螢幕上一樣從 1 起算，每拍 960 個 tick（常見的 PPQ 解析度；PPQ = pulses per quarter note，也就是
 sequencer 把一拍切成的 timing tick 數）：
 
-$$
+```math
 \text{beats}(b, k, t) = (b-1)\,n + (k-1) + \frac{t}{960}, \qquad
 \text{samples} = \mathrm{round}\big(\text{beats} \cdot N_{\text{beat}}\big)
-$$
+```
 
 反向轉換時對拍數取 floor；一個很小的 epsilon（$`10^{-9}`$ 拍）可避免剛好落在網格上的
 位置因為浮點數捨入而變成「前一拍的 tick 959」。

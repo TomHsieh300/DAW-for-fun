@@ -17,11 +17,11 @@ oversampled saturator（第 06 章）有 linear-phase filter，partitioned convo
 
 Track 1 與 track 2 播放同一個 snare；track 1 有一個 latency 為 $`D`$ 的 insert。master 得到
 
-$$
+```math
 y[n] = x[n] + x[n - D]
 \quad\Longrightarrow\quad
 H(e^{j\omega}) = 1 + e^{-j\omega D},\qquad |H| = 2\left|\cos\frac{\omega D}{2}\right| = 2\left|\cos\frac{\pi f D}{f_s}\right|
-$$
+```
 
 這是一個 comb filter，notch 位於 $`f_k = \frac{(2k+1) f_s}{2D}`$。對於 5 ms 的 lookahead（48 kHz 下 $`D = 240`$），
 notch 位於 100、300、500、…… Hz：kick 與 snare 失去厚度，每一下
@@ -33,15 +33,15 @@ notch 位於 100、300、500、…… Hz：kick 與 snare 失去厚度，每一�
 每個 insert 都回報它的 latency $`L`$；一條 chain 回報其中未被 bypass 的 insert 的總和
 （串聯的 effect 會把它們的 delay 相加）。接著
 
-$$
+```math
 c_t = \max_u L_u - L_t \quad(\text{track } t), \qquad
 c_b = \max_v L_v - L_b \quad(\text{bus } b), \qquad
 c_{\text{sum}} = \max_v L_v
-$$
+```
 
-$$
+```math
 L_{\text{total}} = \max_u L_u + \max_v L_v + L_{\text{master}}
-$$
+```
 
 ```mermaid
 flowchart LR
@@ -73,9 +73,9 @@ flowchart LR
 `LatencyCompensator` 是一個整數 delay：每個 channel 一個 `maxDelay + 1` 個 sample 的 ring buffer，
 在 `prepare()` 中配置；`setDelaySamples()` 只移動 read offset。
 
-$$
+```math
 y[n] = x[n - c], \qquad 0 \le c \le 16\,384
-$$
+```
 
 改變 $`c`$ 會讓輸出跳動（read position 會跳過或重複 sample）- 這是一個 click，但
 它只在 insert 被新增、移除、bypass 或改變其 latency 時才會發生。ring 在每個 block 都會被寫入，
@@ -93,11 +93,11 @@ $`C = 16\,384`$ 個 sample（`kDefaultMaxPdcSamples`，在 48 kHz 下約 341 ms�
 在這種情況下並非每條路徑都能對齊。此時 mixer 會對齊在上限而不是
 最大值：
 
-$$
+```math
 T_{\text{track}} = \min\!\big(\max_u L_u,\ C\big), \qquad
 T_{\text{bus}} = \min\!\big(\max_v L_v,\ C\big), \qquad
 c_t = \max(0,\ T_{\text{track}} - L_t)
-$$
+```
 
 並回報 $`L_{\text{total}} = T_{\text{track}} + T_{\text{bus}} + L_{\text{master}}`$。每條
 latency 不超過目標的路徑仍保持對齊，並恰好落在 bounce 所預期的位置；

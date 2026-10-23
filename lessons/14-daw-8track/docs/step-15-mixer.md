@@ -54,9 +54,9 @@ shows up the same way as a click.
 A fader's travel should spend most of its length where mixing happens (-20 .. +6 dB), not on
 -60 .. -40. The app maps a position $`p \in [0, 1]`$ to dB with a square law:
 
-$$
+```math
 \text{dB}(p) = 12 - 72\,(1 - p)^2, \qquad p(\text{dB}) = 1 - \sqrt{\frac{12 - \text{dB}}{72}}
-$$
+```
 
 | dB | +12 | +6 | 0 | -6 | -12 | -30 | -60 (bottom = $`-\infty`$) |
 |---|---|---|---|---|---|---|---|
@@ -82,9 +82,9 @@ Each strip's `MeterBar` shows `getPeakDb(ch)` (chapter 11's `LevelMeter`: instan
 in dB per second) and `getPeakHoldDb(ch)`. Linear in dB from -60 to +6 dBFS, green below -18,
 yellow up to -6, red above, a tick at 0 dBFS:
 
-$$
+```math
 \text{position} = \frac{\text{dB} + 60}{66}
-$$
+```
 
 The meter repaints only if a value moved by more than 0.1 dB worth of pixels (1/660 of the height)
 - most of the 11 meters are still most of the time.

@@ -67,9 +67,9 @@ Self-check (1)～(4) 會驗證：1 kHz 正弦波的 true peak ≈ sample peak；
 
 完成 `softClip(x, t)`：
 
-$$
+```math
 y = \begin{cases} x & |x| \le t \\ \mathrm{sign}(x)\,\bigl[\,t + (1-t)\tanh\!\frac{|x|-t}{1-t}\,\bigr] & |x| > t \end{cases}
-$$
+```
 
 要求：線性區完全不動、在 $`t`$ 處連續且斜率連續（C¹）、$`|y| \le 1`$、奇對稱、單調遞增。起始碼會用 1 kHz +6 dBFS 的正弦波比較 clipper 與 limiter 的 THD 與諧波（H2–H5），再用 drum loop +12 dB 比較 peak / RMS，輸出 WAV 給你聽。
 

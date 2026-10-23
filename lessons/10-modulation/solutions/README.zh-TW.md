@@ -146,7 +146,9 @@ void process(dawlab::AudioBlock block, double ppqAtBlockStart) noexcept {
    - Flanger：相位差 $`= 2\pi f d`$，對 $`f`$ **線性**，每增加 $`1/d`$ Hz 就多轉 $`2\pi`$，所以 notch 等間距（$`1/d`$）。
    - Phaser：相位差 $`= N\varphi(f) = -2N\arctan\big(\tan(\pi f/f_s)/\tan(\pi f_c/f_s)\big)`$，是 arctan 形狀：**以對數頻率（八度）來看**，相位在 $`f_c`$ 附近轉得最快，離 $`f_c`$ 越多個八度轉得越慢，所以 notch 在對數軸上以 $`f_c`$ 為中心對稱、在線性 Hz 軸上低頻密高頻疏（例如 4 stages 的 414.7 / 2397.8 Hz）。注意這是「每八度」的說法：在線性 Hz 軸上，每 Hz 的相位變化 $`|d\varphi/d\omega| = (1+u^2)\,t/(t^2+u^2)`$（$`u = \tan(\omega/2)`$、$`t = \tan(\omega_c/2)`$）在 DC 最大（約 $`1/t`$），到 $`f_c`$ 只剩一半左右。總相位只有 $`N\pi`$，所以 notch 數有限（$`N/2`$），不像 comb 一路延伸到 Nyquist。
 2. notch 條件 $`\tan(\pi f_k/f_s) = \tan(\pi f_c/f_s)\tan\theta_k`$，$`\theta_k = (2k+1)\pi/(2N)`$。成對的 $`k`$ 與 $`k' = N/2 - 1 - k`$：$`\theta_{k'} = \frac{(N - 2k - 1)\pi}{2N} = \frac{\pi}{2} - \theta_k`$。所以
-   $$\tan\frac{\pi f_k}{f_s}\cdot\tan\frac{\pi f_{k'}}{f_s} = \tan^2\frac{\pi f_c}{f_s}\cdot\tan\theta_k\tan\!\left(\frac{\pi}{2} - \theta_k\right) = \tan^2\frac{\pi f_c}{f_s}$$
+   ```math
+   \tan\frac{\pi f_k}{f_s}\cdot\tan\frac{\pi f_{k'}}{f_s} = \tan^2\frac{\pi f_c}{f_s}\cdot\tan\theta_k\tan\!\left(\frac{\pi}{2} - \theta_k\right) = \tan^2\frac{\pi f_c}{f_s}
+   ```
    低頻時 $`\tan x \approx x`$，兩邊消去 $`(\pi/f_s)^2`$ 得 $`f_k f_{k'} \approx f_c^2`$。也就是說 notch 在**對數頻率軸**上以 $`f_c`$ 為中心對稱，但相鄰的比值並不固定（8 stages：3.36、2.23、3.26 倍），所以既不等差也不等比。
 3. $`268.3 \times 3665.4 = 983{,}427 \approx 10^6`$（中間那個 1000.0 Hz 自己和自己配對：$`1000^2 = 10^6`$）。不剛好等於 $`10^6`$，是因為 $`\tan x \approx x`$ 只是近似：3665 Hz 已經不算「低頻」，bilinear transform 把高頻往下壓（frequency warping）。用精確式驗證：$`\tan(\pi \cdot 268.3/48000)\cdot\tan(\pi \cdot 3665.4/48000) = 0.0042959`$，$`\tan^2(\pi \cdot 1000/48000) = 0.0042959`$，到第五位有效數字都相同（剩下的差異只是 268.3、3665.4 四捨五入到 0.1 Hz 造成的；範例 4 用未捨入的 4 stages notch 代入，到小數第十位都相等）。
 4. 總相位 $`= \sum_{i=1}^{4}\varphi_i(\omega)`$，每一項仍然從 0 單調降到 $`-\pi`$，總和仍然從 0 降到 $`-4\pi`$，所以 **notch 數不變（仍然 2 個）**。位置：$`f_c`$ 散開之後，總相位在低頻（300 Hz 那級先轉）和高頻（2400 Hz 那級最後轉）都更早 / 更晚開始變化，曲線比較平緩、跨越的頻率範圍更寬 → 第一個 notch 往低頻移、第二個往高頻移，兩個 notch 分得更開、更寬。很多類比 phaser（例如以 JFET 或 OTA 組成的 4 級電路）就是用「各級電容不同」來調整 notch 分布，這是它們各自音色的來源之一。

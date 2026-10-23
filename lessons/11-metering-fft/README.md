@@ -71,9 +71,9 @@ If the meter displayed "the maximum of this block" directly, the display would f
 
 In the dB domain, "falling $`D`$ dB per second" is a straight line; back in the linear domain it means **multiplying by the same coefficient $`g`$ every sample**:
 
-$$
+```math
 20\log_{10}\left(g^{f_s}\right) = -D \quad\Longrightarrow\quad g = 10^{-D / (20 f_s)}
-$$
+```
 
 With $`D = 24`$ dB/s and $`f_s = 48`$ kHz → $`g = 10^{-24/960000} \approx 0.9999424`$ (more precisely 0.9999424370;
 `LevelMeter` stores it as float, so the float value printed in the first section of `l11_level_meter` is 0.99994242, because the float spacing near 1 is about $`6\times10^{-8}`$).
@@ -89,9 +89,9 @@ else:                hold = max(hold * g, peak)      // hold never falls below p
 
 ### 2.3 RMS and window length
 
-$$
+```math
 \text{RMS}[n] = \sqrt{\frac{1}{W}\sum_{i=0}^{W-1} x[n-i]^2}
-$$
+```
 
 - If the window $`W`$ is too short (say 10 ms), it cannot even hold one period of a low-frequency sine, and the reading jitters with the waveform.
   Rule of thumb: $`W`$ should cover several periods of the lowest frequency you care about.
@@ -110,9 +110,9 @@ The VU meter (volume unit, IEC 60268-17) is a needle meter designed in 1939 for 
 **average of the full-wave rectified signal**, passed through the mechanical inertia of the needle itself: when a 0 VU sine suddenly appears, the needle must reach 99% of its final reading in **300 ms**
 and overshoot by 1–1.5%. In a digital system it is modeled as a second-order system (spring + damper):
 
-$$
+```math
 \ddot p + 2\zeta\omega_n \dot p + \omega_n^2\,p = \omega_n^2\,u(t)
-$$
+```
 
 $`\zeta`$ sets the overshoot ($`M_p = e^{-\pi\zeta/\sqrt{1-\zeta^2}}`$, $`\zeta = 0.82`$ → 1.11%) and $`\omega_n`$ sets the speed.
 Exercise 4 builds this. In a digital system 0 VU is usually calibrated to a sine at **-18 dBFS** (EBU R68) or -20 dBFS.
@@ -206,9 +206,9 @@ at 2 kHz becomes +3.30 dB (correct: +3.08 dB); the measured LUFS comes out about
 You have to go back to the analog prototype and redo the bilinear transform. Work the table above backwards into analog parameters (open-source implementations such as libebur128 use the same set).
 The analog prototype of stage 1 is a second-order high shelf ($`s`$ normalized to $`\omega_0 = 2\pi f_0`$):
 
-$$
+```math
 H_1(s) = \frac{V_h\, s^2 + V_b\, s/Q + 1}{s^2 + s/Q + 1}
-$$
+```
 
 - At $`s \to 0`$ (DC), $`H_1 = 1`$ (0 dB); at $`s \to \infty`$ (high frequency), $`H_1 = V_h`$. So **$`V_h`$ is the linear gain at the high end**:
   $`V_h = 10^{G/20}`$, $`G = 3.99984`$ dB (about +4 dB).
@@ -223,10 +223,10 @@ that reproduces the standard's table exactly after a bilinear transform at 48 kH
 The bilinear transform uses $`s = \frac{1}{K}\cdot\frac{1 - z^{-1}}{1 + z^{-1}}`$ with $`K = \tan(\pi f_0 / f_s)`$ (this $`K`$ maps $`f_0`$ exactly to $`f_0`$).
 Substituting into $`H_1(s)`$, multiplying top and bottom by $`K^2(1+z^{-1})^2`$ and expanding into polynomials in $`z^{-1}`$ gives:
 
-$$
+```math
 b_0 = \frac{V_h + V_b K/Q + K^2}{a_0},\quad b_1 = \frac{2(K^2 - V_h)}{a_0},\quad b_2 = \frac{V_h - V_b K/Q + K^2}{a_0},\quad
 a_1 = \frac{2(K^2-1)}{a_0},\quad a_2 = \frac{1 - K/Q + K^2}{a_0}
-$$
+```
 
 where $`a_0 = 1 + K/Q + K^2`$.
 
@@ -250,15 +250,15 @@ so you cannot just throw $`f_0`$, $`Q`$ and gain into Chapter 02's `makeHighShel
 
 For each channel $`i`$, compute the mean square of the K-weighted signal $`y_i`$ over a period $`T`$:
 
-$$
+```math
 z_i = \frac{1}{T}\int_0^T y_i^2(t)\,dt \;\approx\; \frac{1}{N}\sum_n y_i[n]^2
-$$
+```
 
 then take the weighted sum and convert to a logarithm:
 
-$$
+```math
 L_K = -0.691 + 10\log_{10}\sum_i G_i\, z_i \quad \text{[LUFS]}
-$$
+```
 
 - **$`G_i`$**: L, R, C = 1.0; left and right surround Ls, Rs = 1.41 (about +1.5 dB, since sounds from behind seem louder); LFE is not counted.
 - **Why $`10\log_{10}`$ and not $`20\log_{10}`$**: $`z`$ is already a "square" (power).
@@ -288,10 +288,10 @@ If a song has 10 seconds of silence in the middle, plain averaging would pull th
 2. **relative gate**: compute the average $`\bar L`$ of the blocks that passed the first gate (**averaged in the power domain**), and discard blocks < $`\bar L - 10`$ LU.
 3. integrated = the power average of the blocks that passed both gates:
 
-$$
+```math
 \Gamma_r = -0.691 + 10\log_{10}\Big(\frac{1}{|J_a|}\sum_{j\in J_a}\sum_i G_i z_{ij}\Big) - 10,\qquad
 L_{\text{int}} = -0.691 + 10\log_{10}\Big(\frac{1}{|J_g|}\sum_{j\in J_g}\sum_i G_i z_{ij}\Big)
-$$
+```
 
 $`J_a`$ is the set of blocks that pass the absolute gate and $`J_g`$ the set that pass both. Section 4 of `l11_loudness`: 3 s at −20 dBFS → 3 s of silence → 3 s at −50 dBFS:
 
@@ -337,32 +337,32 @@ If $`x`$ contains 440 Hz with the phase aligned, the products are mostly positiv
 That is **correlation**. The catch is phase: if the 440 Hz in $`x`$ is a cosine and we compare with a sine, the sum is also 0.
 The fix is to compare with both cos and sin at once, using the complex number $`e^{-j\omega n} = \cos\omega n - j\sin\omega n`$:
 
-$$
+```math
 X[k] = \sum_{n=0}^{N-1} x[n]\, e^{-j 2\pi k n / N},\qquad k = 0, 1, \dots, N-1
-$$
+```
 
 $`|X[k]|`$ is "how much of the $`k`$-th frequency", and $`\arg X[k]`$ is its phase. The frequency of bin $`k`$ is
 
-$$
+```math
 f_k = k \cdot \frac{f_s}{N}
-$$
+```
 
 So the **bin width (frequency resolution) is $`\Delta f = f_s / N`$**. At 48 kHz with N = 2048 that is 23.4375 Hz. To get finer resolution you can only increase N,
 that is, **look at a longer stretch of time**; frequency resolution and time resolution are a seesaw.
 
 The inverse transform (IDFT) is almost identical, differing only in the rotation direction and $`1/N`$:
 
-$$
+```math
 x[n] = \frac{1}{N}\sum_{k=0}^{N-1} X[k]\, e^{+j 2\pi k n / N}
-$$
+```
 
 #### Symmetry for real signals
 
 Audio is real. Replace $`k`$ by $`N-k`$: $`e^{-j2\pi(N-k)n/N} = e^{+j2\pi kn/N}`$, so
 
-$$
+```math
 X[N-k] = \overline{X[k]}\qquad(\text{conjugate symmetry})
-$$
+```
 
 The second half is entirely a mirror of the first, so **we only need to keep $`k = 0 \dots N/2`$, a total of $`N/2 + 1`$ bins**: bin 0 is DC and bin $`N/2`$ is Nyquist ($`f_s/2`$),
 and these two are real. `Fft::forwardReal()` outputs only these $`N/2+1`$ bins, and `inverseReal()` uses the symmetry to restore the other half.
@@ -371,9 +371,9 @@ and these two are real. `Fft::forwardReal()` outputs only these $`N/2+1`$ bins, 
 
 A sine of amplitude $`A`$ centered exactly on bin $`k`$, $`A\cos(2\pi k n/N)`$, splits its energy evenly between bin $`k`$ and bin $`N-k`$, with $`|X[k]| = AN/2`$ on each side. So
 
-$$
+```math
 A = \frac{2\,|X[k]|}{N} \qquad(\text{DC and Nyquist have no mirror image, so the factor is } 1/N)
-$$
+```
 
 With a window applied you must also divide by the coherent gain (section 2.9). In dB: $`20\log_{10} A`$ (amplitude) or $`10\log_{10}|X|^2`$ (power); the two are the same.
 
@@ -385,21 +385,21 @@ Computing the DFT directly from the definition: N outputs, each a sum of N terms
 
 Let $`W_N = e^{-j2\pi/N}`$ (the twiddle factor). Split $`x[n]`$ into even and odd terms (decimation in time):
 
-$$
+```math
 X[k] = \sum_{m=0}^{N/2-1} x[2m]\,W_N^{2mk} + \sum_{m=0}^{N/2-1} x[2m+1]\,W_N^{(2m+1)k}
-$$
+```
 
 Since $`W_N^{2mk} = W_{N/2}^{mk}`$:
 
-$$
+```math
 X[k] = \underbrace{\sum_m x[2m]\,W_{N/2}^{mk}}_{E[k]\text{: the } N/2 \text{-point DFT of the even terms}} + W_N^k \underbrace{\sum_m x[2m+1]\,W_{N/2}^{mk}}_{O[k]\text{: the } N/2 \text{-point DFT of the odd terms}}
-$$
+```
 
 $`E`$ and $`O`$ are periodic with period $`N/2`$, and $`W_N^{k+N/2} = -W_N^k`$, so the second half needs no recomputation:
 
-$$
+```math
 \boxed{X[k] = E[k] + W_N^k\,O[k],\qquad X[k + N/2] = E[k] - W_N^k\,O[k]},\qquad k = 0 \dots N/2-1
-$$
+```
 
 This pair of equations is called a **butterfly**:
 
@@ -414,9 +414,9 @@ flowchart LR
 
 One N-point DFT = two N/2-point DFTs + N/2 butterflies. Recursing:
 
-$$
+```math
 T(N) = 2\,T(N/2) + O(N) \;\Longrightarrow\; T(N) = O(N\log_2 N)
-$$
+```
 
 There are $`\log_2 N`$ layers in total, each with $`N/2`$ butterflies (one complex multiplication each). At N = 4096: $`N^2 / (N\log_2 N) = 4096/12 \approx 341`$ times fewer operations.
 
@@ -551,9 +551,9 @@ Hann's bin 44 is −6 dB: that is the main lobe itself being wider (±2 bins), n
 
 A window shrinks the signal overall: the reading of a bin-centered sine becomes $`\text{CG} = \frac1N\sum w[n]`$ times the original (Hann 0.5 = −6.02 dB). To compensate:
 
-$$
+```math
 A = \frac{2\,|X[k]|}{N \cdot \text{CG}}
-$$
+```
 
 `SpectrumAnalyzer` normalizes this way, so a full-scale sine reads 0 dBFS (in the second table, bin 43 reads 0.000 dB for every window).
 
@@ -582,9 +582,9 @@ flowchart LR
   Likewise, the 440 Hz sine in the example (at bin 37.55, 0.45 bin off) reads −7.2 dB rather than −6.0 dB.
 - **Logarithmic frequency axis**: the ear perceives pitch logarithmically (every octave is equally important). On a linear axis, 20 Hz to 1 kHz takes only 5% of the width, so spectrum analyzers almost always use a log axis:
 
-$$
+```math
 \text{column}(f) = C \cdot \frac{\ln f - \ln f_{\text{low}}}{\ln f_{\text{high}} - \ln f_{\text{low}}}
-$$
+```
 
   In the high-frequency region many bins are squeezed into one column (take the maximum), while in the low-frequency region one bin spans several columns (at N = 4096 the bin width is 11.7 Hz, so 20–40 Hz contains only two bins).
   So seeing the low end clearly requires a larger N, which brings us back to the time / frequency resolution trade-off.

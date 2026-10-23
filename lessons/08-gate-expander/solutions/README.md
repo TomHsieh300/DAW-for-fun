@@ -40,9 +40,9 @@ $`-65 = -40 + R(-50 + 40) \Rightarrow -25 = -10R \Rightarrow R = 2.5`$ (1:2.5). 
 
 ### 4. The gate's attack slope
 
-$$
+```math
 \Delta_a = \frac{|\text{range}|}{t_a f_s} = \frac{80}{0.002 \times 48000} = \frac{80}{96} \approx 0.833\ \text{dB/sample}
-$$
+```
 
 0.5 ms = 24 samples → it has climbed $`24 \times 0.833 = 20`$ dB → gain = $`-80 + 20 = -60`$ dB. Note that at 0.5 ms the linear gain is only 0.001: the first half of the attack is still practically silent, which is where "the head gets eaten" comes from (Exercise 6).
 
@@ -79,9 +79,9 @@ This is not a bug but the nature of hysteresis: **opening is decided by $`T_\tex
 
 The average of the envelope falls at 60 dB/s, and while the average lies within $`[T - 1.5,\ T + 1.5]`$ the ripple can cross the threshold:
 
-$$
+```math
 \frac{3\ \text{dB}}{60\ \text{dB/s}} = 50\ \text{ms}
-$$
+```
 
 The ripple comes from the peaks of the 185 Hz full-wave-rectified waveform, 370 per second, so in 50 ms there are about **18** peaks and the gate can open and close up to about 18 times: it sounds like a 370 Hz "buzz" or crackle at the end of the tail. Measured on the drum loop of Example 1: hysteresis 0 + hold 0 gives 70 state transitions, while hysteresis 6 dB + hold 20 ms gives only 43.
 
