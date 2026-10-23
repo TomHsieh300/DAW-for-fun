@@ -44,6 +44,9 @@ l14_add_test(l14_test_block_invariance  tests/test_block_invariance.cpp)
 l14_add_test(l14_test_realtime_safety   tests/test_realtime_safety.cpp)
 l14_add_test(l14_test_demo_song         tests/test_demo_song.cpp)        # DemoSong.h == the Step 9 song
 
+# ---- build-along route: Steps 1-10 as small snapshots (l14_stepNN_starter / _solution) -------
+add_subdirectory(steps)
+
 # ---- exercises: starters (build only) and solutions (ctest label: solution) -------------------
 dawlab_add_starter(l14_ex3_starter          exercises/starter/ex3_automation.cpp)
 dawlab_add_starter(l14_ex4_starter          exercises/starter/ex4_project_json.cpp)
