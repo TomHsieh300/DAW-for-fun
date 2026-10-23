@@ -1,10 +1,10 @@
-// 練習 4（起始碼）：fader taper —— 推桿位置 (0..1) ↔ dB 的分段線性映射
+// Exercise 4 (starter code): fader taper -- a piecewise-linear mapping between fader position (0..1) and dB
 //
-// 分段點（位置 → dB）：
-//   1.00 → +6     0.75 → 0     0.50 → −12     0.25 → −30     0.05 → −60     0.00 → −∞
-// 0.05 以上的每一段「dB 對位置線性」；最底段 [0, 0.05]「線性倍率對位置線性」，
-// 從 −60 dB 平滑走到 0（真正的靜音）。
-// 完成 TODO 之後，self-check 全部通過就算完成。起始碼執行時會印出 FAIL，這是預期的。
+// Breakpoints (position -> dB):
+//   1.00 -> +6     0.75 -> 0     0.50 -> -12     0.25 -> -30     0.05 -> -60     0.00 -> -inf
+// Every segment from 0.05 upward is "dB linear in position"; the bottom segment [0, 0.05] is "linear gain linear in position",
+// running smoothly from -60 dB down to 0 (true silence).
+// You are done when every self-check passes after you complete the TODOs. The starter code prints FAIL when it runs; that is expected.
 
 #include <dawlab/Common.h>
 
@@ -28,20 +28,20 @@ constexpr int kNumPoints = 5;
 
 } // namespace
 
-// 推桿位置 → 線性倍率
+// Fader position -> linear gain
 float faderToGain(float position) {
     const float p = std::clamp(position, 0.0f, 1.0f);
-    // TODO: p <= kBottomPosition 時：倍率 = dbToGain(kBottomDb) · (p / kBottomPosition)
-    //       否則找出 p 落在 kPoints 的哪一段，在 dB 上做線性插值（dawlab::lerp）再 dbToGain
+    // TODO: when p <= kBottomPosition: gain = dbToGain(kBottomDb) * (p / kBottomPosition)
+    //       otherwise find which segment of kPoints p falls into, interpolate linearly in dB (dawlab::lerp), then apply dbToGain
     return p;
 }
 
 float faderToDb(float position) { return gainToDb(faderToGain(position)); }
 
-// 反函式：線性倍率 → 推桿位置
+// Inverse function: linear gain -> fader position
 float gainToFader(float gain) {
     const float g = std::max(0.0f, gain);
-    // TODO: faderToGain 的反函式（底段用倍率反推，其他段把 gain 換成 dB 後在 dB 上反推）
+    // TODO: the inverse of faderToGain (the bottom segment is inverted in gain; for the other segments convert gain to dB and invert in dB)
     return g;
 }
 
@@ -78,7 +78,7 @@ int main() {
         const float p = 0.001f * static_cast<float>(i);
         maxErr = std::max(maxErr, std::abs(gainToFader(faderToGain(p)) - p));
     }
-    std::printf("round-trip 最大誤差：%.2e\n", maxErr);
+    std::printf("round-trip max error: %.2e\n", maxErr);
     DAWLAB_CHECK(maxErr < 1e-4f);
     DAWLAB_CHECK_NEAR(dbToFader(0.0f), 0.75, 1e-5);
     DAWLAB_CHECK_NEAR(dbToFader(-12.0f), 0.5, 1e-5);

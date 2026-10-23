@@ -1,20 +1,20 @@
-// 練習 5 解答：multiplicative（exponential）ramp —— 在 dB 上走直線的 fader automation
+// Exercise 5 solution: multiplicative (exponential) ramp -- fader automation that is a straight line in dB
 //
-// 本章的 dsp::SmoothedValue 是 linear ramp：每個 sample 加同一個 step，所以「倍率」對時間是直線。
-// 但耳朵聽的是 dB。從 1.0 線性走到 0.001（−60 dB）時，ramp 走到一半倍率還有 0.5（−6 dB），
-// 90% 的時間都在 −20 dB 以上，最後幾十個 sample 才一口氣掉下去——聽起來是「一直很大聲，最後突然消失」。
+// The dsp::SmoothedValue of this chapter is a linear ramp: every sample adds the same step, so the gain is a straight line in time.
+// But the ear hears dB. When a linear ramp runs from 1.0 to 0.001 (-60 dB), the gain is still 0.5 (-6 dB) halfway through,
+// 90% of the time is spent above -20 dB, and only in the last few dozen samples does it drop all at once -- it sounds like "loud the whole time, then suddenly gone".
 //
-// Multiplicative ramp 改成每個 sample「乘」同一個倍率 r：
-//     r = (target / current)^(1/N)        → g[n] = current · r^n
-//     dB[n] = dB[0] + n · 20·log10(r)     → 在 dB 上是一條直線，每個 sample 前進同樣的 dB
-// 例：100 ms（4800 samples @ 48 kHz）從 0 dB 到 −60 dB，每個 sample −0.0125 dB，一半的時間剛好 −30 dB。
-// （JUCE 的 SmoothedValue<float, ValueSmoothingTypes::Multiplicative> 就是這個做法。）
+// A multiplicative ramp instead multiplies by the same factor r every sample:
+//     r = (target / current)^(1/N)        -> g[n] = current * r^n
+//     dB[n] = dB[0] + n * 20*log10(r)     -> a straight line in dB, advancing by the same number of dB every sample
+// Example: 100 ms (4800 samples @ 48 kHz) from 0 dB to -60 dB, -0.0125 dB per sample, exactly -30 dB at the halfway point.
+// (JUCE's SmoothedValue<float, ValueSmoothingTypes::Multiplicative> does exactly this.)
 //
-// 唯一的麻煩是 0：0 dB 乘任何倍率都到不了 0，0 也乘不出任何東西。
-// 所以把 0 視為一個「地板」kFloorGain = −100 dB（= kMinusInfinityDb），ramp 在地板與目標之間走，
-// 最後一個 sample 再「snap」成精確的目標值（mute 時就是精確的 0）。
+// The only trouble is 0: multiplying by any factor never reaches 0, and nothing can be multiplied up from 0.
+// So 0 is treated as a "floor" kFloorGain = -100 dB (= kMinusInfinityDb); the ramp runs between the floor and the target,
+// and the last sample "snaps" to the exact target value (an exact 0 when muting).
 //
-// 執行：l01_ex5_solution
+// Run: l01_ex5_solution
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/SmoothedValue.h>
@@ -27,7 +27,7 @@ using namespace dawlab;
 
 class MultiplicativeRamp {
 public:
-    static constexpr double kFloorGain = 1.0e-5; // −100 dB：0 的替身（dbToGain(kMinusInfinityDb) 也是 0）
+    static constexpr double kFloorGain = 1.0e-5; // -100 dB: the stand-in for 0 (dbToGain(kMinusInfinityDb) is also 0)
 
     void reset(double sampleRate, double rampSeconds) noexcept {
         rampSamples_ = std::max(0, static_cast<int>(std::lround(rampSeconds * sampleRate)));
@@ -41,7 +41,7 @@ public:
     }
 
     void setTargetValue(float value) noexcept {
-        value = std::max(0.0f, value); // 只處理非負的 gain（倍率的 ratio 不能跨過 0）
+        value = std::max(0.0f, value); // only non-negative gains are handled (a gain ratio cannot cross 0)
         if (value == target_)
             return;
         target_ = value;
@@ -49,7 +49,7 @@ public:
             setCurrentAndTargetValue(value);
             return;
         }
-        // 從「目前的值」出發（ramp 中途改目標也不會跳），0 換成地板
+        // Start from the current value (so changing the target mid-ramp does not jump); 0 is replaced by the floor
         const double from = std::max(current_, kFloorGain);
         const double to = std::max(static_cast<double>(value), kFloorGain);
         current_ = from;
@@ -61,10 +61,10 @@ public:
         if (countdown_ <= 0)
             return target_;
         if (--countdown_ == 0) {
-            current_ = target_; // 最後一步 snap：避免累乘的捨入誤差，也讓 mute 停在精確的 0
+            current_ = target_; // snap on the last step: avoids accumulated rounding error and lets a mute stop at an exact 0
             return target_;
         }
-        current_ *= multiplier_; // 狀態用 double：4800 次累乘後的誤差 ~1e-13，float 會到 ~1e-4
+        current_ *= multiplier_; // the state is a double: after 4800 successive multiplications the error is ~1e-13, whereas a float would reach ~1e-4
         return static_cast<float>(current_);
     }
 
@@ -85,7 +85,7 @@ namespace {
 constexpr double kSr = 48000.0;
 constexpr int kRamp = 4800; // 100 ms
 
-// 跑完整條 ramp（含最後 snap 的那一步），回傳 kRamp 個值
+// Runs the whole ramp (including the final snapping step) and returns kRamp values
 template <typename Ramp>
 std::vector<float> runRamp(Ramp& r, float from, float to) {
     r.setCurrentAndTargetValue(from);
@@ -96,10 +96,10 @@ std::vector<float> runRamp(Ramp& r, float from, float to) {
     return v;
 }
 
-// 相鄰兩個 sample 之間最大的 |ΔdB|（從起點值開始算）
+// The largest |delta dB| between two adjacent samples (counting from the starting value)
 double maxDbStep(const std::vector<float>& v, float from) {
     double prev = gainToDb(static_cast<double>(from)), m = 0.0;
-    for (size_t i = 0; i + 1 < v.size(); ++i) { // 最後一個（snap）不算：mute 時它是 −100 → 0
+    for (size_t i = 0; i + 1 < v.size(); ++i) { // the last one (the snap) is not counted: when muting it is -100 -> 0
         const double d = gainToDb(static_cast<double>(v[i]));
         m = std::max(m, std::abs(d - prev));
         prev = d;
@@ -107,7 +107,7 @@ double maxDbStep(const std::vector<float>& v, float from) {
     return m;
 }
 
-// ramp 期間有幾成時間在 thresholdDb 以上
+// What fraction of the ramp is spent above thresholdDb
 double fractionAbove(const std::vector<float>& v, double thresholdDb) {
     int count = 0;
     for (float x : v)
@@ -124,71 +124,71 @@ int main() {
     dsp::SmoothedValue lin;
     lin.reset(kSr, 0.1);
 
-    // ---- 1. 0 dB → −60 dB：multiplicative 在 dB 上是直線 ----------------------------------------
+    // ---- 1. 0 dB -> -60 dB: the multiplicative ramp is a straight line in dB -----------------------
     const std::vector<float> m = runRamp(mul, 1.0f, 0.001f);
     const std::vector<float> l = runRamp(lin, 1.0f, 0.001f);
     const double stepDb = 20.0 * std::log10(mul.getMultiplier());
-    std::printf("multiplier r = %.6f（每個 sample %.4f dB）\n", mul.getMultiplier(), stepDb);
+    std::printf("multiplier r = %.6f (%.4f dB per sample)\n", mul.getMultiplier(), stepDb);
     DAWLAB_CHECK_NEAR(stepDb, -60.0 / kRamp, 1e-6);
 
-    const double mHalf = gainToDb(static_cast<double>(m[kRamp / 2 - 1])); // 第 2400 個 sample
+    const double mHalf = gainToDb(static_cast<double>(m[kRamp / 2 - 1])); // sample number 2400
     const double lHalf = gainToDb(static_cast<double>(l[kRamp / 2 - 1]));
-    std::printf("走到一半（2400 samples）：multiplicative %.2f dB，linear %.2f dB\n", mHalf, lHalf);
+    std::printf("Halfway (2400 samples): multiplicative %.2f dB, linear %.2f dB\n", mHalf, lHalf);
     DAWLAB_CHECK_NEAR(mHalf, -30.0, 0.01);
     DAWLAB_CHECK_NEAR(lHalf, -6.01, 0.01);
 
-    double maxDev = 0.0; // 每個 sample 與「dB 直線」的偏差
+    double maxDev = 0.0; // each sample's deviation from the "straight line in dB"
     for (int i = 0; i < kRamp; ++i)
         maxDev = std::max(maxDev, std::abs(gainToDb(static_cast<double>(m[static_cast<size_t>(i)]))
                                            - (-60.0 * (i + 1) / kRamp)));
-    std::printf("與 dB 直線的最大偏差：%.5f dB\n", maxDev);
+    std::printf("Max deviation from the straight line in dB: %.5f dB\n", maxDev);
     DAWLAB_CHECK(maxDev < 1e-3);
 
     const double mAbove = fractionAbove(m, -20.0), lAbove = fractionAbove(l, -20.0);
-    std::printf("ramp 期間在 -20 dB 以上的時間：multiplicative %.1f%%，linear %.1f%%\n", 100.0 * mAbove,
+    std::printf("Time spent above -20 dB during the ramp: multiplicative %.1f%%, linear %.1f%%\n", 100.0 * mAbove,
                 100.0 * lAbove);
     DAWLAB_CHECK_NEAR(mAbove, 1.0 / 3.0, 0.001);
     DAWLAB_CHECK_NEAR(lAbove, 0.9 / 0.999, 0.001);
 
     const double mStep = maxDbStep(m, 1.0f), lStep = maxDbStep(l, 1.0f);
-    std::printf("相鄰 sample 最大 |ΔdB|：multiplicative %.4f dB，linear %.3f dB（最後幾個 sample）\n", mStep, lStep);
+    std::printf("Max |delta dB| between adjacent samples: multiplicative %.4f dB, linear %.3f dB (in the last few samples)\n", mStep, lStep);
     DAWLAB_CHECK_NEAR(mStep, 0.0125, 1e-4);
     DAWLAB_CHECK(lStep > 1.0);
 
-    DAWLAB_CHECK(m.back() == 0.001f); // 最後一步 snap 成精確的目標
+    DAWLAB_CHECK(m.back() == 0.001f); // the last step snaps to the exact target
     DAWLAB_CHECK(!mul.isSmoothing());
 
-    // ---- 2. mute：0 dB → 0（走到 −100 dB 地板，最後 snap 成精確的 0） -----------------------------
+    // ---- 2. mute: 0 dB -> 0 (runs down to the -100 dB floor, then snaps to an exact 0 at the end) ----
     const std::vector<float> mute = runRamp(mul, 1.0f, 0.0f);
     const double muteHalf = gainToDb(static_cast<double>(mute[kRamp / 2 - 1]));
-    std::printf("mute：一半 %.2f dB，倒數第二個 %.2f dB，最後一個 = %g\n", muteHalf,
+    std::printf("mute: halfway %.2f dB, second-to-last %.2f dB, last = %g\n", muteHalf,
                 gainToDb(static_cast<double>(mute[kRamp - 2])), static_cast<double>(mute.back()));
     DAWLAB_CHECK_NEAR(muteHalf, -50.0, 0.01);
     DAWLAB_CHECK(mute[kRamp - 2] > 0.0f && mute[kRamp - 2] < 1.1e-5f);
     DAWLAB_CHECK(mute.back() == 0.0f);
 
-    // ---- 3. unmute：0 → 0 dB（從地板出發，第一個 sample 不是 0 也不會跳上去） ------------------------
+    // ---- 3. unmute: 0 -> 0 dB (starts from the floor; the first sample is not 0 and does not jump up) ----
     const std::vector<float> un = runRamp(mul, 0.0f, 1.0f);
-    std::printf("unmute：第一個 sample %.3e（%.4f dB），最後一個 %.6f\n", static_cast<double>(un.front()),
+    std::printf("unmute: first sample %.3e (%.4f dB), last sample %.6f\n", static_cast<double>(un.front()),
                 gainToDb(static_cast<double>(un.front())), static_cast<double>(un.back()));
     DAWLAB_CHECK(un.front() > 0.0f && un.front() < 2.0e-5f);
     DAWLAB_CHECK(un.back() == 1.0f);
 
-    // ---- 4. ramp 中途改目標：從目前的值出發，不跳 -----------------------------------------------------
+    // ---- 4. Changing the target mid-ramp: start from the current value, no jump ----------------------
     mul.setCurrentAndTargetValue(1.0f);
     mul.setTargetValue(0.001f);
     float prev = 1.0f;
-    for (int i = 0; i < kRamp / 4; ++i) // 走 1/4 → −15 dB
+    for (int i = 0; i < kRamp / 4; ++i) // run a quarter of the way -> -15 dB
         prev = mul.getNextValue();
     mul.setTargetValue(1.0f);
     const float next = mul.getNextValue();
     const double jumpDb = gainToDb(static_cast<double>(next)) - gainToDb(static_cast<double>(prev));
-    std::printf("走到 %.2f dB 時改回 0 dB：下一個 sample 只前進 %+.4f dB\n", gainToDb(static_cast<double>(prev)),
+    std::printf("Switching back to 0 dB at %.2f dB: the next sample advances only %+.4f dB\n", gainToDb(static_cast<double>(prev)),
                 jumpDb);
     DAWLAB_CHECK_NEAR(gainToDb(static_cast<double>(prev)), -15.0, 0.01);
     DAWLAB_CHECK(jumpDb > 0.0 && jumpDb < 0.01);
 
-    // ---- 試聽：1 kHz 正弦波，前 2 秒 linear fade-out、後 2 秒 multiplicative fade-out（各 1.5 秒）----
+    // ---- Listening demo: a 1 kHz sine, a linear fade-out for the first 2 seconds, a multiplicative fade-out for the last 2 seconds (1.5 seconds each) ----
     {
         MultiplicativeRamp fm;
         fm.reset(kSr, 1.5);
@@ -206,7 +206,7 @@ int main() {
         for (int i = half; i < demo.getNumSamples(); ++i)
             d[i] *= fm.getNextValue();
         writeWav(outputPath("l01_ex5_multiplicative_ramp.wav"), demo, kSr);
-        std::printf("輸出 dawlab_output/l01_ex5_multiplicative_ramp.wav（前半 linear、後半 multiplicative fade-out）\n");
+        std::printf("Wrote dawlab_output/l01_ex5_multiplicative_ramp.wav (first half: linear fade-out, second half: multiplicative fade-out)\n");
     }
 
     return dawlab::test::summary("l01_ex5");

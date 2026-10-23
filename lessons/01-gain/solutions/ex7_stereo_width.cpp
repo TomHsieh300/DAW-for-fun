@@ -1,14 +1,14 @@
-// 練習 7 解答：Mid/Side 立體聲寬度與 stereo balance
+// Exercise 7 solution: Mid/Side stereo width and stereo balance
 //
-//   M = (L + R) / 2    S = (L − R) / 2         （encode）
-//   L = M + S          R = M − S               （decode，剛好還原）
-//   width w：S' = w · S  →  L' = M + w·S，R' = M − w·S
-//     w = 0 → L' = R' = M（mono）、w = 1 → 原樣、w = 2 → 左右差異放大一倍
-//   mono 相容：(L' + R') / 2 = M，與 w 無關——寬度處理不會改變 mono 下的聲音。
+//   M = (L + R) / 2    S = (L - R) / 2         (encode)
+//   L = M + S          R = M - S               (decode, restores the original exactly)
+//   width w: S' = w * S  ->  L' = M + w*S,  R' = M - w*S
+//     w = 0 -> L' = R' = M (mono), w = 1 -> unchanged, w = 2 -> the left/right difference is doubled
+//   mono compatibility: (L' + R') / 2 = M, independent of w -- width processing does not change how the sound comes out in mono.
 //
-//   balance b ∈ [-1, 1]（立體聲訊號用）：b > 0 把左聲道乘 (1 − b)，右聲道不動；b < 0 反之。
-//   和 pan 的差別：pan 把 mono 訊號「分配」到左右；balance 只把其中一邊「調小」，
-//   右聲道原本的內容永遠不會跑到左邊。
+//   balance b in [-1, 1] (for stereo signals): for b > 0 the left channel is multiplied by (1 - b) and the right channel is left alone; for b < 0 the reverse.
+//   The difference from pan: a pan "distributes" a mono signal between left and right; a balance only turns one side "down",
+//   and the original content of the right channel never moves to the left.
 
 #include <dawlab/Common.h>
 
@@ -18,7 +18,7 @@
 
 using namespace dawlab;
 
-// in-place：channel 0 = L、channel 1 = R
+// In place: channel 0 = L, channel 1 = R
 void applyStereoWidth(AudioBlock stereo, float width) {
     if (stereo.getNumChannels() < 2)
         return;
@@ -57,30 +57,30 @@ float maxAbsDiff(const AudioBuffer& a, int chA, const AudioBuffer& b, int chB) {
 int main() {
     constexpr double sr = 48000.0;
 
-    // 測試訊號：左 = 正弦波，右 = 0（極端的「只有左邊有聲音」）
+    // Test signal: left = sine, right = 0 (the extreme case of "only the left has sound")
     AudioBuffer src = makeSine(440.0, sr, 0.5, 0.5f, 2);
     std::fill_n(src.getWritePointer(1), src.getNumSamples(), 0.0f);
 
-    // width 0 → 兩邊都是 M = 0.5·L
+    // width 0 -> both sides are M = 0.5*L
     AudioBuffer w0 = src;
     applyStereoWidth(w0, 0.0f);
     DAWLAB_CHECK(maxAbsDiff(w0, 0, w0, 1) < 1e-7f);
     DAWLAB_CHECK_NEAR(peakAbs(w0.getReadPointer(0), w0.getNumSamples()), 0.25, 1e-6);
 
-    // width 1 → 原樣
+    // width 1 -> unchanged
     AudioBuffer w1 = src;
     applyStereoWidth(w1, 1.0f);
     DAWLAB_CHECK(maxAbsDiff(w1, 0, src, 0) < 1e-7f);
     DAWLAB_CHECK(maxAbsDiff(w1, 1, src, 1) < 1e-7f);
 
-    // width 2 → L' = M + 2S = 1.5·L，R' = M − 2S = −0.5·L（右邊出現反相的訊號）
+    // width 2 -> L' = M + 2S = 1.5*L, R' = M - 2S = -0.5*L (an inverted-polarity signal appears on the right)
     AudioBuffer w2 = src;
     applyStereoWidth(w2, 2.0f);
     DAWLAB_CHECK_NEAR(peakAbs(w2.getReadPointer(0), w2.getNumSamples()), 0.75, 1e-6);
     DAWLAB_CHECK_NEAR(peakAbs(w2.getReadPointer(1), w2.getNumSamples()), 0.25, 1e-6);
     DAWLAB_CHECK_NEAR(w2.getSample(1, 100), -0.5 * src.getSample(0, 100), 1e-6);
 
-    // mono 相容：任何 width 下 (L'+R')/2 都等於原本的 M
+    // Mono compatibility: for any width, (L'+R')/2 equals the original M
     for (const AudioBuffer* b : {&w0, &w1, &w2}) {
         float m = 0.0f;
         for (int i = 0; i < src.getNumSamples(); ++i)
@@ -88,12 +88,12 @@ int main() {
                                      0.5f * (src.getSample(0, i) + src.getSample(1, i))));
         DAWLAB_CHECK(m < 1e-6f);
     }
-    std::printf("width 0/1/2：L peak %.3f / %.3f / %.3f，R peak %.3f / %.3f / %.3f（mono 和不變）\n",
+    std::printf("width 0/1/2: L peak %.3f / %.3f / %.3f, R peak %.3f / %.3f / %.3f (the mono sum is unchanged)\n",
                 peakAbs(w0.getReadPointer(0), w0.getNumSamples()), peakAbs(w1.getReadPointer(0), w1.getNumSamples()),
                 peakAbs(w2.getReadPointer(0), w2.getNumSamples()), peakAbs(w0.getReadPointer(1), w0.getNumSamples()),
                 peakAbs(w1.getReadPointer(1), w1.getNumSamples()), peakAbs(w2.getReadPointer(1), w2.getNumSamples()));
 
-    // 不相關的立體聲雜訊：width 2 讓 side 的 RMS 變成 2 倍（+6.02 dB），mid 不變
+    // Uncorrelated stereo noise: width 2 doubles the RMS of the side (+6.02 dB) and leaves the mid unchanged
     AudioBuffer noise = makeWhiteNoise(sr, 1.0, 0.25f, 2, 5);
     auto midSideRms = [](const AudioBuffer& b, float& midRms, float& sideRms) {
         double m2 = 0.0, s2 = 0.0;
@@ -111,12 +111,12 @@ int main() {
     AudioBuffer wide = noise;
     applyStereoWidth(wide, 2.0f);
     midSideRms(wide, mid2, side2);
-    std::printf("不相關雜訊 width 2：mid %.2f → %.2f dB，side %.2f → %.2f dB（+%.2f dB）\n", gainToDb(mid0), gainToDb(mid2),
+    std::printf("Uncorrelated noise, width 2: mid %.2f -> %.2f dB, side %.2f -> %.2f dB (+%.2f dB)\n", gainToDb(mid0), gainToDb(mid2),
                 gainToDb(side0), gainToDb(side2), gainToDb(side2 / side0));
     DAWLAB_CHECK_NEAR(gainToDb(mid2 / mid0), 0.0, 1e-3);
     DAWLAB_CHECK_NEAR(gainToDb(side2 / side0), 6.0206, 1e-3);
 
-    // balance：+1 → 左聲道靜音、右聲道不動；+0.5 → 左 −6.02 dB
+    // balance: +1 -> the left channel is silenced and the right channel is untouched; +0.5 -> left -6.02 dB
     AudioBuffer bal = noise;
     applyBalance(bal, 1.0f);
     DAWLAB_CHECK(peakAbs(bal.getReadPointer(0), bal.getNumSamples()) == 0.0f);
@@ -125,13 +125,13 @@ int main() {
     applyBalance(half, 0.5f);
     DAWLAB_CHECK_NEAR(gainToDb(rms(half, 0) / rms(noise, 0)), -6.0206, 1e-3);
     DAWLAB_CHECK_NEAR(gainToDb(rms(half, 1) / rms(noise, 1)), 0.0, 1e-6);
-    // 右聲道內容沒有跑進左聲道：左聲道仍然和原本的左聲道成比例
+    // The content of the right channel did not leak into the left channel: the left channel is still proportional to the original left channel
     DAWLAB_CHECK(maxAbsDiff(half, 0, [&] { AudioBuffer t = noise; t.applyGain(0.5f); return t; }(), 0) < 1e-6f);
-    std::printf("balance +0.5：L %.2f dB、R %.2f dB；balance +1：L peak = %.1f dBFS\n",
+    std::printf("balance +0.5: L %.2f dB, R %.2f dB; balance +1: L peak = %.1f dBFS\n",
                 gainToDb(rms(half, 0) / rms(noise, 0)), gainToDb(rms(half, 1) / rms(noise, 1)),
                 gainToDb(peakAbs(bal.getReadPointer(0), bal.getNumSamples())));
 
-    // 試聽檔：撥弦琶音（左右用不同 seed 製造一點差異）依序 width 0 → 1 → 2
+    // Listening file: a plucked arpeggio (left and right use different seeds to create a little difference), with width 0 -> 1 -> 2 in turn
     {
         AudioBuffer l = makePluckSequence(sr, 2.0, 0.4f, 1);
         AudioBuffer r = makePluckSequence(sr, 2.0, 0.4f, 1);
@@ -141,7 +141,7 @@ int main() {
             AudioBuffer seg(2, l.getNumSamples());
             seg.copyFrom(0, 0, l, 0, 0, l.getNumSamples());
             seg.copyFrom(1, 0, r, 0, 0, r.getNumSamples());
-            // 讓右聲道晚 1 ms，左右才會有 side 成分可以放大
+            // Delay the right channel by 1 ms so that left and right have a side component that can be amplified
             AudioBuffer delayed(2, l.getNumSamples());
             delayed.copyFrom(0, 0, seg, 0, 0, seg.getNumSamples());
             const int d = msToSamples(1.0, sr);
@@ -151,7 +151,7 @@ int main() {
             demo.copyFrom(1, k * l.getNumSamples(), delayed, 1, 0, l.getNumSamples());
         }
         writeWav(outputPath("l01_ex7_width.wav"), demo, sr);
-        std::printf("輸出 dawlab_output/l01_ex7_width.wav（width 0 → 1 → 2 各 2 秒）\n");
+        std::printf("Wrote dawlab_output/l01_ex7_width.wav (width 0 -> 1 -> 2, 2 seconds each)\n");
     }
 
     return dawlab::test::summary("l01_ex7");

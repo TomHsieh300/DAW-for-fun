@@ -1,36 +1,38 @@
-# 第 01 章：Gain、參數平滑與 Pan
+# Chapter 01: Gain, Parameter Smoothing and Pan
 
-> [教材首頁](../../README.md)　｜　上一章：[00 數位音訊基礎](../00-basics/README.md)　｜　下一章：[02 Filter](../02-filter/README.md)
+**English** | [繁體中文](README.zh-TW.md)
 
-「把訊號乘上一個數字」是整套 DSP 裡最簡單的運算，也是 DAW 裡最常用的運算：每一軌的推桿（fader）、pan 旋鈕、mute 鍵、master 推桿、plugin 的 input / output gain……全部都是乘法。
-但是要把這個乘法做「對」，有一整章的事情要學：為什麼單位是 dB 而不是倍率？為什麼推桿不是線性的？為什麼改 gain 的瞬間會「喀」一聲？8 軌加起來為什麼會爆？pan 到中央為什麼會變小聲？本章一次講清楚。
+> [Course home](../../README.md) | Previous: [00 Digital Audio Basics](../00-basics/README.md) | Next: [02 Filter](../02-filter/README.md)
 
-## 1. 本章目標
+"Multiply the signal by a number" is the simplest operation in all of DSP, and also the most common operation in a DAW: every track's fader, the pan knob, the mute button, the master fader, a plugin's input / output gain... all of them are multiplications.
+But doing this multiplication *right* takes a whole chapter: why is the unit dB rather than a plain factor? Why is a fader not linear? Why does changing a gain instantly make a "click"? Why does a sum of 8 tracks blow up? Why does a pan to the center get quieter? This chapter answers all of these in one go.
 
-讀完本章並做完練習，你應該能夠：
+## 1. Chapter goals
 
-- 在 dB 與線性倍率之間自由換算（心算 ±6 dB、±20 dB、−3 dB），並說出 `20·log10` 與 `10·log10` 的差別。
-- 解釋 fader taper 為什麼是對數 / 分段的，並自己寫出「推桿位置 ↔ dB」的映射與反函式。
-- 從頻譜的角度說明「瞬間改 gain 會 click、連續改 gain 會 zipper noise」，並用一階差分與 sideband 把它量化。
-- 實作並比較兩種參數平滑：linear ramp（`SmoothedValue`）與 one-pole exponential smoothing（時間常數 τ）。
-- 使用本章的 `dawlab::dsp::Gain` / `Panner`，知道它們在 audio thread 上怎麼用才安全。
-- 推導三種 pan law（linear / constant power / −4.5 dB）在中央的增益與左右功率和，並分清楚 **mono pan** 與 **stereo balance**。
-- 解釋 N 軌相加時 peak 與 RMS 各自怎麼成長、什麼是 headroom 與 gain staging，以及 mute / solo / solo-safe 的解析規則（第 14 章的 mixer 用同一套規則；那裡只有 FX bus 與 master 是隱含的 solo-safe）。
+After reading this chapter and doing the exercises, you should be able to:
 
-## 2. 原理
+- Convert freely between dB and linear factors (doing ±6 dB, ±20 dB and −3 dB in your head), and state the difference between `20·log10` and `10·log10`.
+- Explain why a fader taper is logarithmic / piecewise, and write the "fader position ↔ dB" mapping and its inverse yourself.
+- Explain, from the spectrum's point of view, why "changing the gain instantly clicks and changing it continuously produces zipper noise", and quantify both with the first difference and with sidebands.
+- Implement and compare two kinds of parameter smoothing: the linear ramp (`SmoothedValue`) and one-pole exponential smoothing (time constant τ).
+- Use this chapter's `dawlab::dsp::Gain` / `Panner`, and know how to use them safely on the audio thread.
+- Derive the gain and the left/right power sum at the center for the three pan laws (linear / constant power / −4.5 dB), and tell **mono pan** from **stereo balance**.
+- Explain how peak and RMS each grow when N tracks are summed, what headroom and gain staging are, and the resolution rules for mute / solo / solo-safe (the chapter 14 mixer uses the same rules; there only the FX bus and the master are implicitly solo-safe).
 
-### 2.1 線性倍率 vs dB
+## 2. Theory
 
-一個 gain 元件做的事只有一行：
+### 2.1 Linear factor vs. dB
+
+A gain element does just one thing:
 
 $$
 y[n] = g \cdot x[n]
 $$
 
-$g$ 是線性倍率（linear gain）：$g = 1$ 不變、$g = 0.5$ 振幅減半、$g = 0$ 靜音、$g = 2$ 振幅加倍、$g < 0$ 反相。
-但你在 DAW 上看到的推桿刻度從來不是 0.5、2，而是 −6 dB、+6 dB。原因有兩個：**人耳是對數感知**（2.2 節），以及**乘法變加法**——串接兩個 gain 時倍率要相乘，dB 只要相加。
+$g$ is the linear gain: $g = 1$ leaves the signal unchanged, $g = 0.5$ halves the amplitude, $g = 0$ silences it, $g = 2$ doubles the amplitude, and $g < 0$ inverts the polarity.
+Yet the fader scales you see in a DAW are never 0.5 and 2; they are −6 dB and +6 dB. There are two reasons: **the ear perceives loudness logarithmically** (section 2.2), and **multiplication becomes addition** -- when two gains are cascaded the factors multiply, while in dB you simply add.
 
-dB（decibel）定義在「功率比」上：$10 \log_{10}(P / P_0)$。音訊處理的是振幅（sample 值），而功率正比於振幅平方 $P \propto A^2$，所以
+The dB (decibel) is defined on a *power ratio*: $10 \log_{10}(P / P_0)$. Audio processing deals with amplitudes (sample values), and power is proportional to the square of the amplitude, $P \propto A^2$, so
 
 $$
 L_\text{dB} = 10 \log_{10}\frac{A^2}{A_0^2} = 20 \log_{10}\frac{A}{A_0}
@@ -38,57 +40,57 @@ L_\text{dB} = 10 \log_{10}\frac{A^2}{A_0^2} = 20 \log_{10}\frac{A}{A_0}
 g = 10^{L_\text{dB}/20}
 $$
 
-這就是 `dawlab::gainToDb()` / `dawlab::dbToGain()`（`common/include/dawlab/DspMath.h`）做的事。**振幅用 20·log10，功率（或 RMS 的平方、能量）用 10·log10**，記住這一點，後面 pan law 與 mixing 的推導都靠它。
+This is exactly what `dawlab::gainToDb()` / `dawlab::dbToGain()` (`common/include/dawlab/DspMath.h`) do. **Use 20·log10 for amplitude, and 10·log10 for power (or the square of an RMS, or energy).** Remember this; the pan law and mixing derivations below all rely on it.
 
-幾個一定要背起來的對應：
+A few correspondences you must memorize:
 
-| dB | 振幅倍率 $g$ | 功率倍率 $g^2$ | 直覺 |
+| dB | Amplitude factor $g$ | Power factor $g^2$ | Intuition |
 |---:|---:|---:|---|
 | +20 | 10 | 100 | |
 | +12 | 3.981 ≈ 4 | 15.85 | |
-| +6.02 | 2 | 4 | 「+6 dB = 振幅加倍」 |
-| +3.01 | 1.414 = √2 | 2 | 「+3 dB = 功率加倍」 |
+| +6.02 | 2 | 4 | "+6 dB = double the amplitude" |
+| +3.01 | 1.414 = √2 | 2 | "+3 dB = double the power" |
 | 0 | 1 | 1 | unity gain |
-| −3.01 | 0.7071 = 1/√2 | 0.5 | 功率減半 |
-| −6.02 | 0.5 | 0.25 | 振幅減半 |
+| −3.01 | 0.7071 = 1/√2 | 0.5 | half the power |
+| −6.02 | 0.5 | 0.25 | half the amplitude |
 | −12.04 | 0.25 | 0.0625 | |
 | −20 | 0.1 | 0.01 | |
 | −40 | 0.01 | 10⁻⁴ | |
-| −60 | 0.001 | 10⁻⁶ | 推桿「幾乎到底」 |
-| −∞ | 0 | 0 | 真正的靜音 |
+| −60 | 0.001 | 10⁻⁶ | fader "almost at the bottom" |
+| −∞ | 0 | 0 | true silence |
 
-**dBFS**（decibels relative to full scale）以數位系統能表示的最大值 1.0 為 0 dB。一個振幅 0.5 的正弦波 peak 是 −6.02 dBFS；它的 RMS 是 $0.5/\sqrt{2} = 0.354$，也就是 −9.03 dBFS。正弦波的 peak 永遠比 RMS 高 3.01 dB，這個 3 dB 差距之後講 metering（第 11 章）時會一直出現。
+**dBFS** (decibels relative to full scale) takes the largest value a digital system can represent, 1.0, as 0 dB. A sine wave of amplitude 0.5 has a peak of −6.02 dBFS; its RMS is $0.5/\sqrt{2} = 0.354$, which is −9.03 dBFS. The peak of a sine wave is always 3.01 dB above its RMS, and this 3 dB gap will keep showing up when we get to metering (chapter 11).
 
-`DspMath.h` 把低於 `kMinusInfinityDb = -100 dB` 的值一律視為 −∞（倍率 0）。這是個實用的妥協：−100 dB 已經遠低於任何系統的 noise floor，而真正的 0 可以讓 mute 完全靜音、讓 CPU 不必處理極小的數字（denormal：比 float 最小的正規數 ≈ 1.2e-38 還小的數，很多 CPU 處理它會慢 10–100 倍；本章哪裡會遇到見第 4 節）。
+`DspMath.h` treats any value below `kMinusInfinityDb = -100 dB` as −∞ (factor 0). This is a practical compromise: −100 dB is far below the noise floor of any system, and a true 0 lets a mute be completely silent and spares the CPU from processing tiny numbers (denormals: numbers smaller than the smallest normal float, ≈ 1.2e-38, which many CPUs process 10–100 times slower; section 4 says where this chapter can run into them).
 
-### 2.2 人耳對音量的對數感知
+### 2.2 The ear's logarithmic perception of loudness
 
-為什麼不直接讓推桿顯示倍率？因為人耳對響度的感覺大致是**對數**的（Weber–Fechner 定律的一個例子）：
+Why not simply show the factor on the fader? Because the ear's sense of loudness is roughly **logarithmic** (an instance of the Weber–Fechner law):
 
-- 從 0.1 到 0.2 與從 0.5 到 1.0，聽起來都是「大聲了差不多一樣多」——它們都是 +6 dB。
-- 大約 **+10 dB 聽起來「響度加倍」**（心理聲學的粗略經驗值，Stevens 的響度定律）。注意這不是振幅加倍（+6 dB）也不是功率加倍（+3 dB）。
-- 在中等音量下人耳能分辨的最小差異（JND）約 **1 dB**，所以 DAW 的推桿刻度以 0.1 dB 為單位就綽綽有餘。
-- 從耳語（約 30 dB SPL）到痛閾（約 120 dB SPL）跨了 90 dB，也就是振幅 30000 倍——用線性刻度根本沒辦法畫在同一支推桿上。
+- Going from 0.1 to 0.2 and going from 0.5 to 1.0 both sound "about equally louder" -- both are +6 dB.
+- About **+10 dB sounds like "twice as loud"** (a rough rule of thumb from psychoacoustics, Stevens' power law of loudness). Note that this is neither a doubling of the amplitude (+6 dB) nor a doubling of the power (+3 dB).
+- At moderate levels the smallest difference the ear can tell apart (the JND) is about **1 dB**, so a DAW fader scale in steps of 0.1 dB is more than enough.
+- From a whisper (about 30 dB SPL) to the threshold of pain (about 120 dB SPL) spans 90 dB, i.e. an amplitude ratio of about 30000 -- there is no way to draw that on one fader with a linear scale.
 
-換句話說，**dB 是為了讓「推桿移動一格」對應「聽起來差不多一樣多」而存在的**。這直接決定了推桿要怎麼設計。
+In other words, **dB exists so that "one notch of the fader" corresponds to "about the same audible change"**. This directly determines how a fader has to be designed.
 
-### 2.3 Fader taper：把 0..1 的推桿位置映射到 dB
+### 2.3 Fader taper: mapping a 0..1 fader position to dB
 
-UI 上的推桿永遠是一個 0..1 的位置 $p$（滑鼠拖到哪就是哪）。如果直接拿 $p$ 當倍率（linear taper）會發生什麼事？
+The fader in a UI is always a position $p$ between 0 and 1 (wherever the mouse drags it). What happens if we use $p$ directly as the factor (a linear taper)?
 
 ```
-位置 p    倍率   dB
-1.00      1.00    0.0
-0.75      0.75   -2.5
-0.50      0.50   -6.0
-0.25      0.25  -12.0
-0.10      0.10  -20.0
-0.01      0.01  -40.0
+position p   factor   dB
+1.00         1.00      0.0
+0.75         0.75     -2.5
+0.50         0.50     -6.0
+0.25         0.25    -12.0
+0.10         0.10    -20.0
+0.01         0.01    -40.0
 ```
 
-整支推桿的上半截只涵蓋 6 dB，而最下面 1% 的行程卻要塞進 −40 dB 到 −∞——你幾乎不可能把一軌精準地調到 −30 dB。反過來，如果整支推桿「dB 對位置線性」（例如 0 → −90 dB、1 → +6 dB），每格 1 dB 很均勻，但推桿永遠到不了 −∞（真正的靜音），而且最底下將近三分之一的行程（−60 dB 以下，30/96 ≈ 31%）根本聽不到差別。
+The entire upper half of the fader covers only 6 dB, while the bottom 1% of travel has to squeeze in everything from −40 dB to −∞ -- you can hardly ever set a track precisely to −30 dB. Conversely, if the whole fader were "linear in dB versus position" (say 0 → −90 dB, 1 → +6 dB), each notch would be a uniform 1 dB, but the fader could never reach −∞ (true silence), and nearly a third of the travel at the very bottom (below −60 dB, 30/96 ≈ 31%) would make no audible difference at all.
 
-實務上 DAW 的推桿都是**分段（piecewise）曲線**：上半段 dB 對位置線性而且很「密」（0 dB 附近一格只有零點幾 dB，方便微調），下半段越往下每格的 dB 越大，最底端再接一小段「倍率線性」讓它真的能到 0。本章練習 4 用的是這一組分段點：
+In practice DAW faders are all **piecewise** curves: the upper part is linear in dB and very "dense" (near 0 dB one notch is only a fraction of a dB, convenient for fine adjustment), the lower part has more dB per notch the further down you go, and the very bottom attaches a short stretch that is "linear in factor" so that it really can reach 0. Exercise 4 of this chapter uses this set of breakpoints:
 
 ```
 dB
@@ -97,29 +99,29 @@ dB
     │                                 ⟋
 -12 ┤                       ● 0.50  ⟋
     │                     ⟋
--30 ┤           ● 0.25  ⟋            每一段「dB 對位置線性」
+-30 ┤           ● 0.25  ⟋            each segment is "linear in dB vs. position"
     │         ⟋
 -60 ┤ ● 0.05⟋
-    │ │                                最底段 [0, 0.05]：
- -∞ ┤ ● 0.00                           「倍率對位置線性」→ p = 0 時倍率剛好是 0
-    └─┴───────┴─────────┴────────────┴─────────── 位置 p
+    │ │                                bottom segment [0, 0.05]:
+ -∞ ┤ ● 0.00                           "factor linear in position" → at p = 0 the factor is exactly 0
+    └─┴───────┴─────────┴────────────┴─────────── position p
      0  0.05   0.25      0.50         0.75     1.00
 ```
 
-| 位置 $p$ | dB | 這一段的「密度」 |
+| Position $p$ | dB | "Density" of this segment |
 |---:|---:|---|
-| 1.00 | +6 | 0.75..1.00：6 dB / 0.25 = 24 dB 每單位行程 |
-| 0.75 | 0 | 0.50..0.75：12 dB / 0.25 = 48 dB 每單位行程 |
-| 0.50 | −12 | 0.25..0.50：18 dB / 0.25 = 72 dB 每單位行程 |
-| 0.25 | −30 | 0.05..0.25：30 dB / 0.20 = 150 dB 每單位行程 |
-| 0.05 | −60 | 0..0.05：倍率從 0.001 線性到 0 |
+| 1.00 | +6 | 0.75..1.00: 6 dB / 0.25 = 24 dB per unit of travel |
+| 0.75 | 0 | 0.50..0.75: 12 dB / 0.25 = 48 dB per unit of travel |
+| 0.50 | −12 | 0.25..0.50: 18 dB / 0.25 = 72 dB per unit of travel |
+| 0.25 | −30 | 0.05..0.25: 30 dB / 0.20 = 150 dB per unit of travel |
+| 0.05 | −60 | 0..0.05: the factor goes linearly from 0.001 to 0 |
 | 0.00 | −∞ | |
 
-段內用線性插值：$p$ 落在 $[p_i, p_{i+1}]$ 時 $t = (p - p_i)/(p_{i+1} - p_i)$，$L_\text{dB} = \mathrm{lerp}(L_i, L_{i+1}, t)$，再 `dbToGain`。反函式（gain → 位置，UI 要畫推桿時用）就是同一件事反過來做。這組數字沒有標準答案，各家 DAW 都不同，但「上密下疏、最底端接線性到 0」的結構是一樣的。
+Within a segment we interpolate linearly: when $p$ falls in $[p_i, p_{i+1}]$, $t = (p - p_i)/(p_{i+1} - p_i)$, $L_\text{dB} = \mathrm{lerp}(L_i, L_{i+1}, t)$, and then `dbToGain`. The inverse function (gain → position, used when the UI has to draw the fader) is the same thing done backwards. There is no standard answer for these numbers and every DAW differs, but the structure -- "dense at the top, sparse at the bottom, and a linear stretch down to 0 at the very bottom" -- is the same.
 
-### 2.4 為什麼瞬間改 gain 會 click：乘上階梯函數
+### 2.4 Why an instant gain change clicks: multiplying by a step function
 
-假設 gain 在第 $n_0$ 個 sample 從 $g_1$ 瞬間變成 $g_2$。這等於把訊號乘上一個**階梯函數**（step function）：
+Suppose the gain changes instantly from $g_1$ to $g_2$ at sample $n_0$. This is equivalent to multiplying the signal by a **step function**:
 
 $$
 y[n] = x[n] \cdot g[n],\qquad g[n] = g_1 + (g_2 - g_1)\,u[n - n_0]
@@ -128,37 +130,37 @@ $$
 ```
  g[n]
  g1 ─────────────┐
-                 │   ← 這個垂直的「牆」就是問題所在
+                 │   ← this vertical "wall" is the problem
  g2              └──────────────
  ────────────────┴────────────── n
                  n0
 ```
 
-**先建立直覺：振幅調變（amplitude modulation）與 sideband。** 把一個正弦波乘上一個「會變的 gain」，就是在調變它的振幅。最簡單的例子是讓 gain 以頻率 $f_m$ 緩慢起伏：
+**First, some intuition: amplitude modulation and sidebands.** Multiplying a sine wave by a "changing gain" modulates its amplitude. The simplest example lets the gain wobble slowly at frequency $f_m$:
 
 $$
 \sin(2\pi f t)\cdot\bigl(1 + m\cos(2\pi f_m t)\bigr)
 = \sin(2\pi f t) + \frac{m}{2}\sin\bigl(2\pi (f + f_m) t\bigr) + \frac{m}{2}\sin\bigl(2\pi (f - f_m) t\bigr)
 $$
 
-（用積化和差 $\sin A\cos B = \tfrac{1}{2}[\sin(A+B) + \sin(A-B)]$ 展開即可。）原本頻譜上只有 $f$ 一根柱子，乘上一個會變的 gain 之後，在 $f \pm f_m$ 長出兩根新的柱子。原本那根 $f$ 叫 **carrier**（載波），旁邊長出來的柱子叫 **sideband**（旁波帶）。gain 變化得越快（$f_m$ 越大），sideband 離載波越遠；gain 的變化越「劇烈」（含有越多高頻成分），sideband 就越多、越寬。
+(Expand it with the product-to-sum identity $\sin A\cos B = \tfrac{1}{2}[\sin(A+B) + \sin(A-B)]$.) The spectrum originally had a single bar at $f$; after multiplying by a changing gain, two new bars grow at $f \pm f_m$. The original bar at $f$ is called the **carrier**, and the bars that grow beside it are called **sidebands**. The faster the gain changes (the larger $f_m$), the farther the sidebands lie from the carrier; the more "violent" the change in gain (the more high-frequency content it has), the more and the wider the sidebands.
 
-把這個觀念推廣：任何 gain 曲線 $g[n]$ 都可以拆成很多個不同頻率的正弦成分（第 00 章的頻譜），每一個成分都會在載波兩側各生出一對 sideband。這個「把 $G$ 的整個頻譜形狀複製一份、平移到載波位置」的運算，數學上叫**摺積**（convolution）：時域相乘等於頻域摺積，$Y(f) = X(f) * G(f)$。這裡只需要記住白話版本——「乘上 gain 曲線 = 把 gain 曲線的頻譜貼到訊號每一根頻率線的兩側」；完整推導見延伸閱讀的 Julius O. Smith《Mathematics of the DFT》。
+Generalizing: any gain curve $g[n]$ can be decomposed into many sine components of different frequencies (the spectrum of chapter 00), and each component grows a pair of sidebands on either side of the carrier. This operation -- "copy the whole spectral shape of $G$ and shift it to the carrier's position" -- is mathematically called **convolution**: multiplication in the time domain is convolution in the frequency domain, $Y(f) = X(f) * G(f)$. All you need to remember here is the plain-language version: "multiplying by a gain curve = pasting the spectrum of the gain curve onto both sides of every frequency line of the signal". For the full derivation see Julius O. Smith, *Mathematics of the DFT*, in the further reading.
 
-回到階梯：純音 $x$ 的頻譜是一根線，摺積之後 $Y$ 就變成 $G(f)$ 的形狀平移到那根線的位置。而階梯函數的頻譜 $|G(f)|$ 以 $1/f$ 衰減（每倍頻程只掉 6 dB），是**寬頻**的——所以原本只有 1 kHz 的訊號，在改 gain 的那一瞬間突然多了從 20 Hz 到 20 kHz 的能量，耳朵聽到的就是一聲「喀」（click）。
+Back to the step: the spectrum of a pure tone $x$ is a single line, and after convolution $Y$ becomes the shape of $G(f)$ shifted to that line. The spectrum $|G(f)|$ of a step falls off as $1/f$ (only 6 dB per octave) and is **broadband** -- so a signal that originally contained only 1 kHz suddenly has energy from 20 Hz to 20 kHz at the instant of the gain change, and what the ear hears is a "click".
 
-時域的看法更直接：訊號在相鄰兩個 sample 之間出現一個不該有的「陡坡」。對一個振幅 $A$、頻率 $f$ 的正弦波，相鄰 sample 的差最多是
+The time-domain view is more direct: between two adjacent samples the signal shows an unwanted "steep slope". For a sine of amplitude $A$ and frequency $f$, the largest difference between adjacent samples is
 
 $$
 \max |x[n] - x[n-1]| \approx A \cdot \frac{2\pi f}{f_s}
 $$
 
-（$A = 0.5$、$f = 1$ kHz、$f_s = 48$ kHz 時 = 0.0654）。一個跳變產生的差分是 $|x[n_0]|\cdot|g_2 - g_1|$，可以比這個值大很多倍。範例 1 就是用「一階差分最大值」來量化 click：它超過正弦波自然值多少倍，click 就有多明顯。
+(for $A = 0.5$, $f = 1$ kHz, $f_s = 48$ kHz it equals 0.0654). A jump produces a difference of $|x[n_0]|\cdot|g_2 - g_1|$, which can be many times larger than this value. Example 1 uses the "maximum first difference" to quantify a click: the more times it exceeds the sine's natural value, the more obvious the click.
 
-**Zipper noise** 是同一件事的連續版本。使用者拖推桿時，UI 大約每個 audio block（本教材 512 sample ≈ 10.7 ms，更新率 $f_b = 93.75$ Hz）送一次新的 gain 值，於是 gain 變成一條**樓梯**（staircase）。樓梯 = 一條平滑的斜坡 + 一個週期為 $1/f_b$ 的鋸齒狀誤差；這個鋸齒是週期訊號，可以拆成頻率 $f_b, 2f_b, 3f_b, \dots$ 的正弦波之和（就是第 00 章的「諧波」，數學上叫 Fourier 級數），而鋸齒波第 $k$ 個諧波的振幅正比於 $1/k$。套用上面「振幅調變」的直覺，每一個諧波 $k f_b$ 都在載波兩側生出一對 sideband，所以輸出會在載波兩側出現間隔 $f_b$ 的 **sideband**，每倍頻程掉 6 dB。這些 sideband 落在 1 kHz 旁邊 94 Hz、188 Hz、375 Hz……的地方，聽起來就是拉拉鍊的「茲茲茲」。
+**Zipper noise** is the continuous version of the same thing. When the user drags a fader, the UI sends a new gain value about once per audio block (in this course 512 samples ≈ 10.7 ms, an update rate of $f_b = 93.75$ Hz), so the gain becomes a **staircase**. A staircase = a smooth ramp + a sawtooth error of period $1/f_b$; this sawtooth is a periodic signal that can be decomposed into a sum of sine waves at frequencies $f_b, 2f_b, 3f_b, \dots$ (these are the "harmonics" of chapter 00; mathematically this is a Fourier series), and the amplitude of the $k$-th harmonic of a sawtooth is proportional to $1/k$. Applying the "amplitude modulation" intuition above, every harmonic $k f_b$ grows a pair of sidebands on either side of the carrier, so the output shows **sidebands** spaced $f_b$ apart on both sides of the carrier, dropping 6 dB per octave. These sidebands land 94 Hz, 188 Hz, 375 Hz... away from 1 kHz, and what you hear is the "zzzzz" of a zipper being pulled.
 
 ```
- 階梯式（每 block 跳一階）              平滑（每個 sample 走一小步）
+ stepped (one step per block)           smooth (one tiny step per sample)
  g                                      g
  ┐                                      ╲
  └─┐                                      ╲
@@ -166,55 +168,55 @@ $$
      └─┐                                      ╲
        └─┐                                      ╲
  ─────────── n                           ─────────── n
- 頻譜：sideband 以 1/k 衰減（6 dB/oct）  頻譜：sideband 以 1/k² 衰減（12 dB/oct），而且小約 40 dB
+ spectrum: sidebands fall as 1/k (6 dB/oct)  spectrum: sidebands fall as 1/k² (12 dB/oct), and are about 40 dB smaller
 ```
 
-為什麼平滑之後是 $1/k^2$？因為線性 ramp 之後 gain 是**連續**的（只有斜率不連續），連續的分段線性函數頻譜以 $1/f^2$ 衰減。範例 1 的 sideband 表格會讓你親眼看到這兩個斜率（階梯式每倍頻程 −6 dB、平滑每倍頻程 −12 dB）。
+Why is it $1/k^2$ after smoothing? Because after a linear ramp the gain is **continuous** (only the slope is discontinuous), and the spectrum of a continuous piecewise-linear function falls off as $1/f^2$. The sideband table in example 1 lets you see these two slopes for yourself (−6 dB per octave for the stepped version, −12 dB per octave for the smoothed one).
 
-> 一個有趣的例外：如果跳變剛好發生在訊號的零交越（zero crossing，$x[n_0] = 0$），那 $x \cdot g_1 = x \cdot g_2 = 0$，根本不會有 click。如果範例 1 把跳變放在 block 邊界 sample 47616（≈ 0.992 s），因為 47616 / 48 = 992 剛好是整數個 1 kHz 週期，該處 $x = 0$——什麼也聽不到。所以範例刻意把跳變移到 sample 48128（訊號值 −0.433）。DAW 的「在零交越點剪接」就是利用這個性質；但即時調整推桿時你不能靠運氣，所以要平滑。
+> An interesting exception: if the jump happens exactly at a zero crossing of the signal ($x[n_0] = 0$), then $x \cdot g_1 = x \cdot g_2 = 0$ and there is no click at all. If example 1 placed the jump on the block boundary at sample 47616 (≈ 0.992 s), then since 47616 / 48 = 992 is a whole number of 1 kHz periods, $x = 0$ there -- and you would hear nothing. So the example deliberately moves the jump to sample 48128 (signal value −0.433). A DAW's "edit at zero crossings" exploits this property; but when adjusting a fader in real time you cannot count on luck, so you smooth.
 
-### 2.5 參數平滑：linear ramp vs one-pole exponential smoothing
+### 2.5 Parameter smoothing: linear ramp vs. one-pole exponential smoothing
 
-解法是不要讓 $g[n]$ 跳，而是讓它在一段時間內「走」到目標。兩種最常見的走法：
+The fix is not to let $g[n]$ jump, but to let it "walk" to the target over a period of time. The two most common ways of walking:
 
-**(a) Linear ramp**——固定在 $N$ 個 sample 內走完，每個 sample 前進固定的一步：
+**(a) Linear ramp** -- finishes in a fixed $N$ samples, advancing by a fixed step per sample:
 
 $$
 g[n] = g[n-1] + \frac{g_\text{target} - g_\text{start}}{N},\qquad N = \mathrm{round}(T_\text{ramp} \cdot f_s)
 $$
 
-- 優點：可預測（50 ms 就是 50 ms）、一定會到達目標、實作只有一個加法。
-- 缺點：斜率在起點與終點不連續（頻譜 $1/f^2$，實務上已經足夠乾淨）。
-- 這就是本章 `SmoothedValue` 的做法，也是 JUCE `SmoothedValue<float, ValueSmoothingTypes::Linear>` 的做法。
+- Advantages: predictable (50 ms is 50 ms), it always reaches the target, and the implementation is a single addition.
+- Disadvantage: the slope is discontinuous at the start and end (spectrum $1/f^2$, which in practice is already clean enough).
+- This is what this chapter's `SmoothedValue` does, and also what JUCE's `SmoothedValue<float, ValueSmoothingTypes::Linear>` does.
 
-**(b) One-pole exponential smoothing**——每個 sample 走「剩餘距離」的固定比例 $a$：
+**(b) One-pole exponential smoothing** -- each sample covers a fixed fraction $a$ of the "remaining distance":
 
 $$
 g[n] = g[n-1] + a\,(g_\text{target} - g[n-1]) = (1-a)\,g[n-1] + a\,g_\text{target}
 $$
 
-這其實是一個一階 IIR 低通濾波器（第 02 章會正式介紹）。對階梯輸入（從 0 走到 1），解析解是
+This is actually a first-order IIR low-pass filter (chapter 02 introduces it formally). For a step input (going from 0 to 1) the closed-form solution is
 
 $$
 g[n] = 1 - (1-a)^n = 1 - e^{-n/(\tau f_s)},\qquad a = 1 - e^{-1/(\tau f_s)} \approx \frac{1}{\tau f_s}
 $$
 
-$\tau$ 是**時間常數**（time constant）：走到 63.2%（$1 - e^{-1}$）所需的時間。常用的里程碑：
+$\tau$ is the **time constant**: the time needed to cover 63.2% ($1 - e^{-1}$) of the distance. Handy milestones:
 
-| 時間 | 到達比例 | 剩餘誤差 |
+| Time | Fraction reached | Remaining error |
 |---|---|---|
 | $1\tau$ | 63.2% | −8.7 dB |
-| $2.3\tau$（$\ln 10$） | 90% | −20 dB |
-| $4.6\tau$（$\ln 100$） | 99% | −40 dB |
-| $6.9\tau$（$\ln 1000$） | 99.9% | −60 dB |
+| $2.3\tau$ ($\ln 10$) | 90% | −20 dB |
+| $4.6\tau$ ($\ln 100$) | 99% | −40 dB |
+| $6.9\tau$ ($\ln 1000$) | 99.9% | −60 dB |
 
-- 優點：一開始走得快、接近目標時變慢，像電容充電 / 類比推桿，聽起來「更自然」；而且只在起點有一個斜率轉折（目標一改變，斜率就從 0 跳到 $a\cdot(g_\text{target} - g)$），終點是漸近、沒有轉折（linear ramp 起點和終點各有一個）。
-- 缺點：理論上永遠到不了目標，實作時要在誤差夠小時「snap」到目標，否則 `isSmoothing()` 永遠是 true，而且殘餘的極小值會變成 denormal。還有一個精度陷阱：狀態用 float 存時，接近目標的增量 $a\cdot d$ 會小於 float 的半個 ulp（unit in the last place：float 在該數值附近相鄰兩個可表示數的間距；1.0 附近 $\varepsilon = 2^{-23} \approx 1.19 \times 10^{-7}$，略小於 1 的地方是它的一半），狀態會「卡」在離目標約 $\varepsilon/(4a)$ 的地方（$\tau$ = 10 ms 時約 $1.4 \times 10^{-5}$）——練習 3 會讓你親手踩到並修好它。
+- Advantages: it moves fast at first and slows down near the target, like a capacitor charging or an analog fader, which sounds "more natural"; and it has a slope corner only at the start (the moment the target changes, the slope jumps from 0 to $a\cdot(g_\text{target} - g)$), while the end is asymptotic with no corner (a linear ramp has one at each end).
+- Disadvantages: in theory it never reaches the target, so an implementation must "snap" to the target once the error is small enough; otherwise `isSmoothing()` is true forever and the tiny residual values become denormals. There is also a precision trap: when the state is stored as a float, the increment $a\cdot d$ near the target becomes smaller than half an ulp (unit in the last place: the spacing between two adjacent representable floats near that value; near 1.0 it is $\varepsilon = 2^{-23} \approx 1.19 \times 10^{-7}$, and just below 1 it is half of that), and the state gets "stuck" about $\varepsilon/(4a)$ short of the target (about $1.4 \times 10^{-5}$ for $\tau$ = 10 ms) -- exercise 3 makes you step on this yourself and fix it.
 
 ```
  g
- 1.0 ┤            ╭────────────────── linear ramp：N 個 sample 後剛好到達
-     │          ╱ ╭───────────────── exponential：τ 時 63.2%，4.6τ 時 99%
+ 1.0 ┤            ╭────────────────── linear ramp: arrives exactly after N samples
+     │          ╱ ╭───────────────── exponential: 63.2% at τ, 99% at 4.6τ
      │        ╱ ╱
  0.63┤      ╱╱ ·
      │    ╱╱
@@ -223,146 +225,146 @@ $\tau$ 是**時間常數**（time constant）：走到 63.2%（$1 - e^{-1}$）�
      0       τ        N
 ```
 
-**該用多長的 ramp？** 太短（< 1 ms）仍然會 click；太長（> 100 ms）推桿會有「慢半拍」的感覺，mute 鍵按下去聲音還拖一下。經驗值：gain / pan 用 **10–50 ms**；本章 `Gain` 與 `Panner` 預設 50 ms（API 合約規定）。像 filter cutoff 這種參數改變會重算係數，通常用更短的 ramp 加上每個 sample（或每幾個 sample）更新一次係數，第 02、03 章再談。
+**How long should the ramp be?** Too short (< 1 ms) still clicks; too long (> 100 ms) and the fader feels "half a beat behind", and a pressed mute button lets the sound trail on. Rule of thumb: **10–50 ms** for gain / pan; this chapter's `Gain` and `Panner` default to 50 ms (stipulated by the API contract). A parameter like a filter cutoff recomputes coefficients whenever it changes, and usually uses a shorter ramp together with updating the coefficients every sample (or every few samples); we come back to that in chapters 02 and 03.
 
-**`SmoothedValue` 的設計重點**（對應 `dsp/include/dawlab/dsp/SmoothedValue.h`）：
+**Key points in the design of `SmoothedValue`** (corresponding to `dsp/include/dawlab/dsp/SmoothedValue.h`):
 
-1. `reset(sampleRate, rampSeconds)` 在 prepare 階段決定 $N$；之後 audio thread 上完全不 allocate。
-2. `setTargetValue()` 永遠**從目前值重新出發**（不是從上一個目標值），所以推桿連續移動時不會跳回去。
-3. 目標值與目前值相同時不啟動 ramp，`isSmoothing()` 回傳 false，`process()` 可以走「整個 block 乘同一個數」的快速路徑。
-4. 不用累加（`current += step`）：每一步由 `current = target − step·countdown` 直接算出。累加的寫法在長 ramp、大數值時（例如第 09 章以 sample 為單位、上萬的 delay time）每一步的 float 捨入誤差會累積，ramp 會衝過目標、最後一個 sample 再跳回來；直接算則每一步的誤差都不超過一個 ulp，`countdown` 到 0 時剛好等於 `target`。（標頭檔裡的乘法用 double 算。）
-5. `setCurrentAndTargetValue()` 用在初始化：不要讓 plugin 一開機從 0 ramp 上來（會有 fade-in）。
-6. `skip(n)`：這一段 buffer 不需要逐 sample 乘（例如確定是靜音）時，把 ramp 的進度往前推 n 個 sample，保持時間一致。
+1. `reset(sampleRate, rampSeconds)` decides $N$ during the prepare stage; after that nothing allocates on the audio thread.
+2. `setTargetValue()` always **restarts from the current value** (not from the previous target), so there is no jump back while a fader is moving continuously.
+3. When the target equals the current value no ramp is started and `isSmoothing()` returns false, so `process()` can take the "multiply the whole block by one number" fast path.
+4. No accumulation (`current += step`): every step is computed directly as `current = target − step·countdown`. With the accumulating form, in long ramps and with large values (for example the delay times in samples, in the tens of thousands, of chapter 09) the float rounding error of every step accumulates, the ramp overshoots the target, and the last sample jumps back; computing directly keeps the error of every step within one ulp, and when `countdown` reaches 0 the value is exactly `target`. (The multiplication in the header is done in double.)
+5. `setCurrentAndTargetValue()` is for initialization: you do not want a plugin to ramp up from 0 when it first starts (that would be a fade-in).
+6. `skip(n)`: when this stretch of the buffer does not need a per-sample multiplication (for example you know it is silent), advance the ramp's progress by n samples to keep the timing consistent.
 
-> **小心：不要用 `isSmoothing()` 判斷「參數有沒有變」。** ramp 長度是 0（`reset(sr, 0)`，或 `lround(seconds·sr) = 0`）時，`setTargetValue()` 會讓值瞬間跳到目標，`isSmoothing()` 從頭到尾都是 false。如果元件寫成「`isSmoothing()` 為 true 才重算 filter 係數」，smoothing 設成 0 時就會漏掉更新。要判斷參數是否改變，請比較「目前值」與「上次套用的值」（第 03 章 `ParametricEq` 就是這樣做的）。
+> **Careful: do not use `isSmoothing()` to decide "has the parameter changed".** When the ramp length is 0 (`reset(sr, 0)`, or `lround(seconds·sr) = 0`), `setTargetValue()` makes the value jump to the target instantly and `isSmoothing()` is false throughout. If a component is written as "recompute the filter coefficients only when `isSmoothing()` is true", the update gets missed when smoothing is set to 0. To decide whether a parameter changed, compare the "current value" with the "last applied value" (the chapter 03 `ParametricEq` does exactly that).
 
-### 2.6 Polarity invert（Ø）
+### 2.6 Polarity invert (Ø)
 
-「反相」就是 $g = -1$：$y[n] = -x[n]$。注意它和「相位移 180°」只有對純正弦波才一樣；對一般訊號，反相是**把波形上下翻**，不是時間延遲。用途：
+"Inverting" is $g = -1$: $y[n] = -x[n]$. Note that it equals a "180° phase shift" only for a pure sine; for a general signal, inverting **flips the waveform upside down**, it is not a time delay. Uses:
 
-- 多支麥克風收同一個音源（例如小鼓上下、吉他箱體兩支麥）時，若某支麥的極性相反，相加會互相抵消而變薄；按下 Ø 鍵修正。
-- **Null test**：把處理前與處理後（或兩個 plugin 的輸出）一個反相相加，如果結果是 0（−∞ dB），代表兩者完全相同。這是驗證 DSP 實作最有力的工具，範例 3 (D) 示範。
+- When several microphones capture the same source (for example top and bottom of a snare, or two mics on a guitar cabinet), if one mic has the opposite polarity, summing them cancels and thins the sound; pressing the Ø button fixes it.
+- **Null test**: sum the signal before and after processing (or the outputs of two plugins) with one of them inverted; if the result is 0 (−∞ dB), the two are identical. This is the most powerful tool for verifying a DSP implementation, demonstrated in example 3 (D).
 
-在本章 `Gain` 裡，反相不是另外乘 −1，而是把 SmoothedValue 的目標設成 $-g$：切換時 gain 會從 $+g$ 平滑經過 0 走到 $-g$，所以**按下 Ø 鍵也不會 click**。
+In this chapter's `Gain`, inverting is not a separate multiplication by −1; instead the SmoothedValue's target is set to $-g$. When you toggle, the gain walks smoothly from $+g$ through 0 to $-g$, so **pressing the Ø button does not click either**.
 
-### 2.7 Mixing 與 headroom：N 軌相加之後 peak 會變多大？
+### 2.7 Mixing and headroom: how big does the peak get after summing N tracks?
 
-Mixer 的核心就是加法：$y = \sum_i g_i x_i$。問題是加完會不會超過 1.0（0 dBFS）？答案取決於各軌之間**相關**（coherent）的程度：
+The core of a mixer is addition: $y = \sum_i g_i x_i$. The question is whether the sum exceeds 1.0 (0 dBFS). The answer depends on how **correlated** (coherent) the tracks are:
 
-**完全相關**（N 軌一模一樣，例如同一段訊號複製 N 份）：振幅直接相加
+**Fully correlated** (N identical tracks, for example the same signal copied N times): the amplitudes add directly
 
 $$
 A_\text{sum} = N \cdot A \quad\Rightarrow\quad +20\log_{10} N\ \text{dB}\qquad(N = 2: +6.02,\ N = 8: +18.06)
 $$
 
-**完全不相關**（N 軌獨立的雜訊、或不同樂器）：功率相加、振幅以 $\sqrt{N}$ 成長
+**Fully uncorrelated** (N independent noises, or different instruments): the powers add and the amplitude grows as $\sqrt{N}$
 
 $$
 P_\text{sum} = N \cdot P \quad\Rightarrow\quad A_\text{rms,sum} = \sqrt{N}\,A_\text{rms} \quad\Rightarrow\quad +10\log_{10} N\ \text{dB}\qquad(N = 8: +9.03)
 $$
 
-這是 RMS 的成長；**peak 介於兩者之間**——運氣不好時各軌的峰值仍然可能同時出現，最壞情況就是各軌 peak 的線性總和。範例 3 用數字驗證這三條線。
+This is the growth of the RMS; **the peak lies between the two** -- with bad luck the peaks of the tracks can still occur at the same moment, and the worst case is the linear sum of the per-track peaks. Example 3 verifies these three lines with numbers.
 
 ```
  dB
- +18 ┤                                 ● coherent：20·log10(N)
+ +18 ┤                                 ● coherent: 20·log10(N)
      │                             ●
- +12 ┤                         ●                 ○ 實際 peak 落在這兩條線之間
+ +12 ┤                         ●                 ○ the actual peak lands between these two lines
      │                     ●         ○
-  +6 ┤                 ●         ○ ─ ─ ─ ─ ● incoherent RMS：10·log10(N)
+  +6 ┤                 ●         ○ ─ ─ ─ ─ ● incoherent RMS: 10·log10(N)
      │             ●   ○     ●
    0 ┼─────────●───●─────────────────────── N
      1         2         4         8
 ```
 
-**Headroom** 是「目前的 peak 距離 0 dBFS 還有多少 dB」。**Gain staging** 是在訊號鏈的每一級都保留足夠 headroom 的習慣：各軌先拉低（例如 −12 到 −18 dB），讓 mix bus 的 peak 落在 −6 dBFS 左右，最後再由 master / limiter（第 05 章）決定成品音量。
+**Headroom** is "how many dB the current peak is below 0 dBFS". **Gain staging** is the habit of keeping enough headroom at every stage of the signal chain: first pull the tracks down (for example −12 to −18 dB) so that the mix bus peaks around −6 dBFS, and finally let the master / limiter (chapter 05) decide the loudness of the finished product.
 
-那為什麼在 32-bit float 的 DAW 裡，mix bus 超過 0 dBFS 聲音卻不一定會破？因為 float 的 exponent 讓它的範圍超過 ±700 dB，內部超過 1.0 完全沒問題——破音發生在**離開 float 世界的地方**：寫成 16 / 24-bit 整數 WAV、送到 DAC、或經過某些假設輸入 ≤ 1.0 的 plugin（例如 bit-crusher、某些模擬類比的 saturation）。範例 3 把同一個「爆掉」的混音分別寫成 24-bit 與 32-bit float，讀回來比較 peak，你會看到 24-bit 版本被削到 0 dBFS，32-bit float 版本完好。
+So why, in a 32-bit float DAW, does a mix bus that goes above 0 dBFS not necessarily sound distorted? Because the exponent gives float a range of more than ±700 dB, so exceeding 1.0 internally is perfectly fine -- the distortion happens **where the signal leaves the float world**: written to a 16- / 24-bit integer WAV, sent to a DAC, or passed through some plugin that assumes its input is ≤ 1.0 (for example a bit-crusher or some analog-modeling saturation). Example 3 writes the same "blown-up" mix as 24-bit and as 32-bit float, reads them back and compares the peaks: you will see that the 24-bit version is clipped to 0 dBFS while the 32-bit float version is intact.
 
-### 2.8 Mute / solo 的邏輯
+### 2.8 The logic of mute / solo
 
-每一軌有三個開關：**mute**、**solo**、**solo-safe**（有些 DAW 叫 solo isolate，用於 FX return、節拍器這種「別人 solo 時我也要出聲」的軌）。本教材採用與 Pro Tools / Logic 預設相同的規則：
+Every track has three switches: **mute**, **solo**, and **solo-safe** (some DAWs call it solo isolate, used for tracks such as an FX return or a metronome that "should still sound when others are soloed"). This course adopts the same rules as the Pro Tools / Logic defaults:
 
-1. 只要有任何一軌 solo，進入「solo 模式」：只有 solo 的軌出聲。
-2. mute 永遠有效：solo + mute → 不出聲（mute 優先）。
-3. solo-safe 的軌在 solo 模式下仍出聲，但自己 mute 時一樣不出聲。
+1. As soon as any track is soloed, we enter "solo mode": only the soloed tracks sound.
+2. Mute always takes effect: solo + mute → silent (mute wins).
+3. A solo-safe track still sounds in solo mode, but is silent when muted itself.
 
-整理成一條式子（$S$ = 是否有任何軌 solo）：
+Condensed into one expression ($S$ = whether any track is soloed):
 
 $$
 \text{audible}_i = \neg\text{mute}_i \land (\neg S \lor \text{solo}_i \lor \text{soloSafe}_i)
 $$
 
-| mute | solo | soloSafe | 有人 solo？ | 出聲 |
+| mute | solo | soloSafe | Anyone soloed? | Audible |
 |---|---|---|---|---|
-| 0 | 0 | 0 | 否 | ✔ |
-| 0 | 0 | 0 | 是 | ✘ |
+| 0 | 0 | 0 | no | ✔ |
+| 0 | 0 | 0 | yes | ✘ |
 | 0 | 1 | – | – | ✔ |
-| 0 | 0 | 1 | 是 | ✔ |
+| 0 | 0 | 1 | yes | ✔ |
 | 1 | – | – | – | ✘ |
 
-重點是：**解析完「該不該出聲」之後，不要直接把 sample 設成 0**，而是把那一軌 `Gain` 的目標設成 0 dB 或 −∞ dB，讓 ramp 走過去——mute 鍵才不會「喀」。第 14 章的 mixer 也是這個思路：`Mixer` 用 `!mute && (!anySolo || solo)`（`Mixer::isTrackAudible()` 的式子，沒有 soloSafe 項）決定每一軌該不該出聲，`ChannelStrip` 再用自己的 10 ms `SmoothedValue` 把 mute gain ramp 到 0 或 1（練習 6 用 `dsp::Gain` 的 50 ms ramp 示範同一件事）。
+The key point: **after resolving "should it sound", do not set the samples directly to 0**; instead set that track's `Gain` target to 0 dB or −∞ dB and let the ramp walk there -- only then does the mute button not "click". The chapter 14 mixer follows the same idea: `Mixer` decides whether each track should sound with `!mute && (!anySolo || solo)` (the expression of `Mixer::isTrackAudible()`, which has no soloSafe term), and `ChannelStrip` then uses its own 10 ms `SmoothedValue` to ramp the mute gain to 0 or 1 (exercise 6 demonstrates the same thing with the 50 ms ramp of `dsp::Gain`).
 
 ### 2.9 Pan law
 
-Pan 的任務：把一個 mono 訊號分到左右兩個喇叭，用兩個 gain $g_L, g_R$ 表示聲像位置。令 pan 位置 $p \in [-1, 1]$（−1 全左、0 中央、+1 全右），並定義 $\theta = (p + 1)/2 \in [0, 1]$。三種常見的 law：
+The job of a pan: distribute a mono signal between the left and right speakers, with two gains $g_L, g_R$ expressing the image position. Let the pan position be $p \in [-1, 1]$ (−1 hard left, 0 center, +1 hard right) and define $\theta = (p + 1)/2 \in [0, 1]$. Three common laws:
 
-**Linear（線性）**
+**Linear**
 
 $$
 g_L = 1 - \theta,\qquad g_R = \theta
 $$
 
-- 中央：$g_L = g_R = 0.5$ → **−6.02 dB**。
-- 振幅和 $g_L + g_R = 1$ 永遠成立 → 把左右加成 mono 時音量不變（**mono 相容**）。
-- 功率和 $g_L^2 + g_R^2 = 1 - 2\theta + 2\theta^2$，中央 = 0.5 → **−3.01 dB**：在房間裡用兩顆喇叭聽（左右不相關地疊加，功率相加），掃到中央會覺得音量「凹」下去。
+- Center: $g_L = g_R = 0.5$ → **−6.02 dB**.
+- The amplitude sum $g_L + g_R = 1$ always holds → when left and right are summed to mono the level does not change (**mono compatible**).
+- The power sum $g_L^2 + g_R^2 = 1 - 2\theta + 2\theta^2$, equal to 0.5 at the center → **−3.01 dB**: listening with two speakers in a room (left and right add uncorrelated, i.e. their powers add), sweeping through the center sounds like the level "dips".
 
-**Constant power（等功率）**
+**Constant power**
 
 $$
 g_L = \cos\!\left(\theta\frac{\pi}{2}\right),\qquad g_R = \sin\!\left(\theta\frac{\pi}{2}\right)
 $$
 
-- 功率和 $g_L^2 + g_R^2 = \cos^2 + \sin^2 = 1$ **永遠成立**（這就是它叫等功率的原因）→ 用喇叭聽掃動時音量平穩。
-- 中央：$g_L = g_R = \cos(\pi/4) = 1/\sqrt{2} = 0.7071$ → **−3.01 dB**。
-- 振幅和在中央 = $\sqrt{2}$ → 加成 mono 時中央的訊號比兩端大 **+3.01 dB**（mono 不相容）。
+- The power sum $g_L^2 + g_R^2 = \cos^2 + \sin^2 = 1$ **always holds** (which is why it is called constant power) → when listening on speakers the level stays steady during a sweep.
+- Center: $g_L = g_R = \cos(\pi/4) = 1/\sqrt{2} = 0.7071$ → **−3.01 dB**.
+- The amplitude sum at the center is $\sqrt{2}$ → when summed to mono, a signal at the center is **+3.01 dB** louder than at the edges (not mono compatible).
 
-**−4.5 dB（折衷）**
+**−4.5 dB (the compromise)**
 
 $$
 g_L = \sqrt{(1-\theta)\cos\!\left(\theta\tfrac{\pi}{2}\right)},\qquad g_R = \sqrt{\theta\,\sin\!\left(\theta\tfrac{\pi}{2}\right)}
 $$
 
-取兩種 law 的**幾何平均**，dB 剛好是兩者的算術平均：中央 $\sqrt{0.5 \times 0.7071} = 0.5946$ → **−4.52 dB**（= (−6.02 − 3.01)/2）。功率和在中央 = $2 \times 0.5 \times 0.7071 = 0.7071$ → −1.51 dB；振幅和在中央 = 1.189 → +1.51 dB。喇叭聽凹 1.5 dB、mono 凸 1.5 dB，兩邊各讓一步。Cubase、Pro Tools、Reaper 等 DAW 都提供 −4.5 dB 作為 pan law 選項之一（各家的預設值不同，而且會隨版本改變，請以你使用的版本為準），SSL 等大型類比 console 也採用類似的數值。
+This takes the **geometric mean** of the two laws, so its dB value is exactly the arithmetic mean of the two: at the center $\sqrt{0.5 \times 0.7071} = 0.5946$ → **−4.52 dB** (= (−6.02 − 3.01)/2). The power sum at the center is $2 \times 0.5 \times 0.7071 = 0.7071$ → −1.51 dB; the amplitude sum at the center is 1.189 → +1.51 dB. On speakers it dips 1.5 dB and in mono it bulges 1.5 dB, each side giving up one step. DAWs such as Cubase, Pro Tools and Reaper all offer −4.5 dB as one of their pan law options (the default differs from DAW to DAW and changes with versions, so go by the version you use), and large analog consoles such as the SSL use similar values.
 
-把三種 law 在中央的數字放在一起：
+Putting the numbers of the three laws at the center side by side:
 
-| Pan law | 中央 $g_L = g_R$ | 中央 dB | $g_L^2 + g_R^2$（喇叭） | $g_L + g_R$（mono 相加） |
+| Pan law | Center $g_L = g_R$ | Center dB | $g_L^2 + g_R^2$ (speakers) | $g_L + g_R$ (mono sum) |
 |---|---:|---:|---|---|
-| Linear | 0.5 | −6.02 | 0.5（−3.01 dB，凹） | 1（0 dB，平） |
-| Constant power | 0.7071 | −3.01 | 1（0 dB，平） | 1.414（+3.01 dB，凸） |
-| −4.5 dB | 0.5946 | −4.52 | 0.7071（−1.51 dB） | 1.189（+1.51 dB） |
+| Linear | 0.5 | −6.02 | 0.5 (−3.01 dB, dips) | 1 (0 dB, flat) |
+| Constant power | 0.7071 | −3.01 | 1 (0 dB, flat) | 1.414 (+3.01 dB, bulges) |
+| −4.5 dB | 0.5946 | −4.52 | 0.7071 (−1.51 dB) | 1.189 (+1.51 dB) |
 
 ```
  gain
  1.0 ┤●─╮                                        ╭─●   ── linear
      │   ╲ ╲                                  ╱ ╱       ·· constant power
      │    ╲  ·╲                             ╱·  ╱
- 0.71┤     ╲   ·╲·· ·· ·· ·· ·· ·· ·· ·· ··╱·   ╱  ← constant power 在中央 0.707（−3 dB）
+ 0.71┤     ╲   ·╲·· ·· ·· ·· ·· ·· ·· ·· ··╱·   ╱  ← constant power at the center: 0.707 (−3 dB)
      │      ╲     ╲                      ╱     ╱
- 0.5 ┤       ╲      ╲──────────╳──────╱      ╱    ← linear 在中央 0.5（−6 dB）
+ 0.5 ┤       ╲      ╲──────────╳──────╱      ╱    ← linear at the center: 0.5 (−6 dB)
      │        ╲    ╱                    ╲    ╱
      │         ╲ ╱   gL                 gR ╲ ╱
    0 ┼──────────●─────────────────────────────●──── pan
     -1                      0                      +1
 ```
 
-**Mono pan vs stereo balance**——這是初學者最常混淆的地方：
+**Mono pan vs. stereo balance** -- this is where beginners confuse things most often:
 
-- **Pan**（mono 輸入 → 立體聲輸出）：一個訊號被「分配」到左右，$L = g_L x$、$R = g_R x$。全右時左喇叭完全沒聲音，但所有內容都在右邊。
-- **Balance**（立體聲輸入 → 立體聲輸出）：左右聲道各自乘一個 gain，$L' = g_L L$、$R' = g_R R$。轉到全右時左聲道被關掉，**左聲道原本的內容消失了**，並沒有搬到右邊。
+- **Pan** (mono input → stereo output): one signal is "distributed" between left and right, $L = g_L x$, $R = g_R x$. At hard right the left speaker is completely silent, but all the content is on the right.
+- **Balance** (stereo input → stereo output): the left and right channels are each multiplied by a gain, $L' = g_L L$, $R' = g_R R$. Turning to hard right switches off the left channel, and **the original content of the left channel disappears**; it is not moved to the right.
 
-本章 `Panner::process(block)` 對一個立體聲 block 做的就是第二種（channel 0 乘 $g_L$、channel 1 乘 $g_R$）；當 block 的兩個 channel 內容相同（mono 複製成兩聲道）時它等價於第一種。真正的「mono → stereo」用 `processMonoToStereo()`。範例 2 (C) 用左右不相關的雜訊證明 `process()` 只是 balance。注意 pan law 在中央仍然會套用：constant power 時 pan = 0 的立體聲 block 兩邊都是 −3 dB。已經是立體聲的 bus 或 master 通常要的是「中央 0 dB、往一邊轉時只衰減另一邊」的 **balance law**（第 14 章的 mixer 就是用 `Panner::computeGains()` 自己做 balance 模式）。想要「真的把立體聲訊號往右移」需要 M/S 或更複雜的處理（練習 7 的 stereo width 是其中一種工具）。
+What this chapter's `Panner::process(block)` does to a stereo block is the second kind (channel 0 times $g_L$, channel 1 times $g_R$); when the two channels of the block hold the same content (mono copied to two channels) it is equivalent to the first kind. For a true "mono → stereo" use `processMonoToStereo()`. Example 2 (C) uses uncorrelated left and right noise to show that `process()` is only a balance. Note that the pan law is still applied at the center: with constant power, a stereo block at pan = 0 is −3 dB on both sides. A bus or master that is already stereo usually wants a **balance law** with "0 dB at the center, and only the other side attenuated when turned to one side" (the chapter 14 mixer does its own balance mode with `Panner::computeGains()`). To "really shift a stereo signal to the right" you need M/S or more elaborate processing (the stereo width of exercise 7 is one such tool).
 
 ```mermaid
 flowchart LR
@@ -376,46 +378,46 @@ flowchart LR
     end
 ```
 
-## 3. 從公式到程式碼
+## 3. From formulas to code
 
-本章在 `dsp/include/dawlab/dsp/` 新增三個 header，全部 header-only、只依賴 `common/`，之後第 13 章的 plugin 會直接使用 `Gain` 與 `SmoothedValue`，第 14 章的 DAW 三個都會用到。
+This chapter adds three headers to `dsp/include/dawlab/dsp/`, all header-only and depending only on `common/`. Later, the chapter 13 plugin uses `Gain` and `SmoothedValue` directly, and the chapter 14 DAW uses all three.
 
 ### 3.1 `SmoothedValue.h`
 
 ```cpp
 class SmoothedValue {
 public:
-    void reset(double sampleRate, double rampSeconds) noexcept;  // prepare 階段：決定 ramp 長度 N
-    void setRampLength(int numSamples) noexcept;                 // 只改長度、不打斷目前的值
-    void setCurrentAndTargetValue(float value) noexcept;         // 初始化：不要從 0 ramp 上來
-    void setTargetValue(float value) noexcept;                   // 從「目前值」出發走向新目標
-    float getNextValue() noexcept;                               // 每個 sample 呼叫一次
+    void reset(double sampleRate, double rampSeconds) noexcept;  // prepare stage: decides the ramp length N
+    void setRampLength(int numSamples) noexcept;                 // changes only the length, does not interrupt the current value
+    void setCurrentAndTargetValue(float value) noexcept;         // initialization: do not ramp up from 0
+    void setTargetValue(float value) noexcept;                   // walks from the "current value" toward the new target
+    float getNextValue() noexcept;                               // call once per sample
     float getCurrentValue() const noexcept;
     float getTargetValue() const noexcept;
     bool  isSmoothing() const noexcept;
     void  skip(int numSamples) noexcept;
-    void  applyGain(float* data, int n) noexcept;                // 便利函式：單一 channel
-    void  applyGain(AudioBlock block) noexcept;                  // 便利函式：所有 channel 共用同一條 ramp
+    void  applyGain(float* data, int n) noexcept;                // convenience: a single channel
+    void  applyGain(AudioBlock block) noexcept;                  // convenience: all channels share the same ramp
 };
 ```
 
-核心只有這幾行，對應 2.5 節的 linear ramp 公式：
+The core is only these few lines, corresponding to the linear ramp formula of section 2.5:
 
 ```cpp
-void startRamp() noexcept {                    // setTargetValue() 呼叫
+void startRamp() noexcept {                    // called by setTargetValue()
     countdown_ = rampSamples_;                 // N
     step_ = (target_ - current_) / static_cast<float>(rampSamples_);   // (g_target − g_start) / N
 }
 
 float getNextValue() noexcept {
-    if (countdown_ <= 0) return target_;       // 不在 ramp 中：快速路徑
+    if (countdown_ <= 0) return target_;       // not in a ramp: fast path
     --countdown_;
-    current_ = target_ - step_ * countdown_;   // = start + n·step，但不累加；countdown 到 0 時剛好是 target
+    current_ = target_ - step_ * countdown_;   // = start + n·step, but without accumulating; when countdown reaches 0 it is exactly target
     return current_;
 }
 ```
 
-`applyGain(AudioBlock)` 是給 `Gain` 用的：同一個 frame 的所有 channel 乘**同一個**值（左右聲道的音量要一起變，不能各走各的 ramp）。
+`applyGain(AudioBlock)` is for `Gain`: all channels of the same frame are multiplied by the **same** value (the level of left and right must change together; they cannot each walk their own ramp).
 
 ### 3.2 `Gain.h`
 
@@ -423,26 +425,26 @@ float getNextValue() noexcept {
 class Gain {
 public:
     void prepare(double sampleRate, int maxBlockSize, int numChannels);
-    void reset() noexcept;                       // ramp 直接對齊目標值
-    static constexpr float kMaxGainDb = 40.0f;   // setGainDb 的上限
-    void setGainDb(float db) noexcept;           // 參數用 dB（NaN 忽略、> +40 dB 夾住）
+    void reset() noexcept;                       // snaps the ramp straight to the target value
+    static constexpr float kMaxGainDb = 40.0f;   // upper limit of setGainDb
+    void setGainDb(float db) noexcept;           // the parameter is in dB (NaN is ignored, > +40 dB is clamped)
     void setGainLinear(float linear) noexcept;
     float getGainDb() const noexcept;
     float getGainLinear() const noexcept;
-    void setPolarityInverted(bool) noexcept;     // Ø：目標變成 −g，走同一條 ramp
+    void setPolarityInverted(bool) noexcept;     // Ø: the target becomes −g, using the same ramp
     bool isPolarityInverted() const noexcept;
-    void setRampSeconds(double seconds) noexcept;   // 預設 0.05 s
+    void setRampSeconds(double seconds) noexcept;   // default 0.05 s
     double getRampSeconds() const noexcept;
-    float getCurrentGainLinear() const noexcept; // 目前實際乘進訊號的值（給 UI / 測試）
+    float getCurrentGainLinear() const noexcept; // the value actually being multiplied into the signal (for the UI / tests)
     bool isSmoothing() const noexcept;
-    float processSample(int channel, float x) noexcept;  // 以 frame 為單位：channel 0 推進 ramp
-    void process(AudioBlock block) noexcept;             // in-place
+    float processSample(int channel, float x) noexcept;  // per frame: channel 0 advances the ramp
+    void process(AudioBlock block) noexcept;             // in place
 };
 ```
 
-`setGainDb()` 做的事是「dB → 線性 → 設成 SmoothedValue 的目標」；`process()` 只是 `smoother_.applyGain(block)`。看起來很薄，但這層薄薄的包裝就是「參數用 dB 表達、內部用線性倍率、改變時平滑」這三件事的落實。`kMinusInfinityDb`（−100 dB）會被 `dbToGain` 轉成剛好 0，所以 `setGainDb(kMinusInfinityDb)` 就是 mute。`setGainDb()` 也替你擋掉非法值：NaN 會被忽略（保持原本的設定）、超過 `Gain::kMaxGainDb`（+40 dB）會被夾住——+inf 或「把倍率誤當 dB 傳進來」都不會讓輸出變成 inf。
+What `setGainDb()` does is "dB → linear → set as the SmoothedValue target"; `process()` is just `smoother_.applyGain(block)`. It looks thin, but this thin wrapper is what puts three things into practice: "the parameter is expressed in dB, the internals use a linear factor, and changes are smoothed". `kMinusInfinityDb` (−100 dB) is converted by `dbToGain` to exactly 0, so `setGainDb(kMinusInfinityDb)` is a mute. `setGainDb()` also guards against invalid values for you: NaN is ignored (the existing setting is kept) and anything above `Gain::kMaxGainDb` (+40 dB) is clamped -- neither +inf nor "a linear factor passed in by mistake as dB" can make the output become inf.
 
-`processSample(channel, x)` 的慣例：每個 frame 先呼叫 channel 0（推進 ramp 一步），其他 channel 沿用同一個值。這和 `process()` 的行為一致。
+The convention of `processSample(channel, x)`: for every frame, call channel 0 first (which advances the ramp by one step), and the other channels reuse the same value. This is consistent with the behavior of `process()`.
 
 ### 3.3 `Panner.h`
 
@@ -454,39 +456,39 @@ class Panner {
 public:
     void prepare(double sampleRate, int maxBlockSize, int numChannels);
     void reset() noexcept;
-    void setPan(float pan) noexcept;             // -1 左、0 中、+1 右
+    void setPan(float pan) noexcept;             // -1 left, 0 center, +1 right
     float getPan() const noexcept;
-    void setPanLaw(PanLaw law) noexcept;         // 預設 ConstantPower
+    void setPanLaw(PanLaw law) noexcept;         // default ConstantPower
     PanLaw getPanLaw() const noexcept;
-    void setRampSeconds(double seconds) noexcept;   // 預設 0.05 s
+    void setRampSeconds(double seconds) noexcept;   // default 0.05 s
     float getCurrentLeftGain() const noexcept;
     float getCurrentRightGain() const noexcept;
     bool isSmoothing() const noexcept;
-    static void computeGains(float pan, PanLaw law, float& left, float& right) noexcept;  // 純函式
-    void process(AudioBlock block) noexcept;                         // 立體聲 block：ch0 × gL、ch1 × gR（= balance）
-    void processMonoToStereo(const float* mono, AudioBlock stereoOut) noexcept;  // 真正的 mono pan
+    static void computeGains(float pan, PanLaw law, float& left, float& right) noexcept;  // pure function
+    void process(AudioBlock block) noexcept;                         // stereo block: ch0 × gL, ch1 × gR (= balance)
+    void processMonoToStereo(const float* mono, AudioBlock stereoOut) noexcept;  // a true mono pan
 };
 ```
 
-`computeGains()` 是 2.9 節三條公式的直譯：
+`computeGains()` is a direct transcription of the three formulas in section 2.9:
 
 ```cpp
-const float theta = 0.5f * (p + 1.0f);                 // 0 = 全左, 0.5 = 中央, 1 = 全右
+const float theta = 0.5f * (p + 1.0f);                 // 0 = hard left, 0.5 = center, 1 = hard right
 const float linL = 1.0f - theta,  linR = theta;        // Linear
 const float halfPi = float(kPi) * 0.5f;
-const float cpL = std::sin((1.0f - theta) * halfPi);  // = cos(θ·π/2)，但全右時精確為 0
+const float cpL = std::sin((1.0f - theta) * halfPi);  // = cos(θ·π/2), but exactly 0 at hard right
 const float cpR = std::sin(theta * halfPi);           // ConstantPower
-// Minus4_5dB：幾何平均
+// Minus4_5dB: the geometric mean
 left = std::sqrt(linL * cpL);  right = std::sqrt(linR * cpR);
 ```
 
-為什麼 `cpL` 不直接寫 `std::cos(theta * halfPi)`？因為 `float(kPi)` 比真正的 π 大一點點，全右（θ = 1）時 `cos(float(π)/2)` 得到的是 −4.37e-8：不是 0，而且是**負值**，左聲道會殘留一個極小的反相訊號，和「全右時左喇叭完全沒聲音」不符。改寫成 $\sin((1-\theta)\pi/2)$ 在數學上完全相同，但兩端都是 $\sin(0) = 0$（精確），而且左右對稱、永遠不為負。範例 2 (D) 用 self-check 驗證三種 law 在 pan = ±1 時另一側的 gain 都 `== 0.0f`。另外，`setPan()` 遇到 NaN / inf 會忽略（保持原值），`computeGains()` 把它們視為中央——NaN 一旦流進音訊，後面所有處理都會變成 NaN。
+Why isn't `cpL` simply written as `std::cos(theta * halfPi)`? Because `float(kPi)` is slightly larger than the true π, so at hard right (θ = 1) `cos(float(π)/2)` yields −4.37e-8: not 0, and moreover **negative**, so the left channel would keep a tiny inverted-polarity residue, which contradicts "at hard right the left speaker is completely silent". Rewriting it as $\sin((1-\theta)\pi/2)$ is mathematically identical, but both ends become $\sin(0) = 0$ (exact), and it is symmetric between left and right and never negative. Example 2 (D) uses a self-check to verify that for all three laws the opposite side's gain is `== 0.0f` at pan = ±1. In addition, `setPan()` ignores NaN / inf (keeping the previous value), and `computeGains()` treats them as the center -- once a NaN flows into the audio, everything after it turns into NaN.
 
-左右 gain 各用一個 `SmoothedValue`，所以 pan 掃動不會 zipper。`process()` 遇到單聲道 block（沒有第二個 channel 可以 pan）什麼都不做；mono 輸入請用 `processMonoToStereo()`。
+The left and right gains each use a `SmoothedValue`, so a pan sweep does not zipper. `process()` does nothing for a mono block (there is no second channel to pan); for a mono input use `processMonoToStereo()`.
 
-### 3.4 範例 1：`l01_zipper_noise`（`examples/zipper_noise.cpp`）
+### 3.4 Example 1: `l01_zipper_noise` (`examples/zipper_noise.cpp`)
 
-在專案根目錄建置（和練習題用同一個 build 目錄），再進到 build 目錄執行：
+Build at the project root (the same build directory as the exercises), then change into the build directory and run it:
 
 ```powershell
 .\scripts\build.ps1 -Only 01-gain
@@ -494,170 +496,171 @@ cd build
 .\bin\Debug\l01_zipper_noise.exe
 ```
 
-輸出 WAV 會寫到「目前工作目錄」下的 `dawlab_output/`（`outputPath()` 是相對於目前工作目錄的路徑），所以先 `cd build` 再執行，檔案就在 `build\dawlab_output\`。本章其他範例也照這個方式執行。
+The output WAV files are written to `dawlab_output/` under the "current working directory" (`outputPath()` is a path relative to the current working directory), so `cd build` first and then run it, and the files end up in `build\dawlab_output\`. The other examples in this chapter are run the same way.
 
-| 檔案 | 內容 | 該聽到什麼 |
+| File | Content | What you should hear |
 |---|---|---|
-| `l01_step_instant.wav` | 1 kHz 正弦波，約 1.0 s 時 gain 瞬間 0 → −20 dB | 清楚的一聲「喀」 |
-| `l01_step_smoothed.wav` | 同上，50 ms linear ramp | 只有音量變小 |
-| `l01_zipper_stepped.wav` | 0.5 s 起每個 block 降 1 dB、共 40 步（模擬拖推桿，沒平滑） | 像拉拉鍊的「茲茲茲」 |
-| `l01_zipper_smoothed.wav` | 同上，經過 `SmoothedValue` | 乾淨的 fade out |
+| `l01_step_instant.wav` | 1 kHz sine, gain jumps instantly 0 → −20 dB at about 1.0 s | A clear "click" |
+| `l01_step_smoothed.wav` | Same, with a 50 ms linear ramp | Only the level getting quieter |
+| `l01_zipper_stepped.wav` | From 0.5 s on, −1 dB per block, 40 steps in total (simulating a fader drag, no smoothing) | A zipper-like "zzzzz" |
+| `l01_zipper_smoothed.wav` | Same, through `SmoothedValue` | A clean fade out |
 
-實際印出的數字（節錄）：
+The numbers actually printed (excerpt):
 
 ```
-純正弦波的一階差分最大值：實測 0.0653，理論 A·2πf/fs = 0.0654
+Max first difference of the pure sine: measured 0.0653, theory A*2*pi*f/fs = 0.0654
 
-(A) 單次跳變 0 dB → -20 dB（在 sample 48128 = 1.0027 s，該處原始訊號值 -0.433）
-    瞬間跳：跳變前一個 sample -0.3967 → 跳變後 -0.0433，一階差分 0.3534
-    一階差分最大值：瞬間跳 0.3534（是正弦波自然值的 5.4 倍）
-    一階差分最大值：50 ms ramp 0.0653（1.00 倍，幾乎等於自然值）
+(A) Single jump 0 dB -> -20 dB (at sample 48128 = 1.0027 s, original signal value there -0.433)
+    Instant jump: sample before the jump -0.3967 -> after the jump -0.0433, first difference 0.3534
+    Max first difference: instant jump 0.3534 (5.4x the natural value of the sine)
+    Max first difference: 50 ms ramp 0.0653 (1.00x, almost equal to the natural value)
 
-(B) 推桿移動：每個 block（10.67 ms，更新率 93.75 Hz）降 1 dB，共 40 步
-    1 kHz 旁邊的 sideband（相對於 1 kHz 載波）：
-    頻率                 階梯式 (dB)  平滑 (dB)
-    1093.75 Hz (1k+ 1·fb)        -34.7        -74.4
-    1187.50 Hz (1k+ 2·fb)        -40.8        -86.4
-    1375.00 Hz (1k+ 4·fb)        -46.8        -98.5
-    1750.00 Hz (1k+ 8·fb)        -52.8       -100.0
-    2500.00 Hz (1k+16·fb)        -58.8       -100.0
+(B) Fader movement: -1 dB per block (10.67 ms, update rate 93.75 Hz), 40 steps in total
+    Sidebands next to 1 kHz (relative to the 1 kHz carrier, measured over the 0.43 s of fader movement):
+    Frequency              Stepped (dB) Smoothed (dB)
+    1093.75 Hz (1k+ 1*fb)        -34.7        -74.4
+    1187.50 Hz (1k+ 2*fb)        -40.8        -86.4
+    1375.00 Hz (1k+ 4*fb)        -46.8        -98.5
+    1750.00 Hz (1k+ 8*fb)        -52.8       -100.0
+    2500.00 Hz (1k+16*fb)        -58.8       -100.0
 
-SmoothedValue：50 ms ramp 在 48000 Hz 下走了 2400 個 sample（期望 2400）
+SmoothedValue: the 50 ms ramp at 48000 Hz took 2400 samples (expected 2400), final value 0.000
 ```
 
-怎麼讀這些數字：
+How to read these numbers:
 
-- (A) 瞬間跳變的一階差分是正弦波自然值的 **5.4 倍**（0.3534 vs 0.0654）——這就是 click。平滑之後回到 1.00 倍。
-- (B) 階梯式的 sideband 每倍頻程掉 **6 dB**（−34.7 → −40.8 → −46.8 → −52.8 → −58.8），正是 2.4 節說的 $1/k$；平滑版每倍頻程掉 **12 dB**（−74.4 → −86.4 → −98.5），是 $1/k^2$，而且整體低了約 40 dB（第一個 sideband 差 39.7 dB，更高階的差距更大；−100 dB 是量測下限）。
-- 2400 = 0.05 × 48000：ramp 長度精確。
+- (A) The first difference of the instant jump is **5.4 times** the natural value of the sine (0.3534 vs. 0.0654) -- that is the click. After smoothing it is back to 1.00 times.
+- (B) The sidebands of the stepped version drop **6 dB** per octave (−34.7 → −40.8 → −46.8 → −52.8 → −58.8), exactly the $1/k$ of section 2.4; the smoothed version drops **12 dB** per octave (−74.4 → −86.4 → −98.5), which is $1/k^2$, and is about 40 dB lower overall (the first sideband differs by 39.7 dB, and the higher orders by even more; −100 dB is the measurement floor).
+- 2400 = 0.05 × 48000: the ramp length is exact.
 
-### 3.5 範例 2：`l01_pan_law`（`examples/pan_law.cpp`）
+### 3.5 Example 2: `l01_pan_law` (`examples/pan_law.cpp`)
 
 ```powershell
 bin\Debug\l01_pan_law.exe
 ```
 
-輸出 `l01_pan_sweep_linear.wav`、`l01_pan_sweep_constpower.wav`、`l01_pan_sweep_minus4_5.wav`：mono 撥弦琶音 4 秒內從全左掃到全右。用耳機聽 linear 版本，經過中央時會覺得音量「掉下去」；constant power 版本（用喇叭聽）音量比較穩定；−4.5 dB 介於兩者之間。
+It writes `l01_pan_sweep_linear.wav`, `l01_pan_sweep_constpower.wav` and `l01_pan_sweep_minus4_5.wav`: a mono plucked arpeggio swept from hard left to hard right over 4 seconds. On headphones, the linear version sounds as if the level "drops" while passing the center; the constant power version (heard on speakers) keeps a steadier level; −4.5 dB lies between the two.
 
-印出的 pan law 表格（節錄中央與 ±0.5）：
+The pan law tables printed (excerpt: the center and ±0.5):
 
 ```
---- Linear ---            gL (dB)   gR (dB) gL²+gR² dB     gL+gR dB
-   -0.50                    -2.50    -12.04        -2.04         0.00
-   +0.00                    -6.02     -6.02        -3.01         0.00
+--- Linear ---
+     pan   gL (dB)   gR (dB) gL^2+gR^2 dB     gL+gR dB
+   -0.50     -2.50    -12.04        -2.04         0.00
+   +0.00     -6.02     -6.02        -3.01         0.00
 --- ConstantPower ---
-   -0.50                    -0.69     -8.34         0.00         2.32
-   +0.00                    -3.01     -3.01        -0.00         3.01
+   -0.50     -0.69     -8.34         0.00         2.32
+   +0.00     -3.01     -3.01        -0.00         3.01
 --- Minus4_5dB ---
-   -0.50                    -1.59    -10.19        -1.03         1.15
-   +0.00                    -4.52     -4.52        -1.51         1.51
+   -0.50     -1.59    -10.19        -1.03         1.15
+   +0.00     -4.52     -4.52        -1.51         1.51
 
-(B) 掃到中央時左右聲道的 RMS（相對於 mono 原始訊號）：
-  Linear         中央：L -6.15 dB, R -5.89 dB
-  ConstantPower  中央：L -3.11 dB, R -2.91 dB
-  Minus4_5dB     中央：L -4.63 dB, R -4.40 dB
+(B) Mono plucked arpeggio swept from left to right (4 s), RMS of the left and right channels measured at the center:
+  Linear         center: L -6.15 dB, R -5.89 dB (relative to the original mono signal) -> l01_pan_sweep_linear.wav
+  ConstantPower  center: L -3.11 dB, R -2.91 dB (relative to the original mono signal) -> l01_pan_sweep_constpower.wav
+  Minus4_5dB     center: L -4.63 dB, R -4.40 dB (relative to the original mono signal) -> l01_pan_sweep_minus4_5.wav
 
-(C) 立體聲（左右不相關的白雜訊）經過 Panner（ConstantPower, pan = +0.5）：
-  L：-16.84 dB → -25.19 dB（變化 -8.34 dB，= gL -8.34 dB）
-  R：-16.78 dB → -17.47 dB（變化 -0.69 dB，= gR -0.69 dB）
+(C) Stereo (uncorrelated white noise in left and right) through the Panner (ConstantPower, pan = +0.5):
+  L: -16.84 dB -> -25.19 dB (change -8.34 dB, = gL -8.34 dB)
+  R: -16.78 dB -> -17.47 dB (change -0.69 dB, = gR -0.69 dB)
 
-(D) 端點檢查：pan = ±1 時另一側的 gain
-  Linear         全右 gL = 0、全左 gR = 0
-  ConstantPower  全右 gL = 0、全左 gR = 0
-  Minus4_5dB     全右 gL = 0、全左 gR = 0
-  setPan(NaN) 之後 pan = 0.25；computeGains(NaN) = 0.7071 / 0.7071（視為中央）
+(D) Endpoint check: gain on the opposite side at pan = +/-1
+  Linear         hard right gL = 0, hard left gR = 0
+  ConstantPower  hard right gL = 0, hard left gR = 0
+  Minus4_5dB     hard right gL = 0, hard left gR = 0
+  After setPan(NaN) pan = 0.25; computeGains(NaN) = 0.7071 / 0.7071 (treated as center)
 [PASS] l01_pan_law (3 checks passed)
 ```
 
-- 表格的每一欄都對得上 2.9 節的推導：Linear 的 `gL+gR` 永遠 0 dB、ConstantPower 的 `gL²+gR²` 永遠 0 dB、−4.5 dB 在中央各凹 / 凸 1.51 dB。
-- (B) 是在掃動中取 0.1 s 量的，這段時間 pan 從 −0.025 走到 +0.025，所以左右差 0.2 dB 左右；兩者的平均（−6.02、−3.01、−4.52）正是理論值。
-- (C) 左聲道掉了剛好 $g_L$ 的 8.34 dB，右聲道掉了 $g_R$ 的 0.69 dB——左邊的內容沒有「搬」到右邊，這是 balance。
-- (D) 三種 law 在兩端的另一側都是精確的 0（見 3.3 節為什麼 `cpL` 要寫成 sin）；非法的 pan 值不會讓 NaN 流進音訊。
+- Every column of the table matches the derivation in section 2.9: for Linear `gL+gR` is always 0 dB, for ConstantPower `gL²+gR²` is always 0 dB, and −4.5 dB dips / bulges by 1.51 dB at the center.
+- (B) is measured over 0.1 s during the sweep, and in that time the pan moves from −0.025 to +0.025, which is why left and right differ by about 0.2 dB; the average of the two (−6.02, −3.01, −4.52) is exactly the theoretical value.
+- (C) The left channel dropped by exactly $g_L$'s 8.34 dB and the right channel by $g_R$'s 0.69 dB -- the left content was not "moved" to the right; this is a balance.
+- (D) For all three laws the opposite side is exactly 0 at both ends (see section 3.3 for why `cpL` has to be written with sin); an invalid pan value does not let NaN flow into the audio.
 
-### 3.6 範例 3：`l01_mixing_headroom`（`examples/mixing_headroom.cpp`）
+### 3.6 Example 3: `l01_mixing_headroom` (`examples/mixing_headroom.cpp`)
 
 ```powershell
 bin\Debug\l01_mixing_headroom.exe
 ```
 
-| 檔案 | 內容 | 該聽到什麼 |
+| File | Content | What you should hear |
 |---|---|---|
-| `l01_mix_hot_clipped.wav` | 8 軌每軌 0 dB 直接相加，寫成 24-bit | 鼓點處刺耳的破音 |
-| `l01_mix_hot_float.wav` | 同一個混音寫成 32-bit float | 沒有破音（播放器會自動縮小或由你拉低音量） |
-| `l01_mix_staged.wav` | 每軌 −18 dB、master 0 dB | 乾淨，但整體小聲——這是 headroom 的代價 |
-| `l01_mix_mute.wav` | 一軌撥弦在約 1.0 s（0.992 s，block 邊界）被 mute（50 ms ramp） | 沒有 click 的靜音 |
+| `l01_mix_hot_clipped.wav` | 8 tracks each at 0 dB summed directly, written as 24-bit | Harsh distortion on the drum hits |
+| `l01_mix_hot_float.wav` | The same mix written as 32-bit float | No distortion (the player turns it down automatically, or you turn the volume down) |
+| `l01_mix_staged.wav` | Each track at −18 dB, master 0 dB | Clean, but quiet overall -- this is the price of headroom |
+| `l01_mix_mute.wav` | One plucked track is muted at about 1.0 s (0.992 s, a block boundary) with a 50 ms ramp | A mute without a click |
 
 ```
-(A) 8 軌一模一樣的正弦波，每軌 peak -12.00 dBFS：
-    總和 peak = 6.06 dBFS（公式 20·log10(N) = +18.06 dB → 6.06 dBFS）← 超過 0 dBFS！
-(B) 8 軌彼此不相關的白雜訊，每軌 RMS -16.84 dBFS、peak -12.04 dBFS：
-    總和 RMS = -7.75 dBFS，成長 9.10 dB（公式 10·log10(N) = +9.03 dB）
-    總和 peak = 5.46 dBFS，成長 17.50 dB（介於 +9.03 與 +18.06 之間）
+(A) 8 identical sine tracks, each with peak -12.00 dBFS:
+    Sum peak = 6.06 dBFS (formula 20*log10(N) = +18.06 dB -> 6.06 dBFS) <- exceeds 0 dBFS!
+(B) 8 mutually uncorrelated white-noise tracks, each with RMS -16.84 dBFS, peak -12.04 dBFS:
+    Sum RMS = -7.75 dBFS, growth 9.10 dB (formula 10*log10(N) = +9.03 dB)
+    Sum peak = 5.46 dBFS, growth 17.50 dB (between +9.03 and +18.06)
 
-(C) 8 軌音樂素材（1 軌鼓 + 7 軌撥弦），每軌 peak： -2.9 -6.9 -6.9 -6.9 -6.9 -7.0 -7.0 -7.0 dBFS
-    各軌 peak 的線性總和 = 3.86（11.72 dBFS）：這是最壞情況（全部同時到達峰值）
-    每軌 0 dB 直接相加：peak = 9.25 dBFS，286 個 sample 超過 0 dBFS → 寫成 24-bit 會 clip
-    要保證最壞情況也有 6 dB headroom：每軌 + master 合計至少 -17.7 dB → 每軌 -18 dB、master +0 dB
-    最壞情況 peak = 11.72 -18 = -6.28 dBFS（headroom 6.28 dB）
-    每軌 -18 dB、master +0 dB：peak = -8.75 dBFS，headroom 8.75 dB
-    （等於整體 -18 dB，所以 peak 剛好 = 9.25 -18 = -8.75 dBFS）
-    讀回 l01_mix_hot_clipped.wav（24-bit 整數）：peak = -0.00 dBFS（已被削到 0 dBFS）
-    讀回 l01_mix_hot_float.wav（32-bit float）：peak = 9.25 dBFS（超過 0 dBFS 的部分完好保留）
+(C) 8 tracks of music material (1 drum track + 7 plucked-string tracks), peak of each track: -2.9 -6.9 -6.9 -6.9 -6.9 -7.0 -7.0 -7.0 dBFS
+    Linear sum of the per-track peaks = 3.86 (11.72 dBFS): this is the worst case (all peaks arrive at the same time)
+    Every track at 0 dB summed directly: peak = 9.25 dBFS, 286 samples exceed 0 dBFS -> clips when written as 24-bit
+    To guarantee 6 dB of headroom even in the worst case: per-track + master must total at least -17.7 dB -> -18 dB per track, master +0 dB
+    Worst-case peak = 11.72 -18 = -6.28 dBFS (headroom 6.28 dB)
+    -18 dB per track, master +0 dB: peak = -8.75 dBFS, headroom 8.75 dB
+    (Equivalent to -18 dB overall, so the peak is exactly 9.25 -18 = -8.75 dBFS)
+    Read back l01_mix_hot_clipped.wav (24-bit integer): peak = -0.00 dBFS (clipped to 0 dBFS)
+    Read back l01_mix_hot_float.wav (32-bit float): peak = 9.25 dBFS (the part above 0 dBFS is preserved intact)
 
-(D) polarity invert null test：原始 peak -6.94 dBFS，反相後 peak -6.94 dBFS，
-    兩者相加 peak = -100.0 dBFS（完全抵消 = -inf dB）
+(D) Polarity invert null test: original peak -6.94 dBFS, inverted peak -6.94 dBFS,
+    peak of the sum of the two = -100.0 dBFS (complete cancellation = -inf dB)
 
-(E) mute（第 47616 個 sample = 0.992 s，該處訊號值 +0.035），mute 附近 150 ms 的一階差分最大值：
-    原始訊號 0.0103｜瞬間設成 0：0.0354（click）｜Gain 50 ms ramp：0.0103（不超過原始 = 沒有 click）
-    1.2 s 之後的 peak = -100.0 dBFS（完全靜音）
+(E) Mute (at sample 47616 = 0.992 s, signal value there +0.035), maximum first difference in the 150 ms around the mute:
+    Original signal 0.0103 | instantly set to 0: 0.0354 (click) | Gain 50 ms ramp: 0.0103 (not above the original = no click)
+    Peak after 1.2 s = -100.0 dBFS (completely silent)
 ```
 
-- (A) 相關訊號：+18.06 dB，與 $20\log_{10} 8$ 完全一致。
-- (B) 不相關訊號：RMS +9.10 dB（理論 +9.03），peak +17.5 dB——白雜訊的峰值確實有機會「湊在一起」，所以 **不能只看 RMS 來判斷會不會爆**。
-- (C) 從各軌 peak 的線性總和 11.72 dBFS 反推：要保證最壞情況也留 6 dB，「每軌 + master」合計要降 17.7 dB → 每軌 −18 dB、master 0 dB，最壞情況 peak = 11.72 − 18 = −6.28 dBFS；實際混音的 peak 是 −8.75 dBFS（各軌峰值沒有同時出現，所以比最壞情況再低 2.5 dB）。訊號鏈上**每一級**的 gain 都要算進去：如果 master 再補 +3 dB，整體只降 15 dB，最壞情況就只剩 3.3 dB headroom。這就是 gain staging 的計算方式，不是「−12 dB」這種口訣。
-- (C) 最後兩行：同一個混音，24-bit 版本的 peak 被削成 0 dBFS（破音已經「燒」進檔案裡），32-bit float 版本讀回來仍是 +9.25 dBFS——資料完好，只要之後拉低音量就能救回來。
-- (D) null test 得到 −100 dBFS（本教材的 −∞）：`Gain` 的反相是精確的 −1。
-- (E) 在 mute 附近 150 ms 的視窗裡比較：直接把 sample 設成 0 會讓一階差分變成原始訊號的 3.4 倍（0.0354 vs 0.0103，就是那一聲「喀」）；經過 `Gain` 的 50 ms ramp 則和原始訊號一樣（0.0103），沒有新增任何陡坡。1.2 s 之後是真正的 0（`kMinusInfinityDb` → 倍率 0）。注意 mute 剛好發生在 block 邊界（第 93 個 block 開頭 = 0.992 s），因為 UI 的參數只能在 block 之間生效。
+- (A) Correlated signals: +18.06 dB, in exact agreement with $20\log_{10} 8$.
+- (B) Uncorrelated signals: RMS +9.10 dB (theory +9.03), peak +17.5 dB -- the peaks of white noise really can "line up", so **you cannot judge whether it will clip from the RMS alone**.
+- (C) Working backwards from the linear sum of the per-track peaks, 11.72 dBFS: to guarantee 6 dB of headroom even in the worst case, "per-track + master" together must come down by 17.7 dB → −18 dB per track and 0 dB on the master, giving a worst-case peak of 11.72 − 18 = −6.28 dBFS; the actual mix peaks at −8.75 dBFS (the track peaks do not occur at the same time, so it is another 2.5 dB lower than the worst case). The gain of **every stage** of the signal chain has to be counted: if the master then adds +3 dB, the overall reduction is only 15 dB and the worst case has just 3.3 dB of headroom left. That is how gain staging is computed -- it is not a rule of thumb like "−12 dB".
+- (C) The last two lines: for the same mix, the peak of the 24-bit version was clipped to 0 dBFS (the distortion is already "burned" into the file), while the 32-bit float version reads back as +9.25 dBFS -- the data is intact and can be rescued simply by turning the level down afterwards.
+- (D) The null test gives −100 dBFS (this course's −∞): `Gain`'s polarity inversion is an exact −1.
+- (E) Compared over a 150 ms window around the mute: setting the samples directly to 0 makes the first difference 3.4 times that of the original signal (0.0354 vs. 0.0103, which is that "click"); going through `Gain`'s 50 ms ramp matches the original signal (0.0103) and adds no steep slope. After 1.2 s it is a true 0 (`kMinusInfinityDb` → factor 0). Note that the mute happens exactly on a block boundary (the start of block 93 = 0.992 s), because UI parameters can only take effect between blocks.
 
-## 4. Real-time 注意事項
+## 4. Real-time notes
 
-- **只有 `prepare()` 可以 allocate。** 本章三個 class 其實都不需要 heap（狀態只有幾個 float），但介面統一；`process()` 內沒有任何 new / vector::resize / mutex / I/O。
-- **本章元件不是 thread-safe：setter 只在 block 之間、由呼叫 `process()` 的同一個 thread 呼叫。** `setGainDb()` 寫的是一個 float（`gainDb_`）加上 SmoothedValue 的 target / step / countdown，全部是普通的 float / int。如果 UI thread 直接呼叫 setter、audio thread 同時在 `process()` 裡讀，在 C++ 記憶體模型下這就是 **data race，屬於 undefined behavior**——就算 x86 / ARM64 硬體上對齊的 float 寫入剛好不會被「撕裂」，編譯器也可以假設沒有其他 thread 在改這些變數而做出意想不到的最佳化，所以「硬體寫入是 atomic」不能當作 thread safety 的依據。正確做法是：UI thread 只寫一個 `std::atomic<float>`，audio thread 在每個 block 開頭讀出來、再交給平滑器（第 14 章的 `ChannelStrip` 就是這個模式）；第 13 章會用 JUCE 的 `AudioProcessorValueTreeState` 正式處理 parameter 的 thread safety。教材刻意不在本章元件內部加 atomic / lock，讓元件保持簡單、可以離線測試。
-- **初始化要 `setCurrentAndTargetValue` / `reset()`。** 否則 plugin 一載入會從 0 ramp 到目標值，前 50 ms 有 fade-in；對 `Gain` 而言 `prepare()` 已經幫你做了。
-- **Sample rate 改變要重新 `prepare()`。** ramp 長度以 sample 計，從 48 kHz 換到 96 kHz 不重算就會變成 25 ms。
-- **Denormal。** 本章的 linear ramp 走完會精確對齊目標，不會留下極小值；但練習 3 的 exponential smoother 會，所以要 snap。第 02 章的 IIR filter 更需要注意。
-- **ramp 不是 latency。** 平滑只影響「參數」到達目標的時間，訊號本身沒有被延遲，所以 `Gain` / `Panner` 不需要回報 latency。
-- **多聲道共用一條 ramp。** `Gain::process()` 讓同一個 frame 的每個 channel 乘同一個值；如果你自己寫 loop 用 `processSample()`，請遵守「每個 frame 先 channel 0」的慣例，否則左右聲道的 ramp 會走成兩倍快。
+- **Only `prepare()` may allocate.** None of the three classes in this chapter actually needs the heap (their state is just a few floats), but the interface is kept uniform; inside `process()` there is no new / vector::resize / mutex / I/O.
+- **The components in this chapter are not thread-safe: setters are called only between blocks, from the same thread that calls `process()`.** `setGainDb()` writes one float (`gainDb_`) plus the SmoothedValue's target / step / countdown, all of which are plain floats / ints. If the UI thread calls a setter directly while the audio thread is reading inside `process()`, then under the C++ memory model this is a **data race, which is undefined behavior** -- even if on x86 / ARM64 hardware an aligned float write happens not to be "torn", the compiler may assume that no other thread is modifying these variables and perform surprising optimizations, so "hardware writes are atomic" cannot be used as a basis for thread safety. The correct approach: the UI thread writes only a `std::atomic<float>`, and the audio thread reads it at the start of every block and hands it to the smoother (the chapter 14 `ChannelStrip` follows this pattern); chapter 13 will deal with parameter thread safety formally using JUCE's `AudioProcessorValueTreeState`. The course deliberately does not add atomics / locks inside this chapter's components, to keep them simple and testable offline.
+- **Initialize with `setCurrentAndTargetValue` / `reset()`.** Otherwise a plugin ramps from 0 to the target value as soon as it loads, producing a fade-in over the first 50 ms; for `Gain`, `prepare()` already does this for you.
+- **Re-`prepare()` when the sample rate changes.** The ramp length is counted in samples; switching from 48 kHz to 96 kHz without recomputing would turn it into 25 ms.
+- **Denormals.** This chapter's linear ramp lands exactly on the target when it finishes and leaves no tiny values behind; the exponential smoother of exercise 3 does, so it has to snap. The IIR filters of chapter 02 need even more care.
+- **A ramp is not latency.** Smoothing only affects the time a "parameter" takes to reach its target; the signal itself is not delayed, so `Gain` / `Panner` do not need to report latency.
+- **Multiple channels share one ramp.** `Gain::process()` multiplies every channel of the same frame by the same value; if you write your own loop with `processSample()`, follow the convention of "channel 0 first for every frame", otherwise the left and right ramps will each advance and run twice as fast.
 
-## 5. 常見錯誤與除錯
+## 5. Common mistakes and debugging
 
-| 症狀 | 可能原因 | 怎麼查 |
+| Symptom | Likely cause | How to check |
 |---|---|---|
-| 改參數時「喀」一聲 | 直接把新值乘進去，沒有 ramp；或 ramp 長度是 0（忘了 `prepare()` / `reset(sr, ramp)`） | 印出 `isSmoothing()`、`getRampSamples()`；算一階差分最大值（範例 1 的 `maxFirstDifference`）是否遠大於 $A\cdot 2\pi f/f_s$ |
-| 拖推桿有「茲茲」聲 | 每個 block 跳一階、沒平滑 | 用 Goertzel 量載波旁 $k \cdot f_b$ 的 sideband（範例 1 (B)） |
-| 音量改變「慢半拍」、mute 拖尾 | ramp 太長（> 100 ms）；或 exponential smoother 的 τ 設太大（記得 99% 要 4.6τ） | 把 ramp 調到 10–50 ms |
-| plugin 一載入先淡入 | 沒有 `setCurrentAndTargetValue()`，從 0 ramp 上來 | 在 `prepare()` 裡把 current 對齊 target |
-| 左右聲道音量變化不同步 / ramp 走太快 | 每個 channel 各呼叫一次 `getNextValue()` | 用 `applyGain(AudioBlock)`，或遵守「channel 0 推進 ramp」的慣例 |
-| `isSmoothing()` 永遠是 true、CPU 偶爾飆高 | exponential smoother 沒有 snap；float 狀態卡在離目標約 $\varepsilon/(4a)$ 處；denormal | 狀態用 double、設 snap 門檻（練習 3） |
-| 混音破音但 DAW 表頭沒紅 | 內部 float 沒事，輸出成整數 WAV / 送 DAC 才 clip | 看 mix bus 的 peak（`peakAbs`）；gain staging |
-| pan 到中央變小聲 | 這是 linear pan law 的正常行為（−6 dB） | 換 constant power 或 −4.5 dB；確認你要的是喇叭聽還是 mono 相容 |
-| 立體聲 track pan 全右後左邊的東西「不見了」 | `Panner::process()` 對立體聲是 balance，不是 pan | 想要搬移要先 sum 成 mono 再 `processMonoToStereo()`，或用 M/S（練習 7） |
-| `dbToGain(-6)` 編譯出現 ambiguous | int 同時能轉 float / double | `DspMath.h` 已提供 `dbToGain(int)` overload；傳 `-6.0f` 最保險 |
-| 用 `==` 比較 ramp 終點失敗 | 浮點累加誤差 | `SmoothedValue` 最後一步直接設成 target，自己實作時也要這麼做 |
+| A "click" when a parameter changes | The new value is multiplied in directly with no ramp; or the ramp length is 0 (forgot `prepare()` / `reset(sr, ramp)`) | Print `isSmoothing()` and `getRampSamples()`; compute the maximum first difference (`maxFirstDifference` in example 1) and see whether it is much larger than $A\cdot 2\pi f/f_s$ |
+| "Zzzz" while dragging a fader | One step per block with no smoothing | Measure the sidebands at $k \cdot f_b$ around the carrier with a Goertzel filter (example 1 (B)) |
+| The level changes "half a beat late", mute trails on | The ramp is too long (> 100 ms); or the exponential smoother's τ is too large (remember 99% takes 4.6τ) | Set the ramp to 10–50 ms |
+| A plugin fades in when loaded | No `setCurrentAndTargetValue()`, so it ramps up from 0 | Align current with target inside `prepare()` |
+| Left and right levels change out of sync / the ramp runs too fast | `getNextValue()` is called once per channel | Use `applyGain(AudioBlock)`, or follow the convention that "channel 0 advances the ramp" |
+| `isSmoothing()` is always true, the CPU occasionally spikes | The exponential smoother does not snap; the float state is stuck about $\varepsilon/(4a)$ from the target; denormals | Keep the state in a double and set a snap threshold (exercise 3) |
+| The mix distorts but the DAW's meter is not red | Internal float is fine; it clips only when exported to an integer WAV / sent to a DAC | Look at the mix bus peak (`peakAbs`); gain staging |
+| The level drops when panned to the center | This is normal behavior of the linear pan law (−6 dB) | Switch to constant power or −4.5 dB; decide whether you are listening on speakers or care about mono compatibility |
+| After panning a stereo track hard right, the stuff on the left "vanishes" | `Panner::process()` is a balance for stereo, not a pan | To move content, first sum to mono and then use `processMonoToStereo()`, or use M/S (exercise 7) |
+| `dbToGain(-6)` fails to compile as ambiguous | An int can convert to both float and double | `DspMath.h` already provides a `dbToGain(int)` overload; passing `-6.0f` is the safest |
+| Comparing the ramp end point with `==` fails | Floating-point accumulation error | `SmoothedValue` sets the last step directly to the target; do the same in your own implementation |
 
-## 6. 練習題
+## 6. Exercises
 
-見 [`exercises/README.md`](exercises/README.md)。7 題：2 題觀念 / 計算（dB 心算、平滑與 pan law 的觀念）、5 題實作（exponential smoother 與時間常數量測、fader taper、multiplicative（dB 直線）ramp、mute / solo 解析、M/S stereo width 與 balance）。解答在 [`solutions/README.md`](solutions/README.md)。
+See [`exercises/README.md`](exercises/README.md). There are 7: 2 conceptual / calculation problems (dB mental math, concepts of smoothing and pan law) and 5 implementation problems (the exponential smoother and time-constant measurement, fader taper, the multiplicative (straight line in dB) ramp, mute / solo resolution, and M/S stereo width and balance). Solutions are in [`solutions/README.md`](solutions/README.md).
 
-## 7. 延伸閱讀
+## 7. Further reading
 
-- Udo Zölzer (ed.), *DAFX: Digital Audio Effects*, 2nd ed., Wiley, 2011 —— 第 1 章 Introduction 的基礎概念；第 5 章 Spatial Effects 有 panning 與 pan law 的討論。
-- Will Pirkle, *Designing Audio Effect Plugins in C++*, 2nd ed., Routledge, 2019 —— 參數平滑（parameter smoothing）與 plugin 架構。
-- Joshua D. Reiss & Andrew P. McPherson, *Audio Effects: Theory, Implementation and Application*, CRC Press, 2014/2015（上市與版權頁年份不同）—— 有專章講 amplitude 相關效果與 panning。
-- Bob Katz, *Mastering Audio: The Art and the Science*, 3rd ed., Focal Press, 2014/2015（上市與版權頁年份不同）—— headroom、gain staging、dBFS 與響度的實務觀點。
-- JUCE 文件：`juce::SmoothedValue`（Linear / Multiplicative 兩種平滑）與 `juce::dsp::Panner`（提供 linear / balanced / sin3dB / sin4p5dB / sin6dB / squareRoot3dB / squareRoot4p5dB 等 pan rule），和本章的 API 對照著看。
-- Julius O. Smith III, *Mathematics of the DFT* 與 *Introduction to Digital Filters*（CCRMA, Stanford，線上免費）—— 2.4 節「乘法 ↔ 摺積」與 2.5 節 one-pole 的數學背景。
+- Udo Zölzer (ed.), *DAFX: Digital Audio Effects*, 2nd ed., Wiley, 2011 -- basic concepts in chapter 1, Introduction; chapter 5, Spatial Effects, discusses panning and pan laws.
+- Will Pirkle, *Designing Audio Effect Plugins in C++*, 2nd ed., Routledge, 2019 -- parameter smoothing and plugin architecture.
+- Joshua D. Reiss & Andrew P. McPherson, *Audio Effects: Theory, Implementation and Application*, CRC Press, 2014/2015 (the release year and the copyright-page year differ) -- has dedicated chapters on amplitude-related effects and panning.
+- Bob Katz, *Mastering Audio: The Art and the Science*, 3rd ed., Focal Press, 2014/2015 (the release year and the copyright-page year differ) -- the practical view of headroom, gain staging, dBFS and loudness.
+- JUCE documentation: `juce::SmoothedValue` (Linear / Multiplicative smoothing) and `juce::dsp::Panner` (which offers pan rules such as linear / balanced / sin3dB / sin4p5dB / sin6dB / squareRoot3dB / squareRoot4p5dB); read them side by side with this chapter's API.
+- Julius O. Smith III, *Mathematics of the DFT* and *Introduction to Digital Filters* (CCRMA, Stanford, free online) -- the mathematical background for "multiplication ↔ convolution" in section 2.4 and the one-pole in section 2.5.
 
-## 8. 下一章
+## 8. Next chapter
 
-有了「乘上一個數」之後，下一步是「乘上一個會隨頻率變的數」——第 02 章 [02-filter](../02-filter/README.md) 從 one-pole 低通（就是練習 3 那條式子）出發，一路到 biquad 與 RBJ cookbook。
+Having learned to "multiply by a number", the next step is to "multiply by a number that varies with frequency" -- chapter 02, [02-filter](../02-filter/README.md), starts from the one-pole low-pass (the very expression of exercise 3) and goes all the way to the biquad and the RBJ cookbook.

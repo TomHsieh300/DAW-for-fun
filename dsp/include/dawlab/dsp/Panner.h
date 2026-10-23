@@ -1,25 +1,25 @@
 #pragma once
-// Panner：把 pan 位置（-1 = 全左、0 = 中央、+1 = 全右）換成左右兩個 gain，再乘進左右聲道。
+// Panner: converts a pan position (-1 = hard left, 0 = center, +1 = hard right) into left and right gains, then multiplies them into the left and right channels.
 //
-// 令 θ = (pan + 1) / 2 ∈ [0, 1]（0 = 全左、0.5 = 中央、1 = 全右），三種 pan law：
+// Let theta = (pan + 1) / 2 in [0, 1] (0 = hard left, 0.5 = center, 1 = hard right). Three pan laws:
 //
-//   Linear        : gL = 1 − θ               gR = θ
-//                   中央 0.5 = −6.02 dB；gL + gR = 1（振幅和固定）；gL² + gR² 在中央 = 0.5（功率掉 3 dB）
-//   ConstantPower : gL = cos(θ·π/2)          gR = sin(θ·π/2)
-//                   （程式裡 gL 寫成 sin((1−θ)·π/2)，數學上相同，但 pan = ±1 時另一側精確為 0）
-//                   中央 1/√2 = −3.01 dB；gL² + gR² = 1 永遠成立（功率和固定）
-//   Minus4_5dB    : gL = √(Linear_L · ConstantPower_L)，gR 同理（兩者的幾何平均）
-//                   中央 √(0.5 · 0.7071) = 0.5946 = −4.52 dB，是兩種 law 的折衷
+//   Linear        : gL = 1 - theta               gR = theta
+//                   center 0.5 = -6.02 dB; gL + gR = 1 (constant amplitude sum); gL^2 + gR^2 at center = 0.5 (power drops by 3 dB)
+//   ConstantPower : gL = cos(theta*pi/2)         gR = sin(theta*pi/2)
+//                   (in the code gL is written as sin((1-theta)*pi/2), which is mathematically identical but gives exactly 0 on the opposite side at pan = +/-1)
+//                   center 1/sqrt(2) = -3.01 dB; gL^2 + gR^2 = 1 always (constant power sum)
+//   Minus4_5dB    : gL = sqrt(Linear_L * ConstantPower_L), and likewise for gR (the geometric mean of the two)
+//                   center sqrt(0.5 * 0.7071) = 0.5946 = -4.52 dB, a compromise between the two laws
 //
-// 立體聲與 mono 的差別（請務必理解）：
-// - process(block) 把 gL 乘進 channel 0、gR 乘進 channel 1。
-//   * 若 block 的左右內容相同（mono 訊號複製到兩聲道），這就是真正的 mono pan：聲像移到左右之間。
-//   * 若 block 是真正的立體聲（左右不同），這其實是 balance：只是把其中一邊變小，
-//     右邊的內容不會「搬」到左邊。DAW 的立體聲 track 多半就是這麼做的。
-// - processMonoToStereo(mono, stereoOut) 才是「mono 輸入 → 立體聲輸出」的 pan。
-// - block 只有 1 個 channel 時 process() 什麼都不做（沒有第二個聲道可以 pan）。
+// Stereo versus mono (make sure you understand the difference):
+// - process(block) multiplies gL into channel 0 and gR into channel 1.
+//   * If the left and right content of the block is identical (a mono signal copied to two channels), this is a true mono pan: the image moves between left and right.
+//   * If the block is genuinely stereo (left and right differ), this is actually a balance: one side is simply made quieter,
+//     and the content of the right channel is not "moved" to the left. This is how the stereo tracks of most DAWs behave.
+// - processMonoToStereo(mono, stereoOut) is the "mono in -> stereo out" pan.
+// - When the block has only 1 channel, process() does nothing (there is no second channel to pan).
 //
-// 左右 gain 各自用 SmoothedValue 線性平滑（預設 50 ms），所以 pan 掃動不會有 zipper noise。
+// The left and right gains are each linearly smoothed by a SmoothedValue (50 ms by default), so sweeping the pan produces no zipper noise.
 
 #include <dawlab/AudioBuffer.h>
 #include <dawlab/DspMath.h>
@@ -52,12 +52,12 @@ public:
         snapToTarget();
     }
 
-    // 讓左右 gain 直接對齊目標（不 ramp）
+    // Snaps the left and right gains straight to the target (no ramp)
     void reset() noexcept { snapToTarget(); }
 
-    // pan ∈ [-1, 1]：-1 全左、0 中央、+1 全右（超出範圍會被夾住）
-    // 參數 setter 必須在 block 之間、由呼叫 process() 的同一個 thread 呼叫（本章元件不是 thread-safe，
-    // 跨 thread 的參數傳遞見第 13、14 章）。NaN / inf 不是合法位置，會被忽略（保持原值）。
+    // pan in [-1, 1]: -1 hard left, 0 center, +1 hard right (out-of-range values are clamped)
+    // Parameter setters must be called between blocks, from the same thread that calls process() (the components in this chapter are not thread-safe;
+    // for passing parameters across threads see chapters 13 and 14). NaN / inf are not valid positions and are ignored (the previous value is kept).
     void setPan(float pan) noexcept {
         if (!std::isfinite(pan))
             return;
@@ -81,21 +81,21 @@ public:
         }
     }
 
-    // 目前實際使用的左右 gain（ramp 中會介於新舊值之間）
+    // The left and right gains currently in use (during a ramp they lie between the old and new values)
     float getCurrentLeftGain() const noexcept { return left_.getCurrentValue(); }
     float getCurrentRightGain() const noexcept { return right_.getCurrentValue(); }
     bool isSmoothing() const noexcept { return left_.isSmoothing() || right_.isSmoothing(); }
 
-    // 純函式：由 pan 與 law 算出左右 gain（線性倍率）。範例的 pan law 表格就是直接呼叫它。
+    // Pure function: computes the left and right gains (linear factors) from pan and law. The pan law table in the example calls it directly.
     static void computeGains(float pan, PanLaw law, float& left, float& right) noexcept {
-        // NaN / inf 視為中央，保證輸出的 gain 一定是有限值
+        // NaN / inf are treated as center, which guarantees the output gains are always finite
         const float p = std::isfinite(pan) ? std::clamp(pan, -1.0f, 1.0f) : 0.0f;
-        const float theta = 0.5f * (p + 1.0f); // 0 = 全左, 0.5 = 中央, 1 = 全右
+        const float theta = 0.5f * (p + 1.0f); // 0 = hard left, 0.5 = center, 1 = hard right
         const float linL = 1.0f - theta;
         const float linR = theta;
-        // cos(θ·π/2) 寫成 sin((1−θ)·π/2)：float(π)/2 比真正的 π/2 大一點點，
-        // 直接算 cos(float(π)/2) 會得到 −4.37e-8（負值、不是 0），全右時左聲道殘留反相訊號。
-        // 改用 sin 之後兩端都是 sin(0) = 0（精確），而且左右對稱、永不為負。
+        // cos(theta*pi/2) is written as sin((1-theta)*pi/2): float(pi)/2 is slightly larger than the true pi/2,
+        // so computing cos(float(pi)/2) directly gives -4.37e-8 (negative, not 0), leaving an inverted-phase residue in the left channel at hard right.
+        // With sin, both ends are sin(0) = 0 (exact), and the result is symmetric between left and right and never negative.
         const float halfPi = static_cast<float>(kPi) * 0.5f;
         const float cpL = std::sin((1.0f - theta) * halfPi);
         const float cpR = std::sin(theta * halfPi);
@@ -109,14 +109,14 @@ public:
             right = cpR;
             break;
         case PanLaw::Minus4_5dB:
-            // 幾何平均：dB 值剛好是兩種 law 的平均（-6.02 與 -3.01 的平均 = -4.52 dB）
+            // Geometric mean: the dB value is exactly the average of the two laws (the average of -6.02 and -3.01 = -4.52 dB)
             left = std::sqrt(linL * cpL);
             right = std::sqrt(linR * cpR);
             break;
         }
     }
 
-    // in-place：channel 0 乘 gL、channel 1 乘 gR（兩聲道內容相同 = mono pan；不同 = balance）
+    // In place: channel 0 times gL, channel 1 times gR (identical channels = mono pan; different channels = balance)
     void process(AudioBlock block) noexcept {
         if (block.getNumChannels() < 2)
             return;
@@ -124,8 +124,8 @@ public:
         right_.applyGain(block.getChannelPointer(1), block.getNumSamples());
     }
 
-    // mono 輸入 → 立體聲輸出：stereoOut[0] = mono · gL，stereoOut[1] = mono · gR
-    // mono 可以與 stereoOut 的 channel 0 是同一塊記憶體（會先算右聲道再算左聲道）。
+    // Mono in -> stereo out: stereoOut[0] = mono * gL, stereoOut[1] = mono * gR
+    // mono may be the same memory as channel 0 of stereoOut (the right channel is computed before the left).
     void processMonoToStereo(const float* mono, AudioBlock stereoOut) noexcept {
         if (stereoOut.getNumChannels() < 2)
             return;

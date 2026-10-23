@@ -1,31 +1,38 @@
 #pragma once
-// SmoothedValue：把參數的「瞬間跳變」變成「線性斜坡」（linear ramp）。
+// SmoothedValue: turns an abrupt parameter jump into a linear ramp.
 //
-// 為什麼需要它？任何會乘進音訊的參數（gain、pan、mix……）如果在兩個 sample 之間瞬間改變，
-// 等於把訊號乘上一個階梯函數（step function）。階梯的頻譜是 1/f 的寬頻能量，
-// 聽起來就是 click；推桿連續移動時每一小步都產生一次 click，就是所謂的 zipper noise。
-// 解法：讓參數在 rampSeconds 內從目前值「走」到目標值，每個 sample 前進一小步。
+// Why do we need it? If any parameter that is multiplied into the audio (gain, pan, mix, ...)
+// changes instantly between two samples, the signal is effectively multiplied by a step function.
+// The spectrum of a step is broadband energy falling off as 1/f, which sounds like a click;
+// when a fader is dragged continuously, every small step produces one click, which is what
+// we call zipper noise.
+// The fix: let the parameter "walk" from its current value to the target over rampSeconds,
+// advancing by one small step per sample.
 //
-// 用法（在 audio thread 上完全不 allocate）：
+// Usage (no allocation at all on the audio thread):
 //
 //   dawlab::dsp::SmoothedValue gain;
-//   gain.reset(48000.0, 0.05);           // prepare：設定 ramp 長度 = 50 ms
-//   gain.setCurrentAndTargetValue(1.0f); // 初始值（不要從 0 ramp 上來）
+//   gain.reset(48000.0, 0.05);           // prepare: set the ramp length = 50 ms
+//   gain.setCurrentAndTargetValue(1.0f); // initial value (do not ramp up from 0)
 //   ...
-//   gain.setTargetValue(0.5f);           // UI 改了參數：之後 2400 個 sample 會線性走到 0.5
+//   gain.setTargetValue(0.5f);           // the UI changed the parameter: over the next 2400 samples it walks linearly to 0.5
 //   for (int i = 0; i < n; ++i)
 //       y[i] = x[i] * gain.getNextValue();
 //
-// 設計重點：
-// - 每次 setTargetValue() 都從「目前值」重新出發，所以推桿連續移動時不會跳。
-// - 目標值與目前值相同時不會啟動 ramp（isSmoothing() == false），process() 可走快速路徑。
-// - 不用累加（current += step）：每一步都由 current = target − step·countdown 直接算出，
-//   所以長 ramp、大數值（例如以 sample 為單位、上萬的 delay time）也不會因 float 累加誤差
-//   超過目標再跳回來；走完 ramp 時 countdown = 0，current 剛好等於 target。
-// - 不是 thread-safe：所有 method 都必須由同一個 thread（audio thread）呼叫，setter 在 block 之間呼叫。
-//   成員都是普通的 float / int，跨 thread 讀寫是 data race（UB）；見第 13、14 章。
-// - 這是「線性」平滑：固定時間內走完、斜率固定。one-pole 指數平滑（永遠走不到、但更像類比電路）
-//   在本章練習 3 實作。
+// Design notes:
+// - Every setTargetValue() restarts from the *current* value, so there is no jump while a fader is moving.
+// - When the target equals the current value no ramp is started (isSmoothing() == false),
+//   so process() can take the fast path.
+// - No accumulation (current += step): every step is computed directly as
+//   current = target - step*countdown, so long ramps and large values (for example delay times
+//   in samples, in the tens of thousands) cannot overshoot the target through float accumulation
+//   error and then jump back; when the ramp finishes countdown = 0 and current equals target exactly.
+// - Not thread-safe: every method must be called from the same thread (the audio thread), and
+//   setters are called between blocks. The members are plain float / int, so reading and writing
+//   them across threads is a data race (UB); see chapters 13 and 14.
+// - This is "linear" smoothing: it finishes in a fixed time with a constant slope. One-pole
+//   exponential smoothing (never quite arrives, but behaves more like an analog circuit) is
+//   implemented in exercise 3 of this chapter.
 
 #include <dawlab/AudioBuffer.h>
 
@@ -39,8 +46,8 @@ public:
     SmoothedValue() = default;
     explicit SmoothedValue(float initialValue) noexcept : current_(initialValue), target_(initialValue) {}
 
-    // 設定 sample rate 與 ramp 時間。會停止進行中的 ramp（current = target）。
-    // 在 prepare() 階段呼叫；rampSeconds = 0 代表不平滑（直接跳到目標值）。
+    // Sets the sample rate and the ramp time. Stops any ramp in progress (current = target).
+    // Call it during prepare(); rampSeconds = 0 means no smoothing (jump straight to the target).
     void reset(double sampleRate, double rampSeconds) noexcept {
         rampSamples_ = std::max(0, static_cast<int>(std::lround(rampSeconds * sampleRate)));
         current_ = target_;
@@ -48,21 +55,23 @@ public:
         step_ = 0.0f;
     }
 
-    // 只改 ramp 長度、不打斷目前的值；若正在 ramp，會以新的長度從目前值重新出發。
+    // Changes only the ramp length without interrupting the current value; if a ramp is in
+    // progress, it restarts from the current value with the new length.
     void setRampLength(int numSamples) noexcept {
         rampSamples_ = std::max(0, numSamples);
         if (countdown_ > 0)
             startRamp();
     }
 
-    // 同時設定目前值與目標值（例如初始化、或 reset() 時不想有 ramp）
+    // Sets the current value and the target at the same time (for example for initialization,
+    // or when a reset() should not produce a ramp)
     void setCurrentAndTargetValue(float value) noexcept {
         current_ = target_ = value;
         countdown_ = 0;
         step_ = 0.0f;
     }
 
-    // 設定新的目標值：從「目前值」開始、用 rampSamples_ 個 sample 線性走到目標
+    // Sets a new target: starting from the *current* value, walks linearly to the target over rampSamples_ samples
     void setTargetValue(float value) noexcept {
         if (value == target_)
             return;
@@ -70,13 +79,13 @@ public:
         startRamp();
     }
 
-    // 取出下一個 sample 要用的值（每個 sample 呼叫一次）
+    // Returns the value to use for the next sample (call once per sample)
     float getNextValue() noexcept {
         if (countdown_ <= 0)
             return target_;
         --countdown_;
-        // 線性：current[n] = target − step·countdown[n]（等於 start + n·step，但不累加誤差）；
-        // countdown 走到 0 時剛好是 target
+        // Linear: current[n] = target - step*countdown[n] (equal to start + n*step, but without
+        // accumulating error); when countdown reaches 0 the value is exactly target
         current_ = valueAtCountdown();
         return current_;
     }
@@ -87,7 +96,8 @@ public:
     int getRampSamples() const noexcept { return rampSamples_; }
     int getRemainingSamples() const noexcept { return countdown_; }
 
-    // 跳過 numSamples 個 sample（例如這一段 buffer 其實是靜音，不需要逐 sample 乘）
+    // Skips numSamples samples (for example when this stretch of the buffer is actually silent
+    // and does not need a per-sample multiplication)
     void skip(int numSamples) noexcept {
         if (countdown_ <= 0 || numSamples <= 0)
             return;
@@ -100,7 +110,7 @@ public:
         current_ = valueAtCountdown();
     }
 
-    // 便利函式：把連續 n 個平滑後的值乘進 data[0..n)
+    // Convenience: multiplies n consecutive smoothed values into data[0..n)
     void applyGain(float* data, int n) noexcept {
         if (!isSmoothing()) {
             const float g = target_;
@@ -112,7 +122,7 @@ public:
             data[i] *= getNextValue();
     }
 
-    // 便利函式：整個 block、所有 channel 共用同一條 ramp（同一個 frame 的每個 channel 乘同一個值）
+    // Convenience: the whole block, with all channels sharing one ramp (every channel of the same frame is multiplied by the same value)
     void applyGain(AudioBlock block) noexcept {
         const int numChannels = block.getNumChannels();
         const int numSamples = block.getNumSamples();
@@ -128,7 +138,7 @@ public:
     }
 
 private:
-    // ramp 上「還剩 countdown_ 步」的值；用 double 算乘法，大數值時也保留 float 的完整精度
+    // The value on the ramp with countdown_ steps remaining; the multiplication is done in double so that large values keep the full precision of a float
     float valueAtCountdown() const noexcept {
         if (countdown_ <= 0)
             return target_;

@@ -1,69 +1,71 @@
-# 第 01 章 練習解答
+# Chapter 01 Exercise Solutions
 
-題目見 [`../exercises/README.md`](../exercises/README.md)。實作題的完整程式在本資料夾，每一支都用 `DAWLAB_CHECK` / `DAWLAB_CHECK_NEAR` 以數字驗證，執行後印出 `[PASS] l01_exN (...)`。
+**English** | [繁體中文](README.zh-TW.md)
+
+The problems are in [`../exercises/README.md`](../exercises/README.md). The complete programs for the implementation problems are in this folder; each one is verified with numbers through `DAWLAB_CHECK` / `DAWLAB_CHECK_NEAR` and prints `[PASS] l01_exN (...)` when run.
 
 ---
 
-## 練習 1：dB 心算
+## Exercise 1: dB mental math
 
-1. $20\log_{10} 0.25 = 20 \times (-2 \times 0.301) = -12.04$ dB。倍率 4 是 $+12.04$ dB（符號相反）。
-2. 振幅倍率 $10^{10/20} = 10^{0.5} = \sqrt{10} \approx 3.162$；功率倍率 $10^{10/10} = 10$。（+10 dB 是「聽起來響度加倍」的經驗值，不是振幅加倍 +6 dB，也不是功率加倍 +3 dB。）
-3. dB 直接相加：$-3 + 8 - 11 = -6$ dB。振幅倍率 $10^{-6/20} = 10^{-0.3} \approx 0.5$（精確值 0.501）。這就是用 dB 的好處：串接多級時乘法變加法。
-4. Peak：$20\log_{10} 0.5 = -6.02$ dBFS。正弦波的 RMS 是 peak 的 $1/\sqrt{2}$：$0.5 / 1.414 = 0.354$，$20\log_{10} 0.354 = -6.02 - 3.01 = -9.03$ dBFS。正弦波的 peak 永遠比 RMS 高 3.01 dB（crest factor $\sqrt{2}$）。
-5. 相同訊號：振幅相加 → $2 \times 0.5 = 1.0$ → **0 dBFS**（+6.02 dB）。不相關雜訊：功率相加 → RMS 乘 $\sqrt{2}$ → $-6 + 3.01 = $ **−2.99 dBFS**（≈ −3 dBFS，+3.01 dB）。
-6. RMS：$-20 + 10\log_{10} 16 = -20 + 12.04 = $ **−7.96 dBFS**。最壞情況（16 軌 peak 同時出現）peak 可以高出 $20\log_{10} 16 = $ **+24.08 dB**。實際 peak 通常介於 +12.04 與 +24.08 之間。可以對照範例 3 (B)：8 軌時理論區間是 +9.03 到 +18.06 dB，實測 +17.5 dB。
-7. $20\log_{10}(1/32768) = -20 \times 15 \times 0.301 = $ **−90.3 dBFS**（$32768 = 2^{15}$）。常聽到的「16-bit 動態範圍約 96 dB」是 $20\log_{10}(2^{16}) = 6.02 \times 16 = 96.3$ dB：它把 −32768..32767 全部 65536 個量化階都算進去，對應的是峰對峰（peak-to-peak）範圍 2；而 $1/32768$ 是以 peak = 1.0 為 0 dBFS 的步長，只用到 $2^{15}$。兩者剛好差一個 bit，也就是 $20\log_{10} 2 = 6.02$ dB（96.3 − 90.3）。若改用「滿刻度正弦波的 RMS ÷ 量化雜訊的 RMS（$\Delta/\sqrt{12}$）」來算，得到的是另一個公式 SQNR $= 6.02N + 1.76 \approx 98.1$ dB（第 00 章）；那個 +1.76 dB 才是 RMS 與正弦波 crest factor 造成的。
+1. $20\log_{10} 0.25 = 20 \times (-2 \times 0.301) = -12.04$ dB. An amplitude factor of 4 is $+12.04$ dB (the opposite sign).
+2. Amplitude factor $10^{10/20} = 10^{0.5} = \sqrt{10} \approx 3.162$; power factor $10^{10/10} = 10$. (+10 dB is the rule of thumb for "sounds twice as loud"; it is neither an amplitude doubling, +6 dB, nor a power doubling, +3 dB.)
+3. dB values simply add: $-3 + 8 - 11 = -6$ dB. The amplitude factor is $10^{-6/20} = 10^{-0.3} \approx 0.5$ (exact value 0.501). This is the benefit of using dB: when several stages are cascaded, multiplication becomes addition.
+4. Peak: $20\log_{10} 0.5 = -6.02$ dBFS. The RMS of a sine is $1/\sqrt{2}$ of its peak: $0.5 / 1.414 = 0.354$, and $20\log_{10} 0.354 = -6.02 - 3.01 = -9.03$ dBFS. The peak of a sine is always 3.01 dB above its RMS (crest factor $\sqrt{2}$).
+5. Identical signals: the amplitudes add → $2 \times 0.5 = 1.0$ → **0 dBFS** (+6.02 dB). Uncorrelated noise: the powers add → the RMS is multiplied by $\sqrt{2}$ → $-6 + 3.01 = $ **−2.99 dBFS** (≈ −3 dBFS, +3.01 dB).
+6. RMS: $-20 + 10\log_{10} 16 = -20 + 12.04 = $ **−7.96 dBFS**. In the worst case (the peaks of all 16 tracks occurring at the same time) the peak can be higher by $20\log_{10} 16 = $ **+24.08 dB**. The actual peak usually lies between +12.04 and +24.08. Compare example 3 (B): for 8 tracks the theoretical range is +9.03 to +18.06 dB, and the measured value is +17.5 dB.
+7. $20\log_{10}(1/32768) = -20 \times 15 \times 0.301 = $ **−90.3 dBFS** ($32768 = 2^{15}$). The commonly heard "the dynamic range of 16-bit is about 96 dB" is $20\log_{10}(2^{16}) = 6.02 \times 16 = 96.3$ dB: it counts all 65536 quantization levels from −32768..32767, corresponding to a peak-to-peak range of 2; whereas $1/32768$ is the step size with peak = 1.0 taken as 0 dBFS, and uses only $2^{15}$. The two differ by exactly one bit, i.e. $20\log_{10} 2 = 6.02$ dB (96.3 − 90.3). If you instead compute "the RMS of a full-scale sine ÷ the RMS of the quantization noise ($\Delta/\sqrt{12}$)", you get a different formula, SQNR $= 6.02N + 1.76 \approx 98.1$ dB (chapter 00); that +1.76 dB is what comes from the RMS and the crest factor of the sine.
 
-## 練習 2：參數平滑與 pan law
+## Exercise 2: Parameter smoothing and pan law
 
-1. $y[n] = x[n]\,g[n]$，時域相乘等於頻域摺積 $Y(f) = X(f) * G(f)$。$g[n]$ 是階梯函數，它的頻譜 $|G(f)| \propto 1/f$，從 DC 一路延伸到 Nyquist（每倍頻程只掉 6 dB）。純音 $X(f)$ 是一根線，摺積後整個 $G(f)$ 的形狀被「貼」到那根線的位置——原本只有 1 kHz 的訊號突然在所有頻率上都有能量，耳朵聽到寬頻的「喀」。平滑之後 $g[n]$ 是連續的（分段線性），頻譜 $\propto 1/f^2$（每倍頻程 12 dB），而且整體小很多。範例 1 (B) 的 sideband 表：階梯式 −34.7 / −40.8 / −46.8 dB（每倍頻程 6 dB），平滑 −74.4 / −86.4 / −98.5 dB（每倍頻程 12 dB）。
-2. $N = 0.05 \times 44100 = 2205$ 個 sample。每步 $(0.1 - 1.0) / 2205 = -4.08 \times 10^{-4}$。
-3. $\tau f_s = 0.02 \times 44100 = 882$；$a = 1 - e^{-1/882} = 1 - 0.998867 = 1.133 \times 10^{-3}$（近似 $1/882 = 1.134 \times 10^{-3}$）。到 99%：$n = \ln(100) \times 882 = 4.605 \times 882 \approx 4062$ 個 sample ≈ **92.1 ms**。注意「τ = 20 ms」的 smoother 其實要 92 ms 才走到 99%，比同樣標示 20 ms 的 linear ramp 慢得多——選擇 τ 時要記得乘 4.6。
-4. 中央 $\theta = 0.5$：
+1. $y[n] = x[n]\,g[n]$, and multiplication in the time domain equals convolution in the frequency domain, $Y(f) = X(f) * G(f)$. $g[n]$ is a step function whose spectrum $|G(f)| \propto 1/f$ extends from DC all the way to Nyquist (falling by only 6 dB per octave). The pure tone $X(f)$ is a single line, and after convolution the whole shape of $G(f)$ is "pasted" onto the position of that line -- a signal that originally had only 1 kHz suddenly has energy at all frequencies, and the ear hears a broadband "click". After smoothing, $g[n]$ is continuous (piecewise linear), the spectrum is $\propto 1/f^2$ (12 dB per octave), and it is much smaller overall. The sideband table of example 1 (B): stepped −34.7 / −40.8 / −46.8 dB (6 dB per octave), smoothed −74.4 / −86.4 / −98.5 dB (12 dB per octave).
+2. $N = 0.05 \times 44100 = 2205$ samples. Each step is $(0.1 - 1.0) / 2205 = -4.08 \times 10^{-4}$.
+3. $\tau f_s = 0.02 \times 44100 = 882$; $a = 1 - e^{-1/882} = 1 - 0.998867 = 1.133 \times 10^{-3}$ (approximately $1/882 = 1.134 \times 10^{-3}$). To 99%: $n = \ln(100) \times 882 = 4.605 \times 882 \approx 4062$ samples ≈ **92.1 ms**. Note that a smoother with "τ = 20 ms" actually needs 92 ms to reach 99%, much slower than a linear ramp labeled with the same 20 ms -- when choosing τ remember to multiply by 4.6.
+4. At the center $\theta = 0.5$:
 
    | | $g_L = g_R$ | dB | $g_L^2 + g_R^2$ | $g_L + g_R$ |
    |---|---:|---:|---:|---:|
-   | Linear | $1 - 0.5 = 0.5$ | −6.02 | $0.25 + 0.25 = 0.5$（−3.01 dB） | 1（0 dB） |
-   | Constant power | $\cos(\pi/4) = 0.7071$ | −3.01 | $0.5 + 0.5 = 1$（0 dB） | 1.414（+3.01 dB） |
+   | Linear | $1 - 0.5 = 0.5$ | −6.02 | $0.25 + 0.25 = 0.5$ (−3.01 dB) | 1 (0 dB) |
+   | Constant power | $\cos(\pi/4) = 0.7071$ | −3.01 | $0.5 + 0.5 = 1$ (0 dB) | 1.414 (+3.01 dB) |
 
-   廣播 / 影視的內容常常會被 downmix 成 mono（電視喇叭、電話、公共廣播）。Constant power 在 mono 相加時中央的素材（對白、主唱）會比兩端大 3 dB，整體平衡跑掉；linear 的振幅和永遠是 1，mono 下完全不變；−4.5 dB 是兩邊各讓 1.5 dB 的折衷。音樂製作在喇叭上監聽、很少 downmix，所以偏好 constant power。
-5. Mono pan 是「一個訊號分配到左右兩個輸出」（$L = g_L x$、$R = g_R x$，內容全部保留只是位置移動）；stereo balance 是「左右兩個已存在的訊號各自乘一個 gain」（$L' = g_L L$、$R' = g_R R$，轉到一邊時另一邊的內容消失、不會搬過去）。`Panner::process()` 對立體聲 block 做的是 **balance**（channel 0 乘 $g_L$、channel 1 乘 $g_R$）；只有當兩個 channel 內容相同時它才等價於 mono pan。真正的 mono pan 用 `processMonoToStereo()`。
-6. 直接乘 −1 等於 gain 從 $+g$ 瞬間跳到 $-g$，跳變量是 $2g$——比 mute 還大的階梯，一定 click。把目標設成 $-g$ 之後 SmoothedValue 從 $+g$ 線性走到 $-g$，中途會**經過 0**（ramp 的正中間），整個過程連續，所以切換 Ø 不會有聲音。代價是切換的 50 ms 內音量會先降到 0 再回來（$|g|$ 呈 V 字形，除了兩個端點之外整段都比 $g$ 小），聽起來像一個短暫的 dip。
+   Broadcast / film content is often downmixed to mono (TV speakers, telephones, public address). With constant power, when summed to mono the center material (dialogue, lead vocal) is 3 dB louder than at the edges and the overall balance goes off; the amplitude sum of linear is always 1, so nothing changes in mono; −4.5 dB is the compromise in which each side gives up 1.5 dB. Music production monitors on speakers and rarely downmixes, so it prefers constant power.
+5. A mono pan "distributes one signal to two outputs, left and right" ($L = g_L x$, $R = g_R x$; all the content is kept and only its position moves); a stereo balance "multiplies two existing signals, left and right, by a gain each" ($L' = g_L L$, $R' = g_R R$; when turned to one side the content of the other side disappears and is not moved over). What `Panner::process()` does to a stereo block is a **balance** (channel 0 times $g_L$, channel 1 times $g_R$); it equals a mono pan only when the two channels hold the same content. For a true mono pan use `processMonoToStereo()`.
+6. Multiplying directly by −1 would make the gain jump instantly from $+g$ to $-g$, a jump of $2g$ -- a step even larger than a mute, so it would definitely click. After setting the target to $-g$, the SmoothedValue walks linearly from $+g$ to $-g$ and **passes through 0** on the way (right in the middle of the ramp); the whole process is continuous, so toggling Ø makes no sound. The price is that during the 50 ms of the toggle the level first drops to 0 and then comes back ($|g|$ forms a V shape, smaller than $g$ everywhere except the two end points), which sounds like a brief dip.
 
-## 練習 3：one-pole exponential smoother（`ex3_exp_smoother.cpp`）
+## Exercise 3: The one-pole exponential smoother (`ex3_exp_smoother.cpp`)
 
-關鍵思路：
+The key idea:
 
 ```cpp
 coeff_ = tauSamples > 0.0 ? 1.0 - std::exp(-1.0 / tauSamples) : 1.0;   // a = 1 − e^{−1/τfs}
 
 float getNextValue() noexcept {
-    current_ += coeff_ * (target_ - current_);          // 每個 sample 走剩餘距離的 a 倍
-    if (std::abs(target_ - current_) < kSnapThreshold)  // 1e-6：低於 −120 dB 視為已到達
+    current_ += coeff_ * (target_ - current_);          // each sample covers a fraction a of the remaining distance
+    if (std::abs(target_ - current_) < kSnapThreshold)  // 1e-6: a gap below −120 dB counts as arrived
         current_ = target_;
     return static_cast<float>(current_);
 }
 ```
 
-量測時間常數就是對階梯 0 → 1 逐 sample 呼叫、數到第幾個 sample 第一次 ≥ 0.632 / 0.99 / 0.999。執行輸出：
+Measuring the time constant means calling it sample by sample on a 0 → 1 step and counting at which sample it first reaches ≥ 0.632 / 0.99 / 0.999. The output of a run:
 
 ```
-τ = 10.0 ms = 480 samples，a = 0.002081（理論 1 − e^(−1/480) = 0.002081）
-到達 63.2%：480 samples（1.00 τ，期望 1.00 τ）
-到達 99%  ：2211 samples（4.61 τ，期望 ln(100) = 4.605 τ）
-到達 99.9%：3316 samples（6.91 τ，期望 ln(1000) = 6.908 τ）
-與解析解 1 − (1−a)^n 的最大誤差：4.29e-08；單調遞增：yes；沒有超過目標：yes
-50 ms 後：線性 ramp = 1.000，指數（τ = 50 ms）= 0.632
+tau = 10.0 ms = 480 samples, a = 0.002081 (theory 1 - e^(-1/480) = 0.002081)
+Reaches 63.2%: 480 samples (1.00 tau, expected 1.00 tau)
+Reaches 99%  : 2211 samples (4.61 tau, expected ln(100) = 4.605 tau)
+Reaches 99.9%: 3316 samples (6.91 tau, expected ln(1000) = 6.908 tau)
+Max error vs. the closed form 1 - (1-a)^n: 4.29e-08; monotonically increasing: yes; never exceeds the target: yes
+After 50 ms: linear ramp = 1.000, exponential (tau = 50 ms) = 0.632
 [PASS] l01_ex3 (11 checks passed)
 ```
 
-最後一行值得記住：同樣標示「50 ms」，linear ramp 在 50 ms 時剛好到達 1.000，exponential（τ = 50 ms）只走到 0.632。
+The last line is worth remembering: for the same "50 ms", the linear ramp reaches exactly 1.000 at 50 ms, while the exponential (τ = 50 ms) has only reached 0.632.
 
-**為什麼狀態要用 double？** 這是題目提示裡要你踩的坑。如果 `current_` 是 float，當剩餘距離 $d = t - y$ 小到 $a \cdot d$ 比 $y$ 的半個 ulp 還小，`current_ += a·d` 等於沒加——狀態會卡住。$y$ 從下方接近 1（落在 $[0.5, 1)$）時，ulp $= 2^{-24} \approx 6 \times 10^{-8}$，半個 ulp $\approx 3 \times 10^{-8}$，所以卡在 $d \approx 3 \times 10^{-8} / a = \varepsilon/(4a) \approx 3 \times 10^{-8} / 0.0021 \approx 1.4 \times 10^{-5}$ 的地方（$\varepsilon = 2^{-23} \approx 1.19 \times 10^{-7}$ 是 1.0 的 ulp；實測 float 版本卡在 $d = 1.43 \times 10^{-5}$，與推導吻合），永遠到不了 1e-6 的 snap 門檻。於是 `isSmoothing()` 永遠是 true（最後兩個 check 會 FAIL），而且每個 block 都在做無意義的乘法。用 double（ε ≈ 2.2 × 10⁻¹⁶）卡住的位置在 $10^{-14}$ 量級，遠低於門檻。另一個做法是把 snap 門檻設得比卡住位置大（例如 1e-4 ≈ −80 dB），但門檻就得跟著 τ 變，不如直接用 double 乾淨。
+**Why must the state be a double?** This is the trap the exercise hint makes you step on. If `current_` is a float, once the remaining distance $d = t - y$ becomes so small that $a \cdot d$ is below half an ulp of $y$, `current_ += a·d` adds nothing -- the state gets stuck. When $y$ approaches 1 from below (in $[0.5, 1)$), the ulp is $2^{-24} \approx 6 \times 10^{-8}$ and half an ulp is $\approx 3 \times 10^{-8}$, so it gets stuck at $d \approx 3 \times 10^{-8} / a = \varepsilon/(4a) \approx 3 \times 10^{-8} / 0.0021 \approx 1.4 \times 10^{-5}$ ($\varepsilon = 2^{-23} \approx 1.19 \times 10^{-7}$ is the ulp of 1.0; the float version measured got stuck at $d = 1.43 \times 10^{-5}$, matching the derivation), never reaching the snap threshold of 1e-6. As a result `isSmoothing()` is true forever (the last two checks FAIL), and every block does pointless multiplications. With a double (ε ≈ 2.2 × 10⁻¹⁶) the place where it gets stuck is on the order of $10^{-14}$, far below the threshold. Another approach is to set the snap threshold larger than the stuck position (for example 1e-4 ≈ −80 dB), but then the threshold would have to change with τ, which is less clean than simply using a double.
 
-## 練習 4：fader taper（`ex4_fader_taper.cpp`）
+## Exercise 4: Fader taper (`ex4_fader_taper.cpp`)
 
-關鍵思路：底段 $p \le 0.05$ 時倍率線性 `dbToGain(-60) * (p / 0.05)`（$p = 0$ 剛好得到 0）；其他段找出 $p$ 落在哪兩個分段點之間，在 **dB** 上做 `lerp`，最後 `dbToGain`。反函式做一模一樣的事：倍率 ≤ −60 dB 的倍率時用倍率反推，否則先 `gainToDb` 再在 dB 上反推位置。
+The key idea: in the bottom segment $p \le 0.05$ the factor is linear, `dbToGain(-60) * (p / 0.05)` (which gives exactly 0 at $p = 0$); for the other segments, find which two breakpoints $p$ falls between, `lerp` in **dB**, and finally apply `dbToGain`. The inverse function does exactly the same: for a factor at or below the −60 dB factor it inverts in factor, otherwise it first applies `gainToDb` and then inverts the position in dB.
 
 ```cpp
 for (int i = 1; i < kNumPoints; ++i)
@@ -73,88 +75,90 @@ for (int i = 1; i < kNumPoints; ++i)
     }
 ```
 
-執行輸出（節錄）：
+The output of a run (excerpt):
 
 ```
 position         dB       gain
-    0.00    -100.00    0.00000      ← 真正的 0（印成本教材的 −∞ = −100 dB）
+    0.00    -100.00    0.00000      <- a true 0 (printed as this course's −∞ = −100 dB)
     0.05     -60.00    0.00100
     0.25     -30.00    0.03162
     0.50     -12.00    0.25119
     0.75       0.00    1.00000
     0.90       3.60    1.51356
     1.00       6.00    1.99526
-round-trip gainToFader(faderToGain(p)) 的最大誤差：5.96e-08
+round-trip max error of gainToFader(faderToGain(p)): 5.96e-08
 [PASS] l01_ex4 (16 checks passed)
 ```
 
-觀察：推桿上 1/4 行程（0.75 → 1.0）只有 6 dB，每 0.05 的行程 1.2 dB，適合微調；0.25 → 0.5 這一段每 0.05 有 3.6 dB；0.05 → 0.25 每 0.05 有 7.5 dB。這就是「上密下疏」。`dbToFader(-200)` 得到 0、`dbToFader(20)` 得到 1：超出範圍要夾住，UI 才不會畫出推桿外面的位置。
+Observations: the top quarter of the fader travel (0.75 → 1.0) covers only 6 dB, 1.2 dB per 0.05 of travel, which suits fine adjustment; the 0.25 → 0.5 segment has 3.6 dB per 0.05; 0.05 → 0.25 has 7.5 dB per 0.05. This is "dense at the top, sparse at the bottom". `dbToFader(-200)` gives 0 and `dbToFader(20)` gives 1: out-of-range values must be clamped so that the UI never draws a position outside the fader.
 
-## 練習 5：multiplicative ramp（`ex5_multiplicative_ramp.cpp`）
+## Exercise 5: The multiplicative ramp (`ex5_multiplicative_ramp.cpp`)
 
-關鍵思路：linear ramp 每個 sample **加**同一個 step，multiplicative ramp 每個 sample **乘**同一個倍率，所以後者在 dB 上是直線：
+The key idea: a linear ramp **adds** the same step every sample, a multiplicative ramp **multiplies** by the same factor every sample, so the latter is a straight line in dB:
 
 ```cpp
-const double from = std::max(current_, kFloorGain);                    // 0 換成 −100 dB 地板
+const double from = std::max(current_, kFloorGain);                    // 0 is replaced by the −100 dB floor
 const double to   = std::max(static_cast<double>(value), kFloorGain);
 current_    = from;
 multiplier_ = std::pow(to / from, 1.0 / static_cast<double>(rampSamples_));
-// getNextValue()：最後一步 snap 成精確的 target_，其餘 current_ *= multiplier_
+// getNextValue(): the last step snaps to the exact target_, the others do current_ *= multiplier_
 ```
 
-執行輸出：
+The output of a run:
 
 ```
-multiplier r = 0.998562（每個 sample -0.0125 dB）
-走到一半（2400 samples）：multiplicative -30.00 dB，linear -6.01 dB
-與 dB 直線的最大偏差：0.00000 dB
-ramp 期間在 -20 dB 以上的時間：multiplicative 33.3%，linear 90.1%
-相鄰 sample 最大 |ΔdB|：multiplicative 0.0125 dB，linear 1.381 dB（最後幾個 sample）
-mute：一半 -50.00 dB，倒數第二個 -99.98 dB，最後一個 = 0
-unmute：第一個 sample 1.002e-05（-99.9792 dB），最後一個 1.000000
-走到 -15.00 dB 時改回 0 dB：下一個 sample 只前進 +0.0031 dB
-輸出 dawlab_output/l01_ex5_multiplicative_ramp.wav（前半 linear、後半 multiplicative fade-out）
+multiplier r = 0.998562 (-0.0125 dB per sample)
+Halfway (2400 samples): multiplicative -30.00 dB, linear -6.01 dB
+Max deviation from the straight line in dB: 0.00000 dB
+Time spent above -20 dB during the ramp: multiplicative 33.3%, linear 90.1%
+Max |delta dB| between adjacent samples: multiplicative 0.0125 dB, linear 1.381 dB (in the last few samples)
+mute: halfway -50.00 dB, second-to-last -99.98 dB, last = 0
+unmute: first sample 1.002e-05 (-99.9792 dB), last sample 1.000000
+Switching back to 0 dB at -15.00 dB: the next sample advances only +0.0031 dB
+Wrote dawlab_output/l01_ex5_multiplicative_ramp.wav (first half: linear fade-out, second half: multiplicative fade-out)
 [PASS] l01_ex5 (17 checks passed)
 ```
 
-- $r = 0.001^{1/4800} = e^{\ln(0.001)/4800} = 0.998562$，$20\log_{10} r = -60/4800 = -0.0125$ dB。
-- Linear ramp 走到一半時倍率還有 $1 - 0.999/2 = 0.5005$（−6.01 dB），要到 $(1 - 0.1)/0.999 = 90.1\%$ 的時間才跌破 −20 dB；剩下不到 10% 的時間要走完 −20 → −60 dB，最後幾個 sample 每一步掉 1.4 dB。這就是「一直很大聲、最後突然消失」的原因。Multiplicative 的 −20 dB 剛好在 1/3 處，每一步都是 0.0125 dB。
-- 地板的副作用：mute 時 dB 直線是 0 → −100 dB，一半時已經 −50 dB；unmute 時則前一半都在 −50 dB 以下，聽起來像「延遲了一下才淡入」。所以 multiplicative 適合長的 fade 與 dB 參數的 automation，短的 mute / unmute（本章 `Gain` 的 50 ms、第 14 章 `ChannelStrip` 的 10 ms）用 linear 反而比較自然——這回答了「想一想」的第一、二題。
-- 為什麼用 `double`：4800 次累乘，每次 float 捨入約 $6\times10^{-8}$ 的相對誤差，累積起來到 $10^{-4}$ 量級（約 0.001 dB），而且 ramp 時間越長越糟；double 則是 $10^{-13}$ 量級。最後一步的 snap 讓結尾不受累積誤差影響（mute 時停在精確的 0）。
+- $r = 0.001^{1/4800} = e^{\ln(0.001)/4800} = 0.998562$, and $20\log_{10} r = -60/4800 = -0.0125$ dB.
+- Halfway through, the linear ramp's factor is still $1 - 0.999/2 = 0.5005$ (−6.01 dB), and it takes until $(1 - 0.1)/0.999 = 90.1\%$ of the time to fall below −20 dB; the remaining less than 10% of the time has to cover −20 → −60 dB, and in the last few samples each step drops 1.4 dB. That is the reason for "loud the whole time and then suddenly gone". The multiplicative ramp reaches −20 dB at exactly 1/3 of the way, with every step 0.0125 dB.
+- A side effect of the floor: for a mute the dB line goes 0 → −100 dB and is already at −50 dB halfway; for an unmute the first half is spent below −50 dB, which sounds as if "it waited a moment before fading in". So the multiplicative ramp suits long fades and automation of dB parameters, while for short mutes / unmutes (the 50 ms of this chapter's `Gain`, the 10 ms of the chapter 14 `ChannelStrip`) a linear ramp is actually more natural -- this answers the first and second "think about it" questions.
+- Why `double`: with 4800 successive multiplications, each float rounding contributes a relative error of about $6\times10^{-8}$, and accumulated it reaches the order of $10^{-4}$ (about 0.001 dB), and the longer the ramp the worse it gets; a double stays at the order of $10^{-13}$. The snap on the last step keeps the end independent of the accumulated error (a mute stops at an exact 0).
 
-## 練習 6：mute / solo 解析（`ex6_mute_solo.cpp`）
+## Exercise 6: Mute / solo resolution (`ex6_mute_solo.cpp`)
 
-關鍵思路：先掃一遍找出 `anySolo`，再逐軌套用
+The key idea: first scan once to find `anySolo`, then apply the following to each track
 
 ```cpp
 audible[i] = !t.mute && (!anySolo || t.solo || t.soloSafe);
 ```
 
-執行輸出：
+The output of a run:
 
 ```
-全部正常                       [0:---→on ] [1:---→on ] [2:---→on ] [3:---→on ]
-mute 1                             [0:---→on ] [1:M--→off] [2:---→on ] [3:---→on ]
-solo 2                             [0:---→off] [1:---→off] [2:-S-→on ] [3:---→off]
-solo 0 + solo 2                    [0:-S-→on ] [1:---→off] [2:-S-→on ] [3:---→off]
-solo 0 + solo 2 + mute 2（mute 優先） [0:-S-→on ] [1:---→off] [2:MS-→off] [3:---→off]
-solo 1 + 3 是 solo-safe           [0:---→off] [1:-S-→on ] [2:---→off] [3:--F→on ]
-solo 1 + 3 solo-safe 但 mute      [0:---→off] [1:-S-→on ] [2:---→off] [3:M-F→off]
-沒有人 solo，3 是 solo-safe   [0:---→on ] [1:---→on ] [2:---→on ] [3:--F→on ]
-mute/unmute 經過 Gain（50 ms ramp）：一階差分最大值 0.0653（正弦波自然值 0.0654），mute 期間 peak = -100.0 dBFS
-對照組（ramp = 0，瞬間跳）：一階差分最大值 0.5000（自然值的 7.6 倍）→ 證明這個檢查抓得到 click
+all normal                               [0:---->on ] [1:---->on ] [2:---->on ] [3:---->on ]
+mute 1                                   [0:---->on ] [1:M--->off] [2:---->on ] [3:---->on ]
+solo 2                                   [0:---->off] [1:---->off] [2:-S-->on ] [3:---->off]
+solo 0 + solo 2                          [0:-S-->on ] [1:---->off] [2:-S-->on ] [3:---->off]
+solo 0 + solo 2 + mute 2 (mute wins)     [0:-S-->on ] [1:---->off] [2:MS-->off] [3:---->off]
+solo 1 + 3 is solo-safe                  [0:---->off] [1:-S-->on ] [2:---->off] [3:--F->on ]
+solo 1 + 3 solo-safe but muted           [0:---->off] [1:-S-->on ] [2:---->off] [3:M-F->off]
+nobody soloed, 3 is solo-safe            [0:---->on ] [1:---->on ] [2:---->on ] [3:--F->on ]
+mute/unmute through Gain (50 ms ramp): max first difference 0.0653 (natural value of the sine 0.0654), peak during the mute = -100.0 dBFS
+Control case (ramp = 0, instant jump): max first difference 0.5000 (7.6x the natural value) -> proves this check can catch a click
 [PASS] l01_ex6 (13 checks passed)
 ```
 
-最後兩行是重點：mute 的實作不是「把 sample 設成 0」，而是把 `Gain` 的目標設成 `kMinusInfinityDb`，讓 50 ms 的 ramp 走過去，所以一階差分與純正弦波一樣（沒有 click）；而 −100 dB 經 `dbToGain` 變成精確的 0，mute 期間 peak 是真正的 0（印成 −100 dBFS）。
+Each bracket reads `[track:flags->state]`, where the three flag characters are mute (`M`), solo (`S`) and solo-safe (`F`), with `-` meaning "off".
 
-為什麼還要一個「對照組」？一個測不出錯誤的檢查等於沒有檢查。mute / unmute 刻意放在 sample 15372 與 30756（block 中間，分別是 1 kHz 正弦波的正、負峰值）：如果放在 block 邊界 15360 = 320 × 48，該處剛好是正弦波的零交越（README 2.4 節的例外），就算完全不 ramp、瞬間跳到 0 也不會產生陡坡，`maxDiff < naturalDiff * 1.05` 永遠會通過。所以程式用同一個情境、`setRampSeconds(0)` 再跑一次，並要求對照組的一階差分 > 自然值的 2 倍（實測 7.6 倍）——證明這個檢查真的有鑑別力。事件落在 block 中間時，程式把 block 切成兩個 sub-block 處理，這就是 DAW 的 sample-accurate automation 的做法。
+The last two lines are the point: a mute is not implemented by "setting the samples to 0" but by setting the `Gain` target to `kMinusInfinityDb` and letting the 50 ms ramp walk there, so the first difference is the same as for a pure sine (no click); and −100 dB becomes an exact 0 through `dbToGain`, so the peak during the mute is a true 0 (printed as −100 dBFS).
 
-第 14 章的 mixer 做的是同一件事，只是拆在兩個地方：`Mixer::process()` 在每個 block 開頭先算一次 `anySolo`，再對每一軌用 `!mute && (!anySolo || solo)` 算出該不該出聲（與 `Mixer::isTrackAudible(t)` 是同一個式子，後者給 UI / 測試查詢用），交給 `ChannelStrip::beginBlock(audible)`；`ChannelStrip` 再用自己的 10 ms `SmoothedValue`（不是 `dsp::Gain` 的 50 ms）把 mute gain ramp 到 0 或 1。那裡的 track 沒有 soloSafe 旗標：solo-safe 只用在 FX bus 與 master（它們只有 mute），所以 solo 一軌時仍聽得到它送進 reverb bus 的殘響。
+Why is a "control case" needed? A check that cannot detect an error is no check at all. The mute / unmute are deliberately placed at samples 15372 and 30756 (in the middle of a block, at the positive and negative peaks of the 1 kHz sine respectively): if they were placed on the block boundary 15360 = 320 × 48, that spot is exactly a zero crossing of the sine (the exception in README section 2.4), and even with no ramp at all, jumping instantly to 0 would produce no steep slope, so `maxDiff < naturalDiff * 1.05` would always pass. So the program runs the same scenario again with `setRampSeconds(0)` and demands that the control case's first difference be more than 2 times the natural value (7.6 times measured) -- proving that the check really has discriminating power. When an event falls in the middle of a block, the program splits the block into two sub-blocks, which is how a DAW does sample-accurate automation.
 
-## 練習 7：M/S stereo width 與 balance（`ex7_stereo_width.cpp`）
+The chapter 14 mixer does the same thing, only split across two places: at the start of each block `Mixer::process()` first computes `anySolo` once, then for each track computes whether it should sound with `!mute && (!anySolo || solo)` (the same expression as `Mixer::isTrackAudible(t)`, which is provided for UI / tests to query) and hands it to `ChannelStrip::beginBlock(audible)`; the `ChannelStrip` then uses its own 10 ms `SmoothedValue` (not the 50 ms of `dsp::Gain`) to ramp the mute gain to 0 or 1. A track there has no soloSafe flag: solo-safe is used only for the FX bus and the master (which only have a mute), so while one track is soloed you can still hear the reverb tail it sends into the reverb bus.
 
-關鍵思路：逐 sample 算 $M$、$S$，把 $S$ 乘上 $w$ 再 decode：
+## Exercise 7: M/S stereo width and balance (`ex7_stereo_width.cpp`)
+
+The key idea: compute $M$ and $S$ sample by sample, multiply $S$ by $w$, then decode:
 
 ```cpp
 const float mid  = 0.5f * (l[i] + r[i]);
@@ -163,18 +167,18 @@ l[i] = mid + side;
 r[i] = mid - side;
 ```
 
-因為 $(L' + R')/2 = M$ 與 $w$ 無關，所以任何寬度處理在 mono downmix 下都「消失」——這是 M/S 處理最重要的性質（mono 相容），self-check 對三種 $w$ 都驗證了這一點。
+Because $(L' + R')/2 = M$ is independent of $w$, any width processing "disappears" in a mono downmix -- this is the most important property of M/S processing (mono compatibility), and the self-check verifies it for all three values of $w$.
 
-執行輸出：
+The output of a run:
 
 ```
-width 0/1/2：L peak 0.250 / 0.500 / 0.750，R peak 0.250 / 0.000 / 0.250（mono 和不變）
-不相關雜訊 width 2：mid -19.83 → -19.83 dB，side -19.83 → -13.81 dB（+6.02 dB）
-balance +0.5：L -6.02 dB、R 0.00 dB；balance +1：L peak = -100.0 dBFS
-輸出 dawlab_output/l01_ex7_width.wav（width 0 → 1 → 2 各 2 秒）
+width 0/1/2: L peak 0.250 / 0.500 / 0.750, R peak 0.250 / 0.000 / 0.250 (the mono sum is unchanged)
+Uncorrelated noise, width 2: mid -19.83 -> -19.83 dB, side -19.83 -> -13.81 dB (+6.02 dB)
+balance +0.5: L -6.02 dB, R 0.00 dB; balance +1: L peak = -100.0 dBFS
+Wrote dawlab_output/l01_ex7_width.wav (width 0 -> 1 -> 2, 2 seconds each)
 [PASS] l01_ex7 (17 checks passed)
 ```
 
-- 左 = 正弦波、右 = 0 時 $M = S = L/2$。$w = 2$：$L' = M + 2S = 1.5L$（peak 0.75）、$R' = M - 2S = -0.5L$（右邊出現反相的訊號，peak 0.25）。這回答了「想一想」的第一題：$w > 1$ 會讓 peak 變大（這裡 +3.5 dB），寬度處理之後要重新檢查 headroom。
-- 真正的 mono（$L = R$）時 $S = 0$，乘任何 $w$ 都還是 0，所以沒有效果——width 只能放大「已經存在」的左右差異，不能無中生有。
-- Balance 是各聲道獨立乘 gain：+1 時左聲道精確為 0、右聲道一個 sample 都沒變，證明它不會把左邊的內容搬到右邊（和範例 2 (C) 的結論一致）。
+- With left = sine and right = 0, $M = S = L/2$. At $w = 2$: $L' = M + 2S = 1.5L$ (peak 0.75) and $R' = M - 2S = -0.5L$ (an inverted-polarity signal appears on the right, peak 0.25). This answers the first "think about it" question: $w > 1$ makes the peak larger (here +3.5 dB), so headroom must be checked again after width processing.
+- For true mono ($L = R$), $S = 0$, and multiplying by any $w$ still gives 0, so there is no effect -- width can only amplify a left/right difference that "already exists", it cannot create one from nothing.
+- Balance multiplies each channel by its own gain: at +1 the left channel is exactly 0 and not one sample of the right channel has changed, which proves it does not move the left content to the right (consistent with the conclusion of example 2 (C)).

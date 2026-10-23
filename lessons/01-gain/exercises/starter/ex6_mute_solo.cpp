@@ -1,11 +1,11 @@
-// 練習 6（起始碼）：N 軌 mute / solo 解析邏輯
+// Exercise 6 (starter code): mute / solo resolution logic for N tracks
 //
-// 規則：
-//   1. 只要有任何一軌 solo，就只有 solo 的軌出聲。
-//   2. mute 永遠有效（solo + mute → 不出聲）。
-//   3. soloSafe 的軌在 solo 模式下仍然出聲（但自己 mute 時一樣不出聲）。
+// Rules:
+//   1. As soon as any track is soloed, only the soloed tracks are audible.
+//   2. Mute always wins (solo + mute -> silent).
+//   3. A soloSafe track stays audible in solo mode (but is still silent if it is muted itself).
 //   audible = !mute && (!anySolo || solo || soloSafe)
-// 完成 TODO 之後，self-check 全部通過就算完成。起始碼執行時會印出 FAIL，這是預期的。
+// You are done when every self-check passes after you complete the TODOs. The starter code prints FAIL when it runs; that is expected.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Gain.h>
@@ -23,33 +23,33 @@ struct TrackState {
     bool soloSafe = false;
 };
 
-// 回傳每一軌「現在應該出聲嗎」
+// Returns, for each track, "should it be audible right now?"
 std::vector<bool> resolveAudible(const std::vector<TrackState>& tracks) {
-    // TODO: 先找出是否有任何一軌 solo，再依規則逐軌判斷
+    // TODO: first find out whether any track is soloed, then decide track by track according to the rules
     return std::vector<bool>(tracks.size(), true);
 }
 
-// 出聲與否 → 這一軌 Gain 的目標 dB（出聲 = 0 dB，靜音 = kMinusInfinityDb）
+// Audible or not -> the target dB of this track's Gain (audible = 0 dB, silent = kMinusInfinityDb)
 float audibleToGainDb(bool audible) {
     (void)audible;
     // TODO
     return 0.0f;
 }
 
-// ---- 把 mute 解析結果餵給 Gain（這段不是 TODO，直接用）-------------------------------
+// ---- Feeding the mute resolution result into Gain (this part is not a TODO; use it as is) ----
 constexpr double kSr = 48000.0;
 constexpr int kBlock = 512;
-// mute / unmute 的時間點刻意「不」放在 1 kHz 正弦波的零交越：
-//   15372 = 30·512 + 12，15372 / 48 = 320.25 個週期 → 正弦波的正峰值（+0.5）
-//   30756 = 60·512 + 36，30756 / 48 = 640.75 個週期 → 正弦波的負峰值（−0.5）
-// 如果放在 block 邊界 30·512 = 15360（剛好 320 個週期），該處 x = 0，就算完全不 ramp、
-// 瞬間跳到 0 也不會產生陡坡（README 2.4 節的零交越例外），檢查就測不出 click。
-constexpr int kMuteAt = 30 * kBlock + 12;   // ≈ 0.320 s 按下 mute
-constexpr int kUnmuteAt = 60 * kBlock + 36; // ≈ 0.641 s 放開 mute
+// The mute / unmute times are deliberately NOT placed at zero crossings of the 1 kHz sine:
+//   15372 = 30*512 + 12,  15372 / 48 = 320.25 periods -> the positive peak of the sine (+0.5)
+//   30756 = 60*512 + 36,  30756 / 48 = 640.75 periods -> the negative peak of the sine (-0.5)
+// If they were placed on the block boundary 30*512 = 15360 (exactly 320 periods), x = 0 there, and even with no ramp at all,
+// jumping instantly to 0 would produce no steep slope (the zero-crossing exception in README section 2.4), so the check could not detect a click.
+constexpr int kMuteAt = 30 * kBlock + 12;   // mute pressed at about 0.320 s
+constexpr int kUnmuteAt = 60 * kBlock + 36; // mute released at about 0.641 s
 
-// 一軌 1 kHz 正弦波經過 Gain，在 kMuteAt 按下 mute、kUnmuteAt 放開。
-// 事件落在 block 中間時把 block 切成兩個 sub-block（事件之前用舊設定、之後用新設定），
-// 也就是 DAW 的 sample-accurate automation 的做法。rampSeconds = 0 代表完全不平滑（對照組）。
+// One 1 kHz sine track goes through a Gain; mute is pressed at kMuteAt and released at kUnmuteAt.
+// When an event falls in the middle of a block, the block is split into two sub-blocks (the old setting before the event, the new setting after it),
+// which is how a DAW does sample-accurate automation. rampSeconds = 0 means no smoothing at all (the control case).
 AudioBuffer runMuteScenario(double rampSeconds) {
     AudioBuffer audio = makeSine(1000.0, kSr, 1.0, 0.5f, 1);
     dsp::Gain gain;
@@ -65,9 +65,9 @@ AudioBuffer runMuteScenario(double rampSeconds) {
         if (pos == kUnmuteAt)
             one[0].mute = false;
         gain.setGainDb(audibleToGainDb(resolveAudible(one)[0]));
-        int end = std::min(n, (pos / kBlock + 1) * kBlock); // 這個 audio block 的結尾
+        int end = std::min(n, (pos / kBlock + 1) * kBlock); // the end of this audio block
         if (kMuteAt > pos && kMuteAt < end)
-            end = kMuteAt; // 事件落在 block 中間：切開
+            end = kMuteAt; // the event falls in the middle of the block: split it
         if (kUnmuteAt > pos && kUnmuteAt < end)
             end = kUnmuteAt;
         gain.process(ab.getSubBlock(pos, end - pos));
@@ -76,7 +76,7 @@ AudioBuffer runMuteScenario(double rampSeconds) {
     return audio;
 }
 
-// 一階差分最大值 max |x[n] − x[n−1]|：click 會讓它遠大於正弦波的自然值 A·2πf/fs
+// Maximum first difference max |x[n] - x[n-1]|: a click makes it far larger than the natural value A*2*pi*f/fs of the sine
 float maxFirstDifference(const AudioBuffer& audio) {
     float maxDiff = 0.0f;
     for (int i = 1; i < audio.getNumSamples(); ++i)
@@ -129,10 +129,10 @@ int main() {
 
     DAWLAB_CHECK(resolveAudible({}).empty());
 
-    // 把結果餵給 Gain：mute 要經過 ramp，不能有 click
+    // Feed the result into Gain: the mute must go through a ramp and must not click
     const float naturalDiff = 0.5f * static_cast<float>(kTwoPi * 1000.0 / kSr);
-    const AudioBuffer audio = runMuteScenario(0.05); // Gain 預設的 50 ms ramp
-    const AudioBuffer raw = runMuteScenario(0.0);    // 對照組：完全不平滑
+    const AudioBuffer audio = runMuteScenario(0.05); // Gain's default 50 ms ramp
+    const AudioBuffer raw = runMuteScenario(0.0);    // control case: no smoothing at all
     const float maxDiff = maxFirstDifference(audio);
     const float rawDiff = maxFirstDifference(raw);
     const int quietStart = kMuteAt + msToSamples(60.0, kSr);

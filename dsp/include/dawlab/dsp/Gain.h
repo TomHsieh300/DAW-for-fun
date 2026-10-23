@@ -1,21 +1,25 @@
 #pragma once
-// Gain：最基本的 DSP 元件——把訊號乘上一個倍率。
+// Gain: the most basic DSP building block -- multiply the signal by a factor.
 //
-//   y[n] = g · x[n]，g = 10^(dB/20)（polarity invert 時 g 取負號）
+//   y[n] = g * x[n],  g = 10^(dB/20)  (g is negated when polarity invert is on)
 //
-// 看似只有一個乘法，但要做對有三件事：
-// 1. 參數用 dB 設定（人耳對音量是對數感知），內部換成線性倍率才乘進訊號。
-// 2. 倍率改變時用 SmoothedValue 線性平滑（預設 50 ms），避免 click / zipper noise。
-// 3. polarity invert 也走同一條 ramp（+g → −g 會經過 0），所以切換時不會爆音。
+// It looks like a single multiplication, but getting it right involves three things:
+// 1. The parameter is set in dB (the ear perceives loudness logarithmically); internally it is
+//    converted to a linear factor before being multiplied into the signal.
+// 2. When the factor changes it is smoothed linearly by a SmoothedValue (50 ms by default) to
+//    avoid clicks / zipper noise.
+// 3. Polarity invert goes through the same ramp (+g -> -g passes through 0), so toggling it does not pop.
 //
-// 用法（setter 與 process() 在同一個 thread、block 之間呼叫；見下方「參數」的說明）：
+// Usage (setters and process() are called from the same thread, between blocks; see the
+// note under "Parameters" below):
 //   dawlab::dsp::Gain gain;
 //   gain.prepare(48000.0, 512, 2);
 //   gain.setGainDb(-6.0f);
-//   gain.process(block);           // in-place，整個 block、所有 channel 共用同一條 ramp
+//   gain.process(block);           // in-place; the whole block, all channels share one ramp
 //
-// processSample() 的慣例：以「frame」為單位呼叫，channel 0 會推進 ramp，其他 channel 沿用
-// 同一個值。也就是每個 frame 先呼叫 processSample(0, x0)，再呼叫 processSample(1, x1)。
+// Convention for processSample(): call it per "frame". Channel 0 advances the ramp and the
+// other channels reuse the same value. In other words, for every frame call processSample(0, x0) first,
+// then processSample(1, x1).
 
 #include <dawlab/AudioBuffer.h>
 #include <dawlab/DspMath.h>
@@ -28,7 +32,7 @@ namespace dawlab::dsp {
 
 class Gain {
 public:
-    // 唯一可以 allocate 的地方（這個 class 其實不需要 allocate，但介面統一）
+    // The only place allowed to allocate (this class does not actually need to allocate, but the interface is kept uniform)
     void prepare(double sampleRate, int maxBlockSize, int numChannels) {
         (void)maxBlockSize;
         (void)numChannels;
@@ -38,44 +42,46 @@ public:
         lastValue_ = smoother_.getCurrentValue();
     }
 
-    // 清除內部狀態：把 ramp 直接對齊目標值（沒有 filter memory 要清）
+    // Clears the internal state: snaps the ramp to the target value (there is no filter memory to clear)
     void reset() noexcept {
         smoother_.setCurrentAndTargetValue(targetLinear());
         lastValue_ = smoother_.getCurrentValue();
     }
 
-    // ---- 參數 ----
-    // 使用規則：參數 setter 必須在 block 之間、由呼叫 process() 的同一個 thread 呼叫。
-    // 本章元件不是 thread-safe：gainDb_ 與 SmoothedValue 的狀態都是普通的 float / int，
-    // UI thread 寫、audio thread 讀在 C++ 記憶體模型下就是 data race（undefined behavior），
-    // 「硬體上對齊的 float 寫入是 atomic」不能當作 thread safety 的依據。
-    // 跨 thread 的參數傳遞（std::atomic、parameter 系統）見第 13、14 章。
+    // ---- Parameters ----
+    // Usage rule: parameter setters must be called between blocks, from the same thread that calls process().
+    // The components in this chapter are not thread-safe: gainDb_ and the SmoothedValue state are
+    // plain float / int, so the UI thread writing while the audio thread reads is a data race
+    // (undefined behavior) under the C++ memory model; "an aligned float write is atomic on the
+    // hardware" is not a basis for thread safety.
+    // For passing parameters across threads (std::atomic, a parameter system) see chapters 13 and 14.
 
-    // 允許的最大 gain（+40 dB = 100 倍）。再大幾乎一定是 bug（例如把倍率當成 dB 傳進來）。
+    // Maximum allowed gain (+40 dB = 100x). Anything larger is almost certainly a bug (for example passing a linear factor as dB).
     static constexpr float kMaxGainDb = 40.0f;
 
-    // db ≤ kMinusInfinityDb（含 -inf）= 靜音；NaN 會被忽略（保持原值）；超過 kMaxGainDb 會被夾住。
+    // db <= kMinusInfinityDb (including -inf) = silence; NaN is ignored (the previous value is kept); values above kMaxGainDb are clamped.
     void setGainDb(float db) noexcept {
         if (std::isnan(db))
-            return; // NaN 不可流進音訊：保持原本的設定
+            return; // NaN must never flow into the audio: keep the existing setting
         gainDb_ = std::min(db, kMaxGainDb);
         smoother_.setTargetValue(targetLinear());
     }
 
-    // 以線性倍率設定（負值或 0 視為 -inf dB）
+    // Sets the gain as a linear factor (negative or 0 is treated as -inf dB)
     void setGainLinear(float linear) noexcept { setGainDb(gainToDb(linear)); }
 
     float getGainDb() const noexcept { return gainDb_; }
     float getGainLinear() const noexcept { return dbToGain(gainDb_); }
 
-    // polarity invert（Ø）：乘上 -1。走同一條 ramp，所以切換時從 +g 平滑經過 0 到 -g。
+    // Polarity invert (the polarity button): multiplies by -1. It uses the same ramp, so toggling
+    // walks smoothly from +g through 0 to -g.
     void setPolarityInverted(bool inverted) noexcept {
         inverted_ = inverted;
         smoother_.setTargetValue(targetLinear());
     }
     bool isPolarityInverted() const noexcept { return inverted_; }
 
-    // ramp 長度（預設 0.05 s = 50 ms）。prepare 之後呼叫也可以，不會打斷目前的值。
+    // Ramp length (default 0.05 s = 50 ms). It may also be called after prepare and does not interrupt the current value.
     void setRampSeconds(double seconds) noexcept {
         rampSeconds_ = std::max(0.0, seconds);
         if (sampleRate_ > 0.0)
@@ -83,20 +89,20 @@ public:
     }
     double getRampSeconds() const noexcept { return rampSeconds_; }
 
-    // 目前實際乘進訊號的倍率（ramp 進行中會介於舊值與新值之間），給 UI 或測試用
+    // The factor actually being multiplied into the signal right now (while a ramp is running it lies between the old and new values); for UI or tests
     float getCurrentGainLinear() const noexcept { return smoother_.getCurrentValue(); }
     bool isSmoothing() const noexcept { return smoother_.isSmoothing(); }
 
-    // ---- 處理 ----
+    // ---- Processing ----
 
-    // 逐 sample：channel 0 推進 ramp，其他 channel 沿用同一個值（見檔頭說明）
+    // Per sample: channel 0 advances the ramp and the other channels reuse the same value (see the header comment)
     float processSample(int channel, float x) noexcept {
         if (channel == 0)
             lastValue_ = smoother_.getNextValue();
         return x * lastValue_;
     }
 
-    // in-place 處理整個 block：同一個 frame 的所有 channel 乘同一個 gain 值
+    // Processes the whole block in place: every channel of the same frame is multiplied by the same gain value
     void process(AudioBlock block) noexcept {
         smoother_.applyGain(block);
         lastValue_ = smoother_.getCurrentValue();
