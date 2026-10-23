@@ -1,15 +1,16 @@
-// 練習 5 起始碼：multi-tap delay
+// Exercise 5 starter: multi-tap delay
 //
-// 目標：一條 mono delay line、最多 8 個 tap，每個 tap 有自己的 delay / gain / pan，
-// feedback 從最後一個 tap 回到輸入：
+// Goal: one mono delay line with up to 8 taps, each tap with its own delay / gain / pan, and
+// feedback from the last tap back to the input:
 //
 //   (L+R)/2 ──►(+)──► delay line ─┬─ tap0 (D0, g0, pan0) ─┐
 //               ▲                 ├─ tap1 (D1, g1, pan1) ─┼─(Σ)─► wet L / wet R
 //               │                 └─ tap2 (D2, g2, pan2) ─┘
-//               └─── ×fb ◄────────── 最後一個 tap
+//               └─── ×fb ◄────────── the last tap
 //
-// 完成 process() 與 updateTap() 的 TODO 之後執行 l09_ex5_starter，所有 check 應該通過。
-// 提示：先讀再 push，所以讀取位置是 delaySamples − 1；pan 用 constant-power（cos / sin）。
+// After completing the TODOs in process() and updateTap(), run l09_ex5_starter; all the checks should pass.
+// Hint: read first and push afterwards, so the read position is delaySamples − 1; use
+// constant-power panning (cos / sin).
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Delay.h>
@@ -81,9 +82,9 @@ public:
             const float mono = right ? 0.5f * (xl + xr) : xl;
 
             float wetL = 0.0f, wetR = 0.0f, last = 0.0f;
-            // TODO: 對每個 tap t < numTaps_：
+            // TODO: for each tap t < numTaps_:
             //   v = line_.readCubic(0, state_[t].delaySamples − 1)
-            //   wetL += state_[t].gainL · v；wetR += state_[t].gainR · v；last = v
+            //   wetL += state_[t].gainL · v; wetR += state_[t].gainR · v; last = v
             line_.push(0, mono + feedback_ * last);
 
             if (right) {
@@ -112,8 +113,8 @@ private:
             return;
         const Tap& t = taps_[i];
         TapState& s = state_[i];
-        // TODO: 把 t.delayMs 換成 sample（clamp 到 [2, maxDelaySamples_]），
-        //       用 panGains() 算 gainL / gainR（記得乘上 t.gain）。
+        // TODO: convert t.delayMs to samples (clamped to [2, maxDelaySamples_]),
+        //       and compute gainL / gainR with panGains() (remember to multiply by t.gain).
         (void)t;
         s.delaySamples = 2.0f;
         s.gainL = s.gainR = 0.0f;
@@ -148,7 +149,7 @@ void setupRhythmicTaps(MultiTapDelay& d, double bpm) {
 } // namespace
 
 int main() {
-    std::printf("=== 第 09 章 練習 5（起始碼）：multi-tap delay ===\n\n");
+    std::printf("=== Chapter 09, Exercise 5 (starter): multi-tap delay ===\n\n");
     const double bpm = 120.0;
 
     MultiTapDelay mt;
@@ -166,7 +167,7 @@ int main() {
         const int n = dawlab::msToSamples(tap.delayMs, kSampleRate);
         float gl, gr;
         MultiTapDelay::panGains(tap.pan, gl, gr);
-        std::printf("tap %d @ %6d：L 預期 %.4f 量到 %.4f，R 預期 %.4f 量到 %.4f\n", t, n, tap.gain * gl,
+        std::printf("tap %d @ %6d: L expected %.4f measured %.4f, R expected %.4f measured %.4f\n", t, n, tap.gain * gl,
                     ir.getSample(0, n), tap.gain * gr, ir.getSample(1, n));
         DAWLAB_CHECK_NEAR(ir.getSample(0, n), tap.gain * gl, 1.0e-4);
         DAWLAB_CHECK_NEAR(ir.getSample(1, n), tap.gain * gr, 1.0e-4);

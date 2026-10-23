@@ -1,16 +1,17 @@
-// 練習 6 起始碼：用 crossfade 切換 delay time
+// Exercise 6 starter: switching the delay time with a crossfade
 //
-// 目標：兩個讀取頭 A / B。收到新的 delay time 時，把「沒在用的那個頭」放到新位置，
-// 在 crossfadeMs 內用 raised-cosine 把輸出從舊頭淡出、新頭淡入，結束後交換角色。
-// 這樣切換時既沒有 click（直接跳的問題）也沒有 Doppler pitch shift（平滑 ramp 的問題）。
+// Goal: two read heads, A and B. When a new delay time arrives, put the "head not in use" at the
+// new position, use a raised cosine over crossfadeMs to fade the output out of the old head and
+// into the new one, and swap roles when it finishes. Switching this way has neither a click
+// (the problem with jumping directly) nor a Doppler pitch shift (the problem with a smooth ramp).
 //
 //   x ──►(+)──► delay line ──┬── head A (D_old) ──×gA──┐
 //         ▲                  │                          (+)──► wet
 //         │                  └── head B (D_new) ──×gB──┘
 //         └──────────── ×fb ◄───────────────────────────┘
 //
-// 完成 setDelayMs() / process() 的 TODO 之後執行 l09_ex6_starter，所有 check 應該通過。
-// 目前的起始碼是「直接跳到新值」，所以會量到 click。
+// After completing the TODOs in setDelayMs() / process(), run l09_ex6_starter; all the checks should pass.
+// The starter code as given "jumps straight to the new value", so it will measure a click.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/FractionalDelayLine.h>
@@ -45,8 +46,9 @@ public:
 
     void reset() noexcept {
         line_.reset();
-        // reset 不需要 crossfade（buffer 已清空）：兩個讀取頭直接對齊目前的目標值。
-        // 否則 prepare → setDelayMs → reset 的順序會讓還沒做完的 fade 被丟掉、停在舊的 delay。
+        // A reset does not need a crossfade (the buffer has been cleared): both read heads are
+        // aligned straight to the current target. Otherwise the order prepare → setDelayMs →
+        // reset would throw away a fade that has not finished and leave us stuck at the old delay.
         if (prepared_)
             headDelay_[0] = headDelay_[1] = toSamples(delayMs_);
         active_ = 0;
@@ -58,9 +60,9 @@ public:
         delayMs_ = std::clamp(ms, 0.0f, maxDelayMs_);
         if (!prepared_)
             return;
-        // TODO: 若正在 fade（fadePos_ >= 0）就設 pending_ = true 等它結束；
-        //       否則把 headDelay_[1 - active_] 設成 toSamples(delayMs_)、fadePos_ = 0 開始 crossfade。
-        headDelay_[active_] = toSamples(delayMs_); // 目前：直接跳（會 click）
+        // TODO: if a fade is in progress (fadePos_ >= 0), set pending_ = true and wait for it to finish;
+        //       otherwise set headDelay_[1 - active_] to toSamples(delayMs_) and fadePos_ = 0 to start the crossfade.
+        headDelay_[active_] = toSamples(delayMs_); // for now: jump directly (will click)
     }
 
     void setCrossfadeMs(float ms) noexcept {
@@ -76,9 +78,9 @@ public:
         const int n = block.getNumSamples();
         const int nch = std::min(block.getNumChannels(), numChannels_);
         for (int i = 0; i < n; ++i) {
-            // TODO: 若 fadePos_ >= 0：t = fadePos_ / fadeLength_，gB = ½(1 − cos πt)，gA = 1 − gB，
-            //       wet = gA · head[active_] + gB · head[1 − active_]；
-            //       fadePos_ 走到 fadeLength_ 時交換 active_、fadePos_ = −1，並處理 pending_。
+            // TODO: if fadePos_ >= 0: t = fadePos_ / fadeLength_, gB = ½(1 − cos πt), gA = 1 − gB,
+            //       wet = gA · head[active_] + gB · head[1 − active_];
+            //       when fadePos_ reaches fadeLength_, swap active_, set fadePos_ = −1, and handle pending_.
             for (int ch = 0; ch < nch; ++ch) {
                 float* data = block.getChannelPointer(ch);
                 const float x = data[i];
@@ -134,7 +136,7 @@ float maxSampleStep(const float* x, int n) {
 } // namespace
 
 int main() {
-    std::printf("=== 第 09 章 練習 6（起始碼）：crossfade 切換 delay time ===\n\n");
+    std::printf("=== Chapter 09, Exercise 6 (starter): switching the delay time with a crossfade ===\n\n");
     const int switchAt = dawlab::secondsToSamples(1.0, kSampleRate);
     const double sineMaxStep = 0.5 * dawlab::kTwoPi * kToneHz / kSampleRate;
 
@@ -148,7 +150,8 @@ int main() {
     d.setMix(1.0f);
     d.reset();
     dawlab::AudioBlock whole(out);
-    // 48000 不是 512 的倍數：把 block 在切換點切開，前半段用舊值、後半段用新值
+    // 48000 is not a multiple of 512: split the block at the switch point, using the old value
+    // for the first part and the new value for the second
     int start = 0;
     while (start < out.getNumSamples()) {
         if (start == switchAt)
@@ -162,19 +165,19 @@ int main() {
 
     const float step = maxSampleStep(out.getReadPointer(0) + switchAt - 2, dawlab::secondsToSamples(0.1, kSampleRate));
     const double f = estimateFrequency(out.getReadPointer(0) + switchAt - 2400, 4800);
-    std::printf("切換後 100 ms 內相鄰 sample 最大差值 %.4f（正弦本身 %.4f）；切換前後量到 %.1f Hz\n", step,
+    std::printf("Largest adjacent-sample difference within 100 ms after the switch %.4f (the sine itself %.4f); measured %.1f Hz across the switch\n", step,
                 sineMaxStep, f);
     DAWLAB_CHECK(step < 1.5 * sineMaxStep);
-    DAWLAB_CHECK_NEAR(f, kToneHz, 6.0); // 兩個頭相位不同，crossfade 時相位會滑動一點點（見解答說明）
+    DAWLAB_CHECK_NEAR(f, kToneHz, 6.0); // the two heads differ in phase, so the phase slips slightly during the crossfade (see the solution notes)
 
     float maxErr = 0.0f;
     for (int n = switchAt + 960 + 8; n < out.getNumSamples(); ++n)
         maxErr = std::max(maxErr, std::abs(out.getSample(0, n) - tone.getSample(0, n - 12000)));
-    std::printf("fade 結束後 y[n] 與 x[n − 12000] 的最大誤差：%.2e\n", maxErr);
+    std::printf("Largest error between y[n] and x[n - 12000] after the fade ends: %.2e\n", maxErr);
     DAWLAB_CHECK(maxErr < 1.0e-5f);
     DAWLAB_CHECK(!dawlab::hasNanOrInf(out));
 
-    // ---- 4. crossfade 期間收到第二次改變：要排隊，不能漏掉 -----------------------
+    // ---- 4. A second change arriving during the crossfade: it must be queued, not lost ----
     {
         CrossfadeDelay q;
         q.setMaxDelayMs(1000.0f);
@@ -185,21 +188,21 @@ int main() {
         q.reset();
         dawlab::AudioBuffer b = dawlab::makeSine(kToneHz, kSampleRate, 1.0, 0.5f, 1);
         dawlab::AudioBlock bw(b);
-        q.process(bw.getSubBlock(0, 4800)); // 100 ms 暖身
-        q.setDelayMs(100.0f);               // 開始 fade
+        q.process(bw.getSubBlock(0, 4800)); // 100 ms warm-up
+        q.setDelayMs(100.0f);               // start the fade
         q.process(bw.getSubBlock(4800, 256));
         DAWLAB_CHECK(q.isFading());
-        q.setDelayMs(300.0f); // fade 中途再改：排隊
+        q.setDelayMs(300.0f); // change again mid-fade: queued
         q.process(bw.getSubBlock(5056, 4800 * 3));
         DAWLAB_CHECK(!q.isFading());
-        // 最後應該是 300 ms
+        // It should end up at 300 ms
         const int d300 = dawlab::msToSamples(300.0, kSampleRate);
         float err = 0.0f;
         for (int n = 4800 * 4; n < b.getNumSamples(); ++n) {
             const float expect = static_cast<float>(0.5 * std::sin(dawlab::kTwoPi * kToneHz * (n - d300) / kSampleRate));
             err = std::max(err, std::abs(b.getSample(0, n) - expect));
         }
-        std::printf("fade 中途再次改變 delay（100 → 300 ms）：最後應該穩定在 300 ms，誤差 %.2e\n", err);
+        std::printf("Changing the delay again mid-fade (100 -> 300 ms): it should settle at 300 ms, error %.2e\n", err);
         DAWLAB_CHECK(err < 1.0e-4f);
         DAWLAB_CHECK(maxSampleStep(b.getReadPointer(0) + 4800, 4800 * 3) < 1.5 * sineMaxStep);
     }

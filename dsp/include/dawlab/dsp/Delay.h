@@ -1,7 +1,7 @@
 #pragma once
-// Delay：立體聲 echo / delay 效果器（第 09 章）。
+// Delay: a stereo echo / delay effect (chapter 09).
 //
-// 訊號路徑（每個 channel，一般模式）：
+// Signal path (per channel, normal mode):
 //
 //   x ──┬──────────────────────────────(1-mix)──┐
 //       │                                       (+)──► y
@@ -9,10 +9,11 @@
 //       └──►(+)──► delay line ├──┬────(mix)──────┘
 //           ▲    └─────────────────┘  │
 //           │                         │
-//           └── fb × HP × LP ◄────────┘   (feedback 迴路內的濾波：tape echo 的質感)
+//           └── fb × HP × LP ◄────────┘   (filtering inside the feedback loop: the tape-echo character)
 //
-// ping-pong 模式（立體聲）：輸入先混成 mono 進左邊的 delay line，
-// 左邊的輸出餵右邊的 delay line，右邊的輸出再 × feedback 回到左邊：
+// Ping-pong mode (stereo): the input is first mixed down to mono into the left delay line,
+// the left output feeds the right delay line, and the right output goes back to the left
+// multiplied by feedback:
 //
 //   (L+R)/2 ──►(+)──► delay L ──┬──► wet L
 //               ▲               │
@@ -22,21 +23,27 @@
 //                        │
 //                        └──► wet R
 //
-// 重點：
-// - delay time 線性平滑（預設 50 ms ramp），改變時不會 click，
-//   而是短暫的 pitch 變化（Doppler），這是「平滑過渡」策略；crossfade 策略留在練習 6。
-//   這條 ramp 用 double 自己算（DelayRamp），不用 float 的 SmoothedValue：delay time 以 sample 計可以到
-//   數十萬，float 在 65536 以上的間距（ulp）是 1/128 sample，每個 sample 累加一小步會被捨入、
-//   誤差一路累積，ramp 結束時讀取位置會「跳回」目標值 → click。見 DelayRamp 的註解。
-// - 使用 FractionalDelayLine 的 cubic 插值，所以 delay time 可以是任意毫秒數、也可以連續變化。
-//   讀取時把 double 位置拆成「整數 + 小數」再交給 readCubicSplit，長 delay 也保有 sub-sample 精度。
-// - feedback 會被 clamp 到 [0, 0.99]：|feedback| < 1 是穩定的必要條件。
-// - 只有 prepare() 會 allocate；process() 不 allocate、不 lock、不 I/O。
-// - 寫進 delay line 的值會 flush denormal（見 flushDenormal），長時間靜音後 CPU 不會突然變重。
-// - mono（numChannels = 1）時 setPingPong(true) 沒有作用，等同一般 echo。
-// - 所有 setter 都忽略 NaN（保留上一個有效值），±inf 會被 clamp 到合法範圍。
-// - 不回報 latency：延遲是效果本身，host 不該補償。
-// - prepare() 之前呼叫 reset() / process() 是安全的（什麼都不做）。
+// Key points:
+// - The delay time is smoothed linearly (default 50 ms ramp), so changing it does not click;
+//   instead there is a brief pitch change (Doppler). This is the "smooth transition"
+//   strategy; the crossfade strategy is left to exercise 6.
+//   The ramp is computed by hand in double (DelayRamp) rather than with the float
+//   SmoothedValue: the delay time in samples can reach hundreds of thousands, and above 65536
+//   float's spacing (ulp) is 1/128 sample, so adding a small step every sample gets rounded
+//   and the error accumulates; when the ramp ends the read position "jumps back" to the
+//   target -> click. See the comment on DelayRamp.
+// - It uses the cubic interpolation of FractionalDelayLine, so the delay time can be any
+//   number of milliseconds and can change continuously. When reading, the double position is
+//   split into "integer + fraction" before being handed to readCubicSplit, so long delays
+//   keep sub-sample precision too.
+// - Feedback is clamped to [0, 0.99]: |feedback| < 1 is a necessary condition for stability.
+// - Only prepare() allocates; process() does not allocate, lock or do I/O.
+// - Values written into the delay line are denormal-flushed (see flushDenormal), so the CPU
+//   load does not suddenly jump after a long stretch of silence.
+// - With mono (numChannels = 1), setPingPong(true) has no effect and behaves like a normal echo.
+// - Every setter ignores NaN (keeping the last valid value), and +-inf is clamped to the valid range.
+// - It does not report latency: the delay is the effect itself, and the host should not compensate for it.
+// - Calling reset() / process() before prepare() is safe (does nothing).
 
 #include <dawlab/AudioBuffer.h>
 #include <dawlab/DspMath.h>
@@ -56,17 +63,18 @@ public:
     static constexpr int kMaxChannels = 2;
     static constexpr float kMaxFeedback = 0.99f;
 
-    // ---- 設定（prepare 之前）------------------------------------------------
-    // 最大 delay time（決定 prepare 時配置的 buffer 長度）。預設 2000 ms。
-    // NaN 會被忽略（std::clamp / std::max 遇到 NaN 會原樣傳下去，之後算出的讀取位置就是垃圾）。
+    // ---- Configuration (before prepare) --------------------------------------
+    // Maximum delay time (determines the buffer length allocated in prepare). Default 2000 ms.
+    // NaN is ignored (std::clamp / std::max pass NaN straight through, and the read position
+    // computed from it later would be garbage).
     void setMaxDelayMs(float ms) noexcept {
         if (!std::isnan(ms))
             maxDelayMs_ = std::clamp(ms, 1.0f, 60000.0f);
     }
 
-    // ---- 標準介面 -----------------------------------------------------------
+    // ---- Standard interface ---------------------------------------------------
     void prepare(double sampleRate, int maxBlockSize, int numChannels) {
-        (void)maxBlockSize; // 逐 sample 處理，不需要暫存 block
+        (void)maxBlockSize; // processed sample by sample, so no scratch block is needed
         sampleRate_ = sampleRate;
         numChannels_ = std::clamp(numChannels, 1, kMaxChannels);
         maxDelaySamples_ = msToSamples(static_cast<double>(maxDelayMs_), sampleRate) + 2;
@@ -92,8 +100,9 @@ public:
         line_.reset();
         lowpass_.reset();
         highpass_.reset();
-        // 參數直接跳到目標值：reset 通常發生在 transport 停止 / 重新開始時，不需要平滑。
-        // prepare() 之前 sample rate 與 buffer 長度都還沒決定，沒有東西可以跳。
+        // Parameters jump straight to their targets: a reset usually happens when the
+        // transport stops / restarts, so no smoothing is needed. Before prepare() the sample
+        // rate and buffer length are not decided yet, so there is nothing to jump.
         if (!prepared_)
             return;
         delayRamp_.setCurrentAndTarget(targetDelaySamples());
@@ -101,8 +110,8 @@ public:
         mix_.setCurrentAndTargetValue(mixTarget_);
     }
 
-    // ---- 參數 ---------------------------------------------------------------
-    // delay time（毫秒），會以 setDelayRampSeconds 的時間線性平滑到新值。
+    // ---- Parameters -----------------------------------------------------------
+    // Delay time (milliseconds), smoothed linearly to the new value over setDelayRampSeconds.
     void setDelayMs(float ms) noexcept {
         if (std::isnan(ms))
             return;
@@ -111,16 +120,17 @@ public:
             delayRamp_.setTarget(targetDelaySamples());
     }
 
-    // delay time 變化的 ramp 長度（秒）。越長 pitch 偏移越小、但到達新值越慢。預設 0.05 s。
+    // Length (seconds) of the ramp used when the delay time changes. The longer it is, the
+    // smaller the pitch shift but the slower it reaches the new value. Default 0.05 s.
     void setDelayRampSeconds(double seconds) noexcept {
         if (!std::isfinite(seconds))
             return;
         delayRampSeconds_ = std::clamp(seconds, 0.0, 10.0);
         if (prepared_)
-            delayRamp_.setRampSamples(rampSecondsToSamples(delayRampSeconds_)); // 正在 ramp 時從目前位置以新長度重新出發
+            delayRamp_.setRampSamples(rampSecondsToSamples(delayRampSeconds_)); // if already ramping, restart from the current position with the new length
     }
 
-    // feedback 0..0.99（每一次回圈乘上的倍率）。≥ 1 會發散，所以直接 clamp。
+    // Feedback 0..0.99 (the factor applied on every trip around the loop). >= 1 diverges, so it is clamped.
     void setFeedback(float feedback) noexcept {
         if (std::isnan(feedback))
             return;
@@ -129,7 +139,7 @@ public:
             feedback_.setTargetValue(feedbackTarget_);
     }
 
-    // dry/wet：0 = 只有原音，1 = 只有 delay。y = (1-mix)·dry + mix·wet（線性 crossfade）。
+    // Dry/wet: 0 = dry only, 1 = delay only. y = (1-mix)·dry + mix·wet (linear crossfade).
     void setMix(float mix) noexcept {
         if (std::isnan(mix))
             return;
@@ -140,7 +150,7 @@ public:
 
     void setPingPong(bool enabled) noexcept { pingPong_ = enabled; }
 
-    // feedback 迴路內的 one-pole lowpass；≥ 20000 Hz 視為關閉。
+    // One-pole lowpass inside the feedback loop; >= 20000 Hz means off.
     void setLowpassHz(float hz) noexcept {
         if (std::isnan(hz))
             return;
@@ -150,7 +160,7 @@ public:
             lowpass_.setCutoff(lowpassHz_);
     }
 
-    // feedback 迴路內的 one-pole highpass；≤ 20 Hz 視為關閉。
+    // One-pole highpass inside the feedback loop; <= 20 Hz means off.
     void setHighpassHz(float hz) noexcept {
         if (std::isnan(hz))
             return;
@@ -169,19 +179,19 @@ public:
     bool isPingPong() const noexcept { return pingPong_; }
     int getMaxDelaySamples() const noexcept { return maxDelaySamples_; }
 
-    // 目前（平滑中）的 delay time，單位毫秒；給 UI 或範例觀察 ramp 用。
+    // The current (mid-ramp) delay time in milliseconds; for a UI or examples that want to watch the ramp.
     float getCurrentDelayMs() const noexcept {
         return prepared_ ? static_cast<float>(delayRamp_.getCurrent() * 1000.0 / sampleRate_) : delayMs_;
     }
 
-    // tempo sync：beats 拍 的長度（毫秒）。1 拍 = 四分音符。
-    //   八分音符 = 0.5、附點八分 = 0.75、三連音八分 = 1/3、十六分 = 0.25。
+    // Tempo sync: the length of `beats` beats in milliseconds. 1 beat = a quarter note.
+    //   eighth = 0.5, dotted eighth = 0.75, eighth triplet = 1/3, sixteenth = 0.25.
     //   ms = beats × 60000 / bpm
     static float noteToMs(double bpm, double beats) noexcept {
         return bpm > 0.0 ? static_cast<float>(beats * 60000.0 / bpm) : 0.0f;
     }
 
-    // ---- 處理 ---------------------------------------------------------------
+    // ---- Processing -----------------------------------------------------------
     void process(AudioBlock block) noexcept {
         const int numSamples = block.getNumSamples();
         const int nch = std::min(block.getNumChannels(), numChannels_);
@@ -197,22 +207,25 @@ public:
 private:
     static constexpr double kParamRampSeconds = 0.02;
 
-    // delay time（以 sample 計）的線性 ramp，全部用 double。
+    // A linear ramp of the delay time (in samples), all in double.
     //
-    // 為什麼不用第 01 章的 SmoothedValue（float、每個 sample current += step）？
-    // 例：2000 ms buffer、48 kHz，1900 ms → 1901 ms，50 ms ramp：
-    //   位置約 91200 sample，落在 [65536, 131072)，float 的 ulp = 2^-7 = 0.0078；
-    //   step = 48 / 2400 = 0.02 = 2.56 ulp，每次相加都被捨入成 3 ulp = 0.0234，
-    //   2399 步累積多走了約 8.2 sample，最後一步再「跳回」目標 → 讀取位置瞬間跳 8 個 sample = click。
-    //   15000 ms 時 ulp = 0.0625 > 2 × step，current += step 根本加不上去：先靜止 2400 sample 再一次跳 48 sample。
-    // 解法兩個：(1) 用 double（ulp 小 2^29 倍）；(2) 不累加，每次由 current = target − step × countdown 直接算，
-    // 誤差永遠只有一次捨入、不會累積。這裡兩個都做。
+    // Why not the chapter 01 SmoothedValue (float, current += step on every sample)?
+    // Example: 2000 ms buffer, 48 kHz, 1900 ms -> 1901 ms with a 50 ms ramp:
+    //   The position is about 91200 samples, in [65536, 131072), where float's ulp = 2^-7 = 0.0078;
+    //   step = 48 / 2400 = 0.02 = 2.56 ulp, and every addition is rounded to 3 ulp = 0.0234,
+    //   so after 2399 steps it has travelled about 8.2 samples too far, and the last step
+    //   then "jumps back" to the target -> the read position leaps 8 samples = click.
+    //   At 15000 ms, ulp = 0.0625 > 2 x step, so current += step cannot even add: it stands
+    //   still for 2400 samples and then jumps 48 samples in one go.
+    // There are two fixes: (1) use double (ulp is 2^29 times smaller); (2) do not accumulate, but
+    // compute current = target − step × countdown directly each time, so the error is only ever
+    // one rounding and never builds up. We do both here.
     class DelayRamp {
     public:
         void setRampSamples(int numSamples) noexcept {
             rampSamples_ = std::max(0, numSamples);
             if (countdown_ > 0)
-                start(); // 正在 ramp：從目前位置以新長度重新出發
+                start(); // already ramping: restart from the current position with the new length
         }
         void setCurrentAndTarget(double value) noexcept {
             current_ = target_ = value;
@@ -228,7 +241,7 @@ private:
         double getNext() noexcept {
             if (countdown_ > 0) {
                 --countdown_;
-                current_ = target_ - step_ * static_cast<double>(countdown_); // 不累加：countdown = 0 時剛好 = target
+                current_ = target_ - step_ * static_cast<double>(countdown_); // no accumulation: exactly = target when countdown = 0
             }
             return current_;
         }
@@ -256,24 +269,28 @@ private:
     }
 
     double targetDelaySamples() const noexcept {
-        // 至少 2 個 sample（cubic 讀取需要 d-1 ≥ 1）、至多 buffer 允許的最大值
+        // At least 2 samples (a cubic read needs d-1 >= 1), at most the largest value the buffer allows
         const double s = static_cast<double>(delayMs_) * 0.001 * sampleRate_;
         return std::clamp(s, 2.0, std::max(2.0, static_cast<double>(maxDelaySamples_)));
     }
 
-    // 讀取「D 個 sample 以前」的值。因為我們是先讀再 push（這個 sample 還沒寫進去），
-    // readXxx(ch, k) 實際對應 k+1 個 sample 的延遲，所以要讀 D - 1。
-    // 位置是 double：先拆成整數 + 小數（小數部分轉成 float 也不會失去精度），再交給 Split 版本讀取。
+    // Read the value from "D samples ago". Because we read first and push afterwards (this
+    // sample has not been written yet), readXxx(ch, k) actually corresponds to a delay of
+    // k+1 samples, so we have to read D - 1.
+    // The position is a double: split it into integer + fraction first (the fractional part
+    // loses no precision when converted to float), then hand it to the Split version.
     float readDelayed(int ch, double delaySamples) const noexcept {
         const double idx = delaySamples - 1.0;
-        const int d = static_cast<int>(idx); // floor（idx ≥ 1）
+        const int d = static_cast<int>(idx); // floor (idx >= 1)
         const float frac = static_cast<float>(idx - static_cast<double>(d));
         return interpolation_ == Interpolation::Cubic ? line_.readCubicSplit(ch, d, frac)
                                                       : line_.readLinearSplit(ch, d, frac);
     }
 
-    // feedback 迴路是遞迴結構：輸入靜音後，回聲每圈乘 fb，最後會掉進 denormal 範圍
-    // （|x| < 1.2e-38，CPU 處理這種數字可能慢上百倍）。小於 -300 dBFS 的值直接清成 0，聽不出差別。
+    // The feedback loop is recursive: once the input goes silent, the echoes are multiplied by
+    // fb on every trip and eventually fall into the denormal range (|x| < 1.2e-38, where the
+    // CPU can be hundreds of times slower). Values below -300 dBFS are simply cleared to 0,
+    // which makes no audible difference.
     static float flushDenormal(float x) noexcept { return std::abs(x) < 1.0e-15f ? 0.0f : x; }
 
     float feedbackFilter(int ch, float x) noexcept {
@@ -293,7 +310,7 @@ private:
                 float* data = block.getChannelPointer(ch);
                 const float x = data[i];
                 const float wet = readDelayed(ch, d);
-                line_.push(ch, flushDenormal(x + fb * feedbackFilter(ch, wet))); // feedback：延遲輸出濾波後回到輸入
+                line_.push(ch, flushDenormal(x + fb * feedbackFilter(ch, wet))); // feedback: the filtered delay output returns to the input
                 data[i] = (1.0f - mix) * x + mix * wet;
             }
         }
@@ -311,8 +328,8 @@ private:
             const float mono = 0.5f * (xl + xr);
             const float wetL = readDelayed(0, d);
             const float wetR = readDelayed(1, d);
-            line_.push(0, flushDenormal(mono + fb * feedbackFilter(0, wetR))); // 右邊的輸出回到左邊
-            line_.push(1, flushDenormal(fb * feedbackFilter(1, wetL)));        // 左邊的輸出送到右邊
+            line_.push(0, flushDenormal(mono + fb * feedbackFilter(0, wetR))); // the right output returns to the left
+            line_.push(1, flushDenormal(fb * feedbackFilter(1, wetL)));        // the left output goes to the right
             left[i] = (1.0f - mix) * xl + mix * wetL;
             right[i] = (1.0f - mix) * xr + mix * wetR;
         }
@@ -321,7 +338,7 @@ private:
     FractionalDelayLine line_;
     OnePole lowpass_;
     OnePole highpass_;
-    DelayRamp delayRamp_; // delay time（sample），double 精度的線性 ramp
+    DelayRamp delayRamp_; // delay time (samples), a double-precision linear ramp
     SmoothedValue feedback_;
     SmoothedValue mix_;
 

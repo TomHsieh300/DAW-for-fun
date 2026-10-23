@@ -1,20 +1,22 @@
-// 練習 4 解答：tape-style delay —— feedback 迴路內的 lowpass + highpass + 輕微 saturation
+// Exercise 4 solution: tape-style delay -- lowpass + highpass + mild saturation inside the feedback loop
 //
-// 磁帶 echo（Echoplex、Space Echo）每繞一圈，聲音都會：
-//   1. 變暗（磁帶 / 磁頭的高頻損失）        → feedback 迴路內的 one-pole lowpass
-//   2. 低頻被削掉一點（變壓器、耦合電容）    → feedback 迴路內的 one-pole highpass
-//   3. 被磁帶輕微壓縮 / 飽和                 → feedback 迴路內的 tanh
+// On every trip around the loop, a tape echo (Echoplex, Space Echo) makes the sound:
+//   1. darker (high-frequency loss of the tape / head)       -> a one-pole lowpass in the feedback loop
+//   2. a little thinner (transformers, coupling capacitors)  -> a one-pole highpass in the feedback loop
+//   3. gently compressed / saturated by the tape             -> a tanh in the feedback loop
 //
 //   x ──►(+)──► delay line ──┬──► wet ──(mix)──► y
 //         ▲                  │
 //         └── ×fb ◄── tanh ◄── LP ◄── HP ◄┘
 //
-// 第 3 點是 dub delay 的靈魂：feedback 轉超過 1 時，線性的 delay 會發散到無限大，
-// 但 tanh 把每一圈的增益「壓」回來，結果是一個振幅受控、會自己唱歌的 self-oscillation。
-// 本解答用數字驗證這兩件事：(a) 第二個 echo 的高頻比第一個少很多；(b) feedback = 1.1 時
-// 線性版本發散、tape 版本停在一個固定振幅（可用 describing function 預測）。
+// Point 3 is the soul of a dub delay: when feedback is turned above 1, a linear delay diverges
+// to infinity, but the tanh "squashes" the gain of every trip back down, and the result is a
+// self-oscillation of controlled amplitude that sings by itself.
+// This solution verifies two things numerically: (a) the second echo has much less high
+// frequency content than the first; (b) with feedback = 1.1 the linear version diverges while
+// the tape version settles at a fixed amplitude (which can be predicted with a describing function).
 //
-// 執行：l09_ex4_solution。輸出 dawlab_output/l09_ex4_tape_dry.wav、l09_ex4_tape_wet.wav、l09_ex4_dub.wav。
+// Run: l09_ex4_solution. Writes dawlab_output/l09_ex4_tape_dry.wav, l09_ex4_tape_wet.wav, l09_ex4_dub.wav.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/FractionalDelayLine.h>
@@ -69,7 +71,7 @@ public:
         if (prepared_)
             delaySamples_.setTargetValue(targetDelaySamples());
     }
-    // 這裡刻意允許到 1.5：feedback > 1 是 dub 的玩法，由 saturation 負責把它關在籠子裡
+    // Deliberately allowed up to 1.5 here: feedback > 1 is the dub technique, and the saturation keeps it in its cage
     void setFeedback(float fb) noexcept { feedback_ = std::clamp(fb, 0.0f, 1.5f); }
     void setMix(float mix) noexcept { mix_ = std::clamp(mix, 0.0f, 1.0f); }
     void setLowpassHz(float hz) noexcept {
@@ -82,12 +84,14 @@ public:
         if (prepared_)
             highpass_.setCutoff(highpassHz_);
     }
-    // drive：tanh 的輸入放大倍率。輸出除回 drive，小訊號增益保持 1，只有大訊號被壓。
+    // drive: the gain applied to the tanh input. The output is divided by drive again, so the
+    // small-signal gain stays 1 and only large signals are squashed.
     void setDrive(float drive) noexcept { drive_ = std::max(0.1f, drive); }
     void setSaturationEnabled(bool on) noexcept { saturate_ = on; }
 
     float getLoopGainAt(double freq) const {
-        // 給 README / 自我檢查用：迴路一圈的線性增益 fb·|HP(f)|·|LP(f)|（不含 tanh；HP 永遠在迴路裡）
+        // For the README / self-checks: the linear gain of one trip around the loop, fb·|HP(f)|·|LP(f)|
+        // (excluding the tanh; the HP is always in the loop)
         return feedback_ * onePoleMag(freq, lowpassHz_, false) * onePoleMag(freq, highpassHz_, true);
     }
 
@@ -99,7 +103,7 @@ public:
             for (int ch = 0; ch < nch; ++ch) {
                 float* data = block.getChannelPointer(ch);
                 const float x = data[i];
-                const float wet = line_.readCubic(ch, d - 1.0f); // 先讀再 push，所以 −1
+                const float wet = line_.readCubic(ch, d - 1.0f); // read first, push afterwards, hence the −1
                 line_.push(ch, x + feedbackPath(ch, wet));
                 data[i] = (1.0f - mix_) * x + mix_ * wet;
             }
@@ -107,13 +111,15 @@ public:
     }
 
 private:
-    // 數位 OnePole（第 02 章）的實際幅度響應，而不是類比 one-pole 的 1/√(1+(f/fc)²)：
-    //   a = exp(−2π·fc/fs)，ω = 2π·f/fs，分母 |1 − a·e^{−jω}| = √(1 − 2a·cosω + a²)
-    //   lowpass ：H = (1−a) / (1 − a z⁻¹)               → |H| = (1−a) / 分母
-    //   highpass：H = ½(1+a)(1 − z⁻¹) / (1 − a z⁻¹)     → |H| = ½(1+a)·√(2 − 2cosω) / 分母
-    // 類比公式在低頻幾乎一樣，但在 8 kHz（fs/6）附近會差好幾個百分點。
+    // The actual magnitude response of the digital OnePole (chapter 02), not the analog
+    // one-pole 1/√(1+(f/fc)²):
+    //   a = exp(−2π·fc/fs), ω = 2π·f/fs, denominator |1 − a·e^{−jω}| = √(1 − 2a·cosω + a²)
+    //   lowpass : H = (1−a) / (1 − a z⁻¹)               → |H| = (1−a) / denominator
+    //   highpass: H = ½(1+a)(1 − z⁻¹) / (1 − a z⁻¹)     → |H| = ½(1+a)·√(2 − 2cosω) / denominator
+    // The analog formula is nearly the same at low frequencies, but differs by several
+    // percent around 8 kHz (fs/6).
     float onePoleMag(double f, float cutoff, bool highpass) const noexcept {
-        const double fc = std::clamp(static_cast<double>(cutoff), 1.0e-3, sampleRate_ * 0.49); // 同 OnePole 的 clamp
+        const double fc = std::clamp(static_cast<double>(cutoff), 1.0e-3, sampleRate_ * 0.49); // same clamp as OnePole
         const double a = dawlab::dsp::OnePole::coefficientForCutoff(fc, sampleRate_);
         const double c = std::cos(dawlab::kTwoPi * f / sampleRate_);
         const double den = std::sqrt(1.0 - 2.0 * a * c + a * a);
@@ -126,12 +132,12 @@ private:
                           static_cast<float>(maxDelaySamples_));
     }
 
-    // feedback 路徑：HP → LP → tanh → ×fb
+    // Feedback path: HP → LP → tanh → ×fb
     float feedbackPath(int ch, float wet) noexcept {
         float v = highpass_.processSample(ch, wet);
         v = lowpass_.processSample(ch, v);
         if (saturate_)
-            v = std::tanh(drive_ * v) / drive_; // 小訊號 ≈ v；|v| 大時被壓到 ±1/drive
+            v = std::tanh(drive_ * v) / drive_; // ≈ v for small signals; squashed to ±1/drive when |v| is large
         return feedback_ * v;
     }
 
@@ -158,12 +164,15 @@ void processInBlocks(TapeDelay& d, dawlab::AudioBuffer& b) {
         d.process(whole.getSubBlock(start, std::min(kBlockSize, b.getNumSamples() - start)));
 }
 
-// 用 describing function預測 self-oscillation 的振幅。
-// 迴路裡繞的近似是一個正弦。設 tanh 的輸入是 X·sin θ，它的輸出基頻振幅是
-//     F1(X) = (2/π) ∫₀^π tanh(X sin θ) sin θ dθ        （小訊號時 F1 ≈ X，大訊號時 → 4/π）
-// 繞一圈的「基頻」增益 = G · F1(X)/X，G = fb·|HP|·|LP| 是迴路的線性增益（drive 在 tanh 前乘、後除，互相抵消）。
-// 穩定振盪 ⇔ 這個增益剛好 = 1：F1(X)/X = 1/G。F1(X)/X 從 1 單調遞減，所以用二分法解 X。
-// 迴路訊號（= wet）就是 fb·tanh(·)/drive 的輸出，它的峰值 = fb·tanh(X)/drive。
+// Use a describing function to predict the self-oscillation amplitude.
+// The signal going around the loop is approximated by a sine. If the tanh input is X·sin θ,
+// the amplitude of its fundamental output is
+//     F1(X) = (2/π) ∫₀^π tanh(X sin θ) sin θ dθ        (F1 ≈ X for small signals, → 4/π for large ones)
+// The "fundamental" gain of one trip around the loop = G · F1(X)/X, where G = fb·|HP|·|LP| is the
+// linear gain of the loop (drive is multiplied before the tanh and divided after, so it cancels).
+// Steady oscillation <=> this gain is exactly 1: F1(X)/X = 1/G. F1(X)/X decreases monotonically
+// from 1, so we solve for X by bisection.
+// The loop signal (= wet) is the output of fb·tanh(·)/drive, so its peak = fb·tanh(X)/drive.
 double fundamentalOfTanh(double X) {
     const int steps = 2000;
     double sum = 0.0;
@@ -175,12 +184,12 @@ double fundamentalOfTanh(double X) {
 }
 
 double selfOscillationPeak(double fb, double loopGain, double drive) {
-    const double target = 1.0 / loopGain; // 需要 < 1（迴路線性增益 > 1 才會自激）
+    const double target = 1.0 / loopGain; // must be < 1 (the loop self-oscillates only if its linear gain is > 1)
     double lo = 1.0e-6, hi = 50.0;
     for (int i = 0; i < 60; ++i) {
         const double mid = 0.5 * (lo + hi);
         if (fundamentalOfTanh(mid) / mid > target)
-            lo = mid; // 增益還太大 → 振幅要更大
+            lo = mid; // gain still too high -> the amplitude must be larger
         else
             hi = mid;
     }
@@ -191,9 +200,9 @@ double selfOscillationPeak(double fb, double loopGain, double drive) {
 } // namespace
 
 int main() {
-    std::printf("=== 第 09 章 練習 4：tape-style delay ===\n\n");
+    std::printf("=== Chapter 09, Exercise 4: tape-style delay ===\n\n");
 
-    // ---- (a) 每繞一圈都更暗：比較第 1 與第 2 個 echo 的頻譜 ----------------------
+    // ---- (a) Darker on every trip: compare the spectra of echo 1 and echo 2 ---------------
     {
         const float delayMs = 200.0f;
         const int D = dawlab::msToSamples(delayMs, kSampleRate);
@@ -204,37 +213,37 @@ int main() {
         tape.setFeedback(0.7f);
         tape.setLowpassHz(2000.0f);
         tape.setHighpassHz(100.0f);
-        tape.setDrive(0.5f); // 小 drive：這段先看濾波器的效果
+        tape.setDrive(0.5f); // small drive: this part is about the effect of the filters
         tape.setMix(1.0f);
         tape.reset();
 
         dawlab::AudioBuffer ir = dawlab::makeImpulse(dawlab::secondsToSamples(1.0, kSampleRate), 1);
         processInBlocks(tape, ir);
         const float* y = ir.getReadPointer(0);
-        // echo k 出現在 n = kD。goertzelAmplitude 內部有 Hann window（兩端為 0），
-        // 所以把分析視窗的中心對準 echo：[kD − D/2, kD + D/2)
+        // Echo k appears at n = kD. goertzelAmplitude applies a Hann window internally (zero at
+        // both ends), so centre the analysis window on the echo: [kD − D/2, kD + D/2)
         const double lo1 = dawlab::goertzelAmplitude(y + D / 2, D, 500.0, kSampleRate);
         const double lo2 = dawlab::goertzelAmplitude(y + 3 * D / 2, D, 500.0, kSampleRate);
         const double hi1 = dawlab::goertzelAmplitude(y + D / 2, D, 8000.0, kSampleRate);
         const double hi2 = dawlab::goertzelAmplitude(y + 3 * D / 2, D, 8000.0, kSampleRate);
         const double rLo = lo2 / lo1, rHi = hi2 / hi1;
-        std::printf("impulse → echo 1 vs echo 2（delay %.0f ms, fb 0.7, LP 2 kHz, HP 100 Hz）：\n", delayMs);
-        std::printf("   500 Hz：echo2/echo1 = %.3f（理論 fb·|HP|·|LP| ≈ %.3f）\n", rLo, tape.getLoopGainAt(500.0));
-        std::printf("  8000 Hz：echo2/echo1 = %.3f（理論 ≈ %.3f）\n", rHi, tape.getLoopGainAt(8000.0));
-        std::printf("  第一個 echo 的峰值 %.3f 在 n = %d\n", y[D], D);
-        DAWLAB_CHECK_NEAR(y[D], 1.0, 1.0e-3);          // 第一個 echo 是未經濾波的原始 impulse
+        std::printf("impulse -> echo 1 vs echo 2 (delay %.0f ms, fb 0.7, LP 2 kHz, HP 100 Hz):\n", delayMs);
+        std::printf("   500 Hz: echo2/echo1 = %.3f (theory fb·|HP|·|LP| ~ %.3f)\n", rLo, tape.getLoopGainAt(500.0));
+        std::printf("  8000 Hz: echo2/echo1 = %.3f (theory ~ %.3f)\n", rHi, tape.getLoopGainAt(8000.0));
+        std::printf("  The first echo peaks at %.3f at n = %d\n", y[D], D);
+        DAWLAB_CHECK_NEAR(y[D], 1.0, 1.0e-3);          // the first echo is the original, unfiltered impulse
         DAWLAB_CHECK_NEAR(rLo, tape.getLoopGainAt(500.0), 0.05);
         DAWLAB_CHECK_NEAR(rHi, tape.getLoopGainAt(8000.0), 0.05);
-        DAWLAB_CHECK(rHi < 0.5 * rLo); // 高頻每圈掉得比低頻快得多
-        std::printf("  -> 高頻每圈只剩 %.0f%%，低頻還有 %.0f%%：echo 一次比一次暗。\n\n", 100.0 * rHi, 100.0 * rLo);
+        DAWLAB_CHECK(rHi < 0.5 * rLo); // highs fall away much faster than lows on every trip
+        std::printf("  -> only %.0f%% of the highs remain per trip, versus %.0f%% of the lows: each echo is darker than the last.\n\n", 100.0 * rHi, 100.0 * rLo);
     }
 
-    // ---- (b) feedback > 1：線性版本發散，tanh 版本停在固定振幅 ------------------
+    // ---- (b) feedback > 1: the linear version diverges, the tanh version settles at a fixed amplitude ----
     {
         const float fb = 1.1f, drive = 2.0f;
         const double toneHz = 200.0;
         auto makeInput = [&] {
-            // 200 Hz 正弦只響 0.3 秒，之後 2.7 秒讓迴路自己跑
+            // A 200 Hz sine sounds for only 0.3 s; the remaining 2.7 s let the loop run by itself
             dawlab::AudioBuffer b(1, dawlab::secondsToSamples(3.0, kSampleRate));
             const int burst = dawlab::secondsToSamples(0.3, kSampleRate);
             for (int i = 0; i < burst; ++i)
@@ -248,7 +257,7 @@ int main() {
             tape.setDelayMs(100.0f);
             tape.setFeedback(fb);
             tape.setLowpassHz(2000.0f);
-            tape.setHighpassHz(20.0f); // HP 降到最低的 20 Hz（仍在迴路裡，200 Hz 處 |HP| ≈ 0.995，影響很小）
+            tape.setHighpassHz(20.0f); // HP at its minimum of 20 Hz (still in the loop; |HP| ~ 0.995 at 200 Hz, so the effect is tiny)
             tape.setDrive(driveValue);
             tape.setSaturationEnabled(saturate);
             tape.setMix(1.0f);
@@ -259,7 +268,7 @@ int main() {
         };
         auto [linear, loopGain] = run(false, drive);
         auto [tape, loopGain2] = run(true, drive);
-        auto [tape1, loopGain3] = run(true, 1.0f); // drive 1：振幅應該是 drive 2 的兩倍
+        auto [tape1, loopGain3] = run(true, 1.0f); // drive 1: the amplitude should be twice that of drive 2
         (void)loopGain2;
         (void)loopGain3;
 
@@ -268,33 +277,34 @@ int main() {
         const float linearTailPeak = dawlab::peakAbs(linear.getReadPointer(0) + tailStart, tailLen);
         const float tapeTailPeak = dawlab::peakAbs(tape.getReadPointer(0) + tailStart, tailLen);
         const double predicted = selfOscillationPeak(fb, loopGain, drive);
-        std::printf("feedback = %.1f（迴路線性增益 %.3f > 1）、200 Hz 正弦只響 0.3 s：\n", fb, loopGain);
-        std::printf("  線性版本：整體 peak %.2f，2.5–3.0 s 尾巴 peak %.2f（每 100 ms 乘 %.3f，持續成長）\n",
+        std::printf("feedback = %.1f (linear loop gain %.3f > 1), 200 Hz sine sounding for only 0.3 s:\n", fb, loopGain);
+        std::printf("  Linear version: overall peak %.2f, peak of the 2.5-3.0 s tail %.2f (multiplied by %.3f every 100 ms, still growing)\n",
                     dawlab::peakAbs(linear), linearTailPeak, loopGain);
-        std::printf("  tanh 版本：整體 peak %.2f，2.5–3.0 s 尾巴 peak %.3f（describing function 預測 %.3f）\n",
+        std::printf("  tanh version: overall peak %.2f, peak of the 2.5-3.0 s tail %.3f (describing function predicts %.3f)\n",
                     dawlab::peakAbs(tape), tapeTailPeak, predicted);
         DAWLAB_CHECK(loopGain > 1.0f);
-        DAWLAB_CHECK(linearTailPeak > 3.0f);                 // 線性：發散
-        DAWLAB_CHECK(dawlab::peakAbs(tape) < 1.2f);          // tanh：有界
-        DAWLAB_CHECK_NEAR(tapeTailPeak, predicted, 0.03);    // 而且落在 describing function 預測的振幅
+        DAWLAB_CHECK(linearTailPeak > 3.0f);                 // linear: diverges
+        DAWLAB_CHECK(dawlab::peakAbs(tape) < 1.2f);          // tanh: bounded
+        DAWLAB_CHECK_NEAR(tapeTailPeak, predicted, 0.03);    // and lands on the amplitude the describing function predicts
         DAWLAB_CHECK(!dawlab::hasNanOrInf(tape));
         DAWLAB_CHECK(!dawlab::hasNanOrInf(linear));
 
-        // drive 對自激振幅的影響：令 u = drive·v，迴路變成 u ← G·tanh(u)，和 drive 無關，
-        // 所以 tanh 的輸入振幅 X 只由 G 決定，而 wet = fb·tanh(X)/drive ∝ 1/drive。
+        // Effect of drive on the self-oscillation amplitude: let u = drive·v, and the loop becomes
+        // u <- G·tanh(u), independent of drive, so the tanh input amplitude X is determined by G
+        // alone, while wet = fb·tanh(X)/drive is proportional to 1/drive.
         const float tape1TailPeak = dawlab::peakAbs(tape1.getReadPointer(0) + tailStart, tailLen);
         const double predicted1 = selfOscillationPeak(fb, loopGain, 1.0);
-        std::printf("  drive 1 的 tanh 版本：尾巴 peak %.3f（預測 %.3f）；drive 1 / drive 2 = %.2f（理論 2）\n",
+        std::printf("  tanh version with drive 1: tail peak %.3f (predicted %.3f); drive 1 / drive 2 = %.2f (theory 2)\n",
                     tape1TailPeak, predicted1, tape1TailPeak / tapeTailPeak);
         DAWLAB_CHECK_NEAR(tape1TailPeak, predicted1, 0.06);
         DAWLAB_CHECK_NEAR(tape1TailPeak / tapeTailPeak, 2.0, 0.1);
         tape.applyGain(0.8f);
         dawlab::writeWav(dawlab::outputPath("l09_ex4_dub.wav"), tape, kSampleRate);
-        std::printf("  -> 線性 feedback ≥ 1 一定爆；tanh 讓它變成振幅固定的 self-oscillation（dub delay）。\n");
-        std::printf("已輸出 dawlab_output/l09_ex4_dub.wav\n\n");
+        std::printf("  -> Linear feedback >= 1 always blows up; the tanh turns it into a fixed-amplitude self-oscillation (dub delay).\n");
+        std::printf("Wrote dawlab_output/l09_ex4_dub.wav\n\n");
     }
 
-    // ---- (c) 音樂素材 ------------------------------------------------------------
+    // ---- (c) Musical material -------------------------------------------------------
     {
         dawlab::AudioBuffer seq = dawlab::makePluckSequence(kSampleRate, 4.0, 0.4f);
         dawlab::AudioBuffer dry(2, dawlab::secondsToSamples(8.0, kSampleRate));
@@ -304,7 +314,7 @@ int main() {
         TapeDelay tape;
         tape.setMaxDelayMs(2000.0f);
         tape.prepare(kSampleRate, kBlockSize, 2);
-        tape.setDelayMs(375.0f); // 120 BPM 附點八分
+        tape.setDelayMs(375.0f); // dotted eighth at 120 BPM
         tape.setFeedback(0.6f);
         tape.setLowpassHz(2500.0f);
         tape.setHighpassHz(120.0f);
@@ -314,10 +324,10 @@ int main() {
         processInBlocks(tape, wet);
         dawlab::writeWav(dawlab::outputPath("l09_ex4_tape_dry.wav"), dry, kSampleRate);
         dawlab::writeWav(dawlab::outputPath("l09_ex4_tape_wet.wav"), wet, kSampleRate);
-        std::printf("撥弦琶音：peak dry %.3f / tape %.3f\n", dawlab::peakAbs(dry), dawlab::peakAbs(wet));
+        std::printf("Plucked arpeggio: peak dry %.3f / tape %.3f\n", dawlab::peakAbs(dry), dawlab::peakAbs(wet));
         DAWLAB_CHECK(!dawlab::hasNanOrInf(wet));
         DAWLAB_CHECK(dawlab::peakAbs(wet) < 1.0f);
-        std::printf("已輸出 dawlab_output/l09_ex4_tape_dry.wav, l09_ex4_tape_wet.wav\n\n");
+        std::printf("Wrote dawlab_output/l09_ex4_tape_dry.wav, l09_ex4_tape_wet.wav\n\n");
     }
 
     return dawlab::test::summary("l09_ex4");

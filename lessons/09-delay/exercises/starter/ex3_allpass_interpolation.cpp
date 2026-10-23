@@ -1,13 +1,13 @@
-// 練習 3 起始碼：allpass interpolation
+// Exercise 3 starter: allpass interpolation
 //
-// 目標：實作一階 allpass interpolator，讓 fractional delay 的幅度響應在所有頻率都是 0 dB，
-// 並量測它的相位延遲與理論值比較。
+// Goal: implement a first-order allpass interpolator so that the magnitude response of the
+// fractional delay is 0 dB at every frequency, and measure its phase delay against theory.
 //
 //     H(z) = (η + z⁻¹) / (1 + η z⁻¹),   η = (1 − Δ) / (1 + Δ)
 //     y[n] = η·(v[n] − y[n−1]) + v[n−1]      v[n] = x[n − d]
 //
-// 完成 TODO 之後執行 l09_ex3_starter，所有 check 應該通過。
-// 提示：讓 Δ 落在 [0.5, 1.5)（d = floor(delay − 0.5)），η 就不會接近 1。
+// After completing the TODOs, run l09_ex3_starter; all the checks should pass.
+// Hint: keep Δ in [0.5, 1.5) (d = floor(delay − 0.5)) so that η stays away from 1.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/FractionalDelayLine.h>
@@ -36,17 +36,17 @@ public:
     }
 
     void setDelay(float delaySamples) noexcept {
-        // TODO: 把 delaySamples 拆成整數 d_ 與小數 Δ（建議 Δ ∈ [0.5, 1.5)），
-        //       再算 eta_ = (1 − Δ) / (1 + Δ)。
+        // TODO: split delaySamples into an integer part d_ and a fraction Δ (Δ in [0.5, 1.5)
+        //       is recommended), then compute eta_ = (1 − Δ) / (1 + Δ).
         d_ = static_cast<int>(delaySamples);
         eta_ = 0.0f;
     }
 
     float processSample(float x) noexcept {
         line_.push(0, x);
-        // TODO: 讀出 v[n] = x[n−d] 與 v[n−1] = x[n−d−1]，套用
-        //       y[n] = η·(v[n] − y[n−1]) + v[n−1]，更新 y1_，並 flush denormal。
-        return line_.readInteger(0, d_); // 目前只有整數延遲：相位延遲的 check 會 FAIL
+        // TODO: read v[n] = x[n−d] and v[n−1] = x[n−d−1], apply
+        //       y[n] = η·(v[n] − y[n−1]) + v[n−1], update y1_, and flush denormals.
+        return line_.readInteger(0, d_); // integer delay only for now: the phase-delay checks will FAIL
     }
 
     float getEta() const noexcept { return eta_; }
@@ -59,13 +59,14 @@ private:
     float y1_ = 0.0f;
 };
 
-// allpass 的理論相位延遲（總延遲，單位 sample）
+// Theoretical phase delay of the allpass (total delay, in samples)
 double allpassTheoryDelay(int d, double eta, double freq) {
     const double w = dawlab::kTwoPi * freq / kSampleRate;
     return d + 1.0 - (2.0 / w) * std::atan(eta * std::sin(w) / (1.0 + eta * std::cos(w)));
 }
 
-// 量測相位延遲（sample）：in / out 投影到 e^{−jωn} 取相位差，再用 expected 展開 2π 的模糊
+// Measure the phase delay (samples): project in / out onto e^{−jωn}, take the phase
+// difference, then use `expected` to resolve the 2π ambiguity.
 template <typename Fn>
 double measurePhaseDelaySamples(Fn&& fn, double freq, double expected) {
     const int skip = static_cast<int>(0.2 * kSampleRate);
@@ -100,24 +101,24 @@ double measureAllpassGainDb(float delay, double freq) {
 } // namespace
 
 int main() {
-    std::printf("=== 第 09 章 練習 3（起始碼）：allpass interpolation ===\n\n");
+    std::printf("=== Chapter 09, Exercise 3 (starter): allpass interpolation ===\n\n");
     const float delay = 10.5f;
 
-    std::printf("幅度響應（dB）應該全部 ≈ 0：\n");
+    std::printf("Magnitude response (dB) should be ~ 0 everywhere:\n");
     for (double f : {100.0, 1000.0, 4000.0, 12000.0, 20000.0}) {
         const double g = measureAllpassGainDb(delay, f);
         std::printf("  %8.0f Hz  %+6.2f dB\n", f, g);
         DAWLAB_CHECK_NEAR(g, 0.0, 0.05);
     }
 
-    std::printf("相位延遲（sample）應該符合理論：\n");
+    std::printf("Phase delay (samples) should match theory:\n");
     for (double f : {100.0, 1000.0, 4000.0, 8000.0}) {
         AllpassInterpolator ap;
         ap.prepare(64);
         ap.setDelay(delay);
         const double t = measurePhaseDelaySamples([&](float x) { return ap.processSample(x); }, f, delay);
         const double theory = allpassTheoryDelay(ap.getIntegerDelay(), ap.getEta(), f);
-        std::printf("  %8.0f Hz  量到 %7.3f  理論 %7.3f\n", f, t, theory);
+        std::printf("  %8.0f Hz  measured %7.3f  theory %7.3f\n", f, t, theory);
         DAWLAB_CHECK_NEAR(t, theory, 0.02);
     }
     {

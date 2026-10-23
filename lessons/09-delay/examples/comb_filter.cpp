@@ -1,22 +1,26 @@
-// 範例 4：短 delay + feedback = comb filter（梳狀濾波器）
+// Example 4: short delay + feedback = comb filter
 //
-// 示範什麼：
-//   1. delay D = 48 sample（1 ms @ 48 kHz）、feedback g = 0.7 的 feedback comb：
+// What it demonstrates:
+//   1. A feedback comb with delay D = 48 samples (1 ms @ 48 kHz) and feedback g = 0.7:
 //        y[n] = x[n] + g·y[n−D]      H(f) = 1 / (1 − g·e^{−j2πfD/fs})
-//      頻率響應每隔 fs/D = 1000 Hz 出現一個峰（|H| = 1/(1−g) = 3.33 → +10.46 dB），
-//      峰與峰之間是谷（|H| = 1/(1+g) = 0.588 → −4.61 dB）。
-//      本範例掃描 250–9750 Hz，自動找出峰谷並印出間距，驗證「週期 = fs/D」。
-//   2. feedforward comb：y[n] = x[n] + g·x[n−D]，峰谷深度剛好相反（+4.61 / −10.46 dB）。
-//   3. 用 Delay class（delay 1 ms、feedback 0.7、mix 1）得到一樣的結果：
-//      echo 效果器轉到極短的 delay time 就是 comb filter，這也是第 12 章 reverb 的基本積木。
+//      The frequency response has a peak every fs/D = 1000 Hz (|H| = 1/(1−g) = 3.33 → +10.46 dB),
+//      with a notch between neighbouring peaks (|H| = 1/(1+g) = 0.588 → −4.61 dB).
+//      This example sweeps 250–9750 Hz, finds the peaks and notches automatically and prints
+//      their spacing, verifying "period = fs/D".
+//   2. A feedforward comb, y[n] = x[n] + g·x[n−D]; the peak and notch depths are exactly
+//      swapped (+4.61 / −10.46 dB).
+//   3. The Delay class (delay 1 ms, feedback 0.7, mix 1) gives the same result: an echo
+//      effect turned down to a very short delay time is a comb filter, which is also the
+//      basic building block of the chapter 12 reverb.
 //
-// 怎麼執行：不需要參數，直接執行 l09_comb_filter。
-// 輸出檔案（dawlab_output/）：
-//   l09_comb_noise_dry.wav   白雜訊
-//   l09_comb_noise_1ms.wav   白雜訊經過 1 ms / feedback 0.9 comb（聽到明顯的 1 kHz 音高）
-//   l09_comb_noise_10ms.wav  白雜訊經過 10 ms / feedback 0.8 comb（100 Hz 的金屬 / 管狀共鳴）
-// 該聽到什麼：雜訊「被調音」了——短 delay 加 feedback 會讓輸入帶上 fs/D 的音高；
-//             delay 拉長到 10 ms 以上會變成金屬質感，再長就開始像小房間的回聲。
+// How to run: no arguments needed, just run l09_comb_filter.
+// Output files (dawlab_output/):
+//   l09_comb_noise_dry.wav   white noise
+//   l09_comb_noise_1ms.wav   white noise through a 1 ms / feedback 0.9 comb (a clear 1 kHz pitch)
+//   l09_comb_noise_10ms.wav  white noise through a 10 ms / feedback 0.8 comb (100 Hz metallic / tubular resonance)
+// What you should hear: the noise is "tuned" -- a short delay plus feedback gives the input a
+//             pitch of fs/D; stretching the delay beyond about 10 ms turns it metallic, and
+//             longer still it starts to sound like the echo of a small room.
 
 #include <dawlab/Common.h>
 #include <dawlab/dsp/Delay.h>
@@ -35,7 +39,8 @@ namespace {
 constexpr double kSampleRate = 48000.0;
 constexpr int kBlockSize = 512;
 
-// feedback comb：y[n] = x[n] + g·y[n−D]。先讀（D−1，因為本 sample 還沒 push）再 push。
+// Feedback comb: y[n] = x[n] + g·y[n−D]. Read first (at D−1, since this sample has not been
+// pushed yet), then push.
 class FeedbackComb {
 public:
     void prepare(int delaySamples, float g) {
@@ -55,7 +60,7 @@ private:
     float g_ = 0.0f;
 };
 
-// feedforward comb：y[n] = x[n] + g·x[n−D]
+// Feedforward comb: y[n] = x[n] + g·x[n−D]
 class FeedforwardComb {
 public:
     void prepare(int delaySamples, float g) {
@@ -85,7 +90,8 @@ std::vector<double> scanResponse(int delaySamples, float g, const std::vector<do
     return out;
 }
 
-// 用 Delay class 一塊一塊處理正弦，再用 Goertzel 量增益（Delay 沒有 processSample，所以手動量）
+// Run a sine through the Delay class block by block, then measure the gain with Goertzel
+// (Delay has no processSample, so we measure by hand).
 double measureDelayGainDb(Delay& delay, double freq) {
     dawlab::AudioBuffer in = dawlab::makeSine(freq, kSampleRate, 0.7, 0.25f, 1);
     dawlab::AudioBuffer out = in;
@@ -123,25 +129,25 @@ void renderNoiseThroughComb(const dawlab::AudioBuffer& noise, int delaySamples, 
 } // namespace
 
 int main() {
-    std::printf("=== 第 09 章 範例 4：短 delay + feedback = comb filter ===\n\n");
+    std::printf("=== Chapter 09, Example 4: short delay + feedback = comb filter ===\n\n");
 
     const int D = 48;    // 1 ms @ 48 kHz
     const float g = 0.7f;
-    const double period = kSampleRate / D; // 峰與峰的間距 = fs/D = 1000 Hz
+    const double period = kSampleRate / D; // peak spacing = fs/D = 1000 Hz
     std::printf("D = %d samples (%.2f ms), g = %.2f\n", D, dawlab::samplesToMs(D, kSampleRate), g);
-    std::printf("理論：峰在 k × %.0f Hz，高度 1/(1−g) = %.2f → %+.2f dB；"
-                "谷在 (k+½) × %.0f Hz，深度 1/(1+g) = %.3f → %+.2f dB\n\n",
+    std::printf("Theory: peaks at k x %.0f Hz, height 1/(1-g) = %.2f -> %+.2f dB; "
+                "notches at (k+1/2) x %.0f Hz, depth 1/(1+g) = %.3f -> %+.2f dB\n\n",
                 period, 1.0 / (1.0 - g), dawlab::gainToDb(1.0 / (1.0 - g)), period, 1.0 / (1.0 + g),
                 dawlab::gainToDb(1.0 / (1.0 + g)));
 
-    // ---- 1. 掃描 feedback comb，自動找峰谷 ----------------------------------
+    // ---- 1. Sweep the feedback comb and find the peaks and notches automatically ----
     std::vector<double> freqs;
     for (double f = 250.0; f <= 9750.0; f += 50.0)
         freqs.push_back(f);
     const std::vector<double> fb = scanResponse<FeedbackComb>(D, g, freqs);
 
-    std::printf("feedback comb 掃描 250–9750 Hz（每 50 Hz）找到的局部峰 / 谷：\n");
-    std::printf("   type     freq(Hz)   gain(dB)   與前一個同類的間距(Hz)\n");
+    std::printf("Local peaks / notches found sweeping the feedback comb over 250-9750 Hz (every 50 Hz):\n");
+    std::printf("   type     freq(Hz)   gain(dB)   spacing from previous of same type (Hz)\n");
     double lastPeak = -1.0, lastNotch = -1.0;
     for (size_t i = 1; i + 1 < fb.size(); ++i) {
         const bool peak = fb[i] > fb[i - 1] && fb[i] >= fb[i + 1];
@@ -156,24 +162,24 @@ int main() {
             lastNotch = freqs[i];
         }
     }
-    std::printf("  -> 間距 = fs/D = %.0f Hz；峰 ≈ %+.2f dB、谷 ≈ %+.2f dB\n\n", period,
+    std::printf("  -> spacing = fs/D = %.0f Hz; peaks ~ %+.2f dB, notches ~ %+.2f dB\n\n", period,
                 dawlab::gainToDb(1.0 / (1.0 - g)), dawlab::gainToDb(1.0 / (1.0 + g)));
 
-    // ---- 2. feedforward comb 比較 -------------------------------------------
+    // ---- 2. Feedforward comb for comparison ----------------------------------
     {
         const std::vector<double> probe = {500.0, 1000.0, 1500.0, 2000.0, 2500.0, 3000.0};
         const auto ff = scanResponse<FeedforwardComb>(D, g, probe);
         const auto fbp = scanResponse<FeedbackComb>(D, g, probe);
-        std::printf("feedforward (y = x + g·x[n−D]) vs feedback (y = x + g·y[n−D])：\n");
+        std::printf("feedforward (y = x + g*x[n-D]) vs feedback (y = x + g*y[n-D]):\n");
         std::printf("   freq(Hz)  feedforward  feedback\n");
         for (size_t i = 0; i < probe.size(); ++i)
             std::printf("   %7.0f   %+8.2f    %+8.2f\n", probe[i], ff[i], fbp[i]);
-        std::printf("  -> feedforward：峰 1+g = %.2f (%+.2f dB)、谷 1−g = %.2f (%+.2f dB)；"
-                    "feedback 的峰尖而谷淺，feedforward 相反。\n\n",
+        std::printf("  -> feedforward: peak 1+g = %.2f (%+.2f dB), notch 1-g = %.2f (%+.2f dB); "
+                    "the feedback comb has sharp peaks and shallow notches, the feedforward comb the opposite.\n\n",
                     1.0 + g, dawlab::gainToDb(1.0 + g), 1.0 - g, dawlab::gainToDb(1.0 - g));
     }
 
-    // ---- 3. 用 Delay class 做同一件事 --------------------------------------
+    // ---- 3. The same thing with the Delay class --------------------------------
     {
         Delay delay;
         delay.setMaxDelayMs(100.0f);
@@ -181,22 +187,22 @@ int main() {
         delay.setDelayMs(1.0f); // 48 samples
         delay.setFeedback(g);
         delay.setMix(1.0f);
-        delay.setLowpassHz(20000.0f); // 關閉 feedback 濾波
+        delay.setLowpassHz(20000.0f); // disable the feedback filters
         delay.setHighpassHz(20.0f);
-        std::printf("Delay class（delayMs = 1, feedback = %.1f, mix = 1）：\n", g);
-        std::printf("   1000 Hz: %+.2f dB（理論 %+.2f）   1500 Hz: %+.2f dB（理論 %+.2f）\n\n",
+        std::printf("Delay class (delayMs = 1, feedback = %.1f, mix = 1):\n", g);
+        std::printf("   1000 Hz: %+.2f dB (theory %+.2f)   1500 Hz: %+.2f dB (theory %+.2f)\n\n",
                     measureDelayGainDb(delay, 1000.0), dawlab::gainToDb(1.0 / (1.0 - g)),
                     measureDelayGainDb(delay, 1500.0), dawlab::gainToDb(1.0 / (1.0 + g)));
     }
 
-    // ---- 4. 聽聽看：白雜訊被 comb「調音」--------------------------------------
+    // ---- 4. Listen: white noise "tuned" by the comb --------------------------------
     {
         dawlab::AudioBuffer noise = dawlab::makeWhiteNoise(kSampleRate, 3.0, 0.2f);
         dawlab::writeWav(dawlab::outputPath("l09_comb_noise_dry.wav"), noise, kSampleRate);
-        std::printf("輸出 WAV：\n");
+        std::printf("Output WAVs:\n");
         std::printf("  l09_comb_noise_dry.wav: peak %.3f\n", dawlab::peakAbs(noise));
-        renderNoiseThroughComb(noise, 48, 0.9f, 0.15f, "l09_comb_noise_1ms.wav");   // 1 kHz 音高
-        renderNoiseThroughComb(noise, 480, 0.8f, 0.25f, "l09_comb_noise_10ms.wav"); // 100 Hz 金屬感
+        renderNoiseThroughComb(noise, 48, 0.9f, 0.15f, "l09_comb_noise_1ms.wav");   // 1 kHz pitch
+        renderNoiseThroughComb(noise, 480, 0.8f, 0.25f, "l09_comb_noise_10ms.wav"); // 100 Hz metallic
     }
     return 0;
 }

@@ -1,24 +1,27 @@
-// 練習 5 解答：multi-tap delay
+// Exercise 5 solution: multi-tap delay
 //
-// 一條 delay line、多個讀取點（tap）。每個 tap 有自己的延遲時間、增益與 pan，
-// 輸入先混成 mono 寫進 delay line，各 tap 的輸出依 pan 分配到左右：
+// One delay line, several read points (taps). Each tap has its own delay time, gain and pan.
+// The input is first mixed down to mono and written into the delay line, and the output of
+// each tap is distributed to left and right according to its pan:
 //
 //   (L+R)/2 ──►(+)──► delay line ─┬─ tap0 (D0, g0, pan0) ─┐
 //               ▲                 ├─ tap1 (D1, g1, pan1) ─┼─(Σ)─► wet L / wet R
 //               │                 └─ tap2 (D2, g2, pan2) ─┘
-//               └─── ×fb ◄────────── 最後一個 tap（未乘 gain / pan）
+//               └─── ×fb ◄────────── the last tap (before gain / pan)
 //
-// 和「三台 delay 串接」不同：tap 之間互不影響，只有一條 feedback 路徑（從最後一個 tap 回到輸入），
-// 所以 CPU 便宜、也不會因為串接而累積插值的高頻損失。
-// pan 用 constant-power law：gL = cos θ、gR = sin θ，θ = (pan + 1)·π/4。
+// Unlike "three delays in series", the taps do not affect one another and there is only one
+// feedback path (from the last tap back to the input), so it is cheap on the CPU and does not
+// accumulate the high-frequency loss of interpolation through cascading.
+// Pan uses a constant-power law: gL = cos θ, gR = sin θ, θ = (pan + 1)·π/4.
 //
-// 自我檢查：impulse 進去，每個 tap 都要在「正確的 sample」出現「正確的振幅」；
-// 加上 feedback 之後，整組 tap 會在 D_last 之後再出現一次（乘上 fb）。
+// Self-check: with an impulse going in, every tap must appear at the "correct sample" with
+// the "correct amplitude"; with feedback added, the whole set of taps reappears after D_last
+// (multiplied by fb).
 //
-// 執行：l09_ex5_solution。輸出 dawlab_output/l09_ex5_multitap_dry.wav、l09_ex5_multitap_wet.wav。
+// Run: l09_ex5_solution. Writes dawlab_output/l09_ex5_multitap_dry.wav, l09_ex5_multitap_wet.wav.
 
 #include <dawlab/Common.h>
-#include <dawlab/dsp/Delay.h> // 只用 Delay::noteToMs 做 tempo sync
+#include <dawlab/dsp/Delay.h> // only Delay::noteToMs is used, for tempo sync
 #include <dawlab/dsp/FractionalDelayLine.h>
 
 #include <algorithm>
@@ -40,7 +43,7 @@ public:
     struct Tap {
         float delayMs = 0.0f;
         float gain = 0.0f;
-        float pan = 0.0f; // -1 = 左, 0 = 中, +1 = 右
+        float pan = 0.0f; // -1 = left, 0 = centre, +1 = right
     };
 
     void setMaxDelayMs(float ms) noexcept { maxDelayMs_ = std::max(1.0f, ms); }
@@ -89,10 +92,10 @@ public:
             float wetL = 0.0f, wetR = 0.0f, last = 0.0f;
             for (int t = 0; t < numTaps_; ++t) {
                 const TapState& s = state_[t];
-                const float v = line_.readCubic(0, s.delaySamples - 1.0f); // 先讀再 push → −1
+                const float v = line_.readCubic(0, s.delaySamples - 1.0f); // read first, push afterwards -> −1
                 wetL += s.gainL * v;
                 wetR += s.gainR * v;
-                last = v; // feedback 取最後一個 tap 的「原始」延遲訊號
+                last = v; // feedback takes the "raw" delayed signal of the last tap
             }
             line_.push(0, mono + feedback_ * last);
 
@@ -100,12 +103,12 @@ public:
                 left[i] = (1.0f - mix_) * xl + mix_ * wetL;
                 right[i] = (1.0f - mix_) * xr + mix_ * wetR;
             } else {
-                left[i] = (1.0f - mix_) * xl + mix_ * (wetL + wetR); // mono：左右加總（pan 失去意義）
+                left[i] = (1.0f - mix_) * xl + mix_ * (wetL + wetR); // mono: left and right are summed (pan loses its meaning)
             }
         }
     }
 
-    // constant-power pan law（第 01 章 Panner 的 ConstantPower）
+    // Constant-power pan law (the ConstantPower mode of the chapter 01 Panner)
     static void panGains(float pan, float& gl, float& gr) noexcept {
         const float theta = (pan + 1.0f) * static_cast<float>(dawlab::kPi) * 0.25f;
         gl = std::cos(theta);
@@ -150,7 +153,7 @@ void processInBlocks(MultiTapDelay& d, dawlab::AudioBuffer& b) {
         d.process(whole.getSubBlock(start, std::min(kBlockSize, b.getNumSamples() - start)));
 }
 
-// 120 BPM 的三個 tap：附點八分（左）、四分（右）、附點四分（中）
+// Three taps at 120 BPM: dotted eighth (left), quarter (right), dotted quarter (centre)
 void setupRhythmicTaps(MultiTapDelay& d, double bpm) {
     d.setNumTaps(3);
     d.setTap(0, Delay::noteToMs(bpm, 0.75), 0.6f, -0.6f);
@@ -161,10 +164,10 @@ void setupRhythmicTaps(MultiTapDelay& d, double bpm) {
 } // namespace
 
 int main() {
-    std::printf("=== 第 09 章 練習 5：multi-tap delay ===\n\n");
+    std::printf("=== Chapter 09, Exercise 5: multi-tap delay ===\n\n");
     const double bpm = 120.0;
 
-    // ---- 1. impulse：每個 tap 的位置與振幅 --------------------------------------
+    // ---- 1. Impulse: position and amplitude of every tap ------------------------------
     {
         MultiTapDelay mt;
         mt.setMaxDelayMs(2000.0f);
@@ -176,8 +179,8 @@ int main() {
 
         dawlab::AudioBuffer ir = dawlab::makeImpulse(dawlab::secondsToSamples(2.0, kSampleRate), 2); // L = R = 1
         processInBlocks(mt, ir);
-        std::printf("impulse（L = R = 1）經過三個 tap（fb = 0）：\n");
-        std::printf("   tap   delay(ms)  sample   gain   pan    L 預期 / 量到      R 預期 / 量到\n");
+        std::printf("Impulse (L = R = 1) through three taps (fb = 0):\n");
+        std::printf("   tap   delay(ms)  sample   gain   pan    L expected / measured   R expected / measured\n");
         for (int t = 0; t < mt.getNumTaps(); ++t) {
             const auto& tap = mt.getTap(t);
             const int n = dawlab::msToSamples(tap.delayMs, kSampleRate);
@@ -189,19 +192,19 @@ int main() {
                         tap.gain, tap.pan, expL, gotL, expR, gotR);
             DAWLAB_CHECK_NEAR(gotL, expL, 1.0e-4);
             DAWLAB_CHECK_NEAR(gotR, expR, 1.0e-4);
-            DAWLAB_CHECK_NEAR(ir.getSample(0, n - 1), 0.0, 1.0e-6); // 前一個 sample 必須是 0（位置精準）
+            DAWLAB_CHECK_NEAR(ir.getSample(0, n - 1), 0.0, 1.0e-6); // the previous sample must be 0 (exact position)
             DAWLAB_CHECK_NEAR(ir.getSample(0, n + 1), 0.0, 1.0e-6);
         }
-        // 整段 impulse response 的總能量 = Σ gain²（constant-power pan 的 gL² + gR² = 1）
+        // Total energy of the whole impulse response = Σ gain² (constant-power pan has gL² + gR² = 1)
         double energy = 0.0;
         for (int ch = 0; ch < 2; ++ch)
             for (int i = 0; i < ir.getNumSamples(); ++i)
                 energy += static_cast<double>(ir.getSample(ch, i)) * ir.getSample(ch, i);
         DAWLAB_CHECK_NEAR(energy, 0.6 * 0.6 + 0.45 * 0.45 + 0.3 * 0.3, 1.0e-4);
-        std::printf("  總能量 %.4f = 0.6² + 0.45² + 0.3²（constant-power pan 不改變能量）\n\n", energy);
+        std::printf("  Total energy %.4f = 0.6² + 0.45² + 0.3² (constant-power pan does not change the energy)\n\n", energy);
     }
 
-    // ---- 2. feedback：整組 tap 在最後一個 tap 之後重複 -------------------------
+    // ---- 2. Feedback: the whole set of taps repeats after the last tap ------------------
     {
         MultiTapDelay mt;
         mt.setMaxDelayMs(2000.0f);
@@ -216,8 +219,8 @@ int main() {
         const int d0 = dawlab::msToSamples(mt.getTap(0).delayMs, kSampleRate);    // 375 ms = 18000
         float gl, gr;
         MultiTapDelay::panGains(mt.getTap(0).pan, gl, gr);
-        const float expL = 0.5f * mt.getTap(0).gain * gl; // fb × tap0 的增益
-        std::printf("feedback 0.5：tap0 的第二次出現應該在 %d + %d = %d，振幅 %.4f，量到 %.4f\n", dLast, d0,
+        const float expL = 0.5f * mt.getTap(0).gain * gl; // fb × the gain of tap0
+        std::printf("feedback 0.5: the second appearance of tap0 should be at %d + %d = %d, amplitude %.4f, measured %.4f\n", dLast, d0,
                     dLast + d0, expL, ir.getSample(0, dLast + d0));
         DAWLAB_CHECK_NEAR(ir.getSample(0, dLast + d0), expL, 1.0e-4);
         DAWLAB_CHECK_NEAR(ir.getSample(0, 2 * dLast), 0.5f * mt.getTap(2).gain * 0.70710678f, 1.0e-4);
@@ -225,7 +228,7 @@ int main() {
         std::printf("\n");
     }
 
-    // ---- 3. 音樂素材 ------------------------------------------------------------
+    // ---- 3. Musical material ---------------------------------------------------------
     {
         dawlab::AudioBuffer seq = dawlab::makePluckSequence(kSampleRate, 4.0, 0.4f);
         dawlab::AudioBuffer dry(2, dawlab::secondsToSamples(8.0, kSampleRate));
@@ -242,15 +245,15 @@ int main() {
         processInBlocks(mt, wet);
         dawlab::writeWav(dawlab::outputPath("l09_ex5_multitap_dry.wav"), dry, kSampleRate);
         dawlab::writeWav(dawlab::outputPath("l09_ex5_multitap_wet.wav"), wet, kSampleRate);
-        std::printf("撥弦琶音：peak dry %.3f / multi-tap %.3f\n", dawlab::peakAbs(dry), dawlab::peakAbs(wet));
+        std::printf("Plucked arpeggio: peak dry %.3f / multi-tap %.3f\n", dawlab::peakAbs(dry), dawlab::peakAbs(wet));
         DAWLAB_CHECK(!dawlab::hasNanOrInf(wet));
         DAWLAB_CHECK(dawlab::peakAbs(wet) < 1.0f);
-        std::printf("已輸出 dawlab_output/l09_ex5_multitap_dry.wav, l09_ex5_multitap_wet.wav\n\n");
+        std::printf("Wrote dawlab_output/l09_ex5_multitap_dry.wav, l09_ex5_multitap_wet.wav\n\n");
     }
 
-    // ---- 4. 問題的數字：串接三台 delay 時，插值的高頻損失會累積 ----------------------
+    // ---- 4. The numbers behind the problem: cascading three delays accumulates the interpolation's high-frequency loss ----
     {
-        // 每台都是 Δ = 0.5 的 cubic（最壞情況）。單台在 12 kHz 是 −1.07 dB，三台串接就是三倍。
+        // Each is a cubic at Δ = 0.5 (the worst case). One stage is −1.07 dB at 12 kHz; three in series is three times that.
         FractionalDelayLine a, b, c;
         a.prepare(64, 1);
         b.prepare(64, 1);
@@ -263,7 +266,7 @@ int main() {
         a.reset();
         const double three = dawlab::measureGainDb([&](float x) { return once(c, once(b, once(a, x))); }, 12000.0,
                                                    kSampleRate);
-        std::printf("cubic（Δ = 0.5）在 12 kHz：一次 %+.2f dB，三次串接 %+.2f dB（multi-tap 每個 echo 只插值一次）\n",
+        std::printf("Cubic (Δ = 0.5) at 12 kHz: one stage %+.2f dB, three in series %+.2f dB (multi-tap interpolates each echo only once)\n",
                     one, three);
         DAWLAB_CHECK_NEAR(one, -1.07, 0.02);
         DAWLAB_CHECK_NEAR(three, 3.0 * one, 0.02);

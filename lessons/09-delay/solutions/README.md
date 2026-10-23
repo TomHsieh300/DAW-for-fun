@@ -1,75 +1,77 @@
-# 第 09 章 解答：Delay 與 Echo
+# Chapter 09 Solutions: Delay and Echo
 
-每一題都有完整解答。實作題的程式在本資料夾（`exN_xxx.cpp`，ctest label: solution），計算題 1、7 也有程式把數字實際跑一次：
+**English** | [繁體中文](README.zh-TW.md)
+
+Every exercise has a complete solution. The programs for the implementation exercises are in this folder (`exN_xxx.cpp`, ctest label: solution), and the calculation exercises 1 and 7 also have programs that actually run the numbers once:
 
 ```powershell
 .\scripts\build.ps1 -Only 09-delay -TestLabel solution
 cd build
-.\bin\Debug\l09_ex1_solution.exe      # ex1、ex3、ex4、ex5、ex6、ex7
+.\bin\Debug\l09_ex1_solution.exe      # ex1, ex3, ex4, ex5, ex6, ex7
 ```
 
-| 題號 | 類型 | 解答程式 | 輸出 WAV（`build\dawlab_output\`） |
+| No. | Type | Solution program | Output WAVs (`build\dawlab_output\`) |
 |---|---|---|---|
-| 1 | 計算 | `l09_ex1_solution`（`ex1_tempo_math.cpp`） | — |
-| 2 | 觀念 | 第 2 小題的數字由 `l09_ex7_solution` 第 5 段驗證 | — |
-| 3 | 實作 | `l09_ex3_solution`（`ex3_allpass_interpolation.cpp`） | `l09_ex3_allpass_noise.wav` |
-| 4 | 實作 | `l09_ex4_solution`（`ex4_tape_delay.cpp`） | `l09_ex4_tape_dry.wav`、`l09_ex4_tape_wet.wav`、`l09_ex4_dub.wav` |
-| 5 | 實作 | `l09_ex5_solution`（`ex5_multitap.cpp`） | `l09_ex5_multitap_dry.wav`、`l09_ex5_multitap_wet.wav` |
-| 6 | 實作 | `l09_ex6_solution`（`ex6_crossfade_delay.cpp`） | `l09_ex6_crossfade.wav`、`l09_ex6_abrupt.wav`、`l09_ex6_ramp.wav` |
-| 7 | 計算 + 觀念 | `l09_ex7_solution`（`ex7_comb_math.cpp`） | — |
+| 1 | Calculation | `l09_ex1_solution` (`ex1_tempo_math.cpp`) | — |
+| 2 | Concept | The numbers for part 2 are verified in part 5 of `l09_ex7_solution` | — |
+| 3 | Implementation | `l09_ex3_solution` (`ex3_allpass_interpolation.cpp`) | `l09_ex3_allpass_noise.wav` |
+| 4 | Implementation | `l09_ex4_solution` (`ex4_tape_delay.cpp`) | `l09_ex4_tape_dry.wav`, `l09_ex4_tape_wet.wav`, `l09_ex4_dub.wav` |
+| 5 | Implementation | `l09_ex5_solution` (`ex5_multitap.cpp`) | `l09_ex5_multitap_dry.wav`, `l09_ex5_multitap_wet.wav` |
+| 6 | Implementation | `l09_ex6_solution` (`ex6_crossfade_delay.cpp`) | `l09_ex6_crossfade.wav`, `l09_ex6_abrupt.wav`, `l09_ex6_ramp.wav` |
+| 7 | Calculation + concept | `l09_ex7_solution` (`ex7_comb_math.cpp`) | — |
 
 ---
 
-## 練習 1：Tempo sync 與 echo 的衰減
+## Exercise 1: Tempo sync and echo decay
 
-公式：$t_\text{ms} = \text{beats} \times 60000 / \text{BPM}$，附點 × 1.5、三連音 × 2/3。
+Formula: $t_\text{ms} = \text{beats} \times 60000 / \text{BPM}$; dotted × 1.5, triplet × 2/3.
 
-1. 120 BPM 一拍 = 500 ms：
-   - 四分音符 = **500 ms**
-   - 八分音符 = 0.5 × 500 = **250 ms**
-   - 附點八分 = 0.75 × 500 = **375 ms**
-   - 八分三連音 = (1/3) × 500 = **166.67 ms**
-   - 十六分音符 = 0.25 × 500 = **125 ms**
-2. 95 BPM 附點八分 = $0.75 \times 60000 / 95 = 473.684$ ms，在 48 kHz 下是 $473.684 \times 48 = $ **22 736.84 sample**。不是整數：要準確對齊 tempo 就需要讀「兩個 sample 之間」。（單一 echo 差 0.16 sample 聽不出來，但同樣的 delay line 也要支援 modulation 與平滑改變 delay time，見練習 2。）
-3. - 140 BPM 四分三連音 = $(2/3) \times 60000/140 = $ **285.71 ms**
-   - 90 BPM 附點四分 = $1.5 \times 60000/90 = $ **1000 ms**（剛好 1 秒）
-   - 174 BPM 十六分音符 = $0.25 \times 60000/174 = $ **86.21 ms**（短到接近 slapback）
-4. 第 $k$ 個 echo 的振幅是 $g^{k-1}$：1、0.5、0.25、0.125，即 **0、−6.02、−12.04、−18.06 dB**。（第一個 echo 是原始訊號直接延遲，還沒有經過 feedback。）
-5. 每一圈衰減 $-20\log_{10} g$ dB，衰減 60 dB 要 $60/(-20\log_{10}g) = 3/(-\log_{10} g)$ 圈，每圈 $D$ 秒：
+1. At 120 BPM one beat = 500 ms:
+   - Quarter note = **500 ms**
+   - Eighth note = 0.5 × 500 = **250 ms**
+   - Dotted eighth = 0.75 × 500 = **375 ms**
+   - Eighth triplet = (1/3) × 500 = **166.67 ms**
+   - Sixteenth note = 0.25 × 500 = **125 ms**
+2. A dotted eighth at 95 BPM = $0.75 \times 60000 / 95 = 473.684$ ms, which at 48 kHz is $473.684 \times 48 = $ **22 736.84 samples**. It is not an integer: to align exactly with the tempo you need to read "between two samples". (An error of 0.16 sample is inaudible for a single echo, but the same delay line also has to support modulation and smoothly changing the delay time, see exercise 2.)
+3. - Quarter triplet at 140 BPM = $(2/3) \times 60000/140 = $ **285.71 ms**
+   - Dotted quarter at 90 BPM = $1.5 \times 60000/90 = $ **1000 ms** (exactly 1 second)
+   - Sixteenth note at 174 BPM = $0.25 \times 60000/174 = $ **86.21 ms** (so short it is close to slapback)
+4. The amplitude of the $k$-th echo is $g^{k-1}$: 1, 0.5, 0.25, 0.125, i.e. **0, −6.02, −12.04, −18.06 dB**. (The first echo is the original signal delayed directly and has not yet gone through the feedback.)
+5. Each trip attenuates by $-20\log_{10} g$ dB, so decaying by 60 dB takes $60/(-20\log_{10}g) = 3/(-\log_{10} g)$ trips, each lasting $D$ seconds:
 
    $$T_{60} = \frac{3D}{-\log_{10} g}$$
 
-   - $D = 0.375$、$g = 0.5$：$1.125 / 0.30103 = $ **3.737 s**（約 10 圈）
-   - $D = 0.375$、$g = 0.7$：$1.125 / 0.15490 = $ **7.263 s**
-   - $D = 0.25$、$g = 0.9$：$0.75 / 0.045757 = $ **16.39 s**——feedback 90% 的 echo 會拖很久，這就是為什麼 delay 的 feedback 旋鈕在最後 10% 特別「敏感」。
-6. $g = 10^{-3D/T_{60}} = 10^{-3 \times 0.5/2} = 10^{-0.75} = $ **0.178**。
+   - $D = 0.375$, $g = 0.5$: $1.125 / 0.30103 = $ **3.737 s** (about 10 trips)
+   - $D = 0.375$, $g = 0.7$: $1.125 / 0.15490 = $ **7.263 s**
+   - $D = 0.25$, $g = 0.9$: $0.75 / 0.045757 = $ **16.39 s** -- echoes with 90% feedback drag on for a very long time, which is why the feedback knob of a delay is especially "sensitive" over its last 10%.
+6. $g = 10^{-3D/T_{60}} = 10^{-3 \times 0.5/2} = 10^{-0.75} = $ **0.178**.
 
-`l09_ex1_solution` 驗證：`noteToMs()` 的 9 個例子、impulse 經過 `Delay`（375 ms、fb 0.5、mix 1、filter 關閉）的前 8 個 echo 振幅（1、0.5、0.25……誤差 < 10⁻⁴，位置剛好在 $kD$）、三個 $T_{60}$ 與反算的 $g$，以及 `setFeedback(1.5)` 被 clamp 成 0.99。
+`l09_ex1_solution` verifies: 9 examples of `noteToMs()`; the amplitudes of the first 8 echoes of an impulse through `Delay` (375 ms, fb 0.5, mix 1, filters off) (1, 0.5, 0.25... with error < 10⁻⁴, and positions exactly at $kD$); the three $T_{60}$ values and the inverse-computed $g$; and that `setFeedback(1.5)` is clamped to 0.99.
 
-## 練習 2：為什麼 feedback ≥ 1 會爆、為什麼需要插值
+## Exercise 2: Why feedback ≥ 1 blows up, and why interpolation is needed
 
-1. **Impulse response 的觀點**：一個 impulse 進去，輸出是 $D$ 處的 1、$2D$ 處的 $g$、$3D$ 處的 $g^2$……第 $k$ 個 echo 是 $g^{k-1}$。$|g| < 1$ 時幾何級數收斂，echo 越來越小；$|g| > 1$ 時每一圈都變大，任何輸入（包括極小的雜訊）最後都會長到無限大——在浮點數裡就是 Inf、然後 NaN。
-   **Pole 的觀點**：$1 - g z^{-D} = 0 \Rightarrow z^D = g$，$D$ 個 pole 平均分布在半徑 $|g|^{1/D}$ 的圓上。穩定（BIBO）⇔ 全部 pole 在單位圓內 ⇔ $|g| < 1$。
-   **$g = 1$**：pole 剛好在單位圓上，是「臨界穩定」（marginally stable）——impulse response 永遠不衰減（每 $D$ 個 sample 一個振幅 1 的 echo），但不會變大。可是它不是 BIBO 穩定：一個頻率剛好是 $k f_s/D$ 的正弦輸入會讓輸出線性成長到無限大（共振）。實務上等於不穩定，所以 `Delay` 把 feedback 限制在 0.99。
-2. One-pole lowpass 的 $|H(f)| \le 1$（DC 處 = 1，其他頻率 < 1），迴路增益 $|g H(f)| \le 0.99 < 1$，**仍然穩定**。換成 Q = 4 的 biquad lowpass，cutoff 附近的增益約 $Q \approx 4$（+12 dB），迴路增益 $0.5 \times 4 = 2 > 1$：在 cutoff 附近、而且頻率剛好落在 $k f_s/D$ 的成分會每圈放大，**不穩定**。`l09_ex7_solution` 實際量：RBJ lowpass（fc = 1 kHz、Q = 4）在 fc 處 +12.04 dB（$= 20\log_{10}Q$），最大值 +12.11 dB @ 984 Hz，$g = 0.5$ 時迴路增益最大 2.02；把它和 $D = 240$（comb 的峰在 $k \times 200$ Hz，1000 Hz 剛好落在共振上）接成迴路、打一個 impulse，3 秒內就溢位成 inf。對照組 one-pole LP、$g = 0.99$ 在 2.5–3.0 s 的 peak 只剩 $3.07\times10^{-5}$。結論：迴路穩定的條件是「所有頻率」的迴路增益都 < 1，$|g| < 1$ 只有在迴路裡的其他東西增益都 ≤ 1 時才充分。
-3. $\tanh$ 是有界的（$|\tanh u| < 1$），而且「斜率」隨振幅變小：小訊號時 $\tanh u \approx u$，迴路增益 1.1，echo 變大；echo 越大，tanh 壓得越多，等效增益越小。振幅會停在「等效（基頻）迴路增益剛好 = 1」的那一點。輸出振幅由 feedback、迴路 filter 在振盪頻率的增益與 drive 決定（練習 4 用 describing function 算出來）。輸出不會發散，但也不會自己消失——這就是 self-oscillation。
-4. 至少三個情境：
-   - **Modulation（chorus、flanger、vibrato）**：delay time 每個 sample 都在變。整數 delay 會讓讀取位置一格一格跳，每一跳都是波形的斷層 → 一連串細碎的 click / zipper noise，而不是平滑的 pitch 起伏。
-   - **平滑改變 delay time**：使用者轉旋鈕時，平滑後的 delay 幾乎都不是整數；同樣會聽到 zipper。
-   - **短 delay 的音高（comb、Karplus-Strong、physical modeling）**：音高是 $f_s/D$，整數 $D$ 只能做出離散的音高，高音時誤差很大（44.1 kHz 下 A4 只能做出 441 或 436.6 Hz，見練習 7）。
-   - **Tempo sync**：delay 是 22 736.84 sample 而不是整數；誤差小，但在 feedback 迴路中每圈都相同方向偏移。
-5. **對的情況**：delay time 固定不變、沒有 modulation、delay 夠長（> 數十 ms）的 echo。半個 sample 是 0.01 ms，耳朵完全分辨不出來，而整數讀取還沒有任何插值的高頻損失，其實音質最好。
-   **錯的情況**：只要 delay time 會**變**——automation、使用者轉旋鈕、tempo 改變、LFO modulation——整數 delay 就會產生階梯狀的跳動與 click；以及短 delay 需要準確音高的時候。一個通用的 delay 效果器無法預知使用者會不會轉旋鈕，所以一律用 fractional delay（本章 `Delay` 用 cubic），delay 固定在整數時 cubic 的係數剛好是 (0, 1, 0, 0)，不會損失任何東西。
+1. **The impulse-response view**: with an impulse going in, the output is 1 at $D$, $g$ at $2D$, $g^2$ at $3D$... and the $k$-th echo is $g^{k-1}$. For $|g| < 1$ the geometric series converges and the echoes get smaller and smaller; for $|g| > 1$ every trip makes it larger, and any input (including tiny noise) eventually grows to infinity -- in floating point that means Inf, and then NaN.
+   **The pole view**: $1 - g z^{-D} = 0 \Rightarrow z^D = g$, so the $D$ poles are evenly spread on a circle of radius $|g|^{1/D}$. Stable (BIBO) ⇔ all poles inside the unit circle ⇔ $|g| < 1$.
+   **$g = 1$**: the poles lie exactly on the unit circle, which is "marginally stable" -- the impulse response never decays (one echo of amplitude 1 every $D$ samples) but does not grow either. But it is not BIBO stable: a sine input at exactly a frequency $k f_s/D$ makes the output grow linearly without bound (resonance). In practice that is the same as unstable, which is why `Delay` limits the feedback to 0.99.
+2. A one-pole lowpass has $|H(f)| \le 1$ (= 1 at DC, < 1 elsewhere), and the loop gain $|g H(f)| \le 0.99 < 1$, so it is **still stable**. Replace it with a Q = 4 biquad lowpass: the gain near the cutoff is about $Q \approx 4$ (+12 dB), the loop gain is $0.5 \times 4 = 2 > 1$, and components near the cutoff that happen to lie at $k f_s/D$ are amplified on every trip -- **unstable**. `l09_ex7_solution` measures this for real: the RBJ lowpass (fc = 1 kHz, Q = 4) has +12.04 dB at fc ($= 20\log_{10}Q$), a maximum of +12.11 dB @ 984 Hz, and with $g = 0.5$ a maximum loop gain of 2.02; connect it into a loop with $D = 240$ (the comb's peaks are at $k \times 200$ Hz, and 1000 Hz lies right on the resonance), fire in an impulse, and it overflows to inf within 3 seconds. In the control, a one-pole LP with $g = 0.99$ has a peak of only $3.07\times10^{-5}$ at 2.5-3.0 s. Conclusion: the condition for a stable loop is that the loop gain be < 1 at "all frequencies"; $|g| < 1$ is sufficient only if everything else in the loop has gain ≤ 1.
+3. $\tanh$ is bounded ($|\tanh u| < 1$), and its "slope" gets smaller with amplitude: for small signals $\tanh u \approx u$, the loop gain is 1.1 and the echoes grow; the larger the echo, the more the tanh squashes it and the smaller the effective gain. The amplitude settles at the point where "the effective (fundamental) loop gain is exactly 1". The output amplitude is determined by the feedback, the gain of the loop filters at the oscillation frequency, and the drive (exercise 4 computes it with a describing function). The output does not diverge, but it does not die away by itself either -- that is self-oscillation.
+4. At least three situations:
+   - **Modulation (chorus, flanger, vibrato)**: the delay time changes every sample. An integer delay makes the read position jump one slot at a time, and every jump is a break in the waveform → a stream of fine clicks / zipper noise instead of a smooth pitch variation.
+   - **Smoothly changing the delay time**: when the user turns the knob, the smoothed delay is almost never an integer; you hear zipper noise here too.
+   - **The pitch of a short delay (comb, Karplus-Strong, physical modeling)**: the pitch is $f_s/D$, an integer $D$ can only give discrete pitches, and for high notes the error is large (at 44.1 kHz A4 can only be made as 441 or 436.6 Hz, see exercise 7).
+   - **Tempo sync**: the delay is 22 736.84 samples rather than an integer; the error is small, but in a feedback loop it is shifted in the same direction on every trip.
+5. **Right when**: the delay time is fixed, there is no modulation, and the delay is long enough (> a few tens of ms). Half a sample is 0.01 ms, which the ear cannot resolve at all, and an integer read has no interpolation high-frequency loss, so it actually has the best sound quality.
+   **Wrong when**: whenever the delay time **changes** -- automation, the user turning a knob, a tempo change, LFO modulation -- an integer delay produces stair-stepped jumps and clicks; and when a short delay needs an exact pitch. A general-purpose delay effect cannot know in advance whether the user will turn the knob, so it always uses fractional delay (this chapter's `Delay` uses cubic); when the delay sits on an integer, the cubic coefficients happen to be (0, 1, 0, 0) and nothing is lost.
 
-## 練習 3：Allpass interpolation
+## Exercise 3: Allpass interpolation
 
-關鍵程式（`ex3_allpass_interpolation.cpp`）：
+The key code (`ex3_allpass_interpolation.cpp`):
 
 ```cpp
 void setDelay(float delaySamples) noexcept {
     const float delay = std::max(0.5f, delaySamples);
     d_ = static_cast<int>(std::floor(delay - 0.5f));
-    const float frac = delay - static_cast<float>(d_); // ∈ [0.5, 1.5)
+    const float frac = delay - static_cast<float>(d_); // in [0.5, 1.5)
     eta_ = (1.0f - frac) / (1.0f + frac);
 }
 
@@ -84,13 +86,13 @@ float processSample(float x) noexcept {
 }
 ```
 
-思路：
+The reasoning:
 
-- 把 delay 拆成「整數部分 $d$（用 circular buffer 直接讀）」與「小數部分 $\Delta$（交給 allpass）」。一階 allpass 本身在低頻有 $(1-\eta)/(1+\eta)$ 的延遲，令它等於 $\Delta$ 就解出 $\eta = (1 - \Delta)/(1 + \Delta)$。
-- 為什麼 $\Delta \in [0.5, 1.5)$：$\Delta \to 0$ 時 $\eta \to 1$，pole（$z = -\eta$）貼近單位圓，impulse response 拖很長；delay 改變時的 transient 也很長。把 $\Delta$ 往上平移 0.5，$\eta$ 就落在 $(-0.2, 1/3]$。
-- 遞迴的 $y[n-1]$ 要 flush denormal。
+- Split the delay into an "integer part $d$ (read directly from the circular buffer)" and a "fractional part $\Delta$ (handed to the allpass)". A first-order allpass has a delay of $(1-\eta)/(1+\eta)$ at low frequencies; setting this equal to $\Delta$ gives $\eta = (1 - \Delta)/(1 + \Delta)$.
+- Why $\Delta \in [0.5, 1.5)$: as $\Delta \to 0$, $\eta \to 1$, the pole ($z = -\eta$) hugs the unit circle and the impulse response drags on for a long time; the transient when the delay changes is long too. Shifting $\Delta$ up by 0.5 puts $\eta$ in $(-0.2, 1/3]$.
+- The recursive $y[n-1]$ must have denormals flushed.
 
-實測（delay 10.5，$d = 10$、$\eta = 1/3$）：
+Measured (delay 10.5, $d = 10$, $\eta = 1/3$):
 
 | freq (Hz) | linear (dB) | cubic (dB) | allpass (dB) |
 |---|---|---|---|
@@ -99,58 +101,58 @@ float processSample(float x) noexcept {
 | 12000 | −3.01 | −1.07 | −0.00 |
 | 20000 | −11.74 | −8.41 | +0.00 |
 
-相位延遲（sample）：linear 全頻都是 10.500（$\Delta = 0.5$ 時是對稱 FIR，線性相位）；allpass 在 100 Hz 是 10.500、4 kHz 10.509、8 kHz 10.537，與理論完全一致。delay 10.0 到 11.0 各種小數部分在 100 Hz 量到的延遲都精準到 0.001。
+Phase delay (samples): linear is 10.500 at all frequencies (at $\Delta = 0.5$ it is a symmetric FIR with linear phase); the allpass gives 10.500 at 100 Hz, 10.509 at 4 kHz and 10.537 at 8 kHz, in complete agreement with theory. For fractional parts from delay 10.0 to 11.0, the delay measured at 100 Hz is accurate to 0.001.
 
-適用場合：
+What each is suited for:
 
-- **linear**：最便宜。適合 delay time 不太變、或對高頻不挑剔的地方；不適合 modulation（高頻衰減量會跟著 $\Delta$ 起伏）。
-- **cubic**：多 2 次讀取、十幾次乘加。8 kHz 以下幾乎平坦、沒有狀態，可以任意快速地改變 delay → chorus、flanger、vibrato、本章 `Delay` 的預設。
-- **allpass**：幅度完全平坦、計算量最低（一次乘法），但有狀態、延遲隨頻率變化。適合固定或極慢變化的 fractional delay：Karplus-Strong / waveguide 的調音、reverb 內部的 delay。
+- **linear**: the cheapest. Suited to places where the delay time does not change much or where the high end is not critical; not suited to modulation (the amount of high-frequency loss rises and falls with $\Delta$).
+- **cubic**: 2 more reads and a dozen or so multiply-adds. Nearly flat below 8 kHz, with no state, so the delay can change arbitrarily fast → chorus, flanger, vibrato, and the default of this chapter's `Delay`.
+- **allpass**: perfectly flat magnitude and the lowest cost (one multiplication), but it has state and its delay varies with frequency. Suited to a fixed or extremely slowly varying fractional delay: tuning for Karplus-Strong / waveguides, and delays inside a reverb.
 
-## 練習 4：Tape-style delay
+## Exercise 4: Tape-style delay
 
-關鍵程式：
+The key code:
 
 ```cpp
 float feedbackPath(int ch, float wet) noexcept {
     float v = highpass_.processSample(ch, wet);
     v = lowpass_.processSample(ch, v);
     if (saturate_)
-        v = std::tanh(drive_ * v) / drive_;   // 小訊號 ≈ v；|v| 大時被壓到 ±1/drive
+        v = std::tanh(drive_ * v) / drive_;   // ≈ v for small signals; squashed to ±1/drive when |v| is large
     return feedback_ * v;
 }
 ```
 
-（`Saturation::shape(SaturationCurve::Tanh, drive_ * v) / drive_` 是等價的寫法。）
+(`Saturation::shape(SaturationCurve::Tanh, drive_ * v) / drive_` is an equivalent way to write it.)
 
-**(a) 每一圈都更暗。** 第一個 echo 直接從 delay line 出來，沒有經過迴路裡的 filter（實測峰值 1.000，位置 n = 9600）。第二個 echo 是第一個 echo 經過 HP → LP → × g，所以兩者的比值就是迴路的頻率響應 $g\,|H_{HP}(f)|\,|H_{LP}(f)|$。量法：用 `goertzelAmplitude` 在以 echo 為中心、長度 $D$ 的視窗量 500 Hz 與 8 kHz 的成分。實測 500 Hz：0.665（理論 0.666）、8 kHz：0.177（理論 0.178）。理論值由 `getLoopGainAt()` 用數位 `OnePole` 的實際頻率響應算出；若用類比 one-pole 的公式 $1/\sqrt{1+(f/f_c)^2}$ 近似，8 kHz 會得到 0.170，高頻差約 4%。高頻每一圈只剩 18%，低頻還有 66%——echo 一次比一次暗。
+**(a) Darker on every trip.** The first echo comes straight out of the delay line without passing through the filters in the loop (measured peak 1.000, at n = 9600). The second echo is the first echo after HP → LP → × g, so the ratio of the two is the frequency response of the loop, $g\,|H_{HP}(f)|\,|H_{LP}(f)|$. How it is measured: use `goertzelAmplitude` on a window of length $D$ centred on the echo to measure the 500 Hz and 8 kHz components. Measured at 500 Hz: 0.665 (theory 0.666); at 8 kHz: 0.177 (theory 0.178). The theoretical values are computed by `getLoopGainAt()` from the actual frequency response of the digital `OnePole`; if you approximate with the analog one-pole formula $1/\sqrt{1+(f/f_c)^2}$, 8 kHz gives 0.170, a high-frequency difference of about 4%. Only 18% of the highs remain per trip while 66% of the lows do -- each echo is darker than the last.
 
-**(b) feedback 1.1。** 迴路的線性增益（200 Hz 處）是 $1.1 \times |H_{HP}(200)| \times |H_{LP}(200)| \approx 1.1 \times 0.995 \times 0.995 \approx 1.089 > 1$（20 Hz 的 HP 仍在迴路裡，200 Hz 處影響很小但不是 0）。線性版本 2.5–3.0 秒的 peak 已經長到 15.36 而且還在長；tanh 版本整體 peak 1.02、尾巴穩定在 0.305。
+**(b) Feedback 1.1.** The linear gain of the loop (at 200 Hz) is $1.1 \times |H_{HP}(200)| \times |H_{LP}(200)| \approx 1.1 \times 0.995 \times 0.995 \approx 1.089 > 1$ (the 20 Hz HP is still in the loop; its effect at 200 Hz is small but not 0). The linear version's peak at 2.5-3.0 seconds has already grown to 15.36 and is still growing; the tanh version has an overall peak of 1.02 and the tail settles at 0.305.
 
-**預測振幅：describing function。** 迴路裡繞的近似是一個正弦。設 tanh 的輸入是 $X\sin\theta$，輸出的基頻振幅是
+**Predicting the amplitude: the describing function.** The signal going around the loop is approximated by a sine. If the tanh input is $X\sin\theta$, the amplitude of the fundamental of the output is
 
 $$
 F_1(X) = \frac{2}{\pi}\int_0^\pi \tanh(X\sin\theta)\sin\theta\,d\theta
 $$
 
-小訊號時 $F_1(X) \approx X$，大訊號時趨近 $4/\pi$。繞一圈的基頻增益 $= G \cdot F_1(X)/X$（$G$ = 線性迴路增益）。穩定振盪 ⇔ 這個增益 = 1 ⇔ $F_1(X)/X = 1/G$。$F_1(X)/X$ 從 1 單調遞減，用二分法解出 $X$，迴路訊號（= wet）的峰值就是 $\text{fb}\cdot\tanh(X)/\text{drive}$。程式算出 0.298，實測 0.305（差異來自 3 次諧波也在迴路裡繞，並不是純正弦）。
+For small signals $F_1(X) \approx X$, and for large signals it approaches $4/\pi$. The fundamental gain of one trip around the loop $= G \cdot F_1(X)/X$ ($G$ = the linear loop gain). Steady oscillation ⇔ this gain = 1 ⇔ $F_1(X)/X = 1/G$. $F_1(X)/X$ decreases monotonically from 1, so $X$ is found by bisection, and the peak of the loop signal (= wet) is $\text{fb}\cdot\tanh(X)/\text{drive}$. The program computes 0.298 and the measurement is 0.305 (the difference comes from the 3rd harmonic also going around the loop, so it is not a pure sine).
 
-**問題：為什麼先乘 drive 再除以 drive？** $\tanh(\text{drive}\cdot v)/\text{drive}$ 在小訊號時 ≈ $v$，迴路的小訊號增益**和 drive 無關**，echo 的衰減時間只由 feedback 決定；drive 只決定「從多大的振幅開始被壓」（約 $1/\text{drive}$）。若不除回去，加 drive 等於同時把 feedback 乘上 drive，echo 會突然變長、甚至自激。
-**drive 越大，自激振幅越小**：解 $F_1(X)/X = 1/G$ 得到的 $X$ 只和 $G$ 有關，峰值 $= \text{fb}\tanh(X)/\text{drive} \propto 1/\text{drive}$。實測（`l09_ex4_solution`）：drive 2 → 0.305（預測 0.298），drive 1 → 0.608（預測 0.595），兩者比值 2.00。
+**Question: why multiply by drive and then divide by drive?** For small signals $\tanh(\text{drive}\cdot v)/\text{drive}$ ≈ $v$, so the small-signal gain of the loop is **independent of drive**, and the decay time of the echoes is determined by the feedback alone; drive only determines "from what amplitude squashing begins" (about $1/\text{drive}$). Without dividing back, adding drive would be the same as multiplying the feedback by drive at the same time, and the echoes would suddenly become longer or even self-oscillate.
+**The larger the drive, the smaller the self-oscillation amplitude**: the $X$ obtained by solving $F_1(X)/X = 1/G$ depends only on $G$, and the peak $= \text{fb}\tanh(X)/\text{drive} \propto 1/\text{drive}$. Measured (`l09_ex4_solution`): drive 2 → 0.305 (predicted 0.298), drive 1 → 0.608 (predicted 0.595), with a ratio of 2.00.
 
-**(c) 音樂素材**：375 ms、fb 0.6、LP 2.5 kHz、HP 120 Hz、drive 1.5、mix 0.35。peak：dry 0.551、tape 0.402。該聽到：echo 越來越暗、越來越「遠」，比範例 2 的 ping-pong 更有類比的厚度；`l09_ex4_dub.wav` 是 200 Hz 的音只響 0.3 秒，之後迴路自己唱下去、振幅固定。
+**(c) Musical material**: 375 ms, fb 0.6, LP 2.5 kHz, HP 120 Hz, drive 1.5, mix 0.35. Peak: dry 0.551, tape 0.402. What you should hear: the echoes get darker and more "distant", with more analog thickness than the ping-pong of example 2; `l09_ex4_dub.wav` is a 200 Hz tone sounding for only 0.3 seconds, after which the loop keeps singing on its own at a fixed amplitude.
 
-## 練習 5：Multi-tap delay
+## Exercise 5: Multi-tap delay
 
-關鍵程式：
+The key code:
 
 ```cpp
 for (int t = 0; t < numTaps_; ++t) {
     const TapState& s = state_[t];
-    const float v = line_.readCubic(0, s.delaySamples - 1.0f); // 先讀再 push → −1
+    const float v = line_.readCubic(0, s.delaySamples - 1.0f); // read first, push afterwards → −1
     wetL += s.gainL * v;
     wetR += s.gainR * v;
-    last = v;                    // feedback 取最後一個 tap 的「原始」延遲訊號
+    last = v;                    // feedback takes the "raw" delayed signal of the last tap
 }
 line_.push(0, mono + feedback_ * last);
 ```
@@ -158,73 +160,73 @@ line_.push(0, mono + feedback_ * last);
 ```cpp
 void updateTap(int i) noexcept {
     s.delaySamples = std::clamp(t.delayMs * 0.001f * sampleRate, 2.0f, maxDelaySamples);
-    panGains(t.pan, gl, gr);     // θ = (pan + 1)·π/4，gL = cos θ，gR = sin θ
+    panGains(t.pan, gl, gr);     // θ = (pan + 1)·π/4, gL = cos θ, gR = sin θ
     s.gainL = t.gain * gl;
     s.gainR = t.gain * gr;
 }
 ```
 
-思路：只有一條 delay line，每個 tap 只是一個讀取位置。pan 與 gain 合併成兩個係數在 setter 裡預先算好，`process()` 裡只有乘加。
+The reasoning: there is only one delay line, and each tap is just a read position. Pan and gain are combined into two coefficients that are precomputed in the setter, so `process()` contains only multiply-adds.
 
-實測（impulse，L = R = 1 → mono 1）：
+Measured (impulse, L = R = 1 → mono 1):
 
-| tap | delay | sample | gain | pan | L（預期 / 量到） | R（預期 / 量到） |
+| tap | delay | sample | gain | pan | L (expected / measured) | R (expected / measured) |
 |---|---|---|---|---|---|---|
 | 0 | 375 ms | 18000 | 0.60 | −0.6 | 0.5706 / 0.5706 | 0.1854 / 0.1854 |
 | 1 | 500 ms | 24000 | 0.45 | +0.6 | 0.1391 / 0.1391 | 0.4280 / 0.4280 |
 | 2 | 750 ms | 36000 | 0.30 | 0.0 | 0.2121 / 0.2121 | 0.2121 / 0.2121 |
 
-總能量 0.6525 = 0.6² + 0.45² + 0.3²（constant-power：$g_L^2 + g_R^2 = 1$）。feedback 0.5 時，tap0 在 36000 + 18000 = 54000 再出現一次，振幅 0.2853 = 0.5 × 0.5706。
+Total energy 0.6525 = 0.6² + 0.45² + 0.3² (constant-power: $g_L^2 + g_R^2 = 1$). With feedback 0.5, tap0 reappears at 36000 + 18000 = 54000, with amplitude 0.2853 = 0.5 × 0.5706.
 
-**問題：multi-tap vs 三台 delay 串接。**
+**Question: multi-tap vs three delays in series.**
 
-- **echo 的時間位置**：multi-tap 的 echo 就在你指定的 $D_0, D_1, D_2$；串接的話第二台的 echo 是在第一台輸出的「再延遲」，會出現 $D_1$、$D_2$、$D_1 + D_2$、……各種組合（再加上各自的 feedback），節奏很快就變得混亂。
-- **CPU / 記憶體**：multi-tap 一條 delay line + N 次讀取；串接是 N 條 delay line（記憶體 N 倍）。
-- **插值的高頻損失**：multi-tap 每個 echo 只經過一次插值；串接時訊號經過幾台就被插值幾次，高頻損失累積（`l09_ex5_solution` 實測：一次 cubic @ $\Delta = 0.5$ 在 12 kHz 是 −1.07 dB，三次串接是 −3.22 dB）。
+- **Time positions of the echoes**: the echoes of a multi-tap are right at the $D_0, D_1, D_2$ you specify; in a series connection the echoes of the second unit are a "further delay" of the first unit's output, and you get $D_1$, $D_2$, $D_1 + D_2$, ... all sorts of combinations (plus each unit's own feedback), so the rhythm quickly becomes chaotic.
+- **CPU / memory**: a multi-tap is one delay line + N reads; the series connection is N delay lines (N times the memory).
+- **High-frequency loss from interpolation**: in a multi-tap each echo passes through interpolation only once; in series the signal is interpolated as many times as the number of units it passes through, and the high-frequency loss accumulates (`l09_ex5_solution` measures: one cubic at $\Delta = 0.5$ gives −1.07 dB at 12 kHz, and three in series give −3.22 dB).
 
-## 練習 6：用 crossfade 切換 delay time
+## Exercise 6: Switching the delay time with a crossfade
 
-關鍵思路（完整程式見 `ex6_crossfade_delay.cpp`）：
+The key ideas (see `ex6_crossfade_delay.cpp` for the full code):
 
-- 狀態：`headDelay_[2]`、`active_`（目前在用的頭）、`fadePos_`（−1 = 沒有在 fade）、`pending_`。
-- `setDelayMs()`：正在 fade → `pending_ = true`；否則把 `headDelay_[1 − active_]` 設成新值、`fadePos_ = 0`。
-- `process()` 每個 sample：$t = \text{fadePos}/\text{fadeLength}$，$g_B = \tfrac12(1 - \cos\pi t)$，$g_A = 1 - g_B$，`wet = gA·readCubic(headA) + gB·readCubic(headB)`；fade 走完就 `active_ = 1 − active_`、`fadePos_ = −1`，若 `pending_` 而且目標和目前不同就馬上開始下一次 fade。
-- 兩個讀取頭的 delay 都**固定**，所以各自沒有 Doppler；切換是兩段訊號的 crossfade，而 raised-cosine 的權重是平滑的，所以沒有 click。
-- `reset()` 要把兩個頭直接對齊目前的目標值（buffer 已清空，不需要 fade），否則 `prepare() → setDelayMs() → reset()` 這種常見順序會丟掉還沒開始的 fade、停在舊的 delay。
-- 實務細節：測試把 block 在切換點（48000，不是 512 的倍數）切開，模擬 sample-accurate 的 automation。
+- State: `headDelay_[2]`, `active_` (the head currently in use), `fadePos_` (−1 = not fading), `pending_`.
+- `setDelayMs()`: if fading → `pending_ = true`; otherwise set `headDelay_[1 − active_]` to the new value and `fadePos_ = 0`.
+- Each sample in `process()`: $t = \text{fadePos}/\text{fadeLength}$, $g_B = \tfrac12(1 - \cos\pi t)$, $g_A = 1 - g_B$, `wet = gA·readCubic(headA) + gB·readCubic(headB)`; when the fade finishes, `active_ = 1 − active_`, `fadePos_ = −1`, and if `pending_` is set and the target differs from the current value, the next fade starts immediately.
+- The delay of each read head is **fixed**, so neither has Doppler; the switch is a crossfade of two signals, and the raised-cosine weights are smooth, so there is no click.
+- `reset()` must align both heads straight to the current target (the buffer has been cleared, so no fade is needed); otherwise the common order `prepare() → setDelayMs() → reset()` would throw away a fade that has not started and leave us stuck at the old delay.
+- A practical detail: the test splits the block at the switch point (48000, not a multiple of 512) to emulate sample-accurate automation.
 
-實測（440 Hz，t = 1 s 時 10 → 250 ms，crossfade 20 ms）：
-
-```
-切換後 100 ms 內相鄰 sample 最大差值：crossfade 0.0288、直接跳 0.2701
-切換前後 ±50 ms 量到的頻率：crossfade 444.2 Hz（預期 440）
-Delay 平滑過渡（ramp 20 ms）在 ramp 期間量到：4840.8 Hz（dτ/dt = 12 → 理論 |f_out| = 4840 Hz，負號代表倒放）
-fade 結束後 y[n] 與 x[n − 12000] 的最大誤差：0.00e+00
-fade 中途再次改變 delay（100 → 300 ms）：最後穩定在 300 ms，誤差 1.72e-13
-```
-
-444 Hz 而不是 440 Hz 的原因見下一段的相位分析；和平滑過渡的 4840 Hz（倒放）相比，可以說完全沒有 Doppler。
-
-**問題：fade 中間的振幅。** 兩個頭相差 240 ms = 105.6 個週期，相位差 0.6 週期 = 216°（等效 −144°）。合成訊號是 $g_A e^{j0} + g_B e^{j\varphi}$，振幅 $\sqrt{1 - 2g_Ag_B(1 - \cos\varphi)}$，在 $g_A = g_B = 0.5$ 時最小：$|\cos(\varphi/2)| = |\cos 108°| = $ **0.309**，也就是原本振幅的 31%（−10.2 dB）。`l09_ex6_solution` 在 fade 中點量到 peak 0.1547（原振幅 0.5），比值 0.309，與理論一致；合成訊號的相位也在這 20 ms 內從 A 滑到 B（約 0.4 週期），攤在 100 ms 的量測窗裡就是 +4 Hz 的偏差。
-真實音樂素材中，兩個頭讀到的是 240 ms 前後兩段**不相關**的內容，平均來說功率是 $g_A^2 + g_B^2$，中間點是 0.5（−3 dB），而且只持續 20 ms，通常聽不出來。若要更平順，可以改用 equal-power crossfade（$g_A = \cos(\pi t/2)$、$g_B = \sin(\pi t/2)$），但它在兩頭**相關**時（例如很小的 delay 改變）中間會凸起 +3 dB——取捨和第 01 章的 pan law 一樣。解答程式把白雜訊（白雜訊在不同延遲下彼此不相關）送進真正的 `CrossfadeDelay`，從 10 ms 切到 250 ms；為了讓量測窗內 $g_A, g_B$ 幾乎固定在 0.5，把 crossfade 拉長到 1 秒、只量中點 ±20 ms 的 RMS，再用 8 個 seed 平均。equal-power 那一行只是算式對照（本練習沒有實作 equal-power，所以不算 check）：
+Measured (440 Hz, 10 → 250 ms at t = 1 s, crossfade 20 ms):
 
 ```
-crossfade 中點的音量（相對輸入，CrossfadeDelay 實測）：
-  raised-cosine（0.5 + 0.5），不相關素材：-2.98 dB（理論 10·log10(0.5² + 0.5²) = −3.01）
-  （算式對照）equal-power 中點 gA = gB = cos45°：不相關 +0.00 dB、相關 +3.01 dB
+Largest adjacent-sample difference within 100 ms after the switch: crossfade 0.0288, direct jump 0.2701
+Frequency measured over ±50 ms around the switch: crossfade 444.2 Hz (expected 440)
+Delay smooth transition (20 ms ramp), measured during the ramp: 4840.8 Hz (d(tau)/dt = 12 -> theoretical |f_out| = 4840 Hz, a negative sign means reverse playback)
+Largest error between y[n] and x[n - 12000] after the fade ends: 0.00e+00
+Changing the delay again mid-fade (100 -> 300 ms): it finally settles at 300 ms, error 1.72e-13
 ```
 
-## 練習 7：Comb filter
+The reason for 444 Hz rather than 440 Hz is in the phase analysis in the next paragraph; compared with the 4840 Hz (reverse playback) of the smooth transition, there is effectively no Doppler at all.
 
-1. Feedback comb，$D = 240$、$g = 0.8$、$f_s/D = 200$ Hz：
-   - 峰在 $k \times 200$ Hz（0、200、400……），$|H| = 1/(1 - 0.8) = 5$，**+13.98 dB**。
-   - 谷在 $(k + \tfrac12) \times 200$ Hz（100、300、500……），$|H| = 1/1.8 = 0.556$，**−5.11 dB**。
-   - `l09_ex7_solution` 在 200、400、1000、5000 Hz 量到 +13.98 dB，在 300、500、1100、5100 Hz 量到 −5.11 dB。
-2. Feedforward comb：$|H|^2 = 1 + g^2 + 2g\cos(\omega D)$。峰在同樣的 $k \times 200$ Hz，$1 + 0.8 = 1.8$，**+5.11 dB**；谷在 $(k+\tfrac12) \times 200$ Hz，$1 - 0.8 = 0.2$，**−13.98 dB**。和 feedback comb 剛好「上下顛倒」：feedforward 是深而窄的谷，feedback 是高而窄的峰。
-3. $g = -0.8$：$-2g\cos(\omega D)$ 變號，峰移到 $\cos(\omega D) = -1$ 的位置，即 **100、300、500 Hz……**（$f_s/2D$ 的奇數倍），谷移到 200、400 Hz。實測 100/300/500 Hz +13.98 dB、200/400 Hz −5.11 dB。聽感：基頻從 200 Hz 掉到 100 Hz（低八度），而且只有奇次諧波，音色像一端封閉的管子（類似 clarinet 那種空洞感）。
-4. $D = 44100/440 = $ **100.227 sample**。整數選擇：
-   - $D = 100$ → $441.0$ Hz，$1200\log_2(441/440) = $ **+3.9 cents**
-   - $D = 101$ → $436.63$ Hz，$1200\log_2(436.63/440) = $ **−13.3 cents**（明顯走音）
-   - 實測：整數 100 峰在 441.0 Hz、101 峰在 436.6 Hz、用 cubic 的 100.227 峰在 440.0 Hz。（程式掃描峰值的解析度是 0.1 Hz；拿四捨五入後的 436.6 Hz 去算 cents 會得到 −13.4，所以 `l09_ex7_solution` 的 cents 用理論頻率 $f_s/D$ 計算。）音越高，$D$ 越小，整數誤差的 cents 越大——這就是 Karplus-Strong 需要 fractional delay（通常用 allpass，練習 3）的原因。
-5. Feedback comb 的峰排在 $f_0, 2f_0, 3f_0, \ldots$（$f_0 = f_s/D$），這正是一個週期性訊號的諧波結構。白雜訊經過它，能量集中在這些諧波附近，耳朵就聽到基頻 $f_0$ 的音高。從時域看：輸出 = 輸入 + 每 $D$ 個 sample 重複一次的回聲，越來越接近週期為 $D$ 的訊號。`makePluck()` 就是一個 feedback comb：ring buffer 長度 = $D$ = 週期，迴路裡用「相鄰兩點平均 × 0.996」當作 lowpass + 衰減，所以高頻衰減得比低頻快，聽起來像撥弦（Karplus-Strong）。
-6. 單一 comb 的 echo 間距固定，在時域上是「噠、噠、噠」的週期回聲（flutter echo），在頻域上是等間距的峰（一個明確的音高）——很金屬。好幾個 comb 並聯，echo 的密度變成好幾倍；delay time 選**互質**，各 comb 的 echo 幾乎不會在同一時刻重疊、頻率響應的峰也幾乎不會落在同一頻率，峰的分布更密、更不規則，耳朵就不再聽到單一音高，而是像房間的殘響。再串幾個 allpass 把每個 echo 打散（增加 echo 密度但不改變整體頻譜），就是 Schroeder reverb。每個 comb 的 $g$ 用練習 1 的 $T_{60}$ 公式決定，第 12 章會照這個思路做。
+**Question: the amplitude in the middle of the fade.** The two heads are 240 ms = 105.6 periods apart, a phase difference of 0.6 period = 216° (equivalent to −144°). The combined signal is $g_A e^{j0} + g_B e^{j\varphi}$, with amplitude $\sqrt{1 - 2g_Ag_B(1 - \cos\varphi)}$, which is smallest at $g_A = g_B = 0.5$: $|\cos(\varphi/2)| = |\cos 108°| = $ **0.309**, i.e. 31% of the original amplitude (−10.2 dB). `l09_ex6_solution` measures a peak of 0.1547 at the fade midpoint (original amplitude 0.5), a ratio of 0.309, in agreement with theory; the phase of the combined signal also slips from A to B within these 20 ms (about 0.4 period), which spread over a 100 ms measurement window appears as a +4 Hz deviation.
+In real musical material, the two heads read **uncorrelated** content from before and after 240 ms; on average the power is $g_A^2 + g_B^2$, which is 0.5 (−3 dB) at the midpoint and lasts only 20 ms, so it is usually inaudible. For a smoother result you can use an equal-power crossfade instead ($g_A = \cos(\pi t/2)$, $g_B = \sin(\pi t/2)$), but when the two heads are **correlated** (for example for a very small change of delay) it bulges by +3 dB in the middle -- the trade-off is the same as the pan law of chapter 01. The solution program feeds white noise (white noise is uncorrelated with itself at different delays) into the real `CrossfadeDelay`, switching from 10 ms to 250 ms; to keep $g_A, g_B$ almost fixed at 0.5 inside the measurement window, the crossfade is stretched to 1 second and only the RMS within ±20 ms of the midpoint is measured, averaged over 8 seeds. The equal-power line is only a formula comparison (this exercise does not implement equal-power, so it is not a check):
+
+```
+Level at the crossfade midpoint (relative to the input, measured on CrossfadeDelay):
+  raised cosine (0.5 + 0.5), uncorrelated material: -2.98 dB (theory 10·log10(0.5² + 0.5²) = -3.01)
+  (Formula comparison) equal-power midpoint gA = gB = cos45°: uncorrelated +0.00 dB, correlated +3.01 dB
+```
+
+## Exercise 7: Comb filters
+
+1. Feedback comb, $D = 240$, $g = 0.8$, $f_s/D = 200$ Hz:
+   - The peaks are at $k \times 200$ Hz (0, 200, 400...), with $|H| = 1/(1 - 0.8) = 5$, **+13.98 dB**.
+   - The notches are at $(k + \tfrac12) \times 200$ Hz (100, 300, 500...), with $|H| = 1/1.8 = 0.556$, **−5.11 dB**.
+   - `l09_ex7_solution` measures +13.98 dB at 200, 400, 1000 and 5000 Hz, and −5.11 dB at 300, 500, 1100 and 5100 Hz.
+2. Feedforward comb: $|H|^2 = 1 + g^2 + 2g\cos(\omega D)$. The peaks are at the same $k \times 200$ Hz, with $1 + 0.8 = 1.8$, **+5.11 dB**; the notches are at $(k+\tfrac12) \times 200$ Hz, with $1 - 0.8 = 0.2$, **−13.98 dB**. This is exactly "upside down" relative to the feedback comb: feedforward has deep, narrow notches, feedback has tall, narrow peaks.
+3. $g = -0.8$: the sign of $-2g\cos(\omega D)$ flips and the peaks move to where $\cos(\omega D) = -1$, i.e. **100, 300, 500 Hz...** (odd multiples of $f_s/2D$), and the notches move to 200, 400 Hz. Measured: +13.98 dB at 100/300/500 Hz and −5.11 dB at 200/400 Hz. Audibly: the fundamental drops from 200 Hz to 100 Hz (an octave lower), and only odd harmonics remain, so the timbre is like a tube closed at one end (a hollow quality like a clarinet).
+4. $D = 44100/440 = $ **100.227 samples**. The integer choices:
+   - $D = 100$ → $441.0$ Hz, $1200\log_2(441/440) = $ **+3.9 cents**
+   - $D = 101$ → $436.63$ Hz, $1200\log_2(436.63/440) = $ **−13.3 cents** (clearly out of tune)
+   - Measured: the integer 100 has its peak at 441.0 Hz, 101 at 436.6 Hz, and 100.227 with cubic at 440.0 Hz. (The program's peak-finding sweep has a resolution of 0.1 Hz; computing cents from the rounded 436.6 Hz would give −13.4, so the cents in `l09_ex7_solution` are computed from the theoretical frequency $f_s/D$.) The higher the pitch, the smaller $D$ is and the larger the cents error of an integer -- this is why Karplus-Strong needs a fractional delay (usually an allpass, exercise 3).
+5. The peaks of a feedback comb line up at $f_0, 2f_0, 3f_0, \ldots$ ($f_0 = f_s/D$), which is exactly the harmonic structure of a periodic signal. White noise through it has its energy concentrated near these harmonics, and the ear hears the pitch of the fundamental $f_0$. In the time domain: output = input + echoes repeating every $D$ samples, which approaches a signal of period $D$ more and more closely. `makePluck()` is a feedback comb: the ring buffer length = $D$ = the period, and inside the loop "the average of two adjacent points × 0.996" acts as lowpass + decay, so the highs decay faster than the lows and it sounds like a plucked string (Karplus-Strong).
+6. A single comb has fixed echo spacing, which in the time domain is a periodic "tap, tap, tap" echo (flutter echo) and in the frequency domain is equally spaced peaks (one definite pitch) -- very metallic. With several combs in parallel the echo density becomes several times higher; choosing **mutually prime** delay times means the echoes of the different combs almost never coincide in time and the peaks of the frequency response almost never fall on the same frequency, so the peaks are distributed more densely and irregularly, and the ear no longer hears a single pitch but something like a room's reverberation. Following them with a few allpasses to scatter every echo (raising the echo density without changing the overall spectrum) gives the Schroeder reverb. The $g$ of each comb is determined with the $T_{60}$ formula from exercise 1, and chapter 12 follows this approach.
