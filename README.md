@@ -1,6 +1,8 @@
 # DawLab: learn audio DSP from scratch in C++ and finish by building an 8-track DAW
 **English** | [繁體中文](README.zh-TW.md)
 
+[![CI](https://github.com/TomHsieh300/DAW-for-fun/actions/workflows/ci.yml/badge.svg)](https://github.com/TomHsieh300/DAW-for-fun/actions/workflows/ci.yml)
+
 This course is for learners who "know basic C++ but have never studied DSP". It starts from "what does sound look like inside a computer?" and in each chapter builds a real, usable DSP component (or a family of them): gain, filter, EQ, compressor, limiter, saturation, distortion, gate, delay, modulation, meters, reverb... Then it uses JUCE to wrap them into VST3 plugins, writes a host that can load VST3 plugins, and finally puts everything together into an **8-track DAW, "DawLab 8"**, that can arrange clips, mix, host plugins and export WAV files.
 
 The course is **bilingual (English / Traditional Chinese)**. English is the primary version (original file names such as `README.md`); the Traditional Chinese version sits next to it in a `.zh-TW.md` file (such as `README.zh-TW.md`). Every document has a language switcher at the top, and all code comments and program output are in English.

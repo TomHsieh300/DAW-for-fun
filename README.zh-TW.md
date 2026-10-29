@@ -1,6 +1,8 @@
 # DawLab：用 C++ 從零學 audio DSP，最後自製 8 軌 DAW
 [English](README.md) | **繁體中文**
 
+[![CI](https://github.com/TomHsieh300/DAW-for-fun/actions/workflows/ci.yml/badge.svg)](https://github.com/TomHsieh300/DAW-for-fun/actions/workflows/ci.yml)
+
 這是一套給「會基本 C++、但沒學過 DSP」的學習者的教材。本教材為**英文 / 繁體中文雙語**：英文版是主要版本（原檔名，例如 `README.md`），繁體中文版放在同目錄的 `.zh-TW.md` 檔（例如 `README.zh-TW.md`）；每份文件頂端都有語言切換連結，程式碼的註解與輸出皆為英文。從「聲音在電腦裡長什麼樣子」開始，一章做出一個（或一組）真正可用的 DSP 元件：gain、filter、EQ、compressor、limiter、saturation、distortion、gate、delay、modulation、meter、reverb……接著用 JUCE 把它們包成 VST3 plugin、寫出能載入 VST3 的 host，最後組成一台能編排 clip、混音、插 plugin、匯出 WAV 的 **8 軌 DAW「DawLab 8」**。
 
 ![DawLab 8：播放示範歌曲（第 2 小節第 3 拍）](docs/images/dawlab8.png)

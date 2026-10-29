@@ -1,0 +1,101 @@
+# Build every chapter and run its ctest suite (the self-checking examples, solutions and tests).
+#
+#   core  chapters 00-12 + the pure C++ part of 14, Debug and Release, on Windows and Linux
+#         (macOS is built too but allowed to fail: the README lists it as unverified)
+#   juce  chapters 13-14 with JUCE, including the DawLab 8 smoke test and snapshot
+#
+# Both jobs go through scripts/build.ps1 / scripts/build.sh, so CI also checks the commands the
+# README tells learners to run.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JUCE_TAG: "9.0.4"
+
+jobs:
+  core:
+    name: core (${{ matrix.os }}, ${{ matrix.config }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # build.ps1 uses the "Visual Studio 17 2022" generator, so pin the image that has VS 2022
+        os: [windows-2022, ubuntu-24.04]
+        config: [Debug, Release]
+        experimental: [false]
+        include:
+          - os: macos-latest
+            config: Debug
+            experimental: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build and test (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\scripts\build.ps1 -Config ${{ matrix.config }}
+
+      - name: Build and test (Linux / macOS)
+        if: runner.os != 'Windows'
+        run: ./scripts/build.sh --config ${{ matrix.config }}
+
+  juce:
+    name: juce (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@v5
+
+      # third_party/ is not in git; clone the pinned JUCE once and reuse it
+      - name: Cache JUCE
+        id: juce-cache
+        uses: actions/cache@v4
+        with:
+          path: third_party/JUCE
+          key: juce-${{ env.JUCE_TAG }}
+
+      - name: Clone JUCE
+        if: steps.juce-cache.outputs.cache-hit != 'true'
+        run: git clone --depth 1 --branch ${{ env.JUCE_TAG }} https://github.com/juce-framework/JUCE.git third_party/JUCE
+
+      - name: Install JUCE dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build xvfb \
+            libasound2-dev libjack-jackd2-dev ladspa-sdk libfreetype-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev \
+            libxrender-dev libglu1-mesa-dev mesa-common-dev libcurl4-openssl-dev libwebkit2gtk-4.1-dev
+
+      - name: Build and test (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\scripts\build.ps1 -Only 13-vst-hosting,14-daw-8track -Juce -Config Release
+
+      # DawLab 8's smoke test and snapshot create real windows, so give them a virtual X display
+      - name: Build and test (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a ./scripts/build.sh --only 13-vst-hosting,14-daw-8track --juce --config Release
+
+      - name: Upload DawLab 8 snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dawlab8-snapshot-${{ matrix.os }}
+          path: build/dawlab_output/l14_app_snapshot*.png
+          if-no-files-found: ignore
