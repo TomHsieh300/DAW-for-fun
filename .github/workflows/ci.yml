@@ -1,8 +1,9 @@
 # Build every chapter and run its ctest suite (the self-checking examples, solutions and tests).
 #
-#   core  chapters 00-12 + the pure C++ part of 14, Debug and Release, on Windows and Linux
-#         (macOS is built too but allowed to fail: the README lists it as unverified)
-#   juce  chapters 13-14 with JUCE, including the DawLab 8 smoke test and snapshot
+#   core  every pure C++ chapter (00-12, 15 and the engine part of 14), Debug and Release, on
+#         Windows, Linux and macOS
+#   juce  chapters 13-14 with JUCE, including the DawLab 8 smoke test and snapshot (macOS is
+#         built too but allowed to fail until it has passed a few times)
 #
 # Both jobs go through scripts/build.ps1 / scripts/build.sh, so CI also checks the commands the
 # README tells learners to run.
@@ -26,18 +27,12 @@ jobs:
   core:
     name: core (${{ matrix.os }}, ${{ matrix.config }})
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
         # build.ps1 uses the "Visual Studio 17 2022" generator, so pin the image that has VS 2022
-        os: [windows-2022, ubuntu-24.04]
+        os: [windows-2022, ubuntu-24.04, macos-latest]
         config: [Debug, Release]
-        experimental: [false]
-        include:
-          - os: macos-latest
-            config: Debug
-            experimental: true
     steps:
       - uses: actions/checkout@v5
 
@@ -53,10 +48,15 @@ jobs:
   juce:
     name: juce (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
         os: [windows-2022, ubuntu-24.04]
+        experimental: [false]
+        include:
+          - os: macos-latest
+            experimental: true
     steps:
       - uses: actions/checkout@v5
 
@@ -91,6 +91,11 @@ jobs:
       - name: Build and test (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run -a ./scripts/build.sh --only 13-vst-hosting,14-daw-8track --juce --config Release
+
+      # macOS runners have a desktop session, so the GUI tests need no virtual display
+      - name: Build and test (macOS)
+        if: runner.os == 'macOS'
+        run: ./scripts/build.sh --only 13-vst-hosting,14-daw-8track --juce --config Release
 
       - name: Upload DawLab 8 snapshot
         if: always()

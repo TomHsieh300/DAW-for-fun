@@ -54,9 +54,9 @@
 
 `scripts/build.sh` 是 `build.ps1` 在 Linux / macOS 上的對應腳本（選項相同，寫成小寫的 `--long-option` 風格）；見下一節。
 
-### macOS（未驗證）
+### macOS（純 C++ 章節已由 CI 驗證）
 
-第 00–12 章是純 C++17 + CMake，在 macOS（`xcode-select --install`、`brew install cmake`）上應該可以用 `./scripts/build.sh` 同樣建置。macOS 尚未測試過，指令可能需要自行調整。
+安裝 command-line tools 與 CMake（`xcode-select --install`、`brew install cmake`），然後跟 Linux 一樣使用 `./scripts/build.sh`。純 C++ 的章節（00–12、15，以及第 14 章的 engine 部分）每次 push 都會在 GitHub 的 `macos-latest` runner 上用 Apple Clang 以 Debug 和 Release 建置，並通過所有測試（見上方的 CI badge）。JUCE 的第 13、14 章也會在那裡建置，但還沒有驗證：在穩定之前，這個 CI job 允許失敗。
 
 ## 建置、執行、測試
 

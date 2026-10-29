@@ -56,9 +56,9 @@ Every chapter, including the JUCE chapters 13 and 14, builds and passes all its 
 
 `scripts/build.sh` is the Linux / macOS counterpart of `build.ps1` (same options, written in lower-case `--long-option` style); see the next section.
 
-### macOS (unverified)
+### macOS (pure C++ chapters verified in CI)
 
-Chapters 00–12 are plain C++17 + CMake and should build the same way on macOS (`xcode-select --install`, `brew install cmake`) with `./scripts/build.sh`. macOS has not been tested; the commands may need adjusting.
+Install the command-line tools and CMake (`xcode-select --install`, `brew install cmake`), then use `./scripts/build.sh` as on Linux. The pure C++ chapters (00–12, 15 and the engine part of 14) build and pass all their tests with Apple Clang on GitHub's `macos-latest` runner, in Debug and Release, on every push (see the CI badge above). The JUCE chapters 13 and 14 are built there too, but not yet verified: the CI job is allowed to fail while it settles.
 
 ## Building, running and testing
 
