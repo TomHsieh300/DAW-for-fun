@@ -157,6 +157,7 @@ The chapters go in numeric order, and every chapter uses components from the ear
 | [12](lessons/12-reverb/README.md) | Reverb | RT60, comb / allpass, FDN, partitioned FFT convolution | `ReverbBuildingBlocks`, `Reverb`, `ConvolutionReverb` |
 | [13](lessons/13-vst-hosting/README.md) | VST3 plugins and hosting (JUCE) | plugin architecture and lifecycle, parameters and state, latency and PDC, scanning and loading third-party VST3 plugins | `DawLabCompressor` / `DawLabLimiter` (VST3), the `dawlab_plugin_host` library |
 | [14](lessons/14-daw-8track/README.md) | **Capstone: the 8-track DAW** | transport and the two kinds of clock, clips, mixer and FX buses, a lock-free command queue, PDC, offline bounce, real-time safety tests, the JUCE GUI, VST3 inserts | the pure C++ `dawlab::engine` and the JUCE app "DawLab 8" |
+| [15](lessons/15-daw-growing/README.md) | Growing the DAW (in progress) | stable track ids; planned: a track pool with add / delete, a CPU budget, saving projects, undo / redo | the build-along snapshots of chapter 15 |
 
 > English is the primary language: the English version of every document uses the original file name, and the Traditional Chinese version is the `.zh-TW.md` file of the same name. The two are kept in sync, and technical terms stay in English in the Chinese version.
 

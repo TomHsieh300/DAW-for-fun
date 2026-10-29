@@ -658,6 +658,8 @@ Exercise 8-13 是擴充應用程式的**選做專案**（各自附有 starter �
 
 你現在擁有一個可運作的 DAW engine。要把它帶往哪裡，取決於什麼最讓你興奮：
 
+- **第 15 章**（[讓 DAW 長大](../15-daw-growing/README.zh-TW.md)，進行中）從這裡接著往下：
+  可以新增和刪除的 track、專案存檔與 undo，同時保持本章的 real-time 規則。
 - **擴充 DawLab 8**：把 Exercise 8-11 的 solution 真正接進 app - 每個 track 底下一條 automation
   lane、帶 input monitoring 的錄音按鈕、帶 piano-roll
   編輯器的 MIDI track、帶 auto-save 與 undo 的專案檔（在每個 `Session`

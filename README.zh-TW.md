@@ -155,6 +155,7 @@ cd build
 | [12](lessons/12-reverb/README.zh-TW.md) | Reverb | RT60、comb / allpass、FDN、partitioned FFT convolution | `ReverbBuildingBlocks`、`Reverb`、`ConvolutionReverb` |
 | [13](lessons/13-vst-hosting/README.zh-TW.md) | VST3 plugin 與 hosting（JUCE） | plugin 架構與生命週期、參數與 state、latency 與 PDC、掃描與載入第三方 VST3 | `DawLabCompressor` / `DawLabLimiter`（VST3）、`dawlab_plugin_host` 函式庫 |
 | [14](lessons/14-daw-8track/README.zh-TW.md) | **Capstone：8 軌 DAW** | transport 與兩種時鐘、clip、mixer 與 FX bus、lock-free command queue、PDC、offline bounce、real-time safety 測試、JUCE GUI、VST3 insert | 純 C++ 的 `dawlab::engine` 與 JUCE app「DawLab 8」 |
+| [15](lessons/15-daw-growing/README.zh-TW.md) | 讓 DAW 長大（進行中） | 穩定的 track id；規劃中：可新增 / 刪除的 track 池、CPU 預算、專案存檔、undo / redo | 第 15 章跟著做的 snapshot |
 
 > 英文是主要語言：每份文件的英文版用原檔名，繁體中文版是同名的 `.zh-TW.md`，兩者內容同步；中文版的專有名詞保留英文。
 
