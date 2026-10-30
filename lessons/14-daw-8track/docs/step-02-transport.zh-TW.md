@@ -82,6 +82,8 @@ track 會分別 render 每個 segment，所以 loop 是無縫且精確到 sample
 
 `engine/include/dawlab/engine/Transport.h`，逐段說明：
 
+<div align="center">
+
 | 區段 | 功能 |
 |---|---|
 | `TimeSignature`、`BarsBeats`、`TimelineSegment` | 單純的 struct；`BarsBeats` 從 1 起算 |
@@ -91,6 +93,8 @@ track 會分別 render 每個 segment，所以 loop 是無縫且精確到 sample
 | loop | `setLoopRange()`、`setLoopRangeBars(firstBar, numBars)`、`setLoopEnabled()` |
 | 轉換 | `getSamplesPerBeat()`、`barsBeatsToSamples()`、`samplesToBarsBeats()`、`toSeconds()` |
 | `advance()` | 唯一的 audio-thread 方法：seek、segment、position 更新 |
+
+</div>
 
 `advance()` 的核心：
 
@@ -127,12 +131,16 @@ Step 1 engine（已解完）加上帶有 atomic 的 `Transport` class；engine �
 `processChunk()` 已經會向 transport 要 segment，並在那些 timeline
 位置播放「磁帶」。有三個函式只有宣告：
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫的 | `Transport::barsBeatsToSamples()`、`Transport::samplesToBarsBeats()`、`Transport::advance()`（pending seek、在 loop 結尾切開 segment、`samplesCovered`） |
 | 檔案 | `steps/step02-transport/starter/step02.cpp` |
 | 執行 | `l14_step02_starter`（從 build 目錄：`.\bin\Debug\l14_step02_starter.exe`）；在你完成之前它會印出 `[FAIL] l14_step02 (27 of 31 checks failed)` |
 | Solution | `steps/step02-transport/solution/step02.cpp`（ctest `l14_step02_solution`） |
+
+</div>
 
 這個檢查只涵蓋 Step 2：網格（包含 7/8，以及 96 BPM 在 44.1 kHz 下一拍是
 27 562.5 個 sample 的情況）、仍會套用 seek 的停止中 transport、上面算過的 loop 切分、

@@ -45,6 +45,8 @@ g = 10^{L_\text{dB}/20}
 
 幾個一定要背起來的對應：
 
+<div align="center">
+
 | dB | 振幅倍率 $`g`$ | 功率倍率 $`g^2`$ | 直覺 |
 |---:|---:|---:|---|
 | +20 | 10 | 100 | |
@@ -59,6 +61,8 @@ g = 10^{L_\text{dB}/20}
 | −40 | 0.01 | 10⁻⁴ | |
 | −60 | 0.001 | 10⁻⁶ | 推桿「幾乎到底」 |
 | −∞ | 0 | 0 | 真正的靜音 |
+
+</div>
 
 **dBFS**（decibels relative to full scale）以數位系統能表示的最大值 1.0 為 0 dB。一個振幅 0.5 的正弦波 peak 是 −6.02 dBFS；它的 RMS 是 $`0.5/\sqrt{2} = 0.354`$，也就是 −9.03 dBFS。正弦波的 peak 永遠比 RMS 高 3.01 dB，這個 3 dB 差距之後講 metering（第 11 章）時會一直出現。
 
@@ -79,6 +83,8 @@ g = 10^{L_\text{dB}/20}
 
 UI 上的推桿永遠是一個 0..1 的位置 $`p`$（滑鼠拖到哪就是哪）。如果直接拿 $`p`$ 當倍率（linear taper）會發生什麼事？
 
+<div align="center">
+
 | 位置 $`p`$ | 倍率 | dB |
 |---:|---:|---:|
 | 1.00 | 1.00 | 0.0 |
@@ -88,11 +94,15 @@ UI 上的推桿永遠是一個 0..1 的位置 $`p`$（滑鼠拖到哪就是哪�
 | 0.10 | 0.10 | −20.0 |
 | 0.01 | 0.01 | −40.0 |
 
+</div>
+
 整支推桿的上半截只涵蓋 6 dB，而最下面 1% 的行程卻要塞進 −40 dB 到 −∞——你幾乎不可能把一軌精準地調到 −30 dB。反過來，如果整支推桿「dB 對位置線性」（例如 0 → −90 dB、1 → +6 dB），每格 1 dB 很均勻，但推桿永遠到不了 −∞（真正的靜音），而且最底下將近三分之一的行程（−60 dB 以下，30/96 ≈ 31%）根本聽不到差別。
 
 實務上 DAW 的推桿都是**分段（piecewise）曲線**：上半段 dB 對位置線性而且很「密」（0 dB 附近一格只有零點幾 dB，方便微調），下半段越往下每格的 dB 越大，最底端再接一小段「倍率線性」讓它真的能到 0。本章練習 4 用的是這一組分段點：
 
-![練習 4 的推桿分段曲線：推桿位置 p 對 dB，分段點為 p = 1.00（+6 dB）、0.75（0 dB）、0.50（−12 dB）、0.25（−30 dB）、0.05（−60 dB），p = 0 時為 −∞](images/fader-taper.svg)
+<p align="center"><img src="images/fader-taper.svg" alt="練習 4 的推桿分段曲線：推桿位置 p 對 dB，分段點為 p = 1.00（+6 dB）、0.75（0 dB）、0.50（−12 dB）、0.25（−30 dB）、0.05（−60 dB），p = 0 時為 −∞"></p>
+
+<div align="center">
 
 | 位置 $`p`$ | dB | 這一段的「密度」 |
 |---:|---:|---|
@@ -102,6 +112,8 @@ UI 上的推桿永遠是一個 0..1 的位置 $`p`$（滑鼠拖到哪就是哪�
 | 0.25 | −30 | 0.05..0.25：30 dB / 0.20 = 150 dB 每單位行程 |
 | 0.05 | −60 | 0..0.05：倍率從 0.001 線性到 0 |
 | 0.00 | −∞ | |
+
+</div>
 
 段內用線性插值：$`p`$ 落在 $`[p_i, p_{i+1}]`$ 時 $`t = (p - p_i)/(p_{i+1} - p_i)`$，$`L_\text{dB} = \mathrm{lerp}(L_i, L_{i+1}, t)`$，再 `dbToGain`。反函式（gain → 位置，UI 要畫推桿時用）就是同一件事反過來做。這組數字沒有標準答案，各家 DAW 都不同，但「上密下疏、最底端接線性到 0」的結構是一樣的。
 
@@ -138,7 +150,7 @@ y[n] = x[n] \cdot g[n],\qquad g[n] = g_1 + (g_2 - g_1)\,u[n - n_0]
 
 **Zipper noise** 是同一件事的連續版本。使用者拖推桿時，UI 大約每個 audio block（本教材 512 sample ≈ 10.7 ms，更新率 $`f_b = 93.75`$ Hz）送一次新的 gain 值，於是 gain 變成一條**樓梯**（staircase）。樓梯 = 一條平滑的斜坡 + 一個週期為 $`1/f_b`$ 的鋸齒狀誤差；這個鋸齒是週期訊號，可以拆成頻率 $`f_b, 2f_b, 3f_b, \dots`$ 的正弦波之和（就是第 00 章的「諧波」，數學上叫 Fourier 級數），而鋸齒波第 $`k`$ 個諧波的振幅正比於 $`1/k`$。套用上面「振幅調變」的直覺，每一個諧波 $`k f_b`$ 都在載波兩側生出一對 sideband，所以輸出會在載波兩側出現間隔 $`f_b`$ 的 **sideband**，每倍頻程掉 6 dB。這些 sideband 落在 1 kHz 旁邊 94 Hz、188 Hz、375 Hz……的地方，聽起來就是拉拉鍊的「茲茲茲」。
 
-![拖動推桿時的 gain：階梯式（每個 block 跳一階，sideband 每倍頻程掉 6 dB）與 50 ms 線性 ramp 平滑後（每倍頻程掉 12 dB，小約 40 dB）的對照](images/zipper-stepped-vs-smoothed.svg)
+<p align="center"><img src="images/zipper-stepped-vs-smoothed.svg" alt="拖動推桿時的 gain：階梯式（每個 block 跳一階，sideband 每倍頻程掉 6 dB）與 50 ms 線性 ramp 平滑後（每倍頻程掉 12 dB，小約 40 dB）的對照"></p>
 
 為什麼平滑之後是 $`1/k^2`$？因為線性 ramp 之後 gain 是**連續**的（只有斜率不連續），連續的分段線性函數頻譜以 $`1/f^2`$ 衰減。範例 1 的 sideband 表格會讓你親眼看到這兩個斜率（階梯式每倍頻程 −6 dB、平滑每倍頻程 −12 dB）。
 
@@ -172,6 +184,8 @@ g[n] = 1 - (1-a)^n = 1 - e^{-n/(\tau f_s)},\qquad a = 1 - e^{-1/(\tau f_s)} \app
 
 $`\tau`$ 是**時間常數**（time constant）：走到 63.2%（$`1 - e^{-1}`$）所需的時間。常用的里程碑：
 
+<div align="center">
+
 | 時間 | 到達比例 | 剩餘誤差 |
 |---|---|---|
 | $`1\tau`$ | 63.2% | −8.7 dB |
@@ -179,10 +193,12 @@ $`\tau`$ 是**時間常數**（time constant）：走到 63.2%（$`1 - e^{-1}`$�
 | $`4.6\tau`$（$`\ln 100`$） | 99% | −40 dB |
 | $`6.9\tau`$（$`\ln 1000`$） | 99.9% | −60 dB |
 
+</div>
+
 - 優點：一開始走得快、接近目標時變慢，像電容充電 / 類比推桿，聽起來「更自然」；而且只在起點有一個斜率轉折（目標一改變，斜率就從 0 跳到 $`a\cdot(g_\text{target} - g)`$），終點是漸近、沒有轉折（linear ramp 起點和終點各有一個）。
 - 缺點：理論上永遠到不了目標，實作時要在誤差夠小時「snap」到目標，否則 `isSmoothing()` 永遠是 true，而且殘餘的極小值會變成 denormal。還有一個精度陷阱：狀態用 float 存時，接近目標的增量 $`a\cdot d`$ 會小於 float 的半個 ulp（unit in the last place：float 在該數值附近相鄰兩個可表示數的間距；1.0 附近 $`\varepsilon = 2^{-23} \approx 1.19 \times 10^{-7}`$，略小於 1 的地方是它的一半），狀態會「卡」在離目標約 $`\varepsilon/(4a)`$ 的地方（$`\tau`$ = 10 ms 時約 $`1.4 \times 10^{-5}`$）——練習 3 會讓你親手踩到並修好它。
 
-![線性 ramp 在 N 個 sample 後剛好到達目標，與 one-pole 指數平滑器（τ 時達到 63.2%、4.6τ 時達到 99%）的對照](images/linear-ramp-vs-exponential.svg)
+<p align="center"><img src="images/linear-ramp-vs-exponential.svg" alt="線性 ramp 在 N 個 sample 後剛好到達目標，與 one-pole 指數平滑器（τ 時達到 63.2%、4.6τ 時達到 99%）的對照"></p>
 
 **該用多長的 ramp？** 太短（< 1 ms）仍然會 click；太長（> 100 ms）推桿會有「慢半拍」的感覺，mute 鍵按下去聲音還拖一下。經驗值：gain / pan 用 **10–50 ms**；本章 `Gain` 與 `Panner` 預設 50 ms（API 合約規定）。像 filter cutoff 這種參數改變會重算係數，通常用更短的 ramp 加上每個 sample（或每幾個 sample）更新一次係數，第 02、03 章再談。
 
@@ -224,7 +240,7 @@ P_\text{sum} = N \cdot P \quad\Rightarrow\quad A_\text{rms,sum} = \sqrt{N}\,A_\t
 
 這是 RMS 的成長；**peak 介於兩者之間**——運氣不好時各軌的峰值仍然可能同時出現，最壞情況就是各軌 peak 的線性總和。範例 3 用數字驗證這三條線。
 
-![加總 N 軌時的電平成長（dB）：coherent 依 20·log10(N)，incoherent RMS 依 10·log10(N)，實際 peak 落在兩條線之間](images/headroom-growth.svg)
+<p align="center"><img src="images/headroom-growth.svg" alt="加總 N 軌時的電平成長（dB）：coherent 依 20·log10(N)，incoherent RMS 依 10·log10(N)，實際 peak 落在兩條線之間"></p>
 
 **Headroom** 是「目前的 peak 距離 0 dBFS 還有多少 dB」。**Gain staging** 是在訊號鏈的每一級都保留足夠 headroom 的習慣：各軌先拉低（例如 −12 到 −18 dB），讓 mix bus 的 peak 落在 −6 dBFS 左右，最後再由 master / limiter（第 05 章）決定成品音量。
 
@@ -244,6 +260,8 @@ P_\text{sum} = N \cdot P \quad\Rightarrow\quad A_\text{rms,sum} = \sqrt{N}\,A_\t
 \text{audible}_i = \neg\text{mute}_i \land (\neg S \lor \text{solo}_i \lor \text{soloSafe}_i)
 ```
 
+<div align="center">
+
 | mute | solo | soloSafe | 有人 solo？ | 出聲 |
 |---|---|---|---|---|
 | 0 | 0 | 0 | 否 | ✔ |
@@ -251,6 +269,8 @@ P_\text{sum} = N \cdot P \quad\Rightarrow\quad A_\text{rms,sum} = \sqrt{N}\,A_\t
 | 0 | 1 | – | – | ✔ |
 | 0 | 0 | 1 | 是 | ✔ |
 | 1 | – | – | – | ✘ |
+
+</div>
 
 重點是：**解析完「該不該出聲」之後，不要直接把 sample 設成 0**，而是把那一軌 `Gain` 的目標設成 0 dB 或 −∞ dB，讓 ramp 走過去——mute 鍵才不會「喀」。第 14 章的 mixer 也是這個思路：`Mixer` 用 `!mute && (!anySolo || solo)`（`Mixer::isTrackAudible()` 的式子，沒有 soloSafe 項）決定每一軌該不該出聲，`ChannelStrip` 再用自己的 10 ms `SmoothedValue` 把 mute gain ramp 到 0 或 1（練習 6 用 `dsp::Gain` 的 50 ms ramp 示範同一件事）。
 
@@ -288,13 +308,17 @@ g_L = \sqrt{(1-\theta)\cos\!\left(\theta\tfrac{\pi}{2}\right)},\qquad g_R = \sqr
 
 把三種 law 在中央的數字放在一起：
 
+<div align="center">
+
 | Pan law | 中央 $`g_L = g_R`$ | 中央 dB | $`g_L^2 + g_R^2`$（喇叭） | $`g_L + g_R`$（mono 相加） |
 |---|---:|---:|---|---|
 | Linear | 0.5 | −6.02 | 0.5（−3.01 dB，凹） | 1（0 dB，平） |
 | Constant power | 0.7071 | −3.01 | 1（0 dB，平） | 1.414（+3.01 dB，凸） |
 | −4.5 dB | 0.5946 | −4.52 | 0.7071（−1.51 dB） | 1.189（+1.51 dB） |
 
-![三種 pan law（linear、constant power、−4.5 dB）的左右 gain 對 pan 位置曲線，中央值分別為 0.500、0.707、0.595](images/pan-laws.svg)
+</div>
+
+<p align="center"><img src="images/pan-laws.svg" alt="三種 pan law（linear、constant power、−4.5 dB）的左右 gain 對 pan 位置曲線，中央值分別為 0.500、0.707、0.595"></p>
 
 **Mono pan vs stereo balance**——這是初學者最常混淆的地方：
 
@@ -348,12 +372,16 @@ flowchart LR
 \text{balance: } g_L = \min(1,\ 1 - p),\ g_R = \min(1,\ 1 + p)
 ```
 
+<div align="center">
+
 | 位置 $`p`$ | Mono track，constant power（$`g_L`$ / $`g_R`$） | Stereo track，balance（$`g_L`$ / $`g_R`$） |
 |---|---|---|
 | −1（全左） | 1 / 0 | 1 / 0 |
 | 0（中央） | 0.7071 / 0.7071（每邊 −3.01 dB） | 1 / 1（每邊 0 dB） |
 | +0.5 | 0.3827 / 0.9239 | 0.5 / 1（L −6.02 dB、R 0 dB） |
 | +1（全右） | 0 / 1 | 0 / 1 |
+
+</div>
 
 所以**同一個 mono 檔放在中央時，放在 stereo track（$`L = R`$）上每一邊都比放在 mono track 上大 3.01 dB**：$`20\log_{10}(1/0.7071) = 3.01`$ dB。另外注意 balance 在 +0.5 並不是「把音源往右移一半」，它只是把左邊調小 6 dB。
 
@@ -498,12 +526,16 @@ cd build
 
 輸出 WAV 會寫到「目前工作目錄」下的 `dawlab_output/`（`outputPath()` 是相對於目前工作目錄的路徑），所以先 `cd build` 再執行，檔案就在 `build\dawlab_output\`。本章其他範例也照這個方式執行。
 
+<div align="center">
+
 | 檔案 | 內容 | 該聽到什麼 |
 |---|---|---|
 | `l01_step_instant.wav` | 1 kHz 正弦波，約 1.0 s 時 gain 瞬間 0 → −20 dB | 清楚的一聲「喀」 |
 | `l01_step_smoothed.wav` | 同上，50 ms linear ramp | 只有音量變小 |
 | `l01_zipper_stepped.wav` | 0.5 s 起每個 block 降 1 dB、共 40 步（模擬拖推桿，沒平滑） | 像拉拉鍊的「茲茲茲」 |
 | `l01_zipper_smoothed.wav` | 同上，經過 `SmoothedValue` | 乾淨的 fade out |
+
+</div>
 
 實際印出的數字（節錄）：
 
@@ -583,12 +615,16 @@ bin\Debug\l01_pan_law.exe
 bin\Debug\l01_mixing_headroom.exe
 ```
 
+<div align="center">
+
 | 檔案 | 內容 | 該聽到什麼 |
 |---|---|---|
 | `l01_mix_hot_clipped.wav` | 8 軌每軌 0 dB 直接相加，寫成 24-bit | 鼓點處刺耳的破音 |
 | `l01_mix_hot_float.wav` | 同一個混音寫成 32-bit float | 沒有破音（播放器會自動縮小或由你拉低音量） |
 | `l01_mix_staged.wav` | 每軌 −18 dB、master 0 dB | 乾淨，但整體小聲——這是 headroom 的代價 |
 | `l01_mix_mute.wav` | 一軌撥弦在約 1.0 s（0.992 s，block 邊界）被 mute（50 ms ramp） | 沒有 click 的靜音 |
+
+</div>
 
 ```
 (A) 8 identical sine tracks, each with peak -12.00 dBFS:
@@ -634,6 +670,8 @@ bin\Debug\l01_mixing_headroom.exe
 
 ## 5. 常見錯誤與除錯
 
+<div align="center">
+
 | 症狀 | 可能原因 | 怎麼查 |
 |---|---|---|
 | 改參數時「喀」一聲 | 直接把新值乘進去，沒有 ramp；或 ramp 長度是 0（忘了 `prepare()` / `reset(sr, ramp)`） | 印出 `isSmoothing()`、`getRampSamples()`；算一階差分最大值（範例 1 的 `maxFirstDifference`）是否遠大於 $`A\cdot 2\pi f/f_s`$ |
@@ -647,6 +685,8 @@ bin\Debug\l01_mixing_headroom.exe
 | 立體聲 track pan 全右後左邊的東西「不見了」 | `Panner::process()` 對立體聲是 balance，不是 pan | 想要搬移要先 sum 成 mono 再 `processMonoToStereo()`，或用 M/S（練習 7） |
 | `dbToGain(-6)` 編譯出現 ambiguous | int 同時能轉 float / double | `DspMath.h` 已提供 `dbToGain(int)` overload；傳 `-6.0f` 最保險 |
 | 用 `==` 比較 ramp 終點失敗 | 浮點累加誤差 | `SmoothedValue` 最後一步直接設成 target，自己實作時也要這麼做 |
+
+</div>
 
 ## 6. 練習題
 

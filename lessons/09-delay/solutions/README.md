@@ -10,6 +10,8 @@ cd build
 .\bin\Debug\l09_ex1_solution.exe      # ex1, ex3, ex4, ex5, ex6, ex7
 ```
 
+<div align="center">
+
 | No. | Type | Solution program | Output WAVs (`build\dawlab_output\`) |
 |---|---|---|---|
 | 1 | Calculation | `l09_ex1_solution` (`ex1_tempo_math.cpp`) | — |
@@ -19,6 +21,8 @@ cd build
 | 5 | Implementation | `l09_ex5_solution` (`ex5_multitap.cpp`) | `l09_ex5_multitap_dry.wav`, `l09_ex5_multitap_wet.wav` |
 | 6 | Implementation | `l09_ex6_solution` (`ex6_crossfade_delay.cpp`) | `l09_ex6_crossfade.wav`, `l09_ex6_abrupt.wav`, `l09_ex6_ramp.wav` |
 | 7 | Calculation + concept | `l09_ex7_solution` (`ex7_comb_math.cpp`) | — |
+
+</div>
 
 ---
 
@@ -94,12 +98,16 @@ The reasoning:
 
 Measured (delay 10.5, $`d = 10`$, $`\eta = 1/3`$):
 
+<div align="center">
+
 | freq (Hz) | linear (dB) | cubic (dB) | allpass (dB) |
 |---|---|---|---|
 | 1000 | −0.02 | −0.00 | −0.00 |
 | 8000 | −1.25 | −0.23 | +0.00 |
 | 12000 | −3.01 | −1.07 | −0.00 |
 | 20000 | −11.74 | −8.41 | +0.00 |
+
+</div>
 
 Phase delay (samples): linear is 10.500 at all frequencies (at $`\Delta = 0.5`$ it is a symmetric FIR with linear phase); the allpass gives 10.500 at 100 Hz, 10.509 at 4 kHz and 10.537 at 8 kHz, in complete agreement with theory. For fractional parts from delay 10.0 to 11.0, the delay measured at 100 Hz is accurate to 0.001.
 
@@ -170,11 +178,15 @@ The reasoning: there is only one delay line, and each tap is just a read positio
 
 Measured (impulse, L = R = 1 → mono 1):
 
+<div align="center">
+
 | tap | delay | sample | gain | pan | L (expected / measured) | R (expected / measured) |
 |---|---|---|---|---|---|---|
 | 0 | 375 ms | 18000 | 0.60 | −0.6 | 0.5706 / 0.5706 | 0.1854 / 0.1854 |
 | 1 | 500 ms | 24000 | 0.45 | +0.6 | 0.1391 / 0.1391 | 0.4280 / 0.4280 |
 | 2 | 750 ms | 36000 | 0.30 | 0.0 | 0.2121 / 0.2121 | 0.2121 / 0.2121 |
+
+</div>
 
 Total energy 0.6525 = 0.6² + 0.45² + 0.3² (constant-power: $`g_L^2 + g_R^2 = 1`$). With feedback 0.5, tap0 reappears at 36000 + 18000 = 54000, with amplitude 0.2853 = 0.5 × 0.5706.
 

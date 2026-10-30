@@ -167,11 +167,15 @@ bus layout: see `VstInsert`'s mono fold in [Step 17](step-17-vst3-inserts.md).
 
 ## The code
 
+<div align="center">
+
 | File | Section |
 |---|---|
 | `InsertEffect.h` | `ParameterKind`, `ParameterInfo` (+ `formatParameterValue()` for "-18.0 dB" labels), `PlayHead`, `InsertEffect`, `InsertChain` |
 | `EffectBase.h` | `EffectBase` (atomics + dirty mask + `finishPrepare`), `PureDelayEffect` |
 | `Effects.h` | 19 adapters, `choices::` label tables, `paramFloat/Int/Bool/Choice` helpers, factory |
+
+</div>
 
 A complete adapter, as an example of the pattern:
 
@@ -212,12 +216,16 @@ private:
 `Engine::addInsertNow(strip, effect)` prepares an effect and puts it in a strip - setup only, Step 7
 turns it into a lock-free command. Latency (`getLatencySamples`) arrives in Step 8.
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | `ParameterInfo::clamp()`, `toNormalized()`, `fromNormalized()` (linear and log taper), `EffectBase::setParameter()` and `applyPendingParameters()` (the atomic values + dirty mask), `InsertChain::process()` (in order, skip bypassed) |
 | File | `steps/step05-insert-effects/starter/step05.cpp` |
 | Run | `l14_step05_starter`; it prints `[FAIL] l14_step05 (20 of 24 checks failed)` until you are done |
 | Solution | `steps/step05-insert-effects/solution/step05.cpp` (ctest `l14_step05_solution`) |
+
+</div>
 
 Expected output (verified):
 

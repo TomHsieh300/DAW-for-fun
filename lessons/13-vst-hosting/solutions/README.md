@@ -62,6 +62,8 @@ Exercise 1 check: Threshold 0.6 -> -24.0 dB, Ratio 0.60698 -> 8.00, Attack 0.4 -
 
 **1. The thread for each action**
 
+<div align="center">
+
 | Action | Thread | Reason |
 |---|---|---|
 | (a) `scan()` | message thread (or a dedicated scanner process / thread, but as the format requires) | VST3 requires the factory and instances to be created on the UI thread; scanning loads DLLs and can be slow, so a production product puts it in a child process |
@@ -69,6 +71,8 @@ Exercise 1 check: Threshold 0.6 -> -24.0 dB, Ratio 0.60698 -> 8.00, Attack 0.4 -
 | (c) `setState()` | message thread, and preferably while audio is stopped (or after taking the plugin out of the callback) | The plugin may rebuild data structures and allocate inside; running concurrently with `process()` can cause a data race |
 | (d) creating a `PluginWindow` | message thread | All GUI operations may only happen on the message thread |
 | (e) `setParameterValue()` every 32 samples | audio thread (the same thread as `process()`, before each sub-block) | JUCE's VST3 hosting writes the parameter value into a lock-free cache, and it is only sent to the plugin by the next `process`; a parameter change must be on the same timeline as the audio, so it has to be set on the audio thread, right before the corresponding sub-block (exercise 4). A small detail: when `setParameterValue` also notifies listeners it briefly takes `listenerLock`; a strict real-time host can use `setValue()`, which does not notify listeners |
+
+</div>
 
 **2. Why `ScopedTryLock`**
 
@@ -117,11 +121,15 @@ The editor (`AudioProcessorEditor`) holds a reference to the processor; its dest
 
 **2.** $`L_{\max} = 1024`$, $`d_i = L_{\max} - L_i`$:
 
+<div align="center">
+
 | track | plugin latency $`L_i`$ | extra delay $`d_i`$ from the host |
 |---|---|---|
 | A | 240 | 784 samples (16.33 ms) |
 | B | 1024 | 0 |
 | C | 0 | 1024 samples (21.33 ms) |
+
+</div>
 
 The total latency of the whole project = 1024 samples = 21.33 ms (during playback the host reads the timeline 21.33 ms early, so it still sounds on the beat).
 

@@ -165,11 +165,15 @@ the tempo slider can be dragged or double-clicked to type.
 
 ## Your turn
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | `AudioHost::compensatePosition()` in `app/Source/AudioHost.cpp` (while playing: position minus mix latency minus device latency, never below 0; stopped: unchanged) and `TransportBar::formatBarsBeats()` in `app/Source/TransportBar.cpp` ("bar.beat.tick", tick with three digits) |
 | Build + check | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test` (`l14_app_smoke_test`) |
 | Expected | section 6 prints `position 1.2.000 (playhead 24000, transport 24752 = + mix latency 752)`; the three `compensatePosition()` checks of this page (23 744, 0, unchanged) and "1.2.030" after Stop pass; `[PASS] l14_app_smoke_test` |
+
+</div>
 
 ## What you learned
 

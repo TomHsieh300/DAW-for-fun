@@ -14,12 +14,16 @@ Track strip 上的 "Load..."（或對選取的 track 按 Ctrl+O）會讀取一�
 
 `MediaLoader::getWildcard()` 向同一個 format manager 取得檔名樣式，所以檔案選擇視窗列出的永遠正好是 reader 看得懂的格式。`MediaLoader::canRead(file)` 用同樣方式檢查副檔名；arrangement view 用它來處理拖放：
 
+<div align="center">
+
 | `juce::FileDragAndDropTarget` callback | `ArrangementView` 做的事 |
 |---|---|
 | `isInterestedInFileDrag(files)` | 至少有一個檔案的副檔名可讀時回傳 true |
 | `fileDragEnter` / `fileDragMove(files, x, y)` | 標示滑鼠下方的 lane（`laneAt(y)`） |
 | `fileDragExit` | 取消標示 |
 | `filesDropped(files, x, y)` | 只留下可讀的檔案，呼叫 `onFilesDropped(track, files)` |
+
+</div>
 
 View 只負責轉送；`MainComponent::loadDroppedFiles()` 把第一個檔案載入放下的那條 lane，其餘檔案依序載入下面的 track（超過第 8 軌的檔案會在 status bar 提示），每個檔案都走和按鈕相同的 `loadAudioFile()`。
 
@@ -58,11 +62,15 @@ safe->session_.setTrackFormat(media.track, media.fileNumChannels == 1 ? engine::
 safe->session_.setTrackAudio(media.track, media.audio, media.name);
 ```
 
+<div align="center">
+
 | 檔案 | engine buffer | track format | pan 控制 |
 |---|---|---|---|
 | 1 個 channel | 2 個 channel，L = R（fold 成 $`(L+R)/2`$ 會精確還原檔案） | Mono | pan law（`Pan`） |
 | 2 個 channel | 2 個 channel | Stereo | balance（`Bal`） |
 | 3 個以上 channel | 前兩個 channel | Stereo | balance（`Bal`） |
+
+</div>
 
 engine buffer 永遠是 stereo，所以 clip 與 arrangement 不在乎 format；只有 track 的處理方式會因此不同。新 project 會把每個 track 重設為 Mono（`Session::resetMixerSettings()`），demo song 會設定它自己的 format（Step 9），而 strip 的 format 按鈕（Step 15）可以覆寫自動的選擇——例如把 mono drum loop 放到 stereo track 上，讓 reverb insert 保持寬廣。
 
@@ -114,11 +122,15 @@ Kernel 只製表一次（每個 zero crossing 512 個點，點與點之間用 li
 
 ## 換你動手
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫 | `app/Source/MediaLoader.cpp` 中的 `resampleBuffer()`：輸出長度、cutoff $`f_c = 0.46 \min(1, f_{\text{out}}/f_{\text{in}})`$、「Resampling：band-limited interpolation」中的 windowed-sinc kernel（保留 `MediaLoader.h` 的 `ResamplerSettings::kZeroCrossings` 與 `kCutoffScale`） |
 | 建置 + 檢查 | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test`（`l14_app_smoke_test`） |
 | 預期 | 第 1 節印出本頁的四行 resampler 輸出：1 kHz 振幅 0.5000 且長度 48 000、20 kHz alias 低於輸入超過 60 dB（作者：122.2 dB）、22.3 kHz transition-band alias 介於 -50 與 -80 dB 之間（作者：-54.3 dB）；`[PASS] l14_app_smoke_test` |
+
+</div>
 
 ## 你學到了什麼
 

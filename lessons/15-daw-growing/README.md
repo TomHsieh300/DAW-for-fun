@@ -43,6 +43,8 @@ After this chapter you can
 
 ## 2. The steps
 
+<div align="center">
+
 | Step | Document | Adds | Status |
 |---|---|---|---|
 | 1 | [Stable track IDs](docs/step-01-track-ids.md) | `TrackId`, a track list that hands out ids that are never reused; why indices break | done |
@@ -51,6 +53,8 @@ After this chapter you can
 | 4 | Saving and opening projects | a versioned project file built on track ids; opening it at another sample rate | planned |
 | 5 | Undo and redo | commands that can be inverted, an undo history, what should (not) be undoable | planned |
 | 6 | The app | a scrollable arrangement and mixer, add / delete track in the GUI, the File menu | planned |
+
+</div>
 
 ## 3. Where this chapter starts
 

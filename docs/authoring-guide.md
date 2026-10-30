@@ -16,8 +16,11 @@ This document defines the structure of each chapter, the code style and the API 
 - Identifiers in code are in English.
 - Math uses the LaTeX supported by GitHub: inline math as ``$`...`$`` and display math in a fenced ` ```math ` block (both keep the TeX away from the Markdown parser, which would otherwise eat backslashes such as `\\`, `\,` and `\;` or pair underscores across formulas). Inside a list item GitHub shows a ` ```math ` block as plain code, so a display formula there is written on its own line as ``$`\displaystyle ...`$``. Avoid macros GitHub rejects, such as `\operatorname` (use `\mathrm`).
 - Diagrams: signal flows, block diagrams, state machines and sequences are ` ```mermaid ` blocks (labels in the edition's language); curves (responses, transfer curves, envelopes, waveforms) are SVG figures computed by the chapter's `images/make_figures.py` with `docs/tools/plotstyle.py`. Never draw diagrams with box-drawing characters, arrows or CJK text in code blocks: they misalign on GitHub. `python docs/tools/check_mermaid.py` checks that every Mermaid block renders.
+- Layout: an image alone on its line is centered, `<p align="center"><img src="images/name.svg" alt="..."></p>`, and a top-level table is wrapped in `<div align="center">` (with a blank line after the opening and before the closing tag, so GitHub still parses the table as Markdown). Display math in ` ```math ` and Mermaid diagrams are centered by GitHub already; code blocks always span the full width. SVG text uses a sans-serif font list ending in the generic `sans-serif` (set in `plotstyle.py`), so every browser renders it without serifs.
 
 ## 2. Directory structure
+
+<div align="center">
 
 | Path | Contents |
 |---|---|
@@ -38,6 +41,8 @@ This document defines the structure of each chapter, the code style and the API 
 | `lessons/NN-name/solutions/README.md` | Answers and explanations for all exercises, including the conceptual and calculation ones (README.zh-TW.md alongside) |
 | `lessons/NN-name/solutions/*.cpp` | Complete solutions to the programming exercises (with self-checks, ctest label: solution) |
 | `lessons/NN-name/tests/*.cpp` | (Optional) regression tests for this chapter's dsp components (ctest label: test) |
+
+</div>
 
 ## 3. Structure of each chapter README.md
 
@@ -126,6 +131,8 @@ GCC / Clang use `-Wall -Wextra -Wpedantic`; new code should produce no warnings 
 
 Later chapters (especially the chapter 13 plugin and the chapter 14 DAW) use these classes directly, so **the names and the methods listed below must exist and have the same semantics**. You may add extra methods or classes.
 
+<div align="center">
+
 | Chapter | Header | Must provide |
 |---|---|---|
 | 01 | `SmoothedValue.h` | `class SmoothedValue`: `reset(double sampleRate, double rampSeconds)`, `setCurrentAndTargetValue(float)`, `setTargetValue(float)`, `float getNextValue()`, `float getCurrentValue() const`, `float getTargetValue() const`, `bool isSmoothing() const`, `void skip(int numSamples)` (linear ramp) |
@@ -158,5 +165,7 @@ Later chapters (especially the chapter 13 plugin and the chapter 14 DAW) use the
 | 11 | `SpectrumAnalyzer.h` | `class SpectrumAnalyzer`: `prepare(double sampleRate, int fftOrder = 11)`, `void pushSamples(const float* x, int n)` (audio thread, lock-free), `bool computeSpectrum(std::vector<float>& magnitudesDb)` (UI thread; returns the dB values of N/2+1 bins, with windowing and smoothing; returns false when there is no new data), `double getBinFrequency(int bin) const` |
 | 12 | `Reverb.h` | `class Reverb` (algorithmic; choose either an FDN or a Freeverb architecture and explain it): standard interface + `setDecaySeconds` (RT60), `setPreDelayMs`, `setDampingHz`, `setSize(float 0..1)`, `setWidth(float 0..1)`, `setMix(float 0..1)`, `setFreeze(bool)`. Teaching-oriented building blocks (`CombFilter`, `AllpassDiffuser`, etc.) may live in `ReverbBuildingBlocks.h` |
 | 12 | `ConvolutionReverb.h` | `class ConvolutionReverb` (uniform partitioned FFT convolution, using the chapter 11 `Fft`): `prepare(double sampleRate, int maxBlockSize, int numChannels)`, `reset()`, `void setImpulseResponse(const AudioBuffer& ir)` (not on the audio thread; may allocate), `setMix(float 0..1)`, `process(AudioBlock)`, `int getLatencySamples() const`, `static AudioBuffer makeSyntheticImpulseResponse(double sampleRate, double rt60Seconds, int numChannels, uint32_t seed = 1)` |
+
+</div>
 
 Chapter 13 (JUCE) provides a VST3 plugin built around `dawlab::dsp::Compressor` (`DawLabCompressor`), plus reusable plugin-hosting code (which the chapter 14 DAW uses to insert VST3 plugins on tracks). Chapter 14 separates the engine (pure C++, testable offline) from the JUCE app (audio device, GUI, VST3 inserts), and offers two routes to building the 8-track DAW from scratch. In the build-along route the reader writes the code step by step: Steps 1–10 each have, under `steps/stepNN-*/`, a stand-alone compilable engine snapshot containing only the features up to that step (`minidaw.h`; `starter/` leaves TODOs and FAILs when run, `solution/` uses `DAWLAB_CHECK` to verify only that step's features, the ctest names are `l14_stepNN_solution`, and each step builds on the previous step's solution), while Steps 11–21 specify, in the "Your turn" section of each step document, which functions in `app/` to delete and rewrite, and the checks that must pass afterwards (the corresponding section of `l14_app_smoke_test`, a `--snapshot` image, or an exercise solution). In the reference route you simply read and run the finished `engine/` and `app/`.

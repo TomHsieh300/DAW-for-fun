@@ -31,6 +31,8 @@ Sample 1 000 000：$`1\,000\,000 / 27\,562.5 = 36.2812`$ 個 beat；36 個整 be
 
 **(c)** $`\max_t L_t = 1024`$，$`\max_b L_b = 512`$：
 
+<div align="center">
+
 | 路徑 | latency $`L`$ | 補償 |
 |---|---|---|
 | track 1 | 0 | 1024 - 0 = **1024** |
@@ -41,6 +43,8 @@ Sample 1 000 000：$`1\,000\,000 / 27\,562.5 = 36.2812`$ 個 beat；36 個整 be
 | bus A | 0 | 512 - 0 = **512** |
 | bus B | 512 | **0** |
 | track sum | - | $`\max_b L_b`$ = **512** |
+
+</div>
 
 總 latency $`= 1024 + 512 + 240 =`$ **1776 個 sample** $`= 1776 / 48 =`$ **37.0 ms**。
 
@@ -150,10 +154,14 @@ Exercise 4: project saved (5861 bytes) to dawlab_output/l14_ex4_project.json
   EqualPower noise A->B : steady -16.77 dBFS, middle of the overlap -16.84 dBFS (-0.07 dB)
 ```
 
+<div align="center">
+
 | | 相同（相關）的 audio | 獨立的 audio |
 |---|---|---|
 | Linear（$`g_a + g_b = 1`$） | 振幅相加：$`0.5 + 0.5 = 1`$ -> **0 dB**，完美 | power 相加：$`0.5^2 + 0.5^2 = 0.5`$ -> **-3 dB** 的凹洞 |
 | EqualPower（$`g_a^2 + g_b^2 = 1`$） | $`2 \sin(\pi/4) = 1.414`$ -> **+3 dB** 的凸起 | power 恆定 -> **0 dB**，完美 |
+
+</div>
 
 所以：Linear 用於把 clip 與它自己（的一部分）crossfade，或與同一來源、時間對齊的另一個 take crossfade（comping）；EqualPower 用於不相關的素材。許多 DAW 兩者都提供——現在你知道為什麼了。
 

@@ -22,11 +22,15 @@ real-time rule is therefore "never wait", not "wait briefly".
 
 ### Values vs structure
 
+<div align="center">
+
 | change | mechanism | why it is enough |
 |---|---|---|
 | fader, pan, mute, solo, send level, effect parameter, bypass, tempo, play | `std::atomic` | one number; the newest value wins; no memory involved |
 | add / remove / replace / move insert, new clip list | **command** through `SpscQueue<Command>` | needs memory and several pointer updates applied together |
 | an object the audio thread no longer uses | **garbage ticket** through `SpscQueue<Garbage>` | must be freed, but not on the audio thread |
+
+</div>
 
 ### The single-producer / single-consumer ring buffer
 
@@ -106,11 +110,15 @@ the UI at any time.
 
 ## The code
 
+<div align="center">
+
 | File | Contents |
 |---|---|
 | `SpscQueue.h` | `SpscQueue<T>`: `push`, `pop`, `size`, `empty`, `capacity` |
 | `Commands.h` | `ChannelKind`, `ChannelRef`, `CommandType`, `Command` (factories `addInsert`, `removeInsert`, `replaceInsert`, `moveInsert`, `replaceClips`), `Garbage` |
 | `Engine.h` | `pushCommand`, `addInsert`, `replaceInsert`, `removeInsert`, `moveInsert`, `setTrackClips`, `getInsert`, `getNumInserts`, `collectGarbage`, `applyCommands` / `apply` / `discard` / `disposeNow` |
+
+</div>
 
 `Engine::apply()` is a `switch` over the command type; every branch is a few pointer operations
 and at most one `discard()`.
@@ -124,12 +132,16 @@ the finished engine adds `ReplaceInsert` and `MoveInsert`) and `Garbage`. `Engin
 back, a track's clip list is an atomic pointer, and `processChunk()` starts with
 `applyCommands()`.
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | `SpscQueue<T>::push()` and `pop()` (release / acquire, one empty slot) and `Engine::applyCommands()` (pop everything, link pointers, `discard()` what was unlinked or rejected) |
 | File | `steps/step07-commands/starter/step07.cpp` |
 | Run | `l14_step07_starter`; it prints `[FAIL] l14_step07 (16 of 24 checks failed)` until you are done (the two-thread queue test starts once the single-thread one passes) |
 | Solution | `steps/step07-commands/solution/step07.cpp` (ctest `l14_step07_solution`) |
+
+</div>
 
 Expected output (verified):
 

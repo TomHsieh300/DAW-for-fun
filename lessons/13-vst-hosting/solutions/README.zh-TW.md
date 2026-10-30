@@ -62,6 +62,8 @@ Exercise 1 check: Threshold 0.6 -> -24.0 dB, Ratio 0.60698 -> 8.00, Attack 0.4 -
 
 **1. 各動作的 thread**
 
+<div align="center">
+
 | 動作 | thread | 理由 |
 |---|---|---|
 | (a) `scan()` | message thread（或專門的 scanner process / thread，但要依格式規定） | VST3 要求 factory 與 instance 在 UI thread 建立；掃描會載入 DLL、可能很慢，正式產品會放到子 process |
@@ -69,6 +71,8 @@ Exercise 1 check: Threshold 0.6 -> -24.0 dB, Ratio 0.60698 -> 8.00, Attack 0.4 -
 | (c) `setState()` | message thread，而且最好在 audio 停止時（或先把 plugin 從 callback 拿掉） | plugin 可能在裡面重建資料結構、allocate；與 `process()` 同時跑可能造成 data race |
 | (d) 建立 `PluginWindow` | message thread | 所有 GUI 操作都只能在 message thread |
 | (e) 每 32 samples `setParameterValue()` | audio thread（跟 `process()` 同一個 thread，在每個 sub-block 之前） | JUCE 的 VST3 hosting 把參數值寫進 lock-free cache，下一個 `process` 才送給 plugin；參數變化必須跟音訊在同一條時間軸上，所以要在 audio thread 上、緊接著對應的 sub-block 設定（練習 4）。小細節：`setParameterValue` 另外通知 listener 時會短暫拿 `listenerLock`，嚴格的 real-time host 可改用不通知 listener 的 `setValue()` |
+
+</div>
 
 **2. 為什麼用 `ScopedTryLock`**
 
@@ -117,11 +121,15 @@ editor（`AudioProcessorEditor`）持有 processor 的參考；它的解構子�
 
 **2.** $`L_{\max} = 1024`$，$`d_i = L_{\max} - L_i`$：
 
+<div align="center">
+
 | track | plugin latency $`L_i`$ | host 額外延遲 $`d_i`$ |
 |---|---|---|
 | A | 240 | 784 samples（16.33 ms） |
 | B | 1024 | 0 |
 | C | 0 | 1024 samples（21.33 ms） |
+
+</div>
 
 整個專案的總 latency = 1024 samples = 21.33 ms（播放時 host 會提早 21.33 ms 讀取 timeline，所以聽起來仍然對拍）。
 

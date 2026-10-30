@@ -27,11 +27,15 @@ Clipper: zero delay, stateless and the simplest to implement, but it changes the
 
 **1.** `round(ms × fs / 1000)`:
 
+<div align="center">
+
 | lookahead | 44.1 kHz | 48 kHz | 96 kHz |
 |---|---|---|---|
 | 1.5 ms | 66.15 → **66** | **72** | **144** |
 | 5 ms | 220.5 → **221** | **240** | **480** |
 | 10 ms | **441** | **480** | **960** |
+
+</div>
 
 `dawlab::msToSamples` uses `std::lround`, which rounds halves away from zero, so 220.5 → 221. The `getLatencySamples` values printed in the table of `l05_latency_impulse`, and the positions where the impulse actually appears, are these numbers.
 
@@ -74,12 +78,16 @@ Zero insertion drops the average level to 1/4, so we normalize to $`\sum h = 4`$
 
 **Measured results (`l05_ex4_solution`):**
 
+<div align="center">
+
 | Signal | sample peak | true peak | Difference |
 |---|---|---|---|
 | 1 kHz sine, amp 0.5 | -6.02 dBFS | -6.02 dBTP | 0.00 |
 | 12 kHz (fs/4) sine, phase 45° (after warm-up) | -9.03 dBFS | -6.18 dBTP | +2.85 dB |
 | drums +12 dB, hard clipped to 0 dBFS | 0.00 dBFS | +4.54 dBTP | +4.54 dB |
 | drums +12 dB → Limiter (ceiling -1) | -1.00 dBFS | +1.02 dBTP | +2.02 dB |
+
+</div>
 
 **Why is the fs/4 row -6.18 rather than -6.02?** The prototype length $`N = 64`$ is even, so the center $`M = 31.5`$ is not on an integer. Converted back to the original sample rate, the delay of phase $`p`$ is $`(M - p)/4 = 7.875 - p/4`$ samples, with fractional parts 0.875, 0.625, 0.375, 0.125 — that is, the 4 interpolated points fall at 1/8, 3/8, 5/8 and 7/8 between two original samples, not at 0, 1/4, 1/2, 3/4. The peak of this signal is exactly midway between two samples (1/2), and the nearest interpolated point is 1/8 sample (= 11.25°) away from it, so the reading is $`0.5\cos 11.25° = 0.4904`$, i.e. -6.19 dBTP (the filter has a +0.01 dB ripple near fs/4, hence the printed -6.18). This is an inherent error of a 4x oversampling meter: it underestimates by at most about 0.17 dB. The 48-tap filter of BS.1770-4 is likewise a symmetric design of even length and has the same property; to make one phase line up exactly with the original samples you can use an odd-length prototype instead (for example 63 taps, padded with one 0 at the end).
 

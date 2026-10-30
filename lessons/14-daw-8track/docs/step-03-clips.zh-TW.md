@@ -89,12 +89,16 @@ track 持有 `std::atomic<const std::vector<Clip>*>`。UI 從不就地編輯清�
 
 ### `Clip.h`
 
+<div align="center">
+
 | 函式 | 用途 |
 |---|---|
 | `Clip::fromBuffer(buffer, start, name)` | 播放整個 buffer 的 clip |
 | `fadeGain(shape, t)` | $`t`$ 或 $`\sin(\pi t/2)`$ |
 | `clipFadeAt(clip, i)` | clip sample $`i`$ 的 fade gain |
 | `renderClip(clip, timelineStart, dest)` | 把重疊的部分加進 `dest`；real-time safe |
+
+</div>
 
 ### `Track.h`
 
@@ -124,12 +128,16 @@ segment 的 `timelineStart` 對應到相應的 sub-block。有 $`C`$ 個 clip �
 0.5 輸出。在 Step 7 之前，track 把 clip 放在一個單純的 `std::vector` 中，只在 engine 沒有執行時
 才會被替換（上面的 lock-free 交換是 Step 7 的工作）。
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫的 | `clipFadeAt()`（兩條 fade 公式）與 `renderClip()`（重疊、source 索引、clip gain、fade、mono -> 所有 channel、`+=`） |
 | 檔案 | `steps/step03-clips/starter/step03.cpp` |
 | 執行 | `l14_step03_starter`；在你完成之前它會印出 `[FAIL] l14_step03 (24 of 27 checks failed)` |
 | Solution | `steps/step03-clips/solution/step03.cpp`（ctest `l14_step03_solution`） |
+
+</div>
 
 預期輸出（已驗證）：
 

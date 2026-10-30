@@ -12,11 +12,15 @@
 
 ### 兩個量測點，一條規則
 
+<div align="center">
+
 | 顯示 | 量測者 | 位置 | GUI 如何取得 |
 |---|---|---|---|
 | strip meter、master meter | 每個 `ChannelStrip` 中的 `dsp::LevelMeter` | audio thread，`ChannelStrip::meter()` | atomic，30 Hz poll |
 | LUFS M / S / I | 每個 `ChannelStrip` 中的 `dsp::LoudnessMeter` | audio thread | atomic，30 Hz poll |
 | spectrum | `AudioHost` 中的 `dsp::SpectrumAnalyzer` | audio thread 推入 sample | message thread 上的 `computeSpectrum()` |
+
+</div>
 
 Chapter 11 的規則：audio thread 只*寫入*（sample 寫進 lock-free FIFO，結果寫進 atomic）；所有昂貴的或會 allocate 的事都發生在讀取端。
 
@@ -62,11 +66,15 @@ Master strip 的 `dsp::LoudnessMeter`（BS.1770 K-weighting、400 ms momentary�
 
 ## 換你動手
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫 | `app/Source/Meters.cpp` 中的 `SpectrumView::frequencyToProportion()` 與 `proportionToFrequency()`（20 Hz 到 20 kHz 之間的對數軸，兩端皆做 clamp） |
 | 建置 + 檢查 | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test`（`l14_app_smoke_test`） |
 | 預期 | 第 8 節：`peak at 996.09 Hz, -6.02 dBFS (-6.02 expected); 632.5 Hz at x = 0.500`；`[PASS] l14_app_smoke_test`；在 snapshot 中，spectrum 的格線（100 Hz、1 kHz、10 kHz）位於原本的位置 |
+
+</div>
 
 ## 你學到了什麼
 

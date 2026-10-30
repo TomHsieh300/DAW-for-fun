@@ -86,6 +86,8 @@ one audio block.
 
 ### Mouse map
 
+<div align="center">
+
 | where | action | effect |
 |---|---|---|
 | ruler | click / drag | `Transport::setPosition()` (snapped) - a pending seek |
@@ -93,6 +95,8 @@ one audio block.
 | lane | click | select the track (`Load audio...`, M / S keys act on it) |
 | empty lane | double-click | seek there |
 | anywhere | wheel / Ctrl + wheel | scroll / zoom around the mouse |
+
+</div>
 
 ## Code
 
@@ -123,11 +127,15 @@ for (int px = x0; px < x1; ++px) {
 
 ## Your turn
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | `ArrangementView::sampleToX()`, `xToSample()` and `snapToBeat()` in `app/Source/ArrangementView.cpp` (the formulas of "One coordinate system"; snapping rounds to the nearest beat and never returns a negative position), and `Session::moveClip()` in `app/Source/Session.cpp` (move, keep the list sorted by start, push a new clip list to the engine) |
 | Build + check | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel solution`: `l14_ex8_solution` draws its automation lane on *your* time axis |
 | Expected | `[PASS] l14_ex8_solution`: with `setView(0, 192)` one beat is 125 pixels and a click 3 pixels next to beat 2 snaps to sample 48 000; the snapshot (`l14_app_snapshot`) shows the clips where they were; in the app a dragged clip lands on a beat and is heard there on the next loop pass |
+
+</div>
 
 ## What you learned
 

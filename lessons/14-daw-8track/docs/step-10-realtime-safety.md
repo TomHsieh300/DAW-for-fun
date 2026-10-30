@@ -19,6 +19,8 @@ The audio device asks for $`N`$ samples every $`N / f_s`$ seconds (512 at 48 kHz
 the **worst case** counts. Operations with unbounded or unpredictable duration are therefore banned
 on the audio thread:
 
+<div align="center">
+
 | banned | why | what the engine does instead |
 |---|---|---|
 | `new` / `delete` / `malloc` (also hidden in `std::vector::push_back`, `std::string`, `std::function`, `make_shared`) | the allocator may take a lock or ask the OS for pages | allocate in `prepare()`; ownership arrives in commands |
@@ -26,6 +28,8 @@ on the audio thread:
 | file / console I/O (`printf`, logging) | system calls, locks | statistics in atomics, printed by another thread |
 | exceptions | allocation + unwinding cost | everything is `noexcept` |
 | waiting for another thread | unbounded | the audio thread only ever *polls* queues |
+
+</div>
 
 ### Audit 1 - count allocations
 
@@ -82,11 +86,15 @@ action and then sleeps 5 ms (the OS timer granularity stretches that: about 380 
 
 ## The code
 
+<div align="center">
+
 | File | What |
 |---|---|
 | `tests/test_realtime_safety.cpp` | operator new/delete replacement, audits 2 and 3 |
 | `tests/test_block_invariance.cpp` | audit 4 |
 | `examples/realtime_sim.cpp` | the paced simulation with load statistics |
+
+</div>
 
 ## Your turn
 
@@ -94,12 +102,16 @@ action and then sleeps 5 ms (the OS timer granularity stretches that: about 380 
 `audit::counters()`, `audit::countingOnThisThread()` (a `thread_local` flag) and
 `audit::CountScope`. There is no new engine code - the engine is what you audit.
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | the counting in the replaced global `operator new` / `operator delete` (only when `countingOnThisThread()` is true), and `audit::renderWithBlockSizes()` (play from 0 with block sizes cycling through a list) |
 | File | `steps/step10-realtime-safety/starter/step10.cpp` (the replacements already allocate with `malloc` / `free`; they just do not count yet) |
 | Run | `l14_step10_starter`; it prints `[FAIL] l14_step10 (7 of 11 checks failed)` until you are done |
 | Solution | `steps/step10-realtime-safety/solution/step10.cpp` (ctest `l14_step10_solution`) |
+
+</div>
 
 The check runs the three audits on your mini engine (8 tracks with fades, Gain / Compressor /
 PureDelay inserts on tracks, buses and master, sends, PDC, a loop). Expected output (verified,
@@ -159,10 +171,14 @@ iterators) is several times slower than optimized code, so build Release
 (`.\scripts\build.ps1 -Only 14-daw-8track -Config Release`) to see the real headroom. Measured on
 the author's machine (Release: three runs):
 
+<div align="center">
+
 | build | average load | worst block | deadline misses | `l14_render_song` (19 s of audio) |
 |---|---|---|---|---|
 | Debug | 49.4 % | 633 % (24 samples) | 22 | 13.14 s (1.4x real time) |
 | Release | 10.0 - 10.1 % | 69 - 109 % (24 samples) | 0 - 1 | 1.38 s (13.8x real time) |
+
+</div>
 
 Notice *which* block is the worst: the last one, cut to 24 samples so that the run ends at exactly
 6 s. Its deadline is only 0.5 ms, and much of the engine's work per block does not shrink with the

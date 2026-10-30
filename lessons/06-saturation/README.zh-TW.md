@@ -37,7 +37,7 @@ y[n] = f\big(x[n]\big)
 
 每個 sample 只看自己，丟進一條曲線 $`f`$。只要 $`f`$ 不是直線，正弦波就會被「壓彎」，而被壓彎的週期訊號，用 Fourier series 展開就會出現基頻的整數倍——**諧波（harmonics）**。
 
-![由左至右：振幅 3 的正弦波、在原點附近有一段直線的 tanh transfer curve、頂端被壓扁的輸出正弦波](images/saturation-sine-through-curve.svg)
+<p align="center"><img src="images/saturation-sine-through-curve.svg" alt="由左至右：振幅 3 的正弦波、在原點附近有一段直線的 tanh transfer curve、頂端被壓扁的輸出正弦波"></p>
 
 小訊號：在直線段，幾乎不失真；大訊號：進入彎曲區，產生諧波。
 
@@ -81,11 +81,15 @@ y = A\sin\theta - \frac{1}{3}\left(\frac{3A^3}{4}\sin\theta - \frac{A^3}{4}\sin 
 \frac{H_3}{H_1} = \frac{A^3/12}{A - A^3/4} = \frac{A^2}{12 - 3A^2}
 ```
 
+<div align="center">
+
 | $`A`$ | $`H_1 = A - A^3/4`$ | $`H_3 = A^3/12`$ | $`H_3/H_1`$ | THD |
 |---|---|---|---|---|
 | 0.25 | 0.24609 | 0.0013021 | −45.53 dB | 0.53 % |
 | 0.5 | 0.46875 | 0.0104167 | −33.06 dB | 2.22 % |
 | 1.0 | 0.75 | 0.0833 | −19.08 dB | 11.11 % |
+
+</div>
 
 範例 `l06_harmonic_analysis` 的最後一張表把這三列的「理論 vs 量測」並排印出，誤差 0.000 dB；練習 2 的解答也用 Goertzel 驗證了每一個數字。
 
@@ -102,12 +106,16 @@ y = A\sin\theta - \frac{1}{3}\left(\frac{3A^3}{4}\sin\theta - \frac{A^3}{4}\sin 
 
 本章的 `Saturation::shape()` 提供四條曲線：
 
+<div align="center">
+
 | 曲線 | 公式 | 小訊號展開 | 特性 |
 |---|---|---|---|
 | `Tanh` | $`\tanh x`$ | $`x - \frac{x^3}{3} + \frac{2x^5}{15} - \cdots`$ | 經典 soft clip，無限平滑、漸近到 ±1，只產生奇次諧波 |
 | `Cubic` | $`x - \frac{x^3}{3}`$（$`\lvert x\rvert \le 1`$），否則 $`\pm\frac{2}{3}`$ | 精確就是 $`x - \frac{x^3}{3}`$ | 便宜；$`\lvert x\rvert \le 1`$ 時只有三次諧波；超過後變 hard clip |
 | `Arctan` | $`\frac{2}{\pi}\arctan\left(\frac{\pi x}{2}\right)`$ | $`x - \frac{\pi^2}{12}x^3 + \cdots`$ | 三次項較大（0.82 vs tanh 的 0.33）→ knee 更早開始彎；趨近 ±1 很慢 |
 | `Asymmetric` | $`\tanh x`$（$`x \ge 0`$）、$`\frac{1}{2}\tanh 2x`$（$`x < 0`$） | 兩側原點斜率都是 1 | 負半波提早在 −0.5 飽和 → 偶次諧波 + DC（類 tube） |
+
+</div>
 
 **Cubic 的連續性。** $`x - x^3/3`$ 在 $`x = 1`$ 時值為 $`2/3`$，導數 $`1 - x^2 = 0`$。所以在 $`|x| = 1`$ 處接上常數 $`\pm 2/3`$，**值與一階導數都連續**，transfer curve 沒有折角。如果忘了截斷，$`x > 1`$ 之後曲線就開始往下掉（導數 $`1 - x^2 < 0`$，不再單調），$`x > \sqrt{3}`$ 之後更變成負的（$`\sqrt{3} - (\sqrt{3})^3/3 = 0`$）——推大 drive 時會聽到極其難聽的折返、甚至反相失真（第 5 節）。不過它的**二階導數**在 $`|x| = 1`$ 不連續（左邊 $`-2`$、右邊 0），所以推進截斷區後高次諧波衰減得比 tanh 慢：範例裡 $`A = 4`$ 時 Cubic 的 THD 是 38.3%，tanh 是 30.1%。
 
@@ -127,12 +135,16 @@ y = A\sin\theta - \frac{1}{3}\left(\frac{3A^3}{4}\sin\theta - \frac{A^3}{4}\sin 
 
 以及 100 Hz 正弦波、振幅 $`A = 1`$ 時的諧波（相對於基頻）：
 
+<div align="center">
+
 | 曲線 | H2 | H3 | H4 | H5 | THD | DC |
 |---|---|---|---|---|---|---|
 | Tanh | — | −23.5 dB | — | −45.1 dB | 6.71 % | 0 |
 | Cubic | — | −19.1 dB | — | — | 11.11 % | 0 |
 | Arctan | — | −20.0 dB | — | −34.8 dB | 10.21 % | 0 |
 | Asymmetric | −19.6 dB | −19.3 dB | −40.4 dB | −34.4 dB | 15.26 % | +0.0748 |
+
+</div>
 
 （「—」代表低於 −99 dB，也就是不存在。）
 
@@ -176,11 +188,15 @@ g(x) = \frac{f(x) + f(-x)}{2} = \frac{1}{2}\left(t - \frac{t}{1 + t^2}\right) = 
 
 **聽感：**
 
+<div align="center">
+
 | | 奇次諧波（3、5、7…） | 偶次諧波（2、4、6…） |
 |---|---|---|
 | 音程關係 | 3 次 = 高八度＋五度，5 次 = 兩個八度＋大三度，7 次已經偏離平均律 | 2 次 = 高八度，4 次 = 兩個八度，都是「同一個音」 |
 | 聽感 | 空心、方波感、有咬勁（clarinet、方波）；推多了顯得刺 | 厚、溫暖、「甜」，和原音融合得很好 |
 | 典型來源 | 對稱的電路：push-pull 功率級、tape、二極體對 | 不對稱的電路：single-ended 真空管前級、偏壓偏移的電晶體 |
+
+</div>
 
 **DC offset 的壞處。** 不對稱曲線讓訊號的平均值不再是 0（範例中 $`A = 1`$ 時 DC = +0.0748，$`A = 4`$ 時 +0.207）。DC 本身聽不到，但它：
 
@@ -212,11 +228,13 @@ f_{\text{alias}} = \left|\, \Big( (f + f_s/2) \bmod f_s \Big) - f_s/2 \,\right|
 
 直覺上就是把頻率軸以 $`f_s/2`$ 為鏡子來回摺紙：
 
-![fs = 48 kHz 時，alias 頻率對真實頻率的關係：在 0 與 fs/2 之間來回的三角波，並標出 7 kHz 的第 3 到第 13 次諧波](images/aliasing-fold.svg)
+<p align="center"><img src="images/aliasing-fold.svg" alt="fs = 48 kHz 時，alias 頻率對真實頻率的關係：在 0 與 fs/2 之間來回的三角波，並標出 7 kHz 的第 3 到第 13 次諧波"></p>
 
 橫軸是真實頻率，縱軸是取樣之後實際落在哪裡。0 到 $`f_s/2`$ 原封不動；$`f_s/2`$ 到 $`f_s`$ 鏡射回來（$`f \to f_s - f`$）；$`f_s`$ 到 $`3f_s/2`$ 再鏡射一次（$`f \to f - f_s`$），依此類推。可聽範圍只有 $`0 \sim f_s/2`$ 這一段，超過 Nyquist 的部分都被摺回這裡。圖上的圓點是下面 7 kHz 例子的各次諧波。
 
 **例子：7 kHz 正弦波 + tanh、$`f_s`$ = 48 kHz。** tanh 是奇函式，只有奇次諧波：
+
+<div align="center">
 
 | 諧波 | 頻率 | 折返到 | 是不是 7 kHz 的整數倍？ |
 |---|---|---|---|
@@ -226,6 +244,8 @@ f_{\text{alias}} = \left|\, \Big( (f + f_s/2) \bmod f_s \Big) - f_s/2 \,\right|
 | 9 | 63 kHz | 63 − 48 = **15 kHz** | 否 |
 | 11 | 77 kHz | 96 − 77 = **19 kHz** | 否 |
 | 13 | 91 kHz | 96 − 91 = **5 kHz** | 否 |
+
+</div>
 
 1 kHz、5 kHz、13 kHz……這些頻率跟 7 kHz 沒有和聲關係，聽起來就像另一個不協調的音，或是一種「金屬、沙沙的」雜質。而且輸入音高在滑動（vibrato、bend）時，alias 的移動跟音高**不成比例**：用 $`f_s - kf_0`$ 折回來的（5 次的 13 kHz、11 次的 19 kHz、13 次的 5 kHz）會**反向**滑；用 $`kf_0 - f_s`$ 折回來的（7 次的 1 kHz、9 次的 15 kHz）會以 $`k`$ 倍的速度**同向**滑。整體聽起來像一團亂竄的雜音，非常明顯。
 
@@ -294,13 +314,19 @@ h[0..7] = 0.50000, 0.31707, 0.00000, -0.10244, 0.00000, 0.05772, 0.00000, -0.037
 
 以本章的第 1 級（63 taps，奇數 tap $`2K = 32`$）為例，每個「原始取樣率的 sample」需要的乘法：
 
+<div align="center">
+
 | 做法 | 升頻 | 降頻 |
 |---|---|---|
 | 插零後直接跑 63-tap FIR（在 2fs 下算 2 次） | 126 | 126（算完丟一半） |
 | polyphase（不利用零係數） | 63 | 63 |
 | **polyphase + halfband 零係數** | **32** | **33** |
 
+</div>
+
 **FIR halfband vs IIR allpass polyphase。** 另一種常見做法是用兩條 allpass filter 組成的 IIR polyphase halfband（Valenzuela & Constantinides 1983；很多商用 plugin 用它）。取捨如下：
+
+<div align="center">
 
 | | FIR halfband（本章採用） | IIR allpass polyphase |
 |---|---|---|
@@ -310,15 +336,21 @@ h[0..7] = 0.50000, 0.31707, 0.00000, -0.10244, 0.00000, 0.05772, 0.00000, -0.037
 | 數值 | 不會不穩定、沒有 denormal 問題 | 遞迴結構：要處理 denormal、係數量化 |
 | dry/wet mix | dry 延遲整數個 sample 就能完美對齊 | 相位不是單純延遲 → mix 會有 comb filtering 或相位偏移 |
 
+</div>
+
 我們選 FIR，因為它讓 latency 是乾淨的整數、dry/wet 可以完美對齊，而且原理最容易檢查。代價是 latency 與 CPU。如果你在做 live monitoring、對 latency 很敏感的 plugin，IIR 版是更好的選擇。
 
 **本章 Oversampler 的設計數字**（範例 `l06_oversampler_response` 實測）：
+
+<div align="center">
 
 | 級 | 倍率 | 奇數 tap | FIR 長度 | group delay | 工作 sample rate |
 |---|---|---|---|---|---|
 | 1 | ×2 | 32 | 63 | 31 samples | 96 kHz |
 | 2 | ×4 | 12 | 23 | 11 samples | 192 kHz |
 | 3 | ×8 | 8 | 15 | 7 samples | 384 kHz |
+
+</div>
 
 第 1 級的頻率響應（在 96 kHz 下）：passband 誤差 < 0.01 dB 到 20.3 kHz；阻帶從 28.0 kHz 起 ≤ −80 dB；24 kHz（舊 Nyquist）處正好 −6.02 dB（halfband 的特徵：$`H(f_s/4) = 1/2`$）。第 2、3 級為什麼可以短這麼多？第 2 級是 96 → 192 kHz，它的輸入已經只剩 0～24 kHz 左右（更高的部分第 1 級已經擋掉了），插零後的 image 落在 96 − 24 = 72 kHz 以上；所以第 2 級的 transition band 可以從 24 kHz 一路寬到 72 kHz——transition 越寬，需要的 tap 越少。第 3 級（192 → 384 kHz）同理，image 落在 192 − 24 = 168 kHz 以上，transition band 更寬。
 
@@ -356,6 +388,8 @@ F(x) = \begin{cases} x^2/2 & |x| \le 1 \\ |x| - 1/2 & |x| > 1 \end{cases}
 
 練習 6 的實測（7 kHz、peak 2 的 hard clip）：
 
+<div align="center">
+
 | 方法 | alias 總和 |
 |---|---|
 | naive 1x | −24.6 dB |
@@ -364,6 +398,8 @@ F(x) = \begin{cases} x^2/2 & |x| \le 1 \\ |x| - 1/2 & |x| > 1 \end{cases}
 | ADAA + 2x | −56.0 dB |
 | naive 4x | −49.2 dB |
 | naive 8x | −61.7 dB |
+
+</div>
 
 ADAA 1x 已經比 naive 2x 更乾淨，而 CPU 只多了一次減法與除法。對照最後兩列：hard clip 的諧波只以 $`1/k`$ 衰減，單靠 oversampling 每翻一倍只改善 12～13 dB，8x 還有 −61.7 dB 的 alias；「ADAA + 2x」用少得多的運算就到了同一個量級。實務上常見的組合正是「ADAA + 2x oversampling」。
 
@@ -598,12 +634,16 @@ cd build
 
 - **示範**：用 `Saturation`（4x）處理 drum loop 與 pluck sequence，四組 preset：
 
+<div align="center">
+
 | preset | 曲線 | drive | mix | output |
 |---|---|---|---|---|
 | glue | Tanh | +6 dB | 100% | −3 dB |
 | tube | Asymmetric | +12 dB | 100% | −6 dB |
 | parallel | Tanh | +18 dB | 30% | −6 dB |
 | cubic | Cubic | +12 dB | 100% | −3 dB |
+
+</div>
 
   印出 peak、RMS、crest factor 與 ΔRMS；Asymmetric 時比較「關 / 開 DC blocker」的 DC（drums：+0.01623 → −0.00000；pluck：−0.01671 → −0.00012）；Cubic 時比較曲線上限與實際 peak，並把超出的部分拆成「DC blocker」與「降頻 lowpass」兩個來源（見第 5 節）。最後用 2000 samples 的 block 餵給 `prepare(…, 512, …)` 的 `Saturation`，確認自動切塊的結果與正常處理完全相同（最大差異 0）。
 
@@ -628,6 +668,8 @@ cd build
 
 ## 5. 常見錯誤與除錯
 
+<div align="center">
+
 | 症狀 | 原因 | 解法 |
 |---|---|---|
 | 高音（hi-hat、高把位吉他）加飽和後出現「金屬味」、和音高無關的雜音，pitch bend 時雜音不跟著音高走（有的反向滑、有的以數倍速度同向亂竄） | aliasing | 開 2x/4x oversampling；降低 drive；用 ADAA；先 lowpass 再飽和 |
@@ -640,6 +682,8 @@ cd build
 | 上游送進一個 NaN 之後，輸出永遠是 NaN（要 `reset()` 才恢復） | DC blocker 是遞迴的：NaN 一旦進入它的狀態，NaN 乘任何數都還是 NaN，永遠出不來（FIR 不會，NaN 幾十個 sample 後就離開視窗） | 在遞迴結構前把非有限值換成 0（`Saturation` 已經這樣做：只會有一小段靜音，之後自動恢復）；自己寫的遞迴效果也要在入口做 sanitize，或偵測到 NaN 時 `reset()` |
 | `downsample()` assert 失敗 | 傳給 `downsample()` 的 block 長度與 `upsample()` 不同 | 同一個 block 呼叫一次 upsample、一次 downsample |
 | 開了 oversampling，22 kHz 附近的高頻變小 | halfband 的 transition band（22 kHz 來回 −1.25 dB） | 正常現象；需要更寬的 passband 就增加第 1 級的 tap 數（代價是 latency） |
+
+</div>
 
 **除錯技巧**：先別用耳朵。用 `goertzelAmplitude` 量「應該有」與「不該有」的頻率：對稱曲線的 H2 應該是 −∞ dB；7 kHz 輸入在 1 kHz 應該沒有東西。範例 2 的預測表 + 量測表就是這個方法的樣板。
 

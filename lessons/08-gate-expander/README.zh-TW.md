@@ -24,11 +24,13 @@
 
 所有「依音量改變增益」的效果器，靜態行為都可以用一條 **transfer curve**（輸入 dB → 輸出 dB）描述。1:1 的斜線代表「不處理」。差別只在於：曲線在 threshold 的**哪一側**偏離 1:1、往**哪個方向**偏。
 
-![compressor 4:1（T = -20）、limiter（T = -10）、downward expander 1:2（T = -40）與 gate（T = -40，range -80）的 transfer curve，橫軸輸入 dB、縱軸輸出 dB，以 1:1 斜線為參考](images/transfer-curves-dynamics-family.svg)
+<p align="center"><img src="images/transfer-curves-dynamics-family.svg" alt="compressor 4:1（T = -20）、limiter（T = -10）、downward expander 1:2（T = -40）與 gate（T = -40，range -80）的 transfer curve，橫軸輸入 dB、縱軸輸出 dB，以 1:1 斜線為參考"></p>
 
 圖中粗灰色斜線是 1:1 參考線（不處理），圓點標出各曲線的 threshold。各曲線在自己的 threshold 另一側都和斜線重疊（不處理）。compressor / limiter：T 以上「躺平」（compressor 的 4:1 在 T 以上每 10 dB 只升 2.5 dB；limiter 是 ∞:1，完全不升）。expander：T 以下「變陡」（1:2 在 T 以下每 5 dB 掉 10 dB，斜率 2）。gate：T 以下直接掉 80 dB，掉出圖外（垂直的箭頭）。
 
 範例 2（`l08_expander_vs_gate_curve`）把這四條曲線印成表，節錄如下：
+
+<div align="center">
 
 | 輸入 (dB) | compressor 4:1, T=-20 | limiter ∞:1, T=-10 | expander 1:2, T=-40 | gate T=-40, range -80 |
 |---:|---:|---:|---:|---:|
@@ -39,12 +41,18 @@
 | -10 | -17.5 | -10.0 | -10.0 | -10.0 |
 | 0 | -15.0 | -10.0 | 0.0 | 0.0 |
 
+</div>
+
 整理成「四象限」：
+
+<div align="center">
 
 | | 作用在 threshold **以上** | 作用在 threshold **以下** |
 |---|---|---|
 | **往 1:1 靠近（縮小動態）** | downward compression（compressor、limiter） | upward compression（把小聲的拉大） |
 | **遠離 1:1（擴大動態）** | upward expansion（把大聲的推更大） | downward expansion（expander、gate） |
+
+</div>
 
 日常說的「compressor」「expander」「gate」都是 **downward** 的那兩格：它們只會把 gain 往下拉（gain ≤ 0 dB）。upward 的兩格會把 gain 往上推，需要另外限制最大 boost（2.7 節、練習 5）。
 
@@ -105,10 +113,14 @@ g_{\text{final}} = \max\big(\text{range},\ y(x) - x\big),\qquad \text{range} < 0
 
 靜態曲線之前一樣要有 level detector（第 04 章 `EnvelopeFollower`）。命名慣例和 compressor「相反」，第一次看很容易搞混：
 
+<div align="center">
+
 | | compressor | expander / gate |
 |---|---|---|
 | 訊號變大時 | gain **下降**（開始壓）→ 這段叫 attack | gain **上升**（門打開）→ 這段叫 attack |
 | 訊號變小時 | gain **回升**（放開）→ release | gain **下降**（門關上）→ release |
+
+</div>
 
 兩者其實是同一件事：**attack 永遠是「訊號變大時」的反應時間**。對 expander 而言，訊號一變大就要趕快把門打開，否則打擊的頭會被吃掉，所以 attack 通常很短（0.1–5 ms）；訊號變小時慢慢關，讓自然的衰減（鼓的尾音、殘響）不要被剪斷，release 通常 50–300 ms。
 
@@ -124,7 +136,7 @@ Gate 可以看成 ratio → ∞ 的 expander：低於 threshold 就直接衰減 
 
 想像 snare 的尾音慢慢衰減，正好經過 threshold。偵測到的 envelope 不是平滑的直線：peak detector 每遇到一個波峰就往上跳一下，兩個波峰之間又往下掉，造成數 dB 的漣漪（ripple）。如果開門和關門用同一個門檻 $`T`$：
 
-![只有單一 threshold 的 gate：帶漣漪的 envelope 多次穿過 T，gate 狀態不斷在開與關之間切換（chattering）](images/gate-chattering-single-threshold.svg)
+<p align="center"><img src="images/gate-chattering-single-threshold.svg" alt="只有單一 threshold 的 gate：帶漣漪的 envelope 多次穿過 T，gate 狀態不斷在開與關之間切換（chattering）"></p>
 
 圖中是一個緩慢衰減的 50 Hz 音（偵測器：peak、attack 0.1 ms、release 20 ms）的 envelope，在 threshold $`T = -30`$ dB 附近帶著約 1 dB 的漣漪，每個波峰都可能越過它一次：下方的 gate 狀態條在約 100 ms 內改變了 11 次狀態，開、關、開、關……= chattering（聽起來像碎裂的「嗶嗶剝剝」）。
 
@@ -134,7 +146,7 @@ Gate 可以看成 ratio → ∞ 的 expander：低於 threshold 就直接衰減 
 - envelope **< $`T_\text{close}`$ = threshold − hysteresis** 才關門；
 - 在兩者之間，維持目前的狀態。
 
-![同樣帶漣漪的 envelope，加上 6 dB 的 hysteresis：漣漪落在 T_open 與 T_close 之間，gate 只關一次](images/gate-hysteresis-schmitt.svg)
+<p align="center"><img src="images/gate-hysteresis-schmitt.svg" alt="同樣帶漣漪的 envelope，加上 6 dB 的 hysteresis：漣漪落在 T_open 與 T_close 之間，gate 只關一次"></p>
 
 圖中同一條 envelope 在很長一段時間都落在 $`T_\text{open}`$ 與 $`T_\text{close}`$ = $`T_\text{open}`$ - 6 dB 之間：漣漪不改變狀態，直到 envelope 真的掉到 $`T_\text{close}`$ 以下，gate 才關一次。
 
@@ -151,12 +163,16 @@ $`\tau_r\,\dot e = |x| - e`$——注意它是往**目前的 $`|x|`$** 衰減，
 
 （$`8.686 = 20/\ln 10`$，用到 $`\ln(1+u) \approx u`$。）45 Hz 的 kick、偵測器 release 20 ms：$`8.686 \times 0.363 / (2 \times 45 \times 0.02) \approx 1.75`$ dB。如果偵測器是「往 0 衰減」的類型（類比的 diode + RC peak detector），兩個波峰之間會掉 $`e^{-1/(2f\tau_r)}`$，也就是 $`8.686/(2f\tau_r) \approx 4.8`$ dB，大了 $`1/(1 - 2/\pi) \approx 2.75`$ 倍。範例 1 的 [4] 用 `Gate` 內部同款偵測器實測：
 
+<div align="center">
+
 | 頻率 | release 20 ms 實測 / 估算 | release 50 ms 實測 / 估算 |
 |---:|---:|---:|
 | 45 Hz | 1.56 / 1.75 dB | 0.66 / 0.70 dB |
 | 100 Hz | 0.74 / 0.79 dB | 0.31 / 0.32 dB |
 | 185 Hz | 0.41 / 0.43 dB | 0.17 / 0.17 dB |
 | 1000 Hz | 0.08 / 0.08 dB | 0.03 / 0.03 dB |
+
+</div>
 
 估算略高於實測，因為波峰附近有一小段是 attack 在充電、不是 release 在放電。兩個結論：漣漪和 $`1/(f\tau_r)`$ 成正比，**低頻訊號（kick、tom、bass）的漣漪最大**；拉長偵測器 release 可以把漣漪壓小，但偵測會變慢。
 
@@ -197,6 +213,8 @@ range -80 dB、attack 1 ms、48 kHz：$`\Delta_a = 80/48 \approx 1.67`$ dB/sampl
 
 範例 1 的時間軸（threshold -30、hysteresis 6、attack 1 ms、hold 20 ms、release 50 ms）：
 
+<div align="center">
+
 | time (ms) | transition | 說明 |
 |---:|---|---|
 | 0.10 | Closed -> Attack | kick 一開始，0.1 ms 偵測器就超過 -30 dB |
@@ -205,6 +223,8 @@ range -80 dB、attack 1 ms、48 kHz：$`\Delta_a = 80/48 \approx 1.67`$ dB/sampl
 | 477.04 | Hold -> Release | hold 20 ms |
 | 500.00 | Release -> Attack | 500 ms 的 snare 在 release 途中到達，直接從當下 gain 往上爬 |
 | 500.48 | Attack -> Open | 從 release 中途開，所以不到 1 ms 就開完 |
+
+</div>
 
 #### 2.4.3 Range
 
@@ -381,12 +401,16 @@ T + R\,(x - T), & x \ge T + W/2
 
 ### 2.8 實務：四個常見的用法
 
+<div align="center">
+
 | 情境 | 元件 | 典型設定 | 注意 |
 |---|---|---|---|
 | Tom / kick 麥克風去串音 | Gate | threshold：比串音的 peak 高 3–6 dB；hysteresis 4–10 dB；attack 0.1–1 ms；hold 30–100 ms；release 100–300 ms；range -40～-80 dB | release 太短會剪掉鼓的尾音；sidechain 加 HPF / 用 trigger 麥克風避免 kick 把 tom 的門打開 |
 | 人聲 de-essing | De-esser | 女聲 6–9 kHz、男聲 5–7 kHz；threshold 讓 GR 只在齒音時 4–8 dB；range 8–12 dB | 先用 listen 找頻率；split-band 音色較乾淨，wideband 在齒音很重時比較有效 |
 | Snare transient 加強 | Transient shaper | attack +3～+8 dB、sustain 0～−4 dB | attack 加大會讓 peak 上升（範例 4：attack +12 → peak +11.7 dB），後面要留 headroom 或接 limiter |
 | 現場人聲 / 對白去背景 | Expander | ratio 1:2–1:4、threshold 在說話音量下方 10–15 dB、range -10～-20 dB | range 太深會聽到背景「呼吸」（pumping） |
+
+</div>
 
 **放在 chain 的哪裡**：gate / expander 通常放在 insert chain 的最前面（EQ 的 high-pass 之後即可）。理由和第 07 章反覆提到的一樣：compressor、saturation、distortion 都會把小訊號「拉大」——distortion 的 drive 30 dB 會讓 -50 dBFS 的底噪變成 -20 dBFS，而鼓的 peak 被削平，訊號與雜訊的距離從 40 多 dB 縮到 10 幾 dB，之後再 gate 就找不到乾淨的 threshold 了。de-esser 則常放在 compressor 之後（compressor 把母音壓小後齒音更突出），或前後各放一個輕的。transient shaper 因為不看絕對 level，放在哪裡都能動作，但放在 compressor 之前時，compressor 會把剛加強的 attack 又壓回去。
 
@@ -577,6 +601,8 @@ attack ±12 dB 讓 crest factor 分別 +4.86 / −1.35 dB：加強起音 → 更
 
 ## 5. 常見錯誤與除錯
 
+<div align="center">
+
 | 症狀 | 可能原因 | 解法 |
 |---|---|---|
 | 門在尾音附近快速開關、聽到「嗶嗶剝剝」 | chattering：沒有 hysteresis、hold = 0、偵測器 release 太短導致 envelope 漣漪大 | 加 hysteresis（> 漣漪峰對峰值）、加 hold 20–50 ms、拉長偵測器 release（練習 3） |
@@ -590,6 +616,8 @@ attack ±12 dB 讓 crest factor 分別 +4.86 / −1.35 dB：加強起音 → 更
 | Transient shaper 讓低頻 kick 失真 | gain 的平滑太短，fast envelope 的漣漪直接調變了 gain | 加長 gain 平滑時間，或加長 fast 的 release |
 | Transient shaper 處理後 clipping | attack + 或 sustain + 讓 peak 上升 | 先降輸入 gain，或後面接 limiter（第 05 章） |
 | Gate 在完全靜音的輸入上 GR 顯示 80 | 正常：門關著時 GR = |range| | — |
+
+</div>
 
 ## 6. 練習題
 

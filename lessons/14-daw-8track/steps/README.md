@@ -7,6 +7,8 @@
 Each folder is a small, complete engine that contains exactly what exists after its step. You
 write the step's functions in `starter/`, the self-check tells you when they work.
 
+<div align="center">
+
 | Step | Folder | You write | Run |
 |---|---|---|---|
 | 1 | `step01-skeleton` | `Engine::processBlock`, `Engine::processChunk` | `l14_step01_starter` |
@@ -19,6 +21,8 @@ write the step's functions in `starter/`, the self-check tells you when they wor
 | 8 | `step08-pdc` | `LatencyCompensator::process`, `Mixer::updateLatencies` | `l14_step08_starter` |
 | 9 | `step09-offline-render` | `renderOffline` | `l14_step09_starter` |
 | 10 | `step10-realtime-safety` | counting `operator new` / `delete`, `audit::renderWithBlockSizes` | `l14_step10_starter` |
+
+</div>
 
 Every folder has the same four files:
 

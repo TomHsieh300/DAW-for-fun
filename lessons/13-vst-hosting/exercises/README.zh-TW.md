@@ -21,12 +21,16 @@ cd build                               # 你的 build 資料夾
 
 DawLabCompressor 的參數範圍如下（`plugin/compressor/CompressorProcessor.cpp`）：
 
+<div align="center">
+
 | 參數 | 範圍 | skew |
 |---|---|---|
 | Threshold | −60 … 0 dB | 1（線性） |
 | Ratio | 1 … 20 | 0.5 |
 | Attack | 0.1 … 200 ms | `setSkewForCentre(10)` |
 | Release | 5 … 2000 ms | `setSkewForCentre(100)` |
+
+</div>
 
 JUCE 的換算公式：$`n = \left(\dfrac{v - s}{e - s}\right)^{k}`$，$`v = s + (e - s)\, n^{1/k}`$。
 

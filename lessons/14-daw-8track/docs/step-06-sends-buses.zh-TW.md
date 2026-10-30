@@ -89,12 +89,16 @@ for (int b = 0; b < kNumBuses; ++b) {                                // after al
 與 pre/post 開關，以及兩個 balance 模式的 bus strip，它們的 return 由
 `Mixer::process()` 在所有 track 之後加進 master。
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫的 | `ChannelStrip::addSend()`（`dest += src * ramped gain`，每個 sample 一次 `getNextValue()`），以及再次寫 `Mixer::processTrack()`，這次在 `applyFaderAndPan()` 之前加入 pre-fader 取樣點、之後加入 post-fader 取樣點 |
 | 檔案 | `steps/step06-sends-buses/starter/step06.cpp` |
 | 執行 | `l14_step06_starter`；在你完成之前它會印出 `[FAIL] l14_step06 (9 of 10 checks failed)` |
 | Solution | `steps/step06-sends-buses/solution/step06.cpp`（ctest `l14_step06_solution`） |
+
+</div>
 
 預期輸出（已驗證）- 先是上面的算例，接著是 mute、兩條 bus、solo 與 ramp：
 

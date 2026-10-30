@@ -18,11 +18,15 @@ peak meter. Every control writes straight into the engine's atomics; every displ
 Nothing in the GUI says "2 buses": Exercise 12 recompiles the engine and the app with three buses
 and the mixer simply has twelve strips.
 
+<div align="center">
+
 | strip kind | Load | inserts | sends | pan | fader | M | S | extra |
 |---|---|---|---|---|---|---|---|---|
 | track | yes | 4 | one per bus (post-fader by default; a pre-fader send shows "A pre" and says so in its tooltip) | mono track: pan law (constant power), stereo track: balance | yes | yes | yes | format button (Mono / Stereo) |
 | bus | - | 4 | - | balance | yes | yes | - (solo-safe) | - |
 | master | - | 4 | - | balance | yes | - | - | limiter ceiling, spectrum, LUFS |
+
+</div>
 
 The distinctions come from stage 1: mono tracks use the constant-power pan law, stereo tracks,
 buses and master use balance (Step 4, "Mono and stereo tracks", and "Everything 3 dB too quiet" in
@@ -40,10 +44,14 @@ a stereo track so that a widening insert keeps its width (Step 5).
 
 The label under the pan knob follows the format, because the knob does two different things:
 
+<div align="center">
+
 | format | label | tooltip | knob at the centre |
 |---|---|---|---|
 | Mono | `Pan` | "Pan (constant-power law: centre -3 dB per side)" | x0.7071 per side |
 | Stereo | `Bal` | "Balance (centre: unity; turning right lowers the left side)" | x1 per side |
+
+</div>
 
 Button text, toggle state, label and tooltip are set in `refreshStructure()`, which runs after
 every `Session` change message - so a format set by the loader, by a project file or by an exercise
@@ -58,9 +66,13 @@ A fader's travel should spend most of its length where mixing happens (-20 .. +6
 \text{dB}(p) = 12 - 72\,(1 - p)^2, \qquad p(\text{dB}) = 1 - \sqrt{\frac{12 - \text{dB}}{72}}
 ```
 
+<div align="center">
+
 | dB | +12 | +6 | 0 | -6 | -12 | -30 | -60 (bottom = $`-\infty`$) |
 |---|---|---|---|---|---|---|---|
 | $`p`$ | 1.000 | 0.711 | 0.592 | 0.500 | 0.423 | 0.236 | 0 |
+
+</div>
 
 So 0 dB sits at 59 % of the travel and -6 dB exactly in the middle; the bottom position means
 silence (`FaderLaw::toEngineDb` maps -60 to $`-\infty`$ = `kMinusInfinityDb`). The scale painted
@@ -129,11 +141,15 @@ send knobs (orange) where tracks feed the reverb and delay buses, meters with le
 
 ## Your turn
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | `FaderLaw::positionToDb()` and `FaderLaw::dbToPosition()` in `app/Source/MixerView.cpp` (the square law of "The fader law"; a position at the bottom means $`-\infty`$) |
 | Build + check | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test` (`l14_app_smoke_test`) |
 | Expected | the fader checks of this page pass: `dbToPosition(0) = 0.5918`, `positionToDb(dbToPosition(-12)) = -12`, moving track 1's fader to the -6 dB position sets the engine to -6.00 dB; `[PASS] l14_app_smoke_test` |
+
+</div>
 
 ## What you learned
 

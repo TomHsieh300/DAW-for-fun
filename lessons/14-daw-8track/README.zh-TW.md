@@ -11,12 +11,16 @@
 
 本章分成兩個階段：
 
+<div align="center">
+
 | 階段 | 內容 | 位置 | 需要 JUCE？ |
 |---|---|---|---|
 | **1**（Step 1-10） | **engine**：transport、clip、8 軌 mixer、insert、FX bus、lock-free command queue、plugin delay compensation、offline bounce、real-time safety 測試 | 跟著做：`steps/`；參考實作：`engine/`、`examples/`、`tests/`；文字說明：`docs/step-01..10` | 不需要 - 純 C++17，可離線測試 |
 | **2**（Step 11-21） | **應用程式 "DawLab 8"**：audio device、深色 GUI（transport bar、帶波形的 arrangement、帶自動產生參數面板的 mixer、spectrum 與 loudness）、透過第 13 章載入的 VST3 insert、含 resampling 的檔案載入、export、鍵盤快捷鍵、自動化 GUI 測試 | `app/`、`docs/step-11..21` | 需要 |
 
-![DawLab 8 playing the demo song](docs/images/dawlab8_snapshot.png)
+</div>
+
+<p align="center"><img src="docs/images/dawlab8_snapshot.png" alt="DawLab 8 playing the demo song"></p>
 
 *DawLab 8 播放 demo song，位置在第 2 小節第 3 拍。這張圖不是螢幕截圖：app 會用
 `"DawLab 8.exe" --snapshot <file.png>`（Step 12）自己繪製畫面，ctest 每次 build 都會執行它。*
@@ -32,10 +36,14 @@ device、繪圖，並透過 atomic 與 command queue 和 engine 溝通。
 通過本章有兩種方式，它們使用同樣的 21 份 step 文件
 （[路線圖](#4-二十一個-step)）：
 
+<div align="center">
+
 | 路線 | 你要做的事 | 位置 | 由什麼檢查 |
 |---|---|---|---|
 | **跟著做**（建議） | 自己一步一步寫出這套 DAW | Step 1-10：`steps/stepNN-*/` - 每個 step 一份小而獨立的 engine snapshot。Step 11-21：各 step 文件裡的「Your turn」章節 | Step 1-10：`l14_stepNN_starter`（你的程式碼；在 step 完成前會印出 `[FAIL]`）與 `l14_stepNN_solution`（ctest）。Step 11-21：app 自己的測試（`l14_app_smoke_test`、`l14_app_snapshot`、習題解答） |
 | **參考** | 閱讀並執行完成版的程式 | `engine/`（+ `examples/`、`tests/`）與 `app/` | `l14_test_*`、`l14_app_smoke_test`、各個 example |
+
+</div>
 
 **跟著做，Step 1-10（engine）。** 每個 `steps/stepNN-*/` 資料夾都是一個完整、可編譯的
 迷你 engine，內容恰好是該 step 之後所存在的東西 - Step 1 沒有 transport、沒有
@@ -154,6 +162,8 @@ flowchart LR
 所有 engine 程式碼都是 header-only，位於 `engine/include/dawlab/engine/`，namespace 為
 `dawlab::engine`，CMake target 為 `dawlab_engine`（別名 `dawlab::engine`）。
 
+<div align="center">
+
 | Header | 職責 | Step |
 |---|---|---|
 | `Constants.h` | 固定大小：8 軌、2 條 bus、stereo、每個 strip 8 個 insert | 1 |
@@ -172,6 +182,8 @@ flowchart LR
 | `Renderer.h` | `renderOffline()` / `bounceToWav()` | 9 |
 | `DemoSong.h` | 以資料形式存在的 8 軌 demo song（`makeDemoSong`、`applyDemoSong`） | 9, 18 |
 | `All.h` | include 所有東西（`DemoSong.h` 除外） | - |
+
+</div>
 
 ### 2.4 應用程式：圍繞 engine 的四條 thread
 
@@ -199,6 +211,8 @@ thread 的每一個結果，都以 immutable 物件的形式，透過
 `MessageManager::callAsync` 回到 message thread。沒有任何 thread 會等待 audio thread，而 audio thread
 也不等任何人。
 
+<div align="center">
+
 | 檔案（`app/Source/`） | 職責 | Step |
 |---|---|---|
 | `AudioHost.h/.cpp` | device、callback（zero-copy）、CPU 負載、offline render 路徑、spectrum 餵入 | 11 |
@@ -215,6 +229,8 @@ thread 的每一個結果，都以 immutable 物件的形式，透過
 | `Meters.h/.cpp` | `MeterBar`、`LoudnessDisplay`、`SpectrumView` | 13, 15, 20 |
 | `AppCommands.h` | command ID | 21 |
 | `SmokeTest.h/.cpp` | `--smoke-test`、`--snapshot`、一個 in-process 的測試 plugin | 11-21 |
+
+</div>
 
 CMake：靜態函式庫 `l14_daw_app`（除了 `Main.cpp` 之外的上述全部；JUCE 習題會 link 它）、
 app `DawLab8`（`juce_add_gui_app`，產品名稱 "DawLab 8"），以及 `l14_daw_app_3bus`
@@ -297,6 +313,8 @@ channel 數選擇 format（Step 18）。因此同一個 mono 檔案在 stereo tr
 stereo 的 effect（chorus spread、寬廣的 reverb）在 mono track 上會塌縮成 mono。第 01 章關於
 [pan law 與 balance](../01-gain/README.zh-TW.md) 的理論段落解釋了這兩種控制為什麼不同。
 
+<div align="center">
+
 | 設定 | $`g_L`$ | $`g_R`$ |
 |---|---|---|
 | fader 0 dB、pan 置中、constant power | 0.7071 (-3.01 dB) | 0.7071 |
@@ -305,6 +323,8 @@ stereo 的 effect（chorus spread、寬廣的 reverb）在 mono track 上會塌�
 | pan +0.5、fader -6 dB | 0.1918 (-14.34 dB) | 0.4630 (-6.69 dB) |
 | balance 模式、置中 | 1 | 1 |
 | balance +0.5 | 0.5 | 1 |
+
+</div>
 
 ### 3.4 加總、mute 與 solo
 
@@ -439,6 +459,8 @@ turn -> verify -> what you learned**。Step 1-10 建立 engine（不需 JUCE）�
 最後兩欄有差別：**跟著做** = 自己寫出「Your turn」欄的程式碼並
 執行它的檢查；**參考** = 閱讀主要檔案並執行參考檢查。
 
+<div align="center">
+
 | # | 文件 | 新增 | 跟著做：Your turn（Step 1-10：`steps/stepNN-*/`，starter `l14_stepNN_starter`，solution `l14_stepNN_solution`） | 參考：主要檔案 | 參考：驗證方式 |
 |---|---|---|---|---|---|
 | 1 | [docs/step-01-skeleton.zh-TW.md](docs/step-01-skeleton.zh-TW.md) | 專案骨架、`Engine`、`processBlock(AudioBlock)` | `step01-skeleton`：`Engine::processBlock`、`processChunk` | `Engine.h`、`Constants.h`、`CMakeLists.txt` | `l14_hello_engine` |
@@ -463,6 +485,8 @@ turn -> verify -> what you learned**。Step 1-10 建立 engine（不需 JUCE）�
 | 20 | [docs/step-20-spectrum-loudness.zh-TW.md](docs/step-20-spectrum-loudness.zh-TW.md) | master spectrum analyzer、EBU R 128 loudness、mix latency | `SpectrumView` 對數軸 -> smoke test 8 | `Meters`、`AudioHost` | `l14_app_smoke_test`（8）、snapshot |
 | 21 | [docs/step-21-shortcuts-and-tests.zh-TW.md](docs/step-21-shortcuts-and-tests.zh-TW.md) | command、選單、鍵盤快捷鍵、app 的自動化測試 | `getCommandInfo` / `perform` 中的 transport command -> smoke test | `AppCommands.h`、`MainComponent`、`SmokeTest` | `l14_app_smoke_test`、Exercise 13 |
 
+</div>
+
 engine 的 API 參考文件（threading 表、JUCE 整合食譜）是
 [docs/engine-api.zh-TW.md](docs/engine-api.zh-TW.md)；第 2 階段只是在它之上建造 GUI 的其中一種方式。
 
@@ -478,6 +502,8 @@ engine 部分不需要 JUCE。從 repository 根目錄（PowerShell）：
 
 unit test 帶有 ctest label `test`。程式會輸出到 `build/bin/Debug/`，WAV 檔輸出到
 `build/dawlab_output/`（請從 build 目錄執行這些程式，如同 ctest 的做法）。
+
+<div align="center">
 
 | Target | 種類 | 展示什麼 | 輸出檔案 |
 |---|---|---|---|
@@ -500,6 +526,8 @@ unit test 帶有 ctest label `test`。程式會輸出到 `build/bin/Debug/`，WA
 | `l14_step01_solution` ... `l14_step10_solution` | solution | Step 1-10 跟著做的 snapshot（`steps/`），各自只檢查自己的 step | `l14_step01.wav`、`l14_step09.wav` |
 | `l14_step01_starter` ... `l14_step10_starter` | （只 build） | 同樣的 snapshot，但帶有你的 TODO；在 step 完成前會印出 `[FAIL]` | - |
 
+</div>
+
 應用程式需要 JUCE（第 13 章的設定；第一次 configure 會 build JUCE 的輔助工具）：
 
 ```powershell
@@ -511,12 +539,16 @@ cd build
 & ".\bin\Debug\DawLab 8.exe" --snapshot dawlab_output/l14_app_snapshot.png
 ```
 
+<div align="center">
+
 | Target | 種類 | 展示什麼 | 輸出檔案 |
 |---|---|---|---|
 | `DawLab8`（"DawLab 8.exe"） | app | 8 軌 DAW，Step 11-21 | （Export mixdown：你選擇的任何 WAV） |
 | `l14_app_smoke_test` | test（`DawLab8 --smoke-test`） | resampler、經由 GUI model 載入的 demo song、export、device callback = bounce、plugin insert + PDC（在第 13 章已 build 時：它的 VST3 compressor 與 limiter）、GUI 控制項 -> engine、已補償 latency 的 playhead、快捷鍵、sample rate 變更、spectrum 顯示、在自己的 thread 上執行 File > Export | `l14_app_smoke.wav`、`l14_app_export.wav`（整首歌，19 秒）、`l14_app_smoke_44k.wav`（loader 的 44.1 kHz mono 測試輸入） |
 | `l14_app_snapshot` | example（`DawLab8 --snapshot`） | demo song 位於第 2 小節第 3 拍的視窗，以及一個自動產生的參數面板 | `l14_app_snapshot.png`、`l14_app_snapshot_panel.png` |
 | `l14_ex8_solution` ... `l14_ex13_solution` | solution | JUCE 習題 8-13 | `l14_ex8_lane.png`、`l14_ex9_take.wav`、`l14_ex10_synth.wav`、`l14_ex11_project.dawlab`（+ media）、`l14_ex12_bus_c_only.wav`、`l14_ex12_third_bus.png`、`l14_ex13_shortcuts.xml`、`l14_ex13_editor.png` |
+
+</div>
 
 使用 app：demo song 會在啟動時產生（File > Load demo song，Ctrl+D，會再產生一次）。
 點擊 lane 的 ruler 來 seek，拖曳 clip，點擊 insert slot 的箭頭來選擇 effect，
@@ -596,6 +628,8 @@ Release build 印出相同的報告，並在 1.38 秒內 render 完這 19 秒（
 
 ## 7. 常見錯誤與如何除錯
 
+<div align="center">
+
 | 症狀 | 可能原因 | 去哪裡看 |
 |---|---|---|
 | clip 開始或停止時有 click | clip 邊緣沒有 fade；clip 在波形中間被切斷 | `Clip::fadeInSamples` / `fadeOutSamples`（幾毫秒就夠了） |
@@ -619,6 +653,8 @@ Release build 印出相同的報告，並在 1.38 秒內 render 完這 19 秒（
 | （app）測試或 snapshot 中 mixer 顯示過時的名稱 | `ChangeBroadcaster` 的訊息是非同步的，沒有 message loop 執行過 | `dispatchPendingMessages()`（Step 12） |
 | （app）Export 卡住或隨機 crash | render 期間 device callback 仍在呼叫 `processBlock()` | 先讓 engine 脫離 device（Step 19） |
 | （app）GUI 忙碌時 meter 凍結 | timer 只有在 message thread 空閒時才會執行 | 把耗時的工作（載入檔案、export）移到 worker thread |
+
+</div>
 
 ## 8. 習題
 

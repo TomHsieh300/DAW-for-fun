@@ -8,12 +8,16 @@
 .\scripts\build.ps1 -Only 12-reverb -TestLabel solution
 ```
 
+<div align="center">
+
 | 題號 | 解答檔 | target |
 |---|---|---|
 | 3 | `ex3_early_reflections.cpp` | `l12_ex3_solution` |
 | 4 | `ex4_fdn_modulation.cpp` | `l12_ex4_solution` |
 | 5 | `ex5_gated_reverb.cpp` | `l12_ex5_solution` |
 | 6 | `ex6_rt60_estimator.cpp` | `l12_ex6_solution` |
+
+</div>
 
 ---
 
@@ -40,11 +44,15 @@ RT60 = 0.5 s：$`g = 10^{-3\cdot1557/24000} = 10^{-0.194625} = 0.63881`$。
 
 **3.** $`\omega = 2\pi f/f_s`$，$`|\mathrm{LP}| = 0.5/\sqrt{1.25 - \cos\omega}`$，$`\mathrm{RT60} = -3\cdot1557 / (48000\log_{10}(0.89401\,|\mathrm{LP}|))`$：
 
+<div align="center">
+
 | f | ω | $`\lvert\mathrm{LP}\rvert`$ | $`g\lvert\mathrm{LP}\rvert`$ | RT60 手算 | 範例量到 |
 |---|---|---|---|---|---|
 | 986.5 Hz | 0.1291 | 0.9838 | 0.8795 | 1.745 s | 1.745 s |
 | 4007.7 Hz | 0.5246 | 0.8063 | 0.7209 | 0.685 s | 0.685 s |
 | 8015.4 Hz | 1.0492 | 0.5767 | 0.5156 | 0.338 s | 0.339 s |
+
+</div>
 
 （範例取的是最接近 1 k / 4 k / 8 kHz 的 comb 諧波 $`k\cdot f_s/D`$，避免落在 notch 上。）d = 0.5 的 one-pole 在 8 kHz 只剩 0.58 倍，每圈都乘一次，所以高頻的 RT60 掉到低頻的 1/6。
 
@@ -87,6 +95,8 @@ RT60 = 0.5 s：$`g = 10^{-3\cdot1557/24000} = 10^{-0.194625} = 0.63881`$。
 
 全部 6 個（依 delay 排序；與程式輸出一致）：
 
+<div align="center">
+
 | 牆面 | image | 距離 (m) | delay (ms) | delay (samples) | gain |
 |---|---|---|---|---|---|
 | 地板 z = 0 | (2, 1.5, −1.6) | 3.7868 | 3.516 | 169 | 0.5702 |
@@ -95,6 +105,8 @@ RT60 = 0.5 s：$`g = 10^{-3\cdot1557/24000} = 10^{-0.194625} = 0.63881`$。
 | 牆 y = 0 | (2, −1.5, 1.6) | 4.7181 | 6.231 | 299 | 0.4576 |
 | 牆 x = 6 | (10, 1.5, 1.6) | 5.8189 | 9.441 | 453 | 0.3711 |
 | 牆 x = 0 | (−2, 1.5, 1.6) | 6.4078 | 11.158 | 536 | 0.3370 |
+
+</div>
 
 （程式印的 ms 是由取整後的 samples 換回來的，所以會差一點點，例如 169 samples = 3.521 ms。）
 

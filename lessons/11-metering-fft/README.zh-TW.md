@@ -35,6 +35,8 @@ master 上有 loudness meter，EQ 外掛背後有一片即時的頻譜。這些�
 
 所有 meter 都在回答「訊號有多大」，但「大」有很多種定義：
 
+<div align="center">
+
 | Meter | 量什麼 | 反應速度（ballistics） | 單位 | 用途 |
 |---|---|---|---|---|
 | **Sample peak** | 每個 sample 的 $`\lvert x[n]\rvert`$ 的最大值 | 瞬間上升；下降速度自訂（dB/s） | dBFS | 防止數位 clipping（DAW 混音台的預設） |
@@ -43,6 +45,8 @@ master 上有 loudness meter，EQ 外掛背後有一片即時的頻譜。這些�
 | **VU** | 整流後的平均，經過有質量的指針 | 300 ms 到 99%，過衝 1~1.5% | VU | 類比時代的「音量感」，類比模擬外掛常用 |
 | **PPM** | 準峰值（quasi-peak） | 積分時間約 5~10 ms；下降很慢（約 20 dB / 1.5 s 或 24 dB / 2.8 s，依 Type） | dB | 廣播（歐洲傳統） |
 | **LUFS** | K-weighting 後的均方值，含 gating | momentary 400 ms / short-term 3 s / integrated 整段 | LUFS / LU | 響度標準（廣播、串流平台） |
+
+</div>
 
 幾個要先釐清的觀念：
 
@@ -64,7 +68,7 @@ master 上有 loudness meter，EQ 外掛背後有一片即時的頻譜。這些�
 2. **慢慢下降**：之後以固定的 **dB/s** 速度往下掉（常見 12~26 dB/s）。
 3. 另外有一個 **peak hold** 標記：停在最近的最大值上一段時間（例如 1~2 s，或無限直到使用者點擊），再開始下降。
 
-![Peak meter 的 ballistics：訊號持續 0.5 s 後，peak 以 24 dB/s 直線下降，peak hold 標記在 -6 dBFS 停 1 s 後才開始下降](images/peak-meter-hold-decay.svg)
+<p align="center"><img src="images/peak-meter-hold-decay.svg" alt="Peak meter 的 ballistics：訊號持續 0.5 s 後，peak 以 24 dB/s 直線下降，peak hold 標記在 -6 dBFS 停 1 s 後才開始下降"></p>
 
 #### 數學：dB/s → 每個 sample 的係數
 
@@ -134,7 +138,7 @@ PPM（peak programme meter）則是廣播用的「準峰值」：積分時間只
 數位訊號只是連續波形的取樣，DAC 會用（近似）sinc 內插把 sample 之間補起來。**真正的峰值可能落在兩個 sample 之間**。
 經典例子：$`f_s/4`$ 的正弦、相位 45°，每個 sample 都是 $`\pm 0.707`$（sample peak -3.01 dBFS），但連續波形的峰值是 1.0（0 dBTP）：
 
-![fs/4 的正弦、相位 45°：每個 sample 都是 ±0.707（-3.01 dBFS），但連續波形的峰值是 1.0（0 dBTP），落在 sample 之間](images/intersample-peak.svg)
+<p align="center"><img src="images/intersample-peak.svg" alt="fs/4 的正弦、相位 45°：每個 sample 都是 ±0.707（-3.01 dBFS），但連續波形的峰值是 1.0（0 dBTP），落在 sample 之間"></p>
 
 ITU-R BS.1770-4 Annex 2 的作法：把訊號 **4x oversampling**（48 kHz → 192 kHz，用 FIR 內插 filter），
 在高取樣率下取 $`|x|`$ 最大值，單位 **dBTP**。4x 仍可能錯過一點點：Nyquist 附近的正弦，峰值可能剛好在兩個 4x sample 中間，
@@ -151,6 +155,8 @@ ITU-R BS.1770-4 Annex 2 的作法：把訊號 **4x oversampling**（48 kHz → 1
 這不代表 halfband 版本「比較準」：換一個峰值落在 1/8 處的訊號，結果就反過來。練習 3 把 fs/4 正弦的相位從 0° 掃到 90°，
 兩種 meter 的最差誤差都是 -0.17 dB，只是出現在對方量得最準的相位。真正的差別在別處（數字都來自練習 3，同一段訊號同時餵兩種 meter）：
 
+<div align="center">
+
 | | `Oversampler`（兩級 halfband） | 第 05 章 64 tap windowed-sinc |
 |---|---|---|
 | 插值點位置 | 0、1/4、1/2、3/4 | 1/8、3/8、5/8、7/8 |
@@ -159,6 +165,8 @@ ITU-R BS.1770-4 Annex 2 的作法：把訊號 **4x oversampling**（48 kHz → 1
 | hard clip 鼓組（FFT 理想內插 +5.30 dBTP） | +5.20 dBTP | +4.59 dBTP |
 | 每個輸入 sample 的乘法數 | 56 | 64 |
 | 實際計時（Release，依機器而異） | 約 20 ns / sample | 約 59 ns / sample |
+
+</div>
 
 hard clip 與撥弦這類素材有大量接近 Nyquist 的成分，正是兩種 filter 的頻率響應差最多的地方：64 tap 的 Hann window 讓
 transition band 很寬，windowed-sinc 版比理想值低 0.7～1.2 dB，halfband 版只低 0.1～0.75 dB。乘法數只差 14%，
@@ -189,17 +197,25 @@ flowchart LR
 
 #### K-weighting：兩級 biquad
 
+<div align="center">
+
 | stage | 形狀 | 作用 |
 |---|---|---|
 | 1. pre-filter | high shelf，中點約 1.7 kHz，高頻 +4 dB | 模擬頭部（一個「球」）對高頻的聲學增益 |
 | 2. RLB filter | 二階 highpass，約 38 Hz（-6 dB 點）| 「revised low-frequency B-curve」，去掉耳朵不太敏感的極低頻 |
 
+</div>
+
 規範只給 **48 kHz** 的係數（$`a_0`$ 正規化為 1）：
+
+<div align="center">
 
 | | $`b_0`$ | $`b_1`$ | $`b_2`$ | $`a_1`$ | $`a_2`$ |
 |---|---|---|---|---|---|
 | stage 1 | 1.53512485958697 | −2.69169618940638 | 1.19839281085285 | −1.69065929318241 | 0.73248077421585 |
 | stage 2 | 1.0 | −2.0 | 1.0 | −1.99004745483398 | 0.99007225036621 |
+
+</div>
 
 **其他 sample rate 不能直接用這組係數**（數位 filter 的頻率是相對於 $`f_s`$ 的，44.1 kHz 套 48 kHz 的係數，整條曲線會往低頻移 8%）。
 `l11_loudness` 印了這個反例：44.1 kHz 誤用 48 kHz 係數表時，997 Hz 的增益變成 +0.900 dB（正確是 +0.694 dB）、
@@ -235,11 +251,15 @@ a_1 = \frac{2(K^2-1)}{a_0},\quad a_2 = \frac{1 - K/Q + K^2}{a_0}
 
 `l11_loudness` 會印出兩組係數並驗證差異只有 $`8.9\times10^{-16}`$，再列出 44.1 / 48 / 96 kHz 的頻率響應——三條曲線幾乎一致：
 
+<div align="center">
+
 | 頻率 | 20 Hz | 38 Hz | 100 Hz | 997 Hz | 2 kHz | 5 kHz | 16 kHz |
 |---|---|---|---|---|---|---|---|
 | K-weighting @ 48 kHz | −13.28 dB | −6.00 dB | −1.13 dB | **+0.691 dB** | +3.07 dB | +4.01 dB | +4.04 dB |
 | 重新設計 @ 44.1 kHz | −13.27 dB | −6.00 dB | −1.13 dB | +0.694 dB | +3.08 dB | +4.02 dB | +4.05 dB |
 | 重新設計 @ 96 kHz | −13.30 dB | −6.02 dB | −1.16 dB | +0.674 dB | +3.05 dB | +3.99 dB | +4.02 dB |
+
+</div>
 
 （三條曲線相差 < 0.03 dB，`l11_loudness` 用 `DAWLAB_CHECK` 驗證 < 0.05 dB。剩下的一點差異來自 bilinear transform
 的頻率扭曲在不同 $`f_s`$ 下不完全相同，以及規範的 48 kHz 係數本身只有有限位數。）
@@ -272,7 +292,7 @@ L_K = -0.691 + 10\log_{10}\sum_i G_i\, z_i \quad \text{[LUFS]}
 
 #### 400 ms block、75% overlap、momentary / short-term / integrated
 
-![Loudness 的 gating block：每個 block 長 400 ms，每 100 ms 開始一個新的，相鄰 block 重疊 75%](images/loudness-block-overlap.svg)
+<p align="center"><img src="images/loudness-block-overlap.svg" alt="Loudness 的 gating block：每個 block 長 400 ms，每 100 ms 開始一個新的，相鄰 block 重疊 75%"></p>
 
 - **momentary**：最近 400 ms（一個 block），反應快，像一條比較穩的 meter。
 - **short-term**：最近 3 s（EBU Tech 3341），用來看段落的響度、算 LRA。
@@ -296,11 +316,15 @@ L_{\text{int}} = -0.691 + 10\log_{10}\Big(\frac{1}{|J_g|}\sum_{j\in J_g}\sum_i G
 
 $`J_a`$ 是通過 absolute gate 的 block，$`J_g`$ 是兩道都通過的。`l11_loudness` 第 4 段：3 s 的 −20 dBFS → 3 s 靜音 → 3 s 的 −50 dBFS：
 
+<div align="center">
+
 | | 數值 |
 |---|---|
 | 不 gating，直接平均 9 s 的功率 | −27.78 LUFS（被靜音稀釋） |
 | gating 後的 integrated（實測） | **−23.23 LUFS** |
 | 理論值 | 27 個完整 block（功率 $`P`$）+ 跨邊界的 3 個 block（$`\tfrac34P, \tfrac24P, \tfrac14P`$）→ $`-23.01 + 10\log_{10}(28.5/30) = -23.23`$ |
+
+</div>
 
 靜音 block 被 absolute gate 擋掉；−53 LUFS 的 block 低於 relative gate（約 −36 LUFS）也被擋掉。
 
@@ -316,12 +340,16 @@ integrated 告訴你「平均多大聲」，LRA（EBU Tech 3342）告訴你「�
 
 #### 串流平台與廣播的 target
 
+<div align="center">
+
 | 場合 | integrated target | true peak 上限 |
 |---|---|---|
 | EBU R128（歐洲廣播） | −23 LUFS（±0.5） | −1 dBTP |
 | ATSC A/85（美國廣播） | −24 LKFS | −2 dBTP |
 | Spotify、YouTube、Tidal 等 | 約 −14 LUFS | 約 −1 dBTP |
 | Apple Music | 約 −16 LUFS | 約 −1 dBTP |
+
+</div>
 
 （串流平台的數字是「播放時的正規化目標」，各家會調整，請以官方文件為準。LKFS 與 LUFS 是同一個東西的兩種名稱。）
 
@@ -425,12 +453,16 @@ T(N) = 2\,T(N/2) + O(N) \;\Longrightarrow\; T(N) = O(N\log_2 N)
 
 遞迴到最底層時，輸入的順序是「index 的二進位倒過來」。N = 8：
 
+<div align="center">
+
 | | | | | | | | | |
 |---|---|---|---|---|---|---|---|---|
 | index | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
 | 二進位 | 000 | 001 | 010 | 011 | 100 | 101 | 110 | 111 |
 | 倒過來 | 000 | 100 | 010 | 110 | 001 | 101 | 011 | 111 |
 | **新的順序** | **0** | **4** | **2** | **6** | **1** | **5** | **3** | **7** |
+
+</div>
 
 所以 `Fft` 先做一次 bit-reversal 排列，再由小到大做 $`\log_2 N`$ 層 butterfly（長度 2、4、8……N）。
 twiddle factor 與 bit-reversal 表在建構時算好（會 allocate），之後的 `forward()` / `inverse()` 完全不配置記憶體。
@@ -439,16 +471,22 @@ twiddle factor 與 bit-reversal 表在建構時算好（會 allocate），之後
 
 `l11_fft_basics` 把 FFT 和照定義算的 naive DFT（double 累加）比對：
 
+<div align="center">
+
 | N | forward 最大誤差 | inverse 最大誤差 |
 |---|---|---|
 | 16 | 4.9e-7 | 1.2e-7 |
 | 1024 | 8.6e-6 | 3.6e-7 |
 | 4096 | 2.3e-5 | 4.8e-7 |
 
+</div>
+
 （輸入是 $`|x| \le 1`$ 的亂數；forward 的輸出量級是 $`\sqrt N`$，所以絕對誤差隨 N 增加，相對誤差維持在 float 精度 $`10^{-7}`$ 左右。）
 並用 Goertzel（`Analysis.h`）交叉驗證單一頻率的振幅。
 
 計時（Debug 組態、作者機器上的某一次執行，只看趨勢；Release 會快很多，每次執行也會有 ±30% 以上的浮動）：
+
+<div align="center">
 
 | N | FFT | naive DFT | 倍數 |
 |---|---|---|---|
@@ -456,6 +494,8 @@ twiddle factor 與 bit-reversal 表在建構時算好（會 allocate），之後
 | 1024 | 0.24 ~ 0.28 ms | 27 ~ 32 ms | 110 ~ 113 |
 | 4096 | 1.2 ms | 448 ~ 488 ms | 375 ~ 415 |
 | 16384 | 5.4 ~ 9.3 ms | （略過） | |
+
+</div>
 
 倍數隨 N 增加，與理論的 $`N / \log_2 N`$ 同一個數量級（4096 時理論 341）。self-check 只要求 N = 4096 時至少快 20 倍，
 避免機器忙碌時誤判。
@@ -466,7 +506,7 @@ twiddle factor 與 bit-reversal 表在建構時算好（會 allocate），之後
 
 DFT 只看到 N 個 sample，並**隱含地假設它們無限循環**。如果 frame 裡的正弦不是整數個週期，首尾接起來會有一個跳躍：
 
-![每個 frame 含 3.3 個週期的正弦：把 frame 首尾接起來，波形在每個接縫處都會跳一下](images/dft-implied-periodicity.svg)
+<p align="center"><img src="images/dft-implied-periodicity.svg" alt="每個 frame 含 3.3 個週期的正弦：把 frame 首尾接起來，波形在每個接縫處都會跳一下"></p>
 
 從頻域看：「只取 N 個 sample」= 乘上一個 rectangular window；時域相乘 = 頻域卷積。
 所以真正的頻譜（一根線）被卷上 rectangular window 的頻譜——一個 sinc：中間的 **main lobe** 加上兩側緩慢衰減的 **side lobe**（最高 −13 dB）。
@@ -475,12 +515,16 @@ DFT 只看到 N 個 sample，並**隱含地假設它們無限循環**。如果 f
 
 在取樣之前先乘上一個兩端漸漸變 0 的函數 $`w[n]`$，消除接縫的跳躍。代價：main lobe 變寬（頻率分辨能力下降）。
 
+<div align="center">
+
 | window | 公式（$`t = 2\pi n/(N-1)`$） | coherent gain | −3 dB 寬（bin） | 最高 side lobe | scalloping loss |
 |---|---|---|---|---|---|
 | Rectangular | $`1`$ | 1.00 | 0.88 | −13.3 dB | 3.92 dB |
 | Hann | $`0.5 - 0.5\cos t`$ | 0.50 | 1.44 | −31.5 dB | 1.42 dB |
 | Hamming | $`0.54 - 0.46\cos t`$ | 0.54 | 1.30 | −42.7 dB | 1.75 dB |
 | Blackman-Harris（4 項） | $`0.35875 - 0.48829\cos t + 0.14128\cos 2t - 0.01168\cos 3t`$ | 0.36 | 1.90 | −92.0 dB | 0.82 dB |
+
+</div>
 
 表中的數字全部是 `l11_window_leakage` 用 16 倍 zero-padding 把 window 的 DTFT 取樣得很密、實際量出來的
 （**scalloping loss** = 正弦剛好落在兩個 bin 正中間時，峰值讀數比在 bin 中心時低多少），並以 `DAWLAB_CHECK`
@@ -496,12 +540,16 @@ $`\frac{0.54\,\text{sinc}(\frac12) + 0.23\,[\text{sinc}(\frac12) + \text{sinc}(\
 
 `l11_window_leakage` 的測試訊號是 0 dBFS 的 1 kHz 加上 **−60 dBFS 的 3.3 kHz**（N = 2048，1000 Hz 落在 bin 42.67）：
 
+<div align="center">
+
 | window | 1 kHz 讀數 | bin ±10 | 3.3 kHz 附近 |
 |---|---|---|---|
 | Rectangular | −1.67 dB | −30 / −32 dB | −50 dB（被 leakage 淹沒，看不到 −60 dB 的音） |
 | Hann | −0.63 dB | −70 / −72 dB | **−60.2 dB**（清楚看到） |
 | Hamming | −0.77 dB | −47 / −49 dB | −57.8 dB（勉強） |
 | Blackman-Harris | −0.37 dB | −99 / −100 dB | **−60.1 dB** |
+
+</div>
 
 ASCII 頻譜（實際輸出，0~5 kHz 線性軸，每欄 78 Hz，取欄內最大值）：
 
@@ -533,7 +581,7 @@ ASCII 頻譜（實際輸出，0~5 kHz 線性軸，每欄 78 Hz，取欄內最大
 Rectangular 那張的 -60 dB 那一列整排都是 `#`：leakage 的裙襬蓋住了一切。Hann 那張的 -70 dB 那一列右邊多出來的兩個 `#` 就是 3.3 kHz 的 -60 dB 音。
 下面的圖把同樣的訊號畫成曲線，並加上 Blackman-Harris window（rectangular 的裙襬淹沒了微弱的音，Hann 與 Blackman-Harris 都能清楚看到）：
 
-![1 kHz（0 dBFS）加 3.3 kHz（-60 dBFS）兩個音，分別用 rectangular、Hann、Blackman-Harris window 的頻譜：rectangular 把微弱的音淹沒在 leakage 裡](images/window-leakage-spectra.svg)
+<p align="center"><img src="images/window-leakage-spectra.svg" alt="1 kHz（0 dBFS）加 3.3 kHz（-60 dBFS）兩個音，分別用 rectangular、Hann、Blackman-Harris window 的頻譜：rectangular 把微弱的音淹沒在 leakage 裡"></p>
 
 1 kHz 的讀數不是 0 dB，是因為 1000 Hz 不在 bin 中心（偏 0.33 bin），這叫 **scalloping loss**。理論值：
 rectangular 的響應是 $`\text{sinc}(\delta)`$，$`\delta = 1/3`$ → $`\frac{\sin(\pi/3)}{\pi/3} = 0.827`$ → **−1.65 dB**；
@@ -817,6 +865,8 @@ public:
 .\bin\Debug\l11_loudness.exe                 # 可選：argv[1] = 任一 WAV，印出它的 integrated / max momentary / max short-term
 ```
 
+<div align="center">
+
 | 段落 | 驗證什麼 | 實測 |
 |---|---|---|
 | 1 | 48 kHz 係數：規範表 vs 重新設計 | 最大差異 8.9e-16；44.1 / 96 kHz 曲線一致（見 2.6 節的表）；反例：44.1 kHz 誤用 48 kHz 係數，997 Hz 處 +0.900 dB |
@@ -824,6 +874,8 @@ public:
 | 3 | 同訊號送 L、R | **−20.00 LUFS**（+3.01 LU） |
 | 4 | gating（−20 dBFS → 靜音 → −50 dBFS） | **−23.23 LUFS**（理論 −23.23；不 gating −27.78） |
 | 5 | drum loop / pluck sequence 時間軸 | drum −16.67 LUFS（max momentary −12.99）、pluck −15.17 LUFS |
+
+</div>
 
 每一段都有 `DAWLAB_CHECK`（例如 −23.01 ± 0.02、−20.00 ± 0.02、gating 結果與理論值差 < 0.05 LU），最後印出 `[PASS] l11_loudness`。
 
@@ -880,6 +932,8 @@ Karplus-Strong 撥弦的諧波分布由初始雜訊決定，所以最強的 bin 
 
 ### 3.5 本章所有 target 與輸出
 
+<div align="center">
+
 | target | 原始檔 | 輸出 WAV（`<build>/dawlab_output/`） |
 |---|---|---|
 | `l11_fft_basics` | `examples/fft_basics.cpp` | `l11_fft_roundtrip.wav` |
@@ -889,6 +943,8 @@ Karplus-Strong 撥弦的諧波分布由初始雜訊決定，所以最強的 bin 
 | `l11_spectrum_analyzer` | `examples/spectrum_analyzer.cpp` | `l11_spectrum_plucks.wav` |
 | `l11_ex3_solution` … `l11_ex7_solution` | `solutions/ex*.cpp` | `l11_ex3_true_peak_normalized.wav`、`l11_ex6_convolved.wav`、`l11_ex7_out_of_phase.wav` |
 | `l11_ex3_starter` … `l11_ex7_starter` | `exercises/starter/ex*.cpp` | （只建置、不跑測試） |
+
+</div>
 
 ```powershell
 .\scripts\build.ps1 -Only 11-metering-fft                      # 建置 + 跑全部測試
@@ -914,6 +970,8 @@ Karplus-Strong 撥弦的諧波分布由初始雜訊決定，所以最強的 bin 
 
 ## 5. 常見錯誤與除錯
 
+<div align="center">
+
 | 症狀 | 可能原因 |
 |---|---|
 | 0 dBFS 正弦在頻譜上讀 −6 dB | 忘了乘 2（正負頻率各一半）；或用了 Hann 卻沒除以 coherent gain 0.5 |
@@ -930,6 +988,8 @@ Karplus-Strong 撥弦的諧波分布由初始雜訊決定，所以最強的 bin 
 | meter 在某個 block 突然跳一下 | 在 audio thread 改 RMS 視窗長度 → ring 清空重新累積（預期行為）；或 UI thread 直接改了 audio thread 的狀態（data race） |
 | 頻譜偶爾出現一個奇怪的 frame | lock-free FIFO 沒做覆寫偵測；覆寫偵測只看「寫完的位置」`writePos`，漏掉還在進行中的 push（要看 `writeEnd`，2.11 節）；或 `writePos` 沒用 release / acquire |
 | audio 偶爾爆音、只在打開頻譜時發生 | 在 audio thread 上算 FFT 或在 `process()` 裡 allocate / 拿 mutex |
+
+</div>
 
 ## 6. 練習題
 

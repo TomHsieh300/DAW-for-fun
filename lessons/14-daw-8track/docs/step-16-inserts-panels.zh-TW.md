@@ -8,7 +8,7 @@
 
 每個 strip 有四個 insert slot。Slot 的下拉選單提供每一個內建 effect（EQ、Filter、Compressor、Gate、Expander、De-esser、Transient、Saturation、Distortion、Amp、Delay、Chorus、Flanger、Phaser、Tremolo、Reverb、Convolution、Limiter、Gain）、"VST3..."、Bypass 與 "(none)"。點擊已佔用的 slot 會開啟一個沒有任何人手工設計的參數面板：它是由 effect 的 `ParameterInfo` 表（stage 1，Step 5）產生的。
 
-![Compressor panel](images/dawlab8_panel.png)
+<p align="center"><img src="images/dawlab8_panel.png" alt="Compressor panel"></p>
 
 ## 設計
 
@@ -25,12 +25,16 @@ GUI slots:   [ EQ ][    ][Comp][    ]
 chain:       [ EQ ][Comp]                 GUI slot 2 -> chain index 1
 ```
 
+<div align="center">
+
 | 使用者動作 | Session 呼叫 | engine command（Step 7） |
 |---|---|---|
 | 在空的 slot 選擇一個 effect | `setBuiltinInsert(ref, slot, type)` | `addInsert(ref, chainIndex, createEffect(type))` |
 | 選擇另一個 effect | `setBuiltinInsert` | `replaceInsert(ref, chainIndex, ...)`——在一個 block 邊界交換 |
 | (none) | `clearInsert(ref, slot)` | `removeInsert(ref, chainIndex)` |
 | Bypass | `setInsertBypassed` | 無：`InsertEffect::setBypassed()` 是 atomic |
+
+</div>
 
 Command 依 FIFO 順序套用，所以即使連續點擊好幾下，等 audio thread 趕上之後，GUI 與 chain 仍會一致。`Engine::addInsert()` 在 *message thread* 上 prepare effect（convolution reverb 在那裡計算它的 FFT partition），然後交出一個準備好的物件；audio thread 只負責連結一個 pointer。
 
@@ -44,11 +48,15 @@ Command 依 FIFO 順序套用，所以即使連續點擊好幾下，等 audio th
 
 `ParameterPanel(InsertEffect&)` 走訪 `getNumParameters()`，為每個參數建立一個控制項：
 
+<div align="center">
+
 | `ParameterKind` | 控制項 | 寫入值的方式 |
 |---|---|---|
 | Float、Int | 旋轉式 `juce::Slider` | `setParameter(i, sliderValue)` |
 | Bool | `juce::ToggleButton` "On" / "Off" | `setParameter(i, 0 or 1)` |
 | Choice | 帶有 `info.choices` 的 `juce::ComboBox` | `setParameter(i, min + selectedIndex)` |
+
+</div>
 
 Slider 的值是**真實的**參數值（-20 dB、120 ms、4:1），但它的行程透過自訂的 `juce::NormalisableRange` 使用 engine 的 normalized 對應：
 
@@ -92,11 +100,15 @@ panel snapshot: ...\dawlab_output\l14_app_snapshot_panel.png (drum compressor, g
 
 ## 換你動手
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫 | `app/Source/Session.cpp` 中的 `Session::chainIndexOf()`：GUI slot `uiSlot` 對應的 engine chain index = 它之前非空 slot 的數量 |
 | 建置 + 檢查 | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test`（`l14_app_smoke_test`） |
 | 預期 | 第 2 節仍然在 GUI slot 中找到 19 個 insert，且「每個 GUI slot 的 observer pointer 等於 `engine.getInsert(ref, chainIndexOf(ref, slot))`」這項檢查對所有 11 個 strip 通過；`[PASS] l14_app_smoke_test`。在 app 中，把一個 effect 放進空 strip 的 slot 3，再放一個進 slot 1：每個的面板都會開啟正確的 effect |
+
+</div>
 
 錯誤的對應是「有空洞的 GUI 建立在緊湊 engine chain 之上」這種情況的經典 bug：面板編輯到的是鄰居。
 

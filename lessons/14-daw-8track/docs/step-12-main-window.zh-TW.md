@@ -8,7 +8,7 @@
 
 一個 1400 x 900 的視窗，包含 menu bar、頂端的 transport bar、中間的 arrangement、底部的 mixer 與一條狀態列——全部採用深色主題——以及一個依正確順序擁有所有東西的 application 物件。外加一個不必手動啟動 app 就能*看到*視窗的方法：`--snapshot <file.png>`。
 
-![DawLab 8](images/dawlab8_snapshot.png)
+<p align="center"><img src="images/dawlab8_snapshot.png" alt="DawLab 8"></p>
 
 ## 設計
 
@@ -33,6 +33,8 @@ C++ 以宣告順序的相反順序銷毀 member，而上面的順序經過挑選
 
 `MainComponent::resized()` 從邊緣向內切割視窗：
 
+<div align="center">
+
 | 區域 | 高度 | component |
 |---|---|---|
 | menu bar | 24 px | `juce::MenuBarComponent`（File、Transport、Track、View） |
@@ -40,6 +42,8 @@ C++ 以宣告順序的相反順序銷毀 member，而上面的順序經過挑選
 | status line | 22 px | 兩個 `juce::Label`：最近一則訊息、audio device |
 | mixer | max(430 px, 剩餘高度的 55 %) | `MixerView`（Step 15） |
 | arrangement | 剩下的部分 | `ArrangementView`（Step 14） |
+
+</div>
 
 Menu bar 是視窗內部的一個 component（不是 OS 的 menu），因此它也會出現在 snapshot 中，且在每個平台上外觀相同。
 
@@ -102,11 +106,15 @@ ctest 以 `l14_app_snapshot`（label `example`）執行它。本頁頂端的圖�
 
 重建視窗 layout（先複製 `MainComponent.cpp`，見 Step 11）。
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫 | `app/Source/MainComponent.cpp` 中的 `MainComponent::resized()`：從頂端起是 24 像素的 menu bar 與 58 像素的 transport bar，底部是 22 像素的狀態列（device 資訊在其右側），其下的 mixer 佔剩餘高度的 55 %（至少 430 像素），arrangement 佔剩下的部分，export overlay 蓋在所有東西之上 |
 | 建置 + 檢查 | `.\scripts\build.ps1 -Only 14-daw-8track -Juce`；ctest 執行 `l14_app_snapshot`（label `example`） |
 | 預期 | `dawlab_output/l14_app_snapshot.png`（1400 x 900）看起來像 chapter README 頂端的圖片：transport bar、八條 lane、mixer、狀態列 "No audio device (offline)"——把兩張圖並排比較 |
+
+</div>
 
 Layout 的錯誤不會讓測試失敗，而是顯示在圖片上：這就是 app 能把自己 render 成 PNG 的原因。
 

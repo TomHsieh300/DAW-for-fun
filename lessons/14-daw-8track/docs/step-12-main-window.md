@@ -10,7 +10,7 @@ mixer at the bottom and a status line - all in a dark theme - and an application
 owns everything in the right order. Plus a way to *see* the window without starting the app by
 hand: `--snapshot <file.png>`.
 
-![DawLab 8](images/dawlab8_snapshot.png)
+<p align="center"><img src="images/dawlab8_snapshot.png" alt="DawLab 8"></p>
 
 ## Design
 
@@ -41,6 +41,8 @@ windows and the device explicitly, so the order is visible in the code, not only
 
 `MainComponent::resized()` cuts the window from the edges inwards:
 
+<div align="center">
+
 | area | height | component |
 |---|---|---|
 | menu bar | 24 px | `juce::MenuBarComponent` (File, Transport, Track, View) |
@@ -48,6 +50,8 @@ windows and the device explicitly, so the order is visible in the code, not only
 | status line | 22 px | two `juce::Label`s: last message, audio device |
 | mixer | max(430 px, 55 % of the rest) | `MixerView` (Step 15) |
 | arrangement | the rest | `ArrangementView` (Step 14) |
+
+</div>
 
 The menu bar is a component inside the window (not the OS menu), so it also appears in the
 snapshot and looks the same on every platform.
@@ -141,11 +145,15 @@ this Debug build.
 
 Rebuild the window layout (copy `MainComponent.cpp` first, see Step 11).
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | `MainComponent::resized()` in `app/Source/MainComponent.cpp`: from the top a 24-pixel menu bar and the 58-pixel transport bar, a 22-pixel status row at the bottom (device info on its right), the mixer below with 55 % of the remaining height (at least 430 pixels), the arrangement in what is left, the export overlay over everything |
 | Build + check | `.\scripts\build.ps1 -Only 14-daw-8track -Juce`; ctest runs `l14_app_snapshot` (label `example`) |
 | Expected | `dawlab_output/l14_app_snapshot.png` (1400 x 900) looks like the picture at the top of the chapter README: transport bar, eight lanes, mixer, status line "No audio device (offline)" - compare the two images side by side |
+
+</div>
 
 A layout mistake does not fail a test, it shows in the picture: that is why the app can render
 itself into a PNG.

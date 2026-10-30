@@ -20,6 +20,8 @@ The WAV files the programs write go into `dawlab_output/` under the "current wor
 Note that the starter and the solution write WAV files with the same name (for example both write `l10_ex3_vibrato.wav`), and whichever runs later overwrites the earlier one.
 A starter is done when all of its self-checks pass and it prints `[PASS]`.
 
+<div align="center">
+
 | No. | Type | Difficulty | starter / solution target |
 |---|---|---|---|
 | 1 | Concept | ★☆☆ | — |
@@ -30,6 +32,8 @@ A starter is done when all of its self-checks pass and it prints `[PASS]`.
 | 6 | Implementation: Tempo-synced tremolo | ★★☆ | `l10_ex6_starter` / `l10_ex6_solution` |
 | 7 | Concept + calculation: phaser notch spacing | ★★★ | — |
 | 8 | Implementation: Staggered phaser (a different $`f_c`$ per stage) | ★★★ | `l10_ex8_starter` / `l10_ex8_solution` |
+
+</div>
 
 ---
 

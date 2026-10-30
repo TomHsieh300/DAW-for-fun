@@ -4,10 +4,14 @@
 
 This repository uses two licenses, chosen by file type:
 
+<div align="center">
+
 | What | License | File |
 |---|---|---|
 | Source code: `*.cpp`, `*.h`, `CMakeLists.txt`, `*.cmake`, scripts | MIT | [LICENSE](LICENSE) |
 | Course text and images: `*.md` (all languages), `docs/images/`, `lessons/*/docs/images/` | Creative Commons Attribution 4.0 International (CC BY 4.0) | [LICENSE-docs](LICENSE-docs) |
+
+</div>
 
 Copyright (c) 2026 Tom Hsieh.
 

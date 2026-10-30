@@ -12,6 +12,8 @@ For the problems see [`../exercises/README.md`](../exercises/README.md). The com
 
 Below the threshold $`g = (R - 1)(x - T)`$, then take $`\max(\text{range}, g)`$:
 
+<div align="center">
+
 | Input | Static gain $`(R-1)(x-T)`$ | After applying range | Output |
 |---:|---:|---:|---:|
 | -30 | 0 (above the threshold) | 0 | **-30** |
@@ -19,11 +21,15 @@ Below the threshold $`g = (R - 1)(x - T)`$, then take $`\max(\text{range}, g)`$:
 | -60 | $`1 \times (-20) = -20`$ | -20 | **-80** |
 | -80 | $`1 \times (-40) = -40`$ | **-30** (limited by range) | **-110** |
 
+</div>
+
 Only -80 dB is limited by the range: without the range the output would be -120 dB.
 
 ### 2. Soft knee $`W = 10`$ dB
 
 The knee spans $`[T - W/2,\ T + W/2] = [-45,\ -35]`$, and inside the knee $`y = x + \frac{(1 - R)(x - T - W/2)^2}{2W} = x - \frac{(x + 35)^2}{20}`$:
+
+<div align="center">
 
 | Input | Calculation | Output |
 |---:|---|---:|
@@ -31,6 +37,8 @@ The knee spans $`[T - W/2,\ T + W/2] = [-45,\ -35]`$, and inside the knee $`y = 
 | -40 | $`-40 - 25/20`$ | **-41.25** |
 | -43 | $`-43 - 64/20`$ | **-46.20** |
 | -45 | lower edge, $`-45 - 100/20 = -50`$; the line $`-40 + 2(-5) = -50`$ gives the same | **-50.00** |
+
+</div>
 
 The result at -40 dB can also be obtained with the README shortcut $`y(T) = T + (1 - R)W/8 = -40 - 1.25`$. All gains are within the range.
 
@@ -97,11 +105,15 @@ A kick is more prone to chattering than a hi-hat: the ripple size depends on "th
 
 ### 2. Three fixes with different mechanisms
 
+<div align="center">
+
 | Fix | Mechanism | Principle | Cost |
 |---|---|---|---|
 | **Hysteresis** | Decision rule | Opening threshold $`T`$, closing threshold $`T - H`$ (Schmitt trigger). As long as $`H`$ > the peak-to-peak ripple, the ripple cannot cross both lines | The closing threshold is lower, so the gate stays open longer; bleed can "make an already-open gate close later" (Exercise 2, part 4) |
 | **Hold** | Time | After falling below the closing threshold, wait hold milliseconds before releasing, and cancel if the signal returns in the meantime. The "brief dips below the threshold" caused by ripple last only a few milliseconds and are absorbed by the hold | After the signal has truly ended, the noise stays on for another hold milliseconds; too long a hold in fast passages makes the gate "unable to close" |
 | **Detector smoothing** | Detector | Lengthen the detector release, switch to RMS detection, or lowpass the sidechain first, so the envelope's own ripple becomes smaller | Detection becomes slower: the gate opens late (the head is eaten, which lookahead can compensate) and closes late; RMS reacts less to transients than peak |
+
+</div>
 
 (In addition, lengthening the gate's attack / release ramps can make chattering "less harsh", but it does not remove the open/close decision itself and only makes the gain change of each switch smaller, so it treats the symptom rather than the cause.)
 

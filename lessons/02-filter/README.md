@@ -40,6 +40,8 @@ So a filter can be described completely by a single "frequency → complex numbe
 
 By ear:
 
+<div align="center">
+
 | filter | what it does | how it sounds |
 |---|---|---|
 | lowpass (LPF) | reduces everything above the cutoff | muffled, dark, as if heard through a wall or a quilt |
@@ -48,6 +50,8 @@ By ear:
 | notch | cuts out a small piece around the center | almost the same as the original, only missing a certain "tone color" |
 | allpass | leaves the magnitude alone, changes only the phase | no audible difference alone; it has an effect only when mixed with the original (phaser, Chapter 10) |
 | peak / shelf | boosts or cuts a certain region | the basic building blocks of an EQ (Chapter 03) |
+
+</div>
 
 #### A quick review first: complex numbers and Euler's formula (the 30-second version)
 
@@ -58,7 +62,7 @@ The derivations that follow use the notation $`e^{j\theta}`$ constantly ($`j = \
 3. **Multiplying complex numbers = multiplying magnitudes and adding angles**: $`|H|e^{j\angle H} \cdot e^{j\theta} = |H|\,e^{j(\theta + \angle H)}`$. So for a single frequency, "passing a signal through a filter" means "multiply the amplitude by $`|H|`$ and add $`\angle H`$ to the phase" -- exactly the statement in section 2.1.
 4. **Why use $`e^{j\omega n}`$ instead of $`\cos(\omega n)`$?** Because $`e^{j\omega(n-1)} = e^{-j\omega} \cdot e^{j\omega n}`$: delaying by one sample is just "multiplying by a constant", which makes the derivations far simpler (after a delay, a cosine has to be split with the angle-sum formula into a cosine term and a sine term). A real sine wave is the sum of two conjugate complex sinusoids: $`\cos(\omega n) = \tfrac12\big(e^{j\omega n} + e^{-j\omega n}\big)`$; when the filter coefficients are real, the two halves are multiplied by mutually conjugate values of $`H`$, and added back they still form a real sine with amplitude × $`|H|`$ and phase + $`\angle H`$.
 
-![The unit circle in the complex plane: the point e^(j theta) at angle theta has magnitude 1; z = 1 is DC and z = -1 is Nyquist](images/unit-circle-euler.svg)
+<p align="center"><img src="images/unit-circle-euler.svg" alt="The unit circle in the complex plane: the point e^(j theta) at angle theta has magnitude 1; z = 1 is DC and z = -1 is Nyquist"></p>
 
 Later we substitute $`z = e^{j\omega}`$ into the transfer function: as $`\omega`$ goes from 0 to $`\pi`$, you walk counterclockwise along the upper half of the unit circle from $`z = 1`$ (DC) to $`z = -1`$ (Nyquist).
 
@@ -105,7 +109,7 @@ All the personality of the moving average can be read off this formula:
 - The phase is $`-\omega (N-1)/2`$: a fixed delay of $`(N-1)/2`$ samples at all frequencies, called **linear phase**.
 - The −3 dB point is at about $`0.443\, f_s/N`$.
 
-![Magnitude response in dB of an 8-point moving average at fs = 48 kHz: a lowpass-like main lobe, then nulls at 6, 12 and 18 kHz separated by sidelobes](images/moving-average-response.svg)
+<p align="center"><img src="images/moving-average-response.svg" alt="Magnitude response in dB of an 8-point moving average at fs = 48 kHz: a lowpass-like main lobe, then nulls at 6, 12 and 18 kHz separated by sidelobes"></p>
 
 The figure (N = 8, $`f_s = 48`$ kHz) marks the −3 dB point at $`0.443\,f_s/N \approx 2.66`$ kHz (exact value for N = 8: 2.68 kHz), the nulls at $`k\cdot f_s/N`$ = 6, 12, 18 kHz, and the first sidelobe, whose peak is at about 8.6 kHz with −12.8 dB (−12.96 dB at $`1.5\,f_s/N`$ = 9 kHz).
 
@@ -181,7 +185,7 @@ $`e^{j\omega}`$ is a point on the **unit circle** of the complex plane: as $`\om
 - Near a **zero** the numerator is small → the response has a dip; a zero exactly on the unit circle → that frequency vanishes completely (a notch, the nulls of the moving average).
 - Near a **pole** the denominator is small → the response has a peak; the closer a pole is to the unit circle, the higher and sharper the peak (resonance, high Q).
 
-![Pole-zero plot of an RBJ lowpass (f0 = 1 kHz, Q = 2, fs = 48 kHz) on the z-plane: a double zero at z = -1 and a conjugate pole pair just inside the unit circle near z = 1](images/pole-zero-lowpass.svg)
+<p align="center"><img src="images/pole-zero-lowpass.svg" alt="Pole-zero plot of an RBJ lowpass (f0 = 1 kHz, Q = 2, fs = 48 kHz) on the z-plane: a double zero at z = -1 and a conjugate pole pair just inside the unit circle near z = 1"></p>
 
 In the figure, × is a pole (they come in conjugate pairs, inside the circle) and ○ is a zero; the upper half of the unit circle is 0 .. Nyquist. Example: the RBJ lowpass has its two zeros stacked at $`z = -1`$ (completely gone at Nyquist) and its two poles near DC; the closer they are to the circle, the sharper the peak near the cutoff.
 
@@ -268,6 +272,8 @@ H(z) = \frac{g\,(1 + z^{-1})}{(1+g) - (1-g)\,z^{-1}}
 
 It has an extra zero at $`z = -1`$, so the Nyquist gain is 0 (−∞ dB) and the −3 dB point always lands exactly on $`f_c`$; the price is one extra multiply-add, and the shape at the high-frequency end is "squeezed" toward Nyquist (cramping, section 2.14). At $`f_c = 1`$ kHz, $`g = 0.065543`$ and the pole $`= (1-g)/(1+g) = 0.876976`$ -- almost the same as the exp version's 0.877306, so for a low cutoff there is no real difference between the two.
 
+<div align="center">
+
 | $`f_c`$ | exp version $`a`$ | exp version actual −3 dB point | bilinear version −3 dB point |
 |---:|---:|---:|---:|
 | 100 Hz | 0.986995 | 100.0 Hz | 100.0 Hz |
@@ -275,6 +281,8 @@ It has an extra zero at $`z = -1`$, so the Nyquist gain is 0 (−∞ dB) and the
 | 5 kHz | 0.519703 | 5188.9 Hz | 5000.0 Hz |
 | 10 kHz | 0.270091 | 11895.1 Hz | 10000.0 Hz |
 | 15 kHz | 0.140367 | does not exist (−2.45 dB at Nyquist) | 15000.0 Hz |
+
+</div>
 
 (The numbers above are printed by section [1] of `l02_filter_response` and checked by self-checks.) This course's `OnePole` uses the exp version: it is mainly used for parameter smoothing, envelopes and damping in feedback loops, where the cutoff is far below Nyquist and the meaning of the "time constant" is most direct. When you need an accurate high-frequency cutoff, use a biquad.
 
@@ -336,6 +344,8 @@ flowchart LR
 
 **Analog prototypes** (normalized with $`\Omega_0 = 1`$, $`s = j\,\Omega/\Omega_0`$):
 
+<div align="center">
+
 | type | $`H(s)`$ |
 |---|---|
 | LPF | $`\dfrac{1}{s^2 + s/Q + 1}`$ |
@@ -346,6 +356,8 @@ flowchart LR
 | Peak | $`\dfrac{s^2 + s\,(A/Q) + 1}{s^2 + s/(AQ) + 1}`$ |
 | Low shelf | $`A\,\dfrac{s^2 + (\sqrt A/Q)\,s + A}{A s^2 + (\sqrt A/Q)\,s + 1}`$ |
 | High shelf | $`A\,\dfrac{A s^2 + (\sqrt A/Q)\,s + 1}{s^2 + (\sqrt A/Q)\,s + A}`$ |
+
+</div>
 
 where $`A = 10^{\text{gainDb}/40}`$ (note that it is **40**, not 20: the gain of a peak / shelf is split half-and-half between numerator and denominator, so $`A^2`$ is the total factor).
 
@@ -380,6 +392,8 @@ a_0 = 1 + \alpha,\; a_1 = -2\cos\omega_0,\; a_2 = 1 - \alpha
 
 **The coefficients of all 8 types** (sharing the intermediate quantities $`\omega_0 = 2\pi f_0/f_s`$, $`\alpha = \sin\omega_0/(2Q)`$, $`A = 10^{\text{gainDb}/40}`$; everything is divided by $`a_0`$ at the end):
 
+<div align="center">
+
 | type | $`b_0`$ | $`b_1`$ | $`b_2`$ | $`a_0`$ | $`a_1`$ | $`a_2`$ |
 |---|---|---|---|---|---|---|
 | LPF | $`\frac{1-\cos\omega_0}{2}`$ | $`1-\cos\omega_0`$ | $`\frac{1-\cos\omega_0}{2}`$ | $`1+\alpha`$ | $`-2\cos\omega_0`$ | $`1-\alpha`$ |
@@ -388,6 +402,8 @@ a_0 = 1 + \alpha,\; a_1 = -2\cos\omega_0,\; a_2 = 1 - \alpha
 | Notch | $`1`$ | $`-2\cos\omega_0`$ | $`1`$ | $`1+\alpha`$ | $`-2\cos\omega_0`$ | $`1-\alpha`$ |
 | Allpass | $`1-\alpha`$ | $`-2\cos\omega_0`$ | $`1+\alpha`$ | $`1+\alpha`$ | $`-2\cos\omega_0`$ | $`1-\alpha`$ |
 | Peak | $`1+\alpha A`$ | $`-2\cos\omega_0`$ | $`1-\alpha A`$ | $`1+\alpha/A`$ | $`-2\cos\omega_0`$ | $`1-\alpha/A`$ |
+
+</div>
 
 The shelf coefficients are longer (let $`\beta = 2\sqrt A\,\alpha`$):
 
@@ -423,10 +439,14 @@ $`Q`$ (the quality factor) controls how close the poles are to the unit circle, 
 
 - **LPF / HPF**: the gain at $`f_0`$ is **exactly $`Q`$** (substituting $`s = j`$ into the analog prototype gives $`|H| = Q`$, and prewarping guarantees $`f_0`$ lines up). So the dB value at the cutoff = $`20\log_{10}Q`$:
 
+<div align="center">
+
 | Q | 0.5 | 0.707 | 1 | 2 | 4 | 8 | 16 |
 |---:|---:|---:|---:|---:|---:|---:|---:|
 | gain at $`f_0`$ | −6.02 dB | −3.01 dB | 0 dB | +6.02 dB | +12.04 dB | +18.06 dB | +24.08 dB |
 | peak frequency | no peak | no peak | 708 Hz | 936 Hz | 984 Hz | 996 Hz | 998 Hz |
+
+</div>
 
   $`Q = 1/\sqrt2 \approx 0.707`$ is "the largest Q that shows no peak", i.e. the second-order **Butterworth** (maximally flat passband). When $`Q > 0.707`$ a resonance peak appears, with its peak frequency at $`f_0\sqrt{1 - 1/(2Q^2)}`$ (slightly below $`f_0`$). The table above is printed by `l02_resonance`.
 
@@ -459,6 +479,8 @@ Q_k = \frac{1}{2\cos\varphi_k},\qquad
 
 Why do odd and even differ? The poles must be symmetric about the real axis and separated by $`\pi/N`$: for even $`N`$ no pole lies on the real axis, and the pair closest to it is at $`\pm\pi/(2N)`$; for odd $`N`$ there is a **real pole** right in the middle ($`\varphi = 0`$), and the others pair up at $`\pm\pi/N, \pm2\pi/N, \dots`$. That real pole is a first-order filter $`1/(s + 1)`$ -- so an odd order needs one more **one-pole** stage in the cascade, and it must be the bilinear version (section 2.8) with the same cutoff as the biquad stages, so that the −3 dB point lands exactly on $`f_c`$.
 
+<div align="center">
+
 | order $`N`$ | Q of each stage |
 |---:|---|
 | 2 | 0.7071 |
@@ -467,6 +489,8 @@ Why do odd and even differ? The poles must be symmetric about the real axis and 
 | 5 | 0.6180, 1.6180 (+ one one-pole stage) |
 | 6 | 0.5176, 0.7071, 1.9319 |
 | 8 | 0.5098, 0.6013, 0.9000, 2.5629 |
+
+</div>
 
 `Biquad.h` provides `butterworthQ(order, stage)` to compute these values (handling both odd and even; it returns 0.7071 when `stage` is outside $`0..\lfloor N/2\rfloor - 1`$). Note: applying the even-order formula directly to an odd order is a common mistake -- for $`N = 3`$ it gives 0.5774 instead of 1.0, and the cascade is −7.78 dB at $`f_c`$ instead of −3.01 dB. The solution to Exercise 3 also verifies the 3rd-order case.
 
@@ -482,11 +506,15 @@ The bilinear transform "squeezes" the entire analog $`\Omega \in [0, \infty)`$ i
 
 Section [4] of `l02_filter_response` compares the analog prototype with the digital version (LPF, Q = 0.707):
 
+<div align="center">
+
 | $`f_c`$ | $`f`$ | analog | digital |
 |---:|---:|---:|---:|
 | 1 kHz | 1.2 kHz | −4.88 dB | −4.88 dB |
 | 10 kHz | 12 kHz | −4.88 dB | −5.89 dB |
 | 18 kHz | 21.6 kHz | −4.88 dB | −16.79 dB |
+
+</div>
 
 For a low $`f_c`$ they are almost identical; at $`f_c = 18`$ kHz, 20% above the cutoff the digital version attenuates almost 12 dB more. For a lowpass this is usually harmless (it is meant to attenuate anyway), but for **peak / shelf EQs** it makes high-frequency bells narrower and asymmetric, which sounds different from an analog EQ. There are two families of fixes:
 
@@ -557,13 +585,19 @@ flowchart LR
 
 `l02_direct_forms` measures a "hard" filter (a 30 Hz, Q = 0.707 LPF, $`f_s = 48`$ kHz, with a pole radius of 0.997227, very close to $`z = 1`$; $`b_0 \approx 3.8\times10^{-6}`$):
 
+<div align="center">
+
 | structure | states | round-off in float (relative to the output) | jump at the moment the coefficients change (30 → 60 Hz) |
 |---|---:|---:|---:|
 | DF-I | 4 | −73.91 dB | 1.6 times normal |
 | DF-II | 2 | −73.39 dB | **983 times normal** (click) |
 | TDF-II | 2 | −70.42 dB | 2.3 times normal |
 
+</div>
+
 The reference for the error is a TDF-II with "coefficients, state and output all in double". Now look at the precision of the **coefficients** and the **state** separately (all using DF-I):
+
+<div align="center">
 
 | coefficients | state | error relative to the double reference |
 |---|---|---:|
@@ -572,6 +606,8 @@ The reference for the error is a TDF-II with "coefficients, state and output all
 | double | float | −83.77 dB (changing only the coefficients is not enough either: the state's round-off is still there) |
 | double | double | −242.69 dB (the two double implementations agree almost perfectly) |
 | `dawlab::dsp::Biquad` (double inside, **float output**) | | −151.20 dB |
+
+</div>
 
 The last row equals exactly the error from "just rounding the double reference output to float" (also −151.20 dB): the error inside `Biquad` is already too small to see, and what remains is only the quantization floor of `processSample()` returning a float.
 
@@ -812,6 +848,8 @@ The 1 kHz LPF keeps only the energy in roughly the first 1 kHz of the 0..24 kHz,
 
 ## 5. Common mistakes and debugging
 
+<div align="center">
+
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | The output suddenly turns into huge noise, then all NaN | Unstable coefficients (a pole outside the unit circle): a sign copied wrongly from a formula, or forgetting to divide by $`a_0`$ | Check with `isStable()` / `poles()`; confirm the denominator convention is $`1 + a_1z^{-1} + a_2z^{-2}`$ and that the difference equation **subtracts** $`a_1 y[n-1]`$ |
@@ -826,6 +864,8 @@ The 1 kHz LPF keeps only the energy in roughly the first 1 kHz of the 0..24 kHz,
 | Distortion after a high-Q filter | The resonance peak amplifies the gain by $`20\log_{10}Q`$ dB | Add gain compensation / a limiter afterwards; write the WAV as 32-bit float to see the overs |
 | The frequency response plot "mirrors" back above $`f > f_s/2`$ | A digital frequency response is periodic in $`f_s`$ | Plot only up to Nyquist |
 | The exp one-pole's −3 dB point is wrong at a high cutoff | Impulse invariance is inaccurate at high frequencies | Use the bilinear version or a biquad for a high cutoff |
+
+</div>
 
 ## 6. Exercises
 

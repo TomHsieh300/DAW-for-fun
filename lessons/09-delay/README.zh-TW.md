@@ -39,6 +39,8 @@ y[n] = x[n - D] \qquad\Longleftrightarrow\qquad H(z) = z^{-D}
 
 delay time 的長短決定我們的耳朵把它聽成什麼。下表是大略的經驗值（數字因素材與個人而異）：
 
+<div align="center">
+
 | Delay time | 和原音混合後聽起來像 | 典型用途 |
 |---|---|---|
 | < 1 ms | 音色改變（delay $`\tau`$ 與原音相加，第一個 notch 在 $`1/(2\tau)`$，即 500 Hz 以上；$`\tau = 0.1`$ ms 時在 5 kHz） | phaser / flanger 的極端、麥克風距離差造成的 comb |
@@ -48,16 +50,22 @@ delay time 的長短決定我們的耳朵把它聽成什麼。下表是大略的
 | 50–150 ms | 短而清楚的單一回聲 | slapback（rockabilly 人聲與吉他） |
 | > 150 ms | 獨立、可辨識的 echo；通常會對齊 tempo | 節奏性 echo、ping-pong、dub delay |
 
+</div>
+
 ### 2.2 Circular buffer：只往前寫、永遠不搬資料
 
 要做 $`x[n-D]`$，我們需要記住最近 $`D`$ 個 sample。最直覺的做法是「每來一個新 sample 就把整個陣列往後挪一格」，但那是每個 sample O(D) 的搬移——2 秒的 delay 在 48 kHz 下要搬 96000 個 float，完全不可行。
 
 Circular buffer（環形緩衝區）的想法是：**資料不動，指標動**。有一個 write index 指著「下一個要寫的位置」，每寫一個 sample 就往前一格，走到尾巴就繞回開頭：
 
+<div align="center">
+
 | index | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
 |---|---|---|---|---|---|---|---|---|
 | 內容 | `x[n-5]` | `x[n-4]` | `x[n-3]` | `x[n-2]` | `x[n-1]` | `x[n]` | `x[n-7]` | `x[n-6]` |
 | 指標 | | | | | | 最後一次寫入 | write index `w` | |
+
+</div>
 
 Buffer 長度 N = 8。Index 5 存著最近一次寫入的 `x[n]`；index 6 是 write index $`w`$：下一次要寫這裡，同時也是「最舊」的資料。
 
@@ -123,9 +131,13 @@ H(e^{j\omega}) = e^{-j\omega d}\bigl[(1-\Delta) + \Delta e^{-j\omega}\bigr]
 
 在 48 kHz 下的理論值（範例 `l09_interpolation_compare` 實測與理論到小數第二位完全相同）：
 
+<div align="center">
+
 | 頻率 | 1 kHz | 4 kHz | 8 kHz | 12 kHz | 15 kHz | 18 kHz | 20 kHz |
 |---|---|---|---|---|---|---|---|
 | linear，$`\Delta = 0.5`$（dB） | −0.02 | −0.30 | −1.25 | −3.01 | −5.11 | −8.34 | −11.74 |
+
+</div>
 
 聽感：靜態的 −3 dB @ 12 kHz 只是「稍微暗一點」，但當 delay time 被調變（chorus）時，$`\Delta`$ 在 0 和 1 之間來回走，高頻衰減量也跟著以 LFO 的速率起伏——這是一種聽得到的「呼吸感」。另外 linear 只有在 $`\Delta = 0.5`$（對稱 FIR）時是線性相位，其他 $`\Delta`$ 的相位延遲會隨頻率略微偏離 $`\Delta`$。
 
@@ -173,10 +185,14 @@ c_3 &= \tfrac12(y_2 - y_{-1}) + \tfrac32(y_0 - y_1)
 
 在 $`f_s/4`$：$`\tfrac98 \cdot 0.7071 + \tfrac18 \cdot 0.7071 = 0.884`$，即 **−1.07 dB**（linear 是 −3.01 dB）。完整比較（48 kHz，實測 = 理論）：
 
+<div align="center">
+
 | 頻率 | 1 kHz | 4 kHz | 8 kHz | 12 kHz | 15 kHz | 18 kHz | 20 kHz |
 |---|---|---|---|---|---|---|---|
 | linear（dB） | −0.02 | −0.30 | −1.25 | −3.01 | −5.11 | −8.34 | −11.74 |
 | cubic（dB） | −0.00 | −0.01 | −0.23 | −1.07 | −2.53 | −5.26 | −8.41 |
+
+</div>
 
 cubic 在 8 kHz 以下幾乎是平的，但它**仍然是 lowpass**——任何有限長的多項式插值在 Nyquist 附近都會掉。白雜訊（全頻能量相同）經過 delay 10.5 之後，RMS 從 0.1443 變成 linear 0.1019、cubic 0.1153，少掉的就是高頻能量。
 
@@ -227,10 +243,14 @@ f_\text{out} = f_\text{in}\left(1 - \frac{d\tau}{dt}\right)
 
 兩種常見策略：
 
+<div align="center">
+
 | 策略 | 做法 | 優點 | 缺點 | 誰用 |
 |---|---|---|---|---|
 | **平滑過渡** | delay time 線性 ramp 到新值（本章 `Delay` 用 double 精度的 `DelayRamp`，理由見 3.2 節） | 簡單；有「類比磁帶」的手感；modulation（第 10 章）本來就是這樣 | 過程中有 pitch shift；ramp 太短會倒放 | 本章 `Delay`、tape echo 模擬 |
 | **兩條讀取頭 crossfade** | 第二個讀取頭直接放在新位置，用 10–50 ms 的 raised-cosine 從舊頭淡出、新頭淡入 | 沒有 pitch shift、沒有 click | 兩條頭的內容不相關時中間會有短暫的音量凹陷與相位滑動；fade 期間再改值要排隊 | 許多數位 delay 的 tempo 切換（練習 6） |
+
+</div>
 
 練習 6 實測：crossfade 版本切換後相鄰 sample 最大差值 0.0288（和正弦本身一樣）、量到的頻率 444 Hz（只是 crossfade 期間相位滑動造成的小偏差），fade 結束後輸出與 $`x[n - 12000]`$ 完全相同。
 
@@ -334,6 +354,8 @@ beats 以四分音符為 1：八分音符 0.5、十六分音符 0.25。**附點*
 
 120 BPM（範例 `l09_pingpong_tempo` 印出的表）：
 
+<div align="center">
+
 | 音符 | beats | ms | samples @ 48 kHz |
 |---|---|---|---|
 | 二分音符 | 2 | 1000.00 | 48000 |
@@ -344,6 +366,8 @@ beats 以四分音符為 1：八分音符 0.5、十六分音符 0.25。**附點*
 | 附點十六分 | 0.375 | 187.50 | 9000 |
 | 八分三連音 | 1/3 | 166.67 | 8000 |
 | 十六分音符 | 0.25 | 125.00 | 6000 |
+
+</div>
 
 附點八分是流行與搖滾吉他最常見的 delay 設定：在八分音符的旋律後面，echo 剛好落在兩個八分音符之間，形成一種「滾動」的十六分音符律動。
 
@@ -365,6 +389,8 @@ $`m = 0`$ 只有原音，$`m = 1`$ 只有 delay。這是線性 crossfade：dry �
 
 下表是混音上常見的起點（經驗值，不是量測結果；實際要依素材、tempo 與編曲調整）：
 
+<div align="center">
+
 | 類型 | Delay time | Feedback | Mix | 迴路 filter | 聽感 |
 |---|---|---|---|---|---|
 | Slapback | 80–150 ms（不一定對拍） | 0–10%（基本上只有一次 echo） | 15–35% | LP 3–5 kHz | 緊貼在後面的單一回聲，讓人聲 / 吉他更「有空間」但不糊 |
@@ -372,6 +398,8 @@ $`m = 0`$ 只有原音，$`m = 1`$ 只有 delay。這是線性 crossfade：dry �
 | 節奏 echo | 1/4、附點 1/8、1/8 | 20–45% | 15–30% | LP 4–6 kHz、HP 100–200 Hz | 跟著 tempo 的清楚回聲，尾巴乾淨不搶主旋律 |
 | Ping-pong | 附點 1/8、1/4 | 30–50% | 20–35% | LP 3–5 kHz | 左右彈跳，增加立體感 |
 | Dub delay | 1/4、附點 1/4 | 60% 到超過 100%（迴路有 saturation） | 30–60%（常用 send，演出時手動「丟」一個字進去） | LP 1.5–3 kHz、HP 200–400 Hz | 越來越暗、越來越糊、可以自激 |
+
+</div>
 
 （範例 `l09_pingpong_tempo` 的 ping-pong 用附點八分、fb 0.45、mix 0.35、迴路 HP 150 Hz + LP 3.5 kHz；練習 4 的 dub 用 fb 1.1 + tanh。）
 
@@ -424,6 +452,8 @@ $`D = 48`$（1 ms @ 48 kHz）、$`g = 0.7`$ 時，範例 `l09_comb_filter` 掃�
 
 檔案：[`dsp/include/dawlab/dsp/FractionalDelayLine.h`](../../dsp/include/dawlab/dsp/FractionalDelayLine.h)
 
+<div align="center">
+
 | Method | 說明 |
 |---|---|
 | `void prepare(int maxDelaySamples, int numChannels)` | 唯一會 allocate 的地方。buffer 長度 = `nextPowerOfTwo(maxDelaySamples + 4)`（cubic 要讀到 `d + 2`，所以多留餘裕），`mask = size − 1` |
@@ -435,6 +465,8 @@ $`D = 48`$（1 ms @ 48 kHz）、$`g = 0.7`$ 時，範例 `l09_comb_filter` 掃�
 | `float readLagrange(int ch, float delaySamples) const noexcept` | 2.5 節的 3 階 Lagrange（教學比較用） |
 | `int getMaxDelaySamples() const`、`int getNumChannels() const`、`int getBufferSize() const` | 查詢 |
 | `static int nextPowerOfTwo(int n)` | 輔助函式 |
+
+</div>
 
 慣例：**`push()` 之後 `readXxx(ch, 0)` 回傳剛剛 push 的 sample**，`readXxx(ch, D)` 回傳 D 次 push 以前的 sample。所有讀取都把 delay clamp 到 `[0, maxDelaySamples]`，不會越界。
 
@@ -465,6 +497,8 @@ flowchart LR
     OUT --> Y[y]
 ```
 
+<div align="center">
+
 | Method | 說明 |
 |---|---|
 | `void setMaxDelayMs(float ms)` | 在 `prepare()` 之前呼叫，預設 2000 ms，決定 buffer 大小（clamp 到 1–60000 ms） |
@@ -480,6 +514,8 @@ flowchart LR
 | `void process(AudioBlock) noexcept` | in-place |
 | `static float noteToMs(double bpm, double beats) noexcept` | 2.10 節 |
 | getter | `getDelayMs()`、`getCurrentDelayMs()`（平滑中的值）、`getMaxDelayMs()`、`getFeedback()`、`getMix()`、`isPingPong()`、`getMaxDelaySamples()` |
+
+</div>
 
 逐段對照公式：
 
@@ -503,12 +539,16 @@ cd build
 
 WAV 都輸出到 `build\dawlab_output\`。
 
+<div align="center">
+
 | Target | 示範什麼 | 輸出 WAV |
 |---|---|---|
 | `l09_interpolation_compare` | buffer 大小與 mask；impulse 經過 delay 2.5 的插值 kernel；delay 10.5 時 linear / cubic / Lagrange 的頻率響應量測表（與理論並列） | `l09_interp_dry.wav`、`l09_interp_linear.wav`、`l09_interp_cubic.wav` |
 | `l09_pingpong_tempo` | BPM → ms 表；impulse 驗證 ping-pong 路徑；120 BPM 撥弦琶音 + 附點八分 ping-pong；對照八分音符 stereo echo | `l09_pingpong_dry.wav`、`l09_pingpong_wet.wav`、`l09_echo_wet.wav` |
 | `l09_doppler_sweep` | 440 Hz 正弦，delay 10 ↔ 250 ms 各花 2 秒掃動：zero-crossing 量 pitch 變化；ramp = 0 的對照組量 click；self-check：長 delay 只改 1 ms（1900 → 1901、15000 → 15001 ms）也不能 click | `l09_doppler_smooth.wav`、`l09_doppler_abrupt.wav` |
 | `l09_comb_filter` | $`D = 48`$、$`g = 0.7`$ 的 feedback comb 掃頻、自動找峰谷並印出間距；feedforward 對照；用 `Delay` 重現；白雜訊過 comb | `l09_comb_noise_dry.wav`、`l09_comb_noise_1ms.wav`、`l09_comb_noise_10ms.wav` |
+
+</div>
 
 **`l09_interpolation_compare`**（節錄）：
 
@@ -576,6 +616,8 @@ Largest adjacent-sample difference for a 1 ms change to a long delay (50 ms ramp
 
 ## 5. 常見錯誤與除錯
 
+<div align="center">
+
 | 症狀 | 可能原因 |
 |---|---|
 | echo 比設定的早或晚 1 個 sample | 先讀再寫卻讀 `D` 而不是 `D − 1`（或反過來）。用 impulse 測：第一個 echo 應該剛好在 sample `D` |
@@ -588,6 +630,8 @@ Largest adjacent-sample difference for a 1 ms change to a long delay (50 ms ramp
 | ping-pong 只有一邊有聲音 | 單聲道 block（`numChannels = 1`）時 ping-pong 不作用；或兩條 delay line 的連線接錯（左的輸出要送進右的輸入） |
 | 短 delay 聽起來「金屬」「鼻音」 | 不是 bug：comb filter（2.13 節）。delay < 30 ms 加 feedback 一定會這樣 |
 | tempo sync 的 echo 慢慢和節拍錯開 | delay time 被四捨五入成整數 sample、或 BPM 改變後沒重算 `noteToMs()` |
+
+</div>
 
 除錯技巧：**impulse 是 delay 最好的測試訊號**。打一個 impulse，印出輸出中所有非零 sample 的位置與振幅——位置錯就是 off-by-one 或單位換算錯，振幅錯就是 feedback / mix / filter 錯。範例 2 與練習 1、5 都是這樣驗證的。
 

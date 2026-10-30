@@ -16,6 +16,8 @@ Run all the solutions (Windows, from the project root):
 
 **1.** $`\Delta = 2/2^N`$, $`\text{SNR} = 6.02N + 1.76`$ dB ($`A = 1`$):
 
+<div align="center">
+
 | N | $`\Delta`$ | Theoretical SNR |
 |---|---|---|
 | 4 | $`2/16 = 0.125`$ | $`24.08 + 1.76 = 25.84`$ dB |
@@ -23,6 +25,8 @@ Run all the solutions (Windows, from the project root):
 | 12 | $`2/4096 \approx 4.88 \times 10^{-4}`$ | $`72.25 + 1.76 = 74.01`$ dB |
 | 16 | $`2/65536 \approx 3.05 \times 10^{-5}`$ | $`96.33 + 1.76 = 98.09`$ dB |
 | 24 | $`2/2^{24} \approx 1.19 \times 10^{-7}`$ | $`144.49 + 1.76 = 146.26`$ dB |
+
+</div>
 
 (The 146 dB of 24 bit is only a theoretical value: the thermal noise of real analog circuits is around −120 dBFS, so the last few bits of a 24-bit converter are really just noise.)
 
@@ -91,10 +95,14 @@ Verification: $`T = 1`$, $`u = 1.5`$: $`t = 2.5 \ge 2`$, $`y = 3 - 2.5 = 0.5`$ �
 
 **(b) The sine folder**: $`y = \sin(\pi u/2)`$. It is monotonically increasing for $`|u| \le 1`$, like a very soft soft clip, and then folds back smoothly. **All its derivatives are continuous**, whereas the first derivative of the triangle folder jumps from +1 to −1 at the fold points. By the rule of README Section 2.1, the harmonics of the triangle folder decay as $`1/n^2`$ and those of the sine folder decay much faster. The table the solution prints (220 Hz sine × 2.0):
 
+<div align="center">
+
 | folder | H3 | H5 | H7 | H9 |
 |---|---|---|---|---|
 | triangle | +2.0 | −11.9 | −20.9 | −18.0 |
 | sine | +1.4 | −14.7 | −38.4 | −67.1 |
+
+</div>
 
 (dB relative to H1.) By H9 the sine folder has already fallen to −67 dB, while the triangle folder is still at −18 dB -- the sine version sounds rounder and also aliases less easily. Mathematically, $`\sin(\frac{\pi}{2}\cdot 2\sin\theta) = \sin(\pi\sin\theta) = 2\sum_{k\,\text{odd}} J_k(\pi)\sin k\theta`$ (the Jacobi-Anger expansion); the harmonic levels are determined by the Bessel functions $`J_k(\pi)`$, which decay rapidly once $`k`$ exceeds $`\pi`$.
 
@@ -108,6 +116,8 @@ Four biquads in cascade, called in order by `processSample`; `magnitudeDb` adds 
 
 Run results:
 
+<div align="center">
+
 | Frequency | Analytic | Measured |
 |---|---|---|
 | 30 Hz | −14.67 | −14.67 |
@@ -119,6 +129,8 @@ Run results:
 | 4.5 kHz | −6.02 | −6.02 |
 | 9 kHz | −27.80 | −27.80 |
 | 15 kHz | −55.47 | −55.47 |
+
+</div>
 
 Key points:
 
@@ -170,6 +182,8 @@ RMS $`\approx 0.930`$ (−0.63 dBFS). The gain $`= -23.01 - (-0.63) = -22.38`$ d
 
 **1.** 7 kHz, $`f_s = 48`$ kHz, odd harmonics:
 
+<div align="center">
+
 | Harmonic | Frequency | $`k = \text{round}(f/f_s)`$ | Actually appears at | Verdict |
 |---|---|---|---|---|
 | 3 | 21 kHz | 0 | 21 kHz | True harmonic (< 24 kHz) |
@@ -179,6 +193,8 @@ RMS $`\approx 0.930`$ (−0.63 dBFS). The gain $`= -23.01 - (-0.63) = -22.38`$ d
 | 11 | 77 kHz | 2 | 19 kHz | alias |
 | 13 | 91 kHz | 2 | 5 kHz | alias |
 | 15 | 105 kHz | 2 | 9 kHz | alias |
+
+</div>
 
 Only the fundamental and H3 are real; 1, 5, 9, 13, 15, and 19 kHz are not integer multiples of 7 kHz and sound like inharmonic metallic noise. Note that the 1 kHz alias is lower than the fundamental -- a hard clip on a high note at 1x "grows a bass note".
 

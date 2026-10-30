@@ -59,6 +59,8 @@ flowchart LR
 
 ### 2.2 Plugin 格式概覽
 
+<div align="center">
+
 | 格式 | 開發者 | 平台 | 主要 host | 授權 / 取得方式 | 特色 |
 |---|---|---|---|---|---|
 | **VST3** | Steinberg | Windows、macOS、Linux | 幾乎所有 DAW（Cubase、Reaper、Studio One、Bitwig、Ableton Live、FL Studio…） | SDK 隨 JUCE 內附；依 JUCE 內附 SDK 的 LICENSE 檔，目前為 MIT（見 §3.7） | component / controller 分離、sample-accurate automation、多 bus、`moduleinfo.json` 快速掃描 |
@@ -67,6 +69,8 @@ flowchart LR
 | **CLAP** | Bitwig + u-he 發起的開源社群 | Windows、macOS、Linux | Bitwig、Reaper 等支援度持續增加 | MIT 授權的純 C header | 純 C ABI、thread 規則寫得很清楚、per-voice modulation、polyphonic 參數 |
 | **LV2** | 開源社群 | 主要 Linux（也可跨平台） | Ardour、Carla 等 | ISC 授權 | 以 RDF（Turtle）檔描述 plugin；擴充機制非常彈性 |
 | VST2（舊） | Steinberg | — | 舊 host | Steinberg 已停止授權新的 VST2 SDK | 只為了相容舊專案存在；JUCE 9 hosting VST2 需要你自己有舊 SDK |
+
+</div>
 
 JUCE 的好處是：同一份 `juce::AudioProcessor` 程式碼可以同時輸出 VST3、AU、AAX、LV2、Standalone（本章只開 VST3 與 Standalone）。本章 host 端只註冊 VST3 格式：AU 只存在於 macOS，VST2 需要另外的 SDK。
 
@@ -105,11 +109,15 @@ JUCE 寫的 plugin 是「single component」：processor 與 controller 由同�
 
 VST3 的音訊不是「幾個 channel」這麼簡單，而是若干個 **bus**，每個 bus 有一個 speaker arrangement（mono、stereo、5.1……）：
 
+<div align="center">
+
 | Bus | 名稱 | Arrangement | 說明 |
 |---|---|---|---|
 | input bus 0 | `"Input"` | stereo | 主輸入（main） |
 | input bus 1 | `"Sidechain"` | mono | sidechain，aux；預設可能是關閉的 |
 | output bus 0 | `"Output"` | stereo | |
+
+</div>
 
 host 用 `setBusArrangements()` 提議一組配置，plugin 回答接不接受——這就是 **bus layout 協商**。我們的 `DawLabCompressor` 只接受 mono→mono 或 stereo→stereo（`isBusesLayoutSupported`）。
 
@@ -137,6 +145,8 @@ $`k = 1`$ 是線性；$`k < 1`$ 讓滑桿前段分配給小數值——attack、
 
 本章 plugin 的參數（`plugin/compressor/CompressorProcessor.cpp`）：
 
+<div align="center">
+
 | 參數 | 範圍 | skew $`k`$ | 預設值 → normalized |
 |---|---|---|---|
 | Threshold | −60 … 0 dB | 1 | −20 dB → 0.6667 |
@@ -147,13 +157,15 @@ $`k = 1`$ 是線性；$`k < 1`$ 讓滑桿前段分配給小數值——attack、
 | Makeup | −12 … +24 dB | 1 | 0 dB → 0.3333 |
 | Mix | 0 … 100 % | 1 | 100 % → 1.0 |
 
+</div>
+
 這些數字都被 `l13_offline_host` 印出的參數表驗證（plugin 自己顯示的文字 = 我們用公式算的值，見 §3.4）。另外 JUCE 的 VST3 wrapper 會自動幫沒有 bypass 參數的 plugin 加一個 `Bypass` 參數，所以 host 看到的是 8 個參數。
 
 #### 2.3.4 Sample-accurate automation
 
 VST3 的 `process(ProcessData& data)` 裡，參數變化放在 `data.inputParameterChanges`：每個變了的參數有一個 **queue**，裡面是若干個 `(sampleOffset, value)` 的點，代表「在這個 block 的第 sampleOffset 個 sample，值變成 value」，點與點之間線性內插：
 
-![VST3 參數 queue：(0, 0.60)、(256, 0.40)、(511, 0.45) 三個點與其間的線性內插](images/vst3-parameter-queue.svg)
+<p align="center"><img src="images/vst3-parameter-queue.svg" alt="VST3 參數 queue：(0, 0.60)、(256, 0.40)、(511, 0.45) 三個點與其間的線性內插"></p>
 
 plugin 可以選擇：(a) 每個 sample 都依 queue 內插（真正的 sample-accurate）；(b) 把 block 依 sampleOffset 切段，每段用一個值；(c) 只取最後一個值（block-accurate）。JUCE 的 `AudioProcessor` 模型屬於 (c)：參數在 `processBlock` 開頭已經更新好，block 內不變。
 
@@ -304,6 +316,8 @@ y[n] = x[n] + x[n - D] \;\Longrightarrow\; |H(f)| = 2\,\left|\cos\!\left(\frac{\
 
 #### 2.6.6 Message thread vs audio thread
 
+<div align="center">
+
 | 動作 | thread | 為什麼 |
 |---|---|---|
 | 掃描、instantiate、銷毀 plugin | message thread | VST3 規格要求；很多 plugin 在其他 thread 建立會 crash |
@@ -313,11 +327,15 @@ y[n] = x[n] + x[n - D] \;\Longrightarrow\; |H(f)| = 2\,\left|\cos\!\left(\frac{\
 | `processBlock` | audio thread | 不可 allocate / lock / I/O |
 | 參數值（`setValue` / `getValue`） | 任意 | JUCE 的 VST3 hosting 的 `setValue` 先放進 lock-free cache，下一個 `process` 才送進 plugin。注意 `HostedPlugin::setParameterValue` 另外會通知 listener（短暫拿 `listenerLock`），嚴格說不是 lock-free，見 `PluginHost.h` 的註解 |
 
+</div>
+
 `HostedPlugin::process()` 還要面對一個細節：JUCE 的 `AudioProcessor` 有一個 **callback lock**，message thread 在 `suspendProcessing(true)` 期間會拿著它。audio thread 絕不能「等」這個 lock（會造成 dropout，甚至 priority inversion），所以我們用 **try-lock**：拿不到就讓這一段維持原音。
 
 注意這個 try-lock 只在 `suspendProcessing(true)` 期間生效。`setState` 與 `prepare` **不受**它保護（JUCE 的 VST3 hosting 換 state 時拿的是 `MessageManagerLock`，不碰 callback lock），所以必須由 host 自己保證這時 audio thread 沒有同時呼叫 `process()`——這正是上表「audio 停止時」的意思，`PluginHost.h` 的 thread 規則也這樣要求。另外，JUCE 的 VST3 hosting 在 `processBlock` 內部會 spin 等待一把 `processMutex`（`SpinLock`），`prepareToPlay`、`releaseResources`、`reset`、`isBusesLayoutSupported` 都在 message thread 拿同一把鎖；所以「`process()` 不等待 lock」只在 host 遵守上述規則時才成立。
 
 ### 2.7 JUCE 如何抽象化
+
+<div align="center">
 
 | JUCE class | 角色 | 本章用在 |
 |---|---|---|
@@ -333,6 +351,8 @@ y[n] = x[n] + x[n - D] \;\Longrightarrow\; |H(f)| = 2\,\left|\cos\!\left(\frac{\
 | `juce::AudioProcessorGraph` | 模組化 routing：node = processor、connection = (node, channel)，自動 PDC | 練習 6 |
 | `juce::AudioProcessorPlayer` | 把一個 `AudioProcessor` 接到 audio device 的 callback | `l13_gui_host` |
 | `juce::AudioDeviceManager` | 開啟 / 設定音訊裝置 | `l13_gui_host` |
+
+</div>
 
 JUCE 9 跟網路上常見的舊版（6/7）教學的差別，本章碰到的有（依 `third_party/JUCE/BREAKING_CHANGES.md`，這些改變其實在 JUCE 8 後期就陸續出現）：
 
@@ -622,11 +642,15 @@ flowchart LR
 
 產物位置：
 
+<div align="center">
+
 | 產物 | 路徑（相對於 build 資料夾） |
 |---|---|
 | VST3 | `lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/Debug/VST3/DawLabCompressor.vst3`（Limiter 同理） |
 | Standalone | `lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/Debug/Standalone/DawLabCompressor.exe` |
 | 範例、練習 | `bin/Debug/l13_*.exe` |
+
+</div>
 
 ### 3.6 把 plugin 交給其他 DAW（例如 Reaper）
 
@@ -671,6 +695,8 @@ flowchart LR
 
 ## 5. 常見錯誤與除錯
 
+<div align="center">
+
 | 症狀 | 可能原因 | 解法 |
 |---|---|---|
 | `loadFromFile` 失敗：「沒有可以載入的 VST3 plugin」 | 路徑指到 bundle 裡的 DLL 而不是 bundle 資料夾；或 Debug / Release 路徑弄錯 | 傳 `…/VST3/DawLabCompressor.vst3`（資料夾）。`scan()` 兩者都能處理 |
@@ -686,6 +712,8 @@ flowchart LR
 | 改了 plugin 重新 build 後，DAW 還是舊版 | DLL 被 DAW 鎖住／DAW 沒重新載入 | 關掉 DAW 再複製；re-scan |
 | 掃描某個資料夾時 host 整個當掉 | 某個 plugin 在初始化時 crash（in-process 掃描） | 把它移出資料夾；正式產品要用 out-of-process 掃描 + blacklist |
 
+</div>
+
 除錯技巧：
 
 - 用 `l13_offline_host <你的.vst3>` 先在離線環境確認 plugin 能載入、參數表正確，再放進 DAW。
@@ -698,6 +726,8 @@ flowchart LR
 
 見 [`exercises/README.zh-TW.md`](exercises/README.zh-TW.md)（7 題：計算 ×2、觀念 ×1、實作 ×4）。解答與說明在 [`solutions/README.zh-TW.md`](solutions/README.zh-TW.md)。
 
+<div align="center">
+
 | 題 | 類型 | 主題 | 程式 |
 |---|---|---|---|
 | 1 ★☆☆ | 計算 | normalized ↔ 實際值、`setSkewForCentre` 推導 | （由 `l13_state_roundtrip` 驗證） |
@@ -707,6 +737,8 @@ flowchart LR
 | 5 ★★☆ | 實作 | preset 存成檔案再載回 | `l13_ex5_starter` / `l13_ex5_solution` |
 | 6 ★★★ | 實作 | `AudioProcessorGraph` 串兩個 plugin、量測 latency | `l13_ex6_starter` / `l13_ex6_solution` |
 | 7 ★★★ | 實作 | latency 補償 + crossfade 的 bypass | `l13_ex7_starter` / `l13_ex7_solution` |
+
+</div>
 
 ---
 

@@ -11,12 +11,16 @@
 
 The chapter is built in two stages:
 
+<div align="center">
+
 | Stage | What | Where | Needs JUCE? |
 |---|---|---|---|
 | **1** (Steps 1-10) | The **engine**: transport, clips, 8-track mixer, inserts, FX buses, lock-free command queue, plugin delay compensation, offline bounce, real-time safety tests | build along: `steps/`; reference: `engine/`, `examples/`, `tests/`; text: `docs/step-01..10` | No - plain C++17, testable offline |
 | **2** (Steps 11-21) | The **app "DawLab 8"**: audio device, dark GUI (transport bar, arrangement with waveforms, mixer with generated parameter panels, spectrum and loudness), VST3 inserts through chapter 13, file loading with resampling, export, keyboard shortcuts, automated GUI tests | `app/`, `docs/step-11..21` | Yes |
 
-![DawLab 8 playing the demo song](docs/images/dawlab8_snapshot.png)
+</div>
+
+<p align="center"><img src="docs/images/dawlab8_snapshot.png" alt="DawLab 8 playing the demo song"></p>
 
 *DawLab 8 with the demo song at bar 2 beat 3. This picture is not a screenshot: the app renders
 itself with `"DawLab 8.exe" --snapshot <file.png>` (Step 12), which ctest runs on every build.*
@@ -32,10 +36,14 @@ device, draws, and talks to the engine through atomics and the command queue.
 There are two ways through the chapter, and they use the same 21 step documents
 ([roadmap](#4-the-twenty-one-steps)):
 
+<div align="center">
+
 | Route | What you do | Where | Checked by |
 |---|---|---|---|
 | **Build along** (recommended) | write the DAW yourself, one step at a time | Steps 1-10: `steps/stepNN-*/` - one small, self-contained engine snapshot per step. Steps 11-21: the "Your turn" section of each step document | Steps 1-10: `l14_stepNN_starter` (your code; prints `[FAIL]` until the step works) and `l14_stepNN_solution` (ctest). Steps 11-21: the app's own tests (`l14_app_smoke_test`, `l14_app_snapshot`, exercise solutions) |
 | **Reference** | read and run the finished program | `engine/` (+ `examples/`, `tests/`) and `app/` | `l14_test_*`, `l14_app_smoke_test`, the examples |
+
+</div>
 
 **Build along, Steps 1-10 (the engine).** Each `steps/stepNN-*/` folder is a complete, compilable
 mini engine that contains exactly what exists after that step - Step 1 has no transport, no
@@ -157,6 +165,8 @@ flowchart LR
 All engine code is header-only in `engine/include/dawlab/engine/`, namespace
 `dawlab::engine`, CMake target `dawlab_engine` (alias `dawlab::engine`).
 
+<div align="center">
+
 | Header | Responsibility | Step |
 |---|---|---|
 | `Constants.h` | fixed sizes: 8 tracks, 2 buses, stereo, 8 inserts per strip | 1 |
@@ -175,6 +185,8 @@ All engine code is header-only in `engine/include/dawlab/engine/`, namespace
 | `Renderer.h` | `renderOffline()` / `bounceToWav()` | 9 |
 | `DemoSong.h` | the 8-track demo song as data (`makeDemoSong`, `applyDemoSong`) | 9, 18 |
 | `All.h` | includes everything (except `DemoSong.h`) | - |
+
+</div>
 
 ### 2.4 The application: four threads around the engine
 
@@ -202,6 +214,8 @@ thread comes back to the message thread as an immutable object through
 `MessageManager::callAsync`. No thread ever waits for the audio thread, and the audio thread
 waits for nobody.
 
+<div align="center">
+
 | File (`app/Source/`) | Responsibility | Step |
 |---|---|---|
 | `AudioHost.h/.cpp` | device, callback (zero-copy), CPU load, offline render path, spectrum feed | 11 |
@@ -218,6 +232,8 @@ waits for nobody.
 | `Meters.h/.cpp` | `MeterBar`, `LoudnessDisplay`, `SpectrumView` | 13, 15, 20 |
 | `AppCommands.h` | command IDs | 21 |
 | `SmokeTest.h/.cpp` | `--smoke-test`, `--snapshot`, an in-process test plugin | 11-21 |
+
+</div>
 
 CMake: the static library `l14_daw_app` (all of the above except `Main.cpp`; the JUCE exercises
 link it), the app `DawLab8` (`juce_add_gui_app`, product name "DawLab 8"), and `l14_daw_app_3bus`
@@ -302,6 +318,8 @@ same mono file is therefore 3.01 dB louder at the centre on a stereo track, and 
 effect (chorus spread, a wide reverb) collapses to mono on a mono track. Chapter 01's theory section
 on [pan law and balance](../01-gain/README.md) explains why the two controls differ.
 
+<div align="center">
+
 | setting | $`g_L`$ | $`g_R`$ |
 |---|---|---|
 | fader 0 dB, pan centre, constant power | 0.7071 (-3.01 dB) | 0.7071 |
@@ -310,6 +328,8 @@ on [pan law and balance](../01-gain/README.md) explains why the two controls dif
 | pan +0.5, fader -6 dB | 0.1918 (-14.34 dB) | 0.4630 (-6.69 dB) |
 | balance mode, centre | 1 | 1 |
 | balance +0.5 | 0.5 | 1 |
+
+</div>
 
 ### 3.4 Summing, mute and solo
 
@@ -444,6 +464,8 @@ application. The two routes of ["How to use this chapter"](#how-to-use-this-chap
 in the last two columns: **build along** = write the code of the "Your turn" column yourself and
 run its check; **reference** = read the main files and run the reference checks.
 
+<div align="center">
+
 | # | Document | Adds | Build along: your turn (Steps 1-10: `steps/stepNN-*/`, starter `l14_stepNN_starter`, solution `l14_stepNN_solution`) | Reference: main files | Reference: verify with |
 |---|---|---|---|---|---|
 | 1 | [docs/step-01-skeleton.md](docs/step-01-skeleton.md) | project skeleton, `Engine`, `processBlock(AudioBlock)` | `step01-skeleton`: `Engine::processBlock`, `processChunk` | `Engine.h`, `Constants.h`, `CMakeLists.txt` | `l14_hello_engine` |
@@ -468,6 +490,8 @@ run its check; **reference** = read the main files and run the reference checks.
 | 20 | [docs/step-20-spectrum-loudness.md](docs/step-20-spectrum-loudness.md) | master spectrum analyzer, EBU R 128 loudness, mix latency | `SpectrumView` log axis -> smoke test 8 | `Meters`, `AudioHost` | `l14_app_smoke_test` (8), snapshot |
 | 21 | [docs/step-21-shortcuts-and-tests.md](docs/step-21-shortcuts-and-tests.md) | commands, menus, keyboard shortcuts, the app's automated tests | transport commands in `getCommandInfo` / `perform` -> smoke test | `AppCommands.h`, `MainComponent`, `SmokeTest` | `l14_app_smoke_test`, Exercise 13 |
 
+</div>
+
 The engine's API reference (threading table, JUCE integration recipe) is
 [docs/engine-api.md](docs/engine-api.md); stage 2 is one way to build a GUI on it.
 
@@ -483,6 +507,8 @@ The engine part needs no JUCE. From the repository root (PowerShell):
 
 The unit tests carry the ctest label `test`. Programs land in `build/bin/Debug/`, WAV files in
 `build/dawlab_output/` (run the programs from the build directory, as ctest does).
+
+<div align="center">
 
 | Target | Kind | What it shows | Output files |
 |---|---|---|---|
@@ -505,6 +531,8 @@ The unit tests carry the ctest label `test`. Programs land in `build/bin/Debug/`
 | `l14_step01_solution` ... `l14_step10_solution` | solution | the build-along snapshots of Steps 1-10 (`steps/`), each checking only its own step | `l14_step01.wav`, `l14_step09.wav` |
 | `l14_step01_starter` ... `l14_step10_starter` | (build only) | the same snapshots with your TODOs; they print `[FAIL]` until the step is done | - |
 
+</div>
+
 The application needs JUCE (chapter 13's setup; the first configure builds JUCE's helper tool):
 
 ```powershell
@@ -516,12 +544,16 @@ cd build
 & ".\bin\Debug\DawLab 8.exe" --snapshot dawlab_output/l14_app_snapshot.png
 ```
 
+<div align="center">
+
 | Target | Kind | What it shows | Output files |
 |---|---|---|---|
 | `DawLab8` ("DawLab 8.exe") | app | the 8-track DAW, Steps 11-21 | (Export mixdown: any WAV you choose) |
 | `l14_app_smoke_test` | test (`DawLab8 --smoke-test`) | resampler, demo song via the GUI model, export, device callback = bounce, plugin insert + PDC (with chapter 13 built: its VST3 compressor and limiter), GUI controls -> engine, latency-compensated playhead, shortcuts, sample-rate change, spectrum display, File > Export on its thread | `l14_app_smoke.wav`, `l14_app_export.wav` (the whole song, 19 s), `l14_app_smoke_44k.wav` (the loader's 44.1 kHz mono test input) |
 | `l14_app_snapshot` | example (`DawLab8 --snapshot`) | the window with the demo song at bar 2 beat 3, and a generated parameter panel | `l14_app_snapshot.png`, `l14_app_snapshot_panel.png` |
 | `l14_ex8_solution` ... `l14_ex13_solution` | solution | JUCE exercises 8-13 | `l14_ex8_lane.png`, `l14_ex9_take.wav`, `l14_ex10_synth.wav`, `l14_ex11_project.dawlab` (+ media), `l14_ex12_bus_c_only.wav`, `l14_ex12_third_bus.png`, `l14_ex13_shortcuts.xml`, `l14_ex13_editor.png` |
+
+</div>
 
 Using the app: the demo song is generated at start-up (File > Load demo song, Ctrl+D, does it
 again). Click a lane's ruler to seek, drag clips, click an insert slot's arrow to choose an effect
@@ -601,6 +633,8 @@ In the application (stage 2):
 
 ## 7. Common mistakes and how to debug them
 
+<div align="center">
+
 | Symptom | Likely cause | Where to look |
 |---|---|---|
 | Clicks when a clip starts or stops | no fade at the clip edge; clip cut in the middle of a waveform | `Clip::fadeInSamples` / `fadeOutSamples` (a few ms is enough) |
@@ -624,6 +658,8 @@ In the application (stage 2):
 | (app) Mixer shows stale names in a test or snapshot | `ChangeBroadcaster` messages are asynchronous, no message loop ran | `dispatchPendingMessages()` (Step 12) |
 | (app) Export hangs or crashes randomly | the device callback still calls `processBlock()` during the render | detach the engine first (Step 19) |
 | (app) Meters freeze while the GUI is busy | the timer only runs when the message thread is free | move slow work (file loading, export) to worker threads |
+
+</div>
 
 ## 8. Exercises
 

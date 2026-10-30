@@ -69,10 +69,14 @@ Solution program: `solutions/ex2_cubic_harmonics.cpp` (target `l06_ex2_solution`
 
 **3.** $`y = x - x^3/3 = \left(A - \dfrac{A^3}{4}\right)\sin\theta + \dfrac{A^3}{12}\sin 3\theta`$.
 
+<div align="center">
+
 | $`A`$ | $`H_1`$ | $`H_3`$ | $`H_3/H_1`$ | THD |
 |---|---|---|---|---|
 | 0.5 | $`0.5 - 0.03125 = 0.46875`$ | $`0.125/12 = 0.0104167`$ | $`20\log_{10}(0.022222) = -33.06`$ dB | 2.222 % |
 | 1.0 | $`1 - 0.25 = 0.75`$ | $`1/12 = 0.08333`$ | $`20\log_{10}(0.11111) = -19.08`$ dB | 11.111 % |
+
+</div>
 
 For $`|x| \le 1`$ only the third harmonic exists, so THD $`= H_3/H_1`$. The values measured by the program agree with theory (within ±0.05 dB).
 
@@ -86,6 +90,8 @@ Solution program: `solutions/ex3_alias_frequencies.cpp` (target `l06_ex3_solutio
 
 **1.** $`f_s = 44.1`$ kHz, Nyquist 22.05 kHz:
 
+<div align="center">
+
 | $`k`$ | $`k f_0`$ | Folds to at 1x |
 |---|---|---|
 | 3 | 15 kHz | 15 kHz (a true harmonic) |
@@ -96,9 +102,13 @@ Solution program: `solutions/ex3_alias_frequencies.cpp` (target `l06_ex3_solutio
 | 13 | 65 kHz | 65 − 44.1 = **20.9 kHz** |
 | 15 | 75 kHz | 88.2 − 75 = **13.2 kHz** |
 
+</div>
+
 **2.** The 9th harmonic lands at 900 Hz with an amplitude of 1/9 of the fundamental: $`20\log_{10}(1/9) = -19.08`$ dB. The program builds an approximate square wave as "sine × 100, then clamp to ±1" and measures −19.10 dB (other very high harmonics, such as the 873rd and 891st, also fold to 900 Hz, but their amplitudes are only about 1% of 1/9). It is particularly unpleasant because: (a) it is more than two octaves below 5 kHz; masking extends mainly upward in frequency, so components far below the fundamental are barely masked and stand out; (b) it has no integer relationship to 5 kHz, so it is dissonant; (c) when the input pitch changes, its direction and speed of movement do not match the pitch: this alias $`= 9f_0 - f_s`$ slides at **9 times** the speed in the **same** direction (at $`f_0`$ = 5010 Hz it becomes $`9 \times 5010 - 44100 = 990`$ Hz; the fundamental moved only 10 Hz while it moved 90 Hz), whereas the 5th- and 7th-harmonic aliases ($`f_s - kf_0`$, 19.1 kHz and 9.1 kHz) slide in the **opposite** direction. The program also measures 9.1 kHz (the alias of the 7th harmonic), −16.91 dB versus the theoretical −16.90 dB, and a control at 800 Hz, which is below the measurement floor.
 
 **3.** At 2x, first fold at 88.2 kHz:
+
+<div align="center">
 
 | $`k`$ | $`k f_0`$ | At 88.2 kHz | After downsampling |
 |---|---|---|---|
@@ -108,6 +118,8 @@ Solution program: `solutions/ex3_alias_frequencies.cpp` (target `l06_ex3_solutio
 | 11 | 55 kHz | 33.2 kHz | Filtered out |
 | 13 | 65 kHz | 23.2 kHz | In the transition band (stage 1 at 44.1 kHz covers about 18.7–25.7 kHz), **attenuated by only about 15 dB**, and after downsampling folds back to 44.1 − 23.2 = **20.9 kHz** (about −22.3 − 14.6 ≈ −37 dB relative to the fundamental) |
 | 15 | 75 kHz | 13.2 kHz | **Still aliases** to 13.2 kHz |
+
+</div>
 
 Conclusion: 2x blocks most of them, but higher harmonics still fold back (with an ideal brickwall filter the safe upper limit is $`2f_s - f_s/2 = 66.15`$ kHz; a real halfband has a transition band, so a harmonic close to the limit such as 65 kHz is blocked only partially). The program's table uses the coefficients of this chapter's `Oversampler` stage 1 to compute the actual attenuation inside the transition band. The harmonics of a square wave decay only as $`1/k`$, so a hard clip needs a much higher factor than tanh, or ADAA (Exercise 6).
 
@@ -203,6 +215,8 @@ For $`|x| \le 1`$, $`F' = x`$; for $`x > 1`$, $`F' = 1`$; for $`x < -1`$, $`F' =
 
 **3. Measurements** (7 kHz, peak 2, 48 kHz)
 
+<div align="center">
+
 | Method | Fundamental (dBFS) | Alias total |
 |---|---|---|
 | naive 1x | 1.72 | −24.6 dB |
@@ -211,6 +225,8 @@ For $`|x| \le 1`$, $`F' = x`$; for $`x > 1`$, $`F' = 1`$; for $`x < -1`$, $`F' =
 | ADAA + 2x | 1.62 | −56.0 dB |
 | naive 4x | 1.71 | −49.2 dB |
 | naive 8x | 1.71 | −61.7 dB |
+
+</div>
 
 ADAA alone at 1x improves by 17.5 dB, which is cleaner than naive 2x; combined with 2x it improves by a further 19.3 dB. The last two rows are the control group: with oversampling alone, a hard clip improves only 12–13 dB per doubling of the factor (the harmonics decay as $`1/k`$), and 8x still has −61.7 dB; "ADAA + 2x" reaches the same order of magnitude with far less computation (the program checks that the gap between the two is < 10 dB).
 
@@ -231,12 +247,16 @@ Solution program: `solutions/ex7_oversampling_cost.cpp` (target `l06_ex7_solutio
 
 **Measured on the author's machine** (`-Config Release` build; times vary from machine to machine, the alias numbers do not):
 
+<div align="center">
+
 | Factor | Latency | Alias total | Time | vs 1x | CPU load |
 |---|---|---|---|---|---|
 | 1x | 0 | −17.9 dB | 11.9 ms | 1.00 | 0.12 % |
 | 2x | 31 | −38.3 dB | 37.3 ms | 3.15 | 0.37 % |
 | 4x | 36 | −85.2 dB | 70.3 ms | 5.93 | 0.70 % |
 | 8x | 38 | −111.5 dB | 124.3 ms | 10.49 | 1.24 % |
+
+</div>
 
 A Debug build is 3–4 times slower, and the relative factors jump around between runs (2x about 3.8–4.7, 4x about 6.6–8.4, 8x about 12–15). So always use Release when comparing cost, and run it several times and take the minimum.
 

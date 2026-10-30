@@ -22,11 +22,15 @@ mutex 會讓 audio thread 等待持有它的人。持有它的 UI thread 可能�
 
 ### 數值 vs. 結構
 
+<div align="center">
+
 | 變更 | 機制 | 為什麼這樣就夠了 |
 |---|---|---|
 | fader、pan、mute、solo、send level、effect 參數、bypass、tempo、play | `std::atomic` | 單一數字；最新的值勝出；不涉及記憶體 |
 | 新增 / 移除 / 取代 / 移動 insert、新的 clip list | 透過 `SpscQueue<Command>` 的 **command** | 需要記憶體，以及必須一起套用的多個 pointer 更新 |
 | audio thread 不再使用的物件 | 透過 `SpscQueue<Garbage>` 的 **garbage ticket** | 必須被釋放，但不能在 audio thread 上釋放 |
+
+</div>
 
 ### Single-producer / single-consumer ring buffer
 
@@ -105,11 +109,15 @@ UI 呼叫。
 
 ## 程式碼
 
+<div align="center">
+
 | 檔案 | 內容 |
 |---|---|
 | `SpscQueue.h` | `SpscQueue<T>`：`push`、`pop`、`size`、`empty`、`capacity` |
 | `Commands.h` | `ChannelKind`、`ChannelRef`、`CommandType`、`Command`（factory `addInsert`、`removeInsert`、`replaceInsert`、`moveInsert`、`replaceClips`）、`Garbage` |
 | `Engine.h` | `pushCommand`、`addInsert`、`replaceInsert`、`removeInsert`、`moveInsert`、`setTrackClips`、`getInsert`、`getNumInserts`、`collectGarbage`、`applyCommands` / `apply` / `discard` / `disposeNow` |
+
+</div>
 
 `Engine::apply()` 是針對 command 類型的 `switch`；每個分支都只是幾次 pointer 操作，
 以及最多一次 `discard()`。
@@ -123,12 +131,16 @@ UI 呼叫。
 track 的 clip list 是一個 atomic pointer，而 `processChunk()` 以
 `applyCommands()` 開頭。
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫的 | `SpscQueue<T>::push()` 與 `pop()`（release / acquire、一個空 slot）以及 `Engine::applyCommands()`（pop 出所有東西、link pointer、對被拆下或被拒絕的東西呼叫 `discard()`） |
 | 檔案 | `steps/step07-commands/starter/step07.cpp` |
 | 執行 | `l14_step07_starter`；在你完成之前它會印出 `[FAIL] l14_step07 (16 of 24 checks failed)`（單 thread 的測試通過後，才會開始兩條 thread 的 queue 測試） |
 | Solution | `steps/step07-commands/solution/step07.cpp`（ctest `l14_step07_solution`） |
+
+</div>
 
 預期輸出（已驗證）：
 

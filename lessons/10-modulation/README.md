@@ -43,6 +43,8 @@ flowchart TD
 
 The LFO (Low-Frequency Oscillator) output is not meant to be heard. Its frequency is usually 0.05–10 Hz, far below the audible range (20 Hz). Its job is to make a "parameter" change slowly over time. Which parameter is controlled determines the kind of effect:
 
+<div align="center">
+
 | Modulated parameter | Effect | Component in this chapter |
 |---|---|---|
 | gain | tremolo / autopan | `Tremolo` |
@@ -51,6 +53,8 @@ The LFO (Low-Frequency Oscillator) output is not meant to be heard. Its frequenc
 | delay time, no dry mixed in | vibrato | Exercise 3 |
 | allpass corner frequency, dry mixed in | phaser | `Phaser` |
 | multiplication by an "LFO" in the audible range (the carrier) | ring modulation | Exercise 4 |
+
+</div>
 
 ### 2.2 The LFO
 
@@ -66,6 +70,8 @@ One cycle = $`f_s / r`$ samples. For example, with $`r = 2`$ Hz and $`f_s = 48`$
 
 The waveforms are functions of the phase (all outputs lie in $`[-1, +1]`$):
 
+<div align="center">
+
 | Waveform | $`m(p)`$ | Character |
 |---|---|---|
 | Sine | $`\sin(2\pi p)`$ | Smoothest; the default for chorus / flanger / phaser |
@@ -74,7 +80,9 @@ The waveforms are functions of the phase (all outputs lie in $`[-1, +1]`$):
 | Square | $`p < \tfrac12 ? +1 : -1`$ | Switches between two values; the "chopped" tremolo |
 | Sample & Hold | pick a random number at the start of each cycle and hold it for the whole cycle | A random staircase with a "robot / computer" feel |
 
-![Five LFO waveforms over two cycles: sine, triangle, saw, square and sample & hold](images/lfo-shapes.svg)
+</div>
+
+<p align="center"><img src="images/lfo-shapes.svg" alt="Five LFO waveforms over two cycles: sine, triangle, saw, square and sample &amp; hold"></p>
 
 (`l10_lfo_shapes` prints more precise ASCII plots from the real values.)
 
@@ -99,6 +107,8 @@ In a DAW, an LFO often has to follow the beat. One beat (a quarter note) = $`60/
 r = \frac{\text{bpm}}{60 \cdot b} \ \text{Hz}
 ```
 
+<div align="center">
+
 | Note length | $`b`$ | 90 bpm | 120 bpm | 140 bpm |
 |---|---:|---:|---:|---:|
 | One bar (4/4) | 4 | 0.375 Hz | 0.500 Hz | 0.583 Hz |
@@ -107,6 +117,8 @@ r = \frac{\text{bpm}}{60 \cdot b} \ \text{Hz}
 | Eighth note | 0.5 | 3.000 Hz | 4.000 Hz | 4.667 Hz |
 | Eighth triplet | 1/3 | 4.500 Hz | 6.000 Hz | 7.000 Hz |
 | Sixteenth note | 0.25 | 6.000 Hz | 8.000 Hz | 9.333 Hz |
+
+</div>
 
 A correct rate is not enough: when you start playback from bar 37, the LFO peaks must also land on the beats. The way to do this is to recompute the phase at the start of every block from the song position given by the host (ppq, the number of beats counted in quarter notes): $`p = \mathrm{frac}(\text{ppq} / b + p_0)`$. Exercise 6 implements this.
 
@@ -167,12 +179,16 @@ With a sine LFO, $`d(t) = d_0 + D\sin(2\pi r t)`$ and $`d'(t) = 2\pi r D \cos(2\
 
 In cents (100 cents = one semitone), the maximum upward shift is $`1200 \log_2(1 + 2\pi r D)`$ and the maximum downward shift is $`1200 \log_2(1 - 2\pi r D)`$. Because the log curve bends downward (it is concave), the downward magnitude is slightly larger; when $`2\pi r D`$ is small the two are almost symmetric.
 
+<div align="center">
+
 | $`D`$ (depth) | $`r`$ (rate) | $`2\pi r D`$ | Maximum deviation (up / down) |
 |---|---|---|---|
 | 3 ms | 0.8 Hz | 0.0151 | +25.9 / −26.3 cents (chorus default) |
 | 1 ms | 5 Hz | 0.0314 | +53.6 / −55.3 cents (clear vibrato) |
 | 0.6 ms | 5.5 Hz | 0.0207 | +35.5 / −36.3 cents (the sound of Exercise 3) |
 | 5 ms | 2 Hz | 0.0628 | +105 / −112 cents (more than a semitone, already "drunk") |
+
+</div>
 
 Note that the amount of detuning depends only on **$`r \times D`$**: doubling the depth and halving the rate gives the same detuning, just slower. `l10_chorus` verifies this by measuring zero crossings:
 
@@ -230,6 +246,8 @@ This result is worth thinking about: **for broadband material, a tiny left/right
 
 #### Sound and typical parameters
 
+<div align="center">
+
 | Parameter | Typical range | Sound |
 |---|---|---|
 | centre delay | 10–25 ms | Longer sounds more "separate" and more like doubling; too long (> 35 ms) and you begin to hear two distinct voices, approaching slapback |
@@ -237,6 +255,8 @@ This result is worth thinking about: **for broadband material, a tiny left/right
 | rate | 0.1–2 Hz | Too fast becomes a vibrato-like "wobble" |
 | voices | 1–4 | More = thicker, more ensemble-like |
 | mix | 0.3–0.5 | The effect is strongest at 0.5; at 1.0 it becomes vibrato |
+
+</div>
 
 ### 2.5 Flanger
 
@@ -261,7 +281,7 @@ H = \tfrac12\left(1 + e^{-j\omega D}\right) = e^{-j\omega D/2}\cos\!\left(\tfrac
 
 With $`d = 2`$ ms the notches are at 250, 750, 1250 Hz and so on, spaced $`1/d = 500`$ Hz apart, **evenly spaced**, like a comb on the spectrum. A flanger lets the LFO push $`d`$: the whole comb slides left and right together, which is the "whoosh" of a jet flying past.
 
-![Flanger magnitude response |H| for d = 2 ms and d = 1 ms: a comb with notches at odd multiples of 1/(2d)](images/flanger-comb-delay.svg)
+<p align="center"><img src="images/flanger-comb-delay.svg" alt="Flanger magnitude response |H| for d = 2 ms and d = 1 ms: a comb with notches at odd multiples of 1/(2d)"></p>
 
 *Left: d = 2 ms, notches at 250, 750, 1250 and 1750 Hz. Right: d = 1 ms (the LFO shortens the delay), so the teeth spread out and move up: notches at 500 and 1500 Hz.*
 
@@ -304,11 +324,15 @@ At the peak frequencies ($`z^{-D} = 1`$) and the notch frequencies ($`z^{-D} = -
 H_{\text{peak}} = (1-m) + \frac{m}{1-g}, \qquad H_{\text{notch}} = (1-m) - \frac{m}{1+g}
 ```
 
+<div align="center">
+
 | feedback $`g`$ | peak ($`f = k/d`$) | former notch position ($`f = (2k+1)/2d`$) | Sound |
 |---|---|---|---|
 | 0 | 1.0 (0 dB) | 0 (−∞ dB) | Clean sweep |
 | +0.5 | 1.5 (**+3.5 dB**) | 0.167 (**−15.6 dB**) | Peaks get sharp, metallic resonance |
 | −0.7 | 0.794 (**−2.0 dB**) | −1.167 (**+1.3 dB**) | Peaks and valleys swap; a "hollow" sound |
+
+</div>
 
 Positive feedback makes the integer multiples of $`k/d`$ resonate (like a pipe of length $`d`$), and the sound becomes more and more "pitched". Negative feedback moves the resonances to the odd multiples $`(2k+1)/(2d)`$, just as a pipe closed at one end has only odd harmonics. The loop is stable only for $`|g| < 1`$ (each trip around multiplies by $`g`$), so `setFeedback` is limited to ±0.99. The measurements in the example match the theory exactly:
 
@@ -345,6 +369,8 @@ At the instant the delay difference $`\delta = d(t) - d_0`$ passes through 0, $`
 
 #### Typical parameters
 
+<div align="center">
+
 | Parameter | Typical range | Sound |
 |---|---|---|
 | delay | 0.5–3 ms | Lower bound of the sweep (the position of the highest notch) |
@@ -352,6 +378,8 @@ At the instant the delay difference $`\delta = d(t) - d_0`$ passes through 0, $`
 | rate | 0.05–0.5 Hz | Slow = jet plane; fast (> 2 Hz) = warble |
 | feedback | ±0.3–0.9 | Larger = more metallic and more pitched |
 | mix | 0.5 | At 0.5 the notches are deepest (both paths must be equal to cancel completely) |
+
+</div>
 
 ### 2.6 Phaser
 
@@ -424,12 +452,16 @@ H_{\text{total}} = \tfrac12\left(1 + e^{jN\varphi}\right) \;\Rightarrow\; |H_{\t
 
 Notches appear at $`N\varphi = -(2k+1)\pi`$ (antiphase). Since $`\varphi`$ falls monotonically from 0 to $`-\pi`$, $`N\varphi`$ sweeps $`(-N\pi, 0)`$, which contains the odd multiples of $`\pi`$: $`\pi, 3\pi, \ldots, (N-1)\pi`$, a total of **$`N/2`$** (for even N). So:
 
+<div align="center">
+
 | stages | Total phase range | Number of notches |
 |---|---|---|
 | 2 | 0 to −360° | 1 |
 | 4 | 0 to −720° | 2 |
 | 6 | 0 to −1080° | 3 |
 | 8 | 0 to −1440° | 4 |
+
+</div>
 
 (This is also why `setStages` accepts only even numbers: with an odd number of stages the total phase at Nyquist, $`-N\pi`$, is an odd multiple of $`\pi`$, so the last "notch" is stuck at Nyquist and becomes a lowpass slope falling away through the highs, wasting one stage.)
 
@@ -499,6 +531,8 @@ Effect of feedback on 4 stages (centre 1 kHz, mix 0.5) (measured / theory, dB):
 
 #### Typical parameters
 
+<div align="center">
+
 | Parameter | Typical range | Sound |
 |---|---|---|
 | stages | 4–8 | More = more notches, a stronger effect |
@@ -506,6 +540,8 @@ Effect of feedback on 4 stages (centre 1 kHz, mix 0.5) (measured / theory, dB):
 | depth | 0.5–1 (× ±2 octaves) | How wide the sweep is |
 | rate | 0.1–2 Hz | Slow = psychedelic; fast = rotary-speaker-like wobble |
 | feedback | 0–0.7 | Larger = more "wah-wah", more resonant |
+
+</div>
 
 ### 2.7 Tremolo, autopan, ring modulation
 
@@ -753,11 +789,15 @@ All the examples below assume you have already done `cd build`.
 
 It prints ASCII plots of the five waveforms with their min / max / mean, the "largest single-step jump" of the square before and after smoothing, and the tempo sync conversion table. Output:
 
+<div align="center">
+
 | File | Content | What to listen for / look at |
 |---|---|---|
 | `l10_lfo_sine.wav` … `l10_lfo_sample_hold.wav` | The LFO itself (2 Hz; S&H 8 Hz), amplitude 0.5 | Too low to hear; open it in a waveform editor and "look" |
 | `l10_lfo_square_click.wav` | 441 Hz × 4 Hz square gain, no smoothing | A "click" at every note start and end |
 | `l10_lfo_square_smooth.wav` | Same, with 1 ms smoothing | A clean "da-da-da-da" |
+
+</div>
 
 ### 3.7 Example 2: `l10_chorus` (`examples/chorus_demo.cpp`)
 
@@ -765,12 +805,16 @@ It prints ASCII plots of the five waveforms with their min / max / mean, the "la
 bin\Debug\l10_chorus.exe                 # optional: bin\Debug\l10_chorus.exe my_guitar.wav
 ```
 
+<div align="center">
+
 | File | Parameters | What you should hear |
 |---|---|---|
 | `l10_chorus_dry.wav` | The original plucked arpeggio | — |
 | `l10_chorus_wet.wav` | 2 voices, 0.8 Hz, depth 3 ms, centre 15 ms, mix 0.5, spread 1 | Thicker and wider than the dry, like two guitars slightly out of tune with each other |
 | `l10_chorus_3voice.wav` | 3 voices, 0.5 Hz, depth 4 ms, centre 18 ms | More like a crowd |
 | `l10_chorus_mono.wav` | Same as wet, spread 0 | Just as thick, but squeezed into the centre |
+
+</div>
 
 The numbers: L/R correlation (dry 1.000, wet 0.729, 3voice 0.787, mono 1.000), the Doppler measurement (Section 2.3), spread vs correlation (Section 2.4), and linear vs cubic interpolation (Section 2.8).
 
@@ -784,6 +828,8 @@ bin\Debug\l10_flanger.exe
 2. The peak and valley gains for feedback 0 / +0.5 / −0.7 at a 1 ms delay, measured vs theory.
 3. Through-zero flanging.
 
+<div align="center">
+
 | File | Parameters | What you should hear |
 |---|---|---|
 | `l10_flanger_dry.wav` | Plucked arpeggio | — |
@@ -791,6 +837,8 @@ bin\Debug\l10_flanger.exe
 | `l10_flanger_noise_dry.wav` | White noise | — |
 | `l10_flanger_noise.wav` | 0.2 Hz, delay 0.5 ms, depth 4 ms, fb 0.7 | A jet taking off and landing; the easiest place to hear the comb sliding |
 | `l10_flanger_through_zero.wav` | Dry delayed by 2 ms, wet 0.1–3.9 ms (triangle 0.25 Hz) | The sound nearly vanishes for an instant at every zero crossing |
+
+</div>
 
 ### 3.9 Example 4: `l10_phaser` (`examples/phaser_demo.cpp`)
 
@@ -802,12 +850,16 @@ bin\Debug\l10_phaser.exe
 2. Number and positions of the notches for 4 / 6 / 8 stages (sweep + ternary search to refine each notch, compared with the formula).
 3. The effect of feedback 0 / 0.5 / 0.8 (measured vs theory including $`z^{-1}`$).
 
+<div align="center">
+
 | File | Parameters | What you should hear |
 |---|---|---|
 | `l10_phaser_dry.wav` | Plucked arpeggio | — |
 | `l10_phaser_wet.wav` | 4 stages, 0.4 Hz, centre 800 Hz, depth 1, fb 0.3, mix 0.5 | A soft, "watery" sweep |
 | `l10_phaser_8stage.wav` | 8 stages, fb 0.6 | More notches, more obvious |
 | `l10_phaser_noise.wav` | White noise, 6 stages, fb 0.5, 0.25 Hz | The easiest place to hear the notches sweep (compare with `l10_flanger_noise.wav`: no "pitch") |
+
+</div>
 
 ### 3.10 Example 5: `l10_tremolo` (`examples/tremolo_demo.cpp`)
 
@@ -819,12 +871,16 @@ bin\Debug\l10_tremolo.exe
 2. Contrast with ring modulation: the carrier vanishes and only 990 / 1010 Hz remain (0.25 each = $`A/2`$).
 3. Autopan: the error of $`g_L + g_R`$, and an ASCII bar of the left/right RMS every 0.25 seconds.
 
+<div align="center">
+
 | File | Parameters | What you should hear |
 |---|---|---|
 | `l10_tremolo_dry.wav` | Plucked arpeggio | — |
 | `l10_tremolo_sine.wav` | sine 5 Hz, depth 0.8 | Volume rises and falls like waves |
 | `l10_tremolo_square.wav` | square 4 Hz, depth 1, 1 ms smoothing | A hard "da-da-da" chop with no click |
 | `l10_tremolo_autopan.wav` | sine 0.5 Hz, depth 1, autopan | Constant volume; the image goes back and forth about once every 2 seconds (use headphones) |
+
+</div>
 
 ## 4. Real-time considerations
 
@@ -840,6 +896,8 @@ bin\Debug\l10_tremolo.exe
 
 ## 5. Common mistakes and debugging
 
+<div align="center">
+
 | Symptom | Likely cause | How to check |
 |---|---|---|
 | Tremolo with a square has "clicks" | The LFO jumps are not smoothed (`setSmoothingMs(0)`) | Compute the largest single-step jump of the output (Example 1) and compare with the sine's own $`A\cdot2\pi f/f_s`$ |
@@ -854,6 +912,8 @@ bin\Debug\l10_tremolo.exe
 | Stereo chorus thins out when played in mono | The opposite left/right wet signals partly cancel when summed | Measure the RMS of $`(L+R)/2`$ (Exercise 5); reduce spread or mix |
 | Autopan gets quieter when passing the centre | Linear pan law: $`1 - D/2`$ in each channel at the centre | Switch to constant power if you need it |
 | S&H values are all similar / not random enough | An xorshift started from a very small seed gives a poor distribution for the first few outputs | `Lfo` scrambles the seed with a hash first; do the same when writing your own |
+
+</div>
 
 ## 6. Exercises
 

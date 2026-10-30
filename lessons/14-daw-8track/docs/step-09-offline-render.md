@@ -80,6 +80,8 @@ flight never fills the garbage queue.
 
 ### The song (`examples/render_song.cpp`)
 
+<div align="center">
+
 | Track | Material (Signals.h) | Format | Inserts | Fader / pan | Sends |
 |---|---|---|---|---|---|
 | 1 Drums | `makeDrumLoop` 2 bars x 4 clips | Mono | TransientShaper, Compressor | -2 dB / C | reverb -18 |
@@ -93,6 +95,8 @@ flight never fills the garbage queue.
 | Bus A | | (stereo) | Reverb (100 % wet, 2.2 s) | -2 | |
 | Bus B | | (stereo) | Delay (100 % wet, dotted 1/8 = 375 ms, ping-pong) | -4 | |
 | Master | | (stereo) | Compressor (2:1 at -12 dB), Limiter (-1 dBFS, 5 ms) | 0 | |
+
+</div>
 
 The track formats (Step 4) follow the material: mono sources on mono tracks (pan law), the stereo
 pad and wind on stereo tracks (balance). Hits is a mono source on a stereo track on purpose, so that
@@ -113,12 +117,16 @@ the catalog (Step 5) after this song was written.
 the finished engine's `resetBeforeRender` / `restoreTransport` switches: the snapshot always resets
 and restores) and `bounceToWav()`. This is the complete mini engine.
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | `renderOffline()`: length bookkeeping, save / restore the transport, reset, render the song (cut at its end), stop, render tail + latency, drop the first `latency` samples |
 | File | `steps/step09-offline-render/starter/step09.cpp` |
 | Run | `l14_step09_starter`; it prints `[FAIL] l14_step09 (11 of 14 checks failed)` until you are done |
 | Solution | `steps/step09-offline-render/solution/step09.cpp` (ctest `l14_step09_solution`) |
+
+</div>
 
 The test song is 1 s long (impulses of 0.5 and 0.25 at samples 0 and 24 000 on track 1) with a
 240-sample delay on the master standing in for a lookahead limiter. Expected output (verified):

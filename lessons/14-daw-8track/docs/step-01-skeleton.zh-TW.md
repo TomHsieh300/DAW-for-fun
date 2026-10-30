@@ -16,12 +16,16 @@
 
 DAW 有兩個截然不同的半邊：
 
+<div align="center">
+
 | | Engine | Application |
 |---|---|---|
 | 執行於 | audio thread（以及 setup 程式碼） | message / UI thread |
 | 必須 | real-time safe、deterministic | 反應靈敏、好看 |
 | 依賴 | C++ 標準函式庫 + 我們的 DSP | JUCE（視窗、audio device、VST3） |
 | 可以被測試 | offline，從 console 程式 | 多半靠手動 |
+
+</div>
 
 如果 engine include 了 JUCE，每個測試都需要 JUCE，每次找 bug 都得啟動 GUI，而從 audio thread
 呼叫 GUI 函式的誘惑，也只差一個 `#include`。所以 engine 是一個
@@ -148,12 +152,16 @@ Step 2、7、8 與 9 自己加上那些行。
 
 ## Your turn
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫的 | `Engine::processBlock()`（未 prepare -> 靜音；切成 chunk）與 `Engine::processChunk()`（複製 source、mono -> 兩個 channel、推進 position） |
 | 檔案 | `steps/step01-skeleton/starter/step01.cpp`（class 在 `steps/step01-skeleton/minidaw.h`） |
 | Build | `.\scripts\build.ps1 -Only 14-daw-8track -NoTest`，然後 `cd build; .\bin\Debug\l14_step01_starter.exe` |
 | 檢查 | 在你完成之前，starter 會印出 `[FAIL] l14_step01 (10 of 16 checks failed)`；示範解答是 `steps/step01-skeleton/solution/step01.cpp`（ctest `l14_step01_solution`） |
+
+</div>
 
 這個檢查測試的是：未 prepare 的 engine 輸出靜音；以 512-sample 的 callback 處理 2.5 秒
 需要 235 次呼叫；輸出在兩個 channel 上與 source 逐 sample 相等，並在 source 結束後保持靜音；

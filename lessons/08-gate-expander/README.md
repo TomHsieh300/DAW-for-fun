@@ -24,11 +24,13 @@ After reading this chapter and doing the exercises, you should be able to:
 
 The static behavior of every effect that "changes gain according to level" can be described by a **transfer curve** (input dB to output dB). The 1:1 diagonal means "no processing". The only differences are: on **which side** of the threshold the curve departs from 1:1, and in **which direction**.
 
-![Transfer curves of a compressor 4:1 (T = -20), a limiter (T = -10), a downward expander 1:2 (T = -40) and a gate (T = -40, range -80), input dB against output dB, with the 1:1 diagonal as reference](images/transfer-curves-dynamics-family.svg)
+<p align="center"><img src="images/transfer-curves-dynamics-family.svg" alt="Transfer curves of a compressor 4:1 (T = -20), a limiter (T = -10), a downward expander 1:2 (T = -40) and a gate (T = -40, range -80), input dB against output dB, with the 1:1 diagonal as reference"></p>
 
 In the figure the thick gray diagonal is the 1:1 reference (no processing), and the dots mark each curve's threshold. Each curve coincides with the diagonal on the other side of its own threshold. Compressor / limiter: flat above T (the compressor's 4:1 rises only 2.5 dB per 10 dB above T; the limiter, at inf:1, does not rise at all). Expander: steeper below T (the 1:2 falls 10 dB per 5 dB below T, slope 2). Gate: drops a full 80 dB below T, off the chart (the vertical arrow).
 
 Example 2 (`l08_expander_vs_gate_curve`) prints these four curves as a table. An excerpt:
+
+<div align="center">
 
 | Input (dB) | compressor 4:1, T=-20 | limiter ∞:1, T=-10 | expander 1:2, T=-40 | gate T=-40, range -80 |
 |---:|---:|---:|---:|---:|
@@ -39,12 +41,18 @@ Example 2 (`l08_expander_vs_gate_curve`) prints these four curves as a table. An
 | -10 | -17.5 | -10.0 | -10.0 | -10.0 |
 | 0 | -15.0 | -10.0 | 0.0 | 0.0 |
 
+</div>
+
 Organized as four quadrants:
+
+<div align="center">
 
 | | Acts **above** the threshold | Acts **below** the threshold |
 |---|---|---|
 | **Toward 1:1 (reduces dynamics)** | downward compression (compressor, limiter) | upward compression (raises quiet parts) |
 | **Away from 1:1 (expands dynamics)** | upward expansion (pushes loud parts louder) | downward expansion (expander, gate) |
+
+</div>
 
 The everyday "compressor", "expander", and "gate" are the two **downward** cells: they only pull gain down (gain ≤ 0 dB). The two upward cells push gain up, and need a separate limit on the maximum boost (section 2.7, Exercise 5).
 
@@ -105,10 +113,14 @@ Audibly: range = -10 dB means "push the bleed back a little"; range = -40 dB or 
 
 In front of the static curve there is still a level detector (the Chapter 04 `EnvelopeFollower`). The naming convention is the "opposite" of the compressor's, which is easy to confuse the first time:
 
+<div align="center">
+
 | | compressor | expander / gate |
 |---|---|---|
 | When the signal gets louder | gain **falls** (starts compressing) → this phase is the attack | gain **rises** (the gate opens) → this phase is the attack |
 | When the signal gets quieter | gain **recovers** (lets go) → release | gain **falls** (the gate closes) → release |
+
+</div>
 
 These are really the same thing: **attack is always the response time when the signal gets louder**. For an expander, as soon as the signal gets louder the gate must open quickly, otherwise the head of a drum hit is eaten, so the attack is usually very short (0.1-5 ms); when the signal gets quieter it closes slowly so that natural decay (drum tails, reverb) is not chopped off, and the release is usually 50-300 ms.
 
@@ -124,7 +136,7 @@ A gate can be seen as an expander with ratio → ∞: below the threshold it sim
 
 Imagine the tail of a snare slowly decaying and passing right through the threshold. The detected envelope is not a smooth line: the peak detector jumps up at each peak and falls again between two peaks, producing a ripple of a few dB. If opening and closing use the same threshold $`T`$:
 
-![A gate with a single threshold: the rippling envelope crosses T many times, so the gate state flips open and closed repeatedly (chattering)](images/gate-chattering-single-threshold.svg)
+<p align="center"><img src="images/gate-chattering-single-threshold.svg" alt="A gate with a single threshold: the rippling envelope crosses T many times, so the gate state flips open and closed repeatedly (chattering)"></p>
 
 In the figure, the envelope of a slowly decaying 50 Hz tone (detector: peak, attack 0.1 ms, release 20 ms) ripples by about 1 dB around the threshold $`T = -30`$ dB, so every peak may cross it once: the gate (lower strip) changes state 11 times within about 100 ms, open, close, open, close... = chattering (sounds like a crackling "brrt-brrt").
 
@@ -134,7 +146,7 @@ The fix borrows the **Schmitt trigger** from electronics:
 - Close only when the envelope **< $`T_\text{close}`$ = threshold − hysteresis**;
 - Between the two, keep the current state.
 
-![The same rippling envelope with a hysteresis of 6 dB: the ripple stays between T_open and T_close and the gate closes only once](images/gate-hysteresis-schmitt.svg)
+<p align="center"><img src="images/gate-hysteresis-schmitt.svg" alt="The same rippling envelope with a hysteresis of 6 dB: the ripple stays between T_open and T_close and the gate closes only once"></p>
 
 In the figure, the same envelope now lies between $`T_\text{open}`$ and $`T_\text{close}`$ = $`T_\text{open}`$ - 6 dB for a long stretch: the ripple leaves the state unchanged, and the gate closes only once, when the envelope finally drops below $`T_\text{close}`$.
 
@@ -151,12 +163,16 @@ $`\tau_r\,\dot e = |x| - e`$; note that it decays toward the **current $`|x|`$**
 
 ($`8.686 = 20/\ln 10`$, using $`\ln(1+u) \approx u`$.) For a 45 Hz kick and a detector release of 20 ms: $`8.686 \times 0.363 / (2 \times 45 \times 0.02) \approx 1.75`$ dB. If the detector were of the "decay toward 0" type (an analog diode + RC peak detector), it would fall by $`e^{-1/(2f\tau_r)}`$ between two peaks, i.e. $`8.686/(2f\tau_r) \approx 4.8`$ dB, which is $`1/(1 - 2/\pi) \approx 2.75`$ times larger. Part [4] of Example 1 measures this with the same detector `Gate` uses internally:
 
+<div align="center">
+
 | Frequency | release 20 ms measured / estimate | release 50 ms measured / estimate |
 |---:|---:|---:|
 | 45 Hz | 1.56 / 1.75 dB | 0.66 / 0.70 dB |
 | 100 Hz | 0.74 / 0.79 dB | 0.31 / 0.32 dB |
 | 185 Hz | 0.41 / 0.43 dB | 0.17 / 0.17 dB |
 | 1000 Hz | 0.08 / 0.08 dB | 0.03 / 0.03 dB |
+
+</div>
 
 The estimate is slightly higher than the measurement because a short stretch near each peak is the attack charging, not the release discharging. Two conclusions: the ripple is proportional to $`1/(f\tau_r)`$, so **low-frequency signals (kick, tom, bass) have the largest ripple**; lengthening the detector release reduces the ripple, but detection becomes slower.
 
@@ -197,6 +213,8 @@ With range -80 dB, attack 1 ms, 48 kHz: $`\Delta_a = 80/48 \approx 1.67`$ dB/sam
 
 The timeline from Example 1 (threshold -30, hysteresis 6, attack 1 ms, hold 20 ms, release 50 ms):
 
+<div align="center">
+
 | time (ms) | transition | note |
 |---:|---|---|
 | 0.10 | Closed -> Attack | at the very start of the kick, the 0.1 ms detector exceeds -30 dB |
@@ -205,6 +223,8 @@ The timeline from Example 1 (threshold -30, hysteresis 6, attack 1 ms, hold 20 m
 | 477.04 | Hold -> Release | hold of 20 ms |
 | 500.00 | Release -> Attack | the snare at 500 ms arrives mid-release and climbs from the current gain |
 | 500.48 | Attack -> Open | it starts from mid-release, so it finishes opening in under 1 ms |
+
+</div>
 
 #### 2.4.3 Range
 
@@ -381,12 +401,16 @@ T + R\,(x - T), & x \ge T + W/2
 
 ### 2.8 In practice: four common uses
 
+<div align="center">
+
 | Scenario | Component | Typical settings | Notes |
 |---|---|---|---|
 | Removing bleed from tom / kick microphones | Gate | threshold: 3-6 dB above the bleed peak; hysteresis 4-10 dB; attack 0.1-1 ms; hold 30-100 ms; release 100-300 ms; range -40 to -80 dB | A release that is too short cuts the drum tail; add an HPF to the sidechain / use a trigger microphone so the kick does not open the tom's gate |
 | Vocal de-essing | De-esser | female 6-9 kHz, male 5-7 kHz; threshold so that GR is 4-8 dB only on sibilance; range 8-12 dB | Find the frequency with listen first; split-band has a cleaner tone, wideband works better when the sibilance is very heavy |
 | Snare transient enhancement | Transient shaper | attack +3 to +8 dB, sustain 0 to −4 dB | A larger attack raises the peak (Example 4: attack +12 → peak +11.7 dB), so leave headroom or follow with a limiter |
 | Removing background from live vocals / dialogue | Expander | ratio 1:2-1:4, threshold 10-15 dB below the speaking level, range -10 to -20 dB | A range that is too deep lets you hear the background "breathing" (pumping) |
+
+</div>
 
 **Where to put it in the chain**: gate / expander usually go at the very front of the insert chain (right after the EQ's high-pass is enough). The reason is the same one repeated in Chapter 07: compressors, saturation, and distortion all "boost" small signals. A distortion drive of 30 dB turns a -50 dBFS noise floor into -20 dBFS while the drum peaks are flattened, shrinking the distance between signal and noise from 40-odd dB to 10-odd dB, so a gate placed afterwards can no longer find a clean threshold. A de-esser often goes after the compressor (after the compressor turns the vowels down, sibilance is more prominent), or a light one goes both before and after. A transient shaper, since it does not look at absolute level, works anywhere, but if it is placed before a compressor, the compressor will squash the attack you just boosted.
 
@@ -577,6 +601,8 @@ Attack ±12 dB changes the crest factor by +4.86 / −1.35 dB: boosting the atta
 
 ## 5. Common mistakes and debugging
 
+<div align="center">
+
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | The gate opens and closes rapidly near the tail, producing a crackling sound | chattering: no hysteresis, hold = 0, or a detector release so short that the envelope ripple is large | Add hysteresis (> the peak-to-peak ripple), add 20-50 ms of hold, lengthen the detector release (Exercise 3) |
@@ -590,6 +616,8 @@ Attack ±12 dB changes the crest factor by +4.86 / −1.35 dB: boosting the atta
 | The transient shaper distorts a low-frequency kick | The gain smoothing is too short, so the fast envelope's ripple directly modulates the gain | Lengthen the gain smoothing time, or lengthen the fast release |
 | Clipping after the transient shaper | Attack + or sustain + raises the peak | Lower the input gain first, or follow with a limiter (Chapter 05) |
 | The gate shows GR of 80 on a completely silent input | Normal: with the gate closed, GR = |range| | — |
+
+</div>
 
 ## 6. Exercises
 

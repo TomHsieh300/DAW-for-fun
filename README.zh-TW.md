@@ -5,11 +5,11 @@
 
 這是一套給「會基本 C++、但沒學過 DSP」的學習者的教材。本教材為**英文 / 繁體中文雙語**：英文版是主要版本（原檔名，例如 `README.md`），繁體中文版放在同目錄的 `.zh-TW.md` 檔（例如 `README.zh-TW.md`）；每份文件頂端都有語言切換連結，程式碼的註解與輸出皆為英文。從「聲音在電腦裡長什麼樣子」開始，一章做出一個（或一組）真正可用的 DSP 元件：gain、filter、EQ、compressor、limiter、saturation、distortion、gate、delay、modulation、meter、reverb……接著用 JUCE 把它們包成 VST3 plugin、寫出能載入 VST3 的 host，最後組成一台能編排 clip、混音、插 plugin、匯出 WAV 的 **8 軌 DAW「DawLab 8」**。
 
-![DawLab 8：播放示範歌曲（第 2 小節第 3 拍）](docs/images/dawlab8.png)
+<p align="center"><img src="docs/images/dawlab8.png" alt="DawLab 8：播放示範歌曲（第 2 小節第 3 拍）"></p>
 
 *上圖不是螢幕截圖，而是 app 自己畫出來的：`"DawLab 8.exe" --snapshot <檔名.png>`（第 14 章 Step 12），每次建置時 ctest 都會跑一次。同一個指令還會另存一張參數面板（下圖，鼓組軌的 compressor）：面板上的旋鈕是依各效果器的參數描述自動產生的。*
 
-![自動產生的參數面板](docs/images/dawlab8_panel.png)
+<p align="center"><img src="docs/images/dawlab8_panel.png" alt="自動產生的參數面板"></p>
 
 ## 這套教材的特色
 
@@ -93,6 +93,8 @@ PowerShell 說「無法載入指令碼」時，改用 `powershell -ExecutionPoli
 
 **輸出位置**（以預設的 `build` 資料夾為例）：
 
+<div align="center">
+
 | 東西 | 位置 |
 |---|---|
 | 範例、解答、起始碼的執行檔 | `build\bin\Debug\lNN_*.exe`（Release 在 `build\bin\Release\`） |
@@ -100,6 +102,8 @@ PowerShell 說「無法載入指令碼」時，改用 `powershell -ExecutionPoli
 | 第 13 章的 VST3 plugin | `build\lessons\13-vst-hosting\plugin\DawLabCompressor_artefacts\Debug\VST3\DawLabCompressor.vst3`（`DawLabLimiter` 同理） |
 | 第 14 章的 DAW | `build\bin\Debug\DawLab 8.exe` |
 | 在 Linux / macOS 上 | `build/bin/lNN_*` 與 `build/bin/DawLab 8`（沒有 `Debug/` 子資料夾，也沒有 `.exe`）；VST3 bundle 在 `build/lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/VST3/DawLabCompressor.vst3` |
+
+</div>
 
 手動執行範例時，**請先 `cd` 到 build 資料夾**，WAV 才會出現在 `build\dawlab_output\`：
 
@@ -113,6 +117,8 @@ cd build
 **ctest 的 label**：`example`（範例，不帶參數就能跑完）、`solution`（練習解答，以數字自我檢查）、`test`（元件與 engine 的回歸測試）。`exercises/starter/` 的起始碼只建置、不登記成測試——它們留有 `// TODO`，執行時印出 FAIL 是預期的。
 
 ## 目錄結構
+
+<div align="center">
 
 | 路徑 | 內容 |
 |---|---|
@@ -132,11 +138,15 @@ cd build
 | `lessons/NN-name/tests/` | （部分章節）元件回歸測試 |
 | `third_party/JUCE/` | JUCE 9.0.4（第 13、14 章） |
 
+</div>
+
 所有 DSP 元件的一覽與用途見 [dsp/include/dawlab/dsp/README.zh-TW.md](dsp/include/dawlab/dsp/README.zh-TW.md)；統一介面與 API 合約見 [docs/authoring-guide.zh-TW.md](docs/authoring-guide.zh-TW.md)。
 
 ## 章節路線圖
 
 章節依編號順序前進，每一章都會用到前面章節的元件。
+
+<div align="center">
 
 | 章 | 主題 | 你會學到 | 做出的元件 |
 |---|---|---|---|
@@ -156,6 +166,8 @@ cd build
 | [13](lessons/13-vst-hosting/README.zh-TW.md) | VST3 plugin 與 hosting（JUCE） | plugin 架構與生命週期、參數與 state、latency 與 PDC、掃描與載入第三方 VST3 | `DawLabCompressor` / `DawLabLimiter`（VST3）、`dawlab_plugin_host` 函式庫 |
 | [14](lessons/14-daw-8track/README.zh-TW.md) | **Capstone：8 軌 DAW** | transport 與兩種時鐘、clip、mixer 與 FX bus、lock-free command queue、PDC、offline bounce、real-time safety 測試、JUCE GUI、VST3 insert | 純 C++ 的 `dawlab::engine` 與 JUCE app「DawLab 8」 |
 | [15](lessons/15-daw-growing/README.zh-TW.md) | 讓 DAW 長大（進行中） | 穩定的 track id；規劃中：可新增 / 刪除的 track 池、CPU 預算、專案存檔、undo / redo | 第 15 章跟著做的 snapshot |
+
+</div>
 
 > 英文是主要語言：每份文件的英文版用原檔名，繁體中文版是同名的 `.zh-TW.md`，兩者內容同步；中文版的專有名詞保留英文。
 

@@ -14,12 +14,16 @@ Space 播放與停止——永遠如此，不論滑鼠在哪裡。每個 menu �
 
 JUCE 的 `ApplicationCommandManager` 是 *command*（一個整數 ID，帶有名稱、描述、類別、預設按鍵與「active / ticked」狀態）與 *target*（執行它們的物件）的註冊表。`MainComponent` 是 app 所有 command 的 target（`AppCommands.h`）：
 
+<div align="center">
+
 | 類別 | command | 預設按鍵 |
 |---|---|---|
 | File | New project / Load demo song / Load audio into selected track... / Export mixdown... / Audio settings... / Quit | Ctrl+N / Ctrl+D / Ctrl+O / Ctrl+E / Ctrl+, / Ctrl+Q |
 | Transport | Play / Stop、Return to start、Loop、Back / Forward one bar | Space、Home、L、Left、Right |
 | Track | Select previous / next track、Mute / Solo selected track | Up、Down、M、S |
 | View | Zoom in / out、Keyboard shortcuts... | = 或 +、-、F1 |
+
+</div>
 
 （在 macOS 上 Ctrl 是 Cmd：`ModifierKeys::commandModifier`。）
 
@@ -108,11 +112,15 @@ DawLab 8 smoke test (no audio device)
 
 ## 換你動手
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫 | `app/Source/MainComponent.cpp` 中的 transport command：它們在 `getCommandInfo()` 中的 `case`（名稱、描述、類別 "Transport"、預設按鍵 Space、Home、L、Left 與 Right 方向鍵）以及在 `perform()` 中的 `case`（`playStop`、`returnToStart`、`toggleLoop`、`seekBackOneBar`、`seekForwardOneBar`） |
 | 建置 + 檢查 | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test`（`l14_app_smoke_test`） |
 | 預期 | smoke test 的按鍵通過（Space 切換 transport、L 切換 loop，也包括透過 `invokeDirectly`）；`[PASS] l14_app_smoke_test`；在 app 中，Transport menu 與 F1 清單顯示你的名稱與按鍵 |
+
+</div>
 
 想更進一步的話，加入你自己的 command（在 `AppCommands.h` 中加一個 ID，並在 `getAllCommands()`、`getCommandInfo()` 與 `perform()` 中各加一個項目）。在執行 `l14_ex13_solution` 之前把它拿掉：Exercise 13 剛好計算 app 的 18 個 command 加上它自己的 10 個（它的 shortcut editor 中共 32 列）。
 

@@ -33,7 +33,7 @@
 
 想像你站在一個房間裡，前方有人拍手。聲音以約 343 m/s 的速度向四面八方擴散：
 
-![合成的房間 impulse response：直達音、early reflections（約 5–80 ms）與指數衰減的 late reverb](images/reverb-impulse-response.svg)
+<p align="center"><img src="images/reverb-impulse-response.svg" alt="合成的房間 impulse response：直達音、early reflections（約 5–80 ms）與指數衰減的 late reverb"></p>
 
 1. **直達音（direct sound）**：聲源直線傳到耳朵，最早、最大聲。決定「聲音從哪個方向來」。
 2. **Early reflections（早期反射）**：經過一、兩次牆面 / 地板 / 天花板反射才到的聲音。它們很稀疏、彼此可以分辨（但通常不會被聽成「回音」，而是被大腦融合進直達音），提供「房間大小、形狀、自己離牆多遠」的線索。
@@ -77,12 +77,16 @@ y[n] = (h * x)[n] = \sum_{k=0}^{M-1} h[k]\,x[n-k]
 
 這給了兩條路：
 
+<div align="center">
+
 | | Convolution reverb | Algorithmic reverb |
 |---|---|---|
 | 做法 | 直接用量到（或合成）的 $`h`$ 做卷積 | 用 delay + feedback 做一個「IR 統計上像房間」的遞迴系統 |
 | 真實度 | 就是那個空間（在那個聲源/聽者位置） | 「像」某種空間，取決於設計 |
 | 參數 | 只能事後修 IR（截短、EQ、改包絡） | decay、size、damping、modulation、freeze 都可即時調 |
 | 成本 | 跟 IR 長度成正比（要靠 FFT） | 跟 RT60 無關，幾十條 delay 就夠 |
+
+</div>
 
 本章兩條都走。我們也會用「量 IR」的角度來驗證 algorithmic reverb：把 impulse 餵進去，看它的 IR 是否以設定的 RT60 衰減、echo 是否夠密。
 
@@ -128,7 +132,7 @@ g^{\mathrm{RT60}\cdot f_s / D} = 10^{-3}
 
 $`|H(e^{j\omega})| = 1/|1 - g e^{-j\omega D}|`$。當 $`\omega D = 2\pi k`$（頻率是 $`f_s/D`$ 的整數倍）時分母最小 → peak $`= 1/(1-g)`$；半整數倍時分母最大 → notch $`= 1/(1+g)`$。g = 0.894 時 peak = +19.49 dB、notch = −5.55 dB，相差 25 dB，頻譜像一把梳子：
 
-![g = 0.894、D = 1557、fs = 48 kHz 的 feedback comb 幅頻響應：每隔 fs/D = 30.8 Hz 一個 +19.49 dB 的 peak，中間是 −5.55 dB 的 notch](images/reverb-comb-spectrum.svg)
+<p align="center"><img src="images/reverb-comb-spectrum.svg" alt="g = 0.894、D = 1557、fs = 48 kHz 的 feedback comb 幅頻響應：每隔 fs/D = 30.8 Hz 一個 +19.49 dB 的 peak，中間是 −5.55 dB 的 notch"></p>
 
 這些 peak 就是 comb 的 **mode（共振頻率）**。單一個 comb 的 impulse response 是規律的 click 串（聽起來像在兩面平行牆間拍手的 flutter echo），頻譜是一根根分開的共振 —— 有明顯音高，聽起來「金屬」。要做出像房間的殘響，需要：
 
@@ -485,6 +489,8 @@ flowchart LR
 
 ### 2.11 Plate、hall、room 的特徵
 
+<div align="center">
+
 | 類型 | 來源 | 聽感特徵 | 典型參數（起點建議） |
 |---|---|---|---|
 | **Room** | 小到中型房間 | early reflections 明顯，尾巴短，有「在房間裡」的貼近感 | RT60 0.3–1 s、pre-delay 0–10 ms、size 小、damping 中等 |
@@ -492,6 +498,8 @@ flowchart LR
 | **Plate** | 懸吊的金屬板 + 驅動器 + 拾音器（EMT 140 等） | 沒有明顯 ER，一開始就很密，明亮、光滑；人聲、小鼓的經典選擇 | RT60 1.5–4 s、pre-delay 0–20 ms、高 diffusion、damping 高（7 kHz 以上） |
 | **Chamber** | 專門蓋來錄殘響的硬牆房間 | 介於 room 與 hall，密而有個性 | RT60 1–2.5 s |
 | **Spring** | 吉他音箱裡的彈簧 | 有「boing」聲的色散 echo | 通常用專門模型，不是 FDN 的強項 |
+
+</div>
 
 用本章的 `Reverb` 對應：size 大 → delay 長、mode 密、echo 建立慢（hall）；size 小 → 密集、短（room）；把 pre-delay 設 0、size 小但 decay 長、damping 高 → 接近 plate 的感覺。
 
@@ -531,11 +539,15 @@ flowchart LR
 
 本章新增三個 header（都在 `dsp/include/dawlab/dsp/`）：
 
+<div align="center">
+
 | Header | 內容 |
 |---|---|
 | `ReverbBuildingBlocks.h` | 教學用元件：`CombFilter`、`AllpassDiffuser`、`TappedDelay`、`measureRt60()` / `DecayMeasurement`、`nextPrime()` |
 | `Reverb.h` | `class Reverb`：8 線 FDN algorithmic reverb（合約 API） |
 | `ConvolutionReverb.h` | `class ConvolutionReverb`：uniform partitioned FFT convolution（overlap-save）（合約 API） |
+
+</div>
 
 ### 3.1 `ReverbBuildingBlocks.h`
 
@@ -775,6 +787,8 @@ pre-fader,  fader -inf : return RMS 0.0752 (+0.00 dB relative to 0 dB -> unaffec
 
 ## 5. 常見錯誤與除錯
 
+<div align="center">
+
 | 症狀 | 可能原因 | 怎麼查 / 怎麼修 |
 |---|---|---|
 | 殘響越來越大聲、最後爆掉（NaN / 滿格雜訊） | 某條線 g ≥ 1；矩陣不是正交（例如 Householder 寫成 1/N 而不是 2/N）；damping filter 在某些頻率增益 > 1 | 用 `hasNanOrInf()` 檢查；把 g 設 1、關 damping，量 IR 的 RMS 是否維持不變（練習 4 的 lossless 測試） |
@@ -790,6 +804,8 @@ pre-fader,  fader -inf : return RMS 0.0752 (+0.00 dB relative to 0 dB -> unaffec
 | Convolution reverb 大聲到爆 | IR 沒有正規化（錄來的 IR 能量可能很大） | 正規化成單位能量，或量 wet 的 RMS 再調整 |
 | 播完之後 CPU 越來越高 | denormal | flush denormal、FTZ/DAZ |
 | Stereo 的 reverb 在 mono 播放時變小聲或變空洞 | 左右 wet 太去相關、甚至反相 | 用 width 控制；在 mono 下檢查 |
+
+</div>
 
 ---
 

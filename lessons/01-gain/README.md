@@ -45,6 +45,8 @@ This is exactly what `dawlab::gainToDb()` / `dawlab::dbToGain()` (`common/includ
 
 A few correspondences you must memorize:
 
+<div align="center">
+
 | dB | Amplitude factor $`g`$ | Power factor $`g^2`$ | Intuition |
 |---:|---:|---:|---|
 | +20 | 10 | 100 | |
@@ -59,6 +61,8 @@ A few correspondences you must memorize:
 | −40 | 0.01 | 10⁻⁴ | |
 | −60 | 0.001 | 10⁻⁶ | fader "almost at the bottom" |
 | −∞ | 0 | 0 | true silence |
+
+</div>
 
 **dBFS** (decibels relative to full scale) takes the largest value a digital system can represent, 1.0, as 0 dB. A sine wave of amplitude 0.5 has a peak of −6.02 dBFS; its RMS is $`0.5/\sqrt{2} = 0.354`$, which is −9.03 dBFS. The peak of a sine wave is always 3.01 dB above its RMS, and this 3 dB gap will keep showing up when we get to metering (chapter 11).
 
@@ -79,6 +83,8 @@ In other words, **dB exists so that "one notch of the fader" corresponds to "abo
 
 The fader in a UI is always a position $`p`$ between 0 and 1 (wherever the mouse drags it). What happens if we use $`p`$ directly as the factor (a linear taper)?
 
+<div align="center">
+
 | Position $`p`$ | Factor | dB |
 |---:|---:|---:|
 | 1.00 | 1.00 | 0.0 |
@@ -88,11 +94,15 @@ The fader in a UI is always a position $`p`$ between 0 and 1 (wherever the mouse
 | 0.10 | 0.10 | −20.0 |
 | 0.01 | 0.01 | −40.0 |
 
+</div>
+
 The entire upper half of the fader covers only 6 dB, while the bottom 1% of travel has to squeeze in everything from −40 dB to −∞ -- you can hardly ever set a track precisely to −30 dB. Conversely, if the whole fader were "linear in dB versus position" (say 0 → −90 dB, 1 → +6 dB), each notch would be a uniform 1 dB, but the fader could never reach −∞ (true silence), and nearly a third of the travel at the very bottom (below −60 dB, 30/96 ≈ 31%) would make no audible difference at all.
 
 In practice DAW faders are all **piecewise** curves: the upper part is linear in dB and very "dense" (near 0 dB one notch is only a fraction of a dB, convenient for fine adjustment), the lower part has more dB per notch the further down you go, and the very bottom attaches a short stretch that is "linear in factor" so that it really can reach 0. Exercise 4 of this chapter uses this set of breakpoints:
 
-![Fader taper of exercise 4: fader level in dB against fader position p, with breakpoints at p = 1.00 (+6 dB), 0.75 (0 dB), 0.50 (-12 dB), 0.25 (-30 dB), 0.05 (-60 dB) and minus infinity at p = 0](images/fader-taper.svg)
+<p align="center"><img src="images/fader-taper.svg" alt="Fader taper of exercise 4: fader level in dB against fader position p, with breakpoints at p = 1.00 (+6 dB), 0.75 (0 dB), 0.50 (-12 dB), 0.25 (-30 dB), 0.05 (-60 dB) and minus infinity at p = 0"></p>
+
+<div align="center">
 
 | Position $`p`$ | dB | "Density" of this segment |
 |---:|---:|---|
@@ -102,6 +112,8 @@ In practice DAW faders are all **piecewise** curves: the upper part is linear in
 | 0.25 | −30 | 0.05..0.25: 30 dB / 0.20 = 150 dB per unit of travel |
 | 0.05 | −60 | 0..0.05: the factor goes linearly from 0.001 to 0 |
 | 0.00 | −∞ | |
+
+</div>
 
 Within a segment we interpolate linearly: when $`p`$ falls in $`[p_i, p_{i+1}]`$, $`t = (p - p_i)/(p_{i+1} - p_i)`$, $`L_\text{dB} = \mathrm{lerp}(L_i, L_{i+1}, t)`$, and then `dbToGain`. The inverse function (gain → position, used when the UI has to draw the fader) is the same thing done backwards. There is no standard answer for these numbers and every DAW differs, but the structure -- "dense at the top, sparse at the bottom, and a linear stretch down to 0 at the very bottom" -- is the same.
 
@@ -138,7 +150,7 @@ The time-domain view is more direct: between two adjacent samples the signal sho
 
 **Zipper noise** is the continuous version of the same thing. When the user drags a fader, the UI sends a new gain value about once per audio block (in this course 512 samples ≈ 10.7 ms, an update rate of $`f_b = 93.75`$ Hz), so the gain becomes a **staircase**. A staircase = a smooth ramp + a sawtooth error of period $`1/f_b`$; this sawtooth is a periodic signal that can be decomposed into a sum of sine waves at frequencies $`f_b, 2f_b, 3f_b, \dots`$ (these are the "harmonics" of chapter 00; mathematically this is a Fourier series), and the amplitude of the $`k`$-th harmonic of a sawtooth is proportional to $`1/k`$. Applying the "amplitude modulation" intuition above, every harmonic $`k f_b`$ grows a pair of sidebands on either side of the carrier, so the output shows **sidebands** spaced $`f_b`$ apart on both sides of the carrier, dropping 6 dB per octave. These sidebands land 94 Hz, 188 Hz, 375 Hz... away from 1 kHz, and what you hear is the "zzzzz" of a zipper being pulled.
 
-![Gain while dragging a fader: a staircase with one step per block (sidebands fall 6 dB per octave) next to a smoothed gain from 50 ms linear ramps (12 dB per octave, about 40 dB lower)](images/zipper-stepped-vs-smoothed.svg)
+<p align="center"><img src="images/zipper-stepped-vs-smoothed.svg" alt="Gain while dragging a fader: a staircase with one step per block (sidebands fall 6 dB per octave) next to a smoothed gain from 50 ms linear ramps (12 dB per octave, about 40 dB lower)"></p>
 
 Why is it $`1/k^2`$ after smoothing? Because after a linear ramp the gain is **continuous** (only the slope is discontinuous), and the spectrum of a continuous piecewise-linear function falls off as $`1/f^2`$. The sideband table in example 1 lets you see these two slopes for yourself (−6 dB per octave for the stepped version, −12 dB per octave for the smoothed one).
 
@@ -172,6 +184,8 @@ g[n] = 1 - (1-a)^n = 1 - e^{-n/(\tau f_s)},\qquad a = 1 - e^{-1/(\tau f_s)} \app
 
 $`\tau`$ is the **time constant**: the time needed to cover 63.2% ($`1 - e^{-1}`$) of the distance. Handy milestones:
 
+<div align="center">
+
 | Time | Fraction reached | Remaining error |
 |---|---|---|
 | $`1\tau`$ | 63.2% | −8.7 dB |
@@ -179,10 +193,12 @@ $`\tau`$ is the **time constant**: the time needed to cover 63.2% ($`1 - e^{-1}`
 | $`4.6\tau`$ ($`\ln 100`$) | 99% | −40 dB |
 | $`6.9\tau`$ ($`\ln 1000`$) | 99.9% | −60 dB |
 
+</div>
+
 - Advantages: it moves fast at first and slows down near the target, like a capacitor charging or an analog fader, which sounds "more natural"; and it has a slope corner only at the start (the moment the target changes, the slope jumps from 0 to $`a\cdot(g_\text{target} - g)`$), while the end is asymptotic with no corner (a linear ramp has one at each end).
 - Disadvantages: in theory it never reaches the target, so an implementation must "snap" to the target once the error is small enough; otherwise `isSmoothing()` is true forever and the tiny residual values become denormals. There is also a precision trap: when the state is stored as a float, the increment $`a\cdot d`$ near the target becomes smaller than half an ulp (unit in the last place: the spacing between two adjacent representable floats near that value; near 1.0 it is $`\varepsilon = 2^{-23} \approx 1.19 \times 10^{-7}`$, and just below 1 it is half of that), and the state gets "stuck" about $`\varepsilon/(4a)`$ short of the target (about $`1.4 \times 10^{-5}`$ for $`\tau`$ = 10 ms) -- exercise 3 makes you step on this yourself and fix it.
 
-![A linear ramp that arrives exactly after N samples, compared with a one-pole exponential smoother that reaches 63.2% at tau and 99% at 4.6 tau](images/linear-ramp-vs-exponential.svg)
+<p align="center"><img src="images/linear-ramp-vs-exponential.svg" alt="A linear ramp that arrives exactly after N samples, compared with a one-pole exponential smoother that reaches 63.2% at tau and 99% at 4.6 tau"></p>
 
 **How long should the ramp be?** Too short (< 1 ms) still clicks; too long (> 100 ms) and the fader feels "half a beat behind", and a pressed mute button lets the sound trail on. Rule of thumb: **10–50 ms** for gain / pan; this chapter's `Gain` and `Panner` default to 50 ms (stipulated by the API contract). A parameter like a filter cutoff recomputes coefficients whenever it changes, and usually uses a shorter ramp together with updating the coefficients every sample (or every few samples); we come back to that in chapters 02 and 03.
 
@@ -224,7 +240,7 @@ P_\text{sum} = N \cdot P \quad\Rightarrow\quad A_\text{rms,sum} = \sqrt{N}\,A_\t
 
 This is the growth of the RMS; **the peak lies between the two** -- with bad luck the peaks of the tracks can still occur at the same moment, and the worst case is the linear sum of the per-track peaks. Example 3 verifies these three lines with numbers.
 
-![Level growth in dB when summing N tracks: coherent tracks follow 20 log10(N), incoherent RMS follows 10 log10(N), and the actual peak lands between the two lines](images/headroom-growth.svg)
+<p align="center"><img src="images/headroom-growth.svg" alt="Level growth in dB when summing N tracks: coherent tracks follow 20 log10(N), incoherent RMS follows 10 log10(N), and the actual peak lands between the two lines"></p>
 
 **Headroom** is "how many dB the current peak is below 0 dBFS". **Gain staging** is the habit of keeping enough headroom at every stage of the signal chain: first pull the tracks down (for example −12 to −18 dB) so that the mix bus peaks around −6 dBFS, and finally let the master / limiter (chapter 05) decide the loudness of the finished product.
 
@@ -244,6 +260,8 @@ Condensed into one expression ($`S`$ = whether any track is soloed):
 \text{audible}_i = \neg\text{mute}_i \land (\neg S \lor \text{solo}_i \lor \text{soloSafe}_i)
 ```
 
+<div align="center">
+
 | mute | solo | soloSafe | Anyone soloed? | Audible |
 |---|---|---|---|---|
 | 0 | 0 | 0 | no | ✔ |
@@ -251,6 +269,8 @@ Condensed into one expression ($`S`$ = whether any track is soloed):
 | 0 | 1 | – | – | ✔ |
 | 0 | 0 | 1 | yes | ✔ |
 | 1 | – | – | – | ✘ |
+
+</div>
 
 The key point: **after resolving "should it sound", do not set the samples directly to 0**; instead set that track's `Gain` target to 0 dB or −∞ dB and let the ramp walk there -- only then does the mute button not "click". The chapter 14 mixer follows the same idea: `Mixer` decides whether each track should sound with `!mute && (!anySolo || solo)` (the expression of `Mixer::isTrackAudible()`, which has no soloSafe term), and `ChannelStrip` then uses its own 10 ms `SmoothedValue` to ramp the mute gain to 0 or 1 (exercise 6 demonstrates the same thing with the 50 ms ramp of `dsp::Gain`).
 
@@ -288,13 +308,17 @@ This takes the **geometric mean** of the two laws, so its dB value is exactly th
 
 Putting the numbers of the three laws at the center side by side:
 
+<div align="center">
+
 | Pan law | Center $`g_L = g_R`$ | Center dB | $`g_L^2 + g_R^2`$ (speakers) | $`g_L + g_R`$ (mono sum) |
 |---|---:|---:|---|---|
 | Linear | 0.5 | −6.02 | 0.5 (−3.01 dB, dips) | 1 (0 dB, flat) |
 | Constant power | 0.7071 | −3.01 | 1 (0 dB, flat) | 1.414 (+3.01 dB, bulges) |
 | −4.5 dB | 0.5946 | −4.52 | 0.7071 (−1.51 dB) | 1.189 (+1.51 dB) |
 
-![Pan laws: left and right gains against pan position for the linear, constant power and -4.5 dB laws, with the center values 0.500, 0.707 and 0.595](images/pan-laws.svg)
+</div>
+
+<p align="center"><img src="images/pan-laws.svg" alt="Pan laws: left and right gains against pan position for the linear, constant power and -4.5 dB laws, with the center values 0.500, 0.707 and 0.595"></p>
 
 **Mono pan vs. stereo balance** -- this is where beginners confuse things most often:
 
@@ -348,12 +372,16 @@ flowchart LR
 \text{balance: } g_L = \min(1,\ 1 - p),\ g_R = \min(1,\ 1 + p)
 ```
 
+<div align="center">
+
 | Position $`p`$ | Mono track, constant power ($`g_L`$ / $`g_R`$) | Stereo track, balance ($`g_L`$ / $`g_R`$) |
 |---|---|---|
 | −1 (hard left) | 1 / 0 | 1 / 0 |
 | 0 (center) | 0.7071 / 0.7071 (−3.01 dB per side) | 1 / 1 (0 dB per side) |
 | +0.5 | 0.3827 / 0.9239 | 0.5 / 1 (L −6.02 dB, R 0 dB) |
 | +1 (hard right) | 0 / 1 | 0 / 1 |
+
+</div>
 
 So **the same mono file at the center is 3.01 dB louder per side on a stereo track (as $`L = R`$) than on a mono track**: $`20\log_{10}(1/0.7071) = 3.01`$ dB. Note also that balance at +0.5 does not "move the source halfway to the right"; it simply turns the left side down by 6 dB.
 
@@ -498,12 +526,16 @@ cd build
 
 The output WAV files are written to `dawlab_output/` under the "current working directory" (`outputPath()` is a path relative to the current working directory), so `cd build` first and then run it, and the files end up in `build\dawlab_output\`. The other examples in this chapter are run the same way.
 
+<div align="center">
+
 | File | Content | What you should hear |
 |---|---|---|
 | `l01_step_instant.wav` | 1 kHz sine, gain jumps instantly 0 → −20 dB at about 1.0 s | A clear "click" |
 | `l01_step_smoothed.wav` | Same, with a 50 ms linear ramp | Only the level getting quieter |
 | `l01_zipper_stepped.wav` | From 0.5 s on, −1 dB per block, 40 steps in total (simulating a fader drag, no smoothing) | A zipper-like "zzzzz" |
 | `l01_zipper_smoothed.wav` | Same, through `SmoothedValue` | A clean fade out |
+
+</div>
 
 The numbers actually printed (excerpt):
 
@@ -583,12 +615,16 @@ The pan law tables printed (excerpt: the center and ±0.5):
 bin\Debug\l01_mixing_headroom.exe
 ```
 
+<div align="center">
+
 | File | Content | What you should hear |
 |---|---|---|
 | `l01_mix_hot_clipped.wav` | 8 tracks each at 0 dB summed directly, written as 24-bit | Harsh distortion on the drum hits |
 | `l01_mix_hot_float.wav` | The same mix written as 32-bit float | No distortion (the player turns it down automatically, or you turn the volume down) |
 | `l01_mix_staged.wav` | Each track at −18 dB, master 0 dB | Clean, but quiet overall -- this is the price of headroom |
 | `l01_mix_mute.wav` | One plucked track is muted at about 1.0 s (0.992 s, a block boundary) with a 50 ms ramp | A mute without a click |
+
+</div>
 
 ```
 (A) 8 identical sine tracks, each with peak -12.00 dBFS:
@@ -634,6 +670,8 @@ bin\Debug\l01_mixing_headroom.exe
 
 ## 5. Common mistakes and debugging
 
+<div align="center">
+
 | Symptom | Likely cause | How to check |
 |---|---|---|
 | A "click" when a parameter changes | The new value is multiplied in directly with no ramp; or the ramp length is 0 (forgot `prepare()` / `reset(sr, ramp)`) | Print `isSmoothing()` and `getRampSamples()`; compute the maximum first difference (`maxFirstDifference` in example 1) and see whether it is much larger than $`A\cdot 2\pi f/f_s`$ |
@@ -647,6 +685,8 @@ bin\Debug\l01_mixing_headroom.exe
 | After panning a stereo track hard right, the stuff on the left "vanishes" | `Panner::process()` is a balance for stereo, not a pan | To move content, first sum to mono and then use `processMonoToStereo()`, or use M/S (exercise 7) |
 | `dbToGain(-6)` fails to compile as ambiguous | An int can convert to both float and double | `DspMath.h` already provides a `dbToGain(int)` overload; passing `-6.0f` is the safest |
 | Comparing the ramp end point with `==` fails | Floating-point accumulation error | `SmoothedValue` sets the last step directly to the target; do the same in your own implementation |
+
+</div>
 
 ## 6. Exercises
 

@@ -7,9 +7,13 @@
 每個資料夾都是一個小而完整的程式，內容恰好是該 step 之後所存在的東西。你在 `starter/` 裡寫出
 該 step 的函式，self-check 會告訴你它們何時能正常運作。
 
+<div align="center">
+
 | Step | 資料夾 | 你要寫的 | 執行 |
 |---|---|---|---|
 | 1 | `step01-track-ids` | `TrackList::add`、`remove`、`indexOf`、`move` | `l15_step01_starter` |
+
+</div>
 
 每個資料夾都有相同的四個檔案：
 

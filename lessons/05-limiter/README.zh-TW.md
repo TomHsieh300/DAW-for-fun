@@ -33,7 +33,7 @@ $`R \to \infty`$ 時第二條變成 $`y_{\text{dB}} = T`$：threshold 以上的�
 g = \min\!\Bigl(1,\ \frac{c}{|x|}\Bigr)
 ```
 
-![靜態曲線：輸入 dB 對輸出 dB。1:1 的直線在 threshold T = -20 dB 轉折：4:1 的 compressor 之後以較緩的斜率上升，limiter（ratio ∞）則在 ceiling 變成水平線。](images/limiter-static-curve.svg)
+<p align="center"><img src="images/limiter-static-curve.svg" alt="靜態曲線：輸入 dB 對輸出 dB。1:1 的直線在 threshold T = -20 dB 轉折：4:1 的 compressor 之後以較緩的斜率上升，limiter（ratio ∞）則在 ceiling 變成水平線。"></p>
 
 但靜態曲線只是一半。第 04 章的 attack / release 平滑器決定 gain「多快」到位，而 limiter 要求的是「在峰值抵達輸出之前」就到位——attack 不只要快，還要**是負的**。
 
@@ -43,6 +43,8 @@ g = \min\!\Bigl(1,\ \frac{c}{|x|}\Bigr)
 
 目標 gain reduction：輸入 -6 dB 時輸出 $`= -20 + 14/100 = -19.86`$ dB，所以 $`GR_\infty = 13.86`$ dB。Compressor 的 attack 是 one-pole 平滑器（在 dB 上平滑 gain reduction），gain reduction 依 $`GR(t) = GR_\infty\,(1 - e^{-t/\tau})`$ 上升，$`\tau = 1`$ ms。1 kHz 正弦波從 0 相位開始變大，第一個波峰在 $`t = 0.25`$ ms 才出現，之後每 0.5 ms 一個；每個 1 ms 視窗裡最大的輸出是「該視窗的第一個波峰」（$`t = k + 0.25`$ ms，此時 gain 降得最少）：
 
+<div align="center">
+
 | 視窗 | 波峰時間 $`t`$ | $`1 - e^{-t/\tau}`$ | 理論 GR | 理論輸出 peak |
 |---|---|---|---|---|
 | 0–1 ms | 0.25 ms | 0.221 | 3.07 dB | **-9.07 dBFS** |
@@ -50,6 +52,8 @@ g = \min\!\Bigl(1,\ \frac{c}{|x|}\Bigr)
 | 2–3 ms | 2.25 ms | 0.895 | 12.40 dB | -18.40 dBFS |
 | 3–4 ms | 3.25 ms | 0.961 | 13.32 dB | -19.32 dBFS |
 | 5–6 ms | 5.25 ms | 0.995 | 13.79 dB | -19.79 dBFS |
+
+</div>
 
 範例 `l05_compressor_vs_limiter` 的實測（每 1 ms 視窗內的輸出 peak）：
 
@@ -180,7 +184,7 @@ flowchart LR
 
 Sample peak ≤ ceiling 只保證「這些取樣點」不超過。DAC 重建出來的連續波形在兩個 sample 之間可能更高——**inter-sample peak**。極端例子：頻率 $`f_s/4`$ 的正弦波，每個週期只有 4 個取樣點，如果相位偏 45°，每個 sample 都落在 $`\pm 0.707A`$：
 
-![fs/4 的 sine 且相位偏移 45 度：每個取樣點都在 ±0.707A，而連續波形在取樣點之間會達到 A。](images/limiter-inter-sample-peak.svg)
+<p align="center"><img src="images/limiter-inter-sample-peak.svg" alt="fs/4 的 sine 且相位偏移 45 度：每個取樣點都在 ±0.707A，而連續波形在取樣點之間會達到 A。"></p>
 
 ITU-R BS.1770-4 定義的 **true peak** 是把訊號升頻 4 倍（48 kHz → 192 kHz，用 lowpass 插值）之後量 sample peak，單位 **dBTP**。
 
@@ -228,6 +232,8 @@ h[n] = \mathrm{sinc}\!\Bigl(\frac{n}{4}\Bigr) = \frac{\sin(\pi n/4)}{\pi n/4}
 y[4n+p] = \sum_j h[4j+p]\; x[n-j]
 ```
 
+<div align="center">
+
 | 輸出 | 用到的 tap | 乘上的輸入 |
 |---|---|---|
 | $`y[4n+0]`$ | $`h[0], h[4], h[8], \dots, h[60]`$ | $`x[n], x[n-1], \dots, x[n-15]`$ |
@@ -235,17 +241,23 @@ y[4n+p] = \sum_j h[4j+p]\; x[n-j]
 | $`y[4n+2]`$ | $`h[2], h[6], h[10], \dots, h[62]`$ | 同上 |
 | $`y[4n+3]`$ | $`h[3], h[7], h[11], \dots, h[63]`$ | 同上 |
 
+</div>
+
 64 tap 的原型被拆成 4 個 16 tap 的子濾波器（**phase**），4 個 phase 吃同一段最近 16 個原始輸入。每個原始 sample 只要 $`4 \times 16 = 64`$ 次乘法，而且完全不必真的做出 4 倍長的零插入 buffer。每個 phase 的係數總和約為 1（輸入是常數時，4 個插值點都要等於那個常數），所以整個原型的總和是 4——這就是 (2) 的「乘 4」。
 
 這就是練習 4 要實作的全部。第 06 章會用另一種設計（每次只升 2 倍的 halfband filter，串兩級得到 4 倍）做出 `Oversampler`；第 11 章練習 3 會直接重用它來做 true-peak meter，並和練習 4 這一版比較讀數誤差與 CPU 成本。
 
 練習 4 的實測：
 
+<div align="center">
+
 | 訊號 | sample peak | true peak |
 |---|---|---|
 | fs/4 正弦波、相位 45°（真正峰值 -6.02） | -9.03 dBFS | -6.18 dBTP |
 | drum loop +12 dB、hard clip 到 0 dBFS | 0.00 dBFS | +4.54 dBTP |
 | drum loop +12 dB → 本章 Limiter（ceiling -1 dBFS） | -1.00 dBFS | +1.02 dBTP |
+
+</div>
 
 第一列量到 -6.18 而不是 -6.02：64 tap 的插值濾波器是偶數長度，4 個插值點落在兩個原始 sample 之間的 1/8、3/8、5/8、7/8 處，而這個訊號的峰值剛好在正中間（1/2），最近的插值點差 1/8 sample，最多低估 0.17 dB。4x oversampling 的 true-peak meter 本來就只是「很接近」真正的峰值，不是精確值（練習 4 解答有完整說明）。
 
@@ -259,12 +271,16 @@ y[4n+p] = \sum_j h[4j+p]\; x[n-j]
 
 Clipper 是最簡單的「保證不超過」：$`y = \mathrm{clamp}(x, -c, c)`$（hard）或一條平滑曲線（soft）。它零延遲、無狀態，但它改的是**波形**而不是增益——正弦波的頂被削平 → 產生諧波。練習 5 的實測（1 kHz +6 dBFS）：soft clipper THD 20.9 %（H3 -13.8 dB、H5 -27.6 dB，奇對稱曲線只有奇次諧波）；limiter THD 0.0000 %——穩態下整段乘同一個 gain，波形不變。
 
+<div align="center">
+
 | | Clipper | Limiter |
 |---|---|---|
 | 延遲 | 0 | lookahead（1–10 ms） |
 | 改變的東西 | 波形 | 增益 |
 | 副作用 | 諧波失真（持續音很難聽） | pumping、transient 變鈍 |
 | 適合 | 削極短的尖峰、要「破」的音色、硬體 / live | mastering、broadcast、任何需要乾淨的場合 |
+
+</div>
 
 很多 mastering 工程師兩個都用：limiter 前放一個 soft clipper 削 1–2 dB 的鼓尖峰（短到聽不出失真），limiter 就不用做那麼多 gain reduction。
 
@@ -373,6 +389,8 @@ void process(AudioBlock block) noexcept {
 
 API（依教材合約）：
 
+<div align="center">
+
 | Method | 說明 |
 |---|---|
 | `setMaxLookaheadMs(float)` | lookahead 上限，`prepare()` 前呼叫（下一次 prepare 生效），預設 20 ms |
@@ -388,6 +406,8 @@ API（依教材合約）：
 | `uint64_t getSafetyClipCount() const` | 除錯用 |
 | `process(AudioBlock)` | in-place，stereo-linked；block 的 channel 數不可超過 `prepare()` 時的 `numCh` |
 
+</div>
+
 ### 3.4 範例
 
 建置與執行（在專案根目錄；ctest 會自動跑所有範例與解答）：
@@ -400,12 +420,16 @@ cd build
 
 WAV 都輸出到 `build\dawlab_output\`。
 
+<div align="center">
+
 | Target | 示範什麼 | 輸出 WAV |
 |---|---|---|
 | `l05_compressor_vs_limiter` | 2.2 節的 overshoot 對照：同一段 tone burst 過 Compressor（100:1、attack 1 ms）與 Limiter（lookahead 2 ms），印出變大後每 1 ms 的 peak | `l05_cmp_vs_lim_input.wav`、`l05_cmp_vs_lim_compressor.wav`、`l05_cmp_vs_lim_limiter.wav` |
 | `l05_drum_limiting` | drum loop 推 +6 / +12 dB 後 limit（ceiling -1 dBFS），印出 peak、RMS、crest factor、max GR；對照 hard clip。可選 `argv[1]` 給自己的 WAV | `l05_drums_dry.wav`、`l05_drums_limited_6dB.wav`、`l05_drums_limited_12dB.wav`、`l05_drums_clipped_12dB.wav` |
 | `l05_latency_impulse` | impulse 在 44.1 / 48 / 96 kHz 下的延遲 = `getLatencySamples()`；null test；gain 提前下降的表格 | `l05_latency_impulse.wav`、`l05_latency_burst.wav`（左 = 輸入、右 = 輸出，拉進 DAW 看 ramp） |
 | `l05_ceiling_stress` | 2.5 節保證的壓力測試：+40 dB 雜訊、±10（+20 dBFS）的 50 Hz 方波、DC、±1000 脈衝、±10⁴ 交替……配隨機 block 長度與隨機參數，檢查輸出 peak 與 safety clamp 次數（`clamp#` 欄必須是 0）；最後驗證 block 512 / 1 / 隨機 block 的輸出逐 sample 相同 | 無（純數字） |
+
+</div>
 
 `l05_drum_limiting` 的實測：
 
@@ -421,12 +445,16 @@ input gain      in peak     out peak      out RMS     RMS gain       max GR
 
 `l05_latency_impulse` 第 (3) 段（tone burst -30 → 0 dBFS、ceiling -6 dB、L = 240）：
 
+<div align="center">
+
 | 輸出位置（相對於 step + L） | Gain (dB) | 輸出 (dBFS) | 說明 |
 |---|---|---|---|
 | -240 samples | -0.12 | -30.12 | gain 從這裡開始下降（比峰值早 L 個 sample） |
 | -120 samples | -2.63 | -32.63 | 線性 ramp 走到一半（線性 gain 0.75） |
 | +0 samples | -6.00 | -6.00 | 峰值抵達輸出，gain 剛好 = ceiling / 峰值 |
 | +240 samples | -6.00 | -6.00 | |
+
+</div>
 
 （節錄；程式還會印出 -480、-180、-60 等位置。）線性 gain 在 241 個 sample 內從 1 線性降到 0.5：理論上 -240 處是 $`(240 + 0.5)/241 = 0.998`$（-0.02 dB），-120 處是 0.75（-2.50 dB）。表中的數字略低（-0.12、-2.63 dB），是因為範例用「0.5 ms（24 個 sample）視窗內的輸出 peak ÷ 輸入 peak」來量 gain，而 gain 在這 24 個 sample 內還在繼續往下掉。
 
@@ -444,6 +472,8 @@ input gain      in peak     out peak      out RMS     RMS gain       max GR
 
 ## 5. 常見錯誤與除錯
 
+<div align="center">
+
 | 症狀 | 可能原因 |
 |---|---|
 | 輸出 peak 還是超過 ceiling（`getSafetyClipCount()` > 0） | 音訊沒有延遲、或延遲 ≠ L；視窗 / 平均長度用了 L 而不是 L + 1；平均沒有先做 min；播放中改了 lookahead 或 ceiling |
@@ -456,6 +486,8 @@ input gain      in peak     out peak      out RMS     RMS gain       max GR
 | 輸出全 0 | `prepare()` 沒呼叫，或 block 的 channel 數比 `prepare()` 時多（Debug 建置會在 assert 停下；Release 建置把沒有 delay line 的 channel 清成 0，沒 prepare 時就是整個 block） |
 | 某些 sample 變成 0 | 輸入含 NaN / Inf：本章的 safety clamp 會把乘出來的 NaN 換成 0（`getSafetyClipCount()` 會增加），但上游該修 |
 | GR meter 顯示 -0.00 | `-gainToDb(1)` 是 -0.0；本章用 `std::max(0.0f, …)` 處理 |
+
+</div>
 
 除錯技巧：把 `l05_latency_burst.wav` 拉進 DAW，左聲道是輸入、右聲道是輸出，放大看峰值前 L 個 sample 的 gain ramp；用 `l05_ceiling_stress`（看 `clamp#` 欄）和練習 6 的 fuzz test 當 regression test——任何改動之後跑一次。注意只看「輸出 peak ≤ ceiling」是不夠的：最後那道 safety clamp 不管演算法對不對都會把輸出夾回 ceiling，所以本章所有範例與練習 6 都同時要求 `getSafetyClipCount() == 0`，這樣視窗長度、平均長度或延遲差一個 sample 的 bug 才抓得到。
 

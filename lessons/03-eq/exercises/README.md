@@ -12,6 +12,8 @@ cd build
 .\bin\Debug\l03_ex2_starter.exe                      # run your own starter code
 ```
 
+<div align="center">
+
 | # | Type | Difficulty | Starter code | starter target | solution target |
 |---|---|---|---|---|---|
 | 1 | Calculation | ★☆☆ | — | — | (the numbers are verified in `l03_ex2_solution`) |
@@ -21,6 +23,8 @@ cd build
 | 5 | Programming | ★★☆ | `starter/ex5_tilt_eq.cpp` | `l03_ex5_starter` | `l03_ex5_solution` |
 | 6 | Programming | ★★★ | `starter/ex6_switchable_highcut.cpp` | `l03_ex6_starter` | `l03_ex6_solution` |
 | 7 | Concept | ★★☆ | — | — | — |
+
+</div>
 
 ---
 

@@ -10,6 +10,8 @@
 
 ## 1. 一張表看懂 threading model
 
+<div align="center">
+
 | API | UI / message thread | audio thread | 備註 |
 |---|---|---|---|
 | `Engine::prepare()` | 是，device 已停止 | 否 | 會配置記憶體；重新 prepare 既有的 insert |
@@ -23,6 +25,8 @@
 | `Engine::collectGarbage()` | 是（同一條 thread） | 否 | ~30 Hz timer |
 | `renderOffline()`、`bounceToWav()`、`applyPendingCommandsOffline()` | 是，該 engine 上沒有 device 在執行 | 否 | |
 | `InsertEffect::prepare()` | 是（交接之前） | 否 | `Engine::addInsert` 會呼叫它 |
+
+</div>
 
 「Single producer」：所有結構性呼叫（`addInsert`、……、`setTrackClips`、`pushCommand`）一次只能來自
 一條 thread - message thread。command queue 是 single-producer 的。

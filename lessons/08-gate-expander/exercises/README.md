@@ -12,6 +12,8 @@ cd build
 .\bin\Debug\l08_ex4_starter.exe                       # run your starter code
 ```
 
+<div align="center">
+
 | No. | Type | Starter target | Solution target |
 |---|---|---|---|
 | 1 | Calculation | — | — |
@@ -22,6 +24,8 @@ cd build
 | 6 | Implementation | `l08_ex6_starter` (`starter/ex6_lookahead_gate.cpp`) | `l08_ex6_solution` (`solutions/ex6_lookahead_gate.cpp`) |
 | 7 | Implementation | `l08_ex7_starter` (`starter/ex7_splitband_deesser.cpp`) | `l08_ex7_solution` (`solutions/ex7_splitband_deesser.cpp`) |
 | 8 | Implementation | `l08_ex8_starter` (`starter/ex8_transient_shaper.cpp`) | `l08_ex8_solution` (`solutions/ex8_transient_shaper.cpp`) |
+
+</div>
 
 ---
 

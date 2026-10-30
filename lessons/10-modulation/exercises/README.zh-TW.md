@@ -20,6 +20,8 @@ cd build
 注意 starter 與 solution 輸出的 WAV 檔名相同（例如都是 `l10_ex3_vibrato.wav`），後執行的會覆蓋先執行的。
 每支 starter 的 self-check 全部通過、印出 `[PASS]` 就算完成。
 
+<div align="center">
+
 | 題號 | 類型 | 難度 | starter / solution target |
 |---|---|---|---|
 | 1 | 觀念 | ★☆☆ | — |
@@ -30,6 +32,8 @@ cd build
 | 6 | 實作：Tempo-synced tremolo | ★★☆ | `l10_ex6_starter` / `l10_ex6_solution` |
 | 7 | 觀念 + 計算：Phaser 的 notch 間距 | ★★★ | — |
 | 8 | 實作：Staggered phaser（每級不同 $`f_c`$） | ★★★ | `l10_ex8_starter` / `l10_ex8_solution` |
+
+</div>
 
 ---
 

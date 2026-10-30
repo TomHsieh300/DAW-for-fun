@@ -120,6 +120,8 @@ total latency is 0.
 
 ## The code
 
+<div align="center">
+
 | File | What |
 |---|---|
 | `LatencyCompensator.h` | `prepare(maxDelay, channels)`, `setDelaySamples()`, `process(block)` |
@@ -127,6 +129,8 @@ total latency is 0.
 | `ChannelStrip.h` | `processInserts()` = inserts, then the compensator |
 | `Mixer.h` | `updateLatencies()`, the track-sum compensator, `getTotalLatencySamples()` |
 | `EffectBase.h` | `PureDelayEffect`: delays by N and reports N (the measuring instrument) |
+
+</div>
 
 ## Your turn
 
@@ -136,12 +140,16 @@ parameter 0 = delay in samples), a `LatencyCompensator` after every strip's inse
 dry track sum, and `processChunk()` calling `mixer_.updateLatencies()` right after
 `applyCommands()`.
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | `LatencyCompensator::process()` (the ring buffer, written also at delay 0) and `Mixer::updateLatencies()` (apply pending parameters, the targets, every compensator, the overflow flag, the total) |
 | File | `steps/step08-pdc/starter/step08.cpp` |
 | Run | `l14_step08_starter`; it prints `[FAIL] l14_step08 (15 of 22 checks failed)` until you are done |
 | Solution | `steps/step08-pdc/solution/step08.cpp` (ctest `l14_step08_solution`) |
+
+</div>
 
 Expected output (verified) - impulses of 0.25 at timeline 1000 on tracks 1 and 2, each line lists
 where (and how loud) something arrives at the output:
@@ -166,6 +174,8 @@ latency follows its parameter, like a limiter's lookahead.
 
 `l14_test_pdc` (verified):
 
+<div align="center">
+
 | scenario | expected | result |
 |---|---|---|
 | impulse at 1000 on tracks 1 and 2, track 1 has a 100-sample PureDelay | one impulse of 2 x 0.25 x 0.7071 at 1100; compensators 0 / 100 | pass |
@@ -176,6 +186,8 @@ latency follows its parameter, like a limiter's lookahead.
 | device change 48 kHz -> 96 kHz | the same 5 ms lookahead re-prepared = 480 samples, PDC follows | pass |
 | track 1: 3 x 8191 = 24 573 samples (more than $`C`$ = 16 384), track 2 dry, compensated render | overflow flag set, reported latency 16 384; track 2 at 1000, track 1 at 1000 + 8189 (late, but in the file) | pass |
 | same, engine prepared with `maxPdcSamples` = 32 768 | no overflow, latency 24 573, one impulse at 1000 | pass |
+
+</div>
 
 `l14_pdc_demo` measures and lets you hear it (verified output):
 

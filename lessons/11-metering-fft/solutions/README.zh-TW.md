@@ -4,6 +4,8 @@
 
 實作題的完整程式在本資料夾，每支都有 `DAWLAB_CHECK` self-check，`ctest -L solution` 會自動跑：
 
+<div align="center">
+
 | 題 | 檔案 | target |
 |---|---|---|
 | 3 | `ex3_true_peak.cpp` | `l11_ex3_solution` |
@@ -11,6 +13,8 @@
 | 5 | `ex5_loudness_range.cpp` | `l11_ex5_solution` |
 | 6 | `ex6_fft_convolution.cpp` | `l11_ex6_solution` |
 | 7 | `ex7_correlation_meter.cpp` | `l11_ex7_solution` |
+
+</div>
 
 ---
 
@@ -82,6 +86,8 @@ windowed-sinc 版是 4 個 phase × 16 tap = 64。
 
 實際輸出（`l11_ex3_solution`，Debug 建置）：
 
+<div align="center">
+
 | 訊號 | sample peak | Oversampler | windowed-sinc | FFT 理想內插 |
 |---|---|---|---|---|
 | 1 kHz 0 dBFS | 0.000 dBFS | 0.000 dBTP | -0.003 dBTP | （0） |
@@ -90,7 +96,11 @@ windowed-sinc 版是 4 個 phase × 16 tap = 64。
 | 同上，用 Oversampler 的讀數 normalize 到 -1 dBTP | -6.201 dBFS | -1.000 dBTP | | |
 | pluck sequence | -5.289 dBFS | -2.923 dBTP | -3.388 dBTP | -2.172 dBTP |
 
+</div>
+
 相位掃描（fs/4 正弦，振幅 1，誤差 = 讀數 − 0 dBTP；節錄每 11.25° 一列）：
+
+<div align="center">
 
 | 相位 | 峰值在 sample 之間的位置 | Oversampler | windowed-sinc |
 |---|---|---|---|
@@ -100,12 +110,18 @@ windowed-sinc 版是 4 個 phase × 16 tap = 64。
 | 33.75° | 5/8 | -0.168 dB | +0.010 dB |
 | 45° | 1/2 | +0.000 dB | -0.157 dB |
 
+</div>
+
 頻率響應（振幅 0.5 的正弦，頻率稍微偏離整數比，讓峰值掃過所有位置；誤差 = 讀數 − (-6.02)）：
+
+<div align="center">
 
 | 頻率 | 1 k | 10 k | 16 k | 18 k | 20 k | 21 k | 22 k |
 |---|---|---|---|---|---|---|---|
 | Oversampler | +0.001 | +0.000 | +0.000 | +0.001 | +0.000 | +0.000 | +0.000 |
 | windowed-sinc | -0.000 | -0.002 | -0.002 | +0.092 | -0.081 | -0.229 | -0.430 |
+
+</div>
 
 CPU：乘法數 56 對 64；實際計時（10 s stereo 白雜訊，每個 channel-sample）Debug 約 130～150 ns 對 410～530 ns，
 Release 約 20 ns 對 59 ns——windowed-sinc 慢 3 倍左右（確切數字依機器與負載而異）。
@@ -190,11 +206,15 @@ lra = percentile(0.95) - percentile(0.10);
 
 實際輸出（`l11_ex5_solution`）：
 
+<div align="center">
+
 | A / B (dBFS) | LRA | 10% | 95% |
 |---|---|---|---|
 | -20 / -30 | 10.00 LU | -29.95 | -19.95 |
 | -20 / -15 | 5.00 LU | -19.95 | -14.95 |
 | -40 / -20 | 20.00 LU | -39.95 | -19.95 |
+
+</div>
 
 （立體聲兩聲道相同 → LUFS = dBFS + 0.01；直方圖格中心的 0.05 偏移在相減時抵消。）
 

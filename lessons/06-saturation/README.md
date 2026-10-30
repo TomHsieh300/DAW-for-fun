@@ -37,7 +37,7 @@ y[n] = f\big(x[n]\big)
 
 Each sample looks only at itself and is fed through a curve $`f`$. As long as $`f`$ is not a straight line, a sine is "bent", and a bent periodic signal expanded in a Fourier series contains integer multiples of the fundamental: **harmonics**.
 
-![Left to right: a sine wave of amplitude 3, the tanh transfer curve with its straight part near the origin, and the output sine with flattened tops](images/saturation-sine-through-curve.svg)
+<p align="center"><img src="images/saturation-sine-through-curve.svg" alt="Left to right: a sine wave of amplitude 3, the tanh transfer curve with its straight part near the origin, and the output sine with flattened tops"></p>
 
 Small signal: on the straight part, almost no distortion; large signal: enters the curved region and produces harmonics.
 
@@ -81,11 +81,15 @@ so
 \frac{H_3}{H_1} = \frac{A^3/12}{A - A^3/4} = \frac{A^2}{12 - 3A^2}
 ```
 
+<div align="center">
+
 | $`A`$ | $`H_1 = A - A^3/4`$ | $`H_3 = A^3/12`$ | $`H_3/H_1`$ | THD |
 |---|---|---|---|---|
 | 0.25 | 0.24609 | 0.0013021 | −45.53 dB | 0.53 % |
 | 0.5 | 0.46875 | 0.0104167 | −33.06 dB | 2.22 % |
 | 1.0 | 0.75 | 0.0833 | −19.08 dB | 11.11 % |
+
+</div>
 
 The last table of the example `l06_harmonic_analysis` prints "theory vs measurement" for these three rows side by side, with an error of 0.000 dB; the solution to exercise 2 also verifies every number with Goertzel.
 
@@ -102,12 +106,16 @@ Plotting $`y = f(x)`$ gives the **transfer curve**. The horizontal axis is the i
 
 `Saturation::shape()` in this chapter provides four curves:
 
+<div align="center">
+
 | Curve | Formula | Small-signal expansion | Character |
 |---|---|---|---|
 | `Tanh` | $`\tanh x`$ | $`x - \frac{x^3}{3} + \frac{2x^5}{15} - \cdots`$ | Classic soft clip, infinitely smooth, asymptotic to ±1, produces only odd harmonics |
 | `Cubic` | $`x - \frac{x^3}{3}`$ ($`\lvert x\rvert \le 1`$), otherwise $`\pm\frac{2}{3}`$ | exactly $`x - \frac{x^3}{3}`$ | Cheap; for $`\lvert x\rvert \le 1`$ only a 3rd harmonic; beyond that it becomes a hard clip |
 | `Arctan` | $`\frac{2}{\pi}\arctan\left(\frac{\pi x}{2}\right)`$ | $`x - \frac{\pi^2}{12}x^3 + \cdots`$ | Larger cubic term (0.82 vs tanh's 0.33) -> the knee starts bending earlier; approaches ±1 very slowly |
 | `Asymmetric` | $`\tanh x`$ ($`x \ge 0`$), $`\frac{1}{2}\tanh 2x`$ ($`x < 0`$) | slope 1 at the origin on both sides | The negative half saturates early at −0.5 -> even harmonics + DC (tube-like) |
+
+</div>
 
 **Continuity of Cubic.** At $`x = 1`$, $`x - x^3/3`$ has value $`2/3`$ and derivative $`1 - x^2 = 0`$. So joining the constant $`\pm 2/3`$ at $`|x| = 1`$ makes both the **value and the first derivative continuous**, and the transfer curve has no corner. If you forget the clamp, the curve starts to fall after $`x > 1`$ (the derivative $`1 - x^2 < 0`$, no longer monotonic) and goes negative after $`x > \sqrt{3}`$ ($`\sqrt{3} - (\sqrt{3})^3/3 = 0`$); when you push the drive you hear extremely ugly aliasing and even phase-inverted distortion (section 5). Its **second derivative**, however, is discontinuous at $`|x| = 1`$ (−2 on the left, 0 on the right), so once the signal is pushed into the clamped region the high harmonics decay more slowly than tanh's: in the example, at $`A = 4`$ the THD of Cubic is 38.3% against 30.1% for tanh.
 
@@ -127,12 +135,16 @@ The transfer-curve table printed by the example `l06_harmonic_analysis` (excerpt
 
 and the harmonics (relative to the fundamental) for a 100 Hz sine of amplitude $`A = 1`$:
 
+<div align="center">
+
 | Curve | H2 | H3 | H4 | H5 | THD | DC |
 |---|---|---|---|---|---|---|
 | Tanh | — | −23.5 dB | — | −45.1 dB | 6.71 % | 0 |
 | Cubic | — | −19.1 dB | — | — | 11.11 % | 0 |
 | Arctan | — | −20.0 dB | — | −34.8 dB | 10.21 % | 0 |
 | Asymmetric | −19.6 dB | −19.3 dB | −40.4 dB | −34.4 dB | 15.26 % | +0.0748 |
+
+</div>
 
 ("—" means below −99 dB, i.e. not present.)
 
@@ -176,11 +188,15 @@ The example `l06_harmonic_analysis` prints this approximation next to the measur
 
 **What it sounds like:**
 
+<div align="center">
+
 | | Odd harmonics (3, 5, 7, ...) | Even harmonics (2, 4, 6, ...) |
 |---|---|---|
 | Musical intervals | 3rd = octave plus a fifth, 5th = two octaves plus a major third, the 7th is already off equal temperament | 2nd = an octave up, 4th = two octaves up; both are "the same note" |
 | Sound | Hollow, square-wave-like, with bite (clarinet, square wave); sounds harsh when overdone | Thick, warm, "sweet", blends very well with the original note |
 | Typical source | Symmetric circuits: push-pull power stages, tape, diode pairs | Asymmetric circuits: single-ended tube preamps, transistors with a bias offset |
+
+</div>
 
 **The harm of a DC offset.** An asymmetric curve makes the mean of the signal no longer 0 (in the example DC = +0.0748 at $`A = 1`$ and +0.207 at $`A = 4`$). DC itself cannot be heard, but it:
 
@@ -212,11 +228,13 @@ f_{\text{alias}} = \left|\, \Big( (f + f_s/2) \bmod f_s \Big) - f_s/2 \,\right|
 
 Intuitively, you fold the frequency axis back and forth like paper, using $`f_s/2`$ as the mirror:
 
-![Alias frequency versus true frequency for fs = 48 kHz: a triangle wave between 0 and fs/2, with the 3rd to 13th harmonics of 7 kHz marked on it](images/aliasing-fold.svg)
+<p align="center"><img src="images/aliasing-fold.svg" alt="Alias frequency versus true frequency for fs = 48 kHz: a triangle wave between 0 and fs/2, with the 3rd to 13th harmonics of 7 kHz marked on it"></p>
 
 The horizontal axis is the true frequency and the vertical axis is where it lands after sampling. From 0 to $`f_s/2`$ it is unchanged; from $`f_s/2`$ to $`f_s`$ it is mirrored ($`f \to f_s - f`$); from $`f_s`$ to $`3f_s/2`$ it is mirrored again ($`f \to f - f_s`$), and so on. Only the segment $`0 \sim f_s/2`$ is audible, so whatever is above Nyquist is folded back into it. The dots are the harmonics of the 7 kHz example below.
 
 **Example: a 7 kHz sine + tanh, $`f_s`$ = 48 kHz.** tanh is an odd function and has only odd harmonics:
+
+<div align="center">
 
 | Harmonic | Frequency | Folds to | Integer multiple of 7 kHz? |
 |---|---|---|---|
@@ -226,6 +244,8 @@ The horizontal axis is the true frequency and the vertical axis is where it land
 | 9 | 63 kHz | 63 − 48 = **15 kHz** | No |
 | 11 | 77 kHz | 96 − 77 = **19 kHz** | No |
 | 13 | 91 kHz | 96 − 91 = **5 kHz** | No |
+
+</div>
 
 Frequencies such as 1 kHz, 5 kHz and 13 kHz have no harmonic relationship to 7 kHz, so they sound like another, out-of-tune note, or like a "metallic, hissy" contamination. And when the input pitch slides (vibrato, bends), the aliases move **out of proportion** to the pitch: those folded as $`f_s - kf_0`$ (13 kHz from the 5th, 19 kHz from the 11th, 5 kHz from the 13th) slide in the **opposite** direction, while those folded as $`kf_0 - f_s`$ (1 kHz from the 7th, 15 kHz from the 9th) slide in the **same** direction at $`k`$ times the speed. The whole thing sounds like a mass of darting noise and is very noticeable.
 
@@ -294,13 +314,19 @@ h[0..7] = 0.50000, 0.31707, 0.00000, -0.10244, 0.00000, 0.05772, 0.00000, -0.037
 
 Taking stage 1 of this chapter (63 taps, $`2K = 32`$ odd taps) as an example, the multiplications needed per "original-rate sample":
 
+<div align="center">
+
 | Method | Upsampling | Downsampling |
 |---|---|---|
 | Zero-stuff, then run the 63-tap FIR directly (twice at 2fs) | 126 | 126 (compute, then discard half) |
 | Polyphase (not exploiting the zero coefficients) | 63 | 63 |
 | **Polyphase + halfband zero coefficients** | **32** | **33** |
 
+</div>
+
 **FIR halfband vs IIR allpass polyphase.** Another common approach is an IIR polyphase halfband built from two allpass filters (Valenzuela & Constantinides 1983; many commercial plugins use it). The trade-offs:
+
+<div align="center">
 
 | | FIR halfband (used in this chapter) | IIR allpass polyphase |
 |---|---|---|
@@ -310,15 +336,21 @@ Taking stage 1 of this chapter (63 taps, $`2K = 32`$ odd taps) as an example, th
 | Numerics | Cannot become unstable, no denormal problems | Recursive structure: must handle denormals and coefficient quantization |
 | dry/wet mix | Delaying dry by an integer number of samples aligns it perfectly | The phase is not a pure delay -> the mix gets comb filtering or phase shifts |
 
+</div>
+
 We chose the FIR because it makes the latency a clean integer, lets dry/wet align perfectly, and has the easiest principle to check. The price is latency and CPU. If you are building a plugin for live monitoring where latency matters a lot, the IIR version is the better choice.
 
 **Design numbers of this chapter's Oversampler** (measured by the example `l06_oversampler_response`):
+
+<div align="center">
 
 | Stage | Factor | Odd taps | FIR length | Group delay | Working sample rate |
 |---|---|---|---|---|---|
 | 1 | ×2 | 32 | 63 | 31 samples | 96 kHz |
 | 2 | ×4 | 12 | 23 | 11 samples | 192 kHz |
 | 3 | ×8 | 8 | 15 | 7 samples | 384 kHz |
+
+</div>
 
 Frequency response of stage 1 (at 96 kHz): passband error < 0.01 dB up to 20.3 kHz; the stopband is ≤ −80 dB from 28.0 kHz; at 24 kHz (the old Nyquist) it is exactly −6.02 dB (a halfband signature: $`H(f_s/4) = 1/2`$). Why can stages 2 and 3 be so much shorter? Stage 2 goes from 96 to 192 kHz; its input already contains only about 0 to 24 kHz (stage 1 has blocked everything higher), and the images after zero-stuffing lie above 96 − 24 = 72 kHz; so the transition band of stage 2 can be as wide as 24 kHz to 72 kHz, and the wider the transition, the fewer taps are needed. Stage 3 (192 → 384 kHz) is the same: its images lie above 192 − 24 = 168 kHz, with an even wider transition band.
 
@@ -356,6 +388,8 @@ Both the value (1/2) and the slope (±1) are continuous at $`|x| = 1`$. The anti
 
 Measured in exercise 6 (7 kHz, hard clip with peak 2):
 
+<div align="center">
+
 | Method | Total alias |
 |---|---|
 | naive 1x | −24.6 dB |
@@ -364,6 +398,8 @@ Measured in exercise 6 (7 kHz, hard clip with peak 2):
 | ADAA + 2x | −56.0 dB |
 | naive 4x | −49.2 dB |
 | naive 8x | −61.7 dB |
+
+</div>
 
 ADAA 1x is already cleaner than naive 2x, and the CPU cost is only one extra subtraction and one division. Compare the last two rows: the harmonics of a hard clip decay only as $`1/k`$, so oversampling alone improves things by only 12 to 13 dB per doubling, and 8x still has −61.7 dB of alias; "ADAA + 2x" reaches the same order of magnitude with far less computation. In practice the common combination is exactly "ADAA + 2x oversampling".
 
@@ -598,12 +634,16 @@ To measure CPU time (example 3, exercise 7) use Release instead: `.\scripts\buil
 
 - **Shows**: `Saturation` (4x) applied to a drum loop and a pluck sequence with four presets:
 
+<div align="center">
+
 | preset | curve | drive | mix | output |
 |---|---|---|---|---|
 | glue | Tanh | +6 dB | 100% | −3 dB |
 | tube | Asymmetric | +12 dB | 100% | −6 dB |
 | parallel | Tanh | +18 dB | 30% | −6 dB |
 | cubic | Cubic | +12 dB | 100% | −3 dB |
+
+</div>
 
   It prints peak, RMS, crest factor and the RMS change (the `dRMS` column); for Asymmetric it compares the DC with the DC blocker off / on (drums: +0.01623 → −0.00000; pluck: −0.01671 → −0.00012); for Cubic it compares the curve ceiling with the actual peak and splits the excess into two sources, the "DC blocker" and the "downsampling lowpass" (see section 5). Finally it feeds a block of 2000 samples to a `Saturation` prepared with `prepare(…, 512, …)` and confirms that the automatic chunking gives exactly the same result as normal processing (largest difference 0).
 
@@ -628,6 +668,8 @@ To measure CPU time (example 3, exercise 7) use Release instead: `.\scripts\buil
 
 ## 5. Common Mistakes and Debugging
 
+<div align="center">
+
 | Symptom | Cause | Fix |
 |---|---|---|
 | After adding saturation, high notes (hi-hats, high-position guitar) get a "metallic" noise unrelated to the pitch, and the noise does not follow the pitch during a pitch bend (some slide in reverse, some dart in the same direction at several times the speed) | aliasing | Turn on 2x/4x oversampling; lower the drive; use ADAA; lowpass before saturating |
@@ -640,6 +682,8 @@ To measure CPU time (example 3, exercise 7) use Release instead: `.\scripts\buil
 | After a NaN arrives from upstream, the output stays NaN forever (only `reset()` recovers it) | The DC blocker is recursive: once a NaN enters its state, NaN times anything is still NaN and never leaves (an FIR does not have this problem: the NaN leaves the window after a few dozen samples) | Replace non-finite values with 0 before a recursive structure (`Saturation` already does this: only a short stretch of silence results, then it recovers automatically); for recursive effects you write yourself, sanitize at the entry or `reset()` when a NaN is detected |
 | `downsample()` asserts | The block passed to `downsample()` has a different length from the one given to `upsample()` | Call upsample once and downsample once for the same block |
 | With oversampling on, the highs near 22 kHz get quieter | The halfband transition band (22 kHz round trip −1.25 dB) | Normal; for a wider passband increase the number of taps of stage 1 (at the cost of latency) |
+
+</div>
 
 **Debugging tip**: don't use your ears first. Use `goertzelAmplitude` to measure the frequencies that "should be there" and those that "should not": the H2 of a symmetric curve should be −∞ dB; a 7 kHz input should have nothing at 1 kHz. The prediction table plus measurement table of example 2 is a template for this method.
 

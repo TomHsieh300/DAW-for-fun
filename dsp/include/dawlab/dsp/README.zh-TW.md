@@ -9,6 +9,8 @@
 
 ## 依章節列出
 
+<div align="center">
+
 | 章 | Header | 用途 |
 |---|---|---|
 | [01](../../../../lessons/01-gain/README.zh-TW.md) | `SmoothedValue.h` | 參數的 linear ramp 平滑，避免改參數時的 click 與 zipper noise |
@@ -44,5 +46,7 @@
 | [12](../../../../lessons/12-reverb/README.zh-TW.md) | `ReverbBuildingBlocks.h` | 教學用的殘響積木：`CombFilter`、`AllpassDiffuser`、`TappedDelay`、RT60 量測 `measureRt60`、`nextPrime` |
 | 12 | `Reverb.h` | 8 線 FDN algorithmic reverb（decay、pre-delay、damping、size、width、freeze） |
 | 12 | `ConvolutionReverb.h` | uniform partitioned FFT convolution reverb，可產生合成 impulse response |
+
+</div>
 
 第 13 章（JUCE plugin 與 hosting）與第 14 章（8 軌 DAW）沒有新增這個資料夾的 header：第 13 章的程式在 `lessons/13-vst-hosting/plugin/` 與 `host/`，第 14 章的 engine 在 `lessons/14-daw-8track/engine/include/dawlab/engine/`。

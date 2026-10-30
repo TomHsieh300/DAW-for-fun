@@ -109,11 +109,15 @@ render time (Debug build) varies with the machine.
 
 ## Your turn
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | `Exporter::renderToFile()` in `app/Source/Exporter.cpp`: fill `engine::RenderOptions` from the `ExportOptions`, call `engine::renderOffline()` (Step 9), fill the `ExportResult` (latency, length, peak, integrated LUFS of the master), refuse an empty or NaN render, write the WAV |
 | Build + check | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test` (`l14_app_smoke_test`) |
 | Expected | section 3: `export: ok, 2.00 s, peak -1.00 dBFS`; section 9: the whole song, 19.00 s, -15.5 LUFS integrated, latency 752 removed; `[PASS] l14_app_smoke_test` |
+
+</div>
 
 ## What you learned
 

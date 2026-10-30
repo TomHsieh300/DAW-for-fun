@@ -9,6 +9,8 @@ The DSP components implemented step by step across the chapters: header-only, in
 
 ## Listed by chapter
 
+<div align="center">
+
 | Chapter | Header | Purpose |
 |---|---|---|
 | [01](../../../../lessons/01-gain/README.md) | `SmoothedValue.h` | Linear-ramp smoothing of parameters, avoiding clicks and zipper noise when a parameter changes |
@@ -44,5 +46,7 @@ The DSP components implemented step by step across the chapters: header-only, in
 | [12](../../../../lessons/12-reverb/README.md) | `ReverbBuildingBlocks.h` | Teaching-oriented reverb building blocks: `CombFilter`, `AllpassDiffuser`, `TappedDelay`, the RT60 measurement `measureRt60`, `nextPrime` |
 | 12 | `Reverb.h` | 8-line FDN algorithmic reverb (decay, pre-delay, damping, size, width, freeze) |
 | 12 | `ConvolutionReverb.h` | Uniform partitioned FFT convolution reverb, which can generate a synthetic impulse response |
+
+</div>
 
 Chapter 13 (JUCE plugins and hosting) and chapter 14 (the 8-track DAW) add no headers to this folder: the chapter 13 code is in `lessons/13-vst-hosting/plugin/` and `host/`, and the chapter 14 engine is in `lessons/14-daw-8track/engine/include/dawlab/engine/`.

@@ -14,11 +14,15 @@
 
 `MixerView` 針對 `stripRefAt(0 .. kNumStrips-1)`（`Session.h`）的每個項目建立一個 `ChannelStripView`：track 1-8、bus A..(kNumBuses)、master。每個 track strip 會得到 `kNumBuses` 個 send 旋鈕。GUI 裡沒有任何地方寫著「2 個 bus」：Exercise 12 以三個 bus 重新編譯 engine 與 app，mixer 就直接有十二個 strip。
 
+<div align="center">
+
 | strip 種類 | Load | insert | send | pan | fader | M | S | 額外 |
 |---|---|---|---|---|---|---|---|---|
 | track | 有 | 4 | 每個 bus 一個（預設為 post-fader；pre-fader send 會顯示 "A pre"，並在 tooltip 中說明） | mono track：pan law（constant power），stereo track：balance | 有 | 有 | 有 | format 按鈕（Mono / Stereo） |
 | bus | - | 4 | - | balance | 有 | 有 | -（solo-safe） | - |
 | master | - | 4 | - | balance | 有 | - | - | limiter ceiling、spectrum、LUFS |
+
+</div>
 
 這些差異來自 stage 1：mono track 使用 constant-power pan law，stereo track、bus 與 master 使用 balance（Step 4 的「Mono 與 stereo track」，以及 debugging 表中的「Everything 3 dB too quiet」）；bus 是 solo-safe，所以沒有 solo 按鈕（Step 6）。
 
@@ -28,10 +32,14 @@ Track strip 在 Load 旁邊有一個小的切換按鈕，顯示 track 的 format
 
 pan 旋鈕下方的標籤會跟著 format 改變，因為這個旋鈕做的是兩件不同的事：
 
+<div align="center">
+
 | format | 標籤 | tooltip | 旋鈕置中時 |
 |---|---|---|---|
 | Mono | `Pan` | "Pan (constant-power law: centre -3 dB per side)" | 每側 x0.7071 |
 | Stereo | `Bal` | "Balance (centre: unity; turning right lowers the left side)" | 每側 x1 |
+
+</div>
 
 按鈕文字、切換狀態、標籤與 tooltip 都在 `refreshStructure()` 中設定，它會在每次 `Session` 的 change message 之後執行 - 所以由 loader、專案檔或 exercise 設定的 format，顯示方式都和點擊一樣。
 
@@ -43,9 +51,13 @@ Fader 的行程應該把大部分長度花在混音真正發生的區間（-20 .
 \text{dB}(p) = 12 - 72\,(1 - p)^2, \qquad p(\text{dB}) = 1 - \sqrt{\frac{12 - \text{dB}}{72}}
 ```
 
+<div align="center">
+
 | dB | +12 | +6 | 0 | -6 | -12 | -30 | -60（最底端 = $`-\infty`$） |
 |---|---|---|---|---|---|---|---|
 | $`p`$ | 1.000 | 0.711 | 0.592 | 0.500 | 0.423 | 0.236 | 0 |
+
+</div>
 
 所以 0 dB 位於行程的 59 % 處，-6 dB 剛好在正中間；最底端的位置代表靜音（`FaderLaw::toEngineDb` 把 -60 對應到 $`-\infty`$ = `kMinusInfinityDb`）。畫在 fader 旁的刻度也使用 `dbToPosition()`，所以數字與 cap 對得上。Fader 寫入 `ChannelStrip::setGainDb()`——一個 atomic；strip 會在 50 ms 內 ramp 到新的 gain（Step 4），所以不論滑鼠事件多粗糙，拖曳 fader 都不會產生 zipper noise。
 
@@ -93,11 +105,15 @@ Snapshot 顯示 demo song 的混音：fader 位於 song 的設定值（drum -2 d
 
 ## 換你動手
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫 | `app/Source/MixerView.cpp` 中的 `FaderLaw::positionToDb()` 與 `FaderLaw::dbToPosition()`（「Fader law」的平方律；位於最底端的 position 代表 $`-\infty`$） |
 | 建置 + 檢查 | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test`（`l14_app_smoke_test`） |
 | 預期 | 本頁的 fader 檢查通過：`dbToPosition(0) = 0.5918`、`positionToDb(dbToPosition(-12)) = -12`、把 track 1 的 fader 移到 -6 dB 位置會讓 engine 設為 -6.00 dB；`[PASS] l14_app_smoke_test` |
+
+</div>
 
 ## 你學到了什麼
 

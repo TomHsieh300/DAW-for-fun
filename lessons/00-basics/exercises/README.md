@@ -59,12 +59,16 @@ Files: `starter/ex5_downmix.cpp` (`l00_ex5_starter`), solution `../solutions/ex5
 
 The self-check verifies what the two common choices of `channelGain` do on different material:
 
+<div align="center">
+
 | Material | gain 0.5 (-6 dB) | gain 0.707 (-3 dB) |
 |---|---|---|
 | Left and right identical (sine) | 0 dB (unchanged) | +3.01 dB |
 | Left and right uncorrelated (white noise) | -3.01 dB | 0 dB (unchanged) |
 | Left and right in anti-phase (L = -R) | vanishes completely | vanishes completely |
 | Left and right identical and full-scale | no clipping (exactly 1.0) | exceeds 1.0 (1.414) |
+
+</div>
 
 Note: gain 0.5 is guaranteed never to clip for **any** material ($`|0.5(L+R)| \le 0.5(|L|+|R|) \le 1`$); gain 0.707 only exceeds 1.0 when left and right are sufficiently correlated (same sign) and large enough; full-scale material that is anti-phase or uncorrelated does not necessarily exceed it.
 

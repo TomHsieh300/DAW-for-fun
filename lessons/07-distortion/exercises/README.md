@@ -18,6 +18,8 @@ cd build
 After editing a starter, go back to the project root and run `build.ps1` again (or, inside the build directory, run `cmake --build . --config Debug --target l07_ex3_starter`).
 A starter is done when all of its self-checks pass and it prints `[PASS]`. The WAV files are written under `dawlab_output/` in the directory you run from.
 
+<div align="center">
+
 | # | Type | Difficulty | Topic | File |
 |---|---|---|---|---|
 | 1 | Calculation | ★☆☆ | Quantization step and SNR for N bits | — |
@@ -27,6 +29,8 @@ A starter is done when all of its self-checks pass and it prints `[PASS]`. The W
 | 5 | Implementation | ★★☆ | Auto gain compensation (output RMS = input RMS) | `starter/ex5_auto_gain.cpp` |
 | 6 | Calculation | ★★☆ | Where the aliases of hard clip and sample & hold land | — |
 | 7 | Design | ★★★ | Why the order of the amp chain stages matters | — |
+
+</div>
 
 ---
 

@@ -31,10 +31,14 @@ An EQ can be described in one sentence: **it applies a different gain to differe
 
 Mixing engineers use EQ for roughly two kinds of reasons:
 
+<div align="center">
+
 | Purpose | Goal | Typical moves | Examples |
 |---|---|---|---|
 | **Corrective** | Remove what "should not be there" | Narrow cuts, low cuts, notches | Remove 60 Hz mains hum, low-frequency rumble picked up by a vocal microphone, or a frequency that is too loud because of a room resonance |
 | **Creative / tonal** | Shape the tone and let each instrument occupy its own place in the mix | Wide boosts / cuts, shelves | Give the kick more weight, bring the vocal "forward", make the whole song "brighter" |
+
+</div>
 
 A frequently quoted rule of thumb is "**cuts narrow, boosts wide**": a narrow boost sounds like a resonance (like talking inside a pipe) and is very unnatural, whereas a narrow cut can remove a problem frequency precisely without affecting much else. Another is "**subtractive EQ first**": first carve out what you do not want, and you often no longer need to boost anything else -- boosting eats headroom (section 4).
 
@@ -44,7 +48,7 @@ A frequently quoted rule of thumb is "**cuts narrow, boosts wide**": a narrow bo
 
 **Parametric EQ**: all three parameters of each band (frequency, Q, gain) are adjustable, plus the band type. With just a few bands it can precisely treat any frequency. Almost every DAW's built-in EQ is parametric, and so is the one implemented in this chapter.
 
-![Graphic EQ: ten fixed bands where only the gain moves, versus a parametric EQ band with type, frequency, Q and gain (Peak, 3000 Hz, Q 1.0, +5 dB)](images/graphic-vs-parametric-eq.svg)
+<p align="center"><img src="images/graphic-vs-parametric-eq.svg" alt="Graphic EQ: ten fixed bands where only the gain moves, versus a parametric EQ band with type, frequency, Q and gain (Peak, 3000 Hz, Q 1.0, +5 dB)"></p>
 
 Left: the ten fader positions are only an example. Right: one parametric band (Type Peak, Freq 3000 Hz, Q 1.0, Gain +5 dB), with the range of each knob written in the box (frequency 10 Hz up to about 0.49·fs, Q 0.05..40, gain ±36 dB).
 
@@ -52,9 +56,11 @@ Left: the ten fader positions are only an example. Right: one parametric band (T
 
 This chapter's `EqBandType` has six values, all of them RBJ factories of the Chapter 02 `BiquadCoefficients` (a cut at 24 dB/oct uses two of them):
 
-![The six band types Peak, Low Shelf, High Shelf, Low Cut, High Cut and Notch, as magnitude responses in dB against frequency with f0 = 1 kHz; the cuts show both 12 and 24 dB per octave](images/eq-band-types.svg)
+<p align="center"><img src="images/eq-band-types.svg" alt="The six band types Peak, Low Shelf, High Shelf, Low Cut, High Cut and Notch, as magnitude responses in dB against frequency with f0 = 1 kHz; the cuts show both 12 and 24 dB per octave"></p>
 
 All six curves are drawn with f0 = 1 kHz at 48 kHz: Peak +6 dB with Q = 1; Low / High Shelf +6 dB with Q = 0.707 (at f0 the gain is the midpoint, +3 dB); Low Cut / High Cut at 12 dB/oct (one biquad, Q = 0.707) and at 24 dB/oct (two biquads), both −3 dB at f0; Notch with Q = 2 going to −∞ dB at f0.
+
+<div align="center">
 
 | Type | RBJ formula used | Meaning of `frequency` | Meaning of `q` | `gainDb` | Sound / typical use |
 |---|---|---|---|---|---|
@@ -64,6 +70,8 @@ All six curves are drawn with f0 = 1 kHz at 48 kHz: Peak +6 dB with Q = 1; Low /
 | `LowCut` | `makeHighpass` | The −3 dB point | At 12 dB/oct it is the resonance (0.707 = Butterworth) | None | Removes rumble, microphone-stand vibration, and the proximity effect of a vocal (a directional microphone boosts the low frequencies more the closer it is to the source) |
 | `HighCut` | `makeLowpass` | The −3 dB point | Same as above | None | Removes hiss, pushes a synth pad further back |
 | `Notch` | `makeNotch` | The frequency being carved out | The −3 dB bandwidth = f0/Q | None | Removes 50 / 60 Hz hum, a particular ring of a drum head |
+
+</div>
 
 **The slope of LowCut / HighCut.** Far from the cutoff, a 2nd-order highpass / lowpass behaves as $`|H| \propto (f/f_c)^{\pm 2}`$, i.e. it changes by $`20\log_{10} 2^2 \approx 12`$ dB per octave, hence "12 dB/oct". To get 24 dB/oct you need 4th order. The intuitive approach is "cascade two sections with Q = 0.707", but that gives −6 dB at $`f_c`$ and the corner becomes rounded. The correct approach is a **4th-order Butterworth**: its 4 poles are evenly distributed on the left half of a circle in the s-plane (one every 45°), and split into two conjugate pairs; the Q values of the two biquads are
 
@@ -118,9 +126,13 @@ so
 
 Common values (the output of Exercise 2):
 
+<div align="center">
+
 | Q | 0.5 | 0.707 | 1.0 | 1.414 | 2.0 | 4.32 | 8.65 |
 |---|---|---|---|---|---|---|---|
 | bandwidth (octaves) | 2.54 | 1.90 | 1.39 | **1.00** | 0.71 | **1/3** | 1/6 |
+
+</div>
 
 Remembering two anchor points is enough: **Q = √2 ≈ 1.41 is 1 octave, and Q ≈ 4.32 is 1/3 octave**. Doubling Q roughly halves the bandwidth (for large Q, $`\mathrm{asinh}(x) \approx x`$ and $`N \approx 1.44/Q`$).
 
@@ -356,6 +368,8 @@ The opposite concept is the **constant-Q** of graphic EQs: however much you push
 
 The table below lists rules of thumb common in mixing practice (compiled from mixing books and engineers' habits, not derived from formulas or measured by the code). They are only starting points, not rules; every song and every microphone is different, so **always confirm with your ears**, and when A/B-comparing, match the levels (louder almost always sounds "better").
 
+<div align="center">
+
 | Range | Name / character | Common moves |
 |---|---|---|
 | < 30 Hz | Very low frequencies (subsonic): barely audible but they eat headroom | LowCut at 30 Hz, 24 dB/oct on the drum bus and master |
@@ -366,6 +380,8 @@ The table below lists rules of thumb common in mixing practice (compiled from mi
 | 2–5 kHz | **Presence**, diction, the sound of the pick on a guitar | Vocal +2~3 dB to bring it "forward"; too much is harsh (the ear is most sensitive here) |
 | 5–9 kHz | Sibilance ("s" and "t" sounds) | A narrow cut, or the de-esser from Chapter 08 |
 | > 10 kHz | **Air**, brightness | High shelf +1~3 dB; HighCut to remove hiss |
+
+</div>
 
 Example 2 turns these into two presets:
 
@@ -393,6 +409,8 @@ struct EqBand {
 
 **Standard interface.**
 
+<div align="center">
+
 | Method | What it does |
 |---|---|
 | `prepare(sr, maxBlock, nch)` | The only place that allocates: allocates the channel state of each Biquad, sets the smoothers' ramp length, then calls `reset()` |
@@ -402,6 +420,8 @@ struct EqBand {
 | `getMagnitudeDb(f)` | The dB of the whole EQ: the `magnitudeDb` of the enabled bands added up (section 2.7) |
 | `processSample(ch, x)` | Per sample. For every frame call channel 0, 1, … in order; smoothing and coefficient updates advance at channel 0 |
 | `process(block)` | Processes a whole block in place |
+
+</div>
 
 **Extra methods** (for UI, teaching, and later chapters): `setBandEnabled/Type/Frequency/Q/GainDb`, `setSlope` / `getSlope`, `setSmoothingSeconds` (call before `prepare`), `setCoefficientUpdateInterval`, `getBandMagnitudeDb`, `getResponse` (complex), `getPhaseDegrees`, `getGroupDelaySamples`, and the static `qToBandwidthOctaves`, `bandwidthOctavesToQ`, `shelfSlopeToQ`, `bandEdges`, `makeCoefficients`, `makeSecondStageCoefficients`.
 
@@ -547,6 +567,8 @@ Console text only, in four sections:
 
 ## 5. Common mistakes and debugging
 
+<div align="center">
+
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | "Tick-tick-tick" when turning the frequency knob | The coefficients are swapped as soon as a parameter arrives (zipper noise) | Smooth the parameters (log frequency, dB) and recompute the coefficients every N samples (section 2.9) |
@@ -560,6 +582,8 @@ Console text only, in four sections:
 | The drawn curve does not match the sound | The UI is reading parameters that are mid-smoothing / belong to another thread; or it forgot to treat a disabled band as 0 dB | Draw the curve from the "target" parameters; do not add disabled bands |
 | NaN or a burst of noise at the output | frequency ≥ Nyquist, Q = 0, an extreme gain | Clamp (`ParametricEq` already does: 10 Hz..0.49·fs, Q 0.05..40, ±36 dB) |
 | Measurements differ every time | Filter state from the previous measurement is still there | `reset()` before each measurement; `measureGainDb` skips the first 0.2 s of transient |
+
+</div>
 
 ## 6. Exercises
 

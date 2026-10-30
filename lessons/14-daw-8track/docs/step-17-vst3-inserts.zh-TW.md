@@ -20,6 +20,8 @@ Chapter 13 的函式庫 `dawlab_plugin_host` 提供：
 
 Engine 對這些一無所知；它只認得 `InsertEffect`。`VstInsert` 就是 adapter：
 
+<div align="center">
+
 | `InsertEffect` | `VstInsert` 做的事 | thread |
 |---|---|---|
 | `prepare(sr, block, ch)` | `HostedPlugin::prepare()`（bus layout、`prepareToPlay`） | message（在 `Engine::addInsert` 內） |
@@ -29,6 +31,8 @@ Engine 對這些一無所知；它只認得 `InsertEffect`。`VstInsert` 就是 
 | `setParameter(i, v)` | `HostedPlugin::setParameterValue(i, v)` | any |
 | `reset()` | 什麼都不做（見下文） | audio |
 | `getName()` | plugin 的名稱 | any |
+
+</div>
 
 包裝完成後，VST3 plugin 走的是和內建 effect *完全相同*的路徑：`Session::setVstInsert()` -> `Engine::addInsert()` -> command queue -> `InsertChain`；移除時它作為垃圾回來，在 message thread 上被刪除——這是 VST3 的要求。
 
@@ -144,11 +148,15 @@ Compressor 沒有 latency，所以它只證明真正的 bundle 能載入、處�
 
 ## 換你動手
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫 | `app/Source/VstInsert.cpp` 中的 `VstInsert::process()` 與 `VstInsert::getLatencySamples()`（轉發給 hosted plugin；遇到單一 channel 的 block 時，在 `monoScratch_` 中以 L = R 執行它，再把結果 fold 回來；負的 latency 視為 0） |
 | 建置 + 檢查 | `.\scripts\build.ps1 -Only 13-vst-hosting,14-daw-8track -Juce -TestLabel test`（連同 chapter 13，讓第 5b 節也載入真正的 VST3 limiter） |
 | 預期 | 第 5 節：`mix latency 752 -> 852, |with - without| = 0`；第 5a 節：mono drum track 上 `|with - without| = 0`；第 5b 節：`mix latency 752 -> 992`；`[PASS] l14_app_smoke_test`——PDC 跟隨你的 adapter 所回報的 latency |
+
+</div>
 
 ## 你學到了什麼
 

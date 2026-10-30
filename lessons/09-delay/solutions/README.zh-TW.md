@@ -10,6 +10,8 @@ cd build
 .\bin\Debug\l09_ex1_solution.exe      # ex1、ex3、ex4、ex5、ex6、ex7
 ```
 
+<div align="center">
+
 | 題號 | 類型 | 解答程式 | 輸出 WAV（`build\dawlab_output\`） |
 |---|---|---|---|
 | 1 | 計算 | `l09_ex1_solution`（`ex1_tempo_math.cpp`） | — |
@@ -19,6 +21,8 @@ cd build
 | 5 | 實作 | `l09_ex5_solution`（`ex5_multitap.cpp`） | `l09_ex5_multitap_dry.wav`、`l09_ex5_multitap_wet.wav` |
 | 6 | 實作 | `l09_ex6_solution`（`ex6_crossfade_delay.cpp`） | `l09_ex6_crossfade.wav`、`l09_ex6_abrupt.wav`、`l09_ex6_ramp.wav` |
 | 7 | 計算 + 觀念 | `l09_ex7_solution`（`ex7_comb_math.cpp`） | — |
+
+</div>
 
 ---
 
@@ -94,12 +98,16 @@ float processSample(float x) noexcept {
 
 實測（delay 10.5，$`d = 10`$、$`\eta = 1/3`$）：
 
+<div align="center">
+
 | freq (Hz) | linear (dB) | cubic (dB) | allpass (dB) |
 |---|---|---|---|
 | 1000 | −0.02 | −0.00 | −0.00 |
 | 8000 | −1.25 | −0.23 | +0.00 |
 | 12000 | −3.01 | −1.07 | −0.00 |
 | 20000 | −11.74 | −8.41 | +0.00 |
+
+</div>
 
 相位延遲（sample）：linear 全頻都是 10.500（$`\Delta = 0.5`$ 時是對稱 FIR，線性相位）；allpass 在 100 Hz 是 10.500、4 kHz 10.509、8 kHz 10.537，與理論完全一致。delay 10.0 到 11.0 各種小數部分在 100 Hz 量到的延遲都精準到 0.001。
 
@@ -170,11 +178,15 @@ void updateTap(int i) noexcept {
 
 實測（impulse，L = R = 1 → mono 1）：
 
+<div align="center">
+
 | tap | delay | sample | gain | pan | L（預期 / 量到） | R（預期 / 量到） |
 |---|---|---|---|---|---|---|
 | 0 | 375 ms | 18000 | 0.60 | −0.6 | 0.5706 / 0.5706 | 0.1854 / 0.1854 |
 | 1 | 500 ms | 24000 | 0.45 | +0.6 | 0.1391 / 0.1391 | 0.4280 / 0.4280 |
 | 2 | 750 ms | 36000 | 0.30 | 0.0 | 0.2121 / 0.2121 | 0.2121 / 0.2121 |
+
+</div>
 
 總能量 0.6525 = 0.6² + 0.45² + 0.3²（constant-power：$`g_L^2 + g_R^2 = 1`$）。feedback 0.5 時，tap0 在 36000 + 18000 = 54000 再出現一次，振幅 0.2853 = 0.5 × 0.5706。
 

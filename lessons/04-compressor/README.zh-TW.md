@@ -49,12 +49,16 @@ flowchart LR
 
 四個方塊各自回答一個問題：
 
+<div align="center">
+
 | 方塊 | 問題 | 本章的實作 |
 |---|---|---|
 | Detector | 「現在多大聲？」 | `DetectorMode::Peak`（瞬間 $`\lvert x \rvert`$）或 `DetectorMode::Rms`（$`\sqrt{\overline{x^2}}`$） |
 | Gain computer | 「這麼大聲的話，該壓幾 dB？」 | `Compressor::computeOutputDb()`，純函式，沒有狀態 |
 | Attack / release | 「要多快壓下去、多快放開？」 | `AttackReleaseFilter`，在 dB domain 平滑 GR |
 | Makeup gain | 「壓完變小聲了，補回來」 | 固定 dB，內部用 10 ms one-pole 平滑避免 zipper noise |
+
+</div>
 
 控制 gain 的那條路徑叫 **sidechain**（側鏈）。一般情況下 sidechain 就是輸入本身的複本；也可以餵別的訊號進去（例如用 kick 去壓 bass，這叫 **external sidechain**），或先過一個 filter 再給 detector（**sidechain HPF**，練習 4）。
 
@@ -107,13 +111,15 @@ $`T = -20`$、$`R = 4`$、$`W = 10`$：$`y = -20 + (-0.75)(10/8) = -20.9375`$ dB
 
 畫出來如下圖（範例 1 會印出同一組曲線的文字版，每 2 dB 一列）。左圖是完整範圍，點線是 1:1 參考線；右圖放大 knee 區域（-25 到 -15 dB，灰底部分）。Knee 以上兩條曲線的斜率都是 1/4；在 knee 之內，soft knee（虛線）慢慢離開 1:1 線，hard knee（實線）則在 threshold 處突然轉折：
 
-![Compressor 的 transfer curve（T = -20 dB、R = 4:1），hard knee 與 10 dB soft knee，並放大 knee 區域](images/transfer-curve-knee.svg)
+<p align="center"><img src="images/transfer-curve-knee.svg" alt="Compressor 的 transfer curve（T = -20 dB、R = 4:1），hard knee 與 10 dB soft knee，並放大 knee 區域"></p>
 
 **聽感**：ratio 小（2:1）、knee 寬、threshold 高 → 「幾乎聽不出來在壓，只是整體比較穩」；ratio 大（8:1 以上）、hard knee、threshold 低 → 「明顯被壓扁、有被抓住的感覺」。Soft knee 在人聲、bus 上特別受歡迎，因為訊號在 threshold 附近時不會突然「切換」。
 
 #### 對照：expander 與 gate
 
 Compressor 壓的是 **threshold 以上**；**expander** 反過來，把 threshold **以下**的訊號推得更小（每低 1 dB 變成低 $`R`$ dB），**gate** 是 ratio 極大的 expander（低於門檻直接關掉）。它們的靜態曲線在 threshold 以下彎向下方（表與圖中 gate 的輸出以 -100 dB 為下限）：
+
+<div align="center">
 
 | 輸入 dB | compressor (T=-20, R=4) | expander (T=-40, R=2) | gate (T=-40, R=20) |
 |---:|---:|---:|---:|
@@ -122,7 +128,9 @@ Compressor 壓的是 **threshold 以上**；**expander** 反過來，把 thresho
 | -10.0 | -17.50 | -10.00 | -10.00 |
 | 0.0 | -15.00 | 0.00 | 0.00 |
 
-![Compressor、expander、gate 的靜態曲線：compressor 在 threshold 以上彎向下方，expander 與 gate 則在 threshold 以下彎向下方](images/transfer-curve-expander-gate.svg)
+</div>
+
+<p align="center"><img src="images/transfer-curve-expander-gate.svg" alt="Compressor、expander、gate 的靜態曲線：compressor 在 threshold 以上彎向下方，expander 與 gate 則在 threshold 以下彎向下方"></p>
 
 第 08 章會完整實作它們；這裡先知道它們用的是同一套 detector 與 attack/release 機制，只是 gain computer 的曲線不同。
 
@@ -153,12 +161,16 @@ y[n] = \alpha\, y[n-1] + (1 - \alpha)\, x[n]
 
 **時間常數的換算**：到達比例 $`p`$ 所需的時間是 $`t_p = -\tau \ln(1 - p)`$：
 
+<div align="center">
+
 | 到達 | 時間 |
 |---|---|
 | 63.2% | $`1.00\,\tau`$（定義） |
 | 90% | $`\ln 10 \cdot \tau = 2.303\,\tau`$ |
 | 95% | $`3.00\,\tau`$ |
 | 99% | $`4.605\,\tau`$ |
+
+</div>
 
 **記號**：本章用 $`t_{63}`$ / $`t_{90}`$（程式輸出同樣寫成 t63 / t90）表示 attack 時 GR 走完 63.2% / 90% 所需的時間；release 用 $`t_{37}`$ / $`t_{10}`$ 表示 GR 降到只剩 36.8% / 10% 所需的時間。對單純的 one-pole 來說，$`t_{63} = t_{37} = 1\,\tau`$、$`t_{90} = t_{10} = 2.303\,\tau`$。
 
@@ -194,7 +206,7 @@ peak-hold 把週期訊號的 ripple 填平，所以穩態 GR 精確等於靜態�
 
 下圖是把範例 2 最後印出的圖重畫一次（$`T = -20`$、$`R = 4`$、attack 10 ms、release 100 ms，1 kHz 正弦波從 -10 dBFS 掉回 -30 dBFS 的那一刻是 $`t = 0`$）。實線是 B1 decoupled（log domain，`Compressor` 預設）、虛線是 B2 branching、點虛線是 B4 linear domain；水平的點線是 B1 穩態 GR 7.49 dB 的 36.8%（2.76 dB），也就是「經過一個時間常數」該到的位置：
 
-![Gain reduction 隨時間變化的 release 曲線：B1 decoupled 與 B2 branching 指數衰減，B4 linear domain 則直線下降、約 150 ms 掉到 0](images/release-curves.svg)
+<p align="center"><img src="images/release-curves.svg" alt="Gain reduction 隨時間變化的 release 曲線：B1 decoupled 與 B2 branching 指數衰減，B4 linear domain 則直線下降、約 150 ms 掉到 0"></p>
 
 三件事一眼可以看出來：
 
@@ -333,6 +345,8 @@ Decoupled attack: t63 =   9.98 ms (theory τ = 10), t90 =  23.02 ms (theory ln10
 
 (B) 把 1 kHz tone bursts（-30 → -10 → -30 dBFS，各 0.5 秒）餵進 `Compressor`（$`T = -20`$、$`R = 4`$、attack 10 ms、release 100 ms），由輸入 / 輸出每 1 ms 視窗的 peak 比反推 GR 時間軸，印四組比較：
 
+<div align="center">
+
 | 組 | 設定 | 穩態 GR | attack t63 | release t37 |
 |---|---|---|---|---|
 | B1 | Decoupled + Peak（預設） | 7.49 dB（靜態 7.50） | 10.8 ms | 110.8 ms |
@@ -340,17 +354,23 @@ Decoupled attack: t63 =   9.98 ms (theory τ = 10), t90 =  23.02 ms (theory ln10
 | B3 | Decoupled + RMS 5 ms | 5.29 dB（靜態以 -13 dB 算 = 5.24） | 15.8 ms | 114.8 ms |
 | B4 | linear domain（EnvelopeFollower → 靜態曲線） | 7.49 dB | 9.7 ms | 90.8 ms，150 ms 後直接 0 |
 
+</div>
+
 最後把 B1、B2、B4 的 release 曲線疊成一張 ASCII 圖（2.5 節「圖解」那張圖就是依它重畫的）。輸出 `l04_step_in.wav`、`l04_step_out.wav`。該聽到：第二段大聲的音在前 10 ms 會「衝」出來（overshoot 峰值 -10.11 dBFS，之後被壓到 -17.49 dBFS），回到小聲段時前 100 ms 音量慢慢「浮」回來。
 
 #### 範例 3：`l04_drum_loop`（`examples/drum_loop.cpp`）
 
 用 `makeDrumLoop()` 的 2 小節鼓組（peak -2.92 dBFS、RMS -17.43 dBFS、crest 14.51 dB），三組設定 + attack 時間掃描。makeup 一律設成「讓輸出 peak 回到 dry 的 peak」，這樣 RMS 的差就是「一樣大的 peak 之下誰比較大聲」：
 
+<div align="center">
+
 | 設定 | 最大 GR | crest | makeup 後 RMS 相對 dry |
 |---|---|---|---|
 | attack 0.02 ms（極快，類似 FET 硬體 compressor） | 12.81 dB | 10.44 dB | **+4.07 dB** |
 | attack 30 ms（放過 transient） | 9.67 dB | 19.52 dB | -5.01 dB |
 | 重壓 T -26 / 10:1 / attack 0.02 ms | 20.77 dB | 9.95 dB | +4.56 dB |
+
+</div>
 
 attack 掃描（$`T = -20`$、$`R = 4`$、knee 6、release 80 ms）：
 
@@ -420,6 +440,8 @@ GR 理論值 $`(-6 + 20)(1 - 1/4) = 10.5`$ dB；量到 10.48 是因為 decoupled
 
 ## 5. 常見錯誤與除錯
 
+<div align="center">
+
 | 症狀 | 可能原因 |
 |---|---|
 | GR 永遠是 0 | threshold 太高（記得 dBFS 是負的，-20 不是 20）；或 detector 吃到的是 silence（sidechain 接錯）。 |
@@ -433,6 +455,8 @@ GR 理論值 $`(-6 + 20)(1 - 1/4) = 10.5`$ dB；量到 10.48 是因為 decoupled
 | RMS 模式 attack 怎麼調都慢 | RMS 視窗本身就是一層 lowpass，attack 不可能快過視窗長度；要快就縮短 `setRmsWindowMs()` 或改 Peak。 |
 | 安靜時 CPU 飆高 | denormal。確認 flush-to-zero 有做；在 plugin 裡也可以開 CPU 的 FTZ/DAZ flag（第 13 章）。 |
 | 跑 feedback 拓樸時輸出鎖死或震盪 | 斜率 $`s > 1`$ 的迴路靠 attack 平滑才穩定，attack = 0 會每個 sample 來回跳。練習 6 固定 attack 10 ms。 |
+
+</div>
 
 ## 6. 練習題
 

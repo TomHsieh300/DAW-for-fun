@@ -18,6 +18,8 @@ cd build
 改完 starter 之後回到專案根目錄重新執行 `build.ps1`（或在 build 目錄裡執行 `cmake --build . --config Debug --target l07_ex3_starter`）即可。
 每支 starter 的 self-check 全部通過、印出 `[PASS]` 就算完成。輸出的 WAV 在你執行時所在目錄的 `dawlab_output/` 底下。
 
+<div align="center">
+
 | 題號 | 類型 | 難度 | 主題 | 檔案 |
 |---|---|---|---|---|
 | 1 | 計算 | ★☆☆ | N bits 的 quantization step 與 SNR | — |
@@ -27,6 +29,8 @@ cd build
 | 5 | 實作 | ★★☆ | auto gain compensation（輸出 RMS = 輸入 RMS） | `starter/ex5_auto_gain.cpp` |
 | 6 | 計算 | ★★☆ | hard clip 與 sample & hold 的 alias 落在哪裡 | — |
 | 7 | 設計 | ★★★ | amp chain 各級的順序為什麼重要 | — |
+
+</div>
 
 ---
 

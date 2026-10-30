@@ -11,7 +11,7 @@ Flanger, Phaser, Tremolo, Reverb, Convolution, Limiter, Gain), "VST3...", Bypass
 slot opens a parameter panel that nobody designed by hand: it is generated from the effect's
 `ParameterInfo` table (stage 1, Step 5).
 
-![Compressor panel](images/dawlab8_panel.png)
+<p align="center"><img src="images/dawlab8_panel.png" alt="Compressor panel"></p>
 
 ## Design
 
@@ -31,12 +31,16 @@ GUI slots:   [ EQ ][    ][Comp][    ]
 chain:       [ EQ ][Comp]                 GUI slot 2 -> chain index 1
 ```
 
+<div align="center">
+
 | user action | Session call | engine command (Step 7) |
 |---|---|---|
 | choose an effect in an empty slot | `setBuiltinInsert(ref, slot, type)` | `addInsert(ref, chainIndex, createEffect(type))` |
 | choose another effect | `setBuiltinInsert` | `replaceInsert(ref, chainIndex, ...)` - swapped at one block boundary |
 | (none) | `clearInsert(ref, slot)` | `removeInsert(ref, chainIndex)` |
 | Bypass | `setInsertBypassed` | none: `InsertEffect::setBypassed()` is an atomic |
+
+</div>
 
 Commands are applied in FIFO order, so even several clicks in a row leave the GUI and the chain
 in agreement once the audio thread has caught up. `Engine::addInsert()` prepares the effect *on
@@ -61,11 +65,15 @@ or a click on an empty slot opens the menu.
 
 `ParameterPanel(InsertEffect&)` walks `getNumParameters()` and builds one control per parameter:
 
+<div align="center">
+
 | `ParameterKind` | control | value written with |
 |---|---|---|
 | Float, Int | rotary `juce::Slider` | `setParameter(i, sliderValue)` |
 | Bool | `juce::ToggleButton` "On" / "Off" | `setParameter(i, 0 or 1)` |
 | Choice | `juce::ComboBox` with `info.choices` | `setParameter(i, min + selectedIndex)` |
+
+</div>
 
 The slider's value is the **real** parameter value (-20 dB, 120 ms, 4:1), but its travel uses the
 engine's normalized mapping through a custom `juce::NormalisableRange`:
@@ -130,11 +138,15 @@ panel snapshot: ...\dawlab_output\l14_app_snapshot_panel.png (drum compressor, g
 
 ## Your turn
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | `Session::chainIndexOf()` in `app/Source/Session.cpp`: the engine's chain index of GUI slot `uiSlot` = the number of non-empty slots before it |
 | Build + check | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test` (`l14_app_smoke_test`) |
 | Expected | section 2 still finds 19 inserts in GUI slots, and the check "every GUI slot's observer pointer equals `engine.getInsert(ref, chainIndexOf(ref, slot))`" passes for all 11 strips; `[PASS] l14_app_smoke_test`. In the app, put an effect into slot 3 of an empty strip, then one into slot 1: the panel of each opens the right effect |
+
+</div>
 
 A wrong mapping is the classic bug of a GUI with gaps over a compact engine chain: the panel
 edits the neighbour.

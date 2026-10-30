@@ -18,12 +18,16 @@ description, a category, default key presses and an "active / ticked" state) and
 (objects that perform them). `MainComponent` is the target for all the app's commands
 (`AppCommands.h`):
 
+<div align="center">
+
 | category | command | default key |
 |---|---|---|
 | File | New project / Load demo song / Load audio into selected track... / Export mixdown... / Audio settings... / Quit | Ctrl+N / Ctrl+D / Ctrl+O / Ctrl+E / Ctrl+, / Ctrl+Q |
 | Transport | Play / Stop, Return to start, Loop, Back / Forward one bar | Space, Home, L, Left, Right |
 | Track | Select previous / next track, Mute / Solo selected track | Up, Down, M, S |
 | View | Zoom in / out, Keyboard shortcuts... | = or +, -, F1 |
+
+</div>
 
 (Ctrl is Cmd on macOS: `ModifierKeys::commandModifier`.)
 
@@ -154,11 +158,15 @@ the default map has none.
 
 ## Your turn
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | the transport commands in `app/Source/MainComponent.cpp`: their `case`s in `getCommandInfo()` (name, description, category "Transport", default keys Space, Home, L, Left and Right arrows) and in `perform()` (`playStop`, `returnToStart`, `toggleLoop`, `seekBackOneBar`, `seekForwardOneBar`) |
 | Build + check | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test` (`l14_app_smoke_test`) |
 | Expected | the smoke test's key presses pass (Space toggles the transport, L the loop, also through `invokeDirectly`); `[PASS] l14_app_smoke_test`; in the app the Transport menu and the F1 list show your names and keys |
+
+</div>
 
 To go further, add a command of your own (an ID in `AppCommands.h`, an entry in `getAllCommands()`,
 `getCommandInfo()` and `perform()`). Take it out again before you run `l14_ex13_solution`: Exercise

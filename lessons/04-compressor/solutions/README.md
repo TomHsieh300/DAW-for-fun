@@ -4,6 +4,8 @@
 
 The questions are in [`../exercises/README.md`](../exercises/README.md). Every solution program has a self-check; `.\scripts\build.ps1 -Only 04-compressor` runs them through ctest (label `solution`); to run one by hand, `cd` to the build directory first, e.g. `.\bin\Debug\l04_ex3_solution.exe`. The numbers quoted below are the results actually printed by the solution programs (48 kHz, block size 512).
 
+<div align="center">
+
 | Exercise | Solution file | target |
 |---|---|---|
 | Exercise 1 conceptual | (this text) | — |
@@ -13,6 +15,8 @@ The questions are in [`../exercises/README.md`](../exercises/README.md). Every s
 | Exercise 5 auto makeup | `ex5_auto_makeup.cpp` | `l04_ex5_solution` |
 | Exercise 6 feedback topology | `ex6_feedback.cpp` | `l04_ex6_solution` |
 | Exercise 7 RMS window vs pumping | `ex7_rms_window.cpp` | `l04_ex7_solution` |
+
+</div>
 
 ---
 
@@ -58,12 +62,16 @@ To "guarantee" catching them you need **lookahead**: delay the main signal by a 
 
 **1. $`T = -24`$, $`R = 3`$, hard knee**: above the threshold $`y = T + (x - T)/R`$.
 
+<div align="center">
+
 | Input | Output | GR |
 |---|---|---|
 | -30 | -30 (below the threshold, untouched) | 0 |
 | -24 | -24 (exactly at the threshold) | 0 |
 | -12 | $`-24 + 12/3 = -20`$ | 8 |
 | 0 | $`-24 + 24/3 = -16`$ | 16 |
+
+</div>
 
 **2. Soft knee $`W = 12`$**: the knee covers $`T \pm W/2 = -30 \ldots -18`$ dB. Inside the knee $`y = x + \frac{(1/R - 1)(x - T + W/2)^2}{2W}`$, where $`1/R - 1 = -2/3`$ and $`2W = 24`$:
 
@@ -146,6 +154,8 @@ Solution: `ex5_auto_makeup.cpp`.
 \text{makeup} = -\,y(0) = -\,\text{computeOutputDb}(0, T, R, W)
 ```
 
+<div align="center">
+
 | Setting | Calculation | makeup |
 |---|---|---|
 | $`T=-20`$, 4:1, hard | $`-(-20 + 20/4)`$ | 15 dB |
@@ -153,6 +163,8 @@ Solution: `ex5_auto_makeup.cpp`.
 | $`T=-30`$, 2:1, hard | $`-(-30 + 30/2)`$ | 15 dB |
 | $`T=-10`$, 10:1, hard | $`-(-10 + 10/10)`$ | 9 dB |
 | $`T=-6`$, 4:1, $`W=20`$ ("think about it") | the knee is -16..+4, so 0 dBFS is inside the knee: $`y = 0 + (-0.75)(0 + 6 + 10)^2/40 = -4.8`$ | **4.8 dB** |
+
+</div>
 
 The last row is a trap: using the hard-knee formula $`-(−6 + 6/4) = 4.5`$ dB would be off by 0.3 dB, because the soft knee compresses more than the hard knee just above the threshold.
 

@@ -31,10 +31,14 @@ EQ 做的事情一句話就講完：**對不同頻率給不同的 gain**。數�
 
 混音工程師用 EQ 的理由大致分兩類：
 
+<div align="center">
+
 | 用途 | 目的 | 典型手法 | 例子 |
 |---|---|---|---|
 | **修正（corrective）** | 去掉「不該在那裡」的東西 | 窄的 cut、low cut、notch | 去掉 60 Hz 交流哼聲、vocal 麥克風收到的低頻震動、房間共振造成的某個頻率特別響 |
 | **創意（creative / tonal）** | 塑造音色、讓樂器在混音裡各佔一塊位置 | 寬的 boost / cut、shelf | 讓 kick 更有重量、vocal 更「往前」、整首歌更「亮」 |
+
+</div>
 
 一個常被引用的經驗法則是「**cut 要窄、boost 要寬**」：窄的 boost 聽起來像共振（像在管子裡講話），很不自然；窄的 cut 則能精準拿掉問題頻率而不太影響其他東西。另一條是「**先減後加（subtractive EQ first）**」：先把不要的挖掉，往往就不需要再 boost 別的地方——boost 會吃掉 headroom（第 4 節）。
 
@@ -44,7 +48,7 @@ EQ 做的事情一句話就講完：**對不同頻率給不同的 gain**。數�
 
 **Parametric EQ**：每個 band 的三個參數（frequency、Q、gain）都可以調，再加上 band 類型。少少幾個 band 就能精準處理任何頻率。DAW 內建的 EQ 幾乎都是 parametric，本章實作的也是。
 
-![Graphic EQ：十個固定的 band，只能推 gain；對照 parametric EQ 的單一 band，有 type、frequency、Q 與 gain（Peak、3000 Hz、Q 1.0、+5 dB）](images/graphic-vs-parametric-eq.svg)
+<p align="center"><img src="images/graphic-vs-parametric-eq.svg" alt="Graphic EQ：十個固定的 band，只能推 gain；對照 parametric EQ 的單一 band，有 type、frequency、Q 與 gain（Peak、3000 Hz、Q 1.0、+5 dB）"></p>
 
 左：十支 fader 的位置只是示意。右：一個 parametric band（Type Peak、Freq 3000 Hz、Q 1.0、Gain +5 dB），方框內寫出每個旋鈕的範圍（frequency 10 Hz 到約 0.49·fs、Q 0.05..40、gain ±36 dB）。
 
@@ -52,9 +56,11 @@ EQ 做的事情一句話就講完：**對不同頻率給不同的 gain**。數�
 
 本章的 `EqBandType` 有六種，全部是第 02 章 `BiquadCoefficients` 的 RBJ factory（cut 在 24 dB/oct 時用兩顆）：
 
-![六種 band 類型 Peak、Low Shelf、High Shelf、Low Cut、High Cut、Notch 的 magnitude response（dB 對 frequency，f0 = 1 kHz）；兩種 cut 同時畫出 12 與 24 dB/oct](images/eq-band-types.svg)
+<p align="center"><img src="images/eq-band-types.svg" alt="六種 band 類型 Peak、Low Shelf、High Shelf、Low Cut、High Cut、Notch 的 magnitude response（dB 對 frequency，f0 = 1 kHz）；兩種 cut 同時畫出 12 與 24 dB/oct"></p>
 
 六條曲線都取 f0 = 1 kHz、48 kHz 取樣：Peak +6 dB、Q = 1；Low / High Shelf +6 dB、Q = 0.707（在 f0 處的 gain 是中點，+3 dB）；Low Cut / High Cut 畫 12 dB/oct（一顆 biquad、Q = 0.707）與 24 dB/oct（兩顆 biquad），在 f0 處都是 −3 dB；Notch 取 Q = 2，在 f0 處下探到 −∞ dB。
+
+<div align="center">
 
 | 類型 | 用到的 RBJ 公式 | `frequency` 的意義 | `q` 的意義 | `gainDb` | 聽感 / 典型用途 |
 |---|---|---|---|---|---|
@@ -64,6 +70,8 @@ EQ 做的事情一句話就講完：**對不同頻率給不同的 gain**。數�
 | `LowCut` | `makeHighpass` | −3 dB 點 | 12 dB/oct 時是共振（0.707 = Butterworth） | 無 | 去掉 rumble、麥克風架震動、vocal 的 proximity effect（近接效應：指向性麥克風離音源越近，低頻被放大得越多） |
 | `HighCut` | `makeLowpass` | −3 dB 點 | 同上 | 無 | 去掉嘶聲、讓合成器 pad 退到後面 |
 | `Notch` | `makeNotch` | 被挖掉的頻率 | −3 dB 頻寬 = f0/Q | 無 | 去掉 50 / 60 Hz 哼聲、鼓皮的某個 ring |
+
+</div>
 
 **LowCut / HighCut 的 slope。** 一顆 2 階 highpass / lowpass 在遠離 cutoff 的地方是 $`|H| \propto (f/f_c)^{\pm 2}`$，也就是每 octave 變化 $`20\log_{10} 2^2 \approx 12`$ dB，所以叫 12 dB/oct。要 24 dB/oct 就要 4 階。直覺做法是「兩顆 Q = 0.707 串接」，但那樣在 $`f_c`$ 是 −6 dB，而且轉角變圓。正確做法是 **4 階 Butterworth**：它的 4 個極點平均分佈在 s 平面左半圓上（每 45° 一個），拆成兩組共軛對，兩顆 biquad 的 Q 分別是
 
@@ -118,9 +126,13 @@ H_{BP}(s) = \frac{s/Q}{s^2 + s/Q + 1},\qquad s = j\Omega
 
 常用值（練習 2 的輸出）：
 
+<div align="center">
+
 | Q | 0.5 | 0.707 | 1.0 | 1.414 | 2.0 | 4.32 | 8.65 |
 |---|---|---|---|---|---|---|---|
 | bandwidth（octave） | 2.54 | 1.90 | 1.39 | **1.00** | 0.71 | **1/3** | 1/6 |
+
+</div>
 
 記住兩個錨點就夠了：**Q = √2 ≈ 1.41 是 1 octave、Q ≈ 4.32 是 1/3 octave**。Q 加倍、頻寬大約減半（Q 大時 $`\mathrm{asinh}(x) \approx x`$，$`N \approx 1.44/Q`$）。
 
@@ -356,6 +368,8 @@ H(-1) = \frac{b_0 - b_1 + b_2}{a_0 - a_1 + a_2} = \frac{2 + 2\cos\omega_0}{2 + 2
 
 下表是混音實務中常見的經驗值（整理自混音書籍與工程師的習慣，不是由公式推導或程式量測出來的），只是起點，不是規則；每一首歌、每一支麥克風都不同，**一定要用耳朵確認**，而且 A/B 比較時要把音量對齊（大聲一點幾乎總是聽起來「比較好」）。
 
+<div align="center">
+
 | 頻段 | 名稱 / 聽感 | 常見手法 |
 |---|---|---|
 | < 30 Hz | 極低頻（subsonic），聽不太到但吃 headroom | 鼓 bus、master 用 LowCut 30 Hz、24 dB/oct |
@@ -366,6 +380,8 @@ H(-1) = \frac{b_0 - b_1 + b_2}{a_0 - a_1 + a_2} = \frac{2 + 2\cos\omega_0}{2 + 2
 | 2–5 kHz | **presence**、咬字、吉他 pick 的聲音 | vocal +2~3 dB 讓它「往前」；太多會刺耳（耳朵在這裡最敏感） |
 | 5–9 kHz | 齒音（sibilance，「ㄙ」「ㄘ」） | 窄的 cut 或用第 08 章的 de-esser |
 | > 10 kHz | **air**、亮度 | high shelf +1~3 dB；HighCut 去掉嘶聲 |
+
+</div>
 
 範例 2 把這些組成兩個 preset：
 
@@ -393,6 +409,8 @@ struct EqBand {
 
 **標準介面。**
 
+<div align="center">
+
 | 方法 | 做什麼 |
 |---|---|
 | `prepare(sr, maxBlock, nch)` | 唯一會 allocate 的地方：每顆 Biquad 配置 channel 狀態、平滑器設定 ramp 長度，然後 `reset()` |
@@ -402,6 +420,8 @@ struct EqBand {
 | `getMagnitudeDb(f)` | 整條 EQ 的 dB：enabled band 的 `magnitudeDb` 相加（2.7 節） |
 | `processSample(ch, x)` | 逐 sample。每個 frame 要依序呼叫 channel 0、1…；平滑與係數更新在 channel 0 時推進 |
 | `process(block)` | in-place 處理整個 block |
+
+</div>
 
 **額外的方法**（給 UI、教學與後面章節用）：`setBandEnabled/Type/Frequency/Q/GainDb`、`setSlope` / `getSlope`、`setSmoothingSeconds`（在 `prepare` 前呼叫）、`setCoefficientUpdateInterval`、`getBandMagnitudeDb`、`getResponse`（複數）、`getPhaseDegrees`、`getGroupDelaySamples`，以及 static 的 `qToBandwidthOctaves`、`bandwidthOctavesToQ`、`shelfSlopeToQ`、`bandEdges`、`makeCoefficients`、`makeSecondStageCoefficients`。
 
@@ -547,6 +567,8 @@ cd build                            # 預設的 build 目錄（用 -BuildDir 指
 
 ## 5. 常見錯誤與除錯
 
+<div align="center">
+
 | 症狀 | 可能原因 | 解法 |
 |---|---|---|
 | 轉頻率旋鈕時「噠噠噠」 | 收到參數就直接換係數（zipper noise） | 平滑參數（log 頻率、dB），每 N 個 sample 重算係數（2.9 節） |
@@ -560,6 +582,8 @@ cd build                            # 預設的 build 目錄（用 -BuildDir 指
 | 畫的曲線跟聲音對不起來 | UI 讀的是平滑中 / 別的 thread 的參數；或忘了把 disabled band 當 0 dB | 曲線用「目標」參數；disabled 的 band 不要加 |
 | 輸出出現 NaN 或爆音 | frequency ≥ Nyquist、Q = 0、gain 極端 | clamp（`ParametricEq` 已做：10 Hz..0.49·fs、Q 0.05..40、±36 dB） |
 | 測量結果每次不一樣 | 前一次量測的 filter 狀態還在 | 每次量測前 `reset()`；`measureGainDb` 會先跳過 0.2 s 的暫態 |
+
+</div>
 
 ## 6. 練習題
 

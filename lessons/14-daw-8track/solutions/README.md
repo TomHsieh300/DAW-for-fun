@@ -64,6 +64,8 @@ Sample 1 000 000: $`1\,000\,000 / 27\,562.5 = 36.2812`$ beats; 36 whole beats = 
 
 **(c)** $`\max_t L_t = 1024`$, $`\max_b L_b = 512`$:
 
+<div align="center">
+
 | path | latency $`L`$ | compensation |
 |---|---|---|
 | track 1 | 0 | 1024 - 0 = **1024** |
@@ -74,6 +76,8 @@ Sample 1 000 000: $`1\,000\,000 / 27\,562.5 = 36.2812`$ beats; 36 whole beats = 
 | bus A | 0 | 512 - 0 = **512** |
 | bus B | 512 | **0** |
 | track sum | - | $`\max_b L_b`$ = **512** |
+
+</div>
 
 Total latency $`= 1024 + 512 + 240 =`$ **1776 samples** $`= 1776 / 48 =`$ **37.0 ms**.
 
@@ -228,10 +232,14 @@ Predictions and measurements (verified output):
   EqualPower noise A->B : steady -16.77 dBFS, middle of the overlap -16.84 dBFS (-0.07 dB)
 ```
 
+<div align="center">
+
 | | same (correlated) audio | independent audio |
 |---|---|---|
 | Linear ($`g_a + g_b = 1`$) | amplitudes add: $`0.5 + 0.5 = 1`$ -> **0 dB**, perfect | powers add: $`0.5^2 + 0.5^2 = 0.5`$ -> **-3 dB** hole |
 | EqualPower ($`g_a^2 + g_b^2 = 1`$) | $`2 \sin(\pi/4) = 1.414`$ -> **+3 dB** bump | power constant -> **0 dB**, perfect |
+
+</div>
 
 So: Linear for crossfading a clip with (a part of) itself or with a time-aligned take of the same
 source (comping), EqualPower for unrelated material. Many DAWs offer both - now you know why.

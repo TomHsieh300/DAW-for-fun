@@ -33,7 +33,7 @@ After reading this chapter and doing the exercises, you should be able to:
 
 Imagine standing in a room with someone clapping in front of you. Sound spreads in all directions at about 343 m/s:
 
-![Synthetic room impulse response: direct sound, early reflections (about 5-80 ms) and the exponentially decaying late reverb](images/reverb-impulse-response.svg)
+<p align="center"><img src="images/reverb-impulse-response.svg" alt="Synthetic room impulse response: direct sound, early reflections (about 5-80 ms) and the exponentially decaying late reverb"></p>
 
 1. **Direct sound**: the sound travelling in a straight line from the source to the ear. It is the earliest and the loudest, and it determines "which direction the sound comes from".
 2. **Early reflections**: sound that reaches the ear after one or two bounces off a wall, the floor or the ceiling. They are sparse and can be told apart from one another (but they are usually not heard as "echoes"; the brain fuses them into the direct sound), and they provide cues about "the size and shape of the room and how far you are from the walls".
@@ -77,12 +77,16 @@ y[n] = (h * x)[n] = \sum_{k=0}^{M-1} h[k]\,x[n-k]
 
 This gives two routes:
 
+<div align="center">
+
 | | Convolution reverb | Algorithmic reverb |
 |---|---|---|
 | Approach | Convolve directly with a measured (or synthesized) $`h`$ | Build a recursive system out of delays + feedback whose IR "statistically resembles a room" |
 | Realism | It is that space (at that source/listener position) | It sounds "like" some kind of space, depending on the design |
 | Parameters | The IR can only be fixed afterwards (truncate, EQ, reshape the envelope) | decay, size, damping, modulation and freeze can all be changed in real time |
 | Cost | Proportional to the IR length (needs the FFT) | Independent of the RT60; a few dozen delay lines are enough |
+
+</div>
 
 This chapter takes both routes. We also use the "measure the IR" viewpoint to verify the algorithmic reverb: feed an impulse into it and check whether its IR decays with the RT60 we set and whether the echoes are dense enough.
 
@@ -128,7 +132,7 @@ Note that g depends on D: **for the same RT60, the longer the loop, the more eac
 
 $`|H(e^{j\omega})| = 1/|1 - g e^{-j\omega D}|`$. When $`\omega D = 2\pi k`$ (the frequency is an integer multiple of $`f_s/D`$) the denominator is at its smallest -> peak $`= 1/(1-g)`$; at half-integer multiples the denominator is at its largest -> notch $`= 1/(1+g)`$. With g = 0.894 the peak is +19.49 dB and the notch is -5.55 dB, a difference of 25 dB, and the spectrum looks like a comb:
 
-![Magnitude response of a feedback comb with g = 0.894 and D = 1557 at 48 kHz: peaks of +19.49 dB every fs/D = 30.8 Hz, notches of -5.55 dB in between](images/reverb-comb-spectrum.svg)
+<p align="center"><img src="images/reverb-comb-spectrum.svg" alt="Magnitude response of a feedback comb with g = 0.894 and D = 1557 at 48 kHz: peaks of +19.49 dB every fs/D = 30.8 Hz, notches of -5.55 dB in between"></p>
 
 These peaks are the comb's **modes (resonant frequencies)**. The impulse response of a single comb is a regular train of clicks (it sounds like the flutter echo when you clap between two parallel walls), and its spectrum is a set of separate resonances -- with a distinct pitch, it sounds "metallic". To make a reverb that sounds like a room you need:
 
@@ -485,6 +489,8 @@ If you want low latency without high CPU: use small partitions for the **beginni
 
 ### 2.11 The character of plate, hall and room
 
+<div align="center">
+
 | Type | Source | Perceptual character | Typical parameters (suggested starting points) |
 |---|---|---|---|
 | **Room** | Small to medium room | Prominent early reflections, short tail, a close "in the room" feel | RT60 0.3–1 s, pre-delay 0–10 ms, small size, medium damping |
@@ -492,6 +498,8 @@ If you want low latency without high CPU: use small partitions for the **beginni
 | **Plate** | A suspended metal plate + driver + pickups (EMT 140 etc.) | No distinct ER, very dense from the start, bright and smooth; a classic choice for vocals and snare | RT60 1.5–4 s, pre-delay 0–20 ms, high diffusion, high damping (above 7 kHz) |
 | **Chamber** | A hard-walled room built specifically for recording reverb | Between room and hall, dense and characterful | RT60 1–2.5 s |
 | **Spring** | The spring in a guitar amp | A dispersive echo with a "boing" sound | Usually done with a dedicated model; not an FDN strength |
+
+</div>
 
 Mapping to this chapter's `Reverb`: large size -> long delays, dense modes, slow echo build-up (hall); small size -> dense and short (room); pre-delay 0 with small size but long decay and high damping -> close to the feel of a plate.
 
@@ -531,11 +539,15 @@ Example 4 (`l12_send_return`) verifies these behaviors with numbers: with post-f
 
 This chapter adds three headers (all in `dsp/include/dawlab/dsp/`):
 
+<div align="center">
+
 | Header | Contents |
 |---|---|
 | `ReverbBuildingBlocks.h` | Teaching components: `CombFilter`, `AllpassDiffuser`, `TappedDelay`, `measureRt60()` / `DecayMeasurement`, `nextPrime()` |
 | `Reverb.h` | `class Reverb`: an 8-line FDN algorithmic reverb (contract API) |
 | `ConvolutionReverb.h` | `class ConvolutionReverb`: uniform partitioned FFT convolution (overlap-save) (contract API) |
+
+</div>
 
 ### 3.1 `ReverbBuildingBlocks.h`
 
@@ -775,6 +787,8 @@ It writes `l12_send_dry.wav`, `l12_send_mix.wav` (dry + return) and `l12_send_pr
 
 ## 5. Common mistakes and debugging
 
+<div align="center">
+
 | Symptom | Possible cause | How to check / fix |
 |---|---|---|
 | The reverb gets louder and louder and finally blows up (NaN / full-scale noise) | Some line has g ≥ 1; the matrix is not orthogonal (e.g. Householder written with 1/N instead of 2/N); the damping filter has gain > 1 at some frequencies | Check with `hasNanOrInf()`; set g to 1 and turn damping off, and see whether the RMS of the IR stays constant (the lossless test of exercise 4) |
@@ -790,6 +804,8 @@ It writes `l12_send_dry.wav`, `l12_send_mix.wav` (dry + return) and `l12_send_pr
 | The convolution reverb is deafeningly loud | The IR is not normalized (the energy of a recorded IR can be very large) | Normalize to unit energy, or measure the RMS of wet and adjust |
 | The CPU gets higher and higher after playback ends | Denormals | Flush denormals, FTZ/DAZ |
 | A stereo reverb gets quieter or hollow when played in mono | The left and right wet signals are too decorrelated, or even out of phase | Control it with width; check in mono |
+
+</div>
 
 ---
 

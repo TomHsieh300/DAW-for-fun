@@ -27,11 +27,15 @@ Clipper：零延遲、無狀態、實作最簡單，但它改變「波形」→ 
 
 **1.** `round(ms × fs / 1000)`：
 
+<div align="center">
+
 | lookahead | 44.1 kHz | 48 kHz | 96 kHz |
 |---|---|---|---|
 | 1.5 ms | 66.15 → **66** | **72** | **144** |
 | 5 ms | 220.5 → **221** | **240** | **480** |
 | 10 ms | **441** | **480** | **960** |
+
+</div>
 
 `dawlab::msToSamples` 用 `std::lround`，0.5 進位（離零遠的方向），所以 220.5 → 221。`l05_latency_impulse` 的表格印出的 `getLatencySamples` 與 impulse 實際出現的位置都是這些數字。
 
@@ -74,12 +78,16 @@ h[k] = \mathrm{sinc}\!\Bigl(\frac{k-M}{4}\Bigr)\, w[k],\qquad M = \frac{N-1}{2},
 
 **實測（`l05_ex4_solution`）：**
 
+<div align="center">
+
 | 訊號 | sample peak | true peak | 差 |
 |---|---|---|---|
 | 1 kHz sine, amp 0.5 | -6.02 dBFS | -6.02 dBTP | 0.00 |
 | 12 kHz (fs/4) sine, phase 45°（暖機後） | -9.03 dBFS | -6.18 dBTP | +2.85 dB |
 | drums +12 dB, hard clip 到 0 dBFS | 0.00 dBFS | +4.54 dBTP | +4.54 dB |
 | drums +12 dB → Limiter (ceiling -1) | -1.00 dBFS | +1.02 dBTP | +2.02 dB |
+
+</div>
 
 **fs/4 那一列為什麼是 -6.18 而不是 -6.02？** 原型長度 $`N = 64`$ 是偶數，中心 $`M = 31.5`$ 不在整數上。換算回原始取樣率，phase $`p`$ 的延遲是 $`(M - p)/4 = 7.875 - p/4`$ 個 sample，小數部分是 0.875、0.625、0.375、0.125——也就是說 4 個插值點落在兩個原始 sample 之間的 1/8、3/8、5/8、7/8 處，而不是 0、1/4、1/2、3/4。這個訊號的峰值剛好在兩個 sample 正中間（1/2），最近的插值點離它 1/8 sample（= 11.25°），量到的是 $`0.5\cos 11.25° = 0.4904`$，也就是 -6.19 dBTP（濾波器在 fs/4 附近有 +0.01 dB 的漣波，所以印出 -6.18）。這是 4x oversampling meter 的固有誤差：最多低估約 0.17 dB。BS.1770-4 的 48-tap 濾波器同樣是偶數長度的對稱設計，也有同樣的性質；想讓某一個 phase 剛好對齊原始 sample，可以改用奇數長度的原型（例如 63 tap，最後補一個 0）。
 

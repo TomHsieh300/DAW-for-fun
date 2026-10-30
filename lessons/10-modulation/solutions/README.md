@@ -106,12 +106,16 @@ d[i] = (1.0f - mix_) * x + mix_ * wet;
 
 Measured (white noise, identical left and right input):
 
+<div align="center">
+
 | phase offset | mix | $`\rho`$ |
 |---|---|---|
 | 0° | 1.0 | 1.0000 |
 | 90° | 1.0 | 0.0012 |
 | 90° | 0.5 | 0.5502 |
 | 180° | 1.0 | 0.0057 |
+
+</div>
 
 - Theoretical $`\rho`$ at mix 0.5: $`L = 0.5x + 0.5w_L`$. If $`x, w_L, w_R`$ are mutually uncorrelated and each has power $`\sigma^2`$: $`E[LR] = 0.25\sigma^2`$, $`E[L^2] = 0.5\sigma^2`$ → $`\rho = 0.5`$. The measured 0.55 is slightly higher because of interpolation: the delay keeps changing, and the cubic (Catmull-Rom) interpolator is a time-varying lowpass that keeps on average only $`\alpha \approx 0.814`$ of the power of white noise (about −0.9 dB), so the wet power is $`\alpha\sigma^2`$ rather than $`\sigma^2`$. Substituting: $`\rho = 0.25/(0.25 + 0.25\alpha) = 0.551`$, matching the measurement (the 0.711 in README Section 2.4 has the same cause).
 - **Mono compatibility (where −1.25 dB comes from)**: $`P(L) = 0.25\sigma^2 + 0.25\sigma^2 = 0.5\sigma^2`$; $`(L+R)/2 = 0.5x + 0.25w_L + 0.25w_R`$ has power $`0.25 + 0.0625 + 0.0625 = 0.375\sigma^2`$; the ratio is $`0.375/0.5 = 0.75`$ → $10\log_{10}0.75 = $ **−1.25 dB**. The measured value is −1.11 dB: including the interpolation power factor $`\alpha`$, the ratio is $`(0.25 + 0.125\alpha)/(0.25 + 0.25\alpha)`$, which at $`\alpha = 0.814`$ is −1.10 dB, exactly explaining the gap. The loss is small because the dry signal (identical in left and right) is fully preserved when summed to mono.

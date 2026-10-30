@@ -39,11 +39,15 @@ a source keeps the same perceived loudness wherever you pan it. The price is -3.
 The linear law ($`p_L = (1-p)/2`$) has -6.02 dB at the centre and a loudness dip; the -4.5 dB law is
 the geometric mean of the two.
 
+<div align="center">
+
 | pan law | centre gain per side | total power at the centre ($`p_L^2 + p_R^2`$) | mono sum at the centre ($`p_L + p_R`$) |
 |---|---|---|---|
 | Linear | 0.5 (-6.02 dB) | 0.5 (-3.01 dB: quieter in the middle) | 1 (0 dB) |
 | ConstantPower (default) | 0.7071 (-3.01 dB) | 1 (0 dB: constant) | 1.414 (+3.01 dB) |
 | Minus4_5dB | 0.5946 (-4.52 dB) | 0.707 (-1.5 dB) | 1.189 (+1.5 dB) |
+
+</div>
 
 (At $`p = \pm 1`$ every law gives 1 on one side and 0 on the other.) No law is right for both stereo
 playback (where power adds) and mono playback (where amplitudes add); -4.5 dB splits the
@@ -131,6 +135,8 @@ reset - the highest $`|x|`$ and the RMS over all samples - available as `StripSt
 
 ### `ChannelStrip.h`
 
+<div align="center">
+
 | Section | Highlights |
 |---|---|
 | parameters (any thread) | `setGainDb` (clamped to [-100, +12] dB), `setPan`, `setPanLaw`, `setPanMode`, `setMute`, `setSolo`, sends (Step 6) |
@@ -138,6 +144,8 @@ reset - the highest $`|x|`$ and the RMS over all samples - available as `StripSt
 | `beginBlock(audible)` | atomics -> smoother targets; snaps after `reset()` |
 | `processInserts` / `applyMuteSolo` / `applyFaderAndPan` / `addSend` / `meter` | the stages, called by the Mixer in order |
 | meters | `getPeakDb(ch)`, `getRmsDb(ch)`, `getMomentaryLufs()`, `getIntegratedLufs()`, `getStats()` |
+
+</div>
 
 ### `Mixer.h`
 
@@ -177,12 +185,16 @@ with clips, and a `Mixer` with 8 tracks and a master whose `process()` calls `pr
 every track and then runs the master stages. Not here yet: inserts (Step 5), sends and buses
 (Step 6), the LUFS meters of the finished strip.
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | `ChannelStrip::computeStripGains()` (pan law via `dsp::Panner::computeGains`, balance mode, fader gain, $`-\infty`$), `Mixer::isTrackAudible()` (the solo rule), `Mixer::processTrack()` (clips -> `beginBlock` -> mute/solo -> fader x pan -> meter -> sum) |
 | File | `steps/step04-mixer/starter/step04.cpp` |
 | Run | `l14_step04_starter`; it prints `[FAIL] l14_step04 (21 of 27 checks failed)` until you are done |
 | Solution | `steps/step04-mixer/solution/step04.cpp` (ctest `l14_step04_solution`) |
+
+</div>
 
 Expected output (verified) - the same numbers as the table below, from DC clips:
 
@@ -205,6 +217,8 @@ the bottom (-100 dB) means silence, not $`10^{-5}`$.
 `l14_test_mixer` renders constant ("DC") clips, so every gain is visible as a sample value
 (all checks verified):
 
+<div align="center">
+
 | case | expected `out_L` |
 |---|---|
 | DC 0.5, fader 0 dB, centre | 0.5 x 0.7071 = 0.3536 |
@@ -219,7 +233,11 @@ the bottom (-100 dB) means silence, not $`10^{-5}`$.
 | solo both, then mute track 2 | 0.75 x 0.7071, then 0.5 x 0.7071 |
 | fader 0 -> -20 dB while playing | max step < 0.001, settles at 0.7071 x 0.1 |
 
+</div>
+
 `l14_test_track_format` checks the formats with a stereo clip L = 0.6, R = 0.2 (verified):
+
+<div align="center">
 
 | case | expected `out_L`, `out_R` |
 |---|---|
@@ -228,6 +246,8 @@ the bottom (-100 dB) means silence, not $`10^{-5}`$.
 | stereo track, centre | 0.6, 0.2 (balance: unity, image kept) |
 | stereo track, balance +0.5 | 0.3, 0.2 |
 | a mono file (L = R = 0.5), stereo vs mono track | +3.01 dB |
+
+</div>
 
 The build-along `minidaw.h` has no formats: its tracks behave like mono-format tracks fed with
 stereo audio (pan law, no fold). [Exercise 14](../exercises/README.md)

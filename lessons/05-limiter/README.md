@@ -33,7 +33,7 @@ As $`R \to \infty`$ the second branch becomes $`y_{\text{dB}} = T`$: no matter h
 g = \min\!\Bigl(1,\ \frac{c}{|x|}\Bigr)
 ```
 
-![Static curve: input dB versus output dB. The 1:1 line bends at the threshold T = -20 dB: the 4:1 compressor continues with a shallow slope, the limiter (ratio infinity) goes flat at the ceiling.](images/limiter-static-curve.svg)
+<p align="center"><img src="images/limiter-static-curve.svg" alt="Static curve: input dB versus output dB. The 1:1 line bends at the threshold T = -20 dB: the 4:1 compressor continues with a shallow slope, the limiter (ratio infinity) goes flat at the ceiling."></p>
 
 But the static curve is only half the story. The attack / release smoother from Chapter 04 decides *how fast* the gain gets into place, whereas a limiter requires the gain to be in place *before the peak reaches the output* — so attack must not only be fast, it must be **negative**.
 
@@ -43,6 +43,8 @@ Take the Chapter 04 `Compressor` and set it up to imitate a limiter as closely a
 
 Target gain reduction: with an input of -6 dB the output is $`-20 + 14/100 = -19.86`$ dB, so $`GR_\infty = 13.86`$ dB. The compressor's attack is a one-pole smoother (it smooths the gain reduction in dB), so the gain reduction rises as $`GR(t) = GR_\infty\,(1 - e^{-t/\tau})`$ with $`\tau = 1`$ ms. A 1 kHz sine that gets louder starting at phase 0 has its first peak at $`t = 0.25`$ ms, and one every 0.5 ms after that; the largest output in each 1 ms window is "the first peak of that window" ($`t = k + 0.25`$ ms, where the gain has been reduced the least):
 
+<div align="center">
+
 | Window | Peak time $`t`$ | $`1 - e^{-t/\tau}`$ | Theoretical GR | Theoretical output peak |
 |---|---|---|---|---|
 | 0–1 ms | 0.25 ms | 0.221 | 3.07 dB | **-9.07 dBFS** |
@@ -50,6 +52,8 @@ Target gain reduction: with an input of -6 dB the output is $`-20 + 14/100 = -19
 | 2–3 ms | 2.25 ms | 0.895 | 12.40 dB | -18.40 dBFS |
 | 3–4 ms | 3.25 ms | 0.961 | 13.32 dB | -19.32 dBFS |
 | 5–6 ms | 5.25 ms | 0.995 | 13.79 dB | -19.79 dBFS |
+
+</div>
 
 Measured by the example `l05_compressor_vs_limiter` (output peak within each 1 ms window):
 
@@ -180,7 +184,7 @@ The playhead has to be corrected too. The engine's transport position is "the sa
 
 Sample peak ≤ ceiling guarantees only that "these sampling points" do not exceed it. The continuous waveform reconstructed by a DAC can be higher between two samples — the **inter-sample peak**. An extreme example: a sine of frequency $`f_s/4`$ has only 4 sampling points per cycle, and if its phase is offset by 45°, every sample lands at $`\pm 0.707A`$:
 
-![A sine at fs/4 whose phase is offset by 45 degrees: every sampling point sits at plus or minus 0.707 A, while the continuous waveform reaches A between the samples.](images/limiter-inter-sample-peak.svg)
+<p align="center"><img src="images/limiter-inter-sample-peak.svg" alt="A sine at fs/4 whose phase is offset by 45 degrees: every sampling point sits at plus or minus 0.707 A, while the continuous waveform reaches A between the samples."></p>
 
 The **true peak** defined in ITU-R BS.1770-4 is the sample peak measured after upsampling the signal by 4 (48 kHz → 192 kHz, interpolating with a lowpass), in units of **dBTP**.
 
@@ -228,6 +232,8 @@ It is 0 at $`n = \pm 4, \pm 8, \dots`$: after filtering, every original sample c
 y[4n+p] = \sum_j h[4j+p]\; x[n-j]
 ```
 
+<div align="center">
+
 | Output | Taps used | Inputs multiplied |
 |---|---|---|
 | $`y[4n+0]`$ | $`h[0], h[4], h[8], \dots, h[60]`$ | $`x[n], x[n-1], \dots, x[n-15]`$ |
@@ -235,17 +241,23 @@ y[4n+p] = \sum_j h[4j+p]\; x[n-j]
 | $`y[4n+2]`$ | $`h[2], h[6], h[10], \dots, h[62]`$ | same |
 | $`y[4n+3]`$ | $`h[3], h[7], h[11], \dots, h[63]`$ | same |
 
+</div>
+
 The 64-tap prototype is split into four 16-tap sub-filters (**phases**), and the four phases consume the same most recent 16 original inputs. Each original sample needs only $`4 \times 16 = 64`$ multiplications, and there is no need to actually build a 4x-long zero-inserted buffer. The coefficients of each phase sum to about 1 (when the input is constant, all 4 interpolated points must equal that constant), so the whole prototype sums to 4 — this is the "multiply by 4" in (2).
 
 This is all that Exercise 4 asks you to implement. Chapter 06 builds the `Oversampler` with a different design (a halfband filter that upsamples by only 2x at a time, two stages in cascade for 4x); Chapter 11 Exercise 3 reuses it directly to build a true-peak meter and compares its reading error and CPU cost against the Exercise 4 version.
 
 Measured results of Exercise 4:
 
+<div align="center">
+
 | Signal | sample peak | true peak |
 |---|---|---|
 | fs/4 sine, phase 45° (true peak -6.02) | -9.03 dBFS | -6.18 dBTP |
 | drum loop +12 dB, hard clipped to 0 dBFS | 0.00 dBFS | +4.54 dBTP |
 | drum loop +12 dB → this chapter's Limiter (ceiling -1 dBFS) | -1.00 dBFS | +1.02 dBTP |
+
+</div>
 
 The first row reads -6.18 rather than -6.02 because the 64-tap interpolation filter has even length: its 4 interpolated points fall at 1/8, 3/8, 5/8 and 7/8 between two original samples, while this signal's peak is exactly in the middle (1/2), so the nearest interpolated point is 1/8 of a sample away and the reading is at most 0.17 dB low. A 4x oversampling true-peak meter is by nature only "very close" to the real peak, not exact (the Exercise 4 solution explains this in full).
 
@@ -259,12 +271,16 @@ Why does it matter? Because after the signal leaves your DAW it is reconstructed
 
 A clipper is the simplest "guaranteed not to exceed": $`y = \mathrm{clamp}(x, -c, c)`$ (hard) or a smooth curve (soft). It has zero delay and no state, but what it changes is the **waveform**, not the gain — the tops of a sine get flattened → harmonics. Exercise 5 measured (1 kHz, +6 dBFS): the soft clipper has THD 20.9 % (H3 -13.8 dB, H5 -27.6 dB; an odd-symmetric curve produces only odd harmonics); the limiter has THD 0.0000 % — in steady state the entire waveform is multiplied by the same gain, so the waveform does not change.
 
+<div align="center">
+
 | | Clipper | Limiter |
 |---|---|---|
 | Delay | 0 | lookahead (1–10 ms) |
 | What it changes | waveform | gain |
 | Side effects | harmonic distortion (ugly on sustained sounds) | pumping, dulled transients |
 | Good for | shaving very short peaks, sounds that are meant to be "broken up", hardware / live | mastering, broadcast, anywhere a clean result is needed |
+
+</div>
 
 Many mastering engineers use both: a soft clipper in front of the limiter shaves 1–2 dB off drum peaks (short enough that the distortion is inaudible), so the limiter does not need to do as much gain reduction.
 
@@ -373,6 +389,8 @@ A few design details:
 
 The API (per the course contract):
 
+<div align="center">
+
 | Method | Description |
 |---|---|
 | `setMaxLookaheadMs(float)` | Upper bound on lookahead, call before `prepare()` (takes effect at the next prepare), default 20 ms |
@@ -388,6 +406,8 @@ The API (per the course contract):
 | `uint64_t getSafetyClipCount() const` | For debugging |
 | `process(AudioBlock)` | In place, stereo-linked; the block must not have more channels than the `numCh` given to `prepare()` |
 
+</div>
+
 ### 3.4 Examples
 
 Build and run (from the project root; ctest runs all examples and solutions automatically):
@@ -400,12 +420,16 @@ cd build
 
 All WAV files are written to `build\dawlab_output\`.
 
+<div align="center">
+
 | Target | What it shows | Output WAV |
 |---|---|---|
 | `l05_compressor_vs_limiter` | The overshoot comparison of section 2.2: the same tone burst through a Compressor (100:1, attack 1 ms) and a Limiter (lookahead 2 ms), printing the peak for every 1 ms after the jump | `l05_cmp_vs_lim_input.wav`, `l05_cmp_vs_lim_compressor.wav`, `l05_cmp_vs_lim_limiter.wav` |
 | `l05_drum_limiting` | A drum loop pushed +6 / +12 dB and then limited (ceiling -1 dBFS), printing peak, RMS, crest factor and max GR; compared against hard clipping. Optional `argv[1]` for your own WAV | `l05_drums_dry.wav`, `l05_drums_limited_6dB.wav`, `l05_drums_limited_12dB.wav`, `l05_drums_clipped_12dB.wav` |
 | `l05_latency_impulse` | The impulse delay at 44.1 / 48 / 96 kHz = `getLatencySamples()`; the null test; a table of the gain coming down ahead of time | `l05_latency_impulse.wav`, `l05_latency_burst.wav` (left = input, right = output; drag it into a DAW to see the ramp) |
 | `l05_ceiling_stress` | A stress test of the guarantee in section 2.5: +40 dB noise, a 50 Hz square wave of ±10 (+20 dBFS), DC, ±1000 impulses, alternating ±10⁴ … with random block lengths and random parameters, checking the output peak and the safety clamp count (the `clamp#` column must be 0); finally it verifies that the output is sample-for-sample identical for block 512 / 1 / random blocks | none (pure numbers) |
+
+</div>
 
 Measured output of `l05_drum_limiting`:
 
@@ -421,12 +445,16 @@ What to listen for: `limited_6dB` is clearly louder than `dry` with hardly any a
 
 Part (3) of `l05_latency_impulse` (tone burst -30 → 0 dBFS, ceiling -6 dB, L = 240):
 
+<div align="center">
+
 | Output position relative to step + L | Gain (dB) | Output (dBFS) | Note |
 |---|---|---|---|
 | -240 samples | -0.12 | -30.12 | the gain starts coming down here (L samples earlier than the peak) |
 | -120 samples | -2.63 | -32.63 | the linear ramp is halfway (linear gain 0.75) |
 | +0 samples | -6.00 | -6.00 | the peak reaches the output; the gain is exactly ceiling / peak |
 | +240 samples | -6.00 | -6.00 | |
+
+</div>
 
 (An excerpt; the program also prints positions such as -480, -180 and -60.) The linear gain falls linearly from 1 to 0.5 over 241 samples: in theory at -240 it is $`(240 + 0.5)/241 = 0.998`$ (-0.02 dB) and at -120 it is 0.75 (-2.50 dB). The numbers in the table are slightly lower (-0.12, -2.63 dB) because the example measures gain as "the output peak within a 0.5 ms (24-sample) window ÷ the input peak", and within those 24 samples the gain is still falling.
 
@@ -444,6 +472,8 @@ Part (3) of `l05_latency_impulse` (tone burst -30 → 0 dBFS, ceiling -6 dB, L =
 
 ## 5. Common mistakes and debugging
 
+<div align="center">
+
 | Symptom | Likely cause |
 |---|---|
 | The output peak still exceeds the ceiling (`getSafetyClipCount()` > 0) | The audio is not delayed, or the delay ≠ L; the window / average length uses L instead of L + 1; the average is not preceded by a min; the lookahead or ceiling was changed during playback |
@@ -456,6 +486,8 @@ Part (3) of `l05_latency_impulse` (tone burst -30 → 0 dBFS, ceiling -6 dB, L =
 | The output is all 0 | `prepare()` was not called, or the block has more channels than at `prepare()` (a Debug build stops at an assert; a Release build clears the channels that have no delay line to 0, or the whole block if there was no prepare) |
 | Some samples become 0 | The input contains NaN / Inf: this chapter's safety clamp replaces the resulting NaN with 0 (`getSafetyClipCount()` increases), but the upstream should be fixed |
 | The GR meter shows -0.00 | `-gainToDb(1)` is -0.0; this chapter handles it with `std::max(0.0f, …)` |
+
+</div>
 
 Debugging tips: drag `l05_latency_burst.wav` into a DAW — the left channel is the input and the right channel is the output — and zoom in on the gain ramp over the L samples before the peak; use `l05_ceiling_stress` (watch the `clamp#` column) and the Exercise 6 fuzz test as regression tests, running them after every change. Note that checking only "output peak ≤ ceiling" is not enough: the final safety clamp pulls the output back to the ceiling whether or not the algorithm is right, so all the examples in this chapter and Exercise 6 also require `getSafetyClipCount() == 0`; only that catches bugs where the window length, the average length or the delay is off by one sample.
 

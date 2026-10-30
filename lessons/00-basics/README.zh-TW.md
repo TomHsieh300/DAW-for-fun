@@ -28,6 +28,8 @@ flowchart LR
     C13["13"] --> C14["14"]
 ```
 
+<div align="center">
+
 | 章 | 主題 | 你會做出什麼 |
 |---|---|---|
 | 00 | 數位音訊基礎、開發環境 | 看懂 sample、dB、block、latency；能建置與試聽 |
@@ -45,6 +47,8 @@ flowchart LR
 | 12 | reverb | algorithmic `Reverb` 與 `ConvolutionReverb` |
 | 13 | VST3 plugin 與 hosting（JUCE） | 把 compressor 包成 VST3，並寫一個能載入 VST3 的 host |
 | 14 | 自製 8 軌 DAW | 把以上全部組成一個能編排 clip、混音、插 VST3 plugin、匯出 WAV 的 DAW（錄音是延伸練習） |
+
+</div>
 
 ---
 
@@ -180,7 +184,7 @@ $`A`$ 是振幅（決定多大聲），$`f`$ 是頻率（決定音高）。取�
 
 **任何聲音都可以拆成很多正弦波疊加**。這是 Fourier（傅立葉）的核心觀念：一把吉他、一句人聲、一個鼓聲，都等於「很多個不同頻率、不同振幅的正弦波加在一起」。把「每個頻率的正弦波有多大」畫成圖，就叫**頻譜（spectrum）**：橫軸是頻率，縱軸是振幅。
 
-![左：正弦波的頻譜只有 440 Hz 一根柱子。右：110 Hz 撥弦的頻譜是一根基頻加上 220、330、440 Hz… 一排越來越小的諧波。](images/spectrum-sine-vs-pluck.svg)
+<p align="center"><img src="images/spectrum-sine-vs-pluck.svg" alt="左：正弦波的頻譜只有 440 Hz 一根柱子。右：110 Hz 撥弦的頻譜是一根基頻加上 220、330、440 Hz… 一排越來越小的諧波。"></p>
 
 真實樂器的頻譜通常像右圖：最低的那根叫**基頻（fundamental）**，決定我們聽到的音高；上面一排頻率剛好是基頻**整數倍**（2、3、4…倍）的成分叫**諧波（harmonics）**，第 $`k`$ 次諧波的頻率是 $`k \cdot f_0`$。基頻本身算第 1 次諧波（H1），2 倍的是 H2，以此類推；頻率是基頻奇數倍的叫**奇次諧波**（H3、H5…），偶數倍的叫**偶次諧波**（H2、H4…）。
 
@@ -229,7 +233,7 @@ f_{alias} = |30000 - 1 \times 48000| = 18000\ \text{Hz}
     at 18 kHz (|30000 - 48000|) the amplitude is 0.5000  <- all the energy has folded here
 ```
 
-![30 kHz 正弦波以 48 kHz 取樣後的頻譜：超過 Nyquist（24 kHz）的成分折返，出現在 18 kHz。](images/aliasing-fold-back.svg)
+<p align="center"><img src="images/aliasing-fold-back.svg" alt="30 kHz 正弦波以 48 kHz 取樣後的頻譜：超過 Nyquist（24 kHz）的成分折返，出現在 18 kHz。"></p>
 
 **為什麼要在乎？** 兩個地方會產生超過 Nyquist 的成分：
 
@@ -296,6 +300,8 @@ L_{dB} = 20\log_{10}\frac{A}{A_{ref}} \qquad\Longleftrightarrow\qquad \frac{A}{A
 
 幾個一定要記住的數字（來自 `l00_db_math` 的輸出）：
 
+<div align="center">
+
 | dB | 倍率 | 記法 |
 |---:|---:|---|
 | +20 | ×10 | 每 +20 dB 多一個零 |
@@ -309,6 +315,8 @@ L_{dB} = 20\log_{10}\frac{A}{A_{ref}} \qquad\Longleftrightarrow\qquad \frac{A}{A
 | -20 | ×0.1 | |
 | -40 | ×0.01 | |
 | -60 | ×0.001 | |
+
+</div>
 
 精確值：×2 = +6.0206 dB、√2 = +3.0103 dB。教材裡寫 6.02 / 3.01。
 
@@ -336,6 +344,8 @@ L_{dB} = 20\log_{10}\frac{A}{A_{ref}} \qquad\Longleftrightarrow\qquad \frac{A}{A
 
 兩者的比值叫 **crest factor**（波峰因數），通常用 dB 表示：$`\text{crest} = 20\log_{10}(\text{peak}/\text{RMS})`$。它告訴你訊號「尖不尖」：
 
+<div align="center">
+
 | 波形 | peak / RMS | crest factor |
 |---|---|---|
 | 方波 | 1 | 0 dB |
@@ -343,6 +353,8 @@ L_{dB} = 20\log_{10}\frac{A}{A_{ref}} \qquad\Longleftrightarrow\qquad \frac{A}{A
 | 均勻分布白雜訊 | √3 | 4.77 dB |
 | 單一脈衝（0.5 秒內 1 個 sample） | √24000 | 43.8 dB |
 | 鼓組 loop（本教材的合成鼓） | ≈ 5.3 | 14.5 dB |
+
+</div>
 
 正弦波的推導：$`x = A\sin\theta`$，$`\overline{x^2} = A^2 \cdot \overline{\sin^2\theta} = A^2/2`$，所以 RMS = $`A/\sqrt 2`$。均勻分布在 $`[-A, A]`$ 的雜訊：$`\overline{x^2} = \int_{-A}^{A} \frac{x^2}{2A}dx = A^2/3`$，RMS = $`A/\sqrt 3`$。
 
@@ -364,7 +376,7 @@ drum loop        ...  peak  -2.92 dBFS  RMS -17.43 dBFS  crest 14.51 dB
 y[n] = \begin{cases} 1 & x[n] > 1 \\ x[n] & -1 \le x[n] \le 1 \\ -1 & x[n] < -1 \end{cases}
 ```
 
-![振幅 1.5 的正弦波被硬切在 ±1.0：波峰被削平。](images/clipping-sine.svg)
+<p align="center"><img src="images/clipping-sine.svg" alt="振幅 1.5 的正弦波被硬切在 ±1.0：波峰被削平。"></p>
 
 波形被削平，等於加入了原本沒有的高次諧波——聽起來刺耳、「破掉」。`l00_db_math` 把振幅 1.5 的 1 kHz 正弦波硬切，量到：
 
@@ -450,12 +462,16 @@ flowchart LR
 
 audio callback 跑在一個高優先權的 **audio thread** 上，有硬性的期限（deadline）：512 samples @ 48 kHz 就是 10.67 ms，一次錯過就是聽得見的 click / dropout。所以 callback 裡絕對不可以做任何「**不知道要花多久**」的事。四大禁忌：
 
+<div align="center">
+
 | 禁忌 | 為什麼 |
 |---|---|
 | **Allocation**（`new`、`malloc`、`std::vector::push_back`、`std::string`…） | 記憶體配置器內部有 lock，而且可能要向 OS 要新的 page（system call）。偶爾一次就要幾毫秒，deadline 直接爆掉。解法：所有記憶體在 `prepare()` 配好。 |
 | **Lock**（`std::mutex`、任何會 block 的同步） | 如果持有 lock 的是低優先權的 UI thread，而它剛好被 OS 換掉，audio thread 就得等它——這叫 **priority inversion**。解法：`std::atomic`、lock-free queue（第 11 章 `SpectrumAnalyzer` 會用到）。 |
 | **I/O**（檔案、console `printf`、網路、log） | 系統呼叫，時間完全不可預期（磁碟可能在休眠）。解法：audio thread 把資料丟進 lock-free FIFO，由另一個 thread 寫檔。 |
 | **無界迴圈 / GC** | 迴圈次數不固定（例如「一直算到收斂」）就無法保證在期限內結束。有 garbage collector 的語言（Java、C#、Python）隨時可能暫停所有 thread 幾十毫秒——這就是為什麼 audio engine 幾乎都是 C / C++。 |
+
+</div>
 
 另外要避免：throw exception、呼叫不知道內部做什麼的第三方函式、denormal float（極小的數字會讓 CPU 慢 10～100 倍，第 02 章講 filter 時會處理）。
 
@@ -511,6 +527,8 @@ dawlab::writeWav(dawlab::outputPath("out32.wav"), wav.buffer, wav.sampleRate, 32
 
 每一章都用這些 deterministic（同樣參數 → 同樣結果）的訊號當輸入，不需要準備音檔：
 
+<div align="center">
+
 | 函式 | 用途 |
 |---|---|
 | `makeSine(freq, sr, seconds, amp, nch)` | 最單純的訊號，只有一個頻率。量 gain、量 THD 的基準。 |
@@ -524,7 +542,11 @@ dawlab::writeWav(dawlab::outputPath("out32.wav"), wav.buffer, wav.sampleRate, 32
 | `NoiseGenerator` | xorshift32，輸出 $`[-1, 1)`$，給你自己合成訊號用。 |
 | `secondsToSamples(sec, sr)` | 秒 → sample 數（`DspMath.h` 另有 `msToSamples`、`samplesToMs`）。 |
 
+</div>
+
 ### 3.4 `Analysis.h`：用數字驗證
+
+<div align="center">
 
 | 函式 | 用途 |
 |---|---|
@@ -534,6 +556,8 @@ dawlab::writeWav(dawlab::outputPath("out32.wav"), wav.buffer, wav.sampleRate, 32
 | `goertzelAmplitude(ptr, n, freq, sr)` | 訊號中**單一頻率**的正弦振幅 |
 | `measureGainDb(processFn, freq, sr)` | 任何「一次一個 sample」的系統在某頻率的增益（dB） |
 | `harmonicLevelsDb(...)`、`thdPercent(...)` | 諧波分析、THD |
+
+</div>
 
 **Goertzel 的直覺**：FFT 一次算出所有頻率，但如果你只想知道「這段訊號裡 1 kHz 有多大」，Goertzel 更便宜：它是一個刻意把共振頻率調在目標頻率的二階 IIR filter，把整段訊號餵過去，最後從 filter 的兩個狀態變數算出該頻率的振幅。餵進振幅 $`A`$ 的正弦波，回傳值 ≈ $`A`$。前面加了 Hann window，減少訊號頭尾不連續造成的洩漏（leakage）。IIR filter、window、leakage、FFT 這些名詞會在第 02 章（IIR filter）和第 11 章（FFT、window、leakage）詳談；現在只要知道：**給它一段訊號和一個頻率，它回傳那個頻率的正弦振幅**。
 
@@ -555,12 +579,16 @@ return dawlab::test::summary("l00_ex4");          // 全過回傳 0（ctest PASS
 
 ### 3.7 範例程式總覽
 
+<div align="center">
+
 | target | 原始碼 | 示範 | 輸出 WAV |
 |---|---|---|---|
 | `l00_test_signals` | `examples/test_signals.cpp` | 產生全部測試訊號、印 peak / RMS / crest | `l00_sine_440.wav`、`l00_log_sweep.wav`、`l00_white_noise.wav`、`l00_impulse.wav`、`l00_tone_bursts.wav`、`l00_drum_loop.wav`、`l00_pluck_110.wav`、`l00_pluck_sequence.wav` |
 | `l00_block_processing` | `examples/block_processing.cpp` | 模擬 audio callback、latency 表、每個 block 的 peak / RMS | `l00_block_input.wav`、`l00_block_processed.wav` |
 | `l00_wav_info` | `examples/wav_info.cpp` | 讀 WAV（`argv[1]` 或自製）印資訊、normalize 到 -1 dBFS | `l00_wav_info_input.wav`、`l00_wav_info_normalized.wav` |
 | `l00_db_math` | `examples/db_math.cpp` | 用數字驗證 2.2～2.7 的每個宣稱（self-check） | `l00_sum_identical.wav`、`l00_sum_uncorrelated.wav`、`l00_aliasing_30k.wav`、`l00_aliasing_sweep.wav`、`l00_quantized_8bit.wav`、`l00_quantized_16bit.wav`、`l00_clipped_sine.wav` |
+
+</div>
 
 ### 3.8 `l00_test_signals`
 
@@ -655,6 +683,8 @@ g = \frac{10^{-1/20}}{\text{peak}} \quad\Rightarrow\quad \text{新 peak} = g \cd
 
 ## 5. 常見錯誤與除錯
 
+<div align="center">
+
 | 症狀 | 可能原因 | 怎麼查 |
 |---|---|---|
 | 輸出 WAV 聽起來破掉、Audacity 一片紅 | 超過 ±1.0 就寫成 16/24-bit → clipping | `peakAbs()` > 1？用 `l00_wav_info` 看 clipped 數；寫 32-bit float 看原始值 |
@@ -668,6 +698,8 @@ g = \frac{10^{-1/20}}{\text{peak}} \quad\Rightarrow\quad \text{新 peak} = g \cd
 | printf 輸出的非 ASCII 符號（×、→、√）變亂碼 | 沒有引入 `dawlab/Console.h`（`Common.h` 已含）或 terminal 不是 UTF-8 | PowerShell 可用 `chcp 65001` |
 | MSVC `M_PI` 未定義 | MSVC 預設沒有 | 用 `dawlab::kPi` |
 | `/W4` 警告：double → float、signed/unsigned | 混用型別 | 明確 `static_cast<float>()`、index 用 `size_t` |
+
+</div>
 
 ---
 

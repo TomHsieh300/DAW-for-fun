@@ -21,11 +21,15 @@
 現在讓使用者刪除 track。四個 track，以及在它們都還在時記下的兩筆編輯（可以想成 undo 歷史裡的兩筆
 紀錄，或是 queue 裡還沒處理的兩個 command）：
 
+<div align="center">
+
 | | Drums | Bass | Keys | Vox |
 |---|---|---|---|---|
 | 刪除前的 index | 0 | 1 | 2 | 3 |
 | id | 1 | 2 | 3 | 4 |
 | 刪除 Drums 後的 index | - | 0 | 1 | 2 |
+
+</div>
 
 這兩筆編輯是「Bass 調到 -6 dB」和「Vox 調到 -3 dB」。如果用 index 記，它們就是「track 1 調到
 -6 dB」和「track 3 調到 -3 dB」。刪除之後，track 1 變成 *Keys*，track 3 不存在：一筆改錯了
@@ -34,12 +38,16 @@ track，另一筆直接消失。這兩種錯誤都不會發出怪聲，也不會
 
 ### 指稱 track 的四種方式
 
+<div align="center">
+
 | 用什麼指稱 track | 刪除 / 重排後還對嗎？ | 問題 |
 |---|---|---|
 | index | 不對 | 上面的 track 被刪除或移動時就會位移 |
 | 指標 | 只在 track 還活著時 | 刪除後變成 dangling；`std::vector` 擴充時可能整批搬家；無法寫進檔案 |
 | 名稱 | 對 | 不唯一（兩個「Audio 1」），而且使用者會改名 |
 | **id** | **對** | 沒有 - 它只是個數字，所以需要查表 |
+
+</div>
 
 id 是 track list 在建立 track 時發出的一個普通數字，之後永遠不會改變。因為它只是個整數，可以
 複製進 command、寫進專案檔、跨 thread 比較。
@@ -103,12 +111,16 @@ private:
 輔助函式，以及兩種記下來的編輯：`applyEdits()`（用 id）和 `applyIndexedEdits()`（用 index，
 第 14 章的做法）。
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫的 | `TrackList::add()`、`remove()`、`indexOf()` 和 `move()` |
 | 檔案 | `steps/step01-track-ids/starter/step01.cpp` |
 | 執行 | `l15_step01_starter`；完成之前它會印出 `[FAIL] l15_step01 (18 of 25 checks failed)` |
 | 解答 | `steps/step01-track-ids/solution/step01.cpp`（ctest `l15_step01_solution`） |
+
+</div>
 
 預期輸出（已驗證）- 先是上面的範例，接著是 id 重複使用、重新排序，以及 2000 次隨機操作與
 參考模型的比對：

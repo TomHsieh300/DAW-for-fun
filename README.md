@@ -7,11 +7,11 @@ This course is for learners who "know basic C++ but have never studied DSP". It 
 
 The course is **bilingual (English / Traditional Chinese)**. English is the primary version (original file names such as `README.md`); the Traditional Chinese version sits next to it in a `.zh-TW.md` file (such as `README.zh-TW.md`). Every document has a language switcher at the top, and all code comments and program output are in English.
 
-![DawLab 8: playing the demo song (bar 2, beat 3)](docs/images/dawlab8.png)
+<p align="center"><img src="docs/images/dawlab8.png" alt="DawLab 8: playing the demo song (bar 2, beat 3)"></p>
 
 *The image above is not a screenshot. It was drawn by the app itself with `"DawLab 8.exe" --snapshot <file.png>` (chapter 14, Step 12), and ctest runs it on every build. The same command also saves a parameter panel (below, the compressor on the drum track): the knobs on the panel are generated automatically from each effect's parameter description.*
 
-![Automatically generated parameter panel](docs/images/dawlab8_panel.png)
+<p align="center"><img src="docs/images/dawlab8_panel.png" alt="Automatically generated parameter panel"></p>
 
 ## What makes this course different
 
@@ -95,6 +95,8 @@ It uses a single-config generator (Ninja if installed, otherwise Makefiles), so 
 
 **Where the output goes** (using the default `build` folder as the example):
 
+<div align="center">
+
 | What | Location |
 |---|---|
 | Executables for examples, solutions and starters | `build\bin\Debug\lNN_*.exe` (for Release: `build\bin\Release\`) |
@@ -102,6 +104,8 @@ It uses a single-config generator (Ninja if installed, otherwise Makefiles), so 
 | Chapter 13 VST3 plugin | `build\lessons\13-vst-hosting\plugin\DawLabCompressor_artefacts\Debug\VST3\DawLabCompressor.vst3` (`DawLabLimiter` likewise) |
 | Chapter 14 DAW | `build\bin\Debug\DawLab 8.exe` |
 | On Linux / macOS | `build/bin/lNN_*` and `build/bin/DawLab 8` (no `Debug/` subfolder, no `.exe`); the VST3 bundles are at `build/lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/VST3/DawLabCompressor.vst3` |
+
+</div>
 
 When you run an example by hand, **`cd` into the build folder first** so the WAV files end up in `build\dawlab_output\`:
 
@@ -115,6 +119,8 @@ cd build
 **ctest labels**: `example` (examples, which run to completion with no arguments), `solution` (exercise solutions, which check themselves numerically) and `test` (regression tests for components and the engine). The starter code in `exercises/starter/` is only built, not registered as tests: it contains `// TODO`s, and printing FAIL when you run it is expected.
 
 ## Directory layout
+
+<div align="center">
 
 | Path | Contents |
 |---|---|
@@ -134,11 +140,15 @@ cd build
 | `lessons/NN-name/tests/` | (some chapters) component regression tests |
 | `third_party/JUCE/` | JUCE 9.0.4 (chapters 13 and 14) |
 
+</div>
+
 An overview of all DSP components and what they are for is in [dsp/include/dawlab/dsp/README.md](dsp/include/dawlab/dsp/README.md); the common interface and the API contract are in [docs/authoring-guide.md](docs/authoring-guide.md).
 
 ## Chapter roadmap
 
 The chapters go in numeric order, and every chapter uses components from the earlier ones.
+
+<div align="center">
 
 | Chapter | Topic | What you will learn | Components built |
 |---|---|---|---|
@@ -158,6 +168,8 @@ The chapters go in numeric order, and every chapter uses components from the ear
 | [13](lessons/13-vst-hosting/README.md) | VST3 plugins and hosting (JUCE) | plugin architecture and lifecycle, parameters and state, latency and PDC, scanning and loading third-party VST3 plugins | `DawLabCompressor` / `DawLabLimiter` (VST3), the `dawlab_plugin_host` library |
 | [14](lessons/14-daw-8track/README.md) | **Capstone: the 8-track DAW** | transport and the two kinds of clock, clips, mixer and FX buses, a lock-free command queue, PDC, offline bounce, real-time safety tests, the JUCE GUI, VST3 inserts | the pure C++ `dawlab::engine` and the JUCE app "DawLab 8" |
 | [15](lessons/15-daw-growing/README.md) | Growing the DAW (in progress) | stable track ids; planned: a track pool with add / delete, a CPU budget, saving projects, undo / redo | the build-along snapshots of chapter 15 |
+
+</div>
 
 > English is the primary language: the English version of every document uses the original file name, and the Traditional Chinese version is the `.zh-TW.md` file of the same name. The two are kept in sync, and technical terms stay in English in the Chinese version.
 

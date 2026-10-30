@@ -7,9 +7,13 @@
 Each folder is a small, complete program that contains exactly what exists after its step. You
 write the step's functions in `starter/`, the self-check tells you when they work.
 
+<div align="center">
+
 | Step | Folder | You write | Run |
 |---|---|---|---|
 | 1 | `step01-track-ids` | `TrackList::add`, `remove`, `indexOf`, `move` | `l15_step01_starter` |
+
+</div>
 
 Every folder has the same four files:
 

@@ -39,6 +39,8 @@ Its frequency response is $`H(e^{j\omega}) = e^{-j\omega D}`$: the **magnitude i
 
 The length of the delay time determines what our ears hear it as. The table below gives rough rules of thumb (the numbers vary with the material and the listener):
 
+<div align="center">
+
 | Delay time | What it sounds like mixed with the original | Typical use |
 |---|---|---|
 | < 1 ms | Change of timbre (a delay $`\tau`$ added to the original puts the first notch at $`1/(2\tau)`$, i.e. above 500 Hz; at 5 kHz for $`\tau = 0.1`$ ms) | The extreme end of phaser / flanger; combs caused by microphone distance differences |
@@ -48,16 +50,22 @@ The length of the delay time determines what our ears hear it as. The table belo
 | 50-150 ms | A short, clear single echo | Slapback (rockabilly vocals and guitar) |
 | > 150 ms | A separate, identifiable echo; usually aligned to the tempo | Rhythmic echo, ping-pong, dub delay |
 
+</div>
+
 ### 2.2 The circular buffer: only write forward, never move the data
 
 To compute $`x[n-D]`$ we need to remember the most recent $`D`$ samples. The most obvious way is "shift the whole array back by one slot for every new sample", but that is an O(D) move per sample -- a 2-second delay at 48 kHz would move 96000 floats per sample, which is completely impractical.
 
 The idea of a circular buffer is: **the data stays put, the pointer moves**. A write index points at "the next position to write"; after every write it advances one slot, and when it reaches the end it wraps back to the beginning:
 
+<div align="center">
+
 | index | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
 |---|---|---|---|---|---|---|---|---|
 | content | `x[n-5]` | `x[n-4]` | `x[n-3]` | `x[n-2]` | `x[n-1]` | `x[n]` | `x[n-7]` | `x[n-6]` |
 | pointer | | | | | | last write | write index `w` | |
+
+</div>
 
 The buffer has length N = 8. Index 5 holds the most recent write `x[n]`. Index 6 is the write index $`w`$: the next write goes there, and it is also the "oldest" data.
 
@@ -122,9 +130,13 @@ Reading this expression:
 
 Theoretical values at 48 kHz (the example `l09_interpolation_compare` measures values that agree with theory exactly to two decimal places):
 
+<div align="center">
+
 | Frequency | 1 kHz | 4 kHz | 8 kHz | 12 kHz | 15 kHz | 18 kHz | 20 kHz |
 |---|---|---|---|---|---|---|---|
 | linear, $`\Delta = 0.5`$ (dB) | −0.02 | −0.30 | −1.25 | −3.01 | −5.11 | −8.34 | −11.74 |
+
+</div>
 
 How it sounds: a static −3 dB at 12 kHz is only "slightly darker", but when the delay time is modulated (chorus), $`\Delta`$ swings back and forth between 0 and 1, and the amount of high-frequency loss rises and falls at the LFO rate -- an audible "breathing". Also, linear interpolation has linear phase only at $`\Delta = 0.5`$ (a symmetric FIR); for other $`\Delta`$ the phase delay deviates slightly from $`\Delta`$ as frequency changes.
 
@@ -172,10 +184,14 @@ The difference between them: Lagrange passes through four points on each segment
 
 At $`f_s/4`$: $`\tfrac98 \cdot 0.7071 + \tfrac18 \cdot 0.7071 = 0.884`$, i.e. **−1.07 dB** (linear is −3.01 dB). The full comparison (48 kHz, measured = theory):
 
+<div align="center">
+
 | Frequency | 1 kHz | 4 kHz | 8 kHz | 12 kHz | 15 kHz | 18 kHz | 20 kHz |
 |---|---|---|---|---|---|---|---|
 | linear (dB) | −0.02 | −0.30 | −1.25 | −3.01 | −5.11 | −8.34 | −11.74 |
 | cubic (dB) | −0.00 | −0.01 | −0.23 | −1.07 | −2.53 | −5.26 | −8.41 |
+
+</div>
 
 Cubic is nearly flat below 8 kHz, but it is **still a lowpass** -- any finite-length polynomial interpolation falls off near Nyquist. White noise (equal energy at all frequencies) through a delay of 10.5 goes from an RMS of 0.1443 to 0.1019 for linear and 0.1153 for cubic; the missing part is high-frequency energy.
 
@@ -226,10 +242,14 @@ A numerical example (the example `l09_doppler_sweep`): the delay increases linea
 
 Two common strategies:
 
+<div align="center">
+
 | Strategy | Method | Pros | Cons | Who uses it |
 |---|---|---|---|---|
 | **Smooth transition** | Ramp the delay time linearly to the new value (this chapter's `Delay` uses a double-precision `DelayRamp`; see section 3.2 for the reason) | Simple; has the "analog tape" feel; modulation (chapter 10) works exactly this way | Pitch shift during the transition; a ramp that is too short plays in reverse | This chapter's `Delay`, tape echo emulation |
 | **Two-read-head crossfade** | Put a second read head directly at the new position and use a 10-50 ms raised cosine to fade the old head out and the new head in | No pitch shift, no click | When the two heads' contents are uncorrelated there is a brief level dip and a phase slip in the middle; a further change during the fade has to be queued | The tempo switching of many digital delays (exercise 6) |
+
+</div>
 
 Measured in exercise 6: after a crossfade switch the largest difference between adjacent samples is 0.0288 (the same as the sine itself), the measured frequency is 444 Hz (only a small deviation caused by the phase slip during the crossfade), and after the fade ends the output is exactly identical to $`x[n - 12000]`$.
 
@@ -333,6 +353,8 @@ beats is counted with a quarter note as 1: eighth note 0.5, sixteenth note 0.25.
 
 At 120 BPM (the table printed by the example `l09_pingpong_tempo`):
 
+<div align="center">
+
 | Note | beats | ms | samples @ 48 kHz |
 |---|---|---|---|
 | Half note | 2 | 1000.00 | 48000 |
@@ -343,6 +365,8 @@ At 120 BPM (the table printed by the example `l09_pingpong_tempo`):
 | Dotted sixteenth | 0.375 | 187.50 | 9000 |
 | Eighth triplet | 1/3 | 166.67 | 8000 |
 | Sixteenth note | 0.25 | 125.00 | 6000 |
+
+</div>
 
 The dotted eighth is the most common delay setting for pop and rock guitar: after a melody of eighth notes, the echo lands exactly between two eighth notes, forming a "rolling" sixteenth-note groove.
 
@@ -364,6 +388,8 @@ Both `mix` and `feedback` are smoothed with a 20 ms `SmoothedValue`, so turning 
 
 The table below gives common starting points for mixing (rules of thumb, not measurements; adjust for the material, tempo and arrangement):
 
+<div align="center">
+
 | Type | Delay time | Feedback | Mix | Loop filter | Character |
 |---|---|---|---|---|---|
 | Slapback | 80-150 ms (not necessarily on the beat) | 0-10% (basically a single echo) | 15-35% | LP 3-5 kHz | A single echo right behind the sound, giving the vocal / guitar more "space" without smearing it |
@@ -371,6 +397,8 @@ The table below gives common starting points for mixing (rules of thumb, not mea
 | Rhythmic echo | 1/4, dotted 1/8, 1/8 | 20-45% | 15-30% | LP 4-6 kHz, HP 100-200 Hz | A clear echo that follows the tempo, with a clean tail that does not fight the lead melody |
 | Ping-pong | dotted 1/8, 1/4 | 30-50% | 20-35% | LP 3-5 kHz | Bouncing left and right, adding stereo width |
 | Dub delay | 1/4, dotted 1/4 | 60% to over 100% (with saturation in the loop) | 30-60% (often used on a send, "throwing" a word into it by hand during a performance) | LP 1.5-3 kHz, HP 200-400 Hz | Darker and murkier each time, able to self-oscillate |
+
+</div>
 
 (The ping-pong in the example `l09_pingpong_tempo` uses a dotted eighth, fb 0.45, mix 0.35, and an in-loop HP of 150 Hz + LP of 3.5 kHz; the dub in exercise 4 uses fb 1.1 + tanh.)
 
@@ -423,6 +451,8 @@ When `Delay` itself is turned to delayMs = 1, feedback 0.7 and mix 1, the wet tr
 
 File: [`dsp/include/dawlab/dsp/FractionalDelayLine.h`](../../dsp/include/dawlab/dsp/FractionalDelayLine.h)
 
+<div align="center">
+
 | Method | Description |
 |---|---|
 | `void prepare(int maxDelaySamples, int numChannels)` | The only place that allocates. Buffer length = `nextPowerOfTwo(maxDelaySamples + 4)` (cubic reads up to `d + 2`, so some headroom is left), `mask = size − 1` |
@@ -434,6 +464,8 @@ File: [`dsp/include/dawlab/dsp/FractionalDelayLine.h`](../../dsp/include/dawlab/
 | `float readLagrange(int ch, float delaySamples) const noexcept` | The 3rd-order Lagrange of section 2.5 (for teaching comparison) |
 | `int getMaxDelaySamples() const`, `int getNumChannels() const`, `int getBufferSize() const` | Queries |
 | `static int nextPowerOfTwo(int n)` | Helper function |
+
+</div>
 
 Convention: **after `push()`, `readXxx(ch, 0)` returns the sample that was just pushed**, and `readXxx(ch, D)` returns the sample from D pushes ago. Every read clamps the delay to `[0, maxDelaySamples]`, so it can never go out of bounds.
 
@@ -464,6 +496,8 @@ flowchart LR
     OUT --> Y[y]
 ```
 
+<div align="center">
+
 | Method | Description |
 |---|---|
 | `void setMaxDelayMs(float ms)` | Call before `prepare()`; default 2000 ms; determines the buffer size (clamped to 1-60000 ms) |
@@ -479,6 +513,8 @@ flowchart LR
 | `void process(AudioBlock) noexcept` | In place |
 | `static float noteToMs(double bpm, double beats) noexcept` | Section 2.10 |
 | getters | `getDelayMs()`, `getCurrentDelayMs()` (the value mid-smoothing), `getMaxDelayMs()`, `getFeedback()`, `getMix()`, `isPingPong()`, `getMaxDelaySamples()` |
+
+</div>
 
 Going through the formulas piece by piece:
 
@@ -502,12 +538,16 @@ cd build
 
 All WAVs are written to `build\dawlab_output\`.
 
+<div align="center">
+
 | Target | What it demonstrates | Output WAVs |
 |---|---|---|
 | `l09_interpolation_compare` | Buffer size and mask; the interpolation kernel of an impulse through a delay of 2.5; a measurement table of the frequency responses of linear / cubic / Lagrange at a delay of 10.5 (listed against theory) | `l09_interp_dry.wav`, `l09_interp_linear.wav`, `l09_interp_cubic.wav` |
 | `l09_pingpong_tempo` | BPM → ms table; verifying the ping-pong path with an impulse; a 120 BPM plucked arpeggio + dotted-eighth ping-pong; an eighth-note stereo echo for comparison | `l09_pingpong_dry.wav`, `l09_pingpong_wet.wav`, `l09_echo_wet.wav` |
 | `l09_doppler_sweep` | A 440 Hz sine with the delay swept between 10 ↔ 250 ms over 2 seconds each: measure the pitch change by zero crossings; a control with ramp = 0 measures the click; self-check: changing a long delay by just 1 ms (1900 → 1901, 15000 → 15001 ms) must not click either | `l09_doppler_smooth.wav`, `l09_doppler_abrupt.wav` |
 | `l09_comb_filter` | A feedback comb with $`D = 48`$, $`g = 0.7`$: frequency sweep, automatic peak/notch finding with printed spacing; a feedforward comparison; reproducing it with `Delay`; white noise through a comb | `l09_comb_noise_dry.wav`, `l09_comb_noise_1ms.wav`, `l09_comb_noise_10ms.wav` |
+
+</div>
 
 **`l09_interpolation_compare`** (excerpt):
 
@@ -575,6 +615,8 @@ Note how this example is written: the instant at which the parameter changes (48
 
 ## 5. Common Mistakes and Debugging
 
+<div align="center">
+
 | Symptom | Likely cause |
 |---|---|
 | The echo is 1 sample earlier or later than set | Reading first and then writing, but reading `D` instead of `D − 1` (or the reverse). Test with an impulse: the first echo should land exactly at sample `D` |
@@ -587,6 +629,8 @@ Note how this example is written: the instant at which the parameter changes (48
 | Ping-pong has sound on only one side | With a mono block (`numChannels = 1`) ping-pong has no effect; or the connections between the two delay lines are wrong (the left output must go to the right input) |
 | A short delay sounds "metallic" or "nasal" | Not a bug: it is a comb filter (section 2.13). A delay < 30 ms with feedback always does this |
 | Tempo-synced echoes slowly drift away from the beat | The delay time is rounded to an integer number of samples, or `noteToMs()` was not recomputed after the BPM changed |
+
+</div>
 
 A debugging tip: **an impulse is the best test signal for a delay**. Fire in an impulse and print the positions and amplitudes of all non-zero samples in the output -- a wrong position means an off-by-one or a unit-conversion error, and a wrong amplitude means a wrong feedback / mix / filter. Example 2 and exercises 1 and 5 are all verified this way.
 

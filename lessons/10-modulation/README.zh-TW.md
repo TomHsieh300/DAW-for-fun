@@ -43,6 +43,8 @@ flowchart TD
 
 LFO（Low-Frequency Oscillator，低頻振盪器）的輸出不是拿來聽的，它的頻率通常在 0.05–10 Hz，遠低於聽覺範圍（20 Hz）。它的任務是讓「參數」隨時間緩慢變化。被控制的參數決定了效果的種類：
 
+<div align="center">
+
 | 被調變的參數 | 效果 | 本章的元件 |
 |---|---|---|
 | gain | tremolo / autopan | `Tremolo` |
@@ -51,6 +53,8 @@ LFO（Low-Frequency Oscillator，低頻振盪器）的輸出不是拿來聽的�
 | delay 時間，不混原音 | vibrato | 練習 3 |
 | allpass 的轉折頻率，混原音 | phaser | `Phaser` |
 | 乘上可聽頻率範圍的「LFO」（載波） | ring modulation | 練習 4 |
+
+</div>
 
 ### 2.2 LFO
 
@@ -66,6 +70,8 @@ p[n+1] = \mathrm{frac}\!\left(p[n] + \frac{r}{f_s}\right), \qquad \mathrm{frac}(
 
 波形是相位的函式（輸出都在 $`[-1, +1]`$）：
 
+<div align="center">
+
 | 波形 | $`m(p)`$ | 特性 |
 |---|---|---|
 | Sine | $`\sin(2\pi p)`$ | 最平滑，chorus / flanger / phaser 的預設 |
@@ -74,7 +80,9 @@ p[n+1] = \mathrm{frac}\!\left(p[n] + \frac{r}{f_s}\right), \qquad \mathrm{frac}(
 | Square | $`p < \tfrac12 ? +1 : -1`$ | 兩個值之間切換，tremolo 的「斷音」 |
 | Sample & Hold | 每個週期開頭抽一個亂數，整個週期保持 | 隨機的階梯，「機器人 / 電腦」感 |
 
-![兩個週期內的五種 LFO 波形：sine、triangle、saw、square 與 sample & hold](images/lfo-shapes.svg)
+</div>
+
+<p align="center"><img src="images/lfo-shapes.svg" alt="兩個週期內的五種 LFO 波形：sine、triangle、saw、square 與 sample &amp; hold"></p>
 
 （`l10_lfo_shapes` 會用真正的數值印出更精確的 ASCII 圖。）
 
@@ -99,6 +107,8 @@ DAW 裡的 LFO 常常要跟著拍子走。一拍（四分音符）= $`60/\text{b
 r = \frac{\text{bpm}}{60 \cdot b} \ \text{Hz}
 ```
 
+<div align="center">
+
 | 音符長度 | $`b`$ | 90 bpm | 120 bpm | 140 bpm |
 |---|---:|---:|---:|---:|
 | 一小節（4/4） | 4 | 0.375 Hz | 0.500 Hz | 0.583 Hz |
@@ -107,6 +117,8 @@ r = \frac{\text{bpm}}{60 \cdot b} \ \text{Hz}
 | 八分音符 | 0.5 | 3.000 Hz | 4.000 Hz | 4.667 Hz |
 | 八分三連音 | 1/3 | 4.500 Hz | 6.000 Hz | 7.000 Hz |
 | 十六分音符 | 0.25 | 6.000 Hz | 8.000 Hz | 9.333 Hz |
+
+</div>
 
 rate 對了還不夠：從第 37 小節開始播放時，LFO 的峰值也要落在拍點上。做法是每個 block 開頭用 host 給的歌曲位置（ppq，以四分音符計的拍數）重新算相位：$`p = \mathrm{frac}(\text{ppq} / b + p_0)`$。練習 6 會實作它。
 
@@ -167,12 +179,16 @@ f_{\text{inst}}(t) = \frac{1}{2\pi}\frac{d}{dt}\Big[2\pi f\,(t - d(t))\Big] = f\
 
 換成 cents（100 cents = 一個半音）：向上最多 $`1200 \log_2(1 + 2\pi r D)`$、向下最多 $`1200 \log_2(1 - 2\pi r D)`$。因為 log 曲線向下彎（concave），向下的絕對值略大；$`2\pi r D`$ 很小時兩者幾乎對稱。
 
+<div align="center">
+
 | $`D`$（depth） | $`r`$（rate） | $`2\pi r D`$ | 最大偏移（向上 / 向下） |
 |---|---|---|---|
 | 3 ms | 0.8 Hz | 0.0151 | +25.9 / −26.3 cents（chorus 預設） |
 | 1 ms | 5 Hz | 0.0314 | +53.6 / −55.3 cents（明顯的 vibrato） |
 | 0.6 ms | 5.5 Hz | 0.0207 | +35.5 / −36.3 cents（練習 3 的聲音） |
 | 5 ms | 2 Hz | 0.0628 | +105 / −112 cents（超過一個半音，已經「醉了」） |
+
+</div>
 
 注意走音量只和 **$`r \times D`$** 有關：depth 加倍、rate 減半，走音量一樣，只是走得慢。`l10_chorus` 用零交叉量測驗證：
 
@@ -230,6 +246,8 @@ y[n] = (1-\text{mix})\,x[n] + \frac{\text{mix}}{N}\sum_{v=0}^{N-1} x\!\left[n - 
 
 #### 聽感與典型參數
 
+<div align="center">
+
 | 參數 | 典型範圍 | 聽感 |
 |---|---|---|
 | centre delay | 10–25 ms | 越長越「分得開」、越像 doubling；太長（> 35 ms）開始分得出兩個聲音，往 slapback 靠近 |
@@ -237,6 +255,8 @@ y[n] = (1-\text{mix})\,x[n] + \frac{\text{mix}}{N}\sum_{v=0}^{N-1} x\!\left[n - 
 | rate | 0.1–2 Hz | 太快會變成 vibrato 般的「晃」 |
 | voices | 1–4 | 越多越厚、越像合奏 |
 | mix | 0.3–0.5 | 0.5 時效果最濃；1.0 就變 vibrato |
+
+</div>
 
 ### 2.5 Flanger
 
@@ -261,7 +281,7 @@ H = \tfrac12\left(1 + e^{-j\omega D}\right) = e^{-j\omega D/2}\cos\!\left(\tfrac
 
 $`d = 2`$ ms 時 notch 在 250、750、1250 Hz……，間距 $`1/d = 500`$ Hz，**等間距**，在頻譜上像一把梳子（comb）。Flanger 就是讓 LFO 推動 $`d`$：整把梳子一起左右滑動，就是噴射機飛過的「咻——」。
 
-![d = 2 ms 與 d = 1 ms 的 flanger 振幅響應 |H|：notch 位於 1/(2d) 的奇數倍](images/flanger-comb-delay.svg)
+<p align="center"><img src="images/flanger-comb-delay.svg" alt="d = 2 ms 與 d = 1 ms 的 flanger 振幅響應 |H|：notch 位於 1/(2d) 的奇數倍"></p>
 
 *左：d = 2 ms，notch 在 250、750、1250、1750 Hz。右：d = 1 ms（LFO 把延遲縮短），梳齒間距變寬、往高頻移，notch 在 500、1500 Hz。*
 
@@ -304,11 +324,15 @@ H(z) = (1-m) + m\,\frac{z^{-D}}{1 - g\,z^{-D}}
 H_{\text{peak}} = (1-m) + \frac{m}{1-g}, \qquad H_{\text{notch}} = (1-m) - \frac{m}{1+g}
 ```
 
+<div align="center">
+
 | feedback $`g`$ | peak（$`f = k/d`$） | 原 notch 位置（$`f = (2k+1)/2d`$） | 聽感 |
 |---|---|---|---|
 | 0 | 1.0（0 dB） | 0（−∞ dB） | 乾淨的掃動 |
 | +0.5 | 1.5（**+3.5 dB**） | 0.167（**−15.6 dB**） | peak 變尖，金屬共鳴 |
 | −0.7 | 0.794（**−2.0 dB**） | −1.167（**+1.3 dB**） | 峰谷對調，「空心」、偏中空的聲音 |
+
+</div>
 
 正 feedback 讓 $`k/d`$ 的整數倍頻率共振（像一根長度 $`d`$ 的管子），聲音越來越「有音高」；負 feedback 讓共振移到奇數倍 $`(2k+1)/(2d)`$——就像一端封閉的管子只有奇次諧波。$`|g| < 1`$ 才穩定（迴路每繞一圈乘 $`g`$），所以 `setFeedback` 限制在 ±0.99。範例的實測和理論完全吻合：
 
@@ -345,6 +369,8 @@ y = \tfrac12\big(x[n - d_0] - x[n - d(t)]\big), \qquad d(t) = d_0 + \Delta\sin(\
 
 #### 典型參數
 
+<div align="center">
+
 | 參數 | 典型範圍 | 聽感 |
 |---|---|---|
 | delay | 0.5–3 ms | 掃動範圍的下限（最高的 notch 位置） |
@@ -352,6 +378,8 @@ y = \tfrac12\big(x[n - d_0] - x[n - d(t)]\big), \qquad d(t) = d_0 + \Delta\sin(\
 | rate | 0.05–0.5 Hz | 慢 = 噴射機；快（> 2 Hz）= 顫動 |
 | feedback | ±0.3–0.9 | 越大越金屬、越有音高 |
 | mix | 0.5 | 0.5 時 notch 最深（兩條路徑等量才能完全抵消） |
+
+</div>
 
 ### 2.6 Phaser
 
@@ -424,12 +452,16 @@ H_{\text{total}} = \tfrac12\left(1 + e^{jN\varphi}\right) \;\Rightarrow\; |H_{\t
 
 notch 出現在 $`N\varphi = -(2k+1)\pi`$（反相）。因為 $`\varphi`$ 從 0 單調降到 $`-\pi`$，$`N\varphi`$ 掃過 $`(-N\pi, 0)`$，其中包含的奇數倍 $`\pi`$ 有 $`\pi, 3\pi, \ldots, (N-1)\pi`$，共 **$`N/2`$ 個**（N 為偶數）。所以：
 
+<div align="center">
+
 | stages | 總相位範圍 | notch 數 |
 |---|---|---|
 | 2 | 0 ~ −360° | 1 |
 | 4 | 0 ~ −720° | 2 |
 | 6 | 0 ~ −1080° | 3 |
 | 8 | 0 ~ −1440° | 4 |
+
+</div>
 
 （這也是為什麼 `setStages` 只收偶數：奇數級時 Nyquist 處的總相位 $`-N\pi`$ 是 $`\pi`$ 的奇數倍，最後一個「notch」卡在 Nyquist，變成高頻一路往下掉的 lowpass 斜坡，等於浪費了一級。）
 
@@ -499,6 +531,8 @@ Effect of feedback on 4 stages (centre 1 kHz, mix 0.5) (measured / theory, dB):
 
 #### 典型參數
 
+<div align="center">
+
 | 參數 | 典型範圍 | 聽感 |
 |---|---|---|
 | stages | 4–8 | 越多 notch 越多、效果越濃 |
@@ -506,6 +540,8 @@ Effect of feedback on 4 stages (centre 1 kHz, mix 0.5) (measured / theory, dB):
 | depth | 0.5–1（× ±2 八度） | 掃多寬 |
 | rate | 0.1–2 Hz | 慢 = 迷幻；快 = 旋轉喇叭般的晃動 |
 | feedback | 0–0.7 | 越大越「哇哇」、越有共鳴 |
+
+</div>
 
 ### 2.7 Tremolo、autopan、ring modulation
 
@@ -753,11 +789,15 @@ cd build
 
 印出五種波形的 ASCII 圖與 min / max / mean、square 平滑前後的「最大單步跳變」、tempo sync 換算表。輸出：
 
+<div align="center">
+
 | 檔案 | 內容 | 該聽 / 看到什麼 |
 |---|---|---|
 | `l10_lfo_sine.wav` … `l10_lfo_sample_hold.wav` | LFO 本身（2 Hz；S&H 8 Hz），振幅 0.5 | 太低頻聽不到，用波形編輯器打開「看」 |
 | `l10_lfo_square_click.wav` | 441 Hz × 4 Hz square gain，不平滑 | 每個音頭音尾一聲「喀」 |
 | `l10_lfo_square_smooth.wav` | 同上，1 ms 平滑 | 乾淨的「噠噠噠噠」 |
+
+</div>
 
 ### 3.7 範例 2：`l10_chorus`（`examples/chorus_demo.cpp`）
 
@@ -765,12 +805,16 @@ cd build
 bin\Debug\l10_chorus.exe                 # 可選：bin\Debug\l10_chorus.exe my_guitar.wav
 ```
 
+<div align="center">
+
 | 檔案 | 參數 | 該聽到什麼 |
 |---|---|---|
 | `l10_chorus_dry.wav` | 原始撥弦琶音 | — |
 | `l10_chorus_wet.wav` | 2 voice、0.8 Hz、depth 3 ms、centre 15 ms、mix 0.5、spread 1 | 比 dry 厚、寬，像兩把吉他沒對準 |
 | `l10_chorus_3voice.wav` | 3 voice、0.5 Hz、depth 4 ms、centre 18 ms | 更像一群人 |
 | `l10_chorus_mono.wav` | 同 wet，spread 0 | 一樣厚，但縮在中間 |
+
+</div>
 
 數字：L/R 相關係數（dry 1.000、wet 0.729、3voice 0.787、mono 1.000）、Doppler 量測（2.3 節）、spread 對相關係數（2.4 節）、linear vs cubic 插值（2.8 節）。
 
@@ -784,6 +828,8 @@ bin\Debug\l10_flanger.exe
 2. 1 ms 延遲下 feedback 0 / +0.5 / −0.7 的峰谷增益，量測 vs 理論。
 3. through-zero flanging。
 
+<div align="center">
+
 | 檔案 | 參數 | 該聽到什麼 |
 |---|---|---|
 | `l10_flanger_dry.wav` | 撥弦琶音 | — |
@@ -791,6 +837,8 @@ bin\Debug\l10_flanger.exe
 | `l10_flanger_noise_dry.wav` | 白雜訊 | — |
 | `l10_flanger_noise.wav` | 0.2 Hz、delay 0.5 ms、depth 4 ms、fb 0.7 | 噴射機起降；最容易聽出 comb 在滑 |
 | `l10_flanger_through_zero.wav` | 乾訊號延遲 2 ms，濕訊號 0.1–3.9 ms（triangle 0.25 Hz） | 每次穿過零點聲音幾乎消失一瞬 |
+
+</div>
 
 ### 3.9 範例 4：`l10_phaser`（`examples/phaser_demo.cpp`）
 
@@ -802,12 +850,16 @@ bin\Debug\l10_phaser.exe
 2. 4 / 6 / 8 stages 的 notch 數與位置（掃描 + 三分搜尋細找 notch，對照公式）。
 3. feedback 0 / 0.5 / 0.8 的影響（量測 vs 含 $`z^{-1}`$ 的理論）。
 
+<div align="center">
+
 | 檔案 | 參數 | 該聽到什麼 |
 |---|---|---|
 | `l10_phaser_dry.wav` | 撥弦琶音 | — |
 | `l10_phaser_wet.wav` | 4 stages、0.4 Hz、centre 800 Hz、depth 1、fb 0.3、mix 0.5 | 柔和、「水水的」掃動 |
 | `l10_phaser_8stage.wav` | 8 stages、fb 0.6 | notch 更多、更明顯 |
 | `l10_phaser_noise.wav` | 白雜訊、6 stages、fb 0.5、0.25 Hz | 最容易聽到 notch 在掃（和 `l10_flanger_noise.wav` 對比：沒有「音高」） |
+
+</div>
 
 ### 3.10 範例 5：`l10_tremolo`（`examples/tremolo_demo.cpp`）
 
@@ -819,12 +871,16 @@ bin\Debug\l10_tremolo.exe
 2. 對照 ring modulation：載波消失、只剩 990 / 1010 Hz（各 0.25 = $`A/2`$）。
 3. autopan：$`g_L + g_R`$ 的誤差，以及每 0.25 秒左右 RMS 的 ASCII 長條。
 
+<div align="center">
+
 | 檔案 | 參數 | 該聽到什麼 |
 |---|---|---|
 | `l10_tremolo_dry.wav` | 撥弦琶音 | — |
 | `l10_tremolo_sine.wav` | sine 5 Hz、depth 0.8 | 音量像波浪起伏 |
 | `l10_tremolo_square.wav` | square 4 Hz、depth 1、1 ms 平滑 | 「噠噠噠」硬切，沒有 click |
 | `l10_tremolo_autopan.wav` | sine 0.5 Hz、depth 1、autopan | 音量不變，聲像每 2 秒左右來回一次（用耳機聽） |
+
+</div>
 
 ## 4. Real-time 注意事項
 
@@ -840,6 +896,8 @@ bin\Debug\l10_tremolo.exe
 
 ## 5. 常見錯誤與除錯
 
+<div align="center">
+
 | 症狀 | 可能原因 | 怎麼查 |
 |---|---|---|
 | Tremolo 用 square 有「喀喀」聲 | LFO 跳變沒平滑（`setSmoothingMs(0)`） | 算輸出的最大單步跳變（範例 1），和正弦本身的 $`A\cdot2\pi f/f_s`$ 比 |
@@ -854,6 +912,8 @@ bin\Debug\l10_tremolo.exe
 | 立體聲 chorus 在 mono 播放時變薄 | 左右相反的濕訊號在相加時部分抵消 | 量 $`(L+R)/2`$ 的 RMS（練習 5）；降低 spread 或 mix |
 | Autopan 經過中央時變小聲 | linear pan law：中央各 $`1 - D/2`$ | 需要的話改 constant power |
 | S&H 的值都差不多 / 不夠隨機 | xorshift 從很小的種子起跑時，前幾個輸出分布差 | `Lfo` 會先用 hash 打散種子；自己寫時也要 |
+
+</div>
 
 ## 6. 練習題
 

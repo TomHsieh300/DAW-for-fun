@@ -59,6 +59,8 @@ This contract has two consequences that recur throughout the chapter:
 
 ### 2.2 Plugin formats at a glance
 
+<div align="center">
+
 | Format | Developer | Platforms | Main hosts | License / how to obtain | Features |
 |---|---|---|---|---|---|
 | **VST3** | Steinberg | Windows, macOS, Linux | Almost every DAW (Cubase, Reaper, Studio One, Bitwig, Ableton Live, FL Studio, ...) | The SDK ships inside JUCE; according to the LICENSE file of the SDK bundled with JUCE it is currently MIT (see §3.7) | component / controller split, sample-accurate automation, multiple buses, fast scanning via `moduleinfo.json` |
@@ -67,6 +69,8 @@ This contract has two consequences that recur throughout the chapter:
 | **CLAP** | An open-source community started by Bitwig + u-he | Windows, macOS, Linux | Bitwig, Reaper, etc.; support keeps growing | Pure C headers under the MIT license | Pure C ABI, clearly written thread rules, per-voice modulation, polyphonic parameters |
 | **LV2** | Open-source community | Mainly Linux (also cross-platform) | Ardour, Carla, etc. | ISC license | Plugins are described by RDF (Turtle) files; a very flexible extension mechanism |
 | VST2 (legacy) | Steinberg | -- | Old hosts | Steinberg has stopped licensing the VST2 SDK to new developers | Exists only for compatibility with old projects; hosting VST2 in JUCE 9 requires you to have the old SDK yourself |
+
+</div>
 
 The nice thing about JUCE is that the same `juce::AudioProcessor` code can output VST3, AU, AAX, LV2 and Standalone at once (this chapter enables only VST3 and Standalone). The host side of this chapter registers only the VST3 format: AU exists only on macOS, and VST2 needs a separate SDK.
 
@@ -105,11 +109,15 @@ A plugin written with JUCE is a "single component": the processor and the contro
 
 Audio in VST3 is not simply "some number of channels" but a number of **buses**, each with a speaker arrangement (mono, stereo, 5.1, ...):
 
+<div align="center">
+
 | Bus | Name | Arrangement | Note |
 |---|---|---|---|
 | input bus 0 | `"Input"` | stereo | main input |
 | input bus 1 | `"Sidechain"` | mono | sidechain, aux; may be disabled by default |
 | output bus 0 | `"Output"` | stereo | |
+
+</div>
 
 The host proposes a configuration with `setBusArrangements()` and the plugin answers whether it accepts it -- this is **bus layout negotiation**. Our `DawLabCompressor` accepts only mono→mono or stereo→stereo (`isBusesLayoutSupported`).
 
@@ -137,6 +145,8 @@ $`k = 1`$ is linear; $`k < 1`$ gives the first part of the slider to small value
 
 The parameters of this chapter's plugin (`plugin/compressor/CompressorProcessor.cpp`):
 
+<div align="center">
+
 | Parameter | Range | skew $`k`$ | Default → normalized |
 |---|---|---|---|
 | Threshold | −60 … 0 dB | 1 | −20 dB → 0.6667 |
@@ -147,13 +157,15 @@ The parameters of this chapter's plugin (`plugin/compressor/CompressorProcessor.
 | Makeup | −12 … +24 dB | 1 | 0 dB → 0.3333 |
 | Mix | 0 … 100 % | 1 | 100 % → 1.0 |
 
+</div>
+
 All of these numbers are verified by the parameter table printed by `l13_offline_host` (the text the plugin itself displays = the value we compute with the formula, see §3.4). In addition, JUCE's VST3 wrapper automatically adds a `Bypass` parameter to a plugin that has none, so the host sees 8 parameters.
 
 #### 2.3.4 Sample-accurate automation
 
 In VST3's `process(ProcessData& data)`, parameter changes are placed in `data.inputParameterChanges`: every changed parameter has a **queue** holding a number of `(sampleOffset, value)` points, meaning "at sample number sampleOffset of this block, the value becomes value", with linear interpolation between the points:
 
-![VST3 parameter queue: points (0, 0.60), (256, 0.40) and (511, 0.45) joined by straight lines](images/vst3-parameter-queue.svg)
+<p align="center"><img src="images/vst3-parameter-queue.svg" alt="VST3 parameter queue: points (0, 0.60), (256, 0.40) and (511, 0.45) joined by straight lines"></p>
 
 A plugin may choose: (a) to interpolate along the queue for every sample (truly sample-accurate); (b) to split the block at the sampleOffsets and use one value per segment; (c) to take only the last value (block-accurate). JUCE's `AudioProcessor` model is (c): the parameters have already been updated at the start of `processBlock` and do not change within the block.
 
@@ -302,6 +314,8 @@ which cancels completely at $`f_k = \dfrac{(2k+1) f_s}{2D}`$. With $`D = 240`$ (
 
 #### 2.6.6 Message thread vs audio thread
 
+<div align="center">
+
 | Action | Thread | Why |
 |---|---|---|
 | Scanning, instantiating, destroying a plugin | message thread | Required by the VST3 spec; many plugins crash if created on other threads |
@@ -311,11 +325,15 @@ which cancels completely at $`f_k = \dfrac{(2k+1) f_s}{2D}`$. With $`D = 240`$ (
 | `processBlock` | audio thread | Must not allocate / lock / do I/O |
 | Parameter values (`setValue` / `getValue`) | any | In JUCE's VST3 hosting `setValue` first goes into a lock-free cache and is only sent into the plugin by the next `process`. Note that `HostedPlugin::setParameterValue` also notifies listeners (briefly taking `listenerLock`), so strictly speaking it is not lock-free; see the comment in `PluginHost.h` |
 
+</div>
+
 `HostedPlugin::process()` also has a detail to deal with: JUCE's `AudioProcessor` has a **callback lock** that the message thread holds during `suspendProcessing(true)`. The audio thread must never "wait" for this lock (it would cause dropouts, even priority inversion), so we use a **try-lock**: if it cannot be taken, that segment keeps the original audio.
 
 Note that this try-lock takes effect only during `suspendProcessing(true)`. `setState` and `prepare` are **not** protected by it (JUCE's VST3 hosting takes a `MessageManagerLock` when changing state and does not touch the callback lock), so the host itself must guarantee that the audio thread is not calling `process()` at that time -- that is exactly what "while audio is stopped" in the table above means, and the thread rules in `PluginHost.h` require the same. In addition, JUCE's VST3 hosting spin-waits on a `processMutex` (a `SpinLock`) inside `processBlock`, and `prepareToPlay`, `releaseResources`, `reset` and `isBusesLayoutSupported` all take the same lock on the message thread; so "`process()` does not wait on a lock" holds only if the host obeys the rules above.
 
 ### 2.7 How JUCE abstracts it
+
+<div align="center">
 
 | JUCE class | Role | Used in this chapter for |
 |---|---|---|
@@ -331,6 +349,8 @@ Note that this try-lock takes effect only during `suspendProcessing(true)`. `set
 | `juce::AudioProcessorGraph` | Modular routing: node = processor, connection = (node, channel), automatic PDC | Exercise 6 |
 | `juce::AudioProcessorPlayer` | Connects an `AudioProcessor` to the audio device's callback | `l13_gui_host` |
 | `juce::AudioDeviceManager` | Opens / configures the audio device | `l13_gui_host` |
+
+</div>
 
 The differences between JUCE 9 and the older (6/7) tutorials commonly found online that this chapter runs into are as follows (according to `third_party/JUCE/BREAKING_CHANGES.md`; these changes actually began to appear gradually in late JUCE 8):
 
@@ -603,11 +623,15 @@ The first configure builds JUCE's `juceaide` tool first (1–2 minutes), and a f
 
 Where the products are:
 
+<div align="center">
+
 | Product | Path (relative to the build folder) |
 |---|---|
 | VST3 | `lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/Debug/VST3/DawLabCompressor.vst3` (likewise for the Limiter) |
 | Standalone | `lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/Debug/Standalone/DawLabCompressor.exe` |
 | Examples, exercises | `bin/Debug/l13_*.exe` |
+
+</div>
 
 ### 3.6 Handing the plugins to other DAWs (for example Reaper)
 
@@ -652,6 +676,8 @@ The following is based on the actual files in this project's `third_party/JUCE` 
 
 ## 5. Common mistakes and debugging
 
+<div align="center">
+
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `loadFromFile` fails: "no loadable VST3 plugin" | The path points to the DLL inside the bundle instead of the bundle folder; or the Debug / Release path is wrong | Pass `…/VST3/DawLabCompressor.vst3` (the folder). `scan()` handles both |
@@ -667,6 +693,8 @@ The following is based on the actual files in this project's `third_party/JUCE` 
 | After changing the plugin and rebuilding, the DAW still has the old version | The DLL is locked by the DAW / the DAW did not reload it | Close the DAW and copy again; re-scan |
 | The whole host crashes when scanning a folder | A plugin crashed during initialization (in-process scanning) | Move it out of the folder; a production product needs out-of-process scanning + a blacklist |
 
+</div>
+
 Debugging tips:
 
 - First use `l13_offline_host <your.vst3>` to confirm in an offline environment that the plugin loads and its parameter table is correct, and only then put it into a DAW.
@@ -679,6 +707,8 @@ Debugging tips:
 
 See [`exercises/README.md`](exercises/README.md) (7 problems: calculation ×2, concepts ×1, hands-on ×4). Solutions and explanations are in [`solutions/README.md`](solutions/README.md).
 
+<div align="center">
+
 | # | Type | Topic | Program |
 |---|---|---|---|
 | 1 ★☆☆ | Calculation | normalized ↔ real values, deriving `setSkewForCentre` | (verified by `l13_state_roundtrip`) |
@@ -688,6 +718,8 @@ See [`exercises/README.md`](exercises/README.md) (7 problems: calculation ×2, c
 | 5 ★★☆ | Hands-on | save a preset to a file and load it back | `l13_ex5_starter` / `l13_ex5_solution` |
 | 6 ★★★ | Hands-on | chain two plugins with `AudioProcessorGraph`, measure latency | `l13_ex6_starter` / `l13_ex6_solution` |
 | 7 ★★★ | Hands-on | a bypass with latency compensation + crossfade | `l13_ex7_starter` / `l13_ex7_solution` |
+
+</div>
 
 ---
 

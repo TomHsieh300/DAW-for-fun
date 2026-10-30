@@ -4,10 +4,14 @@
 
 本專案依檔案類型採用兩種授權：
 
+<div align="center">
+
 | 內容 | 授權 | 檔案 |
 |---|---|---|
 | 原始碼：`*.cpp`、`*.h`、`CMakeLists.txt`、`*.cmake`、腳本 | MIT | [LICENSE](LICENSE) |
 | 教材文字與圖片：`*.md`（所有語言）、`docs/images/`、`lessons/*/docs/images/` | Creative Commons Attribution 4.0 International (CC BY 4.0) | [LICENSE-docs](LICENSE-docs) |
+
+</div>
 
 Copyright (c) 2026 Tom Hsieh.
 

@@ -59,6 +59,8 @@ Arrangement 從不碰 engine 的 clip 清單。它從 `Session::getClips(t)`—�
 
 ### 滑鼠對應表
 
+<div align="center">
+
 | 位置 | 動作 | 效果 |
 |---|---|---|
 | ruler | 點擊 / 拖曳 | `Transport::setPosition()`（對齊）——一個 pending seek |
@@ -66,6 +68,8 @@ Arrangement 從不碰 engine 的 clip 清單。它從 `Session::getClips(t)`—�
 | lane | 點擊 | 選取該 track（`Load audio...`、M / S 鍵作用於它） |
 | 空白的 lane | 雙擊 | seek 到該處 |
 | 任何地方 | 滾輪 / Ctrl + 滾輪 | 捲動 / 以滑鼠為中心 zoom |
+
+</div>
 
 ## 程式碼
 
@@ -92,11 +96,15 @@ for (int px = x0; px < x1; ++px) {
 
 ## 換你動手
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫 | `app/Source/ArrangementView.cpp` 中的 `ArrangementView::sampleToX()`、`xToSample()` 與 `snapToBeat()`（「單一座標系統」中的公式；snapping 取最近的 beat，且絕不回傳負的位置），以及 `app/Source/Session.cpp` 中的 `Session::moveClip()`（移動、維持清單依 start 排序、把新的 clip 清單推送給 engine） |
 | 建置 + 檢查 | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel solution`：`l14_ex8_solution` 在*你的* time axis 上繪製它的 automation lane |
 | 預期 | `[PASS] l14_ex8_solution`：以 `setView(0, 192)`，一個 beat 是 125 像素，而在 beat 2 旁 3 像素處的點擊會對齊到 sample 48 000；snapshot（`l14_app_snapshot`）顯示 clip 在原本的位置；在 app 中，被拖曳的 clip 會落在 beat 上，並在下一輪 loop 就在那裡被聽到 |
+
+</div>
 
 ## 你學到了什麼
 

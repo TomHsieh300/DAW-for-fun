@@ -89,12 +89,16 @@ The audio thread therefore never sees a half-edited list and never frees memory.
 
 ### `Clip.h`
 
+<div align="center">
+
 | Function | Purpose |
 |---|---|
 | `Clip::fromBuffer(buffer, start, name)` | a clip that plays the whole buffer |
 | `fadeGain(shape, t)` | $`t`$ or $`\sin(\pi t/2)`$ |
 | `clipFadeAt(clip, i)` | the fade gain of clip sample $`i`$ |
 | `renderClip(clip, timelineStart, dest)` | adds the overlapping part into `dest`; real-time safe |
+
+</div>
 
 ### `Track.h`
 
@@ -124,12 +128,16 @@ its output is their plain sum - no fader and no pan until Step 4, so a clip samp
 as exactly 0.5. Until Step 7 a track keeps its clips in a plain `std::vector` that is only replaced
 while the engine is not running (the lock-free swap above is Step 7's job).
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | `clipFadeAt()` (the two fade formulas) and `renderClip()` (overlap, source index, clip gain, fades, mono -> all channels, `+=`) |
 | File | `steps/step03-clips/starter/step03.cpp` |
 | Run | `l14_step03_starter`; it prints `[FAIL] l14_step03 (24 of 27 checks failed)` until you are done |
 | Solution | `steps/step03-clips/solution/step03.cpp` (ctest `l14_step03_solution`) |
+
+</div>
 
 Expected output (verified):
 

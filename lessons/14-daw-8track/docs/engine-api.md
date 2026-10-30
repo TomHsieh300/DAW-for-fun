@@ -10,6 +10,8 @@ This page is for whoever writes a front end for the engine - in particular the s
 
 ## 1. Threading model in one table
 
+<div align="center">
+
 | API | UI / message thread | audio thread | notes |
 |---|---|---|---|
 | `Engine::prepare()` | yes, device stopped | no | allocates; re-prepares existing inserts |
@@ -23,6 +25,8 @@ This page is for whoever writes a front end for the engine - in particular the s
 | `Engine::collectGarbage()` | yes (the same single thread) | no | ~30 Hz timer |
 | `renderOffline()`, `bounceToWav()`, `applyPendingCommandsOffline()` | yes, no device running on that engine | no | |
 | `InsertEffect::prepare()` | yes (before handing over) | no | `Engine::addInsert` calls it |
+
+</div>
 
 "Single producer": all structural calls (`addInsert`, ..., `setTrackClips`, `pushCommand`) must come
 from one thread at a time - the message thread. The command queue is single-producer.

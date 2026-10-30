@@ -126,11 +126,15 @@ Smoke test 透過模擬的 callback 播放 demo song，直到 beat 2（120 BPM �
 
 ## 換你動手
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫 | `app/Source/AudioHost.cpp` 中的 `AudioHost::compensatePosition()`（播放時：position 減去 mix latency 再減去 device latency，絕不低於 0；停止時：不變）與 `app/Source/TransportBar.cpp` 中的 `TransportBar::formatBarsBeats()`（"bar.beat.tick"，tick 為三位數） |
 | 建置 + 檢查 | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test`（`l14_app_smoke_test`） |
 | 預期 | 第 6 節印出 `position 1.2.000 (playhead 24000, transport 24752 = + mix latency 752)`；本頁的三項 `compensatePosition()` 檢查（23 744、0、不變）與 Stop 之後的 "1.2.030" 通過；`[PASS] l14_app_smoke_test` |
+
+</div>
 
 ## 你學到了什麼
 

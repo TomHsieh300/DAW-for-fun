@@ -13,6 +13,8 @@ cd build
 .\bin\Debug\l12_ex3_solution.exe       # 參考解答
 ```
 
+<div align="center">
+
 | 題號 | 類型 | 難度 | 主題 | 檔案 / target |
 |---|---|---|---|---|
 | 1 | 計算 | ★☆☆ | comb 的 feedback 與 RT60 | （紙筆） |
@@ -22,6 +24,8 @@ cd build
 | 5 | 實作 | ★☆☆ | gated reverb（第 08 章 Gate） | `starter/ex5_gated_reverb.cpp` → `l12_ex5_starter` |
 | 6 | 實作 | ★★☆ | Schroeder backward integration 估 RT60 | `starter/ex6_rt60_estimator.cpp` → `l12_ex6_starter` |
 | 7 | 觀念 + 計算 | ★★☆ | partitioned convolution 的 latency、CPU 與記憶體 | （紙筆） |
+
+</div>
 
 ---
 

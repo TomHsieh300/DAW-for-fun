@@ -120,6 +120,8 @@ delay，而經過 latency 補償的 bounce 會把它們移到 sample 0 之前 -
 
 ## 程式碼
 
+<div align="center">
+
 | 檔案 | 內容 |
 |---|---|
 | `LatencyCompensator.h` | `prepare(maxDelay, channels)`、`setDelaySamples()`、`process(block)` |
@@ -128,6 +130,8 @@ delay，而經過 latency 補償的 bounce 會把它們移到 sample 0 之前 -
 | `Mixer.h` | `updateLatencies()`、track-sum compensator、`getTotalLatencySamples()` |
 | `EffectBase.h` | `PureDelayEffect`：延遲 N 並回報 N（量測用的儀器） |
 
+</div>
+
 ## Your turn
 
 `steps/step08-pdc/minidaw.h` 是你的 Step 7 engine 加上 effect interface 中的 `getLatencySamples()`、
@@ -135,12 +139,16 @@ delay，而經過 latency 補償的 bounce 會把它們移到 sample 0 之前 -
 參數 0 = 以 sample 為單位的 delay）、每個 strip 的 insert 之後都有一個 `LatencyCompensator`、dry track sum 有一個，
 而 `processChunk()` 在 `applyCommands()` 之後立刻呼叫 `mixer_.updateLatencies()`。
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫的 | `LatencyCompensator::process()`（ring buffer，在 delay 為 0 時也要寫入）與 `Mixer::updateLatencies()`（套用 pending 參數、目標值、每個 compensator、overflow 旗標、總 latency） |
 | 檔案 | `steps/step08-pdc/starter/step08.cpp` |
 | 執行 | `l14_step08_starter`；在你完成之前它會印出 `[FAIL] l14_step08 (15 of 22 checks failed)` |
 | Solution | `steps/step08-pdc/solution/step08.cpp`（ctest `l14_step08_solution`） |
+
+</div>
 
 預期輸出（已驗證）- 在 track 1 與 2 的 timeline 1000 處各放一個 0.25 的 impulse，每一行列出
 某個東西在輸出的哪裡（以及多大聲）抵達：
@@ -165,6 +173,8 @@ latency 跟隨它的參數，就像 limiter 的 lookahead 一樣。
 
 `l14_test_pdc`（已驗證）：
 
+<div align="center">
+
 | 情境 | 預期 | 結果 |
 |---|---|---|
 | track 1 與 2 在 1000 處有 impulse，track 1 有一個 100-sample 的 PureDelay | 在 1100 處有一個 2 x 0.25 x 0.7071 的 impulse；compensator 為 0 / 100 | pass |
@@ -175,6 +185,8 @@ latency 跟隨它的參數，就像 limiter 的 lookahead 一樣。
 | device 變更 48 kHz -> 96 kHz | 同樣 5 ms 的 lookahead 重新 prepare = 480 個 sample，PDC 跟著改變 | pass |
 | track 1：3 x 8191 = 24 573 個 sample（超過 $`C`$ = 16 384），track 2 為 dry，經補償的 render | overflow 旗標被設定，回報的 latency 為 16 384；track 2 在 1000，track 1 在 1000 + 8189（晚了，但在檔案裡） | pass |
 | 同上，engine 以 `maxPdcSamples` = 32 768 prepare | 沒有 overflow，latency 24 573，一個 impulse 在 1000 | pass |
+
+</div>
 
 `l14_pdc_demo` 會量測並讓你聽到結果（已驗證的輸出）：
 

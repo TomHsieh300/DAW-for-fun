@@ -21,12 +21,16 @@ cd build                               # your build folder
 
 DawLabCompressor's parameter ranges are as follows (`plugin/compressor/CompressorProcessor.cpp`):
 
+<div align="center">
+
 | Parameter | Range | skew |
 |---|---|---|
 | Threshold | −60 … 0 dB | 1 (linear) |
 | Ratio | 1 … 20 | 0.5 |
 | Attack | 0.1 … 200 ms | `setSkewForCentre(10)` |
 | Release | 5 … 2000 ms | `setSkewForCentre(100)` |
+
+</div>
 
 JUCE's conversion formulas: $`n = \left(\dfrac{v - s}{e - s}\right)^{k}`$, $`v = s + (e - s)\, n^{1/k}`$.
 

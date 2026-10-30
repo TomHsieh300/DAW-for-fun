@@ -39,11 +39,15 @@ $`\theta = \frac{\pi}{4}(p + 1)`$，$`p_L = \cos\theta`$，$`p_R = \sin\theta`$�
 linear law（$`p_L = (1-p)/2`$）在中央是 -6.02 dB，並且響度會凹下去；-4.5 dB law 則是
 兩者的幾何平均。
 
+<div align="center">
+
 | pan law | 中央每側的 gain | 中央的總功率（$`p_L^2 + p_R^2`$） | 中央的 mono 加總（$`p_L + p_R`$） |
 |---|---|---|---|
 | Linear | 0.5 (-6.02 dB) | 0.5 (-3.01 dB：中間較小聲) | 1 (0 dB) |
 | ConstantPower（預設） | 0.7071 (-3.01 dB) | 1 (0 dB：維持恆定) | 1.414 (+3.01 dB) |
 | Minus4_5dB | 0.5946 (-4.52 dB) | 0.707 (-1.5 dB) | 1.189 (+1.5 dB) |
+
+</div>
 
 （在 $`p = \pm 1`$ 時，每種 law 都是一側為 1、另一側為 0。）沒有任何一種 law 能同時適用於 stereo
 播放（功率相加）與 mono 播放（振幅相加）；-4.5 dB 是兩者的折衷。
@@ -128,6 +132,8 @@ reset 以來的精確統計值 - 最高的 $`|x|`$ 與所有 sample 的 RMS - �
 
 ### `ChannelStrip.h`
 
+<div align="center">
+
 | 區段 | 重點 |
 |---|---|
 | 參數（任何 thread） | `setGainDb`（clamp 到 [-100, +12] dB）、`setPan`、`setPanLaw`、`setPanMode`、`setMute`、`setSolo`、send（Step 6） |
@@ -135,6 +141,8 @@ reset 以來的精確統計值 - 最高的 $`|x|`$ 與所有 sample 的 RMS - �
 | `beginBlock(audible)` | atomic -> smoother 目標；在 `reset()` 之後 snap |
 | `processInserts` / `applyMuteSolo` / `applyFaderAndPan` / `addSend` / `meter` | 各個階段，由 Mixer 依序呼叫 |
 | meter | `getPeakDb(ch)`、`getRmsDb(ch)`、`getMomentaryLufs()`、`getIntegratedLufs()`、`getStats()` |
+
+</div>
 
 ### `Mixer.h`
 
@@ -174,12 +182,16 @@ smoother、`beginBlock`、`applyMuteSolo`、`applyFaderAndPan`、peak meter）�
 每個 track 呼叫 `processTrack()`，然後執行 master 的各階段。這裡還沒有的：insert（Step 5）、send 與 bus
 （Step 6），以及完成版 strip 的 LUFS meter。
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫的 | `ChannelStrip::computeStripGains()`（透過 `dsp::Panner::computeGains` 的 pan law、balance 模式、fader gain、$`-\infty`$）、`Mixer::isTrackAudible()`（solo 規則）、`Mixer::processTrack()`（clip -> `beginBlock` -> mute/solo -> fader x pan -> meter -> sum） |
 | 檔案 | `steps/step04-mixer/starter/step04.cpp` |
 | 執行 | `l14_step04_starter`；在你完成之前它會印出 `[FAIL] l14_step04 (21 of 27 checks failed)` |
 | Solution | `steps/step04-mixer/solution/step04.cpp`（ctest `l14_step04_solution`） |
+
+</div>
 
 預期輸出（已驗證）- 與下表相同的數字，來自 DC clip：
 
@@ -202,6 +214,8 @@ Step 4: the mixer (build-along)
 `l14_test_mixer` render 的是常數（「DC」）clip，所以每個 gain 都能以 sample 值看見
 （所有檢查都已驗證）：
 
+<div align="center">
+
 | 情況 | 預期的 `out_L` |
 |---|---|
 | DC 0.5、fader 0 dB、置中 | 0.5 x 0.7071 = 0.3536 |
@@ -216,7 +230,11 @@ Step 4: the mixer (build-along)
 | 兩者都 solo，然後 mute track 2 | 0.75 x 0.7071，然後 0.5 x 0.7071 |
 | 播放時 fader 0 -> -20 dB | 最大階躍 < 0.001，穩定在 0.7071 x 0.1 |
 
+</div>
+
 `l14_test_track_format` 用一個 L = 0.6、R = 0.2 的 stereo clip 檢查各種 format（已驗證）：
+
+<div align="center">
 
 | 情況 | 預期的 `out_L`、`out_R` |
 |---|---|
@@ -225,6 +243,8 @@ Step 4: the mixer (build-along)
 | stereo track、置中 | 0.6、0.2（balance：unity，保留聲像） |
 | stereo track、balance +0.5 | 0.3、0.2 |
 | mono 檔案（L = R = 0.5），stereo 與 mono track 相比 | +3.01 dB |
+
+</div>
 
 build-along 的 `minidaw.h` 沒有 format：它的 track 行為就像餵入 stereo 音訊的 mono-format track
 （pan law，不做 fold）。[Exercise 14](../exercises/README.zh-TW.md) 讓你自己寫出 track 中與

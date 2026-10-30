@@ -37,10 +37,14 @@ Engine 直接 render 到 driver 的記憶體裡。輸出多於兩個 channel 的
 
 ### 兩個關鍵時刻
 
+<div align="center">
+
 | 時刻 | thread | 這裡可以做什麼 |
 |---|---|---|
 | `audioDeviceAboutToStart` | 啟動 device 的 thread（通常是 message thread） | allocation：`Engine::prepare()`（它同時會重新 prepare 每一個 insert，Step 1）、`SpectrumAnalyzer::prepare()`（Step 20） |
 | `audioDeviceIOCallbackWithContext` | driver 的 real-time thread | 只有 `processBlock()`、幾個 atomic，沒有 allocation / lock / I/O |
+
+</div>
 
 如果 sample rate 或 buffer size 沒有改變（例如 export 重新 attach engine 時，Step 19），`prepareInternal()` 會跳過 `Engine::prepare()`：重新 prepare 會重置每個 effect，並無謂地切斷 reverb tail。
 
@@ -151,11 +155,15 @@ if (mode_ == Mode::Offline || deviceError.isNotEmpty())
 
 從這一步起不再有 snapshot：GUI 無法拆成十個小型 console 程式。取而代之的是，你每次重建完成版 app 中的一個函式，並讓 app 自己的自動化測試來評判（見 [chapter README](../README.zh-TW.md) 的「How to use this chapter」）。先複製檔案（`AudioHost.cpp` -> `AudioHost.cpp.orig`），以便比對與還原。
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫 | `app/Source/AudioHost.cpp` 中 `AudioHost::render()` 的主體，到 spectrum feed 之前為止：把 device 的 pointer array 包成最多 `engine::kNumChannels` 個 channel 的 `AudioBlock`，呼叫 `engine_.processBlock()`，清除 device 其餘的每個 channel（其下的 spectrum 與 CPU-load 程式碼保持原樣） |
 | 建置 + 檢查 | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test`（建置 `DawLab8` 並執行 `l14_app_smoke_test`） |
 | 預期 | 第 4 節對 512 與 480 sample 的 block 印出 `max |callback - bounce| = 0`，第三個 output channel 被檢查為全零，最後以 `[PASS] l14_app_smoke_test` 結束 |
+
+</div>
 
 接著不帶參數啟動 `DawLab 8.exe` 並按下 Space：你會聽到自己寫的 callback。
 

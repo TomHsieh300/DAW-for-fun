@@ -16,12 +16,16 @@ program that pushes audio through it the way a sound card would: call
 
 A DAW has two very different halves:
 
+<div align="center">
+
 | | Engine | Application |
 |---|---|---|
 | runs on | the audio thread (and setup code) | the message / UI thread |
 | must be | real-time safe, deterministic | responsive, pretty |
 | depends on | the C++ standard library + our DSP | JUCE (windows, audio devices, VST3) |
 | can be tested | offline, from a console program | mostly by hand |
+
+</div>
 
 If the engine includes JUCE, every test needs JUCE, every bug hunt starts a GUI, and the
 temptation to call a GUI function from the audio thread is one `#include` away. So the engine is a
@@ -149,12 +153,16 @@ Steps 2, 7, 8 and 9.
 
 ## Your turn
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | `Engine::processBlock()` (not prepared -> silence; cut into chunks) and `Engine::processChunk()` (copy the source, mono -> both channels, advance the position) |
 | File | `steps/step01-skeleton/starter/step01.cpp` (the class is in `steps/step01-skeleton/minidaw.h`) |
 | Build | `.\scripts\build.ps1 -Only 14-daw-8track -NoTest`, then `cd build; .\bin\Debug\l14_step01_starter.exe` |
 | Check | the starter prints `[FAIL] l14_step01 (10 of 16 checks failed)` until you are done; the worked solution is `steps/step01-skeleton/solution/step01.cpp` (ctest `l14_step01_solution`) |
+
+</div>
 
 What the check tests: an unprepared engine outputs silence; 2.5 s in 512-sample callbacks are
 235 calls; the output equals the source sample for sample on both channels and is silent after

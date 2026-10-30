@@ -28,6 +28,8 @@ flowchart LR
     C13["13"] --> C14["14"]
 ```
 
+<div align="center">
+
 | Chapter | Topic | What you will build |
 |---|---|---|
 | 00 | Digital audio fundamentals, development environment | Understand sample, dB, block and latency; build and listen to the examples |
@@ -45,6 +47,8 @@ flowchart LR
 | 12 | Reverb | An algorithmic `Reverb` and a `ConvolutionReverb` |
 | 13 | VST3 plugins and hosting (JUCE) | Wrap the compressor as a VST3, and write a host that can load VST3 plugins |
 | 14 | Build your own 8-track DAW | Put everything together into a DAW that arranges clips, mixes, hosts VST3 plugins and exports WAV (recording is an extension exercise) |
+
+</div>
 
 ---
 
@@ -180,7 +184,7 @@ $`A`$ is the amplitude (how loud) and $`f`$ is the frequency (what pitch). After
 
 **Any sound can be decomposed into a sum of many sine waves.** This is the core idea of Fourier analysis: a guitar, a human voice or a drum hit is equivalent to "many sine waves of different frequencies and amplitudes added together". Plotting "how large the sine wave at each frequency is" gives the **spectrum**: frequency on the horizontal axis, amplitude on the vertical axis.
 
-![Left: the spectrum of a sine wave is a single bar at 440 Hz. Right: the spectrum of a 110 Hz pluck is a fundamental plus a row of harmonics at 220, 330, 440 Hz and so on, getting smaller.](images/spectrum-sine-vs-pluck.svg)
+<p align="center"><img src="images/spectrum-sine-vs-pluck.svg" alt="Left: the spectrum of a sine wave is a single bar at 440 Hz. Right: the spectrum of a 110 Hz pluck is a fundamental plus a row of harmonics at 220, 330, 440 Hz and so on, getting smaller."></p>
 
 The spectrum of a real instrument usually looks like the right-hand plot: the lowest bar is the **fundamental**, which determines the pitch we hear; the row of components above it whose frequencies are exactly **integer multiples** (2×, 3×, 4×, ...) of the fundamental are the **harmonics**, and the $`k`$-th harmonic has frequency $`k \cdot f_0`$. The fundamental itself counts as the first harmonic (H1), the 2× component is H2, and so on; components at odd multiples of the fundamental are **odd harmonics** (H3, H5, ...), and those at even multiples are **even harmonics** (H2, H4, ...).
 
@@ -229,7 +233,7 @@ The two sets of samples are identical except for the sign; the computer has no w
     at 18 kHz (|30000 - 48000|) the amplitude is 0.5000  <- all the energy has folded here
 ```
 
-![Spectrum of a 30 kHz sine sampled at 48 kHz: the component beyond Nyquist (24 kHz) folds back and appears at 18 kHz.](images/aliasing-fold-back.svg)
+<p align="center"><img src="images/aliasing-fold-back.svg" alt="Spectrum of a 30 kHz sine sampled at 48 kHz: the component beyond Nyquist (24 kHz) folds back and appears at 18 kHz."></p>
 
 **Why should you care?** There are two places where components above Nyquist can be created:
 
@@ -296,6 +300,8 @@ This is the formula for **amplitude**. If you are comparing **power** (proportio
 
 A few numbers you must memorize (from the output of `l00_db_math`):
 
+<div align="center">
+
 | dB | Ratio | How to remember it |
 |---:|---:|---|
 | +20 | ×10 | every +20 dB adds a zero |
@@ -309,6 +315,8 @@ A few numbers you must memorize (from the output of `l00_db_math`):
 | -20 | ×0.1 | |
 | -40 | ×0.01 | |
 | -60 | ×0.001 | |
+
+</div>
 
 Exact values: ×2 = +6.0206 dB and √2 = +3.0103 dB. The course text writes 6.02 / 3.01.
 
@@ -336,6 +344,8 @@ There are two ways to measure "how loud" a signal is:
 
 The ratio of the two is the **crest factor**, usually expressed in dB: $`\text{crest} = 20\log_{10}(\text{peak}/\text{RMS})`$. It tells you how "spiky" the signal is:
 
+<div align="center">
+
 | Waveform | peak / RMS | crest factor |
 |---|---|---|
 | Square wave | 1 | 0 dB |
@@ -343,6 +353,8 @@ The ratio of the two is the **crest factor**, usually expressed in dB: $`\text{c
 | Uniformly distributed white noise | √3 | 4.77 dB |
 | Single impulse (1 sample in 0.5 s) | √24000 | 43.8 dB |
 | Drum loop (this course's synthesized drums) | ≈ 5.3 | 14.5 dB |
+
+</div>
 
 Derivation for the sine wave: $`x = A\sin\theta`$, $`\overline{x^2} = A^2 \cdot \overline{\sin^2\theta} = A^2/2`$, so RMS = $`A/\sqrt 2`$. For noise uniformly distributed on $`[-A, A]`$: $`\overline{x^2} = \int_{-A}^{A} \frac{x^2}{2A}dx = A^2/3`$, so RMS = $`A/\sqrt 3`$.
 
@@ -364,7 +376,7 @@ When a signal with $`|x[n]| > 1.0`$ is converted to integers (written to a WAV, 
 y[n] = \begin{cases} 1 & x[n] > 1 \\ x[n] & -1 \le x[n] \le 1 \\ -1 & x[n] < -1 \end{cases}
 ```
 
-![A sine wave of amplitude 1.5 hard-clipped at plus and minus 1.0: the tops are flattened.](images/clipping-sine.svg)
+<p align="center"><img src="images/clipping-sine.svg" alt="A sine wave of amplitude 1.5 hard-clipped at plus and minus 1.0: the tops are flattened."></p>
 
 A flattened waveform amounts to adding high-order harmonics that were not there before; it sounds harsh and "broken". `l00_db_math` hard-clips a 1 kHz sine wave of amplitude 1.5 and measures:
 
@@ -448,12 +460,16 @@ This is the one-way minimum. In practice there is one block on input and one on 
 
 The audio callback runs on a high-priority **audio thread** with a hard deadline: 512 samples @ 48 kHz is 10.67 ms, and a single miss is an audible click / dropout. So the callback must never do anything whose duration is **unknown**. The four cardinal sins:
 
+<div align="center">
+
 | Sin | Why |
 |---|---|
 | **Allocation** (`new`, `malloc`, `std::vector::push_back`, `std::string`, ...) | The memory allocator has locks inside, and may have to ask the OS for new pages (a system call). Just once in a while it takes several milliseconds, and the deadline is blown. Fix: allocate all memory in `prepare()`. |
 | **Locks** (`std::mutex`, any blocking synchronization) | If the lock is held by a low-priority UI thread and the OS happens to swap that thread out, the audio thread has to wait for it: this is called **priority inversion**. Fix: `std::atomic`, lock-free queues (the `SpectrumAnalyzer` in chapter 11 uses one). |
 | **I/O** (files, console `printf`, network, logging) | System calls with completely unpredictable timing (the disk may be asleep). Fix: the audio thread drops the data into a lock-free FIFO and another thread writes the file. |
 | **Unbounded loops / GC** | If the iteration count is not fixed (for example "keep computing until it converges") there is no guarantee that it finishes before the deadline. Languages with a garbage collector (Java, C#, Python) may pause all threads for tens of milliseconds at any time; this is why audio engines are almost always C / C++. |
+
+</div>
 
 Also avoid: throwing exceptions, calling third-party functions whose internals you do not know, and denormal floats (extremely small numbers can slow the CPU by 10 to 100 times; chapter 02 deals with this when we cover filters).
 
@@ -509,6 +525,8 @@ Reading supports 8/16/24/32-bit PCM, 32/64-bit float and WAVE_FORMAT_EXTENSIBLE;
 
 Every chapter uses these deterministic signals (same parameters → same result) as input, so you do not need to prepare any audio files:
 
+<div align="center">
+
 | Function | Purpose |
 |---|---|
 | `makeSine(freq, sr, seconds, amp, nch)` | The simplest signal, with a single frequency. The reference for measuring gain and THD. |
@@ -522,7 +540,11 @@ Every chapter uses these deterministic signals (same parameters → same result)
 | `NoiseGenerator` | xorshift32, outputs $`[-1, 1)`$, for synthesizing your own signals. |
 | `secondsToSamples(sec, sr)` | Seconds → number of samples (`DspMath.h` also has `msToSamples` and `samplesToMs`). |
 
+</div>
+
 ### 3.4 `Analysis.h`: verifying with numbers
+
+<div align="center">
 
 | Function | Purpose |
 |---|---|
@@ -532,6 +554,8 @@ Every chapter uses these deterministic signals (same parameters → same result)
 | `goertzelAmplitude(ptr, n, freq, sr)` | The sine amplitude of a **single frequency** in the signal |
 | `measureGainDb(processFn, freq, sr)` | The gain (dB) at a given frequency of any "one sample at a time" system |
 | `harmonicLevelsDb(...)`, `thdPercent(...)` | Harmonic analysis, THD |
+
+</div>
 
 **Intuition for Goertzel**: an FFT computes all frequencies at once, but if you only want to know "how large is 1 kHz in this signal", Goertzel is cheaper: it is a second-order IIR filter whose resonance is deliberately tuned to the target frequency; you feed the whole signal through it and finally compute the amplitude at that frequency from the filter's two state variables. Feed in a sine wave of amplitude $`A`$ and the return value ≈ $`A`$. A Hann window is applied first, to reduce the leakage caused by discontinuities at the start and end of the signal. Terms such as IIR filter, window, leakage and FFT are covered in detail in chapter 02 (IIR filters) and chapter 11 (FFT, window, leakage); for now all you need to know is: **give it a signal and a frequency, and it returns the sine amplitude at that frequency**.
 
@@ -553,12 +577,16 @@ On failure it prints the expression, the actual value, the expected value and th
 
 ### 3.7 Overview of the example programs
 
+<div align="center">
+
 | target | Source | Demonstrates | Output WAVs |
 |---|---|---|---|
 | `l00_test_signals` | `examples/test_signals.cpp` | Generates all the test signals, prints peak / RMS / crest | `l00_sine_440.wav`, `l00_log_sweep.wav`, `l00_white_noise.wav`, `l00_impulse.wav`, `l00_tone_bursts.wav`, `l00_drum_loop.wav`, `l00_pluck_110.wav`, `l00_pluck_sequence.wav` |
 | `l00_block_processing` | `examples/block_processing.cpp` | Simulates an audio callback, the latency table, per-block peak / RMS | `l00_block_input.wav`, `l00_block_processed.wav` |
 | `l00_wav_info` | `examples/wav_info.cpp` | Reads a WAV (`argv[1]` or a generated one), prints its info, normalizes to -1 dBFS | `l00_wav_info_input.wav`, `l00_wav_info_normalized.wav` |
 | `l00_db_math` | `examples/db_math.cpp` | Verifies every claim in 2.2 to 2.7 with numbers (self-check) | `l00_sum_identical.wav`, `l00_sum_uncorrelated.wav`, `l00_aliasing_30k.wav`, `l00_aliasing_sweep.wav`, `l00_quantized_8bit.wav`, `l00_quantized_16bit.wav`, `l00_clipped_sine.wav` |
+
+</div>
 
 ### 3.8 `l00_test_signals`
 
@@ -651,6 +679,8 @@ This chapter has no DSP components, but here we lay down the rules that every la
 
 ## 5. Common mistakes and debugging
 
+<div align="center">
+
 | Symptom | Likely cause | How to check |
 |---|---|---|
 | The output WAV sounds broken and Audacity shows all red | Values beyond ±1.0 written as 16/24-bit → clipping | Is `peakAbs()` > 1? Use `l00_wav_info` to see the clipped count; write 32-bit float to see the raw values |
@@ -664,6 +694,8 @@ This chapter has no DSP components, but here we lay down the rules that every la
 | Non-ASCII symbols (×, →, √) in printf output show up garbled | `dawlab/Console.h` is not included (`Common.h` already includes it) or the terminal is not UTF-8 | In PowerShell, `chcp 65001` works |
 | MSVC reports `M_PI` undefined | MSVC does not define it by default | Use `dawlab::kPi` |
 | `/W4` warnings: double → float, signed/unsigned | Mixed types | Use an explicit `static_cast<float>()`, and use `size_t` for indices |
+
+</div>
 
 ---
 

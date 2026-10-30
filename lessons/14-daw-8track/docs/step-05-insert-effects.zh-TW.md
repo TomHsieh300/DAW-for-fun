@@ -161,11 +161,15 @@ stereo bus layout prepare 的：見 [Step 17](step-17-vst3-inserts.zh-TW.md) 中
 
 ## 程式碼
 
+<div align="center">
+
 | 檔案 | 區段 |
 |---|---|
 | `InsertEffect.h` | `ParameterKind`、`ParameterInfo`（+ 用於 "-18.0 dB" 標籤的 `formatParameterValue()`）、`PlayHead`、`InsertEffect`、`InsertChain` |
 | `EffectBase.h` | `EffectBase`（atomic + dirty mask + `finishPrepare`）、`PureDelayEffect` |
 | `Effects.h` | 19 個 adapter、`choices::` 標籤表、`paramFloat/Int/Bool/Choice` helper、factory |
+
+</div>
 
 一個完整的 adapter，作為這個模式的範例：
 
@@ -206,12 +210,16 @@ private:
 `Engine::addInsertNow(strip, effect)` 會 prepare 一個 effect 並把它放進 strip - 只用於 setup，Step 7
 會把它變成 lock-free 的 command。Latency（`getLatencySamples`）會在 Step 8 出現。
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫的 | `ParameterInfo::clamp()`、`toNormalized()`、`fromNormalized()`（線性與 log taper）、`EffectBase::setParameter()` 與 `applyPendingParameters()`（atomic 值 + dirty mask）、`InsertChain::process()`（依序、略過被 bypass 的） |
 | 檔案 | `steps/step05-insert-effects/starter/step05.cpp` |
 | 執行 | `l14_step05_starter`；在你完成之前它會印出 `[FAIL] l14_step05 (20 of 24 checks failed)` |
 | Solution | `steps/step05-insert-effects/solution/step05.cpp`（ctest `l14_step05_solution`） |
+
+</div>
 
 預期輸出（已驗證）：
 

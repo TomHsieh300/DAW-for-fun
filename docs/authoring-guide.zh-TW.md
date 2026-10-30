@@ -16,8 +16,11 @@
 - 程式碼識別字用英文。
 - 數學用 GitHub 支援的 LaTeX：行內公式寫成 ``$`...`$``，獨立公式放在 ` ```math ` 區塊裡（兩者都讓 TeX 不經過 Markdown 處理；否則 `\\`、`\,`、`\;` 這類反斜線會被吃掉，或底線會跨公式被配成斜體）。在清單項目（list item）裡，GitHub 會把 ` ```math ` 區塊顯示成一般程式碼，所以那裡的獨立公式改成單獨一行的 ``$`\displaystyle ...`$``。避免 GitHub 不接受的巨集，例如 `\operatorname`（改用 `\mathrm`）。
 - 圖：訊號流程、方塊圖、state machine、時序圖用 ` ```mermaid ` 區塊（標籤用該版本的語言）；曲線（頻率響應、transfer curve、envelope、波形）用 SVG 圖，由該章的 `images/make_figures.py` 透過 `docs/tools/plotstyle.py` 依公式計算產生。不要在程式碼區塊裡用框線字元、箭頭或中文字畫圖：在 GitHub 上會歪掉。用 `python docs/tools/check_mermaid.py` 檢查每個 Mermaid 區塊都能正確渲染。
+- 版面：單獨一行的圖片置中，寫成 `<p align="center"><img src="images/name.svg" alt="..."></p>`；最上層的表格用 `<div align="center">` 包起來（開頭標籤之後、結尾標籤之前各留一個空行，GitHub 才會把表格當 Markdown 解析）。` ```math ` 獨立公式與 Mermaid 圖 GitHub 本來就會置中；程式碼區塊一律佔滿整行寬度。SVG 的文字使用以通用的 `sans-serif` 結尾的無襯線字型清單（在 `plotstyle.py` 設定），任何瀏覽器都不會顯示成襯線字。
 
 ## 2. 目錄結構
+
+<div align="center">
 
 | 路徑 | 內容 |
 |---|---|
@@ -38,6 +41,8 @@
 | `lessons/NN-name/solutions/README.md` | 所有題目的解答與解說（含觀念題、計算題；另有 README.zh-TW.md） |
 | `lessons/NN-name/solutions/*.cpp` | 實作題的完整解答（含 self-check，ctest label: solution） |
 | `lessons/NN-name/tests/*.cpp` | （可選）本章 dsp 元件的回歸測試（ctest label: test） |
+
+</div>
 
 ## 3. 每章 README.md 的結構
 
@@ -126,6 +131,8 @@ GCC / Clang 使用 `-Wall -Wextra -Wpedantic`；新程式碼在這些編譯器�
 
 後面的章節（尤其第 13 章 plugin 與第 14 章 DAW）會直接使用這些 class，**名稱與下列 method 必須存在且語意相同**。可以額外增加 method 或 class。
 
+<div align="center">
+
 | 章 | Header | 必須提供 |
 |---|---|---|
 | 01 | `SmoothedValue.h` | `class SmoothedValue`：`reset(double sampleRate, double rampSeconds)`、`setCurrentAndTargetValue(float)`、`setTargetValue(float)`、`float getNextValue()`、`float getCurrentValue() const`、`float getTargetValue() const`、`bool isSmoothing() const`、`void skip(int numSamples)`（linear ramp） |
@@ -158,5 +165,7 @@ GCC / Clang 使用 `-Wall -Wextra -Wpedantic`；新程式碼在這些編譯器�
 | 11 | `SpectrumAnalyzer.h` | `class SpectrumAnalyzer`：`prepare(double sampleRate, int fftOrder = 11)`、`void pushSamples(const float* x, int n)`（audio thread，lock-free）、`bool computeSpectrum(std::vector<float>& magnitudesDb)`（UI thread；回傳 N/2+1 個 bin 的 dB，含 window 與平滑；沒有新資料時回傳 false）、`double getBinFrequency(int bin) const` |
 | 12 | `Reverb.h` | `class Reverb`（algorithmic，FDN 或 Freeverb 架構擇一並說明）：標準介面 + `setDecaySeconds`（RT60）、`setPreDelayMs`、`setDampingHz`、`setSize(float 0..1)`、`setWidth(float 0..1)`、`setMix(float 0..1)`、`setFreeze(bool)`。教學用 building blocks（`CombFilter`、`AllpassDiffuser` 等）可放在 `ReverbBuildingBlocks.h` |
 | 12 | `ConvolutionReverb.h` | `class ConvolutionReverb`（uniform partitioned FFT convolution，使用第 11 章 `Fft`）：`prepare(double sampleRate, int maxBlockSize, int numChannels)`、`reset()`、`void setImpulseResponse(const AudioBuffer& ir)`（非 audio thread，可 allocate）、`setMix(float 0..1)`、`process(AudioBlock)`、`int getLatencySamples() const`、`static AudioBuffer makeSyntheticImpulseResponse(double sampleRate, double rt60Seconds, int numChannels, uint32_t seed = 1)` |
+
+</div>
 
 第 13 章（JUCE）會提供：一個用 `dawlab::dsp::Compressor` 包成的 VST3 plugin（`DawLabCompressor`），以及可重用的 plugin hosting 程式碼（給第 14 章的 DAW 用來在 track 上插 VST3）。第 14 章把 engine（純 C++、可離線測試）和 JUCE app（audio device、GUI、VST3 insert）分開，並提供兩條路線從零做出 8 軌 DAW：build-along 路線讓讀者逐步自己寫——Steps 1–10 在 `steps/stepNN-*/` 各有一個只含到該步為止功能、可獨立編譯的 engine 快照（`minidaw.h`；`starter/` 留 TODO、執行會 FAIL，`solution/` 以 `DAWLAB_CHECK` 只驗證該步功能，ctest 名稱為 `l14_stepNN_solution`，後一步以前一步的 solution 為基礎），Steps 11–21 則在每份 step 文件的「Your turn」一節指定要在 `app/` 中刪掉重寫的函式，以及重寫後必須通過的檢查（`l14_app_smoke_test` 的對應段落、`--snapshot` 圖片或練習解答）；reference 路線則直接閱讀並執行 `engine/`、`app/` 的完成品。

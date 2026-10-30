@@ -149,12 +149,16 @@ lp_.setCoefficients(BiquadCoefficients::makeLowpass(sampleRate_, highHz, BiquadC
 
 **手算：** $`p = \dfrac{-a_1 \pm \sqrt{a_1^2 - 4a_2}}{2}`$
 
+<div align="center">
+
 | | 判別式 $`a_1^2 - 4a_2`$ | pole | $`\max\lvert p\rvert`$ | 三角形條件 | 結論 |
 |---|---:|---|---:|---|---|
 | (a) $`-1.8, 0.81`$ | $`3.24 - 3.24 = 0`$ | 0.9（重根） | 0.9 | $`0.81 < 1`$，$`1.8 < 1.81`$ ✓ | 穩定 |
 | (b) $`-1.9, 1.0`$ | $`3.61 - 4 = -0.39`$ | $`0.95 \pm 0.3122j`$ | $`\sqrt{a_2} = 1`$ | $`\lvert a_2\rvert = 1`$，不滿足 $`< 1`$ | 臨界（不衰減的振盪器） |
 | (c) $`-2.1, 1.1025`$ | $`4.41 - 4.41 = 0`$ | 1.05（重根） | 1.05 | $`\lvert a_2\rvert > 1`$ ✗ | 不穩定 |
 | (d) $`0.5, -0.6`$ | $`0.25 + 2.4 = 2.65`$ | $`0.5639`$、$`-1.0639`$ | 1.0639 | $`0.5 < 0.4`$？✗ | 不穩定 |
+
+</div>
 
 (b) 很有趣：pole 剛好在單位圓上，impulse response 是一個永不衰減的正弦，頻率 $`\theta f_s/2\pi = \arccos(0.95)\cdot 48000/2\pi \approx 2.43`$ kHz——這就是「數位正弦振盪器」的原理。(d) 是負實數 pole 跑到圓外：每個 sample 正負號翻轉、振幅乘 1.064，在 Nyquist 附近爆掉。
 
@@ -211,6 +215,8 @@ return static_cast<float>(sum_[ch] / length_);
     20000        -19.01        -19.01        -14.93
 ```
 
+<div align="center">
+
 | 比較項目 | moving average（FIR） | one-pole（IIR） |
 |---|---|---|
 | −3 dB 點 | 2676 Hz（近似 $`0.443 f_s/N`$ = 2658） | 設成相同 |
@@ -220,6 +226,8 @@ return static_cast<float>(sum_[ch] / length_);
 | impulse response | 8 個 0.125，然後全是 0 | $`0.296, 0.208, 0.147, \dots`$ 永遠不為 0 |
 | 相位 | linear phase：固定延遲 $`(N-1)/2 = 3.5`$ samples（實測 3.492） | 非線性相位 |
 | 成本 | running sum O(1)，但要存 $`N`$ 個 sample | O(1)，只存 1 個狀態 |
+
+</div>
 
 **聽感：** 白雜訊通過兩者的 RMS 是 −25.79 dB 與 −24.40 dB。moving average 的頻譜有規律的「洞」，聽起來帶一點「梳狀」的空洞感；one-pole 是平順的變暗。moving average 的強項是「時域」：step response 在確定的時間內完成、沒有 overshoot，所以常用在 RMS 偵測視窗（第 04、11 章）而不是音色處理。
 

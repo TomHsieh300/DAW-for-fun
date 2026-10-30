@@ -19,6 +19,8 @@ audio device 每 $`N / f_s`$ 秒要求 $`N`$ 個 sample（48 kHz 下 512 個：�
 **最壞情況**才算數。因此，持續時間無上限或不可預測的操作
 在 audio thread 上是被禁止的：
 
+<div align="center">
+
 | 禁止 | 原因 | engine 的替代做法 |
 |---|---|---|
 | `new` / `delete` / `malloc`（也包括藏在 `std::vector::push_back`、`std::string`、`std::function`、`make_shared` 裡的） | allocator 可能取得 lock，或向 OS 要求 page | 在 `prepare()` 中配置；擁有權隨 command 抵達 |
@@ -26,6 +28,8 @@ audio device 每 $`N / f_s`$ 秒要求 $`N`$ 個 sample（48 kHz 下 512 個：�
 | 檔案 / console I/O（`printf`、logging） | system call、lock | 統計值放在 atomic，由另一條 thread 印出 |
 | exception | 配置 + unwinding 的成本 | 一切都是 `noexcept` |
 | 等待另一條 thread | 無上限 | audio thread 只會 *poll* queue |
+
+</div>
 
 ### 稽核 1 - 計算配置次數
 
@@ -80,11 +84,15 @@ UI 做一個隨機動作然後睡 5 ms（OS 的 timer 粒度會把這個時間�
 
 ## 程式碼
 
+<div align="center">
+
 | 檔案 | 內容 |
 |---|---|
 | `tests/test_realtime_safety.cpp` | operator new/delete 的取代、稽核 2 與 3 |
 | `tests/test_block_invariance.cpp` | 稽核 4 |
 | `examples/realtime_sim.cpp` | 帶有負載統計的、控制節奏的模擬 |
+
+</div>
 
 ## Your turn
 
@@ -92,12 +100,16 @@ UI 做一個隨機動作然後睡 5 ms（OS 的 timer 粒度會把這個時間�
 `audit::counters()`、`audit::countingOnThisThread()`（一個 `thread_local` 旗標）與
 `audit::CountScope`。這裡沒有新的 engine 程式碼 - 被稽核的就是 engine 本身。
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫的 | 被取代的全域 `operator new` / `operator delete` 中的計數（只在 `countingOnThisThread()` 為 true 時），以及 `audit::renderWithBlockSizes()`（從 0 開始播放，block size 循環使用一份清單） |
 | 檔案 | `steps/step10-realtime-safety/starter/step10.cpp`（這些取代函式已經用 `malloc` / `free` 配置；只是還沒有計數） |
 | 執行 | `l14_step10_starter`；在你完成之前它會印出 `[FAIL] l14_step10 (7 of 11 checks failed)` |
 | Solution | `steps/step10-realtime-safety/solution/step10.cpp`（ctest `l14_step10_solution`） |
+
+</div>
 
 這個檢查會在你的迷你 engine 上執行這三項稽核（8 個帶 fade 的 track、track、bus 與 master 上的 Gain / Compressor /
 PureDelay insert、send、PDC、一個 loop）。預期輸出（已驗證，
@@ -156,10 +168,14 @@ iterator）比最佳化後的程式碼慢好幾倍，所以請 build Release
 （`.\scripts\build.ps1 -Only 14-daw-8track -Config Release`）來看真正的 headroom。在
 作者的機器上量測（Release：三次執行）：
 
+<div align="center">
+
 | build | 平均負載 | 最差的 block | deadline 錯過次數 | `l14_render_song`（19 秒音訊） |
 |---|---|---|---|---|
 | Debug | 49.4 % | 633 %（24 個 sample） | 22 | 13.14 秒（1.4 倍 real time） |
 | Release | 10.0 - 10.1 % | 69 - 109 %（24 個 sample） | 0 - 1 | 1.38 秒（13.8 倍 real time） |
+
+</div>
 
 注意*哪個* block 是最差的：最後一個，被切成 24 個 sample，讓這次執行剛好在
 6 秒結束。它的 deadline 只有 0.5 ms，而 engine 每個 block 的許多工作並不會隨 block 縮小

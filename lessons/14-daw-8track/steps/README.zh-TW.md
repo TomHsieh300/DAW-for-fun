@@ -7,6 +7,8 @@
 每個資料夾都是一個小而完整的 engine，內容恰好是該 step 之後所存在的東西。你
 在 `starter/` 裡寫出該 step 的函式，self-check 會告訴你它們何時能正常運作。
 
+<div align="center">
+
 | Step | 資料夾 | 你要寫的 | 執行 |
 |---|---|---|---|
 | 1 | `step01-skeleton` | `Engine::processBlock`、`Engine::processChunk` | `l14_step01_starter` |
@@ -19,6 +21,8 @@
 | 8 | `step08-pdc` | `LatencyCompensator::process`、`Mixer::updateLatencies` | `l14_step08_starter` |
 | 9 | `step09-offline-render` | `renderOffline` | `l14_step09_starter` |
 | 10 | `step10-realtime-safety` | 計算 `operator new` / `delete` 次數、`audit::renderWithBlockSizes` | `l14_step10_starter` |
+
+</div>
 
 每個資料夾都有相同的四個檔案：
 

@@ -13,6 +13,8 @@ cd build
 .\bin\Debug\l12_ex3_solution.exe       # reference solution
 ```
 
+<div align="center">
+
 | # | Type | Difficulty | Topic | File / target |
 |---|---|---|---|---|
 | 1 | Calculation | ★☆☆ | Comb feedback and RT60 | (pencil and paper) |
@@ -22,6 +24,8 @@ cd build
 | 5 | Implementation | ★☆☆ | Gated reverb (Chapter 08 Gate) | `starter/ex5_gated_reverb.cpp` → `l12_ex5_starter` |
 | 6 | Implementation | ★★☆ | Estimating RT60 with Schroeder backward integration | `starter/ex6_rt60_estimator.cpp` → `l12_ex6_starter` |
 | 7 | Conceptual + calculation | ★★☆ | Latency, CPU, and memory of partitioned convolution | (pencil and paper) |
+
+</div>
 
 ---
 

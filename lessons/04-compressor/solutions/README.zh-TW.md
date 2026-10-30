@@ -4,6 +4,8 @@
 
 題目在 [`../exercises/README.md`](../exercises/README.zh-TW.md)。每一支解答程式都有 self-check，`.\scripts\build.ps1 -Only 04-compressor` 會以 ctest（label `solution`）執行它們；手動執行時先 `cd` 到 build 目錄，例如 `.\bin\Debug\l04_ex3_solution.exe`。下面引用的數字都是解答程式實際印出的結果（48 kHz、block size 512）。
 
+<div align="center">
+
 | 題目 | 解答檔 | target |
 |---|---|---|
 | 練習 1 觀念題 | （本文） | — |
@@ -13,6 +15,8 @@
 | 練習 5 auto makeup | `ex5_auto_makeup.cpp` | `l04_ex5_solution` |
 | 練習 6 feedback 拓樸 | `ex6_feedback.cpp` | `l04_ex6_solution` |
 | 練習 7 RMS 視窗 vs pumping | `ex7_rms_window.cpp` | `l04_ex7_solution` |
+
+</div>
 
 ---
 
@@ -58,12 +62,16 @@ One-pole 的 GR 在第 $`n`$ 個 sample 只走了 $`1 - \alpha^n`$。attack 1 ms
 
 **1. $`T = -24`$、$`R = 3`$、hard knee**：threshold 以上 $`y = T + (x - T)/R`$。
 
+<div align="center">
+
 | 輸入 | 輸出 | GR |
 |---|---|---|
 | -30 | -30（在 threshold 以下，不動） | 0 |
 | -24 | -24（剛好在 threshold） | 0 |
 | -12 | $`-24 + 12/3 = -20`$ | 8 |
 | 0 | $`-24 + 24/3 = -16`$ | 16 |
+
+</div>
 
 **2. Soft knee $`W = 12`$**：knee 範圍是 $`T \pm W/2 = -30 \ldots -18`$ dB。knee 內 $`y = x + \frac{(1/R - 1)(x - T + W/2)^2}{2W}`$，其中 $`1/R - 1 = -2/3`$、$`2W = 24`$：
 
@@ -146,6 +154,8 @@ H_{hp}(z) = 1 - H_{lp}(z) = \frac{a\,(1 - z^{-1})}{1 - a z^{-1}}
 \text{makeup} = -\,y(0) = -\,\text{computeOutputDb}(0, T, R, W)
 ```
 
+<div align="center">
+
 | 設定 | 算式 | makeup |
 |---|---|---|
 | $`T=-20`$、4:1、hard | $`-(-20 + 20/4)`$ | 15 dB |
@@ -153,6 +163,8 @@ H_{hp}(z) = 1 - H_{lp}(z) = \frac{a\,(1 - z^{-1})}{1 - a z^{-1}}
 | $`T=-30`$、2:1、hard | $`-(-30 + 30/2)`$ | 15 dB |
 | $`T=-10`$、10:1、hard | $`-(-10 + 10/10)`$ | 9 dB |
 | $`T=-6`$、4:1、$`W=20`$（「想一想」） | knee 是 -16..+4，0 dBFS 在 knee 內：$`y = 0 + (-0.75)(0 + 6 + 10)^2/40 = -4.8`$ | **4.8 dB** |
+
+</div>
 
 最後一列是陷阱：如果直接用 hard knee 公式 $`-(−6 + 6/4) = 4.5`$ dB 會差 0.3 dB，因為 soft knee 在 threshold 以上一點點的地方比 hard knee 多壓。
 

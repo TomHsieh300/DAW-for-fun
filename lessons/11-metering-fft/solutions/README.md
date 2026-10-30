@@ -4,6 +4,8 @@
 
 The complete programs for the coding exercises are in this folder. Each has `DAWLAB_CHECK` self-checks, and `ctest -L solution` runs them automatically:
 
+<div align="center">
+
 | Exercise | File | target |
 |---|---|---|
 | 3 | `ex3_true_peak.cpp` | `l11_ex3_solution` |
@@ -11,6 +13,8 @@ The complete programs for the coding exercises are in this folder. Each has `DAW
 | 5 | `ex5_loudness_range.cpp` | `l11_ex5_solution` |
 | 6 | `ex6_fft_convolution.cpp` | `l11_ex6_solution` |
 | 7 | `ex7_correlation_meter.cpp` | `l11_ex7_solution` |
+
+</div>
 
 ---
 
@@ -82,6 +86,8 @@ The windowed-sinc version is 4 phases × 16 taps = 64.
 
 Actual output (`l11_ex3_solution`, Debug build):
 
+<div align="center">
+
 | Signal | sample peak | Oversampler | windowed-sinc | FFT ideal interpolation |
 |---|---|---|---|---|
 | 1 kHz 0 dBFS | 0.000 dBFS | 0.000 dBTP | -0.003 dBTP | (0) |
@@ -90,7 +96,11 @@ Actual output (`l11_ex3_solution`, Debug build):
 | Same, normalized to -1 dBTP using the Oversampler's reading | -6.201 dBFS | -1.000 dBTP | | |
 | pluck sequence | -5.289 dBFS | -2.923 dBTP | -3.388 dBTP | -2.172 dBTP |
 
+</div>
+
 Phase sweep (fs/4 sine, amplitude 1, error = reading − 0 dBTP; one row excerpted every 11.25°):
+
+<div align="center">
 
 | Phase | Peak position between samples | Oversampler | windowed-sinc |
 |---|---|---|---|
@@ -100,12 +110,18 @@ Phase sweep (fs/4 sine, amplitude 1, error = reading − 0 dBTP; one row excerpt
 | 33.75° | 5/8 | -0.168 dB | +0.010 dB |
 | 45° | 1/2 | +0.000 dB | -0.157 dB |
 
+</div>
+
 Frequency response (a sine of amplitude 0.5 with the frequency slightly off an integer ratio so the peak sweeps through all positions; error = reading − (-6.02)):
+
+<div align="center">
 
 | Frequency | 1 k | 10 k | 16 k | 18 k | 20 k | 21 k | 22 k |
 |---|---|---|---|---|---|---|---|
 | Oversampler | +0.001 | +0.000 | +0.000 | +0.001 | +0.000 | +0.000 | +0.000 |
 | windowed-sinc | -0.000 | -0.002 | -0.002 | +0.092 | -0.081 | -0.229 | -0.430 |
+
+</div>
 
 CPU: 56 vs 64 multiplications; measured times (10 s of stereo white noise, per channel-sample) are about 130–150 ns vs 410–530 ns in Debug,
 and about 20 ns vs 59 ns in Release; the windowed-sinc is about 3 times slower (exact numbers depend on the machine and load).
@@ -190,11 +206,15 @@ lra = percentile(0.95) - percentile(0.10);
 
 Actual output (`l11_ex5_solution`):
 
+<div align="center">
+
 | A / B (dBFS) | LRA | 10% | 95% |
 |---|---|---|---|
 | -20 / -30 | 10.00 LU | -29.95 | -19.95 |
 | -20 / -15 | 5.00 LU | -19.95 | -14.95 |
 | -40 / -20 | 20.00 LU | -39.95 | -19.95 |
+
+</div>
 
 (Identical stereo channels → LUFS = dBFS + 0.01; the 0.05 offset of the histogram bin centers cancels in the subtraction.)
 

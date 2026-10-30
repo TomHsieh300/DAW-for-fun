@@ -46,10 +46,14 @@ device gets the left channel (the engine supports a 1-channel `out`).
 
 ### The two moments that matter
 
+<div align="center">
+
 | moment | thread | what may happen there |
 |---|---|---|
 | `audioDeviceAboutToStart` | the thread that starts the device (normally the message thread) | allocation: `Engine::prepare()` (which also re-prepares every insert, Step 1), `SpectrumAnalyzer::prepare()` (Step 20) |
 | `audioDeviceIOCallbackWithContext` | the driver's real-time thread | only `processBlock()`, a few atomics, no allocation / lock / I/O |
+
+</div>
 
 If the sample rate or buffer size does not change (for example when the export re-attaches the
 engine, Step 19), `prepareInternal()` skips `Engine::prepare()`: re-preparing would reset every
@@ -200,11 +204,15 @@ Instead you rebuild one function of the finished app at a time and let the app's
 test judge it (see "How to use this chapter" in the [chapter README](../README.md)). Copy the file
 first (`AudioHost.cpp` -> `AudioHost.cpp.orig`) so that you can compare and go back.
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | the body of `AudioHost::render()` in `app/Source/AudioHost.cpp`, up to the spectrum feed: wrap the device's pointer array in an `AudioBlock` of at most `engine::kNumChannels` channels, call `engine_.processBlock()`, clear every further device channel (keep the spectrum and CPU-load code below it as it is) |
 | Build + check | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test` (builds `DawLab8` and runs `l14_app_smoke_test`) |
 | Expected | section 4 prints `max |callback - bounce| = 0` for the 512- and 480-sample blocks, the third output channel is checked to be all zeros, and the run ends with `[PASS] l14_app_smoke_test` |
+
+</div>
 
 Then start `DawLab 8.exe` without arguments and press Space: you hear your callback.
 

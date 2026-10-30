@@ -28,12 +28,16 @@ prints the full list: `*.wav;*.bwf;*.aiff;*.aif;*.flac;*.ogg;*.opus;*.mp3;*.wmv;
 chooser always lists exactly what the reader understands. `MediaLoader::canRead(file)` checks the
 extension the same way; the arrangement view uses it for drag and drop:
 
+<div align="center">
+
 | `juce::FileDragAndDropTarget` callback | `ArrangementView` does |
 |---|---|
 | `isInterestedInFileDrag(files)` | true if at least one file has a readable extension |
 | `fileDragEnter` / `fileDragMove(files, x, y)` | highlights the lane under the mouse (`laneAt(y)`) |
 | `fileDragExit` | removes the highlight |
 | `filesDropped(files, x, y)` | keeps the readable files and calls `onFilesDropped(track, files)` |
+
+</div>
 
 The view only routes; `MainComponent::loadDroppedFiles()` loads the first file into the lane it
 was dropped on and further files into the tracks below it (files beyond track 8 are reported in the
@@ -81,11 +85,15 @@ safe->session_.setTrackFormat(media.track, media.fileNumChannels == 1 ? engine::
 safe->session_.setTrackAudio(media.track, media.audio, media.name);
 ```
 
+<div align="center">
+
 | file | engine buffer | track format | pan control |
 |---|---|---|---|
 | 1 channel | 2 channels, L = R (the fold $`(L+R)/2`$ gives the file back exactly) | Mono | pan law (`Pan`) |
 | 2 channels | 2 channels | Stereo | balance (`Bal`) |
 | 3+ channels | the first two channels | Stereo | balance (`Bal`) |
+
+</div>
 
 The engine buffer is always stereo, so the clip and the arrangement do not care about the format;
 only the track's processing does. New projects reset every track to Mono (`Session::resetMixerSettings()`),
@@ -178,11 +186,15 @@ unknown parameter names, mix latency 752 samples - the same numbers as `l14_rend
 
 ## Your turn
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | `resampleBuffer()` in `app/Source/MediaLoader.cpp`: output length, the cutoff $`f_c = 0.46 \min(1, f_{\text{out}}/f_{\text{in}})`$, the windowed-sinc kernel of "Resampling: band-limited interpolation" (keep `ResamplerSettings::kZeroCrossings` and `kCutoffScale` from `MediaLoader.h`) |
 | Build + check | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test` (`l14_app_smoke_test`) |
 | Expected | section 1 prints the four resampler lines of this page: 1 kHz amplitude 0.5000 and length 48 000, the 20 kHz alias more than 60 dB (author: 122.2 dB) down, the 22.3 kHz transition-band alias between -50 and -80 dB (author: -54.3 dB); `[PASS] l14_app_smoke_test` |
+
+</div>
 
 ## What you learned
 

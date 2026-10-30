@@ -84,6 +84,8 @@ Rules that match common DAW behaviour:
 
 `engine/include/dawlab/engine/Transport.h`, section by section:
 
+<div align="center">
+
 | Section | What it does |
 |---|---|
 | `TimeSignature`, `BarsBeats`, `TimelineSegment` | plain structs; `BarsBeats` is 1-based |
@@ -93,6 +95,8 @@ Rules that match common DAW behaviour:
 | loop | `setLoopRange()`, `setLoopRangeBars(firstBar, numBars)`, `setLoopEnabled()` |
 | conversions | `getSamplesPerBeat()`, `barsBeatsToSamples()`, `samplesToBarsBeats()`, `toSeconds()` |
 | `advance()` | the only audio-thread method: seek, segments, position update |
+
+</div>
 
 The heart of `advance()`:
 
@@ -129,12 +133,16 @@ Step 1 engine (solved) plus the `Transport` class with its atomics; the engine's
 `processChunk()` already asks the transport for segments and plays the "tape" at those timeline
 positions. Three functions are only declared:
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | `Transport::barsBeatsToSamples()`, `Transport::samplesToBarsBeats()`, `Transport::advance()` (pending seek, segments split at the loop end, `samplesCovered`) |
 | File | `steps/step02-transport/starter/step02.cpp` |
 | Run | `l14_step02_starter` (from the build directory: `.\bin\Debug\l14_step02_starter.exe`); it prints `[FAIL] l14_step02 (27 of 31 checks failed)` until you are done |
 | Solution | `steps/step02-transport/solution/step02.cpp` (ctest `l14_step02_solution`) |
+
+</div>
 
 The check covers only Step 2: the grid (including 7/8 and 96 BPM at 44.1 kHz, where a beat is
 27 562.5 samples), a stopped transport that still applies a seek, the loop split worked out above,

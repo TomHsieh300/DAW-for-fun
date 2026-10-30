@@ -40,6 +40,8 @@ y[n] = \tfrac14\big(x[n] + x[n-1] + x[n-2] + x[n-3]\big)
 
 聽感上：
 
+<div align="center">
+
 | filter | 做什麼 | 聽起來 |
 |---|---|---|
 | lowpass（LPF） | cutoff 以上變小 | 悶、暗、像隔著牆或棉被 |
@@ -48,6 +50,8 @@ y[n] = \tfrac14\big(x[n] + x[n-1] + x[n-2] + x[n-3]\big)
 | notch | 挖掉 center 附近一小塊 | 和原音幾乎一樣，只少了某個「音色」 |
 | allpass | 大小不變，只改相位 | 單獨聽不出差別；和原音混合才有效果（phaser，第 10 章） |
 | peak / shelf | 某一段加大或減小 | EQ 的基本元件（第 03 章） |
+
+</div>
 
 #### 先複習：複數與 Euler 公式（30 秒版）
 
@@ -58,7 +62,7 @@ y[n] = \tfrac14\big(x[n] + x[n-1] + x[n-2] + x[n-3]\big)
 3. **複數相乘 = 大小相乘、角度相加**：$`|H|e^{j\angle H} \cdot e^{j\theta} = |H|\,e^{j(\theta + \angle H)}`$。所以「讓訊號通過 filter」對單一頻率而言，就是「振幅乘上 $`|H|`$、相位加上 $`\angle H`$」——正是 2.1 節那句話。
 4. **為什麼用 $`e^{j\omega n}`$ 而不用 $`\cos(\omega n)`$？** 因為 $`e^{j\omega(n-1)} = e^{-j\omega} \cdot e^{j\omega n}`$：延遲一個 sample 只是「乘上一個常數」，推導會簡單非常多（cos 延遲後要用和角公式拆成 cos 與 sin 兩項）。真實的正弦波是兩個共軛複數正弦的和：$`\cos(\omega n) = \tfrac12\big(e^{j\omega n} + e^{-j\omega n}\big)`$；filter 係數是實數時，這兩半各自被乘上互為共軛的 $`H`$，加回來仍是實數的正弦，振幅 × $`|H|`$、相位 + $`\angle H`$。
 
-![複數平面上的單位圓：角度 theta 的點 e^(j theta) 大小為 1；z = 1 是 DC，z = -1 是 Nyquist](images/unit-circle-euler.svg)
+<p align="center"><img src="images/unit-circle-euler.svg" alt="複數平面上的單位圓：角度 theta 的點 e^(j theta) 大小為 1；z = 1 是 DC，z = -1 是 Nyquist"></p>
 
 之後會把 $`z = e^{j\omega}`$ 代入 transfer function：$`\omega`$ 從 0 走到 $`\pi`$，就是在單位圓的上半圈從 $`z = 1`$（DC）逆時針走到 $`z = -1`$（Nyquist）。
 
@@ -105,7 +109,7 @@ H(e^{j\omega}) = \frac1N\sum_{k=0}^{N-1} e^{-j\omega k}
 - 相位是 $`-\omega (N-1)/2`$：對所有頻率都是固定延遲 $`(N-1)/2`$ 個 sample，叫做 **linear phase**。
 - −3 dB 點大約在 $`0.443\, f_s/N`$。
 
-![fs = 48 kHz、8 點 moving average 的頻率響應（dB）：一個類似 lowpass 的主瓣，然後在 6、12、18 kHz 出現 null，null 之間是 sidelobe](images/moving-average-response.svg)
+<p align="center"><img src="images/moving-average-response.svg" alt="fs = 48 kHz、8 點 moving average 的頻率響應（dB）：一個類似 lowpass 的主瓣，然後在 6、12、18 kHz 出現 null，null 之間是 sidelobe"></p>
 
 圖中（N = 8，$`f_s = 48`$ kHz）標出 −3 dB 點在 $`0.443\,f_s/N \approx 2.66`$ kHz（N = 8 的精確值是 2.68 kHz）、位於 $`k\cdot f_s/N`$ = 6、12、18 kHz 的 null，以及第一個 sidelobe：峰值在約 8.6 kHz、−12.8 dB（在 $`1.5\,f_s/N`$ = 9 kHz 是 −12.96 dB）。
 
@@ -181,7 +185,7 @@ $`e^{j\omega}`$ 是複數平面上**單位圓**的一個點：$`\omega`$ 從 0�
 - 走到 **zero 附近**時分子很小 → 響應有凹陷；zero 正好在單位圓上 → 那個頻率完全消失（notch、moving average 的 null）。
 - 走到 **pole 附近**時分母很小 → 響應有峰；pole 越靠近單位圓，峰越高越尖（resonance，高 Q）。
 
-![z 平面上 RBJ lowpass（f0 = 1 kHz、Q = 2、fs = 48 kHz）的 pole-zero 圖：兩個 zero 疊在 z = -1，一對共軛 pole 在單位圓內、靠近 z = 1](images/pole-zero-lowpass.svg)
+<p align="center"><img src="images/pole-zero-lowpass.svg" alt="z 平面上 RBJ lowpass（f0 = 1 kHz、Q = 2、fs = 48 kHz）的 pole-zero 圖：兩個 zero 疊在 z = -1，一對共軛 pole 在單位圓內、靠近 z = 1"></p>
 
 圖中 × 是 pole（共軛成對，在圓內），○ 是 zero；單位圓的上半圈 = 0 .. Nyquist。例：RBJ lowpass 的兩個 zero 疊在 $`z = -1`$（Nyquist 完全消失），兩個 pole 在 DC 附近；越靠近圓周，cutoff 附近的峰越尖。
 
@@ -268,6 +272,8 @@ H(z) = \frac{g\,(1 + z^{-1})}{(1+g) - (1-g)\,z^{-1}}
 
 它多了一個在 $`z = -1`$ 的 zero，所以 Nyquist 增益是 0（−∞ dB），−3 dB 點永遠精準落在 $`f_c`$；代價是多一個乘加，而且高頻端的形狀被「擠」向 Nyquist（cramping，2.14 節）。$`f_c = 1`$ kHz 時 $`g = 0.065543`$，pole $`= (1-g)/(1+g) = 0.876976`$——和 exp 版的 0.877306 幾乎一樣，低 cutoff 時兩者沒有實質差別。
 
+<div align="center">
+
 | $`f_c`$ | exp 版 $`a`$ | exp 版實際 −3 dB 點 | bilinear 版 −3 dB 點 |
 |---:|---:|---:|---:|
 | 100 Hz | 0.986995 | 100.0 Hz | 100.0 Hz |
@@ -275,6 +281,8 @@ H(z) = \frac{g\,(1 + z^{-1})}{(1+g) - (1-g)\,z^{-1}}
 | 5 kHz | 0.519703 | 5188.9 Hz | 5000.0 Hz |
 | 10 kHz | 0.270091 | 11895.1 Hz | 10000.0 Hz |
 | 15 kHz | 0.140367 | 不存在（Nyquist 處 −2.45 dB） | 15000.0 Hz |
+
+</div>
 
 （以上數字由 `l02_filter_response` 的 [1] 印出並 self-check。）本教材的 `OnePole` 用 exp 版：它主要用在參數平滑、envelope、feedback 迴路裡的 damping 這種 cutoff 遠低於 Nyquist 的場合，而且「時間常數」的語意最直接。需要精準高頻 cutoff 時請用 biquad。
 
@@ -336,6 +344,8 @@ flowchart LR
 
 **Analog prototype**（以 $`\Omega_0 = 1`$ 正規化，$`s = j\,\Omega/\Omega_0`$）：
 
+<div align="center">
+
 | 種類 | $`H(s)`$ |
 |---|---|
 | LPF | $`\dfrac{1}{s^2 + s/Q + 1}`$ |
@@ -346,6 +356,8 @@ flowchart LR
 | Peak | $`\dfrac{s^2 + s\,(A/Q) + 1}{s^2 + s/(AQ) + 1}`$ |
 | Low shelf | $`A\,\dfrac{s^2 + (\sqrt A/Q)\,s + A}{A s^2 + (\sqrt A/Q)\,s + 1}`$ |
 | High shelf | $`A\,\dfrac{A s^2 + (\sqrt A/Q)\,s + 1}{s^2 + (\sqrt A/Q)\,s + A}`$ |
+
+</div>
 
 其中 $`A = 10^{\text{gainDb}/40}`$（注意是 **40** 不是 20：peak / shelf 的 gain 在分子分母各分一半，$`A^2`$ 才是總倍率）。
 
@@ -380,6 +392,8 @@ a_0 = 1 + \alpha,\; a_1 = -2\cos\omega_0,\; a_2 = 1 - \alpha
 
 **全部 8 種的係數**（共用中間量 $`\omega_0 = 2\pi f_0/f_s`$、$`\alpha = \sin\omega_0/(2Q)`$、$`A = 10^{\text{gainDb}/40}`$；最後都要除以 $`a_0`$）：
 
+<div align="center">
+
 | 種類 | $`b_0`$ | $`b_1`$ | $`b_2`$ | $`a_0`$ | $`a_1`$ | $`a_2`$ |
 |---|---|---|---|---|---|---|
 | LPF | $`\frac{1-\cos\omega_0}{2}`$ | $`1-\cos\omega_0`$ | $`\frac{1-\cos\omega_0}{2}`$ | $`1+\alpha`$ | $`-2\cos\omega_0`$ | $`1-\alpha`$ |
@@ -388,6 +402,8 @@ a_0 = 1 + \alpha,\; a_1 = -2\cos\omega_0,\; a_2 = 1 - \alpha
 | Notch | $`1`$ | $`-2\cos\omega_0`$ | $`1`$ | $`1+\alpha`$ | $`-2\cos\omega_0`$ | $`1-\alpha`$ |
 | Allpass | $`1-\alpha`$ | $`-2\cos\omega_0`$ | $`1+\alpha`$ | $`1+\alpha`$ | $`-2\cos\omega_0`$ | $`1-\alpha`$ |
 | Peak | $`1+\alpha A`$ | $`-2\cos\omega_0`$ | $`1-\alpha A`$ | $`1+\alpha/A`$ | $`-2\cos\omega_0`$ | $`1-\alpha/A`$ |
+
+</div>
 
 Shelf 的係數比較長（令 $`\beta = 2\sqrt A\,\alpha`$）：
 
@@ -423,10 +439,14 @@ $`Q`$（quality factor）控制 pole 離單位圓多近，也就是「峰有多�
 
 - **LPF / HPF**：在 $`f_0`$ 的增益**剛好等於 $`Q`$**（analog prototype 代 $`s = j`$ 得 $`|H| = Q`$，而 prewarp 保證 $`f_0`$ 對齊）。所以 cutoff 處的 dB 值 = $`20\log_{10}Q`$：
 
+<div align="center">
+
 | Q | 0.5 | 0.707 | 1 | 2 | 4 | 8 | 16 |
 |---:|---:|---:|---:|---:|---:|---:|---:|
 | $`f_0`$ 處增益 | −6.02 dB | −3.01 dB | 0 dB | +6.02 dB | +12.04 dB | +18.06 dB | +24.08 dB |
 | 峰值頻率 | 無峰 | 無峰 | 708 Hz | 936 Hz | 984 Hz | 996 Hz | 998 Hz |
+
+</div>
 
   $`Q = 1/\sqrt2 \approx 0.707`$ 是「不出現峰的最大 Q」，也就是二階 **Butterworth**（通帶最平坦）。$`Q > 0.707`$ 時出現 resonance 峰，峰值頻率在 $`f_0\sqrt{1 - 1/(2Q^2)}`$（略低於 $`f_0`$）。上表由 `l02_resonance` 印出。
 
@@ -459,6 +479,8 @@ Q_k = \frac{1}{2\cos\varphi_k},\qquad
 
 為什麼奇偶不同？pole 要對實軸對稱、彼此相隔 $`\pi/N`$：$`N`$ 偶數時沒有 pole 落在實軸上，最靠近實軸的一對在 $`\pm\pi/(2N)`$；$`N`$ 奇數時正中間（$`\varphi = 0`$）有一個**實數 pole**，其餘成對的在 $`\pm\pi/N, \pm2\pi/N, \dots`$。那個實數 pole 就是一個一階 filter $`1/(s + 1)`$——所以奇數階要再串一級 **one-pole**，而且必須是 bilinear 版（2.8 節），cutoff 和各級 biquad 相同，−3 dB 點才會精準落在 $`f_c`$。
 
+<div align="center">
+
 | 階數 $`N`$ | 各級 Q |
 |---:|---|
 | 2 | 0.7071 |
@@ -467,6 +489,8 @@ Q_k = \frac{1}{2\cos\varphi_k},\qquad
 | 5 | 0.6180、1.6180（+ 一級 one-pole） |
 | 6 | 0.5176、0.7071、1.9319 |
 | 8 | 0.5098、0.6013、0.9000、2.5629 |
+
+</div>
 
 `Biquad.h` 提供 `butterworthQ(order, stage)` 計算這些值（奇偶都處理；`stage` 超出 $`0..\lfloor N/2\rfloor - 1`$ 時回傳 0.7071）。注意：把偶數階的公式直接套到奇數階是常見錯誤——$`N = 3`$ 會算出 0.5774 而不是 1.0，串起來在 $`f_c`$ 是 −7.78 dB 而不是 −3.01 dB。練習 3 的解答也驗證了 3 階的情況。
 
@@ -482,11 +506,15 @@ Bilinear transform 把 analog 的 $`\Omega \in [0, \infty)`$ 整條「壓」進 
 
 `l02_filter_response` 的 [4] 比較了 analog 原型與數位版本（LPF，Q = 0.707）：
 
+<div align="center">
+
 | $`f_c`$ | $`f`$ | analog | digital |
 |---:|---:|---:|---:|
 | 1 kHz | 1.2 kHz | −4.88 dB | −4.88 dB |
 | 10 kHz | 12 kHz | −4.88 dB | −5.89 dB |
 | 18 kHz | 21.6 kHz | −4.88 dB | −16.79 dB |
+
+</div>
 
 $`f_c`$ 低時幾乎完全一致；$`f_c = 18`$ kHz 時，cutoff 上方 20% 的地方數位版多衰減了將近 12 dB。對 lowpass 而言這通常無傷大雅（反正要衰減），但對 **peak / shelf EQ** 會讓高頻的 bell 變窄、不對稱，和 analog EQ 的聽感不同。解法有兩類：
 
@@ -557,13 +585,19 @@ flowchart LR
 
 `l02_direct_forms` 用一個「很難算」的 filter 實測（30 Hz、Q = 0.707 的 LPF，$`f_s = 48`$ kHz，pole 半徑 0.997227，非常貼近 $`z = 1`$；$`b_0 \approx 3.8\times10^{-6}`$）：
 
+<div align="center">
+
 | 結構 | 狀態數 | float 下的 round-off（相對輸出） | 換係數（30 → 60 Hz）瞬間的跳動 |
 |---|---:|---:|---:|
 | DF-I | 4 | −73.91 dB | 正常的 1.6 倍 |
 | DF-II | 2 | −73.39 dB | **正常的 983 倍**（click） |
 | TDF-II | 2 | −70.42 dB | 正常的 2.3 倍 |
 
+</div>
+
 誤差的參考值是「係數、狀態、輸出全部用 double」的 TDF-II。再把**係數**與**狀態**的精度分開來看（都用 DF-I）：
+
+<div align="center">
 
 | 係數 | 狀態 | 相對 double 參考的誤差 |
 |---|---|---:|
@@ -572,6 +606,8 @@ flowchart LR
 | double | float | −83.77 dB（只換係數也不夠：狀態的 round-off 還在） |
 | double | double | −242.69 dB（兩種 double 實作幾乎完全吻合） |
 | `dawlab::dsp::Biquad`（double 內部、**float 輸出**） | | −151.20 dB |
+
+</div>
 
 最後一列剛好等於「只把 double 參考輸出 round 成 float」造成的誤差（也是 −151.20 dB）：`Biquad` 內部的誤差已經小到看不見，剩下的只是 `processSample()` 回傳 float 的量化底線。
 
@@ -812,6 +848,8 @@ cd build
 
 ## 5. 常見錯誤與除錯
 
+<div align="center">
+
 | 症狀 | 可能原因 | 解法 |
 |---|---|---|
 | 輸出瞬間變成巨大雜音、然後全部 NaN | 係數不穩定（pole 在單位圓外）：抄錯公式的正負號、忘了除以 $`a_0`$ | 用 `isStable()` / `poles()` 檢查；確認分母慣例是 $`1 + a_1z^{-1} + a_2z^{-2}`$ 且 difference equation 是**減** $`a_1 y[n-1]`$ |
@@ -826,6 +864,8 @@ cd build
 | 高 Q filter 後面破音 | resonance 峰把增益放大到 $`20\log_{10}Q`$ dB | 後面加 gain 補償 / limiter；寫 WAV 用 32-bit float 才看得到 overs |
 | 頻率響應圖在 $`f > f_s/2`$ 的地方「鏡像」回來 | 數位頻率響應以 $`f_s`$ 為週期 | 畫圖只畫到 Nyquist |
 | exp 版 one-pole 在高 cutoff 時 −3 dB 點不對 | impulse invariance 在高頻不準 | 高 cutoff 用 bilinear 版或 biquad |
+
+</div>
 
 ## 6. 練習題
 

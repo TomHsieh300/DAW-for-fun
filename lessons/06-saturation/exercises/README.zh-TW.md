@@ -15,6 +15,8 @@ cd build
 .\bin\Debug\l06_ex4_solution.exe     # 解答
 ```
 
+<div align="center">
+
 | 題號 | 類型 | 難度 | 起始碼 target | 解答 target |
 |---|---|---|---|---|
 | 1 | 觀念 | ★☆☆ | — | — |
@@ -24,6 +26,8 @@ cd build
 | 5 | 實作 | ★★☆ | `l06_ex5_starter` | `l06_ex5_solution` |
 | 6 | 實作 | ★★★ | `l06_ex6_starter` | `l06_ex6_solution` |
 | 7 | 實作 | ★★☆ | `l06_ex7_starter` | `l06_ex7_solution` |
+
+</div>
 
 ---
 

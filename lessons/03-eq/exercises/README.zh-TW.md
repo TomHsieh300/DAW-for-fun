@@ -12,6 +12,8 @@ cd build
 .\bin\Debug\l03_ex2_starter.exe                      # 跑你自己的起始碼
 ```
 
+<div align="center">
+
 | 題號 | 類型 | 難度 | 起始碼 | starter target | 解答 target |
 |---|---|---|---|---|---|
 | 1 | 計算 | ★☆☆ | — | — | （數字在 `l03_ex2_solution` 裡驗證） |
@@ -21,6 +23,8 @@ cd build
 | 5 | 實作 | ★★☆ | `starter/ex5_tilt_eq.cpp` | `l03_ex5_starter` | `l03_ex5_solution` |
 | 6 | 實作 | ★★★ | `starter/ex6_switchable_highcut.cpp` | `l03_ex6_starter` | `l03_ex6_solution` |
 | 7 | 觀念 | ★★☆ | — | — | — |
+
+</div>
 
 ---
 

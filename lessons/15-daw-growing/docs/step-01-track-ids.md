@@ -21,11 +21,15 @@ so the index is a perfectly good name.
 Now let the user delete a track. Four tracks, and two edits recorded while they were there
 (think of two entries in an undo history, or two commands still in the queue):
 
+<div align="center">
+
 | | Drums | Bass | Keys | Vox |
 |---|---|---|---|---|
 | index before | 0 | 1 | 2 | 3 |
 | id | 1 | 2 | 3 | 4 |
 | index after deleting Drums | - | 0 | 1 | 2 |
+
+</div>
 
 The edits were "Bass to -6 dB" and "Vox to -3 dB". Stored as indices they read "track 1 to -6 dB"
 and "track 3 to -3 dB". After the delete, track 1 is *Keys* and track 3 does not exist: one edit
@@ -34,12 +38,16 @@ track simply gets quieter. That is what makes index bugs so expensive to find.
 
 ### Four ways to name a track
 
+<div align="center">
+
 | Name a track by... | Survives delete / reorder? | Problem |
 |---|---|---|
 | its index | no | shifts whenever a track above it is deleted or moved |
 | a pointer to it | as long as it lives | dangles after a delete; a `std::vector` may move all tracks when it grows; cannot be saved to a file |
 | its name | yes | not unique ("Audio 1" twice), and the user renames tracks |
 | **an id** | **yes** | none - it is only a number, so it needs a lookup |
+
+</div>
 
 An id is a plain number that the track list hands out when the track is created and that never
 changes afterwards. It can be copied into a command, written into a project file and compared
@@ -107,12 +115,16 @@ Out-of-range targets are clamped, the way dragging a track below the last one pu
 `TrackList`, and two kinds of recorded edits with `applyEdits()` (by id) and `applyIndexedEdits()`
 (by index, the chapter-14 way).
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | `TrackList::add()`, `remove()`, `indexOf()` and `move()` |
 | File | `steps/step01-track-ids/starter/step01.cpp` |
 | Run | `l15_step01_starter`; it prints `[FAIL] l15_step01 (18 of 25 checks failed)` until you are done |
 | Solution | `steps/step01-track-ids/solution/step01.cpp` (ctest `l15_step01_solution`) |
+
+</div>
 
 Expected output (verified) - the worked example above, then id reuse, reordering, and 2000 random
 operations compared against a reference model:

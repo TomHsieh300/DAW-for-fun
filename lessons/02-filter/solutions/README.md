@@ -149,12 +149,16 @@ Output WAVs: `l02_ex4_noise_cascade.wav`, `l02_ex4_noise_rbj_bpf.wav` (RMS −28
 
 **By hand:** $`p = \dfrac{-a_1 \pm \sqrt{a_1^2 - 4a_2}}{2}`$
 
+<div align="center">
+
 | | discriminant $`a_1^2 - 4a_2`$ | poles | $`\max\lvert p\rvert`$ | triangle condition | conclusion |
 |---|---:|---|---:|---|---|
 | (a) $`-1.8, 0.81`$ | $`3.24 - 3.24 = 0`$ | 0.9 (double root) | 0.9 | $`0.81 < 1`$, $`1.8 < 1.81`$ ✓ | stable |
 | (b) $`-1.9, 1.0`$ | $`3.61 - 4 = -0.39`$ | $`0.95 \pm 0.3122j`$ | $`\sqrt{a_2} = 1`$ | $`\lvert a_2\rvert = 1`$, fails $`< 1`$ | marginal (an oscillator that does not decay) |
 | (c) $`-2.1, 1.1025`$ | $`4.41 - 4.41 = 0`$ | 1.05 (double root) | 1.05 | $`\lvert a_2\rvert > 1`$ ✗ | unstable |
 | (d) $`0.5, -0.6`$ | $`0.25 + 2.4 = 2.65`$ | $`0.5639`$, $`-1.0639`$ | 1.0639 | $`0.5 < 0.4`$? ✗ | unstable |
+
+</div>
 
 (b) is interesting: the poles lie exactly on the unit circle, and the impulse response is a sine that never decays, at frequency $`\theta f_s/2\pi = \arccos(0.95)\cdot 48000/2\pi \approx 2.43`$ kHz -- this is the principle of a "digital sine oscillator". (d) is a negative real pole outside the circle: the sign flips on every sample while the amplitude is multiplied by 1.064, blowing up near Nyquist.
 
@@ -211,6 +215,8 @@ Results ($`N = 8`$, with the one-pole's cutoff set to the moving average's actua
     20000        -19.01        -19.01        -14.93
 ```
 
+<div align="center">
+
 | Comparison | moving average (FIR) | one-pole (IIR) |
 |---|---|---|
 | −3 dB point | 2676 Hz (approximation $`0.443 f_s/N`$ = 2658) | set to the same |
@@ -220,6 +226,8 @@ Results ($`N = 8`$, with the one-pole's cutoff set to the moving average's actua
 | impulse response | eight 0.125s, then all zeros | $`0.296, 0.208, 0.147, \dots`$ never zero |
 | Phase | linear phase: a fixed delay of $`(N-1)/2 = 3.5`$ samples (3.492 measured) | non-linear phase |
 | Cost | running sum is O(1), but needs to store $`N`$ samples | O(1), only 1 state |
+
+</div>
 
 **By ear:** the RMS of white noise through the two is −25.79 dB and −24.40 dB. The moving average's spectrum has regular "holes" and sounds slightly hollow and "comb-like"; the one-pole is a smooth darkening. The moving average's strength is in the "time domain": its step response completes in a definite time with no overshoot, so it is commonly used as an RMS detection window (Chapters 04 and 11) rather than for tonal processing.
 

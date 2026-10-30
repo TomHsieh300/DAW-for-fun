@@ -90,12 +90,16 @@ turned on again.
 per bus) and pre/post switches in `ChannelStrip`, and two bus strips in balance mode whose returns
 `Mixer::process()` adds to the master after all tracks.
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | `ChannelStrip::addSend()` (`dest += src * ramped gain`, one `getNextValue()` per sample) and `Mixer::processTrack()` again, now with the pre-fader tap before and the post-fader tap after `applyFaderAndPan()` |
 | File | `steps/step06-sends-buses/starter/step06.cpp` |
 | Run | `l14_step06_starter`; it prints `[FAIL] l14_step06 (9 of 10 checks failed)` until you are done |
 | Solution | `steps/step06-sends-buses/solution/step06.cpp` (ctest `l14_step06_solution`) |
+
+</div>
 
 Expected output (verified) - the worked example above, then mute, both buses, solo and the ramp:
 

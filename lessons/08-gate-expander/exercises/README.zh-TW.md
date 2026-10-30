@@ -12,6 +12,8 @@ cd build
 .\bin\Debug\l08_ex4_starter.exe                       # 跑你的起始碼
 ```
 
+<div align="center">
+
 | 題號 | 類型 | 起始碼 target | 解答 target |
 |---|---|---|---|
 | 1 | 計算 | — | — |
@@ -22,6 +24,8 @@ cd build
 | 6 | 實作 | `l08_ex6_starter`（`starter/ex6_lookahead_gate.cpp`） | `l08_ex6_solution`（`solutions/ex6_lookahead_gate.cpp`） |
 | 7 | 實作 | `l08_ex7_starter`（`starter/ex7_splitband_deesser.cpp`） | `l08_ex7_solution`（`solutions/ex7_splitband_deesser.cpp`） |
 | 8 | 實作 | `l08_ex8_starter`（`starter/ex8_transient_shaper.cpp`） | `l08_ex8_solution`（`solutions/ex8_transient_shaper.cpp`） |
+
+</div>
 
 ---
 

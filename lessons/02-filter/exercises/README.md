@@ -76,12 +76,16 @@ Cascade a Butterworth highpass ($`f_\text{low} = 500`$ Hz) with a Butterworth lo
 
 **Hand-calculation part:** For each of the following denominator coefficient sets ($`1 + a_1z^{-1} + a_2z^{-2}`$), compute the poles and $`|p|`$ and decide whether it is stable; then check again with the triangle condition $`|a_2| < 1`$ and $`|a_1| < 1 + a_2`$.
 
+<div align="center">
+
 | | $`a_1`$ | $`a_2`$ |
 |---|---:|---:|
 | (a) | −1.8 | 0.81 |
 | (b) | −1.9 | 1.0 |
 | (c) | −2.1 | 1.1025 |
 | (d) | 0.5 | −0.6 |
+
+</div>
 
 **Implementation part:** File `starter/ex5_pole_stability.cpp` → target `l02_ex5_starter`
 

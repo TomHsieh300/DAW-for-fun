@@ -23,6 +23,8 @@ Chapter 13's library `dawlab_plugin_host` provides
 
 The engine knows none of that; it knows `InsertEffect`. `VstInsert` is the adapter:
 
+<div align="center">
+
 | `InsertEffect` | `VstInsert` does | thread |
 |---|---|---|
 | `prepare(sr, block, ch)` | `HostedPlugin::prepare()` (bus layout, `prepareToPlay`) | message (inside `Engine::addInsert`) |
@@ -32,6 +34,8 @@ The engine knows none of that; it knows `InsertEffect`. `VstInsert` is the adapt
 | `setParameter(i, v)` | `HostedPlugin::setParameterValue(i, v)` | any |
 | `reset()` | nothing (see below) | audio |
 | `getName()` | the plugin's name | any |
+
+</div>
 
 Once wrapped, a VST3 plugin goes through *exactly* the same path as a built-in effect:
 `Session::setVstInsert()` -> `Engine::addInsert()` -> command queue -> `InsertChain`; removal
@@ -207,11 +211,15 @@ the bass is simply delayed less, and the mix latency does not change.)
 
 ## Your turn
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | `VstInsert::process()` and `VstInsert::getLatencySamples()` in `app/Source/VstInsert.cpp` (forward to the hosted plugin; on a one-channel block run it on L = R in `monoScratch_` and fold the result back; a negative latency counts as 0) |
 | Build + check | `.\scripts\build.ps1 -Only 13-vst-hosting,14-daw-8track -Juce -TestLabel test` (with chapter 13, so section 5b loads the real VST3 limiter too) |
 | Expected | section 5: `mix latency 752 -> 852, |with - without| = 0`; section 5a: `|with - without| = 0` on the mono drum track; section 5b: `mix latency 752 -> 992`; `[PASS] l14_app_smoke_test` - PDC follows your adapter's latency report |
+
+</div>
 
 ## What you learned
 

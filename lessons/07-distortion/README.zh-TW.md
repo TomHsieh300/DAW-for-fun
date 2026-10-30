@@ -27,15 +27,19 @@
 
 從數學上看，第 06 章與本章做的事情一模一樣：把每個 sample 丟進一條 **memoryless 的 transfer curve** $`y = f(u)`$，其中 $`u = g \cdot x`$ 是乘上 drive gain $`g`$ 之後的輸入。差別在曲線的**形狀**：
 
-![tanh（soft knee）與 hard clip（hard knee）在輸入 -3 到 3 之間的 transfer curve](images/transfer-tanh-vs-hardclip.svg)
+<p align="center"><img src="images/transfer-tanh-vs-hardclip.svg" alt="tanh（soft knee）與 hard clip（hard knee）在輸入 -3 到 3 之間的 transfer curve"></p>
 
 三個面向可以區分「saturation」與「distortion」：
+
+<div align="center">
 
 | 面向 | saturation（第 06 章） | distortion（本章） |
 |---|---|---|
 | 程度 | THD 通常 < 10%，drive 小時幾乎透明 | THD 動輒 20–50% 以上，甚至基頻都不是最大的成分 |
 | knee 的硬度 | 曲線處處平滑（tanh、arctan） | 有「角」（hard clip、foldback 的折點），甚至不連續（quantizer 的階梯） |
 | 諧波數量 | 少、衰減快 | 多、衰減慢，延伸到 Nyquist 之外 |
+
+</div>
 
 **為什麼 knee 的硬度決定諧波衰減速度？** 這是 Fourier 分析的一個基本事實：一個週期函數如果它本身與前 $`k-1`$ 階導數都連續、但第 $`k`$ 階導數有跳躍，那它的 Fourier 係數大約以 $`1/n^{k+1}`$ 衰減。
 
@@ -71,11 +75,15 @@ THD 用 Parseval 定理算最快。Parseval 定理說的是：**訊號的總功�
 
 如果只加到第 50 次諧波（範例的 `thdPercent(..., 50)`），要扣掉 $`n \ge 51`$ 的尾巴 $`\sum_{n \text{ odd} \ge 51} 1/n^2 \approx 0.01`$，得到 $`\sqrt{(\pi^2/8 - 1 - 0.01)} \approx 47.3\%`$。範例 1 量到的（220 Hz、−6 dBFS 正弦）：
 
+<div align="center">
+
 | drive | H1 (dBFS) | H3 | H5 | H7 | THD |
 |---|---|---|---|---|---|
 | 10 dB | 1.5 | −14.1 | −42.1 | −29.7 | 17.0% |
 | 20 dB | 2.0 | −8.0 | −13.4 | −17.9 | 37.9% |
 | 40 dB | 2.1 | −7.4 | −11.9 | −14.8 | 47.0% |
+
+</div>
 
 drive 40 dB 時 H1 = 2.1 dBFS（= $`4/\pi`$）、H3 − H1 = −9.5 dB、THD 47.0%，跟方波的理論值幾乎一樣；偶次諧波全部量不到（−100 dB = Analysis.h 的下限）。範例 1 的 self-check 會逐項驗證：H1 與 $`20\log_{10}(4/\pi) = 2.10`$ dB 差 < 0.3 dB、H3 − H1 與 −9.54 dB 差 < 0.5 dB、THD 介於 44% 與 48.3% 之間、偶次諧波全部低於 −80 dB。
 
@@ -85,7 +93,7 @@ drive 40 dB 時 H1 = 2.1 dBFS（= $`4/\pi`$）、H3 − H1 = −9.5 dB、THD 47.
 
 hard clip 在超過 ±1 時「切掉」，foldback 則是「折回來」，像光在兩面鏡子之間反射：
 
-![Foldback 的 transfer curve：週期 4 的三角波，u 到 1 之前 y = u，超過後折回](images/transfer-foldback.svg)
+<p align="center"><img src="images/transfer-foldback.svg" alt="Foldback 的 transfer curve：週期 4 的三角波，u 到 1 之前 y = u，超過後折回"></p>
 
 數學上就是把 $`u`$ 映射到一個週期 $`4`$ 的三角波上：
 
@@ -112,7 +120,7 @@ y = \begin{cases}
 \end{cases}
 ```
 
-![Fuzz 的 transfer curve：零點附近寬 0.1 的 dead zone，正向上限 +1.0、負向上限 -0.6](images/transfer-fuzz.svg)
+<p align="center"><img src="images/transfer-fuzz.svg" alt="Fuzz 的 transfer curve：零點附近寬 0.1 的 dead zone，正向上限 +1.0、負向上限 -0.6"></p>
 
 1. **高增益**：drive 通常 30 dB 以上，幾乎所有時間都在 clip，接近方波。
 2. **不對稱**（asymmetric）：正半週最高 +1.0、負半週最低 −0.6。$`f(-u) \ne -f(u)`$，half-wave symmetry 被破壞，**偶次諧波出現**，而且輸出的平均值不再是 0（**DC offset**）。DC 會吃掉 headroom、讓下一級（compressor、另一個 distortion）誤判，所以 `Distortion` 對 Fuzz 與 Rectify 會在 shaper 後面加一個 10 Hz 的 one-pole highpass（DC blocker，第 02 章的 `OnePole`）。
@@ -120,18 +128,26 @@ y = \begin{cases}
 
 範例 1 第 (2b) 段直接量這個門檻（Fuzz、drive 30 dB、220 Hz 正弦，輸出 peak）：
 
+<div align="center">
+
 | 輸入峰值 | −60 dBFS | −53 dBFS | −47 dBFS | −40 dBFS |
 |---|---|---|---|---|
 | 輸出 peak | 0（完全靜音） | 0（完全靜音） | 0.041 | 0.216 |
+
+</div>
 
 門檻以下是**數位的零**，不是「很小聲」——self-check 檢查門檻以下的 peak 必須剛好是 0、門檻以上必須有聲音。−47 dBFS 時 $`u`$ 的峰值是 $`10^{-17/20} \approx 0.141`$，扣掉 dead zone 0.1 只剩 0.041，正好是量到的值（oversampler 的 filter 只會讓它差一點點）。
 
 範例 1 的量測（220 Hz、−6 dBFS）：
 
+<div align="center">
+
 | drive | H1 | H2 | H3 | H4 | THD |
 |---|---|---|---|---|---|
 | 12 dB | −0.3 | −19.8 | −13.4 | −24.6 | 26.1% |
 | 30 dB | 0.1 | −36.8 | −9.4 | −36.9 | 45.2% |
+
+</div>
 
 （self-check：Fuzz 12 dB 的 H2 必須高於 −30 dBFS，而且比 30 dB 時大 10 dB 以上。）有趣的是，drive 很大時偶次諧波反而**變弱**：兩邊都完全飽和後，波形變成「正半週 +1、負半週 −0.6」的方波，等於「對稱方波（幅度 0.8）+ DC 0.2」，DC 被 DC blocker 拿掉後就又接近對稱方波了。不對稱的味道最濃的是中等 drive。
 
@@ -204,12 +220,16 @@ Q(u) = \Delta \cdot \mathrm{clamp}\!\left(\left\lfloor \frac{u}{\Delta} + \frac{
 
 每多 1 bit，SNR 多 6.02 dB；訊號每小 20 dB，SNR 也少 20 dB——**量化雜訊的大小是固定的，不隨訊號變**。範例 3 量到（997 Hz 正弦）：
 
+<div align="center">
+
 | bits | step | SNR 量測（0 dBFS） | 理論 | SNR 量測（−20 dBFS） | 理論 |
 |---|---|---|---|---|---|
 | 4 | 0.125 | 23.24 | 25.84 | 5.27 | 5.84 |
 | 8 | 0.00781 | 49.12 | 49.93 | 29.78 | 29.93 |
 | 12 | 0.000488 | 73.80 | 74.01 | 53.97 | 54.01 |
 | 16 | 3.05e-5 | 98.06 | 98.09 | 78.07 | 78.09 |
+
+</div>
 
 8 → 16 bit 量到每 bit 6.12 / 6.04 dB。低 bit 數的偏差有兩個原因：(1) 0 dBFS 的正峰超過量化器的上限 $`1 - \Delta`$ 被削掉（4 bit 時削掉 0.125！），多了 clip 失真；(2) 只有幾階時誤差跟訊號高度相關，不像均勻雜訊。而 −20 dBFS 的 2、3 bit：訊號振幅 0.1 小於 $`\Delta/2`$，整段被量化成 0，SNR = 0 dB——**音尾會直接消失**，這就是 bitcrusher 讓 reverb tail 「斷掉」的原因。
 
@@ -221,7 +241,7 @@ Q(u) = \Delta \cdot \mathrm{clamp}\!\left(\left\lfloor \frac{u}{\Delta} + \frac{
 
 降取樣率的「正確」做法是先 lowpass 再丟 sample（第 06 章的 Oversampler 反過來做）。bitcrusher 偏偏不這麼做：每 $`D`$ 個 sample 才「看」一次輸入，其餘時間維持上一個值（**sample & hold**, S&H）：
 
-![D = 4 的 sample & hold：每 4 個 sample 取一個，並維持到下一個](images/sample-and-hold.svg)
+<p align="center"><img src="images/sample-and-hold.svg" alt="D = 4 的 sample &amp; hold：每 4 個 sample 取一個，並維持到下一個"></p>
 
 等效取樣率 $`f_s' = f_s / D`$。在 $`f_s'`$ 的世界裡，任何高於 $`f_s'/2`$ 的頻率都會 alias：
 
@@ -237,11 +257,15 @@ hold 的動作本身是一個 zero-order hold（ZOH），頻率響應是 sinc：
 
 所以每個成分的大小 = 原本的大小 × ZOH 在那個頻率的值。（嚴格說，在離散時間裡「hold $`D`$ 個 sample」的響應是 Dirichlet kernel $`\left|\frac{\sin(\pi f D / f_s)}{D \sin(\pi f / f_s)}\right|`$；$`D`$ 大、$`f \ll f_s`$ 時它就趨近上面的 sinc。範例用 sinc 當理論值，誤差在 0.3 dB 以內。）範例 3 的量測：5 kHz、−6 dBFS 正弦、$`D = 8`$（$`f_s' = 6`$ kHz）：
 
+<div align="center">
+
 | 頻率 | 量測 | 理論 |
 |---|---|---|
 | 5000 Hz（原頻率） | −20.2 dBFS | −6 + (−14.4) = −20.4 |
 | **1000 Hz（alias，$`|5000 - 6000|`$）** | **−6.4 dBFS** | −6 + (−0.4) = −6.4 |
 | 11000 Hz（image，$`f_s' + f`$） | −26.5 dBFS | — |
+
+</div>
 
 一個原本不存在、跟 5 kHz 毫無諧波關係的 1 kHz 出現了，而且比原本的 5 kHz 還大聲 14 dB。這種**跟音高無關的頻率**就是 bitcrusher 的「金屬味」、「機器人味」；彈一段旋律時，alias 會往跟音符相反的方向移動，非常有辨識度。這是**刻意的** aliasing，是效果本身。
 
@@ -271,14 +295,20 @@ flowchart LR
 
 以 48 kHz、5 kHz 正弦的 hard clip 為例，奇次諧波 15k、25k、35k、45k、55k ……只有 15k 在 Nyquist 以內，其餘按 $`|f - k f_s|`$ 折回來：
 
+<div align="center">
+
 | 諧波 | 5k | 15k | 25k | 35k | 45k | 55k | 65k ... |
 |---|---|---|---|---|---|---|---|
 | 折到 | 5k | 15k | 23k | 13k | 3k | 7k | 17k ... |
 | 是 5 kHz 的整數倍嗎？ | 是 | 是 | 否 | 否 | 否 | 否 | 否 |
 
+</div>
+
 折回來的 23k、13k、3k、7k、17k 都不是 5 kHz 的整數倍，所以是**不和諧（inharmonic）**的。
 
 範例 4（`l07_oversampling_aliasing`，drive 20 dB）的量測（dBFS）：
+
+<div align="center">
 
 | OS | latency | H @ 5k | H @ 15k | A @ 3k | A @ 7k | A @ 13k | A @ 23k |
 |---|---|---|---|---|---|---|---|
@@ -286,6 +316,8 @@ flowchart LR
 | 2x | 31 | 2.0 | −8.0 | −44.1 | −44.9 | −44.6 | −26.4 |
 | 4x | 36 | 2.0 | −8.0 | −47.4 | −47.4 | −48.8 | −26.2 |
 | 8x | 38 | 2.0 | −8.0 | −74.6 | −78.2 | −72.9 | −25.9 |
+
+</div>
 
 真正的諧波（H 欄）完全不受影響；alias（A 欄）在 4x 時降了 19–31 dB、8x 時再降 24–31 dB。三個細節：
 
@@ -310,12 +342,16 @@ flowchart LR
 
 **bitcrush 不需要 oversampling**：量化雜訊不是「超過 Nyquist 的諧波」，它在原始取樣率就已經均勻分布在整個頻帶；sample & hold 的 aliasing 更是效果本身。在 4x 下做 S&H 反而會改變效果（hold 的長度、量化的位置都不同）。範例 4 的對照組：Bitcrush 8 bit 在 1x 與 4x 時 7 kHz 的雜訊都是 −64.0 dBFS，一模一樣（`Distortion` 的 bitcrush 路徑本來就不經過 oversampler；self-check 要求兩者差 < 0.01 dB）。順帶一提，這個例子的 3 kHz 是 −100 dB（量不到）而 7 kHz 有 −64 dB：5 kHz 在 48 kHz 下每 48 個 sample 重複一次，量化誤差也跟著週期性重複，所以雜訊集中在 1 kHz 的整數倍上，而不是平均地鋪滿整個頻帶——這正是 2.6.1 節「用 997 Hz 而不是 1000 Hz」要避免的情況。
 
+<div align="center">
+
 | 效果 | 需要 oversampling？ | 原因 |
 |---|---|---|
 | tanh / cubic saturation | 視 drive，2–4x | 諧波衰減快 |
 | hard clip、foldback、fuzz | **要**，4x 以上 | 曲線有角，諧波衰減慢 |
 | full-wave / half-wave rectify | **要** | 在過零點有角 |
 | bitcrush（量化 + S&H） | **不要** | aliasing 是效果本身；量化雜訊本來就在頻帶內 |
+
+</div>
 
 ### 2.9 Noise、gain staging 與輸出音量補償
 
@@ -329,6 +365,8 @@ flowchart LR
 g_\text{comp} = \frac{\text{RMS}_\text{in}}{\text{RMS}_\text{out}}
 ```
 
+<div align="center">
+
 | type | 處理後 RMS | 需要補償 |
 |---|---|---|
 | HardClip 20 dB | −3.50 dBFS | −16.21 dB |
@@ -336,6 +374,8 @@ g_\text{comp} = \frac{\text{RMS}_\text{in}}{\text{RMS}_\text{out}}
 | Fuzz 30 dB | −4.21 | −15.50 |
 | Rectify 6 dB | −18.22 | −1.49 |
 | Bitcrush 6 bit ×4 | −19.68 | −0.03 |
+
+</div>
 
 離線處理可以算整段的 RMS；即時處理要用**滑動的 RMS**（一階 IIR 的 mean-square 偵測器）分別追蹤輸入和輸出，即時算出補償倍率——這就是練習 5 的 auto gain compensation。plugin 上常見的「auto gain」或「output 自動跟 drive 反向連動」就是這個概念。
 
@@ -356,6 +396,8 @@ flowchart LR
     CAB --> OUT[output gain]
 ```
 
+<div align="center">
+
 | 級 | 真實電路 | 本章的模型 | 為什麼放在這裡 |
 |---|---|---|---|
 | input HPF | 輸入耦合電容 | `OnePole` highpass 80 Hz | 失真前先拿掉低頻，避免 intermodulation 與「糊」 |
@@ -365,9 +407,13 @@ flowchart LR
 | power amp | 功率管 + 輸出變壓器 | 本章 `Distortion`（HardClip） | 推太大時的硬 clip、壓縮感 |
 | cabinet | 12 吋喇叭 + 箱體 | 2 顆 Butterworth LPF 串成 LR4 + 1 顆 peak | 喇叭根本發不出 5 kHz 以上，這一級把刺耳的高次諧波砍掉 |
 
+</div>
+
 （LR4 = 4 階 **Linkwitz-Riley** lowpass：兩顆 Q = $`1/\sqrt{2}`$ 的 2 階 Butterworth lowpass 串接，cutoff 處是 −6 dB、之後 24 dB/oct，細節見下文。名字來自 Siegfried Linkwitz 與 Russ Riley，原本是喇叭分音器的設計。）
 
 **cabinet 是最被低估的一級。** 範例 2 用 110 Hz 正弦經過 Lead preset，量 cabinet 開 / 關的諧波差：
+
+<div align="center">
 
 | 諧波 | 頻率 (Hz) | cab off (dBFS) | cab on (dBFS) | 差 | cabinet 響應 `getCabinetMagnitudeDb()` |
 |---|---|---|---|---|---|
@@ -378,6 +424,8 @@ flowchart LR
 | 41 | 4510 | −35.0 | −41.0 | −6.1 | −6.06（LR4 的 cutoff：−6 dB） |
 | 61 | 6710 | −46.5 | −63.1 | −16.6 | −16.59 |
 | 81 | 8910 | −55.4 | −82.8 | −27.4 | −27.37 |
+
+</div>
 
 「差」那一欄和 cabinet 的頻率響應**逐項相等**：cabinet 是整條鏈最後一級、而且是線性的，它對每個諧波只做「乘上自己在那個頻率的增益」，不會產生新的頻率。範例 2 的 self-check 就是檢查這件事（每個量得到的諧波 ±0.5 dB），同時要求 8 kHz 以上的諧波被砍 15 dB 以上。（偶次諧波是 −100 dB 的量測下限：power amp 的 hard clip 與 preamp 的 tanh 都是對稱曲線。）
 
@@ -557,6 +605,8 @@ latency 印出 72 samples（preamp 與 power amp 各一個 4x oversampler）。�
 
 ## 5. 常見錯誤與除錯
 
+<div align="center">
+
 | 症狀 | 原因 | 解法 |
 |---|---|---|
 | 高音彈奏時有不和諧的「金屬味」、往下掃的哨音 | 在原始取樣率做 hard clip，alias | 用 `process()`（會 oversampling），而不是 `processSample()`；倍率 4x 以上 |
@@ -571,6 +621,8 @@ latency 印出 72 samples（preamp 與 power amp 各一個 4x oversampler）。�
 | bitcrusher 的「downsample」聽不出效果 | 先 lowpass 再降取樣（做成了正確的 resampler） | bitcrusher 要的就是不加 filter 的 sample & hold |
 | `Distortion` 完全沒有效果、輸出等於輸入 | 沒有呼叫 `prepare()`（`process()` 發現還沒 prepare 就直接 return，避免存取未配置的 buffer） | 一定先 `prepare()` |
 | 改了 `setOversamplingFactorLog2()` 卻沒有變化，latency 也沒變 | 倍率只在 `prepare()` 時生效 | 改倍率後重新 `prepare()` |
+
+</div>
 
 ## 6. 練習題
 

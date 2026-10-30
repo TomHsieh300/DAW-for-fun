@@ -38,6 +38,8 @@
 
 ## 2. 各個 step
 
+<div align="center">
+
 | Step | 文件 | 新增內容 | 狀態 |
 |---|---|---|---|
 | 1 | [穩定的 track ID](docs/step-01-track-ids.zh-TW.md) | `TrackId`、發出永不重複 id 的 track list；為什麼 index 會出錯 | 完成 |
@@ -46,6 +48,8 @@
 | 4 | 存檔與開啟專案 | 以 track id 為基礎、帶版本的專案檔；在不同 sample rate 下開啟 | 規劃中 |
 | 5 | Undo 與 redo | 可以反轉的 command、undo 歷史、哪些操作應該（或不應該）可以 undo | 規劃中 |
 | 6 | App | 可以捲動的 arrangement 與 mixer、GUI 中新增 / 刪除 track、File 選單 | 規劃中 |
+
+</div>
 
 ## 3. 本章的起點
 

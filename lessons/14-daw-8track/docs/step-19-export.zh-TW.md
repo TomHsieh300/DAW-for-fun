@@ -72,11 +72,15 @@ audioHost_.setEngineAttached(false);   // AudioDeviceManager::removeAudioCallbac
 
 ## 換你動手
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫 | `app/Source/Exporter.cpp` 中的 `Exporter::renderToFile()`：從 `ExportOptions` 填入 `engine::RenderOptions`，呼叫 `engine::renderOffline()`（Step 9），填寫 `ExportResult`（latency、長度、peak、master 的 integrated LUFS），拒絕空的或含 NaN 的 render，寫出 WAV |
 | 建置 + 檢查 | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test`（`l14_app_smoke_test`） |
 | 預期 | 第 3 節：`export: ok, 2.00 s, peak -1.00 dBFS`；第 9 節：整首 song、19.00 s、-15.5 LUFS integrated、移除 752 的 latency；`[PASS] l14_app_smoke_test` |
+
+</div>
 
 ## 你學到了什麼
 

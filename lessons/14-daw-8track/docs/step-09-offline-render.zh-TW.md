@@ -80,6 +80,8 @@ bool bounceToWav(Engine&, const std::string& path, const RenderOptions&, int bit
 
 ### 歌曲（`examples/render_song.cpp`）
 
+<div align="center">
+
 | Track | 素材（Signals.h） | Format | Insert | Fader / pan | Send |
 |---|---|---|---|---|---|
 | 1 Drums | `makeDrumLoop` 2 小節 x 4 個 clip | Mono | TransientShaper、Compressor | -2 dB / C | reverb -18 |
@@ -93,6 +95,8 @@ bool bounceToWav(Engine&, const std::string& path, const RenderOptions&, int bit
 | Bus A | | （stereo） | Reverb（100 % wet，2.2 秒） | -2 | |
 | Bus B | | （stereo） | Delay（100 % wet，附點 1/8 = 375 ms，ping-pong） | -4 | |
 | Master | | （stereo） | Compressor（-12 dB 處 2:1）、Limiter（-1 dBFS，5 ms） | 0 | |
+
+</div>
 
 Track format（Step 4）跟隨素材：mono source 放在 mono track 上（pan law），stereo 的 pad 與 wind
 放在 stereo track 上（balance）。Hits 刻意是放在 stereo track 上的 mono source，讓它的 convolution
@@ -112,12 +116,16 @@ balance x1）；Wind 與 Hits 有 pan，而 balance 與 pan law 在 pan 不置�
 完成版 engine 的 `resetBeforeRender` / `restoreTransport` 開關：snapshot 永遠會 reset
 並還原）以及 `bounceToWav()`。這是完整的迷你 engine。
 
+<div align="center">
+
 | | |
 |---|---|
 | 你要寫的 | `renderOffline()`：長度計算、儲存 / 還原 transport、reset、render 歌曲（在結尾處切斷）、stop、render 尾巴 + latency、丟掉前 `latency` 個 sample |
 | 檔案 | `steps/step09-offline-render/starter/step09.cpp` |
 | 執行 | `l14_step09_starter`；在你完成之前它會印出 `[FAIL] l14_step09 (11 of 14 checks failed)` |
 | Solution | `steps/step09-offline-render/solution/step09.cpp`（ctest `l14_step09_solution`） |
+
+</div>
 
 測試用的歌曲長 1 秒（在 track 1 的 sample 0 與 24 000 處分別有 0.5 與 0.25 的 impulse），
 master 上有一個 240-sample 的 delay，用來代替 lookahead limiter。預期輸出（已驗證）：

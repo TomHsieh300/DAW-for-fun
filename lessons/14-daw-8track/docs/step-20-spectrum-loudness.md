@@ -13,11 +13,15 @@ chapter 11's classes, all of it fed by the audio thread without locks.
 
 ### Two measurement points, one rule
 
+<div align="center">
+
 | display | measured by | where | how the GUI gets it |
 |---|---|---|---|
 | strip meters, master meter | `dsp::LevelMeter` in every `ChannelStrip` | audio thread, `ChannelStrip::meter()` | atomics, 30 Hz poll |
 | LUFS M / S / I | `dsp::LoudnessMeter` in every `ChannelStrip` | audio thread | atomics, 30 Hz poll |
 | spectrum | `dsp::SpectrumAnalyzer` in `AudioHost` | audio thread pushes samples | `computeSpectrum()` on the message thread |
+
+</div>
 
 The rule from chapter 11: the audio thread only *writes* (samples into a lock-free FIFO, results
 into atomics); everything expensive or allocating happens on the reading side.
@@ -99,11 +103,15 @@ turns red and adds "PDC limit exceeded, not aligned!" (`Engine::hasPdcOverflow()
 
 ## Your turn
 
+<div align="center">
+
 | | |
 |---|---|
 | You write | `SpectrumView::frequencyToProportion()` and `proportionToFrequency()` in `app/Source/Meters.cpp` (the log axis between 20 Hz and 20 kHz, clamped at both ends) |
 | Build + check | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test` (`l14_app_smoke_test`) |
 | Expected | section 8: `peak at 996.09 Hz, -6.02 dBFS (-6.02 expected); 632.5 Hz at x = 0.500`; `[PASS] l14_app_smoke_test`; in the snapshot the spectrum's grid lines (100 Hz, 1 kHz, 10 kHz) sit where they were |
+
+</div>
 
 ## What you learned
 

@@ -49,12 +49,16 @@ flowchart LR
 
 Each of the four blocks answers one question:
 
+<div align="center">
+
 | Block | Question | Implementation in this chapter |
 |---|---|---|
 | Detector | "How loud is it right now?" | `DetectorMode::Peak` (instantaneous $`\lvert x \rvert`$) or `DetectorMode::Rms` ($`\sqrt{\overline{x^2}}`$) |
 | Gain computer | "At this loudness, how many dB should be squashed?" | `Compressor::computeOutputDb()`, a pure function with no state |
 | Attack / release | "How fast should it clamp down, and how fast should it let go?" | `AttackReleaseFilter`, smoothing the GR in the dB domain |
 | Makeup gain | "It got quieter after compression, so make it up" | A fixed dB amount, smoothed internally with a 10 ms one-pole to avoid zipper noise |
+
+</div>
 
 The path that controls the gain is called the **sidechain**. Normally the sidechain is just a copy of the input; you can also feed it a different signal (for example, using the kick to compress the bass, which is called an **external sidechain**), or pass it through a filter before it reaches the detector (a **sidechain HPF**, exercise 4).
 
@@ -107,13 +111,15 @@ With $`T = -20`$, $`R = 4`$, $`W = 10`$: $`y = -20 + (-0.75)(10/8) = -20.9375`$ 
 
 Plotted below (example 1 prints a text version of the same curves, one row per 2 dB). The left panel shows the full range, with the dotted 1:1 line for reference; the right panel zooms in on the knee region (-25 to -15 dB, shaded). Above the knee both curves run with slope 1/4; inside the knee the soft knee (dashed) leaves the 1:1 line gradually, while the hard knee (solid) bends abruptly at the threshold:
 
-![Transfer curve of a compressor with T = -20 dB and R = 4:1, hard knee and 10 dB soft knee, with a zoom on the knee region](images/transfer-curve-knee.svg)
+<p align="center"><img src="images/transfer-curve-knee.svg" alt="Transfer curve of a compressor with T = -20 dB and R = 4:1, hard knee and 10 dB soft knee, with a zoom on the knee region"></p>
 
 **What it sounds like**: a small ratio (2:1), a wide knee and a high threshold → "you can barely hear it working, the whole thing is just steadier"; a large ratio (8:1 or more), a hard knee and a low threshold → "clearly squashed, with a feeling of being grabbed". The soft knee is especially popular on vocals and buses, because when the signal hovers around the threshold there is no sudden "switching".
 
 #### For comparison: expander and gate
 
 A compressor squashes what is **above the threshold**; an **expander** does the opposite and pushes the signal **below the threshold** even lower (every 1 dB below becomes $`R`$ dB lower), and a **gate** is an expander with a very large ratio (below the threshold it simply shuts off). Their static curves bend downward below the threshold (the gate's output is clamped at -100 dB in the table and the figure):
+
+<div align="center">
 
 | In dB | compressor (T=-20, R=4) | expander (T=-40, R=2) | gate (T=-40, R=20) |
 |---:|---:|---:|---:|
@@ -122,7 +128,9 @@ A compressor squashes what is **above the threshold**; an **expander** does the 
 | -10.0 | -17.50 | -10.00 | -10.00 |
 | 0.0 | -15.00 | 0.00 | 0.00 |
 
-![Static curves of a compressor, an expander and a gate: the compressor bends down above its threshold, the expander and the gate bend down below theirs](images/transfer-curve-expander-gate.svg)
+</div>
+
+<p align="center"><img src="images/transfer-curve-expander-gate.svg" alt="Static curves of a compressor, an expander and a gate: the compressor bends down above its threshold, the expander and the gate bend down below theirs"></p>
 
 Chapter 08 implements them in full; for now just know that they use the same detector and attack/release machinery, and only the gain computer's curve differs.
 
@@ -153,12 +161,16 @@ This is `attackReleaseCoefficient()`. With $`\tau = 10`$ ms and $`f_s = 48`$ kHz
 
 **Converting time constants**: the time needed to reach a fraction $`p`$ is $`t_p = -\tau \ln(1 - p)`$:
 
+<div align="center">
+
 | Reaches | Time |
 |---|---|
 | 63.2% | $`1.00\,\tau`$ (by definition) |
 | 90% | $`\ln 10 \cdot \tau = 2.303\,\tau`$ |
 | 95% | $`3.00\,\tau`$ |
 | 99% | $`4.605\,\tau`$ |
+
+</div>
 
 **Notation**: this chapter uses $`t_{63}`$ / $`t_{90}`$ (written t63 / t90 in the program output) for the time it takes the GR to complete 63.2% / 90% of its travel during attack; for release it uses $`t_{37}`$ / $`t_{10}`$ for the time it takes the GR to fall to just 36.8% / 10% of its starting value. For a plain one-pole, $`t_{63} = t_{37} = 1\,\tau`$ and $`t_{90} = t_{10} = 2.303\,\tau`$.
 
@@ -194,7 +206,7 @@ The difference is in the shape of the release. In the linear domain the envelope
 
 The figure below redraws the chart printed at the end of example 2 ($`T = -20`$, $`R = 4`$, attack 10 ms, release 100 ms; $`t = 0`$ is the moment a 1 kHz sine drops from -10 dBFS back to -30 dBFS). The solid line is B1 decoupled (log domain, the `Compressor` default), the dashed line is B2 branching, and the dash-dot line is B4 linear domain; the dotted horizontal line is 36.8% (2.76 dB) of B1's steady-state GR of 7.49 dB, i.e. where the curve should be "after one time constant":
 
-![Release curves of gain reduction over time: B1 decoupled and B2 branching decay exponentially, B4 linear domain falls in a straight line to 0 at about 150 ms](images/release-curves.svg)
+<p align="center"><img src="images/release-curves.svg" alt="Release curves of gain reduction over time: B1 decoupled and B2 branching decay exponentially, B4 linear domain falls in a straight line to 0 at about 150 ms"></p>
 
 Three things can be seen at a glance:
 
@@ -333,6 +345,8 @@ Decoupled attack: t63 =   9.98 ms (theory τ = 10), t90 =  23.02 ms (theory ln10
 
 (B) Feed 1 kHz tone bursts (-30 → -10 → -30 dBFS, 0.5 seconds each) into the `Compressor` ($`T = -20`$, $`R = 4`$, attack 10 ms, release 100 ms), recover the GR timeline from the peak ratio of the input / output over 1 ms windows, and print four comparison groups:
 
+<div align="center">
+
 | Group | Setting | Steady-state GR | attack t63 | release t37 |
 |---|---|---|---|---|
 | B1 | Decoupled + Peak (default) | 7.49 dB (static 7.50) | 10.8 ms | 110.8 ms |
@@ -340,17 +354,23 @@ Decoupled attack: t63 =   9.98 ms (theory τ = 10), t90 =  23.02 ms (theory ln10
 | B3 | Decoupled + RMS 5 ms | 5.29 dB (static, computed at -13 dB = 5.24) | 15.8 ms | 114.8 ms |
 | B4 | linear domain (EnvelopeFollower → static curve) | 7.49 dB | 9.7 ms | 90.8 ms, straight to 0 after 150 ms |
 
+</div>
+
 Finally the release curves of B1, B2 and B4 are overlaid in one ASCII chart (redrawn as the figure in section 2.5). It writes `l04_step_in.wav` and `l04_step_out.wav`. What you should hear: the loud second segment "jumps out" during the first 10 ms (overshoot peak -10.11 dBFS, then squashed to -17.49 dBFS), and on returning to the quiet segment the volume slowly "floats" back up over the first 100 ms.
 
 #### Example 3: `l04_drum_loop` (`examples/drum_loop.cpp`)
 
 Uses the 2-bar drum loop from `makeDrumLoop()` (peak -2.92 dBFS, RMS -17.43 dBFS, crest 14.51 dB), with three settings plus an attack-time sweep. Makeup is always set to "bring the output peak back to the dry peak", so the RMS difference tells "who is louder at the same peak level":
 
+<div align="center">
+
 | Setting | Max GR | crest | RMS vs dry after makeup |
 |---|---|---|---|
 | attack 0.02 ms (very fast, like an FET hardware compressor) | 12.81 dB | 10.44 dB | **+4.07 dB** |
 | attack 30 ms (lets the transients through) | 9.67 dB | 19.52 dB | -5.01 dB |
 | heavy compression T -26 / 10:1 / attack 0.02 ms | 20.77 dB | 9.95 dB | +4.56 dB |
+
+</div>
 
 The attack sweep ($`T = -20`$, $`R = 4`$, knee 6, release 80 ms):
 
@@ -420,6 +440,8 @@ On switching to linked, L catches up with R's 15 dB at the attack speed (about 0
 
 ## 5. Common mistakes and debugging
 
+<div align="center">
+
 | Symptom | Likely cause |
 |---|---|
 | GR is always 0 | The threshold is too high (remember dBFS is negative, so -20 not 20); or the detector is getting silence (the sidechain is wired wrongly). |
@@ -433,6 +455,8 @@ On switching to linked, L catches up with R's 15 dB at the attack speed (about 0
 | In RMS mode the attack is slow however you adjust it | The RMS window is itself a layer of lowpass, so the attack cannot be faster than the window length; to be faster, shorten `setRmsWindowMs()` or switch to Peak. |
 | CPU spikes when it is quiet | Denormals. Make sure flush-to-zero is in place; in a plugin you can also turn on the CPU's FTZ/DAZ flags (chapter 13). |
 | Output locks up or oscillates when running a feedback topology | A loop with slope $`s > 1`$ is stable only thanks to attack smoothing; attack = 0 makes it jump back and forth every sample. Exercise 6 fixes the attack at 10 ms. |
+
+</div>
 
 ## 6. Exercises
 

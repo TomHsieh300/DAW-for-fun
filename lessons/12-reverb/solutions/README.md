@@ -8,12 +8,16 @@ For the problems, see [`../exercises/README.md`](../exercises/README.md). Comple
 .\scripts\build.ps1 -Only 12-reverb -TestLabel solution
 ```
 
+<div align="center">
+
 | # | Solution file | target |
 |---|---|---|
 | 3 | `ex3_early_reflections.cpp` | `l12_ex3_solution` |
 | 4 | `ex4_fdn_modulation.cpp` | `l12_ex4_solution` |
 | 5 | `ex5_gated_reverb.cpp` | `l12_ex5_solution` |
 | 6 | `ex6_rt60_estimator.cpp` | `l12_ex6_solution` |
+
+</div>
 
 ---
 
@@ -40,11 +44,15 @@ For the same g, RT60 is proportional to D: the longest comb decays 45% longer th
 
 **3.** $`\omega = 2\pi f/f_s`$, $`|\mathrm{LP}| = 0.5/\sqrt{1.25 - \cos\omega}`$, $`\mathrm{RT60} = -3\cdot1557 / (48000\log_{10}(0.89401\,|\mathrm{LP}|))`$:
 
+<div align="center">
+
 | f | ω | $`\lvert\mathrm{LP}\rvert`$ | $`g\lvert\mathrm{LP}\rvert`$ | RT60 by hand | Measured in the example |
 |---|---|---|---|---|---|
 | 986.5 Hz | 0.1291 | 0.9838 | 0.8795 | 1.745 s | 1.745 s |
 | 4007.7 Hz | 0.5246 | 0.8063 | 0.7209 | 0.685 s | 0.685 s |
 | 8015.4 Hz | 1.0492 | 0.5767 | 0.5156 | 0.338 s | 0.339 s |
+
+</div>
 
 (The example uses the comb harmonic $`k\cdot f_s/D`$ closest to 1 k / 4 k / 8 kHz, to avoid landing on a notch.) At 8 kHz the d = 0.5 one-pole is down to 0.58×, and this factor is applied on every trip around the loop, so the RT60 at high frequencies drops to 1/6 of that at low frequencies.
 
@@ -87,6 +95,8 @@ In the time domain, the echoes of the first comb arrive at multiples of 1500 and
 
 All 6 (sorted by delay; consistent with the program output):
 
+<div align="center">
+
 | Wall | image | Distance (m) | delay (ms) | delay (samples) | gain |
 |---|---|---|---|---|---|
 | Floor z = 0 | (2, 1.5, −1.6) | 3.7868 | 3.516 | 169 | 0.5702 |
@@ -95,6 +105,8 @@ All 6 (sorted by delay; consistent with the program output):
 | Wall y = 0 | (2, −1.5, 1.6) | 4.7181 | 6.231 | 299 | 0.4576 |
 | Wall x = 6 | (10, 1.5, 1.6) | 5.8189 | 9.441 | 453 | 0.3711 |
 | Wall x = 0 | (−2, 1.5, 1.6) | 6.4078 | 11.158 | 536 | 0.3370 |
+
+</div>
 
 (The ms values printed by the program are converted back from the rounded sample counts, so they differ slightly; for example, 169 samples = 3.521 ms.)
 

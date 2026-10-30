@@ -36,6 +36,8 @@ After this chapter you should be able to:
 
 Every meter answers "how loud is the signal?", but "loud" has many definitions:
 
+<div align="center">
+
 | Meter | What it measures | Response speed (ballistics) | Unit | Use |
 |---|---|---|---|---|
 | **Sample peak** | The maximum of $`\lvert x[n]\rvert`$ over the samples | Instant rise; fall rate is configurable (dB/s) | dBFS | Preventing digital clipping (the default on DAW mixers) |
@@ -44,6 +46,8 @@ Every meter answers "how loud is the signal?", but "loud" has many definitions:
 | **VU** | Rectified average passed through a needle with mass | 300 ms to reach 99%, overshoot 1–1.5% | VU | The analog-era sense of "volume"; common in analog-modeling plugins |
 | **PPM** | Quasi-peak | Integration time about 5–10 ms; very slow fall (about 20 dB / 1.5 s or 24 dB / 2.8 s depending on Type) | dB | Broadcast (traditional in Europe) |
 | **LUFS** | Mean square after K-weighting, with gating | momentary 400 ms / short-term 3 s / integrated over the whole programme | LUFS / LU | Loudness standards (broadcast, streaming platforms) |
+
+</div>
 
 A few concepts to settle first:
 
@@ -65,7 +69,7 @@ If the meter displayed "the maximum of this block" directly, the display would f
 2. **Slow fall**: after that, fall at a fixed rate in **dB/s** (12–26 dB/s is typical).
 3. In addition there is a **peak hold** marker: it stays at the most recent maximum for a while (e.g. 1–2 s, or indefinitely until the user clicks) before starting to fall.
 
-![Peak meter ballistics: after a 0.5 s signal, the peak falls linearly at 24 dB/s, while the hold marker stays at -6 dBFS for 1 s before it also falls](images/peak-meter-hold-decay.svg)
+<p align="center"><img src="images/peak-meter-hold-decay.svg" alt="Peak meter ballistics: after a 0.5 s signal, the peak falls linearly at 24 dB/s, while the hold marker stays at -6 dBFS for 1 s before it also falls"></p>
 
 #### Math: dB/s → per-sample coefficient
 
@@ -133,7 +137,7 @@ and it falls very slowly so that the operator can read the peaks clearly. This c
 A digital signal is only samples of a continuous waveform, and the DAC fills in between samples with (approximately) sinc interpolation. **The true peak may fall between two samples.**
 The classic example: a sine at $`f_s/4`$ with 45° phase has every sample at $`\pm 0.707`$ (sample peak -3.01 dBFS), but the continuous waveform peaks at 1.0 (0 dBTP):
 
-![A sine at fs/4 with 45 degree phase: every sample is at +/-0.707 (-3.01 dBFS) but the continuous waveform peaks at 1.0 (0 dBTP) between samples](images/intersample-peak.svg)
+<p align="center"><img src="images/intersample-peak.svg" alt="A sine at fs/4 with 45 degree phase: every sample is at +/-0.707 (-3.01 dBFS) but the continuous waveform peaks at 1.0 (0 dBTP) between samples"></p>
 
 The approach in ITU-R BS.1770-4 Annex 2: **oversample the signal 4x** (48 kHz → 192 kHz, using an FIR interpolation filter),
 take the maximum $`|x|`$ at the higher rate, and report it in **dBTP**. 4x can still miss a little: for a sine near Nyquist, the peak can fall exactly between two 4x samples,
@@ -150,6 +154,8 @@ Chapter 05 Exercise 4 measures the same kind of signal (amplitude 0.5) but gets 
 This does not mean the halfband version is "more accurate": change to a signal whose peak falls at 1/8 and the result reverses. Exercise 3 sweeps the phase of the fs/4 sine from 0° to 90°,
 and the worst error of both meters is -0.17 dB; it just occurs at the phase where the other one is most accurate. The real differences lie elsewhere (all numbers come from Exercise 3, feeding the same signal to both meters):
 
+<div align="center">
+
 | | `Oversampler` (two halfband stages) | Chapter 05 64-tap windowed-sinc |
 |---|---|---|
 | Interpolation point positions | 0, 1/4, 1/2, 3/4 | 1/8, 3/8, 5/8, 7/8 |
@@ -158,6 +164,8 @@ and the worst error of both meters is -0.17 dB; it just occurs at the phase wher
 | Hard-clipped drum kit (ideal FFT interpolation +5.30 dBTP) | +5.20 dBTP | +4.59 dBTP |
 | Multiplications per input sample | 56 | 64 |
 | Measured time (Release, machine-dependent) | about 20 ns / sample | about 59 ns / sample |
+
+</div>
 
 Material like hard-clipped signals and plucked strings has plenty of content near Nyquist, which is exactly where the two filters' frequency responses differ the most: the 64-tap Hann window gives a wide
 transition band, so the windowed-sinc version reads 0.7–1.2 dB below the ideal, while the halfband version is only 0.1–0.75 dB low. The multiplication counts differ by only 14%,
@@ -188,17 +196,25 @@ flowchart LR
 
 #### K-weighting: two biquad stages
 
+<div align="center">
+
 | Stage | Shape | Purpose |
 |---|---|---|
 | 1. pre-filter | High shelf, midpoint about 1.7 kHz, +4 dB at high frequencies | Models the acoustic gain of the head (a "sphere") at high frequencies |
 | 2. RLB filter | Second-order highpass, about 38 Hz (-6 dB point) | "Revised low-frequency B-curve"; removes the very low frequencies the ear is not very sensitive to |
 
+</div>
+
 The standard gives coefficients only for **48 kHz** ($`a_0`$ normalized to 1):
+
+<div align="center">
 
 | | $`b_0`$ | $`b_1`$ | $`b_2`$ | $`a_1`$ | $`a_2`$ |
 |---|---|---|---|---|---|
 | stage 1 | 1.53512485958697 | −2.69169618940638 | 1.19839281085285 | −1.69065929318241 | 0.73248077421585 |
 | stage 2 | 1.0 | −2.0 | 1.0 | −1.99004745483398 | 0.99007225036621 |
+
+</div>
 
 **You cannot use these coefficients directly at other sample rates** (a digital filter's frequencies are relative to $`f_s`$; applying the 48 kHz coefficients at 44.1 kHz shifts the whole curve toward low frequencies by 8%).
 `l11_loudness` prints this counter-example: when the 48 kHz coefficient table is misused at 44.1 kHz, the gain at 997 Hz becomes +0.900 dB (correct: +0.694 dB) and
@@ -234,11 +250,15 @@ where $`a_0 = 1 + K/Q + K^2`$.
 
 `l11_loudness` prints both sets of coefficients, verifies that they differ by only $`8.9\times10^{-16}`$, and then lists the frequency responses at 44.1 / 48 / 96 kHz; the three curves are almost identical:
 
+<div align="center">
+
 | Frequency | 20 Hz | 38 Hz | 100 Hz | 997 Hz | 2 kHz | 5 kHz | 16 kHz |
 |---|---|---|---|---|---|---|---|
 | K-weighting @ 48 kHz | −13.28 dB | −6.00 dB | −1.13 dB | **+0.691 dB** | +3.07 dB | +4.01 dB | +4.04 dB |
 | Redesigned @ 44.1 kHz | −13.27 dB | −6.00 dB | −1.13 dB | +0.694 dB | +3.08 dB | +4.02 dB | +4.05 dB |
 | Redesigned @ 96 kHz | −13.30 dB | −6.02 dB | −1.16 dB | +0.674 dB | +3.05 dB | +3.99 dB | +4.02 dB |
+
+</div>
 
 (The three curves differ by < 0.03 dB; `l11_loudness` verifies < 0.05 dB with `DAWLAB_CHECK`. The small remaining difference comes from the bilinear transform's
 frequency warping not being exactly the same at different $`f_s`$, and from the standard's 48 kHz coefficients themselves having finite digits.)
@@ -271,7 +291,7 @@ L_K = -0.691 + 10\log_{10}\sum_i G_i\, z_i \quad \text{[LUFS]}
 
 #### 400 ms blocks, 75% overlap, momentary / short-term / integrated
 
-![Loudness gating blocks: each block is 400 ms long and a new one starts every 100 ms, so neighbouring blocks overlap by 75%](images/loudness-block-overlap.svg)
+<p align="center"><img src="images/loudness-block-overlap.svg" alt="Loudness gating blocks: each block is 400 ms long and a new one starts every 100 ms, so neighbouring blocks overlap by 75%"></p>
 
 - **momentary**: the most recent 400 ms (one block); fast response, a fairly steady meter.
 - **short-term**: the most recent 3 s (EBU Tech 3341); used to see the loudness of a passage and to compute LRA.
@@ -295,11 +315,15 @@ L_{\text{int}} = -0.691 + 10\log_{10}\Big(\frac{1}{|J_g|}\sum_{j\in J_g}\sum_i G
 
 $`J_a`$ is the set of blocks that pass the absolute gate and $`J_g`$ the set that pass both. Section 4 of `l11_loudness`: 3 s at −20 dBFS → 3 s of silence → 3 s at −50 dBFS:
 
+<div align="center">
+
 | | Value |
 |---|---|
 | Without gating, averaging the power over 9 s | −27.78 LUFS (diluted by the silence) |
 | Integrated after gating (measured) | **−23.23 LUFS** |
 | Theoretical value | 27 full blocks (power $`P`$) + 3 blocks straddling the boundary ($`\tfrac34P, \tfrac24P, \tfrac14P`$) → $`-23.01 + 10\log_{10}(28.5/30) = -23.23`$ |
+
+</div>
 
 The silent blocks are blocked by the absolute gate; the −53 LUFS blocks are below the relative gate (about −36 LUFS) and are blocked too.
 
@@ -315,12 +339,16 @@ Pop songs are typically 4–8 LU and classical music can reach 15–20 LU. Exerc
 
 #### Streaming platform and broadcast targets
 
+<div align="center">
+
 | Context | Integrated target | True peak limit |
 |---|---|---|
 | EBU R128 (European broadcast) | −23 LUFS (±0.5) | −1 dBTP |
 | ATSC A/85 (US broadcast) | −24 LKFS | −2 dBTP |
 | Spotify, YouTube, Tidal, etc. | about −14 LUFS | about −1 dBTP |
 | Apple Music | about −16 LUFS | about −1 dBTP |
+
+</div>
 
 (Streaming platform numbers are "playback normalization targets"; each service adjusts them, so consult the official documentation. LKFS and LUFS are two names for the same thing.)
 
@@ -424,12 +452,16 @@ There are $`\log_2 N`$ layers in total, each with $`N/2`$ butterflies (one compl
 
 At the bottom of the recursion, the input order is "the binary representation of the index reversed". For N = 8:
 
+<div align="center">
+
 | | | | | | | | | |
 |---|---|---|---|---|---|---|---|---|
 | index | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
 | binary | 000 | 001 | 010 | 011 | 100 | 101 | 110 | 111 |
 | reversed | 000 | 100 | 010 | 110 | 001 | 101 | 011 | 111 |
 | **new order** | **0** | **4** | **2** | **6** | **1** | **5** | **3** | **7** |
+
+</div>
 
 So `Fft` first applies a bit-reversal permutation, then performs $`\log_2 N`$ layers of butterflies from small to large (lengths 2, 4, 8, ..., N).
 The twiddle factors and the bit-reversal table are computed at construction (which allocates); afterwards `forward()` / `inverse()` allocate no memory at all.
@@ -438,16 +470,22 @@ The twiddle factors and the bit-reversal table are computed at construction (whi
 
 `l11_fft_basics` compares the FFT against a naive DFT computed from the definition (accumulated in double):
 
+<div align="center">
+
 | N | forward max error | inverse max error |
 |---|---|---|
 | 16 | 4.9e-7 | 1.2e-7 |
 | 1024 | 8.6e-6 | 3.6e-7 |
 | 4096 | 2.3e-5 | 4.8e-7 |
 
+</div>
+
 (The input is random with $`|x| \le 1`$; the forward output has magnitude about $`\sqrt N`$, so the absolute error grows with N while the relative error stays at float precision, around $`10^{-7}`$.)
 It also cross-checks the amplitude at a single frequency using Goertzel (`Analysis.h`).
 
 Timing (Debug configuration, one run on the author's machine, look at the trend only; Release is much faster, and every run varies by ±30% or more):
+
+<div align="center">
 
 | N | FFT | naive DFT | Ratio |
 |---|---|---|---|
@@ -455,6 +493,8 @@ Timing (Debug configuration, one run on the author's machine, look at the trend 
 | 1024 | 0.24 – 0.28 ms | 27 – 32 ms | 110 – 113 |
 | 4096 | 1.2 ms | 448 – 488 ms | 375 – 415 |
 | 16384 | 5.4 – 9.3 ms | (skipped) | |
+
+</div>
 
 The ratio grows with N, on the same order of magnitude as the theoretical $`N / \log_2 N`$ (341 at 4096). The self-check only requires the FFT to be at least 20 times faster at N = 4096,
 to avoid false failures when the machine is busy.
@@ -465,7 +505,7 @@ to avoid false failures when the machine is busy.
 
 The DFT sees only N samples and **implicitly assumes they repeat forever**. If the frame does not contain a whole number of periods of the sine, joining the end to the start produces a jump:
 
-![A sine with 3.3 periods per frame: repeating the frame makes the waveform jump at every seam](images/dft-implied-periodicity.svg)
+<p align="center"><img src="images/dft-implied-periodicity.svg" alt="A sine with 3.3 periods per frame: repeating the frame makes the waveform jump at every seam"></p>
 
 In the frequency domain: "taking only N samples" = multiplying by a rectangular window; multiplication in time = convolution in frequency.
 So the true spectrum (a single line) is convolved with the spectrum of the rectangular window, a sinc: a central **main lobe** plus **side lobes** on both sides that decay slowly (the highest at −13 dB).
@@ -474,12 +514,16 @@ So the true spectrum (a single line) is convolved with the spectrum of the recta
 
 Before the transform, multiply by a function $`w[n]`$ that tapers to 0 at both ends, removing the jump at the seam. The cost: the main lobe gets wider (less ability to resolve frequencies).
 
+<div align="center">
+
 | Window | Formula ($`t = 2\pi n/(N-1)`$) | Coherent gain | −3 dB width (bins) | Highest side lobe | Scalloping loss |
 |---|---|---|---|---|---|
 | Rectangular | $`1`$ | 1.00 | 0.88 | −13.3 dB | 3.92 dB |
 | Hann | $`0.5 - 0.5\cos t`$ | 0.50 | 1.44 | −31.5 dB | 1.42 dB |
 | Hamming | $`0.54 - 0.46\cos t`$ | 0.54 | 1.30 | −42.7 dB | 1.75 dB |
 | Blackman-Harris (4-term) | $`0.35875 - 0.48829\cos t + 0.14128\cos 2t - 0.01168\cos 3t`$ | 0.36 | 1.90 | −92.0 dB | 0.82 dB |
+
+</div>
 
 All the numbers in the table were measured by `l11_window_leakage`, which samples each window's DTFT very densely using 16x zero-padding
 (**scalloping loss** = how much lower the peak reading is when a sine lies exactly midway between two bins than when it is at a bin center), and compares them with `DAWLAB_CHECK`
@@ -495,12 +539,16 @@ The rule is simple: **the lower the side lobes, the wider the main lobe**. There
 
 The test signal in `l11_window_leakage` is a 0 dBFS 1 kHz tone plus a **−60 dBFS 3.3 kHz tone** (N = 2048, with 1000 Hz at bin 42.67):
 
+<div align="center">
+
 | Window | 1 kHz reading | bin ±10 | Near 3.3 kHz |
 |---|---|---|---|
 | Rectangular | −1.67 dB | −30 / −32 dB | −50 dB (drowned by leakage; the −60 dB tone is invisible) |
 | Hann | −0.63 dB | −70 / −72 dB | **−60.2 dB** (clearly visible) |
 | Hamming | −0.77 dB | −47 / −49 dB | −57.8 dB (barely) |
 | Blackman-Harris | −0.37 dB | −99 / −100 dB | **−60.1 dB** |
+
+</div>
 
 ASCII spectrum (actual output, linear axis from 0 to 5 kHz, 78 Hz per column, taking the maximum within each column):
 
@@ -531,7 +579,7 @@ ASCII spectrum (actual output, linear axis from 0 to 5 kHz, 78 Hz per column, ta
 
 The same signals as curves, with the Blackman-Harris window added (the rectangular window's skirt buries the weak tone, while Hann and Blackman-Harris show it clearly):
 
-![Spectra of a 1 kHz tone at 0 dBFS plus a 3.3 kHz tone at -60 dBFS with a rectangular, Hann and Blackman-Harris window: the rectangular window buries the weak tone in leakage](images/window-leakage-spectra.svg)
+<p align="center"><img src="images/window-leakage-spectra.svg" alt="Spectra of a 1 kHz tone at 0 dBFS plus a 3.3 kHz tone at -60 dBFS with a rectangular, Hann and Blackman-Harris window: the rectangular window buries the weak tone in leakage"></p>
 
 The 1 kHz reading is not 0 dB because 1000 Hz is not at a bin center (it is 0.33 bin off); this is called **scalloping loss**. The theoretical values:
 the rectangular window's response is $`\text{sinc}(\delta)`$, and with $`\delta = 1/3`$ → $`\frac{\sin(\pi/3)}{\pi/3} = 0.827`$ → **−1.65 dB**;
@@ -808,6 +856,8 @@ public:
 .\bin\Debug\l11_loudness.exe                 # optional: argv[1] = any WAV; prints its integrated / max momentary / max short-term
 ```
 
+<div align="center">
+
 | Section | What it verifies | Measured |
 |---|---|---|
 | 1 | 48 kHz coefficients: the standard's table vs the redesign | Maximum difference 8.9e-16; the 44.1 / 96 kHz curves agree (see the table in section 2.6); counter-example: misusing the 48 kHz coefficients at 44.1 kHz gives +0.900 dB at 997 Hz |
@@ -815,6 +865,8 @@ public:
 | 3 | The same signal on L and R | **−20.00 LUFS** (+3.01 LU) |
 | 4 | Gating (−20 dBFS → silence → −50 dBFS) | **−23.23 LUFS** (theory −23.23; without gating −27.78) |
 | 5 | Drum loop / pluck sequence timeline | drum −16.67 LUFS (max momentary −12.99), pluck −15.17 LUFS |
+
+</div>
 
 Every section has `DAWLAB_CHECK`s (for example −23.01 ± 0.02, −20.00 ± 0.02, and the gating result within 0.05 LU of theory), and at the end it prints `[PASS] l11_loudness`.
 
@@ -871,6 +923,8 @@ It writes `dawlab_output/l11_spectrum_plucks.wav`.
 
 ### 3.5 All targets and outputs in this chapter
 
+<div align="center">
+
 | target | Source file | Output WAV (`<build>/dawlab_output/`) |
 |---|---|---|
 | `l11_fft_basics` | `examples/fft_basics.cpp` | `l11_fft_roundtrip.wav` |
@@ -880,6 +934,8 @@ It writes `dawlab_output/l11_spectrum_plucks.wav`.
 | `l11_spectrum_analyzer` | `examples/spectrum_analyzer.cpp` | `l11_spectrum_plucks.wav` |
 | `l11_ex3_solution` … `l11_ex7_solution` | `solutions/ex*.cpp` | `l11_ex3_true_peak_normalized.wav`, `l11_ex6_convolved.wav`, `l11_ex7_out_of_phase.wav` |
 | `l11_ex3_starter` … `l11_ex7_starter` | `exercises/starter/ex*.cpp` | (built only, tests are not run) |
+
+</div>
 
 ```powershell
 .\scripts\build.ps1 -Only 11-metering-fft                      # build + run all tests
@@ -905,6 +961,8 @@ It writes `dawlab_output/l11_spectrum_plucks.wav`.
 
 ## 5. Common mistakes and debugging
 
+<div align="center">
+
 | Symptom | Likely cause |
 |---|---|
 | A 0 dBFS sine reads −6 dB on the spectrum | Forgot to multiply by 2 (positive and negative frequencies each hold half); or used Hann without dividing by the coherent gain 0.5 |
@@ -921,6 +979,8 @@ It writes `dawlab_output/l11_spectrum_plucks.wav`.
 | The meter suddenly jumps in one block | The RMS window length was changed on the audio thread → the ring was cleared and re-accumulated (expected behavior); or the UI thread directly modified the audio thread's state (a data race) |
 | The spectrum occasionally shows a strange frame | The lock-free FIFO has no overwrite detection; or the overwrite detection only looks at the finished position `writePos` and misses a push in progress (it must look at `writeEnd`, section 2.11); or `writePos` doesn't use release / acquire |
 | Occasional audio pops, only when the spectrum is open | Computing the FFT on the audio thread, or allocating / taking a mutex inside `process()` |
+
+</div>
 
 ## 6. Exercises
 
