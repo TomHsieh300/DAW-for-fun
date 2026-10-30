@@ -81,7 +81,7 @@ L 0 3.5
       </g>
      </g>
      <g id="text_1">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="14.04" y="181.275312" transform="rotate(-0 14.04 181.275312)">0</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="14.04" y="181.275312" transform="rotate(-0 14.04 181.275312)">0</text>
      </g>
     </g>
     <g id="xtick_2">
@@ -91,7 +91,7 @@ L 0 3.5
       </g>
      </g>
      <g id="text_2">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="76.59" y="181.275312" transform="rotate(-0 76.59 181.275312)">100</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="76.59" y="181.275312" transform="rotate(-0 76.59 181.275312)">100</text>
      </g>
     </g>
     <g id="xtick_3">
@@ -101,7 +101,7 @@ L 0 3.5
       </g>
      </g>
      <g id="text_3">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="139.14" y="181.275312" transform="rotate(-0 139.14 181.275312)">200</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="139.14" y="181.275312" transform="rotate(-0 139.14 181.275312)">200</text>
      </g>
     </g>
     <g id="xtick_4">
@@ -111,7 +111,7 @@ L 0 3.5
       </g>
      </g>
      <g id="text_4">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="201.69" y="181.275312" transform="rotate(-0 201.69 181.275312)">300</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="201.69" y="181.275312" transform="rotate(-0 201.69 181.275312)">300</text>
      </g>
     </g>
     <g id="xtick_5">
@@ -121,7 +121,7 @@ L 0 3.5
       </g>
      </g>
      <g id="text_5">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="264.24" y="181.275312" transform="rotate(-0 264.24 181.275312)">400</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="264.24" y="181.275312" transform="rotate(-0 264.24 181.275312)">400</text>
      </g>
     </g>
     <g id="xtick_6">
@@ -131,7 +131,7 @@ L 0 3.5
       </g>
      </g>
      <g id="text_6">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="326.79" y="181.275312" transform="rotate(-0 326.79 181.275312)">500</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="326.79" y="181.275312" transform="rotate(-0 326.79 181.275312)">500</text>
      </g>
     </g>
     <g id="xtick_7">
@@ -141,7 +141,7 @@ L 0 3.5
       </g>
      </g>
      <g id="text_7">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="389.34" y="181.275312" transform="rotate(-0 389.34 181.275312)">600</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="389.34" y="181.275312" transform="rotate(-0 389.34 181.275312)">600</text>
      </g>
     </g>
     <g id="xtick_8">
@@ -151,11 +151,11 @@ L 0 3.5
       </g>
      </g>
      <g id="text_8">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="451.89" y="181.275312" transform="rotate(-0 451.89 181.275312)">700</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="451.89" y="181.275312" transform="rotate(-0 451.89 181.275312)">700</text>
      </g>
     </g>
     <g id="text_9">
-     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="239.22" y="195.276094" transform="rotate(-0 239.22 195.276094)">Time (ms); dotted lines = 100 ms sub-blocks</text>
+     <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="239.22" y="195.276094" transform="rotate(-0 239.22 195.276094)">Time (ms); dotted lines = 100 ms sub-blocks</text>
     </g>
    </g>
    <g id="matplotlib.axis_2"/>
@@ -205,19 +205,19 @@ L 464.4 166.677656
 " style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
    </g>
    <g id="text_10">
-    <text style="font-size: 9px; font-family: 'DejaVu Sans'; text-anchor: middle" x="139.14" y="50.533842" transform="rotate(-0 139.14 50.533842)">400 ms block 1</text>
+    <text style="font-size: 9px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="139.14" y="50.533842" transform="rotate(-0 139.14 50.533842)">400 ms block 1</text>
    </g>
    <g id="text_11">
-    <text style="font-size: 9px; font-family: 'DejaVu Sans'; text-anchor: middle" x="201.69" y="83.445524" transform="rotate(-0 201.69 83.445524)">400 ms block 2</text>
+    <text style="font-size: 9px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="201.69" y="83.445524" transform="rotate(-0 201.69 83.445524)">400 ms block 2</text>
    </g>
    <g id="text_12">
-    <text style="font-size: 9px; font-family: 'DejaVu Sans'; text-anchor: middle" x="264.24" y="116.357207" transform="rotate(-0 264.24 116.357207)">400 ms block 3</text>
+    <text style="font-size: 9px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="264.24" y="116.357207" transform="rotate(-0 264.24 116.357207)">400 ms block 3</text>
    </g>
    <g id="text_13">
-    <text style="font-size: 9px; font-family: 'DejaVu Sans'; text-anchor: middle" x="326.79" y="149.268889" transform="rotate(-0 326.79 149.268889)">400 ms block 4</text>
+    <text style="font-size: 9px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="326.79" y="149.268889" transform="rotate(-0 326.79 149.268889)">400 ms block 4</text>
    </g>
    <g id="text_14">
-    <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="239.22" y="19.157422" transform="rotate(-0 239.22 19.157422)">Gating blocks: 400 ms long, a new one every 100 ms (75% overlap)</text>
+    <text style="font-size: 11px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="239.22" y="19.157422" transform="rotate(-0 239.22 19.157422)">Gating blocks: 400 ms long, a new one every 100 ms (75% overlap)</text>
    </g>
   </g>
  </g>

@@ -54,7 +54,7 @@ L 0 3.5
       </g>
      </g>
      <g id="text_1">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="46.92" y="130.875313" transform="rotate(-0 46.92 130.875313)">0</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="46.92" y="130.875313" transform="rotate(-0 46.92 130.875313)">0</text>
      </g>
     </g>
     <g id="xtick_2">
@@ -69,7 +69,7 @@ L 98.608 25.157422
       </g>
      </g>
      <g id="text_2">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="98.608" y="130.875313" transform="rotate(-0 98.608 130.875313)">1</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="98.608" y="130.875313" transform="rotate(-0 98.608 130.875313)">1</text>
      </g>
     </g>
     <g id="xtick_3">
@@ -84,11 +84,11 @@ L 150.296 25.157422
       </g>
      </g>
      <g id="text_3">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="150.296" y="130.875313" transform="rotate(-0 150.296 130.875313)">2</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="150.296" y="130.875313" transform="rotate(-0 150.296 130.875313)">2</text>
      </g>
     </g>
     <g id="text_4">
-     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="98.608" y="144.876094" transform="rotate(-0 98.608 144.876094)">Cycles</text>
+     <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="98.608" y="144.876094" transform="rotate(-0 98.608 144.876094)">Cycles</text>
     </g>
    </g>
    <g id="matplotlib.axis_2">
@@ -109,7 +109,7 @@ L -3.5 0
       </g>
      </g>
      <g id="text_5">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="39.92" y="110.964461" transform="rotate(-0 39.92 110.964461)">−1</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: end" x="39.92" y="110.964461" transform="rotate(-0 39.92 110.964461)">−1</text>
      </g>
     </g>
     <g id="ytick_2">
@@ -124,7 +124,7 @@ L 150.296 70.717539
       </g>
      </g>
      <g id="text_6">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="39.92" y="74.516367" transform="rotate(-0 39.92 74.516367)">0</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: end" x="39.92" y="74.516367" transform="rotate(-0 39.92 74.516367)">0</text>
      </g>
     </g>
     <g id="ytick_3">
@@ -139,11 +139,11 @@ L 150.296 34.269445
       </g>
      </g>
      <g id="text_7">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="39.92" y="38.068273" transform="rotate(-0 39.92 38.068273)">1</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: end" x="39.92" y="38.068273" transform="rotate(-0 39.92 38.068273)">1</text>
      </g>
     </g>
     <g id="text_8">
-     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="18.775469" y="70.717539" transform="rotate(-90 18.775469 70.717539)">m</text>
+     <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="18.775469" y="70.717539" transform="rotate(-90 18.775469 70.717539)">m</text>
     </g>
    </g>
    <g id="line2d_13">
@@ -243,7 +243,7 @@ L 150.296 116.277656
 " style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
    </g>
    <g id="text_9">
-    <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="98.608" y="19.157422" transform="rotate(-0 98.608 19.157422)">Sine</text>
+    <text style="font-size: 11px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="98.608" y="19.157422" transform="rotate(-0 98.608 19.157422)">Sine</text>
    </g>
   </g>
   <g id="axes_2">
@@ -268,7 +268,7 @@ L 167.836 25.157422
       </g>
      </g>
      <g id="text_10">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="167.836" y="130.875313" transform="rotate(-0 167.836 130.875313)">0</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="167.836" y="130.875313" transform="rotate(-0 167.836 130.875313)">0</text>
      </g>
     </g>
     <g id="xtick_5">
@@ -283,7 +283,7 @@ L 219.524 25.157422
       </g>
      </g>
      <g id="text_11">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="219.524" y="130.875313" transform="rotate(-0 219.524 130.875313)">1</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="219.524" y="130.875313" transform="rotate(-0 219.524 130.875313)">1</text>
      </g>
     </g>
     <g id="xtick_6">
@@ -298,11 +298,11 @@ L 271.212 25.157422
       </g>
      </g>
      <g id="text_12">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="271.212" y="130.875313" transform="rotate(-0 271.212 130.875313)">2</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="271.212" y="130.875313" transform="rotate(-0 271.212 130.875313)">2</text>
      </g>
     </g>
     <g id="text_13">
-     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="219.524" y="144.876094" transform="rotate(-0 219.524 144.876094)">Cycles</text>
+     <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="219.524" y="144.876094" transform="rotate(-0 219.524 144.876094)">Cycles</text>
     </g>
    </g>
    <g id="matplotlib.axis_4">
@@ -368,7 +368,7 @@ L 271.212 116.277656
 " style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
    </g>
    <g id="text_14">
-    <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="219.524" y="19.157422" transform="rotate(-0 219.524 19.157422)">Triangle</text>
+    <text style="font-size: 11px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="219.524" y="19.157422" transform="rotate(-0 219.524 19.157422)">Triangle</text>
    </g>
   </g>
   <g id="axes_3">
@@ -393,7 +393,7 @@ L 288.752 25.157422
       </g>
      </g>
      <g id="text_15">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="288.752" y="130.875313" transform="rotate(-0 288.752 130.875313)">0</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="288.752" y="130.875313" transform="rotate(-0 288.752 130.875313)">0</text>
      </g>
     </g>
     <g id="xtick_8">
@@ -408,7 +408,7 @@ L 340.44 25.157422
       </g>
      </g>
      <g id="text_16">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="340.44" y="130.875313" transform="rotate(-0 340.44 130.875313)">1</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="340.44" y="130.875313" transform="rotate(-0 340.44 130.875313)">1</text>
      </g>
     </g>
     <g id="xtick_9">
@@ -423,11 +423,11 @@ L 392.128 25.157422
       </g>
      </g>
      <g id="text_17">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="392.128" y="130.875313" transform="rotate(-0 392.128 130.875313)">2</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="392.128" y="130.875313" transform="rotate(-0 392.128 130.875313)">2</text>
      </g>
     </g>
     <g id="text_18">
-     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="340.44" y="144.876094" transform="rotate(-0 340.44 144.876094)">Cycles</text>
+     <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="340.44" y="144.876094" transform="rotate(-0 340.44 144.876094)">Cycles</text>
     </g>
    </g>
    <g id="matplotlib.axis_6">
@@ -488,7 +488,7 @@ L 392.128 116.277656
 " style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
    </g>
    <g id="text_19">
-    <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="340.44" y="19.157422" transform="rotate(-0 340.44 19.157422)">Saw</text>
+    <text style="font-size: 11px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="340.44" y="19.157422" transform="rotate(-0 340.44 19.157422)">Saw</text>
    </g>
   </g>
   <g id="axes_4">
@@ -513,7 +513,7 @@ L 409.668 25.157422
       </g>
      </g>
      <g id="text_20">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="409.668" y="130.875313" transform="rotate(-0 409.668 130.875313)">0</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="409.668" y="130.875313" transform="rotate(-0 409.668 130.875313)">0</text>
      </g>
     </g>
     <g id="xtick_11">
@@ -528,7 +528,7 @@ L 461.356 25.157422
       </g>
      </g>
      <g id="text_21">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="461.356" y="130.875313" transform="rotate(-0 461.356 130.875313)">1</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="461.356" y="130.875313" transform="rotate(-0 461.356 130.875313)">1</text>
      </g>
     </g>
     <g id="xtick_12">
@@ -543,11 +543,11 @@ L 513.044 25.157422
       </g>
      </g>
      <g id="text_22">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="513.044" y="130.875313" transform="rotate(-0 513.044 130.875313)">2</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="513.044" y="130.875313" transform="rotate(-0 513.044 130.875313)">2</text>
      </g>
     </g>
     <g id="text_23">
-     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="461.356" y="144.876094" transform="rotate(-0 461.356 144.876094)">Cycles</text>
+     <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="461.356" y="144.876094" transform="rotate(-0 461.356 144.876094)">Cycles</text>
     </g>
    </g>
    <g id="matplotlib.axis_8">
@@ -611,7 +611,7 @@ L 513.044 116.277656
 " style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
    </g>
    <g id="text_24">
-    <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="461.356" y="19.157422" transform="rotate(-0 461.356 19.157422)">Square</text>
+    <text style="font-size: 11px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="461.356" y="19.157422" transform="rotate(-0 461.356 19.157422)">Square</text>
    </g>
   </g>
   <g id="axes_5">
@@ -636,7 +636,7 @@ L 530.584 25.157422
       </g>
      </g>
      <g id="text_25">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="530.584" y="130.875313" transform="rotate(-0 530.584 130.875313)">0</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="530.584" y="130.875313" transform="rotate(-0 530.584 130.875313)">0</text>
      </g>
     </g>
     <g id="xtick_14">
@@ -651,7 +651,7 @@ L 582.272 25.157422
       </g>
      </g>
      <g id="text_26">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="582.272" y="130.875313" transform="rotate(-0 582.272 130.875313)">1</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="582.272" y="130.875313" transform="rotate(-0 582.272 130.875313)">1</text>
      </g>
     </g>
     <g id="xtick_15">
@@ -666,11 +666,11 @@ L 633.96 25.157422
       </g>
      </g>
      <g id="text_27">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="633.96" y="130.875313" transform="rotate(-0 633.96 130.875313)">2</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="633.96" y="130.875313" transform="rotate(-0 633.96 130.875313)">2</text>
      </g>
     </g>
     <g id="text_28">
-     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="582.272" y="144.876094" transform="rotate(-0 582.272 144.876094)">Cycles</text>
+     <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="582.272" y="144.876094" transform="rotate(-0 582.272 144.876094)">Cycles</text>
     </g>
    </g>
    <g id="matplotlib.axis_10">
@@ -730,7 +730,7 @@ L 633.96 116.277656
 " style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
    </g>
    <g id="text_29">
-    <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="582.272" y="19.157422" transform="rotate(-0 582.272 19.157422)">Sample &amp; Hold</text>
+    <text style="font-size: 11px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="582.272" y="19.157422" transform="rotate(-0 582.272 19.157422)">Sample &amp; Hold</text>
    </g>
   </g>
  </g>

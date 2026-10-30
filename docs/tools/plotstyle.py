@@ -34,7 +34,11 @@ plt.rcParams.update({
     "svg.fonttype": "none",
     "svg.hashsalt": "dawlab",
     "font.size": 10,
-    "font.family": "DejaVu Sans",
+    # Text stays text in the SVG, so the *viewer's* browser picks the font: list fonts every
+    # platform has and end with the generic "sans-serif", or a browser without DejaVu Sans
+    # falls back to a serif font. DejaVu Sans (always available to matplotlib) does the layout.
+    "font.family": "sans-serif",
+    "font.sans-serif": ["DejaVu Sans", "Arial", "Helvetica", "Liberation Sans"],
     "axes.titlesize": 11,
     "axes.labelsize": 10,
     "legend.fontsize": 9,

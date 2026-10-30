@@ -95,13 +95,13 @@ def clipping():
     fig, ax = ps.figure(6.4, 3.2)
     ax.plot(tt, amp * np.sin(2 * np.pi * f0 * tt * 1e-3), color=COLORS[5], linestyle="--",
             label="input (amplitude 1.5)")
-    ax.plot(t_ms, y, color=COLORS[0], marker="o", markersize=3, label="after hard clip to +-1")
+    ax.plot(t_ms, y, color=COLORS[0], marker="o", markersize=3, label="after hard clip to ±1")
     ax.axhline(1.0, color="black", linewidth=0.8)
     ax.axhline(-1.0, color="black", linewidth=0.8)
     ax.set_xlabel("Time (ms)")
     ax.set_ylabel("Amplitude")
     ax.set_yticks([-1.5, -1.0, 0.0, 1.0, 1.5])
-    ax.set_title("Clipping: the part beyond +-1.0 is flattened")
+    ax.set_title("Clipping: the part beyond ±1.0 is flattened")
     ax.legend(loc="lower right")
     ps.save(fig, "clipping-sine.svg")
 

@@ -66,7 +66,7 @@ L 222.782422 25.157422
       </g>
      </g>
      <g id="text_1">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="222.782422" y="159.675313" transform="rotate(-0 222.782422 159.675313)">n0</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="222.782422" y="159.675313" transform="rotate(-0 222.782422 159.675313)">n0</text>
      </g>
     </g>
     <g id="xtick_3">
@@ -82,7 +82,7 @@ L 384.327947 25.157422
      </g>
     </g>
     <g id="text_2">
-     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="222.782422" y="173.676094" transform="rotate(-0 222.782422 173.676094)">n (samples)</text>
+     <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="222.782422" y="173.676094" transform="rotate(-0 222.782422 173.676094)">n (samples)</text>
     </g>
    </g>
    <g id="matplotlib.axis_2">
@@ -103,7 +103,7 @@ L -3.5 0
       </g>
      </g>
      <g id="text_3">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="38.082344" y="138.448638" transform="rotate(-0 38.082344 138.448638)">g2</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: end" x="38.082344" y="138.448638" transform="rotate(-0 38.082344 138.448638)">g2</text>
      </g>
     </g>
     <g id="ytick_2">
@@ -118,11 +118,11 @@ L 400.4825 40.799192
       </g>
      </g>
      <g id="text_4">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="38.082344" y="44.59802" transform="rotate(-0 38.082344 44.59802)">g1</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: end" x="38.082344" y="44.59802" transform="rotate(-0 38.082344 44.59802)">g1</text>
      </g>
     </g>
     <g id="text_5">
-     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="18.969063" y="85.117539" transform="rotate(-90 18.969063 85.117539)">g[n]</text>
+     <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="18.969063" y="85.117539" transform="rotate(-90 18.969063 85.117539)">g[n]</text>
     </g>
    </g>
    <g id="line2d_11">
@@ -287,10 +287,10 @@ L 229.500085 85.924501
 " style="fill: none; stroke: #000000; stroke-linecap: round"/>
    </g>
    <g id="text_6">
-    <text style="font-size: 9px; font-family: 'DejaVu Sans'; text-anchor: start" x="262.782422" y="90.062743" transform="rotate(-0 262.782422 90.062743)">this vertical wall is the problem</text>
+    <text style="font-size: 9px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: start" x="262.782422" y="90.062743" transform="rotate(-0 262.782422 90.062743)">this vertical wall is the problem</text>
    </g>
    <g id="text_7">
-    <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="222.782422" y="19.157422" transform="rotate(-0 222.782422 19.157422)">Instant gain change: a step at sample n0</text>
+    <text style="font-size: 11px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="222.782422" y="19.157422" transform="rotate(-0 222.782422 19.157422)">Instant gain change: a step at sample n0</text>
    </g>
   </g>
  </g>

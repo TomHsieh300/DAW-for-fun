@@ -54,7 +54,7 @@ L 0 3.5
       </g>
      </g>
      <g id="text_1">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="66.124041" y="231.675313" transform="rotate(-0 66.124041 231.675313)">n0-L</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="66.124041" y="231.675313" transform="rotate(-0 66.124041 231.675313)">n0-L</text>
      </g>
     </g>
     <g id="xtick_2">
@@ -69,7 +69,7 @@ L 157.863031 25.157422
       </g>
      </g>
      <g id="text_2">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="157.863031" y="231.675313" transform="rotate(-0 157.863031 231.675313)">n0</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="157.863031" y="231.675313" transform="rotate(-0 157.863031 231.675313)">n0</text>
      </g>
     </g>
     <g id="xtick_3">
@@ -84,7 +84,7 @@ L 249.60202 25.157422
       </g>
      </g>
      <g id="text_3">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="249.60202" y="231.675313" transform="rotate(-0 249.60202 231.675313)">n0+L</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="249.60202" y="231.675313" transform="rotate(-0 249.60202 231.675313)">n0+L</text>
      </g>
     </g>
     <g id="xtick_4">
@@ -99,7 +99,7 @@ L 341.34101 25.157422
       </g>
      </g>
      <g id="text_4">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="341.34101" y="231.675313" transform="rotate(-0 341.34101 231.675313)">n0+2L</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="341.34101" y="231.675313" transform="rotate(-0 341.34101 231.675313)">n0+2L</text>
      </g>
     </g>
     <g id="xtick_5">
@@ -114,11 +114,11 @@ L 433.08 25.157422
       </g>
      </g>
      <g id="text_5">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="433.08" y="231.675313" transform="rotate(-0 433.08 231.675313)">n0+3L</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="433.08" y="231.675313" transform="rotate(-0 433.08 231.675313)">n0+3L</text>
      </g>
     </g>
     <g id="text_6">
-     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="235.841172" y="245.676094" transform="rotate(-0 235.841172 245.676094)">Sample index (L = 10)</text>
+     <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="235.841172" y="245.676094" transform="rotate(-0 235.841172 245.676094)">Sample index (L = 10)</text>
     </g>
    </g>
    <g id="matplotlib.axis_2">
@@ -139,7 +139,7 @@ L -3.5 0
       </g>
      </g>
      <g id="text_7">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="31.602344" y="142.541695" transform="rotate(-0 31.602344 142.541695)">g</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: end" x="31.602344" y="142.541695" transform="rotate(-0 31.602344 142.541695)">g</text>
      </g>
     </g>
     <g id="ytick_2">
@@ -154,11 +154,11 @@ L 433.08 40.82438
       </g>
      </g>
      <g id="text_8">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="31.602344" y="44.623208" transform="rotate(-0 31.602344 44.623208)">1</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: end" x="31.602344" y="44.623208" transform="rotate(-0 31.602344 44.623208)">1</text>
      </g>
     </g>
     <g id="text_9">
-     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="18.8375" y="121.117539" transform="rotate(-90 18.8375 121.117539)">Linear gain</text>
+     <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="18.8375" y="121.117539" transform="rotate(-90 18.8375 121.117539)">Linear gain</text>
     </g>
    </g>
    <g id="line2d_15">
@@ -461,7 +461,7 @@ L 150.951085 137.974317
 " style="fill: none; stroke: #555555; stroke-linecap: round"/>
    </g>
    <g id="text_10">
-    <text style="font-size: 9px; font-family: 'DejaVu Sans'; text-anchor: start" x="47.776243" y="109.367321" transform="rotate(-0 47.776243 109.367321)">gr drops to g</text>
+    <text style="font-size: 9px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: start" x="47.776243" y="109.367321" transform="rotate(-0 47.776243 109.367321)">gr drops to g</text>
    </g>
    <g id="patch_6">
     <path d="M 299.711381 101.90868 
@@ -473,11 +473,11 @@ L 253.949202 133.313373
 " style="fill: none; stroke: #555555; stroke-linecap: round"/>
    </g>
    <g id="text_11">
-    <text style="font-size: 9px; font-family: 'DejaVu Sans'" transform="translate(258.775919 84.856272)">x[n0] leaves the delay line</text>
-    <text style="font-size: 9px; font-family: 'DejaVu Sans'" transform="translate(258.775919 95.658732)">(s[n0+L] = g exactly)</text>
+    <text style="font-size: 9px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif" transform="translate(258.775919 84.856272)">x[n0] leaves the delay line</text>
+    <text style="font-size: 9px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif" transform="translate(258.775919 95.658732)">(s[n0+L] = g exactly)</text>
    </g>
    <g id="text_12">
-    <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="235.841172" y="19.157422" transform="rotate(-0 235.841172 19.157422)">The gain ramp: min, then average</text>
+    <text style="font-size: 11px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="235.841172" y="19.157422" transform="rotate(-0 235.841172 19.157422)">The gain ramp: min, then average</text>
    </g>
    <g id="legend_1">
     <g id="patch_7">
@@ -502,7 +502,7 @@ L 268.8125 181.154531
 " style="fill: none; stroke: #e69f00; stroke-opacity: 0.45; stroke-width: 5; stroke-linecap: square"/>
     </g>
     <g id="text_13">
-     <text style="font-size: 8px; font-family: 'DejaVu Sans'; text-anchor: start" x="275.2125" y="183.954531" transform="rotate(-0 275.2125 183.954531)">gr[n]  (required gain after release)</text>
+     <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: start" x="275.2125" y="183.954531" transform="rotate(-0 275.2125 183.954531)">gr[n]  (required gain after release)</text>
     </g>
     <g id="line2d_21">
      <path d="M 252.8125 193.155156 
@@ -513,7 +513,7 @@ L 268.8125 193.155156
 " style="fill: none; stroke-dasharray: 6.66,2.88; stroke-dashoffset: 0; stroke: #d55e00; stroke-width: 1.8"/>
     </g>
     <g id="text_14">
-     <text style="font-size: 8px; font-family: 'DejaVu Sans'; text-anchor: start" x="275.2125" y="195.955156" transform="rotate(-0 275.2125 195.955156)">m[n]  (window minimum, length L+1)</text>
+     <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: start" x="275.2125" y="195.955156" transform="rotate(-0 275.2125 195.955156)">m[n]  (window minimum, length L+1)</text>
     </g>
     <g id="line2d_22">
      <path d="M 252.8125 205.155781 
@@ -524,7 +524,7 @@ L 268.8125 205.155781
 " style="fill: none; stroke: #0072b2; stroke-width: 1.8; stroke-linecap: square"/>
     </g>
     <g id="text_15">
-     <text style="font-size: 8px; font-family: 'DejaVu Sans'; text-anchor: start" x="275.2125" y="207.955781" transform="rotate(-0 275.2125 207.955781)">s[n]  (moving average, length L+1)</text>
+     <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: start" x="275.2125" y="207.955781" transform="rotate(-0 275.2125 207.955781)">s[n]  (moving average, length L+1)</text>
     </g>
    </g>
   </g>
