@@ -41,7 +41,10 @@ def collect():
                         j = i + 1
                         while j < len(lines) and not re.match(r"^\s*`{3,}\s*$", lines[j]):
                             j += 1
-                        items.append({"file": rel, "line": i + 2, "tex": "\n".join(lines[i + 1:j]), "display": True})
+                        items.append({"file": rel, "line": i + 2, "tex": "\n".join(lines[i + 1:j]), "display": True,
+                                      # GitHub shows an indented ```math block (inside a list item)
+                                      # as plain code; use $`\displaystyle ...`$ there instead.
+                                      "indented": line[:1].isspace()})
                         i = j + 1
                         continue
                     fence = m.group(1)[0] * 3
@@ -71,11 +74,12 @@ const rejected = {json.dumps(GITHUB_REJECTS)};
   const failed = []; let ok = 0;
   for (const it of items) {{
     let err = rejected.find(m => it.tex.includes(m));
-    if (!err) {{
+    if (it.indented) err = "```math inside a list item: GitHub shows it as code; use $`\\\\displaystyle ...`$";
+    else if (!err) {{
       const node = await MathJax.tex2svgPromise(it.tex, {{display: it.display}});
       const e = node.querySelector("[data-mml-node=merror]");
       if (e) err = e.getAttribute("data-mjx-error") || e.textContent;
-    }} else err = "GitHub rejects " + err;
+    }} else if (!it.indented) err = "GitHub rejects " + err;
     if (err) failed.push({{file: it.file, line: it.line, tex: it.tex.slice(0, 200), error: String(err).slice(0, 200)}});
     else ok++;
   }}
