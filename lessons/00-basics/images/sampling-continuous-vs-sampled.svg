@@ -984,21 +984,8 @@ L 285.082907 25.157422
 L 499.263471 173.877656 
 " style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
    </g>
-   <g id="patch_8">
-    <path d="M 301.840983 155.287627 
-Q 302.945153 155.287627 304.049322 155.287627 
-" style="fill: none; stroke: #d55e00; stroke-linecap: round"/>
-    <path d="M 297.840983 153.287627 
-L 301.840983 155.287627 
-L 297.840983 157.287627 
-" style="fill: none; stroke: #d55e00; stroke-linecap: round"/>
-    <path d="M 308.049322 157.287627 
-L 304.049322 155.287627 
-L 308.049322 153.287627 
-" style="fill: none; stroke: #d55e00; stroke-linecap: round"/>
-   </g>
    <g id="text_21">
-    <text style="font-size: 9px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle; fill: #d55e00" x="303.9454" y="162.723639" transform="rotate(-0 303.9454 162.723639)">T = 1/fs</text>
+    <text style="font-size: 9px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: start; fill: #d55e00" x="294.818388" y="164.582642" transform="rotate(-0 294.818388 164.582642)">dot spacing T = 1/fs</text>
    </g>
    <g id="text_22">
     <text style="font-size: 11px; font-family: 'DejaVu Sans', 'Arial', 'Helvetica', 'Liberation Sans', sans-serif; text-anchor: middle" x="392.173189" y="19.157422" transform="rotate(-0 392.173189 19.157422)">Sampled x[n], fs = 48 kHz</text>

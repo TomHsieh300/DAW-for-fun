@@ -29,10 +29,8 @@ def sampling():
     b.stem(n, x(n * T), basefmt="k-")
     b.set_title("Sampled x[n], fs = 48 kHz")
     b.set_xlabel("Sample index n")
-    # mark one sampling period T = 1/fs
-    y0 = -1.0
-    b.annotate("", xy=(4, y0), xytext=(5, y0), arrowprops=dict(arrowstyle="<->", color=COLORS[1]))
-    b.text(4.5, y0 - 0.12, "T = 1/fs", ha="center", color=COLORS[1], fontsize=9)
+    # one sampling period is a single dot spacing, too narrow for an arrow
+    b.text(0, -1.15, "dot spacing T = 1/fs", color=COLORS[1], fontsize=9)
     a.set_ylim(-1.3, 1.1)
     ps.save(fig, "sampling-continuous-vs-sampled.svg")
 
