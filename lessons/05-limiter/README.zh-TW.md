@@ -104,7 +104,7 @@ flowchart LR
 
 為什麼是「min 再 average」，而不是直接 average？看時間軸。假設 $`gr`$ 在 $`n_0`$ 突然從 1 掉到 $`g`$：
 
-![gain 隨時間的變化：gr[n] 在 n0 從 1 瞬間降到 g；window min 的 m[n] 同時下降，moving average 的 s[n] 則線性下降，剛好在 n0+L 到達 g。](images/limiter-gain-smoothing.svg)
+<p align="center"><img src="images/limiter-gain-smoothing.svg" alt="gain 隨時間的變化：gr[n] 在 n0 從 1 瞬間降到 g；window min 的 m[n] 同時下降，moving average 的 s[n] 則線性下降，剛好在 n0+L 到達 g。"></p>
 
 - 移動平均把「瞬間下降」變成「長度 $`L+1`$ 的線性 ramp」：這就是 attack，而且 ramp 長度剛好等於 lookahead——峰值 $`x[n_0]`$ 在 $`n_0 + L`$ 抵達輸出時，$`s`$ 剛好降到 $`g`$，不早不晚。
 - 如果沒有 min、直接對 $`gr`$ 做平均，當 $`gr`$ 只有一個 sample 很低（一個尖峰）時，平均會把它「稀釋」掉：$`s[n_0+L] = (L\cdot 1 + g)/(L+1) \gg g`$，峰值就超過 ceiling 了。min 讓那個很低的值在視窗內「撐」滿 $`L+1`$ 個 sample，平均起來才會真的到 $`g`$。

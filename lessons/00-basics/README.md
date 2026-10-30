@@ -164,7 +164,7 @@ Sound is a tiny variation of air pressure over time. A microphone turns the pres
 
 The result is a stream of numbers $`x[n] = x(nT)`$, $`n = 0, 1, 2, \ldots`$. That stream of numbers is "what sound looks like inside a computer"; there is nothing else. One second of 48 kHz stereo audio is 2 × 48000 = 96000 numbers.
 
-![Left: a continuous sound wave x(t). Right: the same wave sampled as dots x[n], one every T = 1/fs.](images/sampling-continuous-vs-sampled.svg)
+<p align="center"><img src="images/sampling-continuous-vs-sampled.svg" alt="Left: a continuous sound wave x(t). Right: the same wave sampled as dots x[n], one every T = 1/fs."></p>
 
 A very common misconception: "the sound between the samples is lost, so digital audio is stair-stepped and lossy". As long as the signal contains no component above $`f_s/2`$, these points determine the original smooth curve **uniquely** (this is the Nyquist theorem of the next section); on output the DAC uses a reconstruction filter to recover the smooth curve, not a staircase.
 

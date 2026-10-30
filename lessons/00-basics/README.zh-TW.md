@@ -164,7 +164,7 @@ Linux 上只有 JUCE 章節（13、14）需要額外套件（ALSA、X11、freety
 
 結果就是一串數字 $`x[n] = x(nT)`$，$`n = 0, 1, 2, \ldots`$。這一串數字就是「聲音在電腦裡的樣子」——沒有別的了。一秒鐘的立體聲 48 kHz 音訊就是 2 × 48000 = 96000 個數字。
 
-![左：連續的聲波 x(t)。右：同一條波形取樣後的點 x[n]，每隔 T = 1/fs 一個 sample。](images/sampling-continuous-vs-sampled.svg)
+<p align="center"><img src="images/sampling-continuous-vs-sampled.svg" alt="左：連續的聲波 x(t)。右：同一條波形取樣後的點 x[n]，每隔 T = 1/fs 一個 sample。"></p>
 
 一個很常見的誤解：「sample 之間的聲音不見了，所以數位音訊是階梯狀的、有損的」。只要訊號裡沒有超過 $`f_s/2`$ 的成分，這些點**唯一地**決定了原本那條平滑曲線（這就是下一節的 Nyquist 定理）；DAC 輸出時會用一個 reconstruction filter 把平滑曲線還原回來，不是輸出階梯。
 

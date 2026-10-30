@@ -125,7 +125,7 @@ Suppose the gain changes instantly from $`g_1`$ to $`g_2`$ at sample $`n_0`$. Th
 y[n] = x[n] \cdot g[n],\qquad g[n] = g_1 + (g_2 - g_1)\,u[n - n_0]
 ```
 
-![Gain g[n] as a step function: it drops instantly from g1 to g2 at sample n0, a vertical wall](images/gain-step.svg)
+<p align="center"><img src="images/gain-step.svg" alt="Gain g[n] as a step function: it drops instantly from g1 to g2 at sample n0, a vertical wall"></p>
 
 **First, some intuition: amplitude modulation and sidebands.** Multiplying a sine wave by a "changing gain" modulates its amplitude. The simplest example lets the gain wobble slowly at frequency $`f_m`$:
 

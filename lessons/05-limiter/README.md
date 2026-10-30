@@ -104,7 +104,7 @@ Let $`x_s[n] = x[n]\cdot g_{\text{in}}`$ (the signal after the input gain), $`c`
 
 Why "min, then average" rather than averaging directly? Look at the time axis. Suppose $`gr`$ suddenly drops from 1 to $`g`$ at $`n_0`$:
 
-![Gain over time: gr[n] drops from 1 to g at n0; the window minimum m[n] drops with it, and the moving average s[n] ramps down linearly, reaching g exactly at n0+L.](images/limiter-gain-smoothing.svg)
+<p align="center"><img src="images/limiter-gain-smoothing.svg" alt="Gain over time: gr[n] drops from 1 to g at n0; the window minimum m[n] drops with it, and the moving average s[n] ramps down linearly, reaching g exactly at n0+L."></p>
 
 - The moving average turns the "instantaneous drop" into a "linear ramp of length $`L+1`$": that is the attack, and the ramp length equals the lookahead exactly — when the peak $`x[n_0]`$ reaches the output at $`n_0 + L`$, $`s`$ has just come down to $`g`$, neither early nor late.
 - Without the min, if we averaged $`gr`$ directly, then when $`gr`$ is low for only a single sample (a spike), the average would "dilute" it: $`s[n_0+L] = (L\cdot 1 + g)/(L+1) \gg g`$, and the peak would exceed the ceiling. The min makes that low value "hold" for the full $`L+1`$ samples of the window, so the average truly reaches $`g`$.

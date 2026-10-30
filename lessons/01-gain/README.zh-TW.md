@@ -125,7 +125,7 @@ UI 上的推桿永遠是一個 0..1 的位置 $`p`$（滑鼠拖到哪就是哪�
 y[n] = x[n] \cdot g[n],\qquad g[n] = g_1 + (g_2 - g_1)\,u[n - n_0]
 ```
 
-![gain g[n] 的階梯函數：在 sample n0 瞬間從 g1 掉到 g2，形成一道垂直的牆](images/gain-step.svg)
+<p align="center"><img src="images/gain-step.svg" alt="gain g[n] 的階梯函數：在 sample n0 瞬間從 g1 掉到 g2，形成一道垂直的牆"></p>
 
 **先建立直覺：振幅調變（amplitude modulation）與 sideband。** 把一個正弦波乘上一個「會變的 gain」，就是在調變它的振幅。最簡單的例子是讓 gain 以頻率 $`f_m`$ 緩慢起伏：
 
