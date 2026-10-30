@@ -306,7 +306,7 @@ Notches found sweeping 100-4000 Hz (every 25 Hz), vs f_k = (2k+1)/(2d), d = 2 ms
 ```mermaid
 flowchart LR
     X["x"] -->|"1 − m"| Y["y"]
-    X --> ADD(("+"))
+    X --> ADD(("#43;"))
     ADD --> DL["z^(−D)"]
     DL -->|"m"| Y
     DL -->|"g"| ADD
@@ -390,7 +390,7 @@ Flanger 用「延遲」讓兩條路徑的相位差隨頻率線性增加（$`\Del
 ```mermaid
 flowchart LR
     X["x"] -->|"1 − mix"| Y["y"]
-    X --> ADD(("+")) --> AP1["AP 1"] --> AP2["AP 2"] --> APD["..."] --> APN["AP N"]
+    X --> ADD(("#43;")) --> AP1["AP 1"] --> AP2["AP 2"] --> APD["..."] --> APN["AP N"]
     APN -->|"mix"| Y
     APN --> FB["g · z^(−1)<br/>（feedback，可選）"]
     FB --> ADD

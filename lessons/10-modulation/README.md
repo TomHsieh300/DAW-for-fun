@@ -306,7 +306,7 @@ Send part of the delay output back to the delay-line input (the feedback comb of
 ```mermaid
 flowchart LR
     X["x"] -->|"1 − m"| Y["y"]
-    X --> ADD(("+"))
+    X --> ADD(("#43;"))
     ADD --> DL["z^(−D)"]
     DL -->|"m"| Y
     DL -->|"g"| ADD
@@ -390,7 +390,7 @@ A flanger uses "delay" to make the phase difference between two paths grow linea
 ```mermaid
 flowchart LR
     X["x"] -->|"1 − mix"| Y["y"]
-    X --> ADD(("+")) --> AP1["AP 1"] --> AP2["AP 2"] --> APD["..."] --> APN["AP N"]
+    X --> ADD(("#43;")) --> AP1["AP 1"] --> AP2["AP 2"] --> APD["..."] --> APN["AP N"]
     APN -->|"mix"| Y
     APN --> FB["g · z^(−1)<br/>(feedback, optional)"]
     FB --> ADD

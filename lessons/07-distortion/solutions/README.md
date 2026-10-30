@@ -230,7 +230,7 @@ Only the fundamental and H3 are real; 1, 5, 9, 13, 15, and 19 kHz are not intege
 ```mermaid
 flowchart LR
     IN[bass DI] --> SPLIT{split}
-    SPLIT --> LP["LPF 150 Hz<br/>(LR4, clean lows)"] --> SUM((+))
+    SPLIT --> LP["LPF 150 Hz<br/>(LR4, clean lows)"] --> SUM(("#43;"))
     SPLIT --> HP["HPF 150 Hz<br/>(LR4)"] --> PRE["pre-EQ<br/>+4 dB @ 1 kHz"] --> DRV["Distortion<br/>HardClip / Fuzz, drive 20-30 dB<br/>4x OS"] --> TONE["tone LPF 4-5 kHz"] --> GAIN["output gain<br/>(RMS match)"] --> SUM
     SUM --> OUT[out]
 ```

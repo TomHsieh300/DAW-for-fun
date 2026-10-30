@@ -260,13 +260,13 @@ Echo 效果器的核心是把延遲後的輸出乘上 $`g`$（feedback）再加�
 
 ```mermaid
 flowchart LR
-    X["x[n]"] -->|"x[n]"| ADD["+"]
+    X["x[n]"] -->|"x[n]"| ADD["#43;"]
     ADD -->|"s[n]"| DL["z^-D<br/>（延遲 D 個 sample）"]
     DL -->|"w[n]（wet）"| MX["x mix"]
     DL --> FB["x g<br/>（feedback）"]
     FB --> ADD
     X --> DRY["x (1 - mix)"]
-    DRY --> SUM["+"]
+    DRY --> SUM["#43;"]
     MX --> SUM
     SUM -->|"y[n]"| Y["y[n]"]
 ```
@@ -293,7 +293,7 @@ $`D = 375`$ ms、$`g = 0.5`$ → 3.74 s；$`g = 0.7`$ → 7.26 s。反過來，�
 
 ```mermaid
 flowchart LR
-    X["x"] --> ADD["+"]
+    X["x"] --> ADD["#43;"]
     ADD --> DL["z^-D"]
     DL --> WET["wet"]
     DL --> HP["HP"]
@@ -321,7 +321,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    IN["(L+R)/2"] --> ADD["+"]
+    IN["(L+R)/2"] --> ADD["#43;"]
     ADD --> DLL["Delay line L"]
     DLL --> WL["wet L<br/>（echo 1、3、5...）"]
     DLL --> GR["x g . filter"]
@@ -488,11 +488,11 @@ return channelData(ch)[(w - 1 - d + size_) & mask_];
 
 ```mermaid
 flowchart LR
-    X[x] --> SUM((+))
+    X[x] --> SUM(("#43;"))
     SUM --> DL["FractionalDelayLine<br/>readCubic(D − 1)"]
     DL --> WET[wet]
     WET --> HP["OnePole HP"] --> LP["OnePole LP"] --> FB["× feedback"] --> SUM
-    X --> DRY["× (1 − mix)"] --> OUT((+))
+    X --> DRY["× (1 − mix)"] --> OUT(("#43;"))
     WET --> MIXW["× mix"] --> OUT
     OUT --> Y[y]
 ```

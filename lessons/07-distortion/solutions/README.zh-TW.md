@@ -230,7 +230,7 @@ RMS $`\approx 0.930`$（−0.63 dBFS）。增益 $`= -23.01 - (-0.63) = -22.38`$
 ```mermaid
 flowchart LR
     IN[bass DI] --> SPLIT{split}
-    SPLIT --> LP["LPF 150 Hz<br/>（LR4，乾淨的低頻）"] --> SUM((+))
+    SPLIT --> LP["LPF 150 Hz<br/>（LR4，乾淨的低頻）"] --> SUM(("#43;"))
     SPLIT --> HP["HPF 150 Hz<br/>（LR4）"] --> PRE["pre-EQ<br/>+4 dB @ 1 kHz"] --> DRV["Distortion<br/>HardClip / Fuzz，drive 20–30 dB<br/>4x OS"] --> TONE["tone LPF 4–5 kHz"] --> GAIN["output gain<br/>（RMS match）"] --> SUM
     SUM --> OUT[out]
 ```

@@ -96,7 +96,7 @@ y[n] = (h * x)[n] = \sum_{k=0}^{M-1} h[k]\,x[n-k]
 
 ```mermaid
 flowchart LR
-    X["x[n]"] --> S(("+"))
+    X["x[n]"] --> S(("#43;"))
     S --> D["z^-D"]
     D --> Y["y[n]"]
     D -->|"× g"| S
@@ -163,9 +163,9 @@ DC 時 $`|\mathrm{LP}| = 1`$（低頻 RT60 不變），Nyquist 時 $`|\mathrm{LP
 
 ```mermaid
 flowchart LR
-    X["x[n]"] --> S1(("+"))
+    X["x[n]"] --> S1(("#43;"))
     S1 -->|"v[n]"| D["z^-D"]
-    D -->|"v[n-D]"| S2(("+"))
+    D -->|"v[n-D]"| S2(("#43;"))
     D -->|"× g"| S1
     S1 -->|"× (-g)"| S2
     S2 --> Y["y[n]"]
@@ -199,7 +199,7 @@ flowchart LR
         C3["comb 3 (D3, g3)"]
         C4["comb 4 (D4, g4)"]
     end
-    C1 --> SUM(("+"))
+    C1 --> SUM(("#43;"))
     C2 --> SUM
     C3 --> SUM
     C4 --> SUM
@@ -236,14 +236,14 @@ flowchart LR
         L7["LBCF 1557"]
         L8["LBCF 1617"]
     end
-    L1 --> SUM(("+"))
-    L2 --> SUM(("+"))
-    L3 --> SUM(("+"))
-    L4 --> SUM(("+"))
-    L5 --> SUM(("+"))
-    L6 --> SUM(("+"))
-    L7 --> SUM(("+"))
-    L8 --> SUM(("+"))
+    L1 --> SUM(("#43;"))
+    L2 --> SUM(("#43;"))
+    L3 --> SUM(("#43;"))
+    L4 --> SUM(("#43;"))
+    L5 --> SUM(("#43;"))
+    L6 --> SUM(("#43;"))
+    L7 --> SUM(("#43;"))
+    L8 --> SUM(("#43;"))
     SUM --> AP1
     subgraph AS["4 級串聯 allpass（AP）"]
         AP1["AP 556"] --> AP2["AP 441"] --> AP3["AP 341"] --> AP4["AP 225"]
@@ -383,7 +383,7 @@ flowchart LR
     PD --> ER[early reflections<br/>tapped delay]
     PD --> DIF[input diffusion<br/>series allpass]
     DIF --> FDN[late reverb<br/>FDN / comb bank]
-    ER --> SUM((+))
+    ER --> SUM(("#43;"))
     FDN --> SUM
     SUM --> W[width<br/>mid/side]
     W --> MIX((dry/wet mix))
