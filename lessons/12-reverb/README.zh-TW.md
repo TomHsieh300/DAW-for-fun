@@ -249,9 +249,7 @@ flowchart LR
 
 - **8 個 lowpass-feedback comb（LBCF）並聯**：迴路裡的 one-pole lowpass 就是 2.3 節的 damping。Freeverb 的實作是 `filterstore = output·(1−damp) + filterstore·damp`、`buffer = input + filterstore·feedback` —— 本章 `CombFilter` 用同樣的寫法。
 - **4 個 allpass 串聯**，g = 0.5。細節：Freeverb 的 allpass 程式碼是 `output = bufout − input`、`buffer = input + bufout·g`，也就是 $`v[n] = x[n] + g\,v[n-D]`$、$`y[n] = v[n-D] - x[n]`$，transfer function
-  ```math
-  H(z) = \frac{-1 + (1+g)\,z^{-D}}{1 - g\,z^{-D}}
-  ```
+  $`\displaystyle H(z) = \frac{-1 + (1+g)\,z^{-D}}{1 - g\,z^{-D}}`$
   要成為 allpass，分子係數必須是分母係數「倒過來」的倍數：$`[-1,\ 1+g] = c\,[-g,\ 1]`$ ⇒ $`c = 1/g`$、$`1 + g = 1/g`$ ⇒ $`g^2 + g - 1 = 0`$ ⇒ $`g = (\sqrt5 - 1)/2 \approx 0.618`$。Freeverb 用 g = 0.5，所以它**不是**嚴格的 allpass（在 $`f_s/D`$ 的整數倍是 0 dB，半整數倍是 $`2.5/1.5`$ → +4.4 dB 的起伏）；它在實務上「聽起來對」，但不要拿它當 allpass 的定義（J. O. Smith 的 *Physical Audio Signal Processing*「Freeverb Allpass Approximation」一節有同樣的分析）。我們的 `AllpassDiffuser` 用的是 2.4 節的標準式。
 - **Stereo spread**：右聲道每一條 delay 都比左聲道長 23 samples，兩聲道的殘響因此去相關（decorrelated），聽起來很寬。
 - **參數映射**：`roomsize` 0..1 → feedback = roomsize·0.28 + 0.7（0.7–0.98），`damp` 0..1 → damping 係數 = damp·0.4。注意 Freeverb 的 roomsize 直接控制 feedback，**不是** RT60：8 個 comb 用同一個 g，所以長的 comb 衰減得比短的慢一點，RT60 依 comb 而異（例如 g = 0.84 時，1116 samples 的 comb RT60 = 1.00 s，1617 的是 1.45 s）。

@@ -112,9 +112,7 @@ flowchart LR
 
 1. 由第 2 步，對所有 $`k`$：$`gr[k] \le g[k]`$（min 的結果不會比其中一項大）。
 2. 由第 3 步，$`m[n-k]`$ 是 $`\{gr[n-k-L], \dots, gr[n-k]\}`$ 的最小值。對 $`k = 0, 1, \dots, L`$，這個範圍都包含 index $`n-L`$（因為 $`n-k-L \le n-L \le n-k`$）。所以
-   ```math
-   m[n-k] \le gr[n-L] \le g[n-L],\qquad k = 0,\dots,L.
-   ```
+   $`\displaystyle m[n-k] \le gr[n-L] \le g[n-L],\qquad k = 0,\dots,L.`$
 3. 由第 4 步，$`s[n]`$ 是這 $`L+1`$ 個 $`m`$ 的平均，每一項都 $`\le g[n-L]`$，所以 $`s[n] \le g[n-L]`$。又每一項都在 $`[0, 1]`$，所以 $`0 \le s[n] \le 1`$。
 4. 由第 5 步，$`|y[n]| = |x_s[n-L]|\cdot s[n] \le |x_s[n-L]|\cdot g[n-L]`$。
    - 若 $`|x_s[n-L]| > c`$：$`g[n-L] = c/|x_s[n-L]|`$，乘起來 $`= c`$。

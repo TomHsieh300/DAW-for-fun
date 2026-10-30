@@ -302,9 +302,7 @@ The true harmonics (H columns) are completely unaffected; the aliases (A columns
    Twice 96 kHz is exactly 192 kHz, so 2x and 4x are folded back by the **same set of harmonics**, and the aliases differ by only 2-4 dB; at 8x the folding starts only at the 150th harmonic or above, another 24-31 dB smaller. The 39th harmonic of an ideal square wave is $`1/39`$ of the fundamental (−31.8 dB); but the clipped waveform at drive 20 dB is really a "trapezoid" (the rising edge has a finite slope), so the high harmonics decay faster than $`1/n`$ (closer to $`1/n^2`$, see Section 2.1), and the aliases actually measured (about −46 to −49 dB relative to H1) are smaller still. This also shows that the size of the aliasing **depends on the input frequency**: with a different fundamental, the gap between 2x and 4x would be different.
 3. **Where the latency comes from.** In the Chapter 06 Oversampler, each halfband stage has $`2K_i`$ odd-numbered taps (32, 12, and 8 for the three stages), and the group delay of upsampling + downsampling is $`2(2K_i - 1)`$ samples "at that stage's high sample rate". Converted back to the original sample rate and truncated to an integer:
 
-   ```math
-   \text{latency} = \left\lfloor \frac{1}{2^S}\sum_{i=1}^{S} 2(2K_i - 1)\, 2^{S-i} \right\rfloor
-   ```
+   $`\displaystyle \text{latency} = \left\lfloor \frac{1}{2^S}\sum_{i=1}^{S} 2(2K_i - 1)\, 2^{S-i} \right\rfloor`$
 
    2x: $`62/2 = 31`$; 4x: $`(124 + 22)/4 = 36.5 \to 36`$; 8x: $`(248 + 44 + 14)/8 = 38.25 \to 38`$. Doubling the factor adds only a few samples of latency, because the later stages work at ever higher sample rates and their filters get ever shorter. The self-check of Example 4 recomputes this formula with `Oversampler::kOddTapsStage1..3` and compares it with `Distortion::getLatencySamples()`.
 

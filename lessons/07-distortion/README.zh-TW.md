@@ -302,9 +302,7 @@ flowchart LR
    96 kHz 的 2 倍剛好是 192 kHz，所以 2x 與 4x 被**同一批諧波**折回來，alias 只差 2–4 dB；8x 要到第 150 次以上才折回來，又小了 24–31 dB。理想方波的第 39 次諧波是基頻的 $`1/39`$（−31.8 dB）；而 drive 20 dB 的 clip 波形其實是「梯形」（上升段有有限的斜率），高次諧波衰減得比 $`1/n`$ 更快（接近 $`1/n^2`$，見 2.1 節），所以實際量到的 alias（相對 H1 約 −46 ~ −49 dB）又更小。這也說明 alias 的大小**跟輸入頻率有關**：換一個基頻，2x 與 4x 的差距就不一樣了。
 3. **latency 怎麼來的。** 第 06 章的 Oversampler 每一級 halfband 有 $`2K_i`$ 個奇數 tap（三級分別是 32、12、8），升頻 + 降頻的 group delay 是 $`2(2K_i - 1)`$ 個「該級的高取樣率 sample」。換算回原始取樣率再取整數：
 
-   ```math
-   \text{latency} = \left\lfloor \frac{1}{2^S}\sum_{i=1}^{S} 2(2K_i - 1)\, 2^{S-i} \right\rfloor
-   ```
+   $`\displaystyle \text{latency} = \left\lfloor \frac{1}{2^S}\sum_{i=1}^{S} 2(2K_i - 1)\, 2^{S-i} \right\rfloor`$
 
    2x：$`62/2 = 31`$；4x：$`(124 + 22)/4 = 36.5 \to 36`$；8x：$`(248 + 44 + 14)/8 = 38.25 \to 38`$。倍率加倍、latency 卻只多幾個 sample，因為後面幾級在越來越高的取樣率下運作、filter 也越來越短。範例 4 的 self-check 用 `Oversampler::kOddTapsStage1..3` 重算這個公式，與 `Distortion::getLatencySamples()` 比對。
 

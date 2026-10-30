@@ -164,9 +164,7 @@ Exercise 4: project saved (5861 bytes) to dawlab_output/l14_ex4_project.json
 1. **Input 進入 engine。** `processBlock()` 也會得到一個 input block（device callback 有一個）。每個 record-armed 的 track 把它的 input channel 複製進一個**預先配置的 lock-free FIFO**（例如 10 秒 audio 的 `SpscQueue<float>`，或固定大小 chunk 的 ring）——絕不複製進會增長的 `std::vector`。Audio thread 的工作只是每個 block 做一次 `memcpy` 等級的 push。
 2. **Disk thread。** 一個獨立的 "disk writer" thread（一般優先權）從 FIFO pop，並附加到 WAV 檔以及一個在*它的* thread 上增長的記憶體 buffer。錄音停止時，該 thread 建出一個 immutable 的 `AudioBuffer`，用 `shared_ptr` 包起來，UI 建立 clip 並以 `setTrackClips()` 送出新的 clip 清單。
 3. **擺放位置。** 音樂人在 timeline 位置 $`T`$ 聽到的東西，是在 engine render $`T`$ 之後 $`L_{\text{pdc}} + L_{\text{out}}`$ 個 sample 離開喇叭的；他們的演奏再過 $`L_{\text{in}}`$ 才抵達 engine。所以在 engine render 位置 $`P`$ 時抵達的 input sample，屬於 timeline 位置
-   ```math
-   T = P - (L_{\text{in}} + L_{\text{out}} + L_{\text{pdc}})
-   ```
+   $`\displaystyle T = P - (L_{\text{in}} + L_{\text{out}} + L_{\text{pdc}})`$
    也就是說，錄下的 clip 必須比錄音開始時的 playhead 位置*早* $`L_{\text{in}} + L_{\text{out}} + L_{\text{pdc}}`$ 個 sample 擺放（JUCE 透過 `AudioIODevice::getInputLatencyInSamples()` / `getOutputLatencyInSamples()` 回報 device 的 latency）。用 loop-back 線驗證：錄下 metronome，檢查 click 是否落在 grid 上。
 4. **磁碟太慢。** FIFO 吸收短暫的停頓（這就是它那 10 秒的用途）。如果它仍然滿了，audio thread 不能等待：它丟棄該 input block，設定一個 atomic 的 "overrun" flag/計數器，由 UI 告訴使用者（"disk too slow - recording damaged at 1:23"）。播放永遠不會因為錄音而出現 glitch。
 5. **Monitoring 與 PDC。** 透過 track 的 insert 做 monitoring，會讓音樂人聽到*自己*的聲音加上完整的 PDC delay——Exercise 2 的 project 中是 37 ms，無法演奏。選項：直接 monitor dry input（零 latency 的 "direct monitoring"），或在錄音時讓 engine 進入低 latency 模式（bypass 或停用有 latency 的 plugin，對被 monitor 的路徑使用 `setLatencyCompensationEnabled(false)`）。

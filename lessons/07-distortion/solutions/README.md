@@ -126,9 +126,7 @@ Key points:
 - **100 Hz is +3.07 rather than +4**: the peak filter alone is +4 dB at 100 Hz, but the 70 Hz highpass still has a loss of about −0.9 dB at 100 Hz.
 - **Frequency warping at 9 kHz**: the analog 2nd-order Butterworth lowpass has $`|H(j\Omega)|^2 = 1/(1 + (\Omega/\Omega_c)^4)`$; one octave above, $`\Omega/\Omega_c = 2`$, and two in cascade give $`-20\log_{10}(1 + 16) = -24.6`$ dB. But the RBJ cookbook uses the bilinear transform, under which the digital frequency $`f`$ corresponds to an analog frequency $`\propto \tan(\pi f / f_s)`$, so the equivalent ratio is
 
-  ```math
-  r = \frac{\tan(\pi \cdot 9000/48000)}{\tan(\pi \cdot 4500/48000)} = \frac{0.6682}{0.3033} = 2.203
-  ```
+  $`\displaystyle r = \frac{\tan(\pi \cdot 9000/48000)}{\tan(\pi \cdot 4500/48000)} = \frac{0.6682}{0.3033} = 2.203`$
 
   $`-20\log_{10}(1 + r^4) = -20\log_{10}(1 + 23.56) = -27.80`$ dB, in perfect agreement with the measurement. The closer to Nyquist, the faster it falls (at $`f_s/2`$ it is $`-\infty`$). For a cab sim this is actually a good thing.
 

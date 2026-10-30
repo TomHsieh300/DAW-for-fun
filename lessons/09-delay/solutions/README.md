@@ -39,9 +39,7 @@ Formula: $`t_\text{ms} = \text{beats} \times 60000 / \text{BPM}`$; dotted × 1.5
 4. The amplitude of the $`k`$-th echo is $`g^{k-1}`$: 1, 0.5, 0.25, 0.125, i.e. **0, −6.02, −12.04, −18.06 dB**. (The first echo is the original signal delayed directly and has not yet gone through the feedback.)
 5. Each trip attenuates by $`-20\log_{10} g`$ dB, so decaying by 60 dB takes $`60/(-20\log_{10}g) = 3/(-\log_{10} g)`$ trips, each lasting $`D`$ seconds:
 
-   ```math
-   T_{60} = \frac{3D}{-\log_{10} g}
-   ```
+   $`\displaystyle T_{60} = \frac{3D}{-\log_{10} g}`$
 
    - $`D = 0.375`$, $`g = 0.5`$: $1.125 / 0.30103 = $ **3.737 s** (about 10 trips)
    - $`D = 0.375`$, $`g = 0.7`$: $1.125 / 0.15490 = $ **7.263 s**

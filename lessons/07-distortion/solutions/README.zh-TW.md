@@ -126,9 +126,7 @@ return t < 2.0f * T ? t - T : 3.0f * T - t;
 - **100 Hz 是 +3.07 而不是 +4**：peak filter 本身在 100 Hz 是 +4 dB，但 70 Hz 的 highpass 在 100 Hz 還有約 −0.9 dB 的損失。
 - **9 kHz 的 frequency warping**：類比 2 階 Butterworth lowpass $`|H(j\Omega)|^2 = 1/(1 + (\Omega/\Omega_c)^4)`$；一個 octave 上方 $`\Omega/\Omega_c = 2`$，兩顆串接是 $`-20\log_{10}(1 + 16) = -24.6`$ dB。但 RBJ cookbook 用 bilinear transform，數位頻率 $`f`$ 對應到類比頻率 $`\propto \tan(\pi f / f_s)`$，所以等效比例是
 
-  ```math
-  r = \frac{\tan(\pi \cdot 9000/48000)}{\tan(\pi \cdot 4500/48000)} = \frac{0.6682}{0.3033} = 2.203
-  ```
+  $`\displaystyle r = \frac{\tan(\pi \cdot 9000/48000)}{\tan(\pi \cdot 4500/48000)} = \frac{0.6682}{0.3033} = 2.203`$
 
   $`-20\log_{10}(1 + r^4) = -20\log_{10}(1 + 23.56) = -27.80`$ dB，和量測完全一致。越接近 Nyquist 掉得越快（在 $`f_s/2`$ 是 $`-\infty`$）。對 cab sim 來說這反而是好事。
 

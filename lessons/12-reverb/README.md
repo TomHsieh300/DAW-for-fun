@@ -249,9 +249,7 @@ flowchart LR
 
 - **8 lowpass-feedback combs (LBCF) in parallel**: the one-pole lowpass in the loop is the damping of section 2.3. Freeverb's implementation is `filterstore = output·(1−damp) + filterstore·damp`, `buffer = input + filterstore·feedback` -- this chapter's `CombFilter` is written the same way.
 - **4 allpasses in series**, with g = 0.5. A detail: Freeverb's allpass code is `output = bufout − input`, `buffer = input + bufout·g`, i.e. $`v[n] = x[n] + g\,v[n-D]`$, $`y[n] = v[n-D] - x[n]`$, with transfer function
-  ```math
-  H(z) = \frac{-1 + (1+g)\,z^{-D}}{1 - g\,z^{-D}}
-  ```
+  $`\displaystyle H(z) = \frac{-1 + (1+g)\,z^{-D}}{1 - g\,z^{-D}}`$
   For this to be an allpass, the numerator coefficients must be a multiple of the denominator coefficients reversed: $`[-1,\ 1+g] = c\,[-g,\ 1]`$ => $`c = 1/g`$, $`1 + g = 1/g`$ => $`g^2 + g - 1 = 0`$ => $`g = (\sqrt5 - 1)/2 \approx 0.618`$. Freeverb uses g = 0.5, so it is **not** a strict allpass (it is 0 dB at integer multiples of $`f_s/D`$ and has a ripple of $`2.5/1.5`$ -> +4.4 dB at half-integer multiples); in practice it "sounds right", but do not take it as the definition of an allpass (the section "Freeverb Allpass Approximation" in J. O. Smith's *Physical Audio Signal Processing* gives the same analysis). Our `AllpassDiffuser` uses the standard form of section 2.4.
 - **Stereo spread**: every delay of the right channel is 23 samples longer than that of the left channel, so the reverbs of the two channels are decorrelated and sound wide.
 - **Parameter mapping**: `roomsize` 0..1 -> feedback = roomsize·0.28 + 0.7 (0.7–0.98), `damp` 0..1 -> damping coefficient = damp·0.4. Note that Freeverb's roomsize controls the feedback directly and is **not** the RT60: the 8 combs share one g, so the longer combs decay a little more slowly than the shorter ones and the RT60 differs from comb to comb (e.g. for g = 0.84, the 1116-sample comb has an RT60 of 1.00 s and the 1617-sample one has 1.45 s).

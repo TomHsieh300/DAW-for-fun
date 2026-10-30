@@ -37,13 +37,9 @@
 5. Real-world signals (what a microphone picks up) contain ultrasonic components and high-frequency noise; if they are not filtered out first, they all alias into the audible range when the ADC samples them, becoming noise that can never be removed afterward (once aliased, it is digitally indistinguishable from a genuine 18 kHz signal).
    Why 44.1 kHz and not 40 kHz: an anti-aliasing filter cannot pass 20 kHz completely and block 20.001 kHz completely; it needs a transition band. The 2 kHz from 20 kHz to 22.05 kHz is the transition band left for the filter. (The specific number 44100 comes from the early history of storing digital audio on video recorders: $`3 \times 490 \times 30 = 44100`$.)
 6. Let $`f_s = 48000`$ and $`n`$ an integer:
-   ```math
-   \sin\!\left(2\pi\frac{30000}{48000}n\right) = \sin\!\left(2\pi n \cdot \frac{48000 - 18000}{48000}\right) = \sin\!\left(2\pi n - 2\pi\frac{18000}{48000}n\right)
-   ```
+   $`\displaystyle \sin\!\left(2\pi\frac{30000}{48000}n\right) = \sin\!\left(2\pi n \cdot \frac{48000 - 18000}{48000}\right) = \sin\!\left(2\pi n - 2\pi\frac{18000}{48000}n\right)`$
    Because $`\sin(2\pi n - \theta) = \sin(-\theta) = -\sin\theta`$ ($`2\pi n`$ is a whole number of turns),
-   ```math
-   = -\sin\!\left(2\pi\frac{18000}{48000}n\right)
-   ```
+   $`\displaystyle = -\sin\!\left(2\pi\frac{18000}{48000}n\right)`$
    The two sets of samples differ only in sign, with equal amplitude. The minus sign is just a 180° phase difference, which is inaudible for a single sine wave. The amplitude of 0.5000 that `l00_db_math` measures at 18 kHz is exactly this result.
 
 ## Exercise 4: normalize and clipping count

@@ -112,9 +112,7 @@ Fix an arbitrary time $`n`$.
 
 1. By step 2, for all $`k`$: $`gr[k] \le g[k]`$ (the result of a min is never larger than any of its arguments).
 2. By step 3, $`m[n-k]`$ is the minimum of $`\{gr[n-k-L], \dots, gr[n-k]\}`$. For $`k = 0, 1, \dots, L`$ this range always contains index $`n-L`$ (since $`n-k-L \le n-L \le n-k`$). Therefore
-   ```math
-   m[n-k] \le gr[n-L] \le g[n-L],\qquad k = 0,\dots,L.
-   ```
+   $`\displaystyle m[n-k] \le gr[n-L] \le g[n-L],\qquad k = 0,\dots,L.`$
 3. By step 4, $`s[n]`$ is the average of these $`L+1`$ values of $`m`$, each $`\le g[n-L]`$, so $`s[n] \le g[n-L]`$. Also each term lies in $`[0, 1]`$, so $`0 \le s[n] \le 1`$.
 4. By step 5, $`|y[n]| = |x_s[n-L]|\cdot s[n] \le |x_s[n-L]|\cdot g[n-L]`$.
    - If $`|x_s[n-L]| > c`$: $`g[n-L] = c/|x_s[n-L]|`$, and the product is $`c`$.
