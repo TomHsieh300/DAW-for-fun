@@ -157,6 +157,12 @@ int main() {
             t0 = Clock::now();
             dsp::naiveDft(x.data(), out.data(), n);
             naiveMs = millisecondsSince(t0);
+            // Use the result: an optimizer may drop a computation nobody reads (Apple Clang -O3 removed the
+            // whole naive DFT here, timing it at 0 ms). Comparing it with the FFT also checks both once more.
+            float diff = 0.0f;
+            for (int k = 0; k < n; ++k)
+                diff = std::max(diff, std::abs(out[static_cast<size_t>(k)] - work[static_cast<size_t>(k)]));
+            DAWLAB_CHECK(diff < 1e-3f);
         }
         if (n == 4096)
             ratioAt4096 = naiveMs / std::max(fftMs, 1e-9);

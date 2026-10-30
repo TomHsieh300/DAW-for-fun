@@ -13,6 +13,7 @@ TrackId TrackList::add(std::string name) {
     // TODO 1: hand out TrackId{nextId_}, then count nextId_ up (never down, never reuse);
     //         append a TrackInfo with that id and the name (gain 0 dB); return the id.
     (void)name;
+    (void)nextId_;
     return TrackId{};
 }
 
