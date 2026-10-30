@@ -1,9 +1,12 @@
 # Build every chapter and run its ctest suite (the self-checking examples, solutions and tests).
 #
 #   core  every pure C++ chapter (00-12, 15 and the engine part of 14), Debug and Release, on
-#         Windows, Linux and macOS
+#         Windows, Linux (x64 and ARM64) and macOS
 #   juce  chapters 13-14 with JUCE, including the DawLab 8 smoke test and snapshot (macOS is
 #         built too but allowed to fail until it has passed a few times)
+#
+# Linux ARM64 (ubuntu-24.04-arm) stands in for embedded aarch64 boards such as NXP's
+# FRDM i.MX 95. It is allowed to fail in both jobs until it has passed a few times.
 #
 # Both jobs go through scripts/build.ps1 / scripts/build.sh, so CI also checks the commands the
 # README tells learners to run.
@@ -27,11 +30,12 @@ jobs:
   core:
     name: core (${{ matrix.os }}, ${{ matrix.config }})
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.os == 'ubuntu-24.04-arm' }}
     strategy:
       fail-fast: false
       matrix:
         # build.ps1 uses the "Visual Studio 17 2022" generator, so pin the image that has VS 2022
-        os: [windows-2022, ubuntu-24.04, macos-latest]
+        os: [windows-2022, ubuntu-24.04, ubuntu-24.04-arm, macos-latest]
         config: [Debug, Release]
     steps:
       - uses: actions/checkout@v5
@@ -56,6 +60,8 @@ jobs:
         experimental: [false]
         include:
           - os: macos-latest
+            experimental: true
+          - os: ubuntu-24.04-arm
             experimental: true
     steps:
       - uses: actions/checkout@v5
