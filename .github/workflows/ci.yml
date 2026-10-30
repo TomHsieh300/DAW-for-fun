@@ -69,7 +69,7 @@ jobs:
       # third_party/ is not in git; clone the pinned JUCE once and reuse it
       - name: Cache JUCE
         id: juce-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: third_party/JUCE
           key: juce-${{ env.JUCE_TAG }}
@@ -105,7 +105,7 @@ jobs:
 
       - name: Upload DawLab 8 snapshot
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dawlab8-snapshot-${{ matrix.os }}
           path: build/dawlab_output/l14_app_snapshot*.png
