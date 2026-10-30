@@ -41,7 +41,7 @@ flowchart LR
     D --> L["20·log10<br/>(dB 值)"]
     L --> G["Gain computer<br/>靜態曲線<br/>(GR 目標值 dB)"]
     G --> S["Attack / release<br/>one-pole 平滑<br/>(GR dB)"]
-    S --> E["10^(-GR/20)<br/>(線性 gain g)"]
+    S --> E["10<sup>−GR/20</sup><br/>(線性 gain g)"]
     X --> M(("×"))
     E --> M
     M --> K["× makeup gain"] --> Y["輸出 y"]

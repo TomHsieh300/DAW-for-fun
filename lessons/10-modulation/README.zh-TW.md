@@ -36,7 +36,7 @@ Modulation 效果多了一條「控制訊號」：
 ```mermaid
 flowchart TD
     L["LFO（0.1–10 Hz）<br/>m[n] ∈ [-1, +1]"] --> P["映射到參數範圍"]
-    P -.->|"例"| EX["delay = 15 ms + 3 ms · m[n]<br/>fc = 800 Hz · 2^(2·m[n])<br/>gain = 1 − depth · (1 − m[n]) / 2"]
+    P -.->|"例"| EX["delay = 15 ms + 3 ms · m[n]<br/>fc = 800 Hz · 2<sup>2·m[n]</sup><br/>gain = 1 − depth · (1 − m[n]) / 2"]
     P -->|"參數"| E
     X["x[n]"] --> E["效果器"] --> Y["y[n]"]
 ```
@@ -307,7 +307,7 @@ Notches found sweeping 100-4000 Hz (every 25 Hz), vs f_k = (2k+1)/(2d), d = 2 ms
 flowchart LR
     X["x"] -->|"1 − m"| Y["y"]
     X --> ADD(("#43;"))
-    ADD --> DL["z^(−D)"]
+    ADD --> DL["z<sup>−D</sup>"]
     DL -->|"m"| Y
     DL -->|"g"| ADD
 ```
@@ -392,7 +392,7 @@ flowchart LR
     X["x"] -->|"1 − mix"| Y["y"]
     X --> ADD(("#43;")) --> AP1["AP 1"] --> AP2["AP 2"] --> APD["..."] --> APN["AP N"]
     APN -->|"mix"| Y
-    APN --> FB["g · z^(−1)<br/>（feedback，可選）"]
+    APN --> FB["g · z<sup>−1</sup><br/>（feedback，可選）"]
     FB --> ADD
 ```
 

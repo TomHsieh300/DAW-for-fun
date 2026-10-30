@@ -76,7 +76,7 @@ reaches the speakers later:
 
 ```mermaid
 flowchart LR
-    A["engine renders sample P"] --> B["PDC delays every path by L_mix"] --> C["device buffers, driver, DAC: L_device"] --> D["ear"]
+    A["engine renders sample P"] --> B["PDC delays every path by L<sub>mix</sub>"] --> C["device buffers, driver, DAC: L<sub>device</sub>"] --> D["ear"]
 ```
 
 - $`L_{\text{mix}}`$ = `Engine::getLatencySamples()`, the plugin delay compensation of Step 8. The

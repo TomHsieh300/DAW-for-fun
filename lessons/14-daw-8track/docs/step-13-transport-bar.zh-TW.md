@@ -64,7 +64,7 @@ juce::String TransportBar::formatBarsBeats(const engine::BarsBeats& p) {
 
 ```mermaid
 flowchart LR
-    A["engine render 出 sample P"] --> B["PDC 讓每條路徑延遲 L_mix"] --> C["device buffer、driver、DAC：L_device"] --> D["耳朵"]
+    A["engine render 出 sample P"] --> B["PDC 讓每條路徑延遲 L<sub>mix</sub>"] --> C["device buffer、driver、DAC：L<sub>device</sub>"] --> D["耳朵"]
 ```
 
 - $`L_{\text{mix}}`$ = `Engine::getLatencySamples()`，即 Step 8 的 plugin delay compensation。Bounce 會把它移除（Step 9）；即時播放則不能：它是真實的延遲。在 demo song 中它是 752 個 sample（track 8 的 convolution reverb 512 + master limiter 240）= 15.7 ms。

@@ -17,6 +17,7 @@
 - 數學用 GitHub 支援的 LaTeX：行內公式寫成 ``$`...`$``，獨立公式放在 ` ```math ` 區塊裡（兩者都讓 TeX 不經過 Markdown 處理；否則 `\\`、`\,`、`\;` 這類反斜線會被吃掉，或底線會跨公式被配成斜體）。在清單項目（list item）裡，GitHub 會把 ` ```math ` 區塊顯示成一般程式碼，所以那裡的獨立公式改成單獨一行的 ``$`\displaystyle ...`$``。避免 GitHub 不接受的巨集，例如 `\operatorname`（改用 `\mathrm`）。
 - 圖：訊號流程、方塊圖、state machine、時序圖用 ` ```mermaid ` 區塊（標籤用該版本的語言）；曲線（頻率響應、transfer curve、envelope、波形）用 SVG 圖，由該章的 `images/make_figures.py` 透過 `docs/tools/plotstyle.py` 依公式計算產生。不要在程式碼區塊裡用框線字元、箭頭或中文字畫圖：在 GitHub 上會歪掉。用 `python docs/tools/check_mermaid.py` 檢查每個 Mermaid 區塊都能正確渲染。
 - 版面：單獨一行的圖片置中，寫成 `<p align="center"><img src="images/name.svg" alt="..."></p>`；最上層的表格用 `<div align="center">` 包起來（開頭標籤之後、結尾標籤之前各留一個空行，GitHub 才會把表格當 Markdown 解析）。` ```math ` 獨立公式與 Mermaid 圖 GitHub 本來就會置中；程式碼區塊一律佔滿整行寬度。SVG 的文字使用以通用的 `sans-serif` 結尾的無襯線字型清單（在 `plotstyle.py` 設定），任何瀏覽器都不會顯示成襯線字。
+- Mermaid 標籤：上下標用 `<sub>`/`<sup>` 寫（`z<sup>−1</sup>`、`s<sub>i</sub>`），`_` 和 `^` 會原樣顯示；整個標籤只有 `+`、`-` 或 `*` 的節點會被當成 Markdown 列表，符號要寫成 entity code（`(("#43;"))`）。
 
 ## 2. 目錄結構
 

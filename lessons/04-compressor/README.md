@@ -41,7 +41,7 @@ flowchart LR
     D --> L["20·log10<br/>(level in dB)"]
     L --> G["Gain computer<br/>static curve<br/>(GR target dB)"]
     G --> S["Attack / release<br/>one-pole smoothing<br/>(GR dB)"]
-    S --> E["10^(-GR/20)<br/>(linear gain g)"]
+    S --> E["10<sup>−GR/20</sup><br/>(linear gain g)"]
     X --> M(("×"))
     E --> M
     M --> K["× makeup gain"] --> Y["Output y"]

@@ -187,13 +187,13 @@ The `Gate` in this chapter steps through this state machine once per sample:
 ```mermaid
 stateDiagram-v2
     [*] --> Closed
-    Closed --> Attack: env ≥ T_open
+    Closed --> Attack: env ≥ T<sub>open</sub>
     Attack --> Open: gain reaches 0 dB
-    Open --> Hold: env < T_close (hold > 0)
-    Open --> Release: env < T_close (hold = 0)
-    Hold --> Open: env ≥ T_open
+    Open --> Hold: env < T<sub>close</sub> (hold > 0)
+    Open --> Release: env < T<sub>close</sub> (hold = 0)
+    Hold --> Open: env ≥ T<sub>open</sub>
     Hold --> Release: hold timer expires
-    Release --> Attack: env ≥ T_open (climb from the current gain, no jump)
+    Release --> Attack: env ≥ T<sub>open</sub> (climb from the current gain, no jump)
     Release --> Closed: gain falls to range
 ```
 

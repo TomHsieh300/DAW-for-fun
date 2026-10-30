@@ -97,7 +97,7 @@ The simplest structure that produces "a train of decaying echoes" is the feedbac
 ```mermaid
 flowchart LR
     X["x[n]"] --> S(("#43;"))
-    S --> D["z^-D"]
+    S --> D["z<sup>−D</sup>"]
     D --> Y["y[n]"]
     D -->|"× g"| S
 ```
@@ -164,7 +164,7 @@ The echoes of a comb alone are not dense enough. Schroeder's other invention is 
 ```mermaid
 flowchart LR
     X["x[n]"] --> S1(("#43;"))
-    S1 -->|"v[n]"| D["z^-D"]
+    S1 -->|"v[n]"| D["z<sup>−D</sup>"]
     D -->|"v[n-D]"| S2(("#43;"))
     D -->|"× g"| S1
     S1 -->|"× (-g)"| S2
@@ -269,12 +269,12 @@ The combs in a Schroeder structure are independent of one another. If the output
 
 ```mermaid
 flowchart LR
-    X["x"] -->|"b (input distribution)"| S["(+) in front of each line i<br/>s_i = g_i · LP_i((A·v)_i) + b_i·x"]
-    S --> D["8 delay lines<br/>z^-L0 ... z^-L7"]
-    D -->|"v = outputs of the delay lines"| Y["y = c^T v"]
+    X["x"] -->|"b (input distribution)"| S["(+) in front of each line i<br/>s<sub>i</sub> = g<sub>i</sub> · LP<sub>i</sub>((A·v)<sub>i</sub>) + b<sub>i</sub>·x"]
+    S --> D["8 delay lines<br/>z<sup>−L<sub>0</sub></sup> ... z<sup>−L<sub>7</sub></sup>"]
+    D -->|"v = outputs of the delay lines"| Y["y = c<sup>T</sup> v"]
     D -->|"v"| A["feedback matrix A (N×N)"]
-    A --> LP["LP_i"]
-    LP --> G["× g_i"]
+    A --> LP["LP<sub>i</sub>"]
+    LP --> G["× g<sub>i</sub>"]
     G --> S
 ```
 
@@ -407,7 +407,7 @@ For an infinitely long input, cut the input into blocks of length B and process 
 
 ```mermaid
 flowchart LR
-    X["x_j"] --> Z["zero-pad"] --> F["FFT"] --> H["× H"] --> I["IFFT"] --> O["B + M − 1 output samples"]
+    X["x<sub>j</sub>"] --> Z["zero-pad"] --> F["FFT"] --> H["× H"] --> I["IFFT"] --> O["B + M − 1 output samples"]
     O -->|"the tail's M−1 samples are added<br/>to the start of the next block"| N["next block"]
 ```
 
@@ -445,9 +445,9 @@ Y_j = \sum_{k=0}^{K-1} H_k \cdot X_{j-k}
 
 ```mermaid
 flowchart LR
-    IN["input block j"] --> FR["previous block + this block"] --> F["FFT"] --> XJ["X_j"]
-    XJ --> FDL["FDL:<br/>X_j, X_{j-1}, X_{j-2}, ..., X_{j-K+1}"]
-    FDL --> MAC["× H_0, H_1, H_2, ..., H_{K-1}<br/>(precomputed), then sum (Σ)"]
+    IN["input block j"] --> FR["previous block + this block"] --> F["FFT"] --> XJ["X<sub>j</sub>"]
+    XJ --> FDL["FDL:<br/>X<sub>j</sub>, X<sub>j−1</sub>, X<sub>j−2</sub>, ..., X<sub>j−K+1</sub>"]
+    FDL --> MAC["× H<sub>0</sub>, H<sub>1</sub>, H<sub>2</sub>, ..., H<sub>K−1</sub><br/>(precomputed), then sum (Σ)"]
     MAC --> I["IFFT"] --> OUT["take the last P samples:<br/>output block j"]
 ```
 
@@ -583,10 +583,10 @@ flowchart TD
     DF --> GN["× 0.35 (× 0 when frozen)"]
     GN --> RT["even lines take L, odd lines take R"]
     subgraph FDN["FDN (per sample)"]
-        R1["v_i = line_i.readLinear(L_i − 1 + lfo_i)<br/>(read before write, hence −1)"]
-        R2["u_i = v_i − (2/8)·Σ v_j<br/>(Householder)"]
-        R3["u_i = OnePole_i(u_i)<br/>(damping; skipped when at or above 20 kHz, or frozen)"]
-        R4["line_i.push(g_i · u_i + input_i)<br/>g_i = 10^(−3·L_i/(RT60·fs))"]
+        R1["v<sub>i</sub> = line<sub>i</sub>.readLinear(L<sub>i</sub> − 1 + lfo<sub>i</sub>)<br/>(read before write, hence −1)"]
+        R2["u<sub>i</sub> = v<sub>i</sub> − (2/8)·Σ v<sub>j</sub><br/>(Householder)"]
+        R3["u<sub>i</sub> = OnePole<sub>i</sub>(u<sub>i</sub>)<br/>(damping; skipped when at or above 20 kHz, or frozen)"]
+        R4["line<sub>i</sub>.push(g<sub>i</sub> · u<sub>i</sub> + input<sub>i</sub>)<br/>g<sub>i</sub> = 10<sup>−3·L<sub>i</sub>/(RT60·fs)</sup>"]
         R1 --> R2 --> R3 --> R4
     end
     RT --> R4

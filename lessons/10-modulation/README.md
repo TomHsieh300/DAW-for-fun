@@ -36,7 +36,7 @@ A modulation effect adds one more line, a "control signal":
 ```mermaid
 flowchart TD
     L["LFO (0.1–10 Hz)<br/>m[n] ∈ [-1, +1]"] --> P["map to parameter range"]
-    P -.->|"e.g."| EX["delay = 15 ms + 3 ms · m[n]<br/>fc = 800 Hz · 2^(2·m[n])<br/>gain = 1 − depth · (1 − m[n]) / 2"]
+    P -.->|"e.g."| EX["delay = 15 ms + 3 ms · m[n]<br/>fc = 800 Hz · 2<sup>2·m[n]</sup><br/>gain = 1 − depth · (1 − m[n]) / 2"]
     P -->|"parameter"| E
     X["x[n]"] --> E["effect"] --> Y["y[n]"]
 ```
@@ -307,7 +307,7 @@ Send part of the delay output back to the delay-line input (the feedback comb of
 flowchart LR
     X["x"] -->|"1 − m"| Y["y"]
     X --> ADD(("#43;"))
-    ADD --> DL["z^(−D)"]
+    ADD --> DL["z<sup>−D</sup>"]
     DL -->|"m"| Y
     DL -->|"g"| ADD
 ```
@@ -392,7 +392,7 @@ flowchart LR
     X["x"] -->|"1 − mix"| Y["y"]
     X --> ADD(("#43;")) --> AP1["AP 1"] --> AP2["AP 2"] --> APD["..."] --> APN["AP N"]
     APN -->|"mix"| Y
-    APN --> FB["g · z^(−1)<br/>(feedback, optional)"]
+    APN --> FB["g · z<sup>−1</sup><br/>(feedback, optional)"]
     FB --> ADD
 ```
 

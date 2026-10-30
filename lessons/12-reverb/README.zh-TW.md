@@ -97,7 +97,7 @@ y[n] = (h * x)[n] = \sum_{k=0}^{M-1} h[k]\,x[n-k]
 ```mermaid
 flowchart LR
     X["x[n]"] --> S(("#43;"))
-    S --> D["z^-D"]
+    S --> D["z<sup>−D</sup>"]
     D --> Y["y[n]"]
     D -->|"× g"| S
 ```
@@ -164,7 +164,7 @@ DC 時 $`|\mathrm{LP}| = 1`$（低頻 RT60 不變），Nyquist 時 $`|\mathrm{LP
 ```mermaid
 flowchart LR
     X["x[n]"] --> S1(("#43;"))
-    S1 -->|"v[n]"| D["z^-D"]
+    S1 -->|"v[n]"| D["z<sup>−D</sup>"]
     D -->|"v[n-D]"| S2(("#43;"))
     D -->|"× g"| S1
     S1 -->|"× (-g)"| S2
@@ -269,12 +269,12 @@ Schroeder 結構的 comb 彼此獨立。如果讓 N 條 delay line 的輸出**�
 
 ```mermaid
 flowchart LR
-    X["x"] -->|"b（輸入分配）"| S["每條線 i 前面的 (+)<br/>s_i = g_i · LP_i((A·v)_i) + b_i·x"]
-    S --> D["8 條 delay line<br/>z^-L0 ... z^-L7"]
-    D -->|"v = 各 delay 線的輸出"| Y["y = c^T v"]
+    X["x"] -->|"b（輸入分配）"| S["每條線 i 前面的 (+)<br/>s<sub>i</sub> = g<sub>i</sub> · LP<sub>i</sub>((A·v)<sub>i</sub>) + b<sub>i</sub>·x"]
+    S --> D["8 條 delay line<br/>z<sup>−L<sub>0</sub></sup> ... z<sup>−L<sub>7</sub></sup>"]
+    D -->|"v = 各 delay 線的輸出"| Y["y = c<sup>T</sup> v"]
     D -->|"v"| A["回授矩陣 A（N×N）"]
-    A --> LP["LP_i"]
-    LP --> G["× g_i"]
+    A --> LP["LP<sub>i</sub>"]
+    LP --> G["× g<sub>i</sub>"]
     G --> S
 ```
 
@@ -407,7 +407,7 @@ $`y[n] = \sum_{k=0}^{M-1} h[k]x[n-k]`$：每個輸出 sample 要 M 次乘加。�
 
 ```mermaid
 flowchart LR
-    X["x_j"] --> Z["補零"] --> F["FFT"] --> H["× H"] --> I["IFFT"] --> O["B + M − 1 個輸出"]
+    X["x<sub>j</sub>"] --> Z["補零"] --> F["FFT"] --> H["× H"] --> I["IFFT"] --> O["B + M − 1 個輸出"]
     O -->|"尾巴 M−1 個與下一塊的開頭相加"| N["下一塊"]
 ```
 
@@ -445,9 +445,9 @@ Y_j = \sum_{k=0}^{K-1} H_k \cdot X_{j-k}
 
 ```mermaid
 flowchart LR
-    IN["輸入塊 j"] --> FR["上一塊 + 這一塊"] --> F["FFT"] --> XJ["X_j"]
-    XJ --> FDL["FDL：<br/>X_j, X_{j-1}, X_{j-2}, ..., X_{j-K+1}"]
-    FDL --> MAC["× H_0, H_1, H_2, ..., H_{K-1}<br/>（預先算好），再加總 (Σ)"]
+    IN["輸入塊 j"] --> FR["上一塊 + 這一塊"] --> F["FFT"] --> XJ["X<sub>j</sub>"]
+    XJ --> FDL["FDL：<br/>X<sub>j</sub>, X<sub>j−1</sub>, X<sub>j−2</sub>, ..., X<sub>j−K+1</sub>"]
+    FDL --> MAC["× H<sub>0</sub>, H<sub>1</sub>, H<sub>2</sub>, ..., H<sub>K−1</sub><br/>（預先算好），再加總 (Σ)"]
     MAC --> I["IFFT"] --> OUT["取後 P 個：<br/>輸出塊 j"]
 ```
 
@@ -583,10 +583,10 @@ flowchart TD
     DF --> GN["× 0.35（freeze 時 × 0）"]
     GN --> RT["偶數線吃 L、奇數線吃 R"]
     subgraph FDN["FDN（每個 sample）"]
-        R1["v_i = line_i.readLinear(L_i − 1 + lfo_i)<br/>（先讀後寫，所以 −1）"]
-        R2["u_i = v_i − (2/8)·Σ v_j<br/>（Householder）"]
-        R3["u_i = OnePole_i(u_i)<br/>（damping，達到或超過 20 kHz 或 freeze 時略過）"]
-        R4["line_i.push(g_i · u_i + input_i)<br/>g_i = 10^(−3·L_i/(RT60·fs))"]
+        R1["v<sub>i</sub> = line<sub>i</sub>.readLinear(L<sub>i</sub> − 1 + lfo<sub>i</sub>)<br/>（先讀後寫，所以 −1）"]
+        R2["u<sub>i</sub> = v<sub>i</sub> − (2/8)·Σ v<sub>j</sub><br/>（Householder）"]
+        R3["u<sub>i</sub> = OnePole<sub>i</sub>(u<sub>i</sub>)<br/>（damping，達到或超過 20 kHz 或 freeze 時略過）"]
+        R4["line<sub>i</sub>.push(g<sub>i</sub> · u<sub>i</sub> + input<sub>i</sub>)<br/>g<sub>i</sub> = 10<sup>−3·L<sub>i</sub>/(RT60·fs)</sup>"]
         R1 --> R2 --> R3 --> R4
     end
     RT --> R4

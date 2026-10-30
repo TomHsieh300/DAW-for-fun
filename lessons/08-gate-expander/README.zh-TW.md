@@ -187,13 +187,13 @@ $`\tau_r\,\dot e = |x| - e`$——注意它是往**目前的 $`|x|`$** 衰減，
 ```mermaid
 stateDiagram-v2
     [*] --> Closed
-    Closed --> Attack: env ≥ T_open
+    Closed --> Attack: env ≥ T<sub>open</sub>
     Attack --> Open: gain 爬到 0 dB
-    Open --> Hold: env < T_close（hold > 0）
-    Open --> Release: env < T_close（hold = 0）
-    Hold --> Open: env ≥ T_open
+    Open --> Hold: env < T<sub>close</sub>（hold > 0）
+    Open --> Release: env < T<sub>close</sub>（hold = 0）
+    Hold --> Open: env ≥ T<sub>open</sub>
     Hold --> Release: hold 計時結束
-    Release --> Attack: env ≥ T_open（從目前 gain 往上爬，不跳）
+    Release --> Attack: env ≥ T<sub>open</sub>（從目前 gain 往上爬，不跳）
     Release --> Closed: gain 降到 range
 ```
 

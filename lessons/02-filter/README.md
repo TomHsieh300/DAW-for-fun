@@ -159,8 +159,8 @@ This is exactly what `BiquadCoefficients::response()` / `magnitudeDb()` do (see 
 
 ```mermaid
 flowchart LR
-    DE["difference equation<br/>y[n] = b0 x[n] + ... - a1 y[n-1] ..."] -- "x[n-k] -> z^-k X(z)" --> TF["transfer function<br/>H(z) = B(z) / A(z)"]
-    TF -- "substitute z = e^jω" --> FR["frequency response<br/>|H| (gain) and ∠H (phase)"]
+    DE["difference equation<br/>y[n] = b0 x[n] + ... - a1 y[n-1] ..."] -- "x[n-k] -> z<sup>−k</sup> X(z)" --> TF["transfer function<br/>H(z) = B(z) / A(z)"]
+    TF -- "substitute z = e<sup>jω</sup>" --> FR["frequency response<br/>|H| (gain) and ∠H (phase)"]
     DE -- "input δ[n]" --> IR["impulse response h[n]"]
     IR -- "DTFT" --> FR
 ```
@@ -337,7 +337,7 @@ The most widely used biquad formulas in the industry come from Robert Bristow-Jo
 ```mermaid
 flowchart LR
     A["analog prototype H(s)<br/>(e.g. 1 / (s² + s/Q + 1))"] --> B["prewarp<br/>so that f0 lines up exactly"]
-    B --> C["bilinear transform<br/>s -> (1 - z^-1)/(1 + z^-1)·constant"]
+    B --> C["bilinear transform<br/>s -> (1 - z<sup>−1</sup>)/(1 + z<sup>−1</sup>)·constant"]
     C --> D["rearrange into b0, b1, b2, a0, a1, a2"]
     D --> E["divide by a0 (normalize)"]
 ```
@@ -530,16 +530,16 @@ The same $`H(z)`$ has several implementation "structures". They are mathematical
 ```mermaid
 flowchart LR
     X["x[n]"] --> B0["x b0"]
-    X --> XD1["z^-1<br/>x[n-1]"]
+    X --> XD1["z<sup>−1</sup><br/>x[n-1]"]
     XD1 --> B1["x b1"]
-    XD1 --> XD2["z^-1<br/>x[n-2]"]
+    XD1 --> XD2["z<sup>−1</sup><br/>x[n-2]"]
     XD2 --> B2["x b2"]
     B0 --> S["sum (+)"]
     B1 --> S
     B2 --> S
     S --> Y["y[n]"]
-    Y --> YD1["z^-1<br/>y[n-1]"]
-    YD1 --> YD2["z^-1<br/>y[n-2]"]
+    Y --> YD1["z<sup>−1</sup><br/>y[n-1]"]
+    YD1 --> YD2["z<sup>−1</sup><br/>y[n-2]"]
     YD1 --> A1["x (-a1)"]
     YD2 --> A2["x (-a2)"]
     A1 --> S
@@ -570,13 +570,13 @@ flowchart LR
     X --> B1["x b1"]
     X --> B2["x b2"]
     B0 --> S0["sum (+)"]
-    Z1["z^-1<br/>state s1"] --> S0
+    Z1["z<sup>−1</sup><br/>state s1"] --> S0
     S0 --> Y["y[n]"]
     Y --> A1["x (-a1)"]
     Y --> A2["x (-a2)"]
     B1 --> S1["sum (+)"]
     A1 --> S1
-    Z2["z^-1<br/>state s2"] --> S1
+    Z2["z<sup>−1</sup><br/>state s2"] --> S1
     S1 --> Z1
     B2 --> S2["sum (+)"]
     A2 --> S2

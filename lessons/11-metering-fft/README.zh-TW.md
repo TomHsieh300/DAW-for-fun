@@ -188,9 +188,9 @@ BS.1770 用一個很簡單的 filter 近似這件事，叫 **K-weighting**，再
 
 ```mermaid
 flowchart LR
-    L["L"] --> KL["K-weighting<br/>stage 1 shelf<br/>stage 2 highpass"] --> ML["mean square z_L<br/>(400 ms block)"]
-    R["R"] --> KR["K-weighting"] --> MR["mean square z_R"]
-    ML --> S["Σ G_i · z_i"]
+    L["L"] --> KL["K-weighting<br/>stage 1 shelf<br/>stage 2 highpass"] --> ML["mean square z<sub>L</sub><br/>(400 ms block)"]
+    R["R"] --> KR["K-weighting"] --> MR["mean square z<sub>R</sub>"]
+    ML --> S["Σ G<sub>i</sub> · z<sub>i</sub>"]
     MR --> S
     S --> LU["−0.691 + 10·log10(·)"] --> OUT["LUFS"]
 ```
@@ -434,9 +434,9 @@ $`E`$、$`O`$ 以 $`N/2`$ 為週期，而且 $`W_N^{k+N/2} = -W_N^k`$，所以�
 
 ```mermaid
 flowchart LR
-    Ek["E[k]"] --> Xk["X[k] = E[k] + W^k·O[k]"]
-    Ek --> Xk2["X[k+N/2] = E[k] − W^k·O[k]"]
-    Ok["O[k]"] --> Tw["× W^k"]
+    Ek["E[k]"] --> Xk["X[k] = E[k] + W<sup>k</sup>·O[k]"]
+    Ek --> Xk2["X[k+N/2] = E[k] − W<sup>k</sup>·O[k]"]
+    Ok["O[k]"] --> Tw["× W<sup>k</sup>"]
     Tw --> Xk
     Tw --> Xk2
 ```

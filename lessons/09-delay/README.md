@@ -260,7 +260,7 @@ The core of an echo effect is to multiply the delayed output by $`g`$ (the feedb
 ```mermaid
 flowchart LR
     X["x[n]"] -->|"x[n]"| ADD["#43;"]
-    ADD -->|"s[n]"| DL["z^-D<br/>(delay of D samples)"]
+    ADD -->|"s[n]"| DL["z<sup>−D</sup><br/>(delay of D samples)"]
     DL -->|"w[n] (wet)"| MX["x mix"]
     DL --> FB["x g<br/>(feedback)"]
     FB --> ADD
@@ -293,7 +293,7 @@ $`D = 375`$ ms, $`g = 0.5`$ → 3.74 s; $`g = 0.7`$ → 7.26 s. Conversely, to h
 ```mermaid
 flowchart LR
     X["x"] --> ADD["#43;"]
-    ADD --> DL["z^-D"]
+    ADD --> DL["z<sup>−D</sup>"]
     DL --> WET["wet"]
     DL --> HP["HP"]
     HP --> LP["LP"]

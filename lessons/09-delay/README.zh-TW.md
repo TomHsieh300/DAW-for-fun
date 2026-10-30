@@ -261,7 +261,7 @@ Echo 效果器的核心是把延遲後的輸出乘上 $`g`$（feedback）再加�
 ```mermaid
 flowchart LR
     X["x[n]"] -->|"x[n]"| ADD["#43;"]
-    ADD -->|"s[n]"| DL["z^-D<br/>（延遲 D 個 sample）"]
+    ADD -->|"s[n]"| DL["z<sup>−D</sup><br/>（延遲 D 個 sample）"]
     DL -->|"w[n]（wet）"| MX["x mix"]
     DL --> FB["x g<br/>（feedback）"]
     FB --> ADD
@@ -294,7 +294,7 @@ $`D = 375`$ ms、$`g = 0.5`$ → 3.74 s；$`g = 0.7`$ → 7.26 s。反過來，�
 ```mermaid
 flowchart LR
     X["x"] --> ADD["#43;"]
-    ADD --> DL["z^-D"]
+    ADD --> DL["z<sup>−D</sup>"]
     DL --> WET["wet"]
     DL --> HP["HP"]
     HP --> LP["LP"]

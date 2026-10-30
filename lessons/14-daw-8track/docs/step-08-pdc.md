@@ -46,15 +46,15 @@ L_{\text{total}} = \max_u L_u + \max_v L_v + L_{\text{master}}
 ```mermaid
 flowchart LR
     subgraph TR["track t"]
-        T1["clips"] --> T2["inserts (L_t)"] --> T3["delay c_t"] --> T4["mute / solo"]
+        T1["clips"] --> T2["inserts (L<sub>t</sub>)"] --> T3["delay c<sub>t</sub>"] --> T4["mute / solo"]
         T4 --> T5["sends"]
-        T4 --> T6["fader / pan"] --> T7["track sum"] --> T8["delay c_sum"]
+        T4 --> T6["fader / pan"] --> T7["track sum"] --> T8["delay c<sub>sum</sub>"]
     end
     subgraph BUS["bus b"]
-        B1["sends"] --> B2["inserts (L_b)"] --> B3["delay c_b"] --> B4["fader"]
+        B1["sends"] --> B2["inserts (L<sub>b</sub>)"] --> B3["delay c<sub>b</sub>"] --> B4["fader"]
     end
     T5 --> B1
-    T8 --> M["master (L_m)"]
+    T8 --> M["master (L<sub>m</sub>)"]
     B4 --> M
 ```
 
