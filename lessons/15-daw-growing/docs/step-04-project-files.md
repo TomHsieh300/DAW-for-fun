@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-04-project-files.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 3 - A CPU budget](step-03-cpu-budget.md) | Next: Step 5 - Undo and redo (planned)
+[Overview](../README.md) | Previous: [Step 3 - A CPU budget](step-03-cpu-budget.md) | Next: [Step 5 - Undo and redo](step-05-undo.md)
 
 ## Goal
 

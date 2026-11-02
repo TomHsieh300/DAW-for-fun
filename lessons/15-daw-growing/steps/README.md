@@ -15,6 +15,7 @@ write the step's functions in `starter/`, the self-check tells you when they wor
 | 2 | `step02-track-pool` | `Engine::applyCommand`, `TrackManager::addTrack`, `removeTrack` | `l15_step02_starter` |
 | 3 | `step03-cpu-budget` | `CpuMeter::addBlock`, `CpuMonitor::poll` | `l15_step03_starter` |
 | 4 | `step04-project-files` | `writeProject`, `readProject`, `convertSampleRate` | `l15_step04_starter` |
+| 5 | `step05-undo` | `applyEdit`, `History::perform`, `undo`, `redo` | `l15_step05_starter` |
 
 </div>
 

@@ -2,7 +2,7 @@
 
 [English](step-04-project-files.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 3 - CPU 預算](step-03-cpu-budget.zh-TW.md) | 下一步：Step 5 - Undo 與 redo（規劃中）
+[總覽](../README.zh-TW.md) | 上一步：[Step 3 - CPU 預算](step-03-cpu-budget.zh-TW.md) | 下一步：[Step 5 - Undo 與 redo](step-05-undo.zh-TW.md)
 
 ## 目標
 
