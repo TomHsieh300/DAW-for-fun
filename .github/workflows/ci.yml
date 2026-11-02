@@ -2,6 +2,8 @@
 #
 #   core  every pure C++ chapter (00-12, 15 and the engine part of 14), Debug and Release, on
 #         Windows, Linux (x64 and ARM64) and macOS
+#   tsan  chapter 15 under ThreadSanitizer: its checks run a real audio thread next to the UI
+#         thread, and TSan fails the run on any data race between them
 #   juce  chapters 13-14 with JUCE, including the DawLab 8 smoke test and snapshot (macOS is
 #         built too but allowed to fail until it has passed a few times)
 #
@@ -48,6 +50,22 @@ jobs:
       - name: Build and test (Linux / macOS)
         if: runner.os != 'Windows'
         run: ./scripts/build.sh --config ${{ matrix.config }}
+
+  tsan:
+    name: tsan (ubuntu-24.04, chapter 15)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      # TSan's shadow memory does not fit the 32-bit mmap randomisation of current kernels
+      # ("unexpected memory mapping"); 28 bits is what it supports
+      - name: Lower the ASLR entropy for TSan
+        run: sudo sysctl vm.mmap_rnd_bits=28
+
+      - name: Build and test under ThreadSanitizer
+        env:
+          TSAN_OPTIONS: halt_on_error=1 second_deadlock_stack=1
+        run: ./scripts/build.sh --only 15-daw-growing --sanitize thread --build-dir build-tsan
 
   juce:
     name: juce (${{ matrix.os }})
