@@ -13,6 +13,7 @@
 |---|---|---|---|
 | 1 | `step01-track-ids` | `TrackList::add`、`remove`、`indexOf`、`move` | `l15_step01_starter` |
 | 2 | `step02-track-pool` | `Engine::applyCommand`、`TrackManager::addTrack`、`removeTrack` | `l15_step02_starter` |
+| 3 | `step03-cpu-budget` | `CpuMeter::addBlock`、`CpuMonitor::poll` | `l15_step03_starter` |
 
 </div>
 

@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](README.zh-TW.md)
 
-> **Status: in progress.** Steps 1-2 are finished; Steps 3-6 are planned and listed below so you can
+> **Status: in progress.** Steps 1-3 are finished; Steps 4-6 are planned and listed below so you can
 > see where the chapter is going.
 
 Chapter 14 built an engine that is deliberately *static*: 8 tracks, 2 FX buses, every container
@@ -57,7 +57,7 @@ After this chapter you can
 |---|---|---|---|
 | 1 | [Stable track IDs](docs/step-01-track-ids.md) | `TrackId`, a track list that hands out ids that are never reused; why indices break | done |
 | 2 | [A pool of tracks](docs/step-02-track-pool.md) | `kMaxTracks` pre-allocated slots, add / remove track commands, the id -> slot map; checked with ThreadSanitizer | done |
-| 3 | A CPU budget | the callback load and xrun count; why the real limit is CPU time, not a track count | planned |
+| 3 | [A CPU budget](docs/step-03-cpu-budget.md) | the callback load and xrun count; why the real limit is CPU time, not a track count | done |
 | 4 | Saving and opening projects | a versioned project file built on track ids; opening it at another sample rate | planned |
 | 5 | Undo and redo | commands that can be inverted, an undo history, what should (not) be undoable | planned |
 | 6 | The app | a scrollable arrangement and mixer, add / delete track in the GUI, the File menu | planned |

@@ -2,7 +2,7 @@
 
 [English](step-02-track-pool.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 1 - 穩定的 track ID](step-01-track-ids.zh-TW.md) | 下一步：Step 3 - CPU 預算（規劃中）
+[總覽](../README.zh-TW.md) | 上一步：[Step 1 - 穩定的 track ID](step-01-track-ids.zh-TW.md) | 下一步：[Step 3 - CPU 預算](step-03-cpu-budget.zh-TW.md)
 
 ## 目標
 

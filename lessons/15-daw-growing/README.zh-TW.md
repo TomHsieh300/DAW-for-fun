@@ -2,7 +2,7 @@
 
 [English](README.md) | **繁體中文**
 
-> **狀態：進行中。** Step 1-2 已完成；Step 3-6 還在規劃中，列在下面讓你看到本章接下來的方向。
+> **狀態：進行中。** Step 1-3 已完成；Step 4-6 還在規劃中，列在下面讓你看到本章接下來的方向。
 
 第 14 章刻意把 engine 做成 *static*：8 個 track、2 個 FX bus，所有容器都在 `prepare()` 一次配置
 好，audio thread 永遠不用擴充任何東西。這讓 real-time 的規則很容易遵守。但一個真的能拿來用的 DAW
@@ -51,7 +51,7 @@
 |---|---|---|---|
 | 1 | [穩定的 track ID](docs/step-01-track-ids.zh-TW.md) | `TrackId`、發出永不重複 id 的 track list；為什麼 index 會出錯 | 完成 |
 | 2 | [Track 池](docs/step-02-track-pool.zh-TW.md) | `kMaxTracks` 個預先配置的 slot、新增 / 刪除 track 的 command、id -> slot 對應；用 ThreadSanitizer 檢查 | 完成 |
-| 3 | CPU 預算 | callback 負載與 xrun 次數；為什麼真正的上限是 CPU 時間，而不是 track 數 | 規劃中 |
+| 3 | [CPU 預算](docs/step-03-cpu-budget.zh-TW.md) | callback 負載與 xrun 次數；為什麼真正的上限是 CPU 時間，而不是 track 數 | 完成 |
 | 4 | 存檔與開啟專案 | 以 track id 為基礎、帶版本的專案檔；在不同 sample rate 下開啟 | 規劃中 |
 | 5 | Undo 與 redo | 可以反轉的 command、undo 歷史、哪些操作應該（或不應該）可以 undo | 規劃中 |
 | 6 | App | 可以捲動的 arrangement 與 mixer、GUI 中新增 / 刪除 track、File 選單 | 規劃中 |

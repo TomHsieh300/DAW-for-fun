@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-02-track-pool.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 1 - Stable track IDs](step-01-track-ids.md) | Next: Step 3 - A CPU budget (planned)
+[Overview](../README.md) | Previous: [Step 1 - Stable track IDs](step-01-track-ids.md) | Next: [Step 3 - A CPU budget](step-03-cpu-budget.md)
 
 ## Goal
 
