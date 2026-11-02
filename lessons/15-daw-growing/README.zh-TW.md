@@ -2,7 +2,7 @@
 
 [English](README.md) | **繁體中文**
 
-> **狀態：進行中。** Step 1 已完成；Step 2-6 還在規劃中，列在下面讓你看到本章接下來的方向。
+> **狀態：進行中。** Step 1-2 已完成；Step 3-6 還在規劃中，列在下面讓你看到本章接下來的方向。
 
 第 14 章刻意把 engine 做成 *static*：8 個 track、2 個 FX bus，所有容器都在 `prepare()` 一次配置
 好，audio thread 永遠不用擴充任何東西。這讓 real-time 的規則很容易遵守。但一個真的能拿來用的 DAW
@@ -25,6 +25,13 @@
 
 在 Linux / macOS：`./scripts/build.sh --only 15-daw-growing`，然後執行 `./build/bin/l15_step01_starter`。
 
+從 Step 2 起，自我檢查會在 UI thread 旁邊跑一個真正的 audio thread。也請用 ThreadSanitizer 建置一次
+（GCC 或 Clang；Windows 上在 WSL 裡執行），見 [Step 2](docs/step-02-track-pool.zh-TW.md#用-threadsanitizer-檢查)：
+
+```bash
+./scripts/build.sh --only 15-daw-growing --sanitize thread --build-dir build-tsan
+```
+
 ## 1. 學習目標
 
 完成本章後，你可以
@@ -43,7 +50,7 @@
 | Step | 文件 | 新增內容 | 狀態 |
 |---|---|---|---|
 | 1 | [穩定的 track ID](docs/step-01-track-ids.zh-TW.md) | `TrackId`、發出永不重複 id 的 track list；為什麼 index 會出錯 | 完成 |
-| 2 | Track 池 | `kMaxTracks` 個預先配置的 slot、新增 / 刪除 track 的 command、id -> slot 對應；用 ThreadSanitizer 檢查 | 規劃中 |
+| 2 | [Track 池](docs/step-02-track-pool.zh-TW.md) | `kMaxTracks` 個預先配置的 slot、新增 / 刪除 track 的 command、id -> slot 對應；用 ThreadSanitizer 檢查 | 完成 |
 | 3 | CPU 預算 | callback 負載與 xrun 次數；為什麼真正的上限是 CPU 時間，而不是 track 數 | 規劃中 |
 | 4 | 存檔與開啟專案 | 以 track id 為基礎、帶版本的專案檔；在不同 sample rate 下開啟 | 規劃中 |
 | 5 | Undo 與 redo | 可以反轉的 command、undo 歷史、哪些操作應該（或不應該）可以 undo | 規劃中 |

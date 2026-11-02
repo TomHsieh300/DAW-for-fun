@@ -12,6 +12,7 @@ write the step's functions in `starter/`, the self-check tells you when they wor
 | Step | Folder | You write | Run |
 |---|---|---|---|
 | 1 | `step01-track-ids` | `TrackList::add`, `remove`, `indexOf`, `move` | `l15_step01_starter` |
+| 2 | `step02-track-pool` | `Engine::applyCommand`, `TrackManager::addTrack`, `removeTrack` | `l15_step02_starter` |
 
 </div>
 

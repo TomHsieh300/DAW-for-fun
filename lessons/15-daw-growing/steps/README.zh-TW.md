@@ -12,6 +12,7 @@
 | Step | 資料夾 | 你要寫的 | 執行 |
 |---|---|---|---|
 | 1 | `step01-track-ids` | `TrackList::add`、`remove`、`indexOf`、`move` | `l15_step01_starter` |
+| 2 | `step02-track-pool` | `Engine::applyCommand`、`TrackManager::addTrack`、`removeTrack` | `l15_step02_starter` |
 
 </div>
 

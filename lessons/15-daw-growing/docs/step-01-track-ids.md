@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-01-track-ids.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Chapter 14](../../14-daw-8track/README.md) | Next: Step 2 - A pool of tracks (planned)
+[Overview](../README.md) | Previous: [Chapter 14](../../14-daw-8track/README.md) | Next: [Step 2 - A pool of tracks](step-02-track-pool.md)
 
 ## Goal
 

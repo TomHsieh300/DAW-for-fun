@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](README.zh-TW.md)
 
-> **Status: in progress.** Step 1 is finished; Steps 2-6 are planned and listed below so you can
+> **Status: in progress.** Steps 1-2 are finished; Steps 3-6 are planned and listed below so you can
 > see where the chapter is going.
 
 Chapter 14 built an engine that is deliberately *static*: 8 tracks, 2 FX buses, every container
@@ -28,6 +28,14 @@ they work. See [steps/README.md](steps/README.md).
 
 On Linux / macOS: `./scripts/build.sh --only 15-daw-growing`, then `./build/bin/l15_step01_starter`.
 
+From Step 2 on, the checks run a real audio thread next to the UI thread. Build them with
+ThreadSanitizer as well (GCC or Clang; on Windows in WSL) - see
+[Step 2](docs/step-02-track-pool.md#checking-with-threadsanitizer):
+
+```bash
+./scripts/build.sh --only 15-daw-growing --sanitize thread --build-dir build-tsan
+```
+
 ## 1. Goals
 
 After this chapter you can
@@ -48,7 +56,7 @@ After this chapter you can
 | Step | Document | Adds | Status |
 |---|---|---|---|
 | 1 | [Stable track IDs](docs/step-01-track-ids.md) | `TrackId`, a track list that hands out ids that are never reused; why indices break | done |
-| 2 | A pool of tracks | `kMaxTracks` pre-allocated slots, add / remove track commands, the id -> slot map; checked with ThreadSanitizer | planned |
+| 2 | [A pool of tracks](docs/step-02-track-pool.md) | `kMaxTracks` pre-allocated slots, add / remove track commands, the id -> slot map; checked with ThreadSanitizer | done |
 | 3 | A CPU budget | the callback load and xrun count; why the real limit is CPU time, not a track count | planned |
 | 4 | Saving and opening projects | a versioned project file built on track ids; opening it at another sample rate | planned |
 | 5 | Undo and redo | commands that can be inverted, an undo history, what should (not) be undoable | planned |

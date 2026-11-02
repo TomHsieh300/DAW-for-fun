@@ -2,7 +2,7 @@
 
 [English](step-01-track-ids.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[第 14 章](../../14-daw-8track/README.zh-TW.md) | 下一步：Step 2 - Track 池（規劃中）
+[總覽](../README.zh-TW.md) | 上一步：[第 14 章](../../14-daw-8track/README.zh-TW.md) | 下一步：[Step 2 - Track 池](step-02-track-pool.zh-TW.md)
 
 ## 目標
 
