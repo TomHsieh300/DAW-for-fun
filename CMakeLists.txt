@@ -27,6 +27,17 @@ endif()
 set(DAWLAB_JUCE_DIR "${_juce_default}" CACHE PATH "Path to a local JUCE source tree; leave empty to download from GitHub with FetchContent")
 set(DAWLAB_ONLY "" CACHE STRING "Build only the listed chapters (semicolon-separated folder names, e.g. 02-filter;03-eq); empty = all")
 
+# A sanitizer for every target, e.g. "thread" (ThreadSanitizer: data races between the UI and the
+# audio thread), "address" or "undefined". GCC and Clang only: MSVC has no ThreadSanitizer.
+set(DAWLAB_SANITIZE "" CACHE STRING "Build with -fsanitize=<value> (thread, address, undefined); empty = none")
+if(DAWLAB_SANITIZE)
+    if(MSVC)
+        message(FATAL_ERROR "DAWLAB_SANITIZE needs GCC or Clang; on Windows use WSL (scripts/build.sh --sanitize ${DAWLAB_SANITIZE})")
+    endif()
+    add_compile_options(-fsanitize=${DAWLAB_SANITIZE} -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=${DAWLAB_SANITIZE})
+endif()
+
 enable_testing()
 include(cmake/DawLab.cmake)
 

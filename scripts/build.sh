@@ -7,6 +7,7 @@
 #   ./scripts/build.sh --juce                           # Also build the JUCE programs of chapters 13 and 14
 #   ./scripts/build.sh --only 13-vst-hosting,14-daw-8track --juce   # Separate multiple chapters with commas
 #   ./scripts/build.sh --config Release --no-test
+#   ./scripts/build.sh --only 15-daw-growing --sanitize thread --build-dir build-tsan
 #
 # Uses a single-config generator (Unix Makefiles, or Ninja if installed), so executables land in
 # <build>/bin/ with no Debug/ or Release/ subfolder.
@@ -18,9 +19,10 @@ config="Debug"
 juce="OFF"
 run_tests=1
 test_label=""
+sanitize=""
 
 usage() {
-    sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
     cat <<'EOF'
 Options:
   --only <a,b,...>     build only these chapters (folder names, comma-separated)
@@ -29,6 +31,8 @@ Options:
   --juce               also build chapters 13 and 14 (JUCE)
   --no-test            build only, do not run ctest
   --test-label <lbl>   run only tests with this label (example, solution, test)
+  --sanitize <kind>    build with -fsanitize=<kind>: thread, address or undefined
+                       (use its own --build-dir: every file is compiled differently)
 EOF
 }
 
@@ -40,6 +44,7 @@ while [[ $# -gt 0 ]]; do
         --juce)       juce="ON"; shift ;;
         --no-test)    run_tests=0; shift ;;
         --test-label) test_label="$2"; shift 2 ;;
+        --sanitize)   sanitize="$2"; shift 2 ;;
         -h|--help)    usage; exit 0 ;;
         *) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
     esac
@@ -56,7 +61,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 [[ "$build_dir" = /* ]] || build_dir="$root/$build_dir"
 
 configure_args=(-S "$root" -B "$build_dir" "-DCMAKE_BUILD_TYPE=$config"
-                "-DDAWLAB_ONLY=${only//,/;}" "-DDAWLAB_WITH_JUCE=$juce")
+                "-DDAWLAB_ONLY=${only//,/;}" "-DDAWLAB_WITH_JUCE=$juce" "-DDAWLAB_SANITIZE=$sanitize")
 # Pick Ninja only for a fresh build folder; an existing one keeps its generator
 if command -v ninja >/dev/null && [[ ! -f "$build_dir/CMakeCache.txt" ]]; then
     configure_args+=(-G Ninja)
