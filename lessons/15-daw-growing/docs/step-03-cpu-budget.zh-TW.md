@@ -2,7 +2,7 @@
 
 [English](step-03-cpu-budget.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 2 - Track 池](step-02-track-pool.zh-TW.md) | 下一步：Step 4 - 存檔與開啟專案（規劃中）
+[總覽](../README.zh-TW.md) | 上一步：[Step 2 - Track 池](step-02-track-pool.zh-TW.md) | 下一步：[Step 4 - 存檔與開啟專案](step-04-project-files.zh-TW.md)
 
 ## 目標
 

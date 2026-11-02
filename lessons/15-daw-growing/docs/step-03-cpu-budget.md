@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-03-cpu-budget.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 2 - A pool of tracks](step-02-track-pool.md) | Next: Step 4 - Saving and opening projects (planned)
+[Overview](../README.md) | Previous: [Step 2 - A pool of tracks](step-02-track-pool.md) | Next: [Step 4 - Saving and opening projects](step-04-project-files.md)
 
 ## Goal
 
