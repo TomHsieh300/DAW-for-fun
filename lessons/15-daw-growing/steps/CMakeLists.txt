@@ -13,3 +13,9 @@ function(l15_add_step id dir)
 endfunction()
 
 l15_add_step(step01 step01-track-ids)
+l15_add_step(step02 step02-track-pool)
+
+# Step 2 runs a second thread (the audio thread of its two-thread check)
+find_package(Threads REQUIRED)
+target_link_libraries(l15_step02_starter PRIVATE Threads::Threads)
+target_link_libraries(l15_step02_solution PRIVATE Threads::Threads)
