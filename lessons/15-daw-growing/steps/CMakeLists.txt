@@ -15,6 +15,7 @@ endfunction()
 l15_add_step(step01 step01-track-ids)
 l15_add_step(step02 step02-track-pool)
 l15_add_step(step03 step03-cpu-budget)
+l15_add_step(step04 step04-project-files)
 
 # From Step 2 on, the checks run a second thread (the audio thread)
 find_package(Threads REQUIRED)
