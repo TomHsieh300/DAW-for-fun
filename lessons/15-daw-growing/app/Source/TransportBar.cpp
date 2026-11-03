@@ -92,7 +92,16 @@ TransportBar::TransportBar(engine::Engine& engine, AudioHost& audioHost) : engin
     tempo_.setWantsKeyboardFocus(false);
     tempo_.setTooltip("Tempo (drag, or double-click to type)");
     tempo_.setColour(juce::Slider::trackColourId, DawColours::accent().withAlpha(0.3f));
-    tempo_.onValueChange = [this] { engine_.getTransport().setTempo(tempo_.getValue()); };
+    tempo_.onValueChange = [this] {
+        if (onTempoChange)
+            onTempoChange(tempo_.getValue()); // MainComponent: an undoable edit (Step 9)
+        else
+            engine_.getTransport().setTempo(tempo_.getValue());
+    };
+    tempo_.onDragStart = tempo_.onDragEnd = [this] {
+        if (onTempoGesture)
+            onTempoGesture();
+    };
     addAndMakeVisible(tempo_);
 
     masterLabel_.setText("Master", juce::dontSendNotification);

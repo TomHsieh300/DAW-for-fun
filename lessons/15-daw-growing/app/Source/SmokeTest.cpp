@@ -23,6 +23,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <random>
 #include <set>
 #include <vector>
 
@@ -179,6 +180,7 @@ private:
 
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     constexpr double sr = 48000.0;
+    std::setvbuf(stdout, nullptr, _IONBF, 0); // unbuffered: a crash must not swallow what was printed
     std::printf("DawLab 15 smoke test (no audio device)\n\n");
 
     // 1. The resampler used when loading files (MediaLoader.cpp)
@@ -762,7 +764,10 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         dir.createDirectory();
         const juce::File file = dir.getChildFile("Demo.dawlab");
 
-        MainComponent a(MainComponent::Mode::Offline);
+        // On the heap: a MainComponent holds an engine with kMaxTracks track slots (megabytes),
+        // and a Debug build reserves the stack for every block of this function at once.
+        auto aOwner = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+        MainComponent& a = *aOwner;
         DAWLAB_CHECK(a.loadDemoSongNow() == 0);
         Session& sa = a.getSession();
         Engine& ea = a.getEngine();
@@ -789,7 +794,8 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         ea.applyPendingCommandsOffline();
         const AudioBuffer before = renderSeconds(ea, 2.0);
 
-        MainComponent b(MainComponent::Mode::Offline);
+        auto bOwner = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+        MainComponent& b = *bOwner;
         b.addTrack(TrackFormat::Mono); // this window's next ids are now not the ones `a` had
         const ProjectIO::OpenResult opened = b.openProject(file);
         Session& sb = b.getSession();
@@ -843,7 +849,8 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         DAWLAB_CHECK(sb.getNumTracks() == kDemoTracks + 1);
 
         // Opened by an engine at 44.1 kHz: positions and audio are converted.
-        MainComponent c(MainComponent::Mode::Offline);
+        auto cOwner = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+        MainComponent& c = *cOwner;
         c.getAudioHost().prepareOffline(44100.0, 512);
         const ProjectIO::OpenResult at44 = c.openProject(file);
         Session& sc = c.getSession();
@@ -861,6 +868,277 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
             m->getEngine().collectGarbage();
             DAWLAB_CHECK(m->getEngine().getGarbageLeaked() == 0 && m->getEngine().getCommandsDropped() == 0);
         }
+    }
+
+    // 6e. Undo and redo (chapter 15, Step 9).
+    {
+        auto mOwner = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+        MainComponent& m = *mOwner;
+        DAWLAB_CHECK(m.loadDemoSongNow() == 0);
+        Session& s = m.getSession();
+        Engine& e = m.getEngine();
+        auto& cm = m.getCommandManager();
+        // The whole project as text (Step 8's format): equal text = equal project.
+        const auto stateText = [](Session& session) {
+            return juce::String(project::writeProject(ProjectIO::capture(session, "m").state));
+        };
+        const auto settle = [](Engine& engine) { // what the audio thread and the UI tick would do
+            engine.applyPendingCommandsOffline();
+            engine.collectGarbage();
+        };
+        settle(e);
+        const juce::String start = stateText(s);
+        const bool cleanAtStart = !s.getHistory().canUndo() && !m.getWindowTitle().endsWith("*");
+
+        // Delete the bass through the command; undo brings it back with its id, clips and inserts.
+        const TrackId bass = s.getTrackId(1);
+        const size_t bassClips = s.getClips(bass).size();
+        const int bassInserts = s.getNumUsedSlots(s.trackRef(bass));
+        m.getArrangement().setSelectedTrack(bass);
+        cm.invokeDirectly(CommandIDs::deleteSelectedTrack, false);
+        settle(e);
+        juce::ApplicationCommandInfo undoInfo(CommandIDs::undo);
+        m.getCommandInfo(CommandIDs::undo, undoInfo);
+        const bool deleted = !s.hasTrack(bass) && m.getWindowTitle().endsWith(" *");
+        cm.invokeDirectly(CommandIDs::undo, false);
+        settle(e);
+        const bool back = s.indexOf(bass) == 1 && s.getClips(bass).size() == bassClips &&
+                          s.getNumUsedSlots(s.trackRef(bass)) == bassInserts && stateText(s) == start &&
+                          !m.getWindowTitle().endsWith("*");
+        cm.invokeDirectly(CommandIDs::redo, false);
+        settle(e);
+        const bool redone = !s.hasTrack(bass);
+        cm.invokeDirectly(CommandIDs::undo, false);
+        settle(e);
+        std::printf("6e. undo: \"%s\"; deleted %s, back with id %u, %zu clips, %d inserts: %s, project as before: %s; redo %s\n",
+                    undoInfo.shortName.toRawUTF8(), deleted ? "yes" : "no", bass.value, s.getClips(bass).size(),
+                    s.getNumUsedSlots(s.trackRef(bass)), back ? "yes" : "no", stateText(s) == start ? "yes" : "no",
+                    redone ? "works" : "FAILED");
+        DAWLAB_CHECK(cleanAtStart && deleted && back && redone);
+        DAWLAB_CHECK(undoInfo.shortName == "Undo Delete track Bass");
+
+        // Two fader drags are two undo steps, however many moves each has.
+        m.tick();
+        ChannelStripView* bassStrip = m.getMixer().getTrackStrip(bass);
+        DAWLAB_CHECK(bassStrip != nullptr);
+        if (bassStrip != nullptr) {
+            juce::Slider& fader = bassStrip->getFader();
+            const float gain0 = e.getTrack(bass)->getGainDb();
+            const size_t entries0 = s.getHistory().undoCount();
+            const auto drag = [&fader](std::initializer_list<float> dbs) { // what a mouse drag does
+                if (fader.onDragStart)
+                    fader.onDragStart();
+                for (float db : dbs)
+                    fader.setValue(FaderLaw::dbToPosition(db), juce::sendNotificationSync);
+                if (fader.onDragEnd)
+                    fader.onDragEnd();
+            };
+            drag({-10.0f, -12.0f, -14.0f});
+            drag({-3.0f, -1.0f});
+            const size_t entries = s.getHistory().undoCount() - entries0;
+            m.undo();
+            const float afterOne = e.getTrack(bass)->getGainDb();
+            m.undo();
+            const float afterTwo = e.getTrack(bass)->getGainDb();
+            std::printf("    two fader drags (3 and 2 moves): %zu undo entries; undo -> %.1f dB, undo -> %.1f dB (was %.1f)\n",
+                        entries, static_cast<double>(afterOne), static_cast<double>(afterTwo), static_cast<double>(gain0));
+            DAWLAB_CHECK(entries == 2);
+            DAWLAB_CHECK_NEAR(afterOne, -14.0, 0.05);
+            DAWLAB_CHECK(afterTwo == gain0);
+        }
+
+        // A knob in an effect's panel.
+        const ChannelRef drums = s.trackRef(s.getTrackId(0));
+        InsertEffect* comp = s.getSlot(drums, 1).effect;
+        m.openInsertEditor(drums, 1, false);
+        ParameterWindow* window = m.getParameterWindow(comp);
+        DAWLAB_CHECK(window != nullptr && window->getPanel().getSlider(0) != nullptr);
+        if (window != nullptr && window->getPanel().getSlider(0) != nullptr) {
+            const float threshold0 = comp->getParameter(0);
+            window->getPanel().getSlider(0)->setValue(-35.0, juce::sendNotificationSync);
+            const float changed = comp->getParameter(0);
+            m.undo();
+            std::printf("    compressor threshold in its panel: %.1f -> %.1f, undo -> %.1f\n", static_cast<double>(threshold0),
+                        static_cast<double>(changed), static_cast<double>(comp->getParameter(0)));
+            DAWLAB_CHECK(changed == -35.0f && comp->getParameter(0) == threshold0);
+        }
+
+        // Saved or not: the serial of the newest entry decides, so undo can make a project clean again.
+        const juce::File saved = juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l15_undo").getChildFile("Undo.dawlab");
+        saved.getParentDirectory().createDirectory();
+        s.perform(edit::Rename{StripTarget::ofTrack(bass), "Bass 2"}, "Rename Bass"); // the save has something to save
+        const bool dirtyBeforeSave = m.getWindowTitle().endsWith(" *");
+        DAWLAB_CHECK(m.saveProject(saved));
+        const bool cleanAfterSave = dirtyBeforeSave && !m.getWindowTitle().endsWith("*");
+        m.getArrangement().setSelectedTrack(bass);
+        cm.invokeDirectly(CommandIDs::toggleMuteSelected, false);
+        const bool dirtyAfterMute = m.getWindowTitle().endsWith(" *") && e.getTrack(bass)->isMuted();
+        m.undo();
+        const bool cleanAfterUndo = !m.getWindowTitle().endsWith("*") && !e.getTrack(bass)->isMuted();
+        m.redo();
+        const bool dirtyAfterRedo = m.getWindowTitle().endsWith(" *");
+        std::printf("    title after save \"%s\"; mute -> \"*\" %s, undo -> clean %s, redo -> \"*\" %s\n",
+                    m.getWindowTitle().toRawUTF8(), dirtyAfterMute ? "yes" : "no", cleanAfterUndo ? "yes" : "no",
+                    dirtyAfterRedo ? "yes" : "no");
+        DAWLAB_CHECK(cleanAfterSave && dirtyAfterMute && cleanAfterUndo && dirtyAfterRedo);
+
+        // A VST3 insert comes back from its saved state when its track is undeleted. (The test
+        // plugin stands in for a plugin file.)
+        s.createVst3 = [](const juce::File&, const juce::MemoryBlock&, juce::String&) {
+            return std::make_unique<VstInsert>(std::make_unique<host::HostedPlugin>(createTestDelayPlugin(64)));
+        };
+        InsertSnapshot vst;
+        vst.kind = SlotKind::Vst3;
+        vst.vstFile = "test.vst3";
+        const TrackId lead = s.getTrackId(5);
+        const bool vstIn = s.perform(edit::SetInsert{StripTarget::ofTrack(lead), 3, vst}, "Insert test plugin");
+        const bool vstGone = s.perform(edit::RemoveTrack{lead}, "Delete track Lead") && !s.hasTrack(lead);
+        settle(e);
+        const bool vstBack = s.undo() && s.getSlot(s.trackRef(lead), 3).kind == SlotKind::Vst3;
+        s.undo(); // the insert
+        settle(e);
+        std::printf("    VST3 insert on a deleted track: %s after undo\n", vstBack ? "back" : "LOST");
+        DAWLAB_CHECK(vstIn && vstGone && vstBack);
+        m.closeAllEditors();
+        settle(e);
+        DAWLAB_CHECK(getTestPluginInstanceCount() == 0);
+    }
+
+    // 6f. A random walk through every kind of edit: undoing all of it gives the project back
+    //     exactly (as text and as sound), redoing all of it gives the end state again.
+    {
+        auto mOwner = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+        MainComponent& m = *mOwner;
+        DAWLAB_CHECK(m.loadDemoSongNow() == 0);
+        Session& s = m.getSession();
+        Engine& e = m.getEngine();
+        const auto stateText = [&s] { return juce::String(project::writeProject(ProjectIO::capture(s, "m").state)); };
+        const auto settle = [&e] {
+            e.applyPendingCommandsOffline();
+            e.collectGarbage();
+        };
+        settle();
+        std::mt19937 rng(20261103);
+        const auto pick = [&rng](int lo, int hi) { return std::uniform_int_distribution<int>(lo, hi)(rng); };
+        const auto real = [&rng](float lo, float hi) { return std::uniform_real_distribution<float>(lo, hi)(rng); };
+        const auto anyTrack = [&] { return s.getTrackId(pick(0, s.getNumTracks() - 1)); };
+        const auto anyStrip = [&]() -> StripTarget {
+            const int r = pick(0, 9);
+            if (r == 8)
+                return StripTarget{ChannelKind::Bus, TrackId{}, pick(0, kNumBuses - 1)};
+            if (r == 9)
+                return StripTarget{};
+            return StripTarget::ofTrack(anyTrack());
+        };
+        const EffectType types[] = {EffectType::Gain, EffectType::ParametricEq, EffectType::Compressor, EffectType::Delay,
+                                    EffectType::Chorus, EffectType::Reverb, EffectType::Gate, EffectType::Filter};
+
+        const juce::String before = stateText();
+        const AudioBuffer soundBefore = renderSeconds(e, 1.0);
+        std::vector<std::pair<TrackId, int>> slotsBefore; // which engine slot each track uses
+        for (int lane = 0; lane < s.getNumTracks(); ++lane)
+            slotsBefore.emplace_back(s.getTrackId(lane), s.trackRef(s.getTrackId(lane)).index);
+        constexpr int kSteps = 150;
+        int performed = 0;
+        int kinds[14] = {};
+        for (int step = 0; step < kSteps; ++step) {
+            const int kind = pick(0, 13);
+            bool ok = false;
+            switch (kind) {
+            case 0: ok = s.perform(s.makeNewTrack(pick(0, 1) ? TrackFormat::Mono : TrackFormat::Stereo, pick(-1, s.getNumTracks())), "add"); break;
+            case 1: ok = s.getNumTracks() > 2 && s.perform(edit::RemoveTrack{anyTrack()}, "remove"); break;
+            case 2: { // gain, sometimes as a merged drag of several steps
+                const StripTarget t = anyStrip();
+                const auto key = pick(0, 2) == 0 ? mergeKeyFor(t, 1) : 0u;
+                ok = s.perform(edit::SetValue{t, edit::Field::Gain, 0, real(-30.0f, 6.0f)}, "gain", key);
+                if (key != 0)
+                    s.perform(edit::SetValue{t, edit::Field::Gain, 0, real(-30.0f, 6.0f)}, "gain", key);
+                s.getHistory().endMerge();
+                break;
+            }
+            case 3: ok = s.perform(edit::SetValue{anyStrip(), edit::Field::Pan, 0, real(-1.0f, 1.0f)}, "pan"); break;
+            case 4: ok = s.perform(edit::SetValue{anyStrip(), edit::Field::Mute, 0, static_cast<float>(pick(0, 1))}, "mute"); break;
+            case 5: ok = s.perform(edit::SetValue{StripTarget::ofTrack(anyTrack()), edit::Field::Solo, 0, static_cast<float>(pick(0, 1))}, "solo"); break;
+            case 6: ok = s.perform(edit::SetValue{StripTarget::ofTrack(anyTrack()), edit::Field::SendLevel, pick(0, kNumBuses - 1), real(-40.0f, 0.0f)}, "send"); break;
+            case 7: ok = s.perform(edit::Rename{anyStrip(), "Name " + juce::String(step)}, "rename"); break;
+            case 8: ok = s.perform(edit::SetFormat{anyTrack(), pick(0, 1) ? TrackFormat::Mono : TrackFormat::Stereo}, "format"); break;
+            case 9: {
+                const TrackId t = anyTrack();
+                const int n = static_cast<int>(s.getClips(t).size());
+                s.getHistory().endMerge();
+                ok = n > 0 && s.moveClip(t, pick(0, n - 1), pick(0, 8) * 24000) >= 0;
+                s.getHistory().endMerge();
+                break;
+            }
+            case 10: {
+                InsertSnapshot insert;
+                if (pick(0, 3) != 0) {
+                    insert.kind = SlotKind::Builtin;
+                    insert.type = types[pick(0, static_cast<int>(std::size(types)) - 1)];
+                }
+                ok = s.perform(edit::SetInsert{anyStrip(), pick(0, kInsertSlotsPerStrip - 1), insert}, "insert");
+                break;
+            }
+            case 11: {
+                const StripTarget t = anyStrip();
+                const int slot = pick(0, kInsertSlotsPerStrip - 1);
+                const InsertSlotState& st = s.getSlot(s.refOf(t), slot);
+                if (!st.isEmpty() && st.effect->getNumParameters() > 0) {
+                    const int index = pick(0, st.effect->getNumParameters() - 1);
+                    const ParameterInfo info = st.effect->getParameterInfo(index);
+                    ok = s.perform(edit::SetParameter{t, slot, index, info.min + real(0.0f, 1.0f) * (info.max - info.min)}, "param");
+                }
+                break;
+            }
+            case 12: ok = s.perform(edit::SetBypass{anyStrip(), pick(0, kInsertSlotsPerStrip - 1), pick(0, 1) == 1}, "bypass"); break;
+            case 13: ok = s.perform(edit::SetTempo{static_cast<double>(pick(60, 180))}, "tempo"); break;
+            default: break;
+            }
+            performed += ok ? 1 : 0;
+            kinds[kind] += ok ? 1 : 0;
+            if (step % 8 == 0)
+                settle();
+        }
+        settle();
+        const juce::String end = stateText();
+        const AudioBuffer soundEnd = renderSeconds(e, 1.0);
+        const size_t entries = s.getHistory().undoCount();
+        int undos = 0;
+        while (s.undo())
+            if (++undos % 8 == 0)
+                settle();
+        settle();
+        const bool sameText = stateText() == before;
+        const AudioBuffer soundUndone = renderSeconds(e, 1.0);
+        const float undoneDiff = maxAbsDiff(soundBefore, 0, soundUndone, 0, soundBefore.getNumSamples());
+        int movedSlots = 0;
+        for (const auto& [id, slot] : slotsBefore)
+            movedSlots += s.trackRef(id).index != slot ? 1 : 0;
+        int redos = 0;
+        while (s.redo())
+            if (++redos % 8 == 0)
+                settle();
+        settle();
+        const bool sameEnd = stateText() == end;
+        const AudioBuffer soundRedone = renderSeconds(e, 1.0);
+        const float redoneDiff = maxAbsDiff(soundEnd, 0, soundRedone, 0, soundEnd.getNumSamples());
+        int kindsUsed = 0;
+        for (int k : kinds)
+            kindsUsed += k > 0 ? 1 : 0;
+        std::printf("6f. random walk: %d of %d edits applied (%d of 14 kinds), %zu undo entries; undo all (%d): project %s,\n"
+                    "    sound max |diff| %.3g (%d of %zu tracks back in another engine slot); redo all (%d): project %s,\n"
+                    "    sound max |diff| %.3g; %d tracks, leaked %llu\n",
+                    performed, kSteps, kindsUsed, entries, undos, sameText ? "as before" : "DIFFERENT",
+                    static_cast<double>(undoneDiff), movedSlots, slotsBefore.size(), redos, sameEnd ? "as at the end" : "DIFFERENT",
+                    static_cast<double>(redoneDiff), s.getNumTracks(), static_cast<unsigned long long>(e.getGarbageLeaked()));
+        DAWLAB_CHECK(performed > kSteps / 2 && kindsUsed == 14);
+        DAWLAB_CHECK(undos == static_cast<int>(entries) && redos == undos);
+        // The engine sums the tracks in SLOT order. A track that undo brings back may get another
+        // slot, and floats added in another order round differently: then (and only then) the
+        // sound may differ by a rounding step, far below anything audible (-120 dB).
+        DAWLAB_CHECK(sameText && (movedSlots == 0 ? undoneDiff == 0.0f : undoneDiff < 1.0e-6f));
+        DAWLAB_CHECK(sameEnd && redoneDiff == 0.0f);
+        DAWLAB_CHECK(e.getGarbageLeaked() == 0 && e.getCommandsDropped() == 0);
     }
 
     // 7. A device change to 44.1 kHz: clip positions follow (Session::handleSampleRateChange).

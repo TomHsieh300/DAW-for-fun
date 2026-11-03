@@ -86,6 +86,11 @@ public:
 private:
     class SlotButton;
     engine::ChannelStrip* strip() noexcept;
+    // Every control changes the project through Session::perform() (undoable, Step 9). A
+    // continuous control (fader, knob) merges the steps of one drag into one entry; its drag
+    // start and end close the merge, so two drags are two undo steps.
+    void performValue(edit::Field field, float value, int bus, const juce::String& what, bool continuous);
+    void endGesture() { session_.getHistory().endMerge(); }
 
     Session& session_;
     engine::ChannelRef ref_;

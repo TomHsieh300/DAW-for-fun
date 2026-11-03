@@ -33,6 +33,9 @@ set(L15_APP_SOURCES
     Source/EffectMenu.cpp
     Source/Exporter.h
     Source/Exporter.cpp
+    Source/Edits.h
+    Source/History.h
+    Source/History.cpp
     Source/MainComponent.h
     Source/MainComponent.cpp
     Source/MediaLoader.h

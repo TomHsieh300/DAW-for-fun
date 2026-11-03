@@ -65,6 +65,17 @@ MainComponent::MainComponent(Mode mode) : mode_(mode) {
     offlineScratch_.setSize(engine::kNumChannels, 4096);
 
     // ---- project --------------------------------------------------------------------------------
+    // Undoing the removal of a VST3 insert builds the plugin again from its file and state.
+    session_.createVst3 = [this](const juce::File& file, const juce::MemoryBlock& state, juce::String& error) {
+        std::unique_ptr<VstInsert> vst;
+        if (auto instance = pluginHost_.loadFromFile(file, engine_.getSampleRate(), engine_.getMaxBlockSize(), error)) {
+            auto hosted = std::make_unique<host::HostedPlugin>(std::move(instance));
+            if (state.getSize() > 0)
+                hosted->setState(state);
+            vst = std::make_unique<VstInsert>(std::move(hosted));
+        }
+        return vst;
+    };
     session_.onInsertWillBeRemoved = [this](engine::InsertEffect* fx) {
         parameterWindows_.erase(fx);
         if (auto* vst = dynamic_cast<VstInsert*>(fx))
@@ -90,6 +101,10 @@ MainComponent::MainComponent(Mode mode) : mode_(mode) {
     transportBar_.onPlayStop = [this] { togglePlay(); };
     transportBar_.onReturnToStart = [this] { returnToStart(); };
     transportBar_.onToggleLoop = [this] { toggleLoop(); };
+    transportBar_.onTempoChange = [this](double bpm) {
+        session_.perform(edit::SetTempo{bpm}, "Tempo", mergeKeyFor(StripTarget{}, 0x54454d50)); // "TEMP"
+    };
+    transportBar_.onTempoGesture = [this] { session_.getHistory().endMerge(); };
     addAndMakeVisible(transportBar_);
     addAndMakeVisible(arrangement_);
     mixer_.onLoadRequested = [this](engine::TrackId track) { chooseAudioFileForTrack(track); };
@@ -126,6 +141,7 @@ MainComponent::~MainComponent() {
     setApplicationCommandManagerToWatch(nullptr);
     removeKeyListener(commandManager_.getKeyMappings());
     session_.onInsertWillBeRemoved = nullptr;
+    session_.createVst3 = nullptr;
     setLookAndFeel(nullptr);
 }
 
@@ -262,6 +278,7 @@ bool MainComponent::saveProject(const juce::File& target) {
     }
     projectFile_ = file;
     session_.setProjectName(file.getFileNameWithoutExtension());
+    session_.getHistory().markSaved();
     setStatus("Saved " + file.getFullPathName());
     return true;
 }
@@ -278,9 +295,10 @@ void MainComponent::openProjectInteractive() {
                               });
 }
 
-void MainComponent::saveProjectInteractive(bool saveAs) {
+void MainComponent::saveProjectInteractive(bool saveAs, std::function<void()> afterSave) {
     if (!saveAs && projectFile_ != juce::File()) {
-        saveProject(projectFile_);
+        if (saveProject(projectFile_) && afterSave)
+            afterSave();
         return;
     }
     const juce::File suggestion =
@@ -292,13 +310,57 @@ void MainComponent::saveProjectInteractive(bool saveAs) {
     juce::Component::SafePointer<MainComponent> safe(this);
     fileChooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles |
                                   juce::FileBrowserComponent::warnAboutOverwriting,
-                              [safe](const juce::FileChooser& chooser) {
-                                  if (safe != nullptr && chooser.getResult() != juce::File())
-                                      safe->saveProject(chooser.getResult());
+                              [safe, afterSave](const juce::FileChooser& chooser) {
+                                  if (safe != nullptr && chooser.getResult() != juce::File() &&
+                                      safe->saveProject(chooser.getResult()) && afterSave)
+                                      afterSave();
                               });
 }
 
-juce::String MainComponent::getWindowTitle() const { return "DawLab 15 - " + session_.getProjectName(); }
+void MainComponent::askToSaveChanges(std::function<void()> then) {
+    if (!session_.getHistory().isModified() || mode_ != Mode::Live) {
+        then();
+        return;
+    }
+    const auto options = juce::MessageBoxOptions::makeOptionsYesNoCancel(
+        juce::MessageBoxIconType::QuestionIcon, "Save changes?",
+        "\"" + session_.getProjectName() + "\" has changes that are not saved.", "Save", "Don't save", "Cancel", this);
+    juce::Component::SafePointer<MainComponent> safe(this);
+    juce::AlertWindow::showAsync(options, [safe, then](int result) {
+        if (safe == nullptr)
+            return;
+        if (result == 1) // Save (asks for a file if there is none), then go on
+            safe->saveProjectInteractive(false, then);
+        else if (result == 2) // Don't save
+            then();
+    }); // 0: Cancel - nothing happens
+}
+
+bool MainComponent::undo() {
+    const juce::String name = session_.getHistory().getUndoName();
+    if (!session_.undo()) {
+        setStatus(name.isEmpty() ? juce::String("Nothing to undo") : "Could not undo " + name + " (dropped)");
+        return false;
+    }
+    session_.dispatchPendingMessages(); // lanes and strips follow now (a track may be back)
+    setStatus("Undo: " + name);
+    return true;
+}
+
+bool MainComponent::redo() {
+    const juce::String name = session_.getHistory().getRedoName();
+    if (!session_.redo()) {
+        setStatus(name.isEmpty() ? juce::String("Nothing to redo") : "Could not redo " + name + " (dropped)");
+        return false;
+    }
+    session_.dispatchPendingMessages();
+    setStatus("Redo: " + name);
+    return true;
+}
+
+juce::String MainComponent::getWindowTitle() const {
+    return "DawLab 15 - " + session_.getProjectName() + (session_.getHistory().isModified() ? " *" : "");
+}
 
 void MainComponent::loadDemoSongAsync() {
     setStatus("Generating the demo song...");
@@ -352,8 +414,11 @@ void MainComponent::loadDroppedFiles(engine::TrackId track, const juce::StringAr
         return;
     for (int i = 0; i < files.size(); ++i) {
         engine::TrackId target = session_.getTrackId(first + i);
-        if (!target.isValid())
-            target = session_.addTrack(); // no track left below: add one at the end
+        if (!target.isValid()) { // no track left below: add one at the end
+            const edit::AddTrack add = session_.makeNewTrack(engine::TrackFormat::Mono);
+            if (session_.perform(add, "Add track"))
+                target = add.track.id;
+        }
         if (!target.isValid()) {
             setStatus(juce::String(files.size() - i) + " file(s) not loaded: " + juce::String(engine::kMaxTracks) +
                       " tracks is the limit");
@@ -366,7 +431,8 @@ void MainComponent::loadDroppedFiles(engine::TrackId track, const juce::StringAr
 engine::TrackId MainComponent::addTrack(engine::TrackFormat format) {
     // Below the selected track, like most DAWs; at the end in a project without tracks.
     const int selectedLane = session_.indexOf(arrangement_.getSelectedTrack());
-    const engine::TrackId id = session_.addTrack(format, {}, selectedLane >= 0 ? selectedLane + 1 : -1);
+    const edit::AddTrack add = session_.makeNewTrack(format, selectedLane >= 0 ? selectedLane + 1 : -1);
+    const engine::TrackId id = session_.perform(add, "Add track " + add.track.name) ? add.track.id : engine::TrackId{};
     if (!id.isValid()) {
         setStatus(session_.getNumTracks() >= engine::kMaxTracks
                       ? "No track added: " + juce::String(engine::kMaxTracks) + " tracks is the limit"
@@ -384,7 +450,8 @@ bool MainComponent::deleteSelectedTrack() {
     const engine::TrackId id = arrangement_.getSelectedTrack();
     const juce::String name = session_.getStripName(session_.trackRef(id));
     // Session::removeTrack() calls onInsertWillBeRemoved for every insert: open editors close.
-    if (!session_.removeTrack(id)) {
+    // The history keeps the whole track, so undo brings it back with the same id.
+    if (!session_.perform(edit::RemoveTrack{id}, "Delete track " + name)) {
         setStatus(session_.hasTrack(id) ? juce::String("Not deleted: the engine's command queue is full, try again")
                                         : juce::String("No track selected"));
         return false;
@@ -418,9 +485,14 @@ void MainComponent::loadAudioFile(engine::TrackId track, const juce::File& file)
         }
         // Like Cubase: a mono file makes a mono track (inserts in mono, pan law), anything with
         // two or more channels a stereo track (balance).
-        safe->session_.setTrackFormat(media.track, media.fileNumChannels == 1 ? engine::TrackFormat::Mono
-                                                                               : engine::TrackFormat::Stereo);
-        safe->session_.setTrackAudio(media.track, media.audio, media.name);
+        // One undoable step: the format, the clip and the name.
+        Session& session = safe->session_;
+        std::vector<Edit> edits;
+        edits.push_back(edit::SetFormat{media.track, media.fileNumChannels == 1 ? engine::TrackFormat::Mono
+                                                                                : engine::TrackFormat::Stereo});
+        edits.push_back(edit::SetClips{media.track, {session.makeAudioClip(media.audio, media.name)}});
+        edits.push_back(edit::Rename{StripTarget::ofTrack(media.track), media.name.upToFirstOccurrenceOf(".", false, false)});
+        session.perform(std::move(edits), "Load " + media.name);
         safe->arrangement_.setSelectedTrack(media.track);
         safe->arrangement_.zoomToFit();
         juce::String text = "Loaded " + media.name + " into track " + juce::String(safe->session_.indexOf(media.track) + 1);
@@ -600,11 +672,15 @@ void MainComponent::showSlotMenu(ChannelRef ref, int slot, juce::Component& anch
 
 void MainComponent::handleSlotMenuResult(ChannelRef ref, int slot, int result) {
     const auto& entries = EffectMenu::builtinEntries();
+    const StripTarget target = StripTarget::of(ref);
     if (result == EffectMenu::kRemove) {
-        session_.clearInsert(ref, slot);
+        session_.perform(edit::SetInsert{target, slot, InsertSnapshot{}}, "Remove " + session_.getSlot(ref, slot).name);
     } else if (result >= EffectMenu::kFirstBuiltin && result < EffectMenu::kFirstBuiltin + static_cast<int>(entries.size())) {
         const auto& entry = entries[static_cast<size_t>(result - EffectMenu::kFirstBuiltin)];
-        if (session_.setBuiltinInsert(ref, slot, entry.type) != nullptr)
+        InsertSnapshot insert; // a new effect: no parameters given, so it keeps its defaults
+        insert.kind = SlotKind::Builtin;
+        insert.type = entry.type;
+        if (session_.perform(edit::SetInsert{target, slot, insert}, "Insert " + EffectMenu::labelFor(entry.type)))
             openInsertEditor(ref, slot, false);
         else
             setStatus("Could not insert the effect (command queue full?)");
@@ -621,7 +697,7 @@ void MainComponent::handleSlotMenuResult(ChannelRef ref, int slot, int result) {
     } else if (result == EffectMenu::kToggleBypass) {
         const auto& s = session_.getSlot(ref, slot);
         if (!s.isEmpty())
-            session_.setInsertBypassed(ref, slot, !s.effect->isBypassed());
+            session_.perform(edit::SetBypass{target, slot, !s.effect->isBypassed()}, "Bypass " + s.name);
     } else if (result == EffectMenu::kOpenEditor) {
         openInsertEditor(ref, slot, false);
     } else if (result == EffectMenu::kOpenGenericPanel) {
@@ -646,13 +722,17 @@ void MainComponent::chooseVst3For(ChannelRef ref, int slot) {
 }
 
 bool MainComponent::loadVst3Into(ChannelRef ref, int slot, const juce::File& file, juce::String& error) {
-    // Chapter 13: create the instance on the message thread, wrap it, prepare it, hand it over.
-    auto instance = pluginHost_.loadFromFile(file, engine_.getSampleRate(), engine_.getMaxBlockSize(), error);
-    if (instance == nullptr)
+    // Chapter 13 creates the instance on the message thread (Session::createVst3, set up in the
+    // constructor); as an edit, so that the insert can be undone like a built-in one (Step 9).
+    if (!file.exists()) {
+        error = file.getFullPathName() + " not found";
         return false;
-    auto vst = std::make_unique<VstInsert>(std::make_unique<host::HostedPlugin>(std::move(instance)));
-    if (session_.setVstInsert(ref, slot, std::move(vst)) == nullptr) {
-        error = "the engine refused the insert";
+    }
+    InsertSnapshot insert;
+    insert.kind = SlotKind::Vst3;
+    insert.vstFile = file.getFullPathName();
+    if (!session_.perform(edit::SetInsert{StripTarget::of(ref), slot, insert}, "Insert " + file.getFileNameWithoutExtension())) {
+        error = "the plugin did not load, or the engine refused it";
         return false;
     }
     setStatus("Loaded VST3 " + session_.getSlot(ref, slot).name + " (latency " +
@@ -675,6 +755,20 @@ void MainComponent::openInsertEditor(ChannelRef ref, int slot, bool generic) {
                                    (s.kind == SlotKind::Builtin ? EffectMenu::labelFor(s.type) : s.name);
         auto window = std::make_unique<ParameterWindow>(*s.effect, title, &lookAndFeel_);
         engine::InsertEffect* key = s.effect;
+        // The panel's knobs make undoable edits (Step 9). The target is the track's id and the
+        // slot, both fixed for as long as this effect - and so this window - exists.
+        ParameterPanel& panel = window->getPanel();
+        const StripTarget target = StripTarget::of(ref);
+        panel.onParameterChange = [this, target, slot, key](int index, float value) {
+            session_.perform(edit::SetParameter{target, slot, index, value},
+                             juce::String(key->getName()) + " " + key->getParameterInfo(index).name,
+                             mergeKeyFor(target, 0x50000000u + static_cast<std::uint32_t>(slot) * 256u +
+                                                     static_cast<std::uint32_t>(index))); // "P", slot, parameter
+        };
+        panel.onBypassChange = [this, target, slot, key](bool bypassed) {
+            session_.perform(edit::SetBypass{target, slot, bypassed}, juce::String("Bypass ") + key->getName());
+        };
+        panel.onGesture = [this] { session_.getHistory().endMerge(); };
         window->onClose = [this, key] {
             // Deleting a window inside its own callback is not allowed: do it asynchronously.
             juce::Component::SafePointer<MainComponent> safe(this);
@@ -731,7 +825,7 @@ void MainComponent::resized() {
 
 void MainComponent::getAllCommands(juce::Array<juce::CommandID>& c) {
     const juce::CommandID ids[] = {CommandIDs::newProject, CommandIDs::openProject, CommandIDs::saveProject,
-                CommandIDs::saveProjectAs, CommandIDs::loadDemoSong, CommandIDs::loadAudioIntoTrack, CommandIDs::exportMixdown,
+                CommandIDs::saveProjectAs, CommandIDs::undo, CommandIDs::redo, CommandIDs::loadDemoSong, CommandIDs::loadAudioIntoTrack, CommandIDs::exportMixdown,
                 CommandIDs::showAudioSettings, juce::StandardApplicationCommandIDs::quit, CommandIDs::playStop,
                 CommandIDs::returnToStart, CommandIDs::toggleLoop, CommandIDs::seekBackOneBar, CommandIDs::seekForwardOneBar,
                 CommandIDs::selectNextTrack, CommandIDs::selectPreviousTrack, CommandIDs::toggleMuteSelected,
@@ -761,6 +855,23 @@ void MainComponent::getCommandInfo(juce::CommandID id, juce::ApplicationCommandI
         info.addDefaultKeypress('i', cmd); // chapter 15: Ctrl+O opens a project now
         info.setActive(idle);
         break;
+    case CommandIDs::undo: {
+        const History& h = session_.getHistory();
+        info.setInfo(h.canUndo() ? "Undo " + h.getUndoName() : juce::String("Undo"), "Take back the last change",
+                     CommandCategories::edit, 0);
+        info.addDefaultKeypress('z', cmd);
+        info.setActive(idle && h.canUndo());
+        break;
+    }
+    case CommandIDs::redo: {
+        const History& h = session_.getHistory();
+        info.setInfo(h.canRedo() ? "Redo " + h.getRedoName() : juce::String("Redo"), "Do the undone change again",
+                     CommandCategories::edit, 0);
+        info.addDefaultKeypress('z', cmd | ModifierKeys::shiftModifier);
+        info.addDefaultKeypress('y', cmd);
+        info.setActive(idle && h.canRedo());
+        break;
+    }
     case CommandIDs::openProject:
         info.setInfo("Open project...", "Open a DawLab project file", CommandCategories::file, 0);
         info.addDefaultKeypress('o', cmd);
@@ -874,10 +985,12 @@ bool MainComponent::perform(const InvocationInfo& info) {
     const int selectedLane = session_.indexOf(selected);
     engine::Track* selectedStrip = engine_.getTrack(selected); // nullptr in a project without tracks
     switch (info.commandID) {
-    case CommandIDs::newProject: newProject(); break;
-    case CommandIDs::loadDemoSong: loadDemoSongAsync(); break;
+    case CommandIDs::newProject: askToSaveChanges([this] { newProject(); }); break;
+    case CommandIDs::loadDemoSong: askToSaveChanges([this] { loadDemoSongAsync(); }); break;
     case CommandIDs::loadAudioIntoTrack: chooseAudioFileForTrack(selected); break;
-    case CommandIDs::openProject: openProjectInteractive(); break;
+    case CommandIDs::openProject: askToSaveChanges([this] { openProjectInteractive(); }); break;
+    case CommandIDs::undo: undo(); break;
+    case CommandIDs::redo: redo(); break;
     case CommandIDs::saveProject: saveProjectInteractive(false); break;
     case CommandIDs::saveProjectAs: saveProjectInteractive(true); break;
     case CommandIDs::exportMixdown: exportMixdownInteractive(); break;
@@ -895,13 +1008,13 @@ bool MainComponent::perform(const InvocationInfo& info) {
     case CommandIDs::selectPreviousTrack: arrangement_.selectLane(selectedLane - 1); break;
     case CommandIDs::toggleMuteSelected:
         if (selectedStrip != nullptr)
-            selectedStrip->setMute(!selectedStrip->isMuted());
-        arrangement_.repaint();
+            session_.perform(edit::SetValue{StripTarget::ofTrack(selected), edit::Field::Mute, 0, selectedStrip->isMuted() ? 0.0f : 1.0f},
+                             "Mute " + selectedStrip->getName());
         break;
     case CommandIDs::toggleSoloSelected:
         if (selectedStrip != nullptr)
-            selectedStrip->setSolo(!selectedStrip->isSoloed());
-        arrangement_.repaint();
+            session_.perform(edit::SetValue{StripTarget::ofTrack(selected), edit::Field::Solo, 0, selectedStrip->isSoloed() ? 0.0f : 1.0f},
+                             "Solo " + selectedStrip->getName());
         break;
     case CommandIDs::addMonoTrack: addTrack(engine::TrackFormat::Mono); break;
     case CommandIDs::addStereoTrack: addTrack(engine::TrackFormat::Stereo); break;
@@ -916,7 +1029,7 @@ bool MainComponent::perform(const InvocationInfo& info) {
 
 // ---- menu bar --------------------------------------------------------------------------------------------
 
-juce::StringArray MainComponent::getMenuBarNames() { return {"File", "Transport", "Track", "View"}; }
+juce::StringArray MainComponent::getMenuBarNames() { return {"File", "Edit", "Transport", "Track", "View"}; }
 
 juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
     juce::PopupMenu m;
@@ -938,6 +1051,10 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
         m.addCommandItem(cm, juce::StandardApplicationCommandIDs::quit);
         break;
     case 1:
+        m.addCommandItem(cm, CommandIDs::undo);
+        m.addCommandItem(cm, CommandIDs::redo);
+        break;
+    case 2:
         m.addCommandItem(cm, CommandIDs::playStop);
         m.addCommandItem(cm, CommandIDs::returnToStart);
         m.addCommandItem(cm, CommandIDs::toggleLoop);
@@ -945,7 +1062,7 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
         m.addCommandItem(cm, CommandIDs::seekBackOneBar);
         m.addCommandItem(cm, CommandIDs::seekForwardOneBar);
         break;
-    case 2:
+    case 3:
         m.addCommandItem(cm, CommandIDs::selectPreviousTrack);
         m.addCommandItem(cm, CommandIDs::selectNextTrack);
         m.addSeparator();
@@ -956,7 +1073,7 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
         m.addCommandItem(cm, CommandIDs::addStereoTrack);
         m.addCommandItem(cm, CommandIDs::deleteSelectedTrack);
         break;
-    case 3:
+    case 4:
         m.addCommandItem(cm, CommandIDs::zoomIn);
         m.addCommandItem(cm, CommandIDs::zoomOut);
         m.addSeparator();

@@ -479,6 +479,7 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e) {
         return;
     const int clip = clipAt(lane, static_cast<float>(e.x));
     if (clip >= 0) {
+        session_.getHistory().endMerge(); // this drag is its own undo step (Step 9)
         drag_ = Drag::Clip;
         dragTrack_ = track;
         dragClip_ = clip;
@@ -505,6 +506,8 @@ void ArrangementView::mouseDrag(const juce::MouseEvent& e) {
 }
 
 void ArrangementView::mouseUp(const juce::MouseEvent&) {
+    if (drag_ == Drag::Clip)
+        session_.getHistory().endMerge();
     drag_ = Drag::None;
     dragClip_ = -1;
     repaint();

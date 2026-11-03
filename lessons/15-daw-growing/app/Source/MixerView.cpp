@@ -122,7 +122,10 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
     name_.setFont(DawLookAndFeel::uiFont(14.0f, true));
     name_.setEditable(false, isTrack || ref_.kind == ChannelKind::Bus, false);
     name_.setTooltip("Double-click to rename");
-    name_.onTextChange = [this] { session_.setStripName(ref_, name_.getText()); };
+    name_.onTextChange = [this] {
+        if (name_.getText() != session_.getStripName(ref_))
+            session_.perform(edit::Rename{StripTarget::of(ref_), name_.getText()}, "Rename " + session_.getStripName(ref_));
+    };
     addAndMakeVisible(name_);
 
     if (isTrack) {
@@ -136,7 +139,8 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
                            "Stereo: inserts run on both channels and pan works as balance.");
         format_.onClick = [this] {
             const bool mono = session_.getTrackFormat(ref_.trackId) == engine::TrackFormat::Mono;
-            session_.setTrackFormat(ref_.trackId, mono ? engine::TrackFormat::Stereo : engine::TrackFormat::Mono);
+            session_.perform(edit::SetFormat{ref_.trackId, mono ? engine::TrackFormat::Stereo : engine::TrackFormat::Mono},
+                             "Track format " + session_.getStripName(ref_));
         };
         addAndMakeVisible(format_);
     }
@@ -157,9 +161,10 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
             knob->setColour(juce::Slider::rotarySliderFillColourId, DawColours::accentWarm());
             // The tooltip and the label follow pre/post-fader and the bus name in update().
             knob->onValueChange = [this, b, k = knob.get()] {
-                if (auto* s = strip())
-                    s->setSendLevelDb(b, FaderLaw::toEngineDb(static_cast<float>(k->getValue())));
+                performValue(edit::Field::SendLevel, FaderLaw::toEngineDb(static_cast<float>(k->getValue())), b,
+                             "Send " + juce::String::charToString(static_cast<juce::juce_wchar>('A' + b)), true);
             };
+            knob->onDragStart = knob->onDragEnd = [this] { endGesture(); };
             addAndMakeVisible(*knob);
             sends_.push_back(std::move(knob));
             auto label = std::make_unique<juce::Label>();
@@ -179,7 +184,16 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
         ceiling_.setWantsKeyboardFocus(false);
         ceiling_.setColour(juce::Slider::rotarySliderFillColourId, DawColours::meterHigh());
         ceiling_.setTooltip("Master limiter ceiling (drives the first Limiter on the master)");
-        ceiling_.onValueChange = [this] { session_.setMasterCeilingDb(static_cast<float>(ceiling_.getValue())); };
+        ceiling_.onValueChange = [this] {
+            // The ceiling is a parameter of the master's limiter: an undoable parameter change.
+            const int slot = session_.findInsertSlot(ref_, "Limiter");
+            const engine::InsertEffect* lim = session_.findInsert(ref_, "Limiter");
+            if (slot >= 0 && lim != nullptr && lim->findParameter("Ceiling") >= 0)
+                session_.perform(edit::SetParameter{StripTarget::of(ref_), slot, lim->findParameter("Ceiling"),
+                                                    static_cast<float>(ceiling_.getValue())},
+                                 "Master ceiling", mergeKeyFor(StripTarget::of(ref_), 0x43454c4c)); // "CELL"
+        };
+        ceiling_.onDragStart = ceiling_.onDragEnd = [this] { endGesture(); };
         addAndMakeVisible(ceiling_);
         ceilingLabel_.setText("Ceiling", juce::dontSendNotification);
         ceilingLabel_.setJustificationType(juce::Justification::centred);
@@ -198,10 +212,8 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
     };
     pan_.setWantsKeyboardFocus(false);
     pan_.setTooltip(isTrack ? "Pan (constant-power law)" : "Balance");
-    pan_.onValueChange = [this] {
-        if (auto* s = strip())
-            s->setPan(static_cast<float>(pan_.getValue()));
-    };
+    pan_.onValueChange = [this] { performValue(edit::Field::Pan, static_cast<float>(pan_.getValue()), 0, "Pan", true); };
+    pan_.onDragStart = pan_.onDragEnd = [this] { endGesture(); };
     addAndMakeVisible(pan_);
     panLabel_.setText(isTrack ? "Pan" : "Bal", juce::dontSendNotification);
     panLabel_.setJustificationType(juce::Justification::centred);
@@ -217,10 +229,10 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
     fader_.setTooltip("Fader (double-click: 0 dB)");
     fader_.onValueChange = [this] {
         const float db = FaderLaw::positionToDb(static_cast<float>(fader_.getValue()));
-        if (auto* s = strip())
-            s->setGainDb(FaderLaw::toEngineDb(db)); // atomic; the engine ramps over 50 ms
+        performValue(edit::Field::Gain, FaderLaw::toEngineDb(db), 0, "Fader", true); // the engine ramps over 50 ms
         gainLabel_.setText(FaderLaw::format(db), juce::dontSendNotification);
     };
+    fader_.onDragStart = fader_.onDragEnd = [this] { endGesture(); };
     addAndMakeVisible(fader_);
     addAndMakeVisible(meter_);
     gainLabel_.setJustificationType(juce::Justification::centred);
@@ -233,10 +245,7 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
         mute_.setWantsKeyboardFocus(false);
         mute_.setColour(juce::TextButton::buttonOnColourId, DawColours::mute());
         mute_.setTooltip("Mute");
-        mute_.onClick = [this] {
-            if (auto* s = strip())
-                s->setMute(mute_.getToggleState());
-        };
+        mute_.onClick = [this] { performValue(edit::Field::Mute, mute_.getToggleState() ? 1.0f : 0.0f, 0, "Mute", false); };
         addAndMakeVisible(mute_);
     }
     if (isTrack) { // buses are solo-safe (stage 1): no solo button
@@ -244,10 +253,7 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
         solo_.setWantsKeyboardFocus(false);
         solo_.setColour(juce::TextButton::buttonOnColourId, DawColours::accentWarm());
         solo_.setTooltip("Solo");
-        solo_.onClick = [this] {
-            if (auto* s = strip())
-                s->setSolo(solo_.getToggleState());
-        };
+        solo_.onClick = [this] { performValue(edit::Field::Solo, solo_.getToggleState() ? 1.0f : 0.0f, 0, "Solo", false); };
         addAndMakeVisible(solo_);
     }
     refreshStructure();
@@ -258,6 +264,12 @@ ChannelStripView::~ChannelStripView() = default;
 
 // nullptr once the track is deleted: the view goes away with the next change message.
 engine::ChannelStrip* ChannelStripView::strip() noexcept { return session_.getEngine().getStrip(ref_); }
+
+void ChannelStripView::performValue(edit::Field field, float value, int bus, const juce::String& what, bool continuous) {
+    const StripTarget target = StripTarget::of(ref_);
+    const auto key = continuous ? mergeKeyFor(target, static_cast<std::uint32_t>(field) * 16u + static_cast<std::uint32_t>(bus) + 1u) : 0u;
+    session_.perform(edit::SetValue{target, field, bus, value}, what + " " + session_.getStripName(ref_), key);
+}
 
 juce::Slider* ChannelStripView::getSendKnob(int bus) noexcept {
     return (bus >= 0 && bus < static_cast<int>(sends_.size())) ? sends_[static_cast<size_t>(bus)].get() : nullptr;

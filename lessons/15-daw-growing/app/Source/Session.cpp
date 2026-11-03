@@ -64,13 +64,20 @@ const Session::TrackModel* Session::findTrack(TrackId id) const noexcept {
 }
 
 TrackId Session::addTrack(TrackFormat format, const juce::String& name, int index) {
-    const TrackId id{nextTrackId_};
+    return addTrackWithId(TrackId{nextTrackId_}, format, name, index);
+}
+
+// A new id (== nextTrackId_) or one this session handed out before (undoing a delete, Step 9);
+// never one that is in use. The counter only moves up.
+TrackId Session::addTrackWithId(TrackId id, TrackFormat format, const juce::String& name, int index) {
+    if (!id.isValid() || id.value > nextTrackId_ || hasTrack(id))
+        return TrackId{};
     const int at = index >= 0 && index < getNumTracks() ? index : getNumTracks();
     // The default name counts the tracks the user sees ("Track 9" with eight), not the ids.
     const juce::String trackName = name.isNotEmpty() ? name : "Track " + juce::String(getNumTracks() + 1);
     if (engine_.addTrack(id, format, trackName.toStdString()).index < 0)
         return TrackId{}; // pool or queue full: nothing changed, the id is still free
-    ++nextTrackId_;
+    nextTrackId_ = std::max(nextTrackId_, id.value + 1);
     TrackModel track;
     track.id = id;
     tracks_.insert(tracks_.begin() + at, std::move(track));
@@ -180,6 +187,7 @@ void Session::clearProject() {
     tr.setPosition(0);
     engine_.requestReset();
     projectName_ = "Untitled";
+    history_.clear();
     sendChangeMessage();
 }
 
@@ -260,6 +268,7 @@ int Session::applyDemoSong(const DemoSong& song) {
 
     engine_.requestReset(); // fresh meters, no tails of the previous project
     projectName_ = "Demo song";
+    history_.clear();
     sendChangeMessage();
     return unknown;
 }
@@ -286,25 +295,20 @@ void Session::setClips(TrackId track, std::vector<Clip> clips) {
     sendChangeMessage();
 }
 
-void Session::setTrackAudio(TrackId track, std::shared_ptr<const AudioBuffer> audio, const juce::String& clipName,
-                            int64_t start) {
-    if (!hasTrack(track) || audio == nullptr)
-        return;
+Clip Session::makeAudioClip(std::shared_ptr<const AudioBuffer> audio, const juce::String& clipName, int64_t start) const {
     Clip c = Clip::fromBuffer(std::move(audio), std::max<int64_t>(0, start), clipName.toStdString());
     // 5 ms fades: an audio file rarely starts and ends exactly at a zero crossing.
     const int fade = static_cast<int>(std::lround(0.005 * getClipSampleRate()));
     c.fadeInSamples = static_cast<int>(std::min<int64_t>(fade, c.length / 2));
     c.fadeOutSamples = c.fadeInSamples;
-    setClips(track, {c});
-    if (clipName.isNotEmpty())
-        setStripName(trackRef(track), clipName.upToFirstOccurrenceOf(".", false, false));
+    return c;
 }
 
 int Session::moveClip(TrackId track, int clipIndex, int64_t newStart) {
-    TrackModel* t = findTrack(track);
+    const TrackModel* t = findTrack(track);
     if (t == nullptr)
         return -1;
-    auto& list = t->clips;
+    std::vector<Clip> list = t->clips;
     if (clipIndex < 0 || clipIndex >= static_cast<int>(list.size()))
         return -1;
     Clip moved = list[static_cast<size_t>(clipIndex)];
@@ -315,8 +319,9 @@ int Session::moveClip(TrackId track, int clipIndex, int64_t newStart) {
                                 [](int64_t s, const Clip& c) { return s < c.start; });
     const int newIndex = static_cast<int>(pos - list.begin());
     list.insert(pos, std::move(moved));
-    pushClips(*t);
-    sendChangeMessage();
+    constexpr std::uint32_t kMoveClip = 0x4d4f5645; // "MOVE"
+    if (!perform(edit::SetClips{track, std::move(list)}, "Move clip", mergeKeyFor(StripTarget::ofTrack(track), kMoveClip)))
+        return -1;
     return newIndex;
 }
 
@@ -470,6 +475,15 @@ InsertEffect* Session::findInsert(ChannelRef ref, const char* effectName) const 
     return nullptr;
 }
 
+int Session::findInsertSlot(ChannelRef ref, const char* effectName) const noexcept {
+    for (int s = 0; s < kInsertSlotsPerStrip; ++s) {
+        const InsertSlotState& slot = getSlot(ref, s);
+        if (!slot.isEmpty() && std::strcmp(slot.effect->getName(), effectName) == 0)
+            return s;
+    }
+    return -1;
+}
+
 bool Session::hasMasterLimiter() const noexcept { return findInsert(ChannelRef::master(), "Limiter") != nullptr; }
 
 float Session::getMasterCeilingDb() const noexcept {
@@ -481,10 +495,6 @@ float Session::getMasterCeilingDb() const noexcept {
     return 0.0f;
 }
 
-void Session::setMasterCeilingDb(float db) noexcept {
-    if (InsertEffect* lim = findInsert(ChannelRef::master(), "Limiter"))
-        lim->setParameterByName("Ceiling", db);
-}
 
 // ---- device changes ------------------------------------------------------------------------------
 
@@ -553,7 +563,242 @@ void Session::applySampleRateConversion(double newRate, const ConvertedBuffers& 
         pushClips(t);
     }
     clipSampleRate_ = newRate;
+    history_.clear(); // its clip lists and positions are at the old rate
     sendChangeMessage();
+}
+
+// ---- undo and redo (chapter 15, Step 9) ------------------------------------------------------------
+
+bool Session::perform(std::vector<Edit> edits, const juce::String& name, std::uint32_t mergeKey) {
+    return history_.perform(*this, std::move(edits), name, mergeKey);
+}
+
+bool Session::perform(Edit edit, const juce::String& name, std::uint32_t mergeKey) {
+    std::vector<Edit> edits;
+    edits.push_back(std::move(edit));
+    return perform(std::move(edits), name, mergeKey);
+}
+
+bool Session::undo() { return history_.undo(*this); }
+bool Session::redo() { return history_.redo(*this); }
+
+std::optional<Edit> Session::applyEdit(const Edit& e) {
+    return std::visit([this](const auto& kind) { return apply(kind); }, e);
+}
+
+ChannelRef Session::refOf(const StripTarget& t) const noexcept {
+    switch (t.kind) {
+    case ChannelKind::Track: return trackRef(t.track);
+    case ChannelKind::Bus: return ChannelRef::bus(t.bus);
+    case ChannelKind::Master: return ChannelRef::master();
+    }
+    return ChannelRef::master();
+}
+
+edit::AddTrack Session::makeNewTrack(TrackFormat format, int index, const juce::String& name) const {
+    edit::AddTrack a;
+    a.track.id = TrackId{nextTrackId_};
+    a.track.format = format;
+    a.track.name = name.isNotEmpty() ? name : "Track " + juce::String(getNumTracks() + 1);
+    a.index = index;
+    return a;
+}
+
+InsertSnapshot Session::snapshotInsert(ChannelRef ref, int uiSlot) const {
+    InsertSnapshot s;
+    const InsertSlotState& st = getSlot(ref, uiSlot);
+    if (st.isEmpty())
+        return s;
+    s.kind = st.kind;
+    s.bypassed = st.effect->isBypassed();
+    if (st.kind == SlotKind::Vst3 && st.vst != nullptr) {
+        host::HostedPlugin& plugin = st.vst->getPlugin();
+        s.vstFile = plugin.getInstance().getPluginDescription().fileOrIdentifier;
+        s.vstState = plugin.getState();
+    } else {
+        s.type = st.type;
+        for (int i = 0; i < st.effect->getNumParameters(); ++i)
+            s.params.push_back(st.effect->getParameter(i));
+    }
+    return s;
+}
+
+TrackSnapshot Session::snapshotTrack(TrackId id) const {
+    TrackSnapshot s;
+    const ChannelRef ref = trackRef(id);
+    const ChannelStrip* cs = engine_.getStrip(ref);
+    if (cs == nullptr)
+        return s;
+    s.id = id;
+    s.format = getTrackFormat(id);
+    s.name = juce::String(cs->getName());
+    s.gainDb = cs->getGainDb();
+    s.pan = cs->getPan();
+    s.mute = cs->isMuted();
+    s.solo = cs->isSoloed();
+    for (int b = 0; b < kNumBuses; ++b)
+        s.sends[static_cast<size_t>(b)] = {cs->getSendLevelDb(b), cs->isSendPreFader(b)};
+    for (int slot = 0; slot < kInsertSlotsPerStrip; ++slot)
+        s.inserts[static_cast<size_t>(slot)] = snapshotInsert(ref, slot);
+    s.clips = getClips(id);
+    return s;
+}
+
+bool Session::applyInsertSnapshot(ChannelRef ref, int uiSlot, const InsertSnapshot& insert) {
+    InsertEffect* fx = nullptr;
+    switch (insert.kind) {
+    case SlotKind::Empty:
+        clearInsert(ref, uiSlot);
+        return getSlot(ref, uiSlot).isEmpty();
+    case SlotKind::Builtin:
+        fx = setBuiltinInsert(ref, uiSlot, insert.type);
+        if (fx != nullptr)
+            for (int i = 0; i < std::min(fx->getNumParameters(), static_cast<int>(insert.params.size())); ++i)
+                fx->setParameter(i, insert.params[static_cast<size_t>(i)]);
+        break;
+    case SlotKind::Vst3: {
+        if (!createVst3)
+            return false;
+        juce::String error;
+        std::unique_ptr<VstInsert> plugin = createVst3(juce::File(insert.vstFile), insert.vstState, error);
+        if (plugin == nullptr)
+            return false;
+        fx = setVstInsert(ref, uiSlot, std::move(plugin));
+        break;
+    }
+    }
+    if (fx == nullptr)
+        return false;
+    setInsertBypassed(ref, uiSlot, insert.bypassed);
+    return true;
+}
+
+std::optional<Edit> Session::apply(const edit::AddTrack& e) {
+    const TrackSnapshot& s = e.track;
+    const TrackId id = addTrackWithId(s.id, s.format, s.name, e.index);
+    if (!id.isValid())
+        return std::nullopt;
+    const ChannelRef ref = trackRef(id);
+    ChannelStrip& cs = *engine_.getStrip(ref);
+    cs.setGainDb(s.gainDb);
+    cs.setPan(s.pan);
+    cs.setMute(s.mute);
+    cs.setSolo(s.solo);
+    for (int b = 0; b < kNumBuses; ++b) {
+        cs.setSendLevelDb(b, s.sends[static_cast<size_t>(b)].levelDb);
+        cs.setSendPreFader(b, s.sends[static_cast<size_t>(b)].preFader);
+    }
+    for (int slot = 0; slot < kInsertSlotsPerStrip; ++slot)
+        applyInsertSnapshot(ref, slot, s.inserts[static_cast<size_t>(slot)]); // a plugin that is gone stays out
+    if (!s.clips.empty())
+        setClips(id, s.clips);
+    return edit::RemoveTrack{id};
+}
+
+std::optional<Edit> Session::apply(const edit::RemoveTrack& e) {
+    const int index = indexOf(e.id);
+    if (index < 0)
+        return std::nullopt;
+    edit::AddTrack inverse{snapshotTrack(e.id), index}; // before anything is gone
+    if (!removeTrack(e.id))
+        return std::nullopt;
+    return inverse;
+}
+
+std::optional<Edit> Session::apply(const edit::SetValue& e) {
+    ChannelStrip* cs = engine_.getStrip(refOf(e.strip));
+    if (cs == nullptr || (e.field == edit::Field::SendLevel && (e.bus < 0 || e.bus >= kNumBuses)))
+        return std::nullopt;
+    edit::SetValue inverse = e;
+    switch (e.field) {
+    case edit::Field::Gain:
+        inverse.value = cs->getGainDb();
+        cs->setGainDb(e.value);
+        break;
+    case edit::Field::Pan:
+        inverse.value = cs->getPan();
+        cs->setPan(e.value);
+        break;
+    case edit::Field::Mute:
+        inverse.value = cs->isMuted() ? 1.0f : 0.0f;
+        cs->setMute(e.value >= 0.5f);
+        break;
+    case edit::Field::Solo:
+        inverse.value = cs->isSoloed() ? 1.0f : 0.0f;
+        cs->setSolo(e.value >= 0.5f);
+        break;
+    case edit::Field::SendLevel:
+        inverse.value = cs->getSendLevelDb(e.bus);
+        cs->setSendLevelDb(e.bus, e.value);
+        break;
+    }
+    sendChangeMessage(); // the arrangement shows M / S; the strips follow the atomics by themselves
+    return inverse;
+}
+
+std::optional<Edit> Session::apply(const edit::Rename& e) {
+    const ChannelRef ref = refOf(e.strip);
+    if (engine_.getStrip(ref) == nullptr)
+        return std::nullopt;
+    edit::Rename inverse{e.strip, getStripName(ref)};
+    setStripName(ref, e.name);
+    return inverse;
+}
+
+std::optional<Edit> Session::apply(const edit::SetFormat& e) {
+    if (!hasTrack(e.track))
+        return std::nullopt;
+    edit::SetFormat inverse{e.track, getTrackFormat(e.track)};
+    setTrackFormat(e.track, e.format);
+    return inverse;
+}
+
+std::optional<Edit> Session::apply(const edit::SetClips& e) {
+    if (!hasTrack(e.track))
+        return std::nullopt;
+    edit::SetClips inverse{e.track, getClips(e.track)};
+    setClips(e.track, e.clips);
+    return inverse;
+}
+
+std::optional<Edit> Session::apply(const edit::SetInsert& e) {
+    const ChannelRef ref = refOf(e.strip);
+    if (findStrip(ref) == nullptr || e.slot < 0 || e.slot >= kInsertSlotsPerStrip)
+        return std::nullopt;
+    edit::SetInsert inverse{e.strip, e.slot, snapshotInsert(ref, e.slot)};
+    if (!applyInsertSnapshot(ref, e.slot, e.insert))
+        return std::nullopt; // the old insert is still there (or the slot was empty and stays so)
+    return inverse;
+}
+
+std::optional<Edit> Session::apply(const edit::SetParameter& e) {
+    const InsertSlotState& slot = getSlot(refOf(e.strip), e.slot);
+    if (slot.isEmpty() || e.index < 0 || e.index >= slot.effect->getNumParameters())
+        return std::nullopt;
+    edit::SetParameter inverse = e;
+    inverse.value = slot.effect->getParameter(e.index);
+    slot.effect->setParameter(e.index, e.value); // an atomic; editor panels follow by their timer
+    return inverse;
+}
+
+std::optional<Edit> Session::apply(const edit::SetBypass& e) {
+    const ChannelRef ref = refOf(e.strip);
+    const InsertSlotState& slot = getSlot(ref, e.slot);
+    if (slot.isEmpty())
+        return std::nullopt;
+    edit::SetBypass inverse{e.strip, e.slot, slot.effect->isBypassed()};
+    setInsertBypassed(ref, e.slot, e.bypassed);
+    return inverse;
+}
+
+std::optional<Edit> Session::apply(const edit::SetTempo& e) {
+    if (!(e.bpm > 0.0))
+        return std::nullopt;
+    Transport& tr = engine_.getTransport();
+    edit::SetTempo inverse{tr.getTempo()};
+    tr.setTempo(e.bpm);
+    sendChangeMessage();
+    return inverse;
 }
 
 } // namespace dawlab::app

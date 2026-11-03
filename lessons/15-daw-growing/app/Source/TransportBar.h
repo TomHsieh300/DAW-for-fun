@@ -41,6 +41,10 @@ public:
     std::function<void()> onPlayStop;
     std::function<void()> onReturnToStart;
     std::function<void()> onToggleLoop;
+    // Chapter 15, Step 9: when set, the tempo slider changes the tempo through it (undoable), and
+    // onTempoGesture marks the start and the end of a drag. Otherwise it writes the transport.
+    std::function<void(double bpm)> onTempoChange;
+    std::function<void()> onTempoGesture;
 
     // Pulls the current state from the engine (message thread, ~30 Hz).
     void update();

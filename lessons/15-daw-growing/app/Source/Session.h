@@ -39,6 +39,7 @@
 #include <dawlab/engine/All.h>
 #include <dawlab/engine/DemoSong.h>
 
+#include "History.h"       // Edit, History, SlotKind (Step 9)
 #include "MediaLoader.h"   // ConvertedBuffers
 #include "ProjectFormat.h" // kInsertSlotsPerStrip
 
@@ -49,6 +50,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace dawlab::app {
@@ -56,8 +58,6 @@ namespace dawlab::app {
 class VstInsert;
 
 constexpr int kNewProjectTracks = 8; // what File > New starts with
-
-enum class SlotKind { Empty, Builtin, Vst3 };
 
 struct InsertSlotState {
     SlotKind kind = SlotKind::Empty;
@@ -69,7 +69,7 @@ struct InsertSlotState {
     bool isEmpty() const noexcept { return kind == SlotKind::Empty || effect == nullptr; }
 };
 
-class Session final : public juce::ChangeBroadcaster {
+class Session final : public juce::ChangeBroadcaster, public EditTarget {
 public:
     explicit Session(engine::Engine& engine);
     ~Session() override;
@@ -122,13 +122,14 @@ public:
     const std::vector<engine::Clip>& getClips(engine::TrackId track) const; // empty for an unknown id
     void setClips(engine::TrackId track, std::vector<engine::Clip> clips);
 
-    // Replaces the track's clips by one clip that plays `audio` from timeline sample `start`.
-    // The audio must already be at getClipSampleRate() (MediaLoader resamples it).
-    void setTrackAudio(engine::TrackId track, std::shared_ptr<const AudioBuffer> audio, const juce::String& clipName,
-                       int64_t start = 0);
+    // One clip that plays `audio` from timeline sample `start`, with 5 ms fades. The audio must
+    // already be at getClipSampleRate() (MediaLoader resamples it).
+    engine::Clip makeAudioClip(std::shared_ptr<const AudioBuffer> audio, const juce::String& clipName,
+                               int64_t start = 0) const;
 
-    // Moves clip `clipIndex` of `track` to `newStart` (clamped to >= 0). Returns the clip's new
-    // index in the (start-sorted) list, or -1 if the arguments are invalid.
+    // Moves clip `clipIndex` of `track` to `newStart` (clamped to >= 0), as an undoable edit: all
+    // moves of one drag are one entry (the arrangement ends the merge on mouse down and up).
+    // Returns the clip's new index in the (start-sorted) list, or -1 if the arguments are invalid.
     int moveClip(engine::TrackId track, int clipIndex, int64_t newStart);
 
     // End of the last clip on any track (GUI copy; 0 for an empty project).
@@ -157,8 +158,9 @@ public:
     void clearInsert(engine::ChannelRef ref, int uiSlot);
     void setInsertBypassed(engine::ChannelRef ref, int uiSlot, bool bypassed);
 
-    // First insert on the strip whose InsertEffect::getName() equals `effectName`.
+    // First insert on the strip whose InsertEffect::getName() equals `effectName` (its GUI slot, or -1).
     engine::InsertEffect* findInsert(engine::ChannelRef ref, const char* effectName) const noexcept;
+    int findInsertSlot(engine::ChannelRef ref, const char* effectName) const noexcept;
 
     // Called (message thread) right before an insert leaves a slot - or leaves with its track -
     // so editor windows that point at it can close while the pointer is still valid.
@@ -167,7 +169,6 @@ public:
     // ---- master strip helpers (the "Ceiling" knob drives the first Limiter on the master) -----
     bool hasMasterLimiter() const noexcept;
     float getMasterCeilingDb() const noexcept;
-    void setMasterCeilingDb(float db) noexcept;
 
     // ---- device changes -----------------------------------------------------------------------
     // Clip positions and clip sources are in samples, so they belong to one sample rate: the
@@ -194,6 +195,34 @@ public:
     // and the transport. Blocks for as long as the resampling takes. Message thread.
     void handleSampleRateChange(double oldRate, double newRate);
 
+    // ---- undo and redo (chapter 15, Step 9) ---------------------------------------------------
+    // Every change the GUI makes goes through perform(): it is applied, and its inverse is kept
+    // in the history. The functions above change the project WITHOUT recording; applyEdit() is
+    // built from them, and so are File > New, the demo song and opening a file, which all start
+    // a new history. A device change converts every clip, which old entries know at the old
+    // rate, so it starts a new history too.
+    bool perform(std::vector<Edit> edits, const juce::String& name, std::uint32_t mergeKey = 0);
+    bool perform(Edit edit, const juce::String& name, std::uint32_t mergeKey = 0);
+    bool undo();
+    bool redo();
+    History& getHistory() noexcept { return history_; }
+    const History& getHistory() const noexcept { return history_; }
+
+    std::optional<Edit> applyEdit(const Edit& edit) override;
+
+    // The edit that adds a NEW track at display position `index` (-1 = at the end). It names the
+    // next id; applying it moves the id counter on (and undoing it never moves it back).
+    edit::AddTrack makeNewTrack(engine::TrackFormat format, int index = -1, const juce::String& name = {}) const;
+    TrackSnapshot snapshotTrack(engine::TrackId id) const;
+    InsertSnapshot snapshotInsert(engine::ChannelRef ref, int uiSlot) const;
+    engine::ChannelRef refOf(const StripTarget& target) const noexcept;
+
+    // Builds a VST3 insert from a plugin file and its saved state (undoing the removal of a
+    // plugin, Step 9). MainComponent sets it with chapter 13's PluginHost; without it such an edit
+    // does not apply.
+    std::function<std::unique_ptr<VstInsert>(const juce::File& file, const juce::MemoryBlock& state, juce::String& error)>
+        createVst3;
+
 private:
     struct StripModel {
         std::array<InsertSlotState, kInsertSlotsPerStrip> slots;
@@ -209,6 +238,18 @@ private:
     StripModel* findStrip(engine::ChannelRef ref) noexcept;
     const StripModel* findStrip(engine::ChannelRef ref) const noexcept;
     void removeAllTracks();
+    engine::TrackId addTrackWithId(engine::TrackId id, engine::TrackFormat format, const juce::String& name, int index);
+    bool applyInsertSnapshot(engine::ChannelRef ref, int uiSlot, const InsertSnapshot& insert);
+    std::optional<Edit> apply(const edit::AddTrack&);
+    std::optional<Edit> apply(const edit::RemoveTrack&);
+    std::optional<Edit> apply(const edit::SetValue&);
+    std::optional<Edit> apply(const edit::Rename&);
+    std::optional<Edit> apply(const edit::SetFormat&);
+    std::optional<Edit> apply(const edit::SetClips&);
+    std::optional<Edit> apply(const edit::SetInsert&);
+    std::optional<Edit> apply(const edit::SetParameter&);
+    std::optional<Edit> apply(const edit::SetBypass&);
+    std::optional<Edit> apply(const edit::SetTempo&);
     void removeBusAndMasterInserts();
     void resetBusAndMasterSettings();
     void pushClips(const TrackModel& track);
@@ -219,6 +260,7 @@ private:
     std::uint32_t nextTrackId_ = 1;                           // only counts up (see the top)
     double clipSampleRate_ = 0.0; // 0 = not set yet: follow the engine
     juce::String projectName_ = "Untitled";
+    History history_;
 };
 
 } // namespace dawlab::app

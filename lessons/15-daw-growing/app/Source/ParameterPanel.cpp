@@ -31,7 +31,12 @@ juce::String ParameterPanel::formatValue(const engine::InsertEffect& effect, int
 
 ParameterPanel::ParameterPanel(engine::InsertEffect& effect) : effect_(effect) {
     bypass_.setToggleState(effect_.isBypassed(), juce::dontSendNotification);
-    bypass_.onClick = [this] { effect_.setBypassed(bypass_.getToggleState()); };
+    bypass_.onClick = [this] {
+        if (onBypassChange)
+            onBypassChange(bypass_.getToggleState());
+        else
+            effect_.setBypassed(bypass_.getToggleState());
+    };
     addAndMakeVisible(bypass_);
     latencyLabel_.setJustificationType(juce::Justification::centredRight);
     latencyLabel_.setColour(juce::Label::textColourId, DawColours::textDim());
@@ -55,14 +60,14 @@ ParameterPanel::ParameterPanel(engine::InsertEffect& effect) : effect_(effect) {
                 c->combo->addItem(juce::String::fromUTF8(info.choices[k]), k + 1);
             c->combo->setSelectedId(static_cast<int>(current - info.min) + 1, juce::dontSendNotification);
             c->combo->onChange = [this, i, info, combo = c->combo.get()] {
-                effect_.setParameter(i, info.min + static_cast<float>(combo->getSelectedId() - 1));
+                changeParameter(i, info.min + static_cast<float>(combo->getSelectedId() - 1));
             };
             content_.addAndMakeVisible(*c->combo);
         } else if (info.kind == ParameterKind::Bool) {
             c->toggle = std::make_unique<juce::ToggleButton>(current >= 0.5f ? "On" : "Off");
             c->toggle->setToggleState(current >= 0.5f, juce::dontSendNotification);
             c->toggle->onClick = [this, i, t = c->toggle.get()] {
-                effect_.setParameter(i, t->getToggleState() ? 1.0f : 0.0f);
+                changeParameter(i, t->getToggleState() ? 1.0f : 0.0f);
                 t->setButtonText(t->getToggleState() ? "On" : "Off");
             };
             content_.addAndMakeVisible(*c->toggle);
@@ -82,7 +87,11 @@ ParameterPanel::ParameterPanel(engine::InsertEffect& effect) : effect_(effect) {
             if (info.min < 0.0f && info.max > 0.0f)
                 s->getProperties().set(DawLookAndFeel::kBipolarProperty, true);
             s->setValue(current, juce::dontSendNotification);
-            s->onValueChange = [this, i, sl = s.get()] { effect_.setParameter(i, static_cast<float>(sl->getValue())); };
+            s->onValueChange = [this, i, sl = s.get()] { changeParameter(i, static_cast<float>(sl->getValue())); };
+            s->onDragStart = s->onDragEnd = [this] {
+                if (onGesture)
+                    onGesture();
+            };
             c->slider = std::move(s);
             content_.addAndMakeVisible(*c->slider);
         }
@@ -99,6 +108,13 @@ ParameterPanel::ParameterPanel(engine::InsertEffect& effect) : effect_(effect) {
 }
 
 ParameterPanel::~ParameterPanel() { stopTimer(); }
+
+void ParameterPanel::changeParameter(int index, float value) {
+    if (onParameterChange)
+        onParameterChange(index, value);
+    else
+        effect_.setParameter(index, value);
+}
 
 juce::Slider* ParameterPanel::getSlider(int i) const noexcept {
     return (i >= 0 && i < getNumControls()) ? controls_[static_cast<size_t>(i)]->slider.get() : nullptr;

@@ -82,9 +82,16 @@ public:
     ProjectIO::OpenResult openProject(const juce::File& file);
     bool saveProject(const juce::File& file);
     void openProjectInteractive();
-    void saveProjectInteractive(bool saveAs);
+    void saveProjectInteractive(bool saveAs, std::function<void()> afterSave = {});
+    // Step 9: when the project has unsaved changes, asks "Save / Don't save / Cancel" first (Live
+    // mode only) and calls `then` unless the user cancels. New, Open, the demo song and Quit use it.
+    void askToSaveChanges(std::function<void()> then);
+    // Edit > Undo / Redo (Step 9): false when there was nothing to do or the entry did not apply.
+    bool undo();
+    bool redo();
     juce::File getProjectFile() const { return projectFile_; }
-    // "DawLab 15 - <project name>"; onTitleChanged tells the window when it changes (from tick()).
+    // "DawLab 15 - <project name>", with " *" while there are unsaved changes (Step 9);
+    // onTitleChanged tells the window when it changes (from tick()).
     juce::String getWindowTitle() const;
     std::function<void(const juce::String& title)> onTitleChanged;
     void loadDemoSongAsync();       // generates on the loader thread

@@ -44,6 +44,7 @@ public:
     }
 
     void closeButtonPressed() override { juce::JUCEApplication::getInstance()->systemRequestedQuit(); }
+    MainComponent& getContent() noexcept { return *content_; }
 
 private:
     MainComponent* content_ = nullptr;
@@ -86,7 +87,13 @@ public:
     }
 
     void shutdown() override { mainWindow_.reset(); }
-    void systemRequestedQuit() override { quit(); }
+    // Step 9: unsaved changes are asked about first; Cancel keeps the app running.
+    void systemRequestedQuit() override {
+        if (mainWindow_ != nullptr)
+            mainWindow_->getContent().askToSaveChanges([] { quit(); });
+        else
+            quit();
+    }
     void anotherInstanceStarted(const juce::String&) override {}
 
 private:

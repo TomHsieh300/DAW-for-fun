@@ -42,6 +42,10 @@ enum : juce::CommandID {
     addStereoTrack,
     deleteSelectedTrack,
 
+    // Edit (chapter 15, Step 9)
+    undo = 0x2401,
+    redo,
+
     // View
     zoomIn = 0x2301,
     zoomOut,
@@ -51,6 +55,7 @@ enum : juce::CommandID {
 
 namespace CommandCategories {
 inline constexpr const char* file = "File";
+inline constexpr const char* edit = "Edit";
 inline constexpr const char* transport = "Transport";
 inline constexpr const char* track = "Track";
 inline constexpr const char* view = "View";

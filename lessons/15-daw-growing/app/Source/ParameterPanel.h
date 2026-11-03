@@ -25,6 +25,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -57,12 +58,20 @@ public:
     // Pulls the current values from the effect (what the timer does).
     void refreshFromEffect();
 
+    // Chapter 15, Step 9: when set, the controls change the effect through these - the owner
+    // makes the change undoable - instead of writing it directly. onGesture is called at the
+    // start and the end of a knob drag, so that one drag becomes one undo step.
+    std::function<void(int index, float value)> onParameterChange;
+    std::function<void(bool bypassed)> onBypassChange;
+    std::function<void()> onGesture;
+
     void paint(juce::Graphics&) override;
     void resized() override;
 
 private:
     struct Control;
     void timerCallback() override { refreshFromEffect(); }
+    void changeParameter(int index, float value);
     int getNumColumns() const noexcept;
 
     engine::InsertEffect& effect_;
