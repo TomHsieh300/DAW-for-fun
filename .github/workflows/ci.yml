@@ -4,8 +4,8 @@
 #         Windows, Linux (x64 and ARM64) and macOS
 #   tsan  chapter 15 under ThreadSanitizer: its checks run a real audio thread next to the UI
 #         thread, and TSan fails the run on any data race between them
-#   juce  chapters 13-14 with JUCE, including the DawLab 8 smoke test and snapshot (macOS is
-#         built too but allowed to fail until it has passed a few times)
+#   juce  chapters 13-15 with JUCE, including the smoke tests and snapshots of DawLab 8 and
+#         DawLab 15 (macOS is built too but allowed to fail until it has passed a few times)
 #
 # Linux ARM64 (ubuntu-24.04-arm) stands in for embedded aarch64 boards such as NXP's
 # FRDM i.MX 95. It is allowed to fail in both jobs until it has passed a few times.
@@ -109,22 +109,24 @@ jobs:
       - name: Build and test (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: .\scripts\build.ps1 -Only 13-vst-hosting,14-daw-8track -Juce -Config Release
+        run: .\scripts\build.ps1 -Only 13-vst-hosting,14-daw-8track,15-daw-growing -Juce -Config Release
 
-      # DawLab 8's smoke test and snapshot create real windows, so give them a virtual X display
+      # The apps' smoke tests and snapshots create real windows, so give them a virtual X display
       - name: Build and test (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run -a ./scripts/build.sh --only 13-vst-hosting,14-daw-8track --juce --config Release
+        run: xvfb-run -a ./scripts/build.sh --only 13-vst-hosting,14-daw-8track,15-daw-growing --juce --config Release
 
       # macOS runners have a desktop session, so the GUI tests need no virtual display
       - name: Build and test (macOS)
         if: runner.os == 'macOS'
-        run: ./scripts/build.sh --only 13-vst-hosting,14-daw-8track --juce --config Release
+        run: ./scripts/build.sh --only 13-vst-hosting,14-daw-8track,15-daw-growing --juce --config Release
 
-      - name: Upload DawLab 8 snapshot
+      - name: Upload DawLab 8 and DawLab 15 snapshots
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: dawlab8-snapshot-${{ matrix.os }}
-          path: build/dawlab_output/l14_app_snapshot*.png
+          name: dawlab-snapshots-${{ matrix.os }}
+          path: |
+            build/dawlab_output/l14_app_snapshot*.png
+            build/dawlab_output/l15_app_snapshot*.png
           if-no-files-found: ignore
