@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-06-engine-pool.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 5 - Undo and redo](step-05-undo.md) | Next: Step 7 - The app (planned)
+[Overview](../README.md) | Previous: [Step 5 - Undo and redo](step-05-undo.md) | Next: [Step 7 - The app with growing tracks](step-07-app-tracks.md)
 
 ## Goal
 

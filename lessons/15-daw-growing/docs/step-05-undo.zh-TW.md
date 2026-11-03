@@ -101,7 +101,7 @@ undo 兩步之後，redo 堆疊裡有這兩步。如果使用者這時做了新�
 
 - **上限。** 歷史紀錄保留最新的 100 筆（建構子參數），丟掉最舊的。用 `std::deque` 從前面丟掉很便宜。
 - **存檔後是否修改過。** 每筆紀錄都有一個不會重複使用的序號，undo 和 redo 時紀錄保留自己的序號。`markSaved()` 記住最新紀錄的
-  序號；最新紀錄換成別筆時，專案就算修改過。這在 undo、redo、新編輯和丟掉舊紀錄之後都正確，也是 Step 7 視窗標題加上 `*` 的依據。
+  序號；最新紀錄換成別筆時，專案就算修改過。這在 undo、redo、新編輯和丟掉舊紀錄之後都正確，也是 Step 9 視窗標題加上 `*` 的依據。
 - **繞過歷史紀錄的修改。** 如果有東西沒經過歷史紀錄就改了專案（別處的 bug），舊紀錄可能就套用不上了。這時 `undo()` 會拒絕，
   讓專案保持原樣（又是全有或全無），並丟掉那筆紀錄，而不是只套用一半。
 
@@ -115,7 +115,7 @@ resolution，然後在標準函式庫深處失敗。引數型別來自 `std` 的
 
 `juce::UndoManager` 儲存帶有 virtual `perform()` 和 `undo()` 的 `juce::UndoableAction` 物件，用 `beginNewTransaction()` 把它們
 分組成 transaction，並用 `UndoableAction::createCoalescedAction()` 合併。概念是一樣的：一個動作、一個使用者動作對應一個
-transaction、合併、上限。Step 7 可以把 `History` 包成那個介面，也可以直接用 `UndoManager` 搭配裝著 `Edit` 的 action。這一步自己
+transaction、合併、上限。Step 9 可以把 `History` 包成那個介面，也可以直接用 `UndoManager` 搭配裝著 `Edit` 的 action。這一步自己
 寫一個小小的歷史紀錄，是為了讓第 15 章在 app 之前都不依賴 JUCE，也因為 150 行就能看到整個機制。
 
 ## 程式碼

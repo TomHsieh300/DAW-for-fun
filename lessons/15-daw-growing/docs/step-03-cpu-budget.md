@@ -86,7 +86,8 @@ starts late - a window opened after a few overruns - does not report old news.
 An overrun is a block that *our* processing made late. The audio device can also run dry for
 reasons outside the callback (another process, a driver, power management); those are the
 device's xruns, and JUCE reports them through `AudioIODevice::getXRunCount()` (or -1 where the
-driver cannot tell). The app in Step 7 can show both.
+driver cannot tell). The app of Step 7 shows the first; adding the device's count is a small
+extension.
 
 ### From numbers to a warning
 

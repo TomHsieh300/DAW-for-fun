@@ -76,7 +76,7 @@ a = e^{-T_{\text{budget}} / \tau}, \qquad \bar{\ell} \leftarrow \ell + a \, (\ba
 不會把舊事當成新消息回報。
 
 overrun 是*我們自己的*處理讓 block 遲到。音訊裝置也可能因為 callback 以外的原因斷音（別的程式、driver、電源管理）；
-那是裝置的 xrun，JUCE 用 `AudioIODevice::getXRunCount()` 回報（driver 無法判斷時回傳 -1）。Step 7 的 app 可以兩者都顯示。
+那是裝置的 xrun，JUCE 用 `AudioIODevice::getXRunCount()` 回報（driver 無法判斷時回傳 -1）。Step 7 的 app 顯示前者；再加上裝置的計數只是小小的擴充。
 
 ### 從數字到警告
 

@@ -2,7 +2,7 @@
 
 [English](step-06-engine-pool.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 5 - Undo 與 redo](step-05-undo.zh-TW.md) | 下一步：Step 7 - App（規劃中）
+[總覽](../README.zh-TW.md) | 上一步：[Step 5 - Undo 與 redo](step-05-undo.zh-TW.md) | 下一步：[Step 7 - Track 可以增減的 app](step-07-app-tracks.zh-TW.md)
 
 ## 目標
 
