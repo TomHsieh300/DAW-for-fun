@@ -1,9 +1,9 @@
-# DawLab: learn audio DSP from scratch in C++ and finish by building an 8-track DAW
+# DawLab: learn audio DSP from scratch in C++ and finish by building your own DAW
 **English** | [繁體中文](README.zh-TW.md)
 
 [![CI](https://github.com/TomHsieh300/DAW-for-fun/actions/workflows/ci.yml/badge.svg)](https://github.com/TomHsieh300/DAW-for-fun/actions/workflows/ci.yml)
 
-This course is for learners who "know basic C++ but have never studied DSP". It starts from "what does sound look like inside a computer?" and in each chapter builds a real, usable DSP component (or a family of them): gain, filter, EQ, compressor, limiter, saturation, distortion, gate, delay, modulation, meters, reverb... Then it uses JUCE to wrap them into VST3 plugins, writes a host that can load VST3 plugins, and finally puts everything together into an **8-track DAW, "DawLab 8"**, that can arrange clips, mix, host plugins and export WAV files.
+This course is for learners who "know basic C++ but have never studied DSP". It starts from "what does sound look like inside a computer?" and in each chapter builds a real, usable DSP component (or a family of them): gain, filter, EQ, compressor, limiter, saturation, distortion, gate, delay, modulation, meters, reverb... Then it uses JUCE to wrap them into VST3 plugins, writes a host that can load VST3 plugins, and puts everything together into an **8-track DAW, "DawLab 8"**, that can arrange clips, mix, host plugins and export WAV files. The last chapter then grows it into **"DawLab 15"**: tracks you can add and delete, projects you can save and open again, and edits you can undo.
 
 The course is **bilingual (English / Traditional Chinese)**. English is the primary version (original file names such as `README.md`); the Traditional Chinese version sits next to it in a `.zh-TW.md` file (such as `README.zh-TW.md`). Every document has a language switcher at the top, and all code comments and program output are in English.
 
@@ -32,7 +32,7 @@ The course is **bilingual (English / Traditional Chinese)**. English is the prim
 
 1. Install [Visual Studio 2022](https://visualstudio.microsoft.com/): either **Build Tools** (command line only, small) or **Community** (includes the IDE, free) will do.
 2. During installation, select the workload **"Desktop development with C++"**. It installs MSVC, the Windows SDK and CMake together; the scripts in this project automatically find the CMake bundled with Visual Studio, so `cmake` does not need to be on your system PATH.
-3. Chapters 13 and 14 need JUCE:
+3. Chapters 13 and 14, and the application of chapter 15, need JUCE:
    - The complete project folder already contains JUCE **9.0.4** in `third_party/JUCE`. **If you obtained the project through git, `third_party/` is not under version control** (it is listed in `.gitignore`), so you need to clone JUCE 9.0.4 into `third_party/JUCE` yourself, or skip to the next point and let CMake download it with FetchContent:
      ```powershell
      git clone --depth 1 --branch 9.0.4 https://github.com/juce-framework/JUCE.git third_party/JUCE
@@ -42,13 +42,13 @@ The course is **bilingual (English / Traditional Chinese)**. English is the prim
 
 ### Linux (verified on Ubuntu 24.04)
 
-Every chapter, including the JUCE chapters 13 and 14, builds and passes all its tests on **Ubuntu 24.04 LTS with GCC 13.3 and CMake 3.28** (149 tests for chapters 00–12 plus the pure C++ part of chapter 14, and 44 for the JUCE build of chapters 13–14, including the `DawLab 8` smoke test and snapshot).
+Every chapter, including the JUCE parts of chapters 13–15, builds and passes all its tests on **Ubuntu 24.04 LTS with GCC 13.3 and CMake 3.28**. CI checks this on every push, including the smoke tests and snapshots of `DawLab 8` and `DawLab 15` and chapter 15's ThreadSanitizer run.
 
 1. Install the compiler and CMake:
    ```bash
    sudo apt install build-essential cmake git
    ```
-2. Chapters 13 and 14 need JUCE's system dependencies (ALSA / JACK, X11, freetype, fontconfig, OpenGL, webkit2gtk, curl; see `third_party/JUCE/docs/Linux Dependencies.md`):
+2. The JUCE parts of chapters 13–15 need JUCE's system dependencies (ALSA / JACK, X11, freetype, fontconfig, OpenGL, webkit2gtk, curl; see `third_party/JUCE/docs/Linux Dependencies.md`):
    ```bash
    sudo apt install libasound2-dev libjack-jackd2-dev ladspa-sdk libfreetype-dev libfontconfig1-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libglu1-mesa-dev mesa-common-dev libcurl4-openssl-dev libwebkit2gtk-4.1-dev
    ```
@@ -58,18 +58,19 @@ Every chapter, including the JUCE chapters 13 and 14, builds and passes all its 
 
 ### macOS (pure C++ chapters verified in CI)
 
-Install the command-line tools and CMake (`xcode-select --install`, `brew install cmake`), then use `./scripts/build.sh` as on Linux. The pure C++ chapters (00–12, 15 and the engine part of 14) build and pass all their tests with Apple Clang on GitHub's `macos-latest` runner, in Debug and Release, on every push (see the CI badge above). The JUCE chapters 13 and 14 are built there too, but not yet verified: the CI job is allowed to fail while it settles.
+Install the command-line tools and CMake (`xcode-select --install`, `brew install cmake`), then use `./scripts/build.sh` as on Linux. The pure C++ chapters (00–12, and the engine parts of 14 and 15) build and pass all their tests with Apple Clang on GitHub's `macos-latest` runner, in Debug and Release, on every push (see the CI badge above). The JUCE parts of chapters 13–15 are built there too, but not yet verified: the CI job is allowed to fail while it settles.
 
 ## Building, running and testing
 
 Run all commands in PowerShell from the project root (`scripts/build.ps1` runs configure → build → ctest in order):
 
 ```powershell
-.\scripts\build.ps1                                   # all pure C++ chapters (00–12), Debug, and run all tests
+.\scripts\build.ps1                                   # all pure C++ parts (00–12, the engines of 14 and 15), Debug, and run all tests
 .\scripts\build.ps1 -Only 02-filter                   # build only chapter 02
 .\scripts\build.ps1 -Only 02-filter,03-eq             # several chapters, comma-separated
-.\scripts\build.ps1 -Juce                             # also build chapters 13 and 14 (JUCE)
+.\scripts\build.ps1 -Juce                             # also build the JUCE parts of chapters 13–15
 .\scripts\build.ps1 -Only 14-daw-8track -Juce         # build only chapter 14
+.\scripts\build.ps1 -Only 15-daw-growing -Juce        # build only chapter 15, with its app
 .\scripts\build.ps1 -Config Release                   # Release configuration (RelWithDebInfo is also available)
 .\scripts\build.ps1 -Only 05-limiter -NoTest          # build only, do not run tests
 .\scripts\build.ps1 -Only 05-limiter -TestLabel example   # run only the examples (or solution, test)
@@ -81,7 +82,7 @@ If PowerShell says scripts cannot be loaded, use `powershell -ExecutionPolicy By
 On **Linux / macOS**, run `scripts/build.sh` from the project root in a terminal; it takes the same options:
 
 ```bash
-./scripts/build.sh                                    # all pure C++ chapters (00–12), Debug, and run all tests
+./scripts/build.sh                                    # all pure C++ parts (00–12, the engines of 14 and 15), Debug, and run all tests
 ./scripts/build.sh --only 02-filter,03-eq             # several chapters, comma-separated
 ./scripts/build.sh --only 14-daw-8track --juce        # build only chapter 14, with the JUCE app
 ./scripts/build.sh --config Release --no-test         # Release, build only
@@ -103,7 +104,8 @@ It uses a single-config generator (Ninja if installed, otherwise Makefiles), so 
 | WAV / PNG files written by the programs | `dawlab_output\` under the current working directory (ctest's working directory is the build folder, so this is `build\dawlab_output\`) |
 | Chapter 13 VST3 plugin | `build\lessons\13-vst-hosting\plugin\DawLabCompressor_artefacts\Debug\VST3\DawLabCompressor.vst3` (`DawLabLimiter` likewise) |
 | Chapter 14 DAW | `build\bin\Debug\DawLab 8.exe` |
-| On Linux / macOS | `build/bin/lNN_*` and `build/bin/DawLab 8` (no `Debug/` subfolder, no `.exe`); the VST3 bundles are at `build/lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/VST3/DawLabCompressor.vst3` |
+| Chapter 15 DAW | `build\bin\Debug\DawLab 15.exe` |
+| On Linux / macOS | `build/bin/lNN_*`, `build/bin/DawLab 8` and `build/bin/DawLab 15` (no `Debug/` subfolder, no `.exe`); the VST3 bundles are at `build/lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/VST3/DawLabCompressor.vst3` |
 
 </div>
 
@@ -114,6 +116,7 @@ cd build
 .\bin\Debug\l02_filter_response.exe
 & ".\bin\Debug\DawLab 8.exe"                          # open the DAW (needs an audio device)
 & ".\bin\Debug\DawLab 8.exe" --snapshot dawlab_output\dawlab8.png   # no window; save the UI as a PNG
+& ".\bin\Debug\DawLab 15.exe"                         # chapter 15: add tracks, save projects, undo
 ```
 
 **ctest labels**: `example` (examples, which run to completion with no arguments), `solution` (exercise solutions, which check themselves numerically) and `test` (regression tests for components and the engine). The starter code in `exercises/starter/` is only built, not registered as tests: it contains `// TODO`s, and printing FAIL when you run it is expected.
@@ -138,7 +141,7 @@ cd build
 | `lessons/NN-name/exercises/` | exercises (README.md) and starter code (starter/) |
 | `lessons/NN-name/solutions/` | answers and explanations for all exercises, plus complete programs for the programming ones |
 | `lessons/NN-name/tests/` | (some chapters) component regression tests |
-| `third_party/JUCE/` | JUCE 9.0.4 (chapters 13 and 14) |
+| `third_party/JUCE/` | JUCE 9.0.4 (chapters 13–15) |
 
 </div>
 
@@ -167,7 +170,7 @@ The chapters go in numeric order, and every chapter uses components from the ear
 | [12](lessons/12-reverb/README.md) | Reverb | RT60, comb / allpass, FDN, partitioned FFT convolution | `ReverbBuildingBlocks`, `Reverb`, `ConvolutionReverb` |
 | [13](lessons/13-vst-hosting/README.md) | VST3 plugins and hosting (JUCE) | plugin architecture and lifecycle, parameters and state, latency and PDC, scanning and loading third-party VST3 plugins | `DawLabCompressor` / `DawLabLimiter` (VST3), the `dawlab_plugin_host` library |
 | [14](lessons/14-daw-8track/README.md) | **Capstone: the 8-track DAW** | transport and the two kinds of clock, clips, mixer and FX buses, a lock-free command queue, PDC, offline bounce, real-time safety tests, the JUCE GUI, VST3 inserts | the pure C++ `dawlab::engine` and the JUCE app "DawLab 8" |
-| [15](lessons/15-daw-growing/README.md) | Growing the DAW (in progress) | stable track ids; planned: a track pool with add / delete, a CPU budget, saving projects, undo / redo | the build-along snapshots of chapter 15 |
+| [15](lessons/15-daw-growing/README.md) | Growing the DAW | stable track ids, a pool of track slots, a CPU budget, a project file, undo / redo: first as small build-along snapshots, then in a copy of chapter 14's engine and app; ThreadSanitizer | the engine with a track pool and the JUCE app "DawLab 15" (add / delete tracks, save / open, undo / redo, CPU warning) |
 
 </div>
 
@@ -191,7 +194,7 @@ The repository uses two licenses, chosen by file type; the details are in [LICEN
 
 - **Source code** (`*.cpp`, `*.h`, `CMakeLists.txt`, `*.cmake`, scripts): [MIT License](LICENSE).
 - **Course text and images** (`*.md` in all languages, `docs/images/`, `lessons/*/docs/images/`): [CC BY 4.0](LICENSE-docs); attribution is required when you reuse the course text.
-- **JUCE** (needed only by chapters 13 and 14, and not part of this repository) is dual-licensed under the [AGPLv3](https://www.gnu.org/licenses/agpl-3.0.en.html) or the commercial JUCE EULA. If you use JUCE under the AGPLv3 and distribute a plugin or app you built, its complete source code must also be published under the AGPLv3; if you do not want to publish it, you need a license under the JUCE EULA. The VST3 SDK (bundled in JUCE) is MIT-licensed, and using the "VST" trademark or logo is subject to Steinberg's usage guidelines.
-- If you only use chapters 00–12 (`common/`, `dsp/` and the programs of those chapters), JUCE is not linked and the JUCE licenses do not apply.
+- **JUCE** (needed only by chapters 13 and 14 and by chapter 15's application, and not part of this repository) is dual-licensed under the [AGPLv3](https://www.gnu.org/licenses/agpl-3.0.en.html) or the commercial JUCE EULA. If you use JUCE under the AGPLv3 and distribute a plugin or app you built, its complete source code must also be published under the AGPLv3; if you do not want to publish it, you need a license under the JUCE EULA. The VST3 SDK (bundled in JUCE) is MIT-licensed, and using the "VST" trademark or logo is subject to Steinberg's usage guidelines.
+- If you only use chapters 00–12 and the pure C++ engines of chapters 14 and 15 (`common/`, `dsp/` and the programs of those chapters), JUCE is not linked and the JUCE licenses do not apply.
 
 These summaries are for information only and are not legal advice; section 3.7 of chapter 13 gives a fuller explanation. Before distributing a plugin or app built from this course's code, read the license terms yourself and consult a lawyer if necessary.

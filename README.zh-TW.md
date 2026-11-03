@@ -1,9 +1,9 @@
-# DawLab：用 C++ 從零學 audio DSP，最後自製 8 軌 DAW
+# DawLab：用 C++ 從零學 audio DSP，最後自製 DAW
 [English](README.md) | **繁體中文**
 
 [![CI](https://github.com/TomHsieh300/DAW-for-fun/actions/workflows/ci.yml/badge.svg)](https://github.com/TomHsieh300/DAW-for-fun/actions/workflows/ci.yml)
 
-這是一套給「會基本 C++、但沒學過 DSP」的學習者的教材。本教材為**英文 / 繁體中文雙語**：英文版是主要版本（原檔名，例如 `README.md`），繁體中文版放在同目錄的 `.zh-TW.md` 檔（例如 `README.zh-TW.md`）；每份文件頂端都有語言切換連結，程式碼的註解與輸出皆為英文。從「聲音在電腦裡長什麼樣子」開始，一章做出一個（或一組）真正可用的 DSP 元件：gain、filter、EQ、compressor、limiter、saturation、distortion、gate、delay、modulation、meter、reverb……接著用 JUCE 把它們包成 VST3 plugin、寫出能載入 VST3 的 host，最後組成一台能編排 clip、混音、插 plugin、匯出 WAV 的 **8 軌 DAW「DawLab 8」**。
+這是一套給「會基本 C++、但沒學過 DSP」的學習者的教材。本教材為**英文 / 繁體中文雙語**：英文版是主要版本（原檔名，例如 `README.md`），繁體中文版放在同目錄的 `.zh-TW.md` 檔（例如 `README.zh-TW.md`）；每份文件頂端都有語言切換連結，程式碼的註解與輸出皆為英文。從「聲音在電腦裡長什麼樣子」開始，一章做出一個（或一組）真正可用的 DSP 元件：gain、filter、EQ、compressor、limiter、saturation、distortion、gate、delay、modulation、meter、reverb……接著用 JUCE 把它們包成 VST3 plugin、寫出能載入 VST3 的 host，再組成一台能編排 clip、混音、插 plugin、匯出 WAV 的 **8 軌 DAW「DawLab 8」**。最後一章把它擴充成 **「DawLab 15」**：可以新增和刪除的 track、可以存檔再開啟的專案，以及可以 undo 的編輯。
 
 <p align="center"><img src="docs/images/dawlab8.png" alt="DawLab 8：播放示範歌曲（第 2 小節第 3 拍）"></p>
 
@@ -30,7 +30,7 @@
 
 1. 安裝 [Visual Studio 2022](https://visualstudio.microsoft.com/)：**Build Tools**（純命令列、體積小）或 **Community**（含 IDE、免費）都可以。
 2. 安裝時勾選工作負載 **「使用 C++ 的桌面開發」（Desktop development with C++）**。它會一起裝好 MSVC、Windows SDK 與 CMake；本專案的腳本會自動找到 VS 內附的 CMake，系統 PATH 上不需要有 `cmake`。
-3. 第 13、14 章需要 JUCE：
+3. 第 13、14 章，以及第 15 章的應用程式，需要 JUCE：
    - 完整的專案資料夾已在 `third_party/JUCE` 附上 JUCE **9.0.4**。**若你是用 git 取得本專案，`third_party/` 不在版本控制內**（列在 `.gitignore`），需要自己 clone JUCE 9.0.4 到 `third_party/JUCE`，或直接跳到下一點讓 CMake 用 FetchContent 下載：
      ```powershell
      git clone --depth 1 --branch 9.0.4 https://github.com/juce-framework/JUCE.git third_party/JUCE
@@ -40,13 +40,13 @@
 
 ### Linux（已在 Ubuntu 24.04 驗證）
 
-所有章節，包括 JUCE 的第 13、14 章，都已在 **Ubuntu 24.04 LTS、GCC 13.3、CMake 3.28** 上建置成功並通過全部測試（第 00–12 章加上第 14 章純 C++ 部分共 149 個測試，第 13–14 章的 JUCE 建置共 44 個測試，包含 `DawLab 8` 的 smoke test 與 snapshot）。
+所有章節，包括第 13–15 章的 JUCE 部分，都已在 **Ubuntu 24.04 LTS、GCC 13.3、CMake 3.28** 上建置成功並通過全部測試。CI 每次 push 都會檢查，包含 `DawLab 8` 與 `DawLab 15` 的 smoke test 與 snapshot，以及第 15 章的 ThreadSanitizer。
 
 1. 安裝編譯器與 CMake：
    ```bash
    sudo apt install build-essential cmake git
    ```
-2. 第 13、14 章需要 JUCE 的系統相依套件（ALSA / JACK、X11、freetype、fontconfig、OpenGL、webkit2gtk、curl；見 `third_party/JUCE/docs/Linux Dependencies.md`）：
+2. 第 13–15 章的 JUCE 部分需要 JUCE 的系統相依套件（ALSA / JACK、X11、freetype、fontconfig、OpenGL、webkit2gtk、curl；見 `third_party/JUCE/docs/Linux Dependencies.md`）：
    ```bash
    sudo apt install libasound2-dev libjack-jackd2-dev ladspa-sdk libfreetype-dev libfontconfig1-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libglu1-mesa-dev mesa-common-dev libcurl4-openssl-dev libwebkit2gtk-4.1-dev
    ```
@@ -56,18 +56,19 @@
 
 ### macOS（純 C++ 章節已由 CI 驗證）
 
-安裝 command-line tools 與 CMake（`xcode-select --install`、`brew install cmake`），然後跟 Linux 一樣使用 `./scripts/build.sh`。純 C++ 的章節（00–12、15，以及第 14 章的 engine 部分）每次 push 都會在 GitHub 的 `macos-latest` runner 上用 Apple Clang 以 Debug 和 Release 建置，並通過所有測試（見上方的 CI badge）。JUCE 的第 13、14 章也會在那裡建置，但還沒有驗證：在穩定之前，這個 CI job 允許失敗。
+安裝 command-line tools 與 CMake（`xcode-select --install`、`brew install cmake`），然後跟 Linux 一樣使用 `./scripts/build.sh`。純 C++ 的章節（00–12，以及第 14、15 章的 engine 部分）每次 push 都會在 GitHub 的 `macos-latest` runner 上用 Apple Clang 以 Debug 和 Release 建置，並通過所有測試（見上方的 CI badge）。第 13–15 章的 JUCE 部分也會在那裡建置，但還沒有驗證：在穩定之前，這個 CI job 允許失敗。
 
 ## 建置、執行、測試
 
 所有指令都在專案根目錄的 PowerShell 執行（`scripts/build.ps1` 會依序 configure → build → ctest）：
 
 ```powershell
-.\scripts\build.ps1                                   # 全部純 C++ 章節（00–12），Debug，並跑所有測試
+.\scripts\build.ps1                                   # 全部純 C++ 部分（00–12、第 14 與 15 章的 engine），Debug，並跑所有測試
 .\scripts\build.ps1 -Only 02-filter                   # 只建第 02 章
 .\scripts\build.ps1 -Only 02-filter,03-eq             # 多章以逗號分隔
-.\scripts\build.ps1 -Juce                             # 連同第 13、14 章（JUCE）一起建置
+.\scripts\build.ps1 -Juce                             # 連同第 13–15 章的 JUCE 部分一起建置
 .\scripts\build.ps1 -Only 14-daw-8track -Juce         # 只建第 14 章
+.\scripts\build.ps1 -Only 15-daw-growing -Juce        # 只建第 15 章，連同它的 app
 .\scripts\build.ps1 -Config Release                   # Release 組態（另有 RelWithDebInfo）
 .\scripts\build.ps1 -Only 05-limiter -NoTest          # 只建置、不跑測試
 .\scripts\build.ps1 -Only 05-limiter -TestLabel example   # 只跑範例（或 solution、test）
@@ -79,7 +80,7 @@ PowerShell 說「無法載入指令碼」時，改用 `powershell -ExecutionPoli
 在 **Linux / macOS** 上，於終端機的專案根目錄執行 `scripts/build.sh`，選項相同：
 
 ```bash
-./scripts/build.sh                                    # 全部純 C++ 章節（00–12），Debug，並跑所有測試
+./scripts/build.sh                                    # 全部純 C++ 部分（00–12、第 14 與 15 章的 engine），Debug，並跑所有測試
 ./scripts/build.sh --only 02-filter,03-eq             # 多章以逗號分隔
 ./scripts/build.sh --only 14-daw-8track --juce        # 只建第 14 章，連同 JUCE 應用程式
 ./scripts/build.sh --config Release --no-test         # Release，只建置
@@ -101,7 +102,8 @@ PowerShell 說「無法載入指令碼」時，改用 `powershell -ExecutionPoli
 | 程式輸出的 WAV / PNG | 目前工作目錄底下的 `dawlab_output\`（ctest 的工作目錄就是 build 資料夾，所以是 `build\dawlab_output\`） |
 | 第 13 章的 VST3 plugin | `build\lessons\13-vst-hosting\plugin\DawLabCompressor_artefacts\Debug\VST3\DawLabCompressor.vst3`（`DawLabLimiter` 同理） |
 | 第 14 章的 DAW | `build\bin\Debug\DawLab 8.exe` |
-| 在 Linux / macOS 上 | `build/bin/lNN_*` 與 `build/bin/DawLab 8`（沒有 `Debug/` 子資料夾，也沒有 `.exe`）；VST3 bundle 在 `build/lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/VST3/DawLabCompressor.vst3` |
+| 第 15 章的 DAW | `build\bin\Debug\DawLab 15.exe` |
+| 在 Linux / macOS 上 | `build/bin/lNN_*`、`build/bin/DawLab 8` 與 `build/bin/DawLab 15`（沒有 `Debug/` 子資料夾，也沒有 `.exe`）；VST3 bundle 在 `build/lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/VST3/DawLabCompressor.vst3` |
 
 </div>
 
@@ -112,6 +114,7 @@ cd build
 .\bin\Debug\l02_filter_response.exe
 & ".\bin\Debug\DawLab 8.exe"                          # 開啟 DAW（需要音訊裝置）
 & ".\bin\Debug\DawLab 8.exe" --snapshot dawlab_output\dawlab8.png   # 不開視窗，把畫面存成 PNG
+& ".\bin\Debug\DawLab 15.exe"                         # 第 15 章：新增 track、存檔、undo
 ```
 
 **ctest 的 label**：`example`（範例，不帶參數就能跑完）、`solution`（練習解答，以數字自我檢查）、`test`（元件與 engine 的回歸測試）。`exercises/starter/` 的起始碼只建置、不登記成測試——它們留有 `// TODO`，執行時印出 FAIL 是預期的。
@@ -136,7 +139,7 @@ cd build
 | `lessons/NN-name/exercises/` | 練習題（README.md）與起始碼（starter/） |
 | `lessons/NN-name/solutions/` | 所有題目的解答與解說，以及實作題的完整程式 |
 | `lessons/NN-name/tests/` | （部分章節）元件回歸測試 |
-| `third_party/JUCE/` | JUCE 9.0.4（第 13、14 章） |
+| `third_party/JUCE/` | JUCE 9.0.4（第 13–15 章） |
 
 </div>
 
@@ -165,7 +168,7 @@ cd build
 | [12](lessons/12-reverb/README.zh-TW.md) | Reverb | RT60、comb / allpass、FDN、partitioned FFT convolution | `ReverbBuildingBlocks`、`Reverb`、`ConvolutionReverb` |
 | [13](lessons/13-vst-hosting/README.zh-TW.md) | VST3 plugin 與 hosting（JUCE） | plugin 架構與生命週期、參數與 state、latency 與 PDC、掃描與載入第三方 VST3 | `DawLabCompressor` / `DawLabLimiter`（VST3）、`dawlab_plugin_host` 函式庫 |
 | [14](lessons/14-daw-8track/README.zh-TW.md) | **Capstone：8 軌 DAW** | transport 與兩種時鐘、clip、mixer 與 FX bus、lock-free command queue、PDC、offline bounce、real-time safety 測試、JUCE GUI、VST3 insert | 純 C++ 的 `dawlab::engine` 與 JUCE app「DawLab 8」 |
-| [15](lessons/15-daw-growing/README.zh-TW.md) | 讓 DAW 長大（進行中） | 穩定的 track id；規劃中：可新增 / 刪除的 track 池、CPU 預算、專案存檔、undo / redo | 第 15 章跟著做的 snapshot |
+| [15](lessons/15-daw-growing/README.zh-TW.md) | 讓 DAW 長大 | 穩定的 track id、track slot 池、CPU 預算、專案檔、undo / redo：先在小小的跟著做 snapshot 裡做，再做進第 14 章 engine 與 app 的複本；ThreadSanitizer | 有 track 池的 engine 與 JUCE app「DawLab 15」（新增 / 刪除 track、存檔 / 開檔、undo / redo、CPU 警告） |
 
 </div>
 
@@ -189,7 +192,7 @@ cd build
 
 - **程式碼**（`*.cpp`、`*.h`、`CMakeLists.txt`、`*.cmake`、腳本）：[MIT License](LICENSE)。
 - **教材文字與圖片**（所有語言的 `*.md`、`docs/images/`、`lessons/*/docs/images/`）：[CC BY 4.0](LICENSE-docs)；重用教材文字時須標示出處。
-- **JUCE**（只有第 13、14 章需要，不包含在本 repository 內）：採雙授權，[AGPLv3](https://www.gnu.org/licenses/agpl-3.0.en.html) 或商業的 JUCE EULA。以 AGPLv3 使用 JUCE 並散佈你做出來的 plugin 或 app 時，整個原始碼也必須以 AGPLv3 公開；不想公開就要依 JUCE EULA 取得授權。VST3 SDK（內含於 JUCE）為 MIT License，使用「VST」商標或 logo 須遵守 Steinberg 的使用規範。
-- 只用到第 00–12 章（`common/`、`dsp/` 與這些章節的程式）時不會連結 JUCE，不受 JUCE 授權影響。
+- **JUCE**（只有第 13、14 章與第 15 章的應用程式需要，不包含在本 repository 內）：採雙授權，[AGPLv3](https://www.gnu.org/licenses/agpl-3.0.en.html) 或商業的 JUCE EULA。以 AGPLv3 使用 JUCE 並散佈你做出來的 plugin 或 app 時，整個原始碼也必須以 AGPLv3 公開；不想公開就要依 JUCE EULA 取得授權。VST3 SDK（內含於 JUCE）為 MIT License，使用「VST」商標或 logo 須遵守 Steinberg 的使用規範。
+- 只用到第 00–12 章與第 14、15 章的純 C++ engine（`common/`、`dsp/` 與這些章節的程式）時不會連結 JUCE，不受 JUCE 授權影響。
 
 這些摘要僅供參考，不是法律意見；第 13 章 3.7 節有更完整的說明。打算散佈用本教材程式碼做出的 plugin 或 app 前，請自行閱讀授權條款，必要時諮詢法律意見。
