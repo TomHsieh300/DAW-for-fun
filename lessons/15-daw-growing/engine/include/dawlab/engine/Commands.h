@@ -17,9 +17,17 @@
 //
 // Both queues are SpscQueue<T>, so Command and Garbage must be trivially copyable: plain
 // fields and raw pointers only.
+//
+// Chapter 15: tracks live in a pool of slots (Constants.h). A ChannelRef to a track names the
+// slot AND the track id - "the slot is a hint, the id is the truth" (Step 2). The audio thread
+// applies a track command only if that slot still holds that id, so a command for a deleted
+// track can never touch the track that took its slot over. AddTrack / RemoveTrack start and
+// stop using a slot.
 
 #include <cstdint>
 #include <vector>
+
+#include "Constants.h"
 
 namespace dawlab::engine {
 
@@ -30,13 +38,18 @@ enum class ChannelKind : uint8_t { Track, Bus, Master };
 
 struct ChannelRef {
     ChannelKind kind = ChannelKind::Track;
-    int index = 0;
+    int index = 0;  // track: the slot; bus: 0..kNumBuses-1; master: 0
+    TrackId trackId; // track: the id that must be in that slot; unused for buses and master
 
-    static ChannelRef track(int i) noexcept { return {ChannelKind::Track, i}; }
-    static ChannelRef bus(int i) noexcept { return {ChannelKind::Bus, i}; }
-    static ChannelRef master() noexcept { return {ChannelKind::Master, 0}; }
+    // Get a track's reference from Engine::trackRef(id): the UI thread knows which slot it gave
+    // the track. Building one by hand is for tests and setup code.
+    static ChannelRef track(int slot, TrackId id) noexcept { return {ChannelKind::Track, slot, id}; }
+    static ChannelRef bus(int i) noexcept { return {ChannelKind::Bus, i, TrackId{}}; }
+    static ChannelRef master() noexcept { return {ChannelKind::Master, 0, TrackId{}}; }
 
-    bool operator==(const ChannelRef& o) const noexcept { return kind == o.kind && index == o.index; }
+    bool operator==(const ChannelRef& o) const noexcept {
+        return kind == o.kind && index == o.index && trackId == o.trackId;
+    }
 };
 
 enum class CommandType : uint8_t {
@@ -46,6 +59,8 @@ enum class CommandType : uint8_t {
     ReplaceInsert, // channel, slot, effect                 (old effect -> garbage)
     MoveInsert,    // channel, slot (from), slot2 (to)
     ReplaceClips,  // channel (a track), clips              (old list -> garbage)
+    AddTrack,      // channel (a track: free slot + new id)  (the slot starts playing)
+    RemoveTrack,   // channel (a track)                      (its inserts and clips -> garbage)
 };
 
 struct Command {
@@ -87,11 +102,23 @@ struct Command {
         c.slot2 = to;
         return c;
     }
-    static Command replaceClips(int trackIndex, std::vector<Clip>* clips) noexcept {
+    static Command replaceClips(ChannelRef track, std::vector<Clip>* clips) noexcept {
         Command c;
         c.type = CommandType::ReplaceClips;
-        c.channel = ChannelRef::track(trackIndex);
+        c.channel = track;
         c.clips = clips;
+        return c;
+    }
+    static Command addTrack(ChannelRef track) noexcept {
+        Command c;
+        c.type = CommandType::AddTrack;
+        c.channel = track;
+        return c;
+    }
+    static Command removeTrack(ChannelRef track) noexcept {
+        Command c;
+        c.type = CommandType::RemoveTrack;
+        c.channel = track;
         return c;
     }
 };

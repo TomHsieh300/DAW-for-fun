@@ -5,8 +5,10 @@
 //   out_L = dc * 10^(fader/20) * panL(pan, law)  (+ bus returns)
 
 #include "TestHelpers.h"
+#include "TestTracks.h"
 
-using namespace l14test;
+using namespace l15test;
+using namespace dawlab::engine::test;
 
 namespace {
 
@@ -20,8 +22,8 @@ float renderValue(Engine& e, int ch) {
 
 void setupTwoDcTracks(Engine& e) {
     e.prepare(kSampleRate, kBlockSize);
-    e.setTrackClips(0, {Clip::fromBuffer(makeConstant(0.5f, kLen), 0, "dc 0.5")});
-    e.setTrackClips(1, {Clip::fromBuffer(makeConstant(0.25f, kLen), 0, "dc 0.25")});
+    e.setTrackClips(testId(0), {Clip::fromBuffer(makeConstant(0.5f, kLen), 0, "dc 0.5")});
+    e.setTrackClips(testId(1), {Clip::fromBuffer(makeConstant(0.25f, kLen), 0, "dc 0.25")});
 }
 
 void testPanLawFormulas() {
@@ -46,6 +48,7 @@ void testPanLawFormulas() {
 
 void testFaderAndPan() {
     Engine e;
+    addTestTracks(e);
     setupTwoDcTracks(e);
     e.getMixer().getTrack(1).setMute(true);
 
@@ -91,6 +94,7 @@ void testFaderAndPan() {
 
 void testMuteSolo() {
     Engine e;
+    addTestTracks(e);
     setupTwoDcTracks(e);
     Mixer& m = e.getMixer();
     const float g = 0.70711f; // the tracks' centre pan (the master is a unity balance control)
@@ -125,6 +129,7 @@ void testMuteSolo() {
 
 void testSends() {
     Engine e;
+    addTestTracks(e);
     setupTwoDcTracks(e);
     Mixer& m = e.getMixer();
     float gl = 0, gr = 0;
@@ -171,6 +176,7 @@ void testSends() {
 void testSoloKeepsReverbBus() {
     // Buses are solo-safe: soloing a track keeps its reverb return, drops the others.
     Engine e;
+    addTestTracks(e);
     setupTwoDcTracks(e);
     Mixer& m = e.getMixer();
     m.getTrack(0).setSendLevelDb(0, 0.0f);
@@ -184,8 +190,9 @@ void testSoloKeepsReverbBus() {
 void testFaderRampIsSmooth() {
     // Moving a fader while playing ramps over 50 ms: no step larger than the ramp slope.
     Engine e;
+    addTestTracks(e);
     e.prepare(kSampleRate, kBlockSize);
-    e.setTrackClips(0, {Clip::fromBuffer(makeConstant(1.0f, 48000), 0)});
+    e.setTrackClips(testId(0), {Clip::fromBuffer(makeConstant(1.0f, 48000), 0)});
     e.applyPendingCommandsOffline();
     e.getTransport().play();
     AudioBuffer out(2, 48000);
@@ -212,5 +219,5 @@ int main() {
     testSends();
     testSoloKeepsReverbBus();
     testFaderRampIsSmooth();
-    return dawlab::test::summary("l14_test_mixer");
+    return dawlab::test::summary("l15_test_mixer");
 }

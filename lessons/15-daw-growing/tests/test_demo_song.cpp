@@ -13,7 +13,10 @@
 #include <array>
 #include <cstdio>
 
-using namespace l14test;
+#include "TestTracks.h"
+
+using namespace l15test;
+using namespace dawlab::engine::test;
 
 int main() {
     const DemoSong song = makeDemoSong(kSampleRate);
@@ -65,5 +68,5 @@ int main() {
     DAWLAB_CHECK_NEAR(drums.rmsDb, -27.4, 0.06);
     DAWLAB_CHECK_NEAR(bass.integratedLufs, -16.8, 0.06);
     engine.collectGarbage();
-    return dawlab::test::summary("l14_test_demo_song");
+    return dawlab::test::summary("l15_test_demo_song");
 }

@@ -4,8 +4,10 @@
 // at the same output sample, whatever latency their inserts introduce.
 
 #include "TestHelpers.h"
+#include "TestTracks.h"
 
-using namespace l14test;
+using namespace l15test;
+using namespace dawlab::engine::test;
 
 namespace {
 
@@ -13,15 +15,16 @@ constexpr int kAt = 1000; // timeline position of every impulse
 constexpr int kLen = 8000;
 
 void placeImpulse(Engine& e, int track, float amp = 0.25f) {
-    e.setTrackClips(track, {Clip::fromBuffer(makeImpulseClip(1, 0, amp), kAt)});
+    e.setTrackClips(testId(track), {Clip::fromBuffer(makeImpulseClip(1, 0, amp), kAt)});
 }
 
 void testTwoTracks() {
     Engine e;
+    addTestTracks(e);
     e.prepare(kSampleRate, kBlockSize);
     placeImpulse(e, 0);
     placeImpulse(e, 1);
-    e.addInsert(ChannelRef::track(0), -1, std::make_unique<PureDelayEffect>(100));
+    e.addInsert(testTrack(0), -1, std::make_unique<PureDelayEffect>(100));
     e.applyPendingCommandsOffline();
     DAWLAB_CHECK(e.getMixer().getMaxTrackLatencySamples() == 100);
     DAWLAB_CHECK(e.getMixer().getTrack(1).getCompensator().getDelaySamples() == 100);
@@ -52,10 +55,11 @@ void testBusesAndMaster() {
     // track 1: 0 latency, send to bus B (no insert)
     // master : 64-sample insert
     Engine e;
+    addTestTracks(e);
     e.prepare(kSampleRate, kBlockSize);
     placeImpulse(e, 0, 0.1f);
     placeImpulse(e, 1, 0.1f);
-    e.addInsert(ChannelRef::track(0), -1, std::make_unique<PureDelayEffect>(37));
+    e.addInsert(testTrack(0), -1, std::make_unique<PureDelayEffect>(37));
     e.addInsert(ChannelRef::bus(0), -1, std::make_unique<PureDelayEffect>(250));
     e.addInsert(ChannelRef::master(), -1, std::make_unique<PureDelayEffect>(64));
     Mixer& m = e.getMixer();
@@ -83,10 +87,11 @@ void testBusesAndMaster() {
 void testRealEffectsAndLatencyChange() {
     // A real lookahead limiter (chapter 05) on track 0 against a dry track 1.
     Engine e;
+    addTestTracks(e);
     e.prepare(kSampleRate, kBlockSize);
     placeImpulse(e, 0, 0.1f); // well below the ceiling: the limiter only delays it
     placeImpulse(e, 1, 0.1f);
-    InsertEffect* lim = e.addInsert(ChannelRef::track(0), -1, std::make_unique<LimiterEffect>());
+    InsertEffect* lim = e.addInsert(testTrack(0), -1, std::make_unique<LimiterEffect>());
     e.applyPendingCommandsOffline();
     const int lat = e.getLatencySamples();
     DAWLAB_CHECK(lat > 0);
@@ -117,12 +122,13 @@ void testDeviceChange() {
     // A device switches from 48 kHz to 96 kHz: Engine::prepare() prepares the existing inserts
     // again, so a 5 ms lookahead becomes 480 samples and PDC follows.
     Engine e;
+    addTestTracks(e);
     e.prepare(48000.0, 512);
-    e.addInsert(ChannelRef::track(0), -1, std::make_unique<LimiterEffect>());
+    e.addInsert(testTrack(0), -1, std::make_unique<LimiterEffect>());
     e.applyPendingCommandsOffline();
     DAWLAB_CHECK(e.getLatencySamples() == 240);
     e.prepare(96000.0, 256);
-    DAWLAB_CHECK(e.getNumInserts(ChannelRef::track(0)) == 1);
+    DAWLAB_CHECK(e.getNumInserts(testTrack(0)) == 1);
     DAWLAB_CHECK(e.getLatencySamples() == 480);
     DAWLAB_CHECK(e.getMixer().getTrack(1).getCompensator().getDelaySamples() == 480);
 }
@@ -134,11 +140,12 @@ void testPdcLimit() {
     const int kLong = 40000;
     {
         Engine e;
+        addTestTracks(e);
         e.prepare(kSampleRate, kBlockSize); // C = 16384
         placeImpulse(e, 0);
         placeImpulse(e, 1);
         for (int i = 0; i < 3; ++i)
-            e.addInsert(ChannelRef::track(0), -1, std::make_unique<PureDelayEffect>(PureDelayEffect::kMaxDelaySamples));
+            e.addInsert(testTrack(0), -1, std::make_unique<PureDelayEffect>(PureDelayEffect::kMaxDelaySamples));
         e.applyPendingCommandsOffline();
         const Mixer& m = e.getMixer();
         std::printf("  PDC limit %d: track latency %d -> target %d, overflow %s, reported latency %d\n",
@@ -159,11 +166,12 @@ void testPdcLimit() {
     {
         // The cure: prepare the engine with a larger PDC limit.
         Engine e;
+        addTestTracks(e);
         e.prepare(kSampleRate, kBlockSize, 32768);
         placeImpulse(e, 0);
         placeImpulse(e, 1);
         for (int i = 0; i < 3; ++i)
-            e.addInsert(ChannelRef::track(0), -1, std::make_unique<PureDelayEffect>(PureDelayEffect::kMaxDelaySamples));
+            e.addInsert(testTrack(0), -1, std::make_unique<PureDelayEffect>(PureDelayEffect::kMaxDelaySamples));
         e.applyPendingCommandsOffline();
         DAWLAB_CHECK(!e.hasPdcOverflow());
         DAWLAB_CHECK(e.getLatencySamples() == big);
@@ -181,5 +189,5 @@ int main() {
     testRealEffectsAndLatencyChange();
     testDeviceChange();
     testPdcLimit();
-    return dawlab::test::summary("l14_test_pdc");
+    return dawlab::test::summary("l15_test_pdc");
 }

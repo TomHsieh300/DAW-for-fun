@@ -53,6 +53,11 @@
 
 namespace dawlab::engine {
 
+// The demo is an 8-track song. In chapter 15 the engine has no tracks until they are added:
+// applyDemoSong() adds them with ids 1..8 (demoTrackId(t)) and names everything by id.
+constexpr int kDemoTracks = 8;
+inline TrackId demoTrackId(int t) noexcept { return TrackId{static_cast<std::uint32_t>(t + 1)}; }
+
 struct DemoInsert {
     ChannelRef channel;
     EffectType type = EffectType::Gain;
@@ -65,15 +70,15 @@ struct DemoSong {
     int beatsPerBar = 4;
     int bars = 8;
 
-    std::array<std::string, kNumTracks> trackNames;
+    std::array<std::string, kDemoTracks> trackNames;
     std::array<std::string, kNumBuses> busNames;
-    std::array<std::vector<Clip>, kNumTracks> clips;
+    std::array<std::vector<Clip>, kDemoTracks> clips;
     std::vector<DemoInsert> inserts; // in the order they are added
 
-    std::array<TrackFormat, kNumTracks> trackFormat{}; // Mono / Stereo (Step 4)
-    std::array<float, kNumTracks> trackGainDb{};
-    std::array<float, kNumTracks> trackPan{};
-    std::array<std::array<float, kNumBuses>, kNumTracks> sendDb{};
+    std::array<TrackFormat, kDemoTracks> trackFormat{}; // Mono / Stereo (Step 4)
+    std::array<float, kDemoTracks> trackGainDb{};
+    std::array<float, kDemoTracks> trackPan{};
+    std::array<std::array<float, kNumBuses>, kDemoTracks> sendDb{};
     std::array<float, kNumBuses> busGainDb{};
 
     // Timeline end of the song part (without tails): bar `bars + 1`.
@@ -257,7 +262,7 @@ inline DemoSong makeDemoSong(double sampleRate) {
     }
 
     // ---- inserts (17 effect types: all but Filter and AmpChain, which came later) ----
-    const auto T = [](int t) { return ChannelRef::track(t); };
+    const auto T = [](int t) { return ChannelRef::track(t, demoTrackId(t)); }; // slot t in an empty engine
     song.inserts = {
         {T(0), EffectType::TransientShaper, {{"Attack", 4.0f}, {"Sustain", -3.0f}}},
         {T(0), EffectType::Compressor,
@@ -302,7 +307,7 @@ inline DemoSong makeDemoSong(double sampleRate) {
     };
     constexpr auto M = TrackFormat::Mono;
     constexpr auto S = TrackFormat::Stereo;
-    const StripSetup setup[kNumTracks] = {
+    const StripSetup setup[kDemoTracks] = {
         {M, -2.0f, 0.0f, -18.0f, kMinusInfinityDb},            // Drums
         {M, -3.0f, 0.0f, kMinusInfinityDb, kMinusInfinityDb},  // Bass: dry
         {M, -2.0f, -0.35f, -14.0f, -8.0f},                     // Arp
@@ -312,7 +317,7 @@ inline DemoSong makeDemoSong(double sampleRate) {
         {M, -8.0f, 0.6f, -20.0f, kMinusInfinityDb},            // Shaker
         {S, -9.0f, -0.6f, kMinusInfinityDb, kMinusInfinityDb}, // Hits (own convolution reverb)
     };
-    for (int t = 0; t < kNumTracks; ++t) {
+    for (int t = 0; t < kDemoTracks; ++t) {
         const StripSetup& s = setup[t];
         song.trackFormat[static_cast<size_t>(t)] = s.format;
         song.trackGainDb[static_cast<size_t>(t)] = s.gainDb;
@@ -343,27 +348,33 @@ inline std::unique_ptr<InsertEffect> createDemoEffect(const DemoInsert& d, int* 
     return fx;
 }
 
-// Pushes the song into `engine` (prepared, empty). Returns the number of unknown parameter
-// names (0 when the effect adapters match the song). Engine producer thread.
+// Pushes the song into `engine` (prepared, empty: it adds tracks 1..8 itself). Returns the
+// number of unknown parameter names (0 when the effect adapters match the song). Engine
+// producer thread.
 inline int applyDemoSong(Engine& engine, const DemoSong& song) {
     Transport& tr = engine.getTransport();
     tr.setTempo(song.bpm);
     tr.setTimeSignature(song.beatsPerBar, 4);
     Mixer& mix = engine.getMixer();
-    for (int t = 0; t < kNumTracks; ++t)
-        mix.getTrack(t).setName(song.trackNames[static_cast<size_t>(t)]);
+    for (int t = 0; t < kDemoTracks; ++t)
+        engine.addTrack(demoTrackId(t), song.trackFormat[static_cast<size_t>(t)], song.trackNames[static_cast<size_t>(t)]);
     for (int b = 0; b < kNumBuses; ++b)
         mix.getBus(b).setName(song.busNames[static_cast<size_t>(b)]);
-    for (int t = 0; t < kNumTracks; ++t)
-        engine.setTrackClips(t, song.clips[static_cast<size_t>(t)]);
+    for (int t = 0; t < kDemoTracks; ++t)
+        engine.setTrackClips(demoTrackId(t), song.clips[static_cast<size_t>(t)]);
 
     int unknown = 0;
-    for (const DemoInsert& d : song.inserts)
-        engine.addInsert(d.channel, -1, createDemoEffect(d, &unknown));
+    for (const DemoInsert& d : song.inserts) {
+        // A track insert names its track by id; ask the engine which slot that is.
+        const ChannelRef ref = d.channel.kind == ChannelKind::Track ? engine.trackRef(d.channel.trackId) : d.channel;
+        engine.addInsert(ref, -1, createDemoEffect(d, &unknown));
+    }
 
-    for (int t = 0; t < kNumTracks; ++t) {
-        Track& s = mix.getTrack(t);
-        s.setFormat(song.trackFormat[static_cast<size_t>(t)]);
+    for (int t = 0; t < kDemoTracks; ++t) {
+        Track* track = engine.getTrack(demoTrackId(t));
+        if (track == nullptr)
+            continue; // the pool is smaller than the song
+        Track& s = *track;
         s.setGainDb(song.trackGainDb[static_cast<size_t>(t)]);
         s.setPan(song.trackPan[static_cast<size_t>(t)]);
         for (int b = 0; b < kNumBuses; ++b)

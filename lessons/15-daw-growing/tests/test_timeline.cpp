@@ -5,7 +5,10 @@
 
 #include <random>
 
-using namespace l14test;
+#include "TestTracks.h"
+
+using namespace l15test;
+using namespace dawlab::engine::test;
 
 namespace {
 
@@ -75,9 +78,10 @@ void testClipPlacement() {
     // whatever the block size.
     for (int blockSize : {512, 64, 1, 1000}) {
         Engine e;
+        addTestTracks(e);
         e.prepare(kSampleRate, 512);
         Clip c = Clip::fromBuffer(makeImpulseClip(1, 0), 12345, "click");
-        e.setTrackClips(0, {c});
+        e.setTrackClips(testId(0), {c});
         AudioBuffer out = render(e, 20000, blockSize);
         DAWLAB_CHECK(argMaxAbs(out, 0) == 12345);
         DAWLAB_CHECK(countAbove(out, 0, 1e-6f) == 1);
@@ -87,6 +91,7 @@ void testClipPlacement() {
     // trimming: sourceOffset / length select a window of the source
     {
         Engine e;
+        addTestTracks(e);
         e.prepare(kSampleRate, 512);
         auto ramp = std::make_shared<AudioBuffer>(1, 1000);
         for (int i = 0; i < 1000; ++i)
@@ -97,7 +102,7 @@ void testClipPlacement() {
         c.sourceOffset = 100; // play source samples 100..399
         c.length = 300;
         c.gainDb = -6.0206f; // x0.5
-        e.setTrackClips(0, {c});
+        e.setTrackClips(testId(0), {c});
         AudioBuffer out = render(e, 3000);
         DAWLAB_CHECK_NEAR(out.getSample(0, 1999), 0.0, 1e-9);
         DAWLAB_CHECK_NEAR(out.getSample(0, 2000), 0.100 * 0.5 * kCentre, 1e-5);
@@ -110,6 +115,7 @@ void testClipPlacement() {
     // test_track_format.)
     {
         Engine e;
+        addTestTracks(e);
         e.prepare(kSampleRate, 512);
         e.getMixer().getTrack(0).setFormat(TrackFormat::Stereo);
         auto st = std::make_shared<AudioBuffer>(2, 100);
@@ -119,7 +125,7 @@ void testClipPlacement() {
         }
         Clip c = Clip::fromBuffer(st, 0);
         c.length = 200;
-        e.setTrackClips(0, {c});
+        e.setTrackClips(testId(0), {c});
         AudioBuffer out = render(e, 300);
         DAWLAB_CHECK_NEAR(out.getSample(0, 50), 0.2, 1e-5);
         DAWLAB_CHECK_NEAR(out.getSample(1, 50), -0.4, 1e-5);
@@ -129,8 +135,9 @@ void testClipPlacement() {
     // overlapping clips on one track add
     {
         Engine e;
+        addTestTracks(e);
         e.prepare(kSampleRate, 512);
-        e.setTrackClips(0, {Clip::fromBuffer(makeConstant(0.1f, 1000), 0), Clip::fromBuffer(makeConstant(0.2f, 1000), 500)});
+        e.setTrackClips(testId(0), {Clip::fromBuffer(makeConstant(0.1f, 1000), 0), Clip::fromBuffer(makeConstant(0.2f, 1000), 500)});
         AudioBuffer out = render(e, 2000);
         DAWLAB_CHECK_NEAR(out.getSample(0, 250), 0.1 * kCentre, 1e-5);
         DAWLAB_CHECK_NEAR(out.getSample(0, 750), 0.3 * kCentre, 1e-5);
@@ -177,8 +184,9 @@ int decodePosition(const AudioBuffer& out, int i) {
 void testLoopPlayback() {
     for (int loopLen : {2000, 7}) { // a normal loop, and one far shorter than a block
         Engine e;
+        addTestTracks(e);
         e.prepare(kSampleRate, 512);
-        e.setTrackClips(0, {Clip::fromBuffer(makeTimelineRamp(10000), 0)});
+        e.setTrackClips(testId(0), {Clip::fromBuffer(makeTimelineRamp(10000), 0)});
         e.applyPendingCommandsOffline();
         Transport& t = e.getTransport();
         t.setLoopRange(1000, 1000 + loopLen);
@@ -206,8 +214,9 @@ void testLoopPlayback() {
 
 void testSeekAndStop() {
     Engine e;
+    addTestTracks(e);
     e.prepare(kSampleRate, 512);
-    e.setTrackClips(0, {Clip::fromBuffer(makeTimelineRamp(48000), 0)});
+    e.setTrackClips(testId(0), {Clip::fromBuffer(makeTimelineRamp(48000), 0)});
     e.applyPendingCommandsOffline();
     Transport& t = e.getTransport();
     t.play();
@@ -236,5 +245,5 @@ int main() {
     testFades();
     testLoopPlayback();
     testSeekAndStop();
-    return dawlab::test::summary("l14_test_timeline");
+    return dawlab::test::summary("l15_test_timeline");
 }

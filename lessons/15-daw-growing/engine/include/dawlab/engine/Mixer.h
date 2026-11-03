@@ -1,10 +1,17 @@
 #pragma once
-// Mixer: 8 tracks, 2 FX buses, 1 master, and the signal flow between them (Steps 4, 6, 8).
+// Mixer: a pool of kMaxTracks track slots, 2 FX buses, 1 master, and the signal flow between
+// them (chapter 14, Steps 4, 6, 8; the pool is chapter 15, Step 6).
+//
+// The pool: every slot is a complete Track, allocated in prepare(). A slot plays only while it
+// holds a track id (trackInSlot_). Only the audio thread changes that, through
+// activateTrack() / deactivateTrack() (Engine commands AddTrack / RemoveTrack), and only the
+// audio thread (or setup code with no audio thread running) reads it. The UI thread keeps its
+// own copy of which id lives in which slot (Engine::slotOf) and never reads trackInSlot_.
 //
 //   track 1 --+-- post/pre-fader sends ---------> bus A (e.g. reverb) --+
 //   track 2 --+                                   bus B (e.g. delay) ---+
 //     ...     |                                                         |
-//   track 8 --+--> track sum --> [PDC: maxBusLatency] --------------------+--> master --> out
+//   track N --+--> track sum --> [PDC: maxBusLatency] --------------------+--> master --> out
 //
 // Solo logic (tracks only): if any track is soloed, every non-soloed track is silent.
 // Mute wins over solo on the same track. Buses and master are "solo safe": they only have
@@ -50,8 +57,6 @@ namespace dawlab::engine {
 class Mixer {
 public:
     Mixer() {
-        for (int t = 0; t < kNumTracks; ++t)
-            tracks_[static_cast<size_t>(t)].setName("Track " + std::to_string(t + 1));
         for (int b = 0; b < kNumBuses; ++b) // "Bus A", "Bus B" (, "Bus C" in Exercise 12)
             buses_[static_cast<size_t>(b)].setName(std::string("Bus ") + static_cast<char>('A' + b));
         master_.setName("Master");
@@ -92,9 +97,11 @@ public:
     }
 
     // ---- access --------------------------------------------------------------------------------
-    Track& getTrack(int i) noexcept { return tracks_[static_cast<size_t>(std::clamp(i, 0, kNumTracks - 1))]; }
-    const Track& getTrack(int i) const noexcept {
-        return tracks_[static_cast<size_t>(std::clamp(i, 0, kNumTracks - 1))];
+    // The track in a SLOT, whether or not the slot is in use. The UI thread uses it for the
+    // values (atomics) of the slots it gave out (Engine::getTrack(id) does that lookup for you).
+    Track& getTrack(int slot) noexcept { return tracks_[static_cast<size_t>(std::clamp(slot, 0, kMaxTracks - 1))]; }
+    const Track& getTrack(int slot) const noexcept {
+        return tracks_[static_cast<size_t>(std::clamp(slot, 0, kMaxTracks - 1))];
     }
     ChannelStrip& getBus(int i) noexcept { return buses_[static_cast<size_t>(std::clamp(i, 0, kNumBuses - 1))]; }
     const ChannelStrip& getBus(int i) const noexcept {
@@ -103,14 +110,15 @@ public:
     ChannelStrip& getMaster() noexcept { return master_; }
     const ChannelStrip& getMaster() const noexcept { return master_; }
 
-    // nullptr when the reference is out of range.
+    // AUDIO THREAD (or setup code with no audio thread running). nullptr when the reference is
+    // out of range - or, for a track, when that slot does not hold that id (any more).
     ChannelStrip* getStrip(ChannelRef ref) noexcept {
         return const_cast<ChannelStrip*>(static_cast<const Mixer*>(this)->getStrip(ref));
     }
     const ChannelStrip* getStrip(ChannelRef ref) const noexcept {
         switch (ref.kind) {
         case ChannelKind::Track:
-            return (ref.index >= 0 && ref.index < kNumTracks) ? &tracks_[static_cast<size_t>(ref.index)] : nullptr;
+            return holds(ref.index, ref.trackId) ? &tracks_[static_cast<size_t>(ref.index)] : nullptr;
         case ChannelKind::Bus:
             return (ref.index >= 0 && ref.index < kNumBuses) ? &buses_[static_cast<size_t>(ref.index)] : nullptr;
         case ChannelKind::Master: return &master_;
@@ -122,16 +130,56 @@ public:
     int getMaxBlockSize() const noexcept { return maxBlockSize_; }
     bool isPrepared() const noexcept { return prepared_; }
 
+    // ---- the pool: audio thread (or setup code with no audio thread running) -----------------
+    // Starts using a free slot for track `id`. False if the slot is out of range or in use, or
+    // the id is invalid. The slot's DSP state is clean: prepare() and deactivateTrack() reset it.
+    bool activateTrack(int slot, TrackId id) noexcept {
+        if (slot < 0 || slot >= kMaxTracks || !id.isValid() || trackInSlot_[static_cast<size_t>(slot)].isValid())
+            return false;
+        trackInSlot_[static_cast<size_t>(slot)] = id;
+        return true;
+    }
+    // Stops the track in ref's slot if it is still ref.trackId. Everything the slot owns goes to
+    // `discard` (called with InsertEffect* and const std::vector<Clip>*, never nullptr) - the
+    // audio thread may not delete it - and its DSP state is cleared, so the next track in this
+    // slot starts silent (its PDC delay line still holds the old track's audio). False for a
+    // stale ref.
+    template <typename Discard>
+    bool deactivateTrack(ChannelRef ref, Discard&& discard) noexcept {
+        if (ref.kind != ChannelKind::Track || !holds(ref.index, ref.trackId))
+            return false;
+        Track& t = tracks_[static_cast<size_t>(ref.index)];
+        for (int n = t.getInserts().getNumInserts(); n > 0; --n)
+            if (InsertEffect* fx = t.getInserts().removeAt(n - 1))
+                discard(fx);
+        if (const std::vector<Clip>* clips = t.exchangeClips(nullptr))
+            discard(clips);
+        t.reset();
+        trackInSlot_[static_cast<size_t>(ref.index)] = TrackId{};
+        return true;
+    }
+    // The id playing in a slot (invalid = free).
+    TrackId trackInSlot(int slot) const noexcept {
+        return (slot >= 0 && slot < kMaxTracks) ? trackInSlot_[static_cast<size_t>(slot)] : TrackId{};
+    }
+    int getNumActiveTracks() const noexcept {
+        return static_cast<int>(std::count_if(trackInSlot_.begin(), trackInSlot_.end(), [](TrackId id) { return id.isValid(); }));
+    }
+
+    // Audio thread: solo is a property of the tracks that exist (a free slot's old solo flag
+    // must not silence everything).
     bool isAnyTrackSoloed() const noexcept {
-        for (const auto& t : tracks_)
-            if (t.isSoloed())
+        for (int t = 0; t < kMaxTracks; ++t)
+            if (trackInSlot_[static_cast<size_t>(t)].isValid() && tracks_[static_cast<size_t>(t)].isSoloed())
                 return true;
         return false;
     }
 
-    // Is track t heard right now?  audible = !mute && (!anySolo || solo)
-    bool isTrackAudible(int t) const noexcept {
-        const Track& tr = getTrack(t);
+    // Is the track in this slot heard right now?  audible = in use && !mute && (!anySolo || solo)
+    bool isTrackAudible(int slot) const noexcept {
+        if (!trackInSlot(slot).isValid())
+            return false;
+        const Track& tr = getTrack(slot);
         return !tr.isMuted() && (!isAnyTrackSoloed() || tr.isSoloed());
     }
 
@@ -216,7 +264,10 @@ public:
 
         // ---- tracks ----
         AudioBlock tb = scratch_.toBlock().getSubBlock(0, n);
-        for (auto& track : tracks_) {
+        for (int slot = 0; slot < kMaxTracks; ++slot) {
+            if (!trackInSlot_[static_cast<size_t>(slot)].isValid())
+                continue; // a free slot costs one comparison
+            Track& track = tracks_[static_cast<size_t>(slot)];
             tb.clear();
             track.renderClips(tb, segments, numSegments);
             track.beginBlock(!track.isMuted() && (!anySolo || track.isSoloed()));
@@ -274,11 +325,16 @@ public:
     }
 
 private:
+    bool holds(int slot, TrackId id) const noexcept {
+        return slot >= 0 && slot < kMaxTracks && id.isValid() && trackInSlot_[static_cast<size_t>(slot)] == id;
+    }
+
     double sampleRate_ = 0.0;
     int maxBlockSize_ = 0;
     bool prepared_ = false;
 
-    std::array<Track, kNumTracks> tracks_;
+    std::array<Track, kMaxTracks> tracks_;
+    std::array<TrackId, kMaxTracks> trackInSlot_{}; // audio thread only (see the header comment)
     std::array<ChannelStrip, kNumBuses> buses_;
     ChannelStrip master_;
     LatencyCompensator trackSumCompensator_;

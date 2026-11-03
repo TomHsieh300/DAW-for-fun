@@ -9,7 +9,10 @@
 
 #include <random>
 
-using namespace l14test;
+#include "TestTracks.h"
+
+using namespace l15test;
+using namespace dawlab::engine::test;
 
 namespace {
 
@@ -21,13 +24,13 @@ void buildProject(Engine& e) {
     auto pluck = std::make_shared<const AudioBuffer>(makePluckSequence(kSampleRate, 3.0, 0.4f));
     auto noise = std::make_shared<const AudioBuffer>(makeWhiteNoise(kSampleRate, 3.0, 0.1f));
 
-    e.setTrackClips(0, {Clip::fromBuffer(drums, 0), Clip::fromBuffer(drums, 96000)});
+    e.setTrackClips(testId(0), {Clip::fromBuffer(drums, 0), Clip::fromBuffer(drums, 96000)});
     Clip p = Clip::fromBuffer(pluck, 777); // not on a block boundary on purpose
     p.fadeInSamples = 300;
     p.fadeOutSamples = 4800;
     p.fadeShape = FadeShape::EqualPower;
-    e.setTrackClips(1, {p});
-    e.setTrackClips(2, {Clip::fromBuffer(noise, 12345)});
+    e.setTrackClips(testId(1), {p});
+    e.setTrackClips(testId(2), {Clip::fromBuffer(noise, 12345)});
 
     Mixer& m = e.getMixer();
     m.getTrack(0).setGainDb(-3.0f);
@@ -39,12 +42,12 @@ void buildProject(Engine& e) {
     m.getTrack(0).setSendPreFader(1, true);
 
     // inserts whose output is a deterministic per-sample function of the input
-    e.addInsert(ChannelRef::track(0), -1, std::make_unique<CompressorEffect>());
-    e.addInsert(ChannelRef::track(1), -1, std::make_unique<PureDelayEffect>(333));
+    e.addInsert(testTrack(0), -1, std::make_unique<CompressorEffect>());
+    e.addInsert(testTrack(1), -1, std::make_unique<PureDelayEffect>(333));
     auto eq = std::make_unique<ParametricEqEffect>();
     eq->setBand(2, true, dsp::EqBandType::Peak, 1500.0f, 1.0f, 6.0f);
-    e.addInsert(ChannelRef::track(1), -1, std::move(eq));
-    e.addInsert(ChannelRef::track(2), -1, std::make_unique<GateEffect>());
+    e.addInsert(testTrack(1), -1, std::move(eq));
+    e.addInsert(testTrack(2), -1, std::make_unique<GateEffect>());
     auto delay = std::make_unique<DelayEffect>();
     delay->setParameter(DelayEffect::Mix, 1.0f);
     e.addInsert(ChannelRef::bus(0), -1, std::move(delay));
@@ -55,6 +58,7 @@ void buildProject(Engine& e) {
 
 AudioBuffer renderWithBlocks(int fixedBlock, uint32_t seed) {
     Engine e;
+    addTestTracks(e);
     buildProject(e);
     e.applyPendingCommandsOffline();
     e.getTransport().play();
@@ -87,5 +91,5 @@ int main() {
     DAWLAB_CHECK(d64 < 1e-5f);
     DAWLAB_CHECK(dRandom < 1e-5f);
     DAWLAB_CHECK(dRandom2 < 1e-5f);
-    return dawlab::test::summary("l14_test_block_invariance");
+    return dawlab::test::summary("l15_test_block_invariance");
 }

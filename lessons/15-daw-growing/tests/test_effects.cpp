@@ -17,7 +17,10 @@
 #include <set>
 #include <string>
 
-using namespace l14test;
+#include "TestTracks.h"
+
+using namespace l15test;
+using namespace dawlab::engine::test;
 
 namespace {
 
@@ -268,5 +271,5 @@ int main() {
     testParameterHandOver();
     testFilterEffect();
     testAmpChainEffect();
-    return dawlab::test::summary("l14_test_effects");
+    return dawlab::test::summary("l15_test_effects");
 }

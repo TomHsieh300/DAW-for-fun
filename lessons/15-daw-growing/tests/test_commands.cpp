@@ -6,7 +6,10 @@
 #include <cstring>
 #include <thread>
 
-using namespace l14test;
+#include "TestTracks.h"
+
+using namespace l15test;
+using namespace dawlab::engine::test;
 
 namespace {
 
@@ -83,13 +86,14 @@ void testSpscThreads() {
     DAWLAB_CHECK(q.empty());
 }
 
-ChannelRef t0() { return ChannelRef::track(0); }
+ChannelRef t0() { return testTrack(0); }
 
 void testInsertCommands() {
     {
         Engine e;
+        addTestTracks(e);
         e.prepare(kSampleRate, kBlockSize);
-        e.setTrackClips(0, {Clip::fromBuffer(makeConstant(0.1f, 48000), 0)});
+        e.setTrackClips(testId(0), {Clip::fromBuffer(makeConstant(0.1f, 48000), 0)});
         InsertEffect* a = e.addInsert(t0(), -1, std::make_unique<CountingEffect>(2.0f));
         InsertEffect* b = e.addInsert(t0(), -1, std::make_unique<CountingEffect>(3.0f));
         DAWLAB_CHECK(a != nullptr && b != nullptr);
@@ -142,7 +146,7 @@ void testInsertCommands() {
         DAWLAB_CHECK(gAlive == kMaxInserts);
 
         // clip list replacement: the old list becomes garbage
-        e.setTrackClips(0, {Clip::fromBuffer(makeConstant(0.2f, 1000), 0)});
+        e.setTrackClips(testId(0), {Clip::fromBuffer(makeConstant(0.2f, 1000), 0)});
         e.processBlock(block);
         DAWLAB_CHECK(e.getMixer().getTrack(0).getNumClips() == 1);
         DAWLAB_CHECK(e.collectGarbage() == 1);
@@ -155,6 +159,7 @@ void testInsertCommands() {
 void testQueueFull() {
     {
         Engine e(4); // a tiny queue
+        addTestTracks(e);
         e.prepare(kSampleRate, kBlockSize);
         int accepted = 0;
         for (int i = 0; i < 10; ++i)
@@ -170,6 +175,7 @@ void testQueueFull() {
     DAWLAB_CHECK(gAlive == 0);
     {
         Engine e(8);
+        addTestTracks(e);
         e.prepare(kSampleRate, kBlockSize);
         e.addInsert(t0(), -1, std::make_unique<CountingEffect>());
         // destroyed with a command still queued: the payload is freed, no leak
@@ -179,9 +185,10 @@ void testQueueFull() {
 
 void testInvalidTargets() {
     Engine e;
+    addTestTracks(e);
     e.prepare(kSampleRate, kBlockSize);
-    DAWLAB_CHECK(e.addInsert(ChannelRef::track(99), -1, std::make_unique<CountingEffect>()) == nullptr);
-    DAWLAB_CHECK(!e.setTrackClips(-1, {}));
+    DAWLAB_CHECK(e.addInsert(testTrack(99), -1, std::make_unique<CountingEffect>()) == nullptr);
+    DAWLAB_CHECK(!e.setTrackClips(testId(-1), {}));
     DAWLAB_CHECK(e.removeInsert(ChannelRef::bus(0), 5)); // queued, harmless no-op
     AudioBuffer block(2, 64);
     e.processBlock(block);
@@ -204,5 +211,5 @@ int main() {
     testQueueFull();
     testInvalidTargets();
     DAWLAB_CHECK(gAlive == 0);
-    return dawlab::test::summary("l14_test_commands");
+    return dawlab::test::summary("l15_test_commands");
 }

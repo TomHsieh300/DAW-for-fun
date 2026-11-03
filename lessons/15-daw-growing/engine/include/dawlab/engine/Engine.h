@@ -20,13 +20,28 @@
 // Offline use (examples, tests, bounce): the same object works on one thread. Configure it,
 // call applyPendingCommandsOffline() (or just processBlock()), render, collectGarbage().
 // See Renderer.h.
+//
+// Chapter 15 (Step 6): tracks come and go. The engine has a pool of kMaxTracks slots (Mixer.h).
+//   addTrack(id)      UI thread: picks a free slot in the UI's own slot table (slotOwner_),
+//                     resets that slot's values (atomics) and sends AddTrack
+//   removeTrack(id)   UI thread: sends RemoveTrack; the audio thread hands the track's inserts
+//                     and clips back as garbage and clears its DSP state
+//   trackRef(id)      the ChannelRef (slot + id) for every other call that names a track
+// Two tables, one writer each: slotOwner_ belongs to the UI thread, the mixer's trackInSlot_
+// to the audio thread. The UI never reads the audio thread's table; the audio thread checks
+// every track command against its own (a stale command changes nothing). Slots are reused at
+// once: the command queue keeps its order, so RemoveTrack always arrives before the AddTrack
+// that reuses the slot. And processBlock() times itself (getCpuMeter(), chapter 15 Step 3).
 
 #include <dawlab/AudioBuffer.h>
 
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
+#include <string>
+#include <type_traits>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -34,6 +49,7 @@
 #include "Clip.h"
 #include "Commands.h"
 #include "Constants.h"
+#include "CpuMeter.h"
 #include "InsertEffect.h"
 #include "Mixer.h"
 #include "SpscQueue.h"
@@ -43,8 +59,10 @@ namespace dawlab::engine {
 
 class Engine {
 public:
+    // The garbage queue holds at least the garbage of one command (kMaxGarbagePerCommand).
     explicit Engine(std::size_t queueCapacity = kCommandQueueCapacity)
-        : commands_(queueCapacity), garbage_(queueCapacity) {}
+        : commands_(queueCapacity),
+          garbage_(std::max(queueCapacity, static_cast<std::size_t>(kMaxGarbagePerCommand))) {}
 
     ~Engine() {
         // Nothing may be processing any more: free what the audio thread handed back, and
@@ -67,28 +85,88 @@ public:
         maxBlockSize_ = std::max(1, maxBlockSize);
         transport_.prepare(sampleRate);
         mixer_.prepare(sampleRate, maxBlockSize_, maxPdcSamples);
+        cpuMeter_.prepare(sampleRate);
         if (isPrepared())
             applyCommands(); // safe: no audio thread is running during prepare()
-        for (ChannelRef ref : allChannels())
-            if (ChannelStrip* s = mixer_.getStrip(ref))
-                for (int i = 0; i < s->getInserts().getNumInserts(); ++i)
-                    if (InsertEffect* fx = s->getInserts().getInsert(i)) {
-                        fx->prepare(sampleRate_, maxBlockSize_, kNumChannels);
-                        fx->publishLatency();
-                    }
+        auto reprepare = [this](ChannelStrip& s) {
+            for (int i = 0; i < s.getInserts().getNumInserts(); ++i)
+                if (InsertEffect* fx = s.getInserts().getInsert(i)) {
+                    fx->prepare(sampleRate_, maxBlockSize_, kNumChannels);
+                    fx->publishLatency();
+                }
+        };
+        for (int slot = 0; slot < kMaxTracks; ++slot) // free slots have no inserts
+            reprepare(mixer_.getTrack(slot));
+        for (int b = 0; b < kNumBuses; ++b)
+            reprepare(mixer_.getBus(b));
+        reprepare(mixer_.getMaster());
         mixer_.updateLatencies();
         prepared_.store(true, std::memory_order_release);
     }
 
-    // The 11 strips in mixer order: tracks 1-8, bus A, bus B, master.
-    static std::array<ChannelRef, kNumTracks + kNumBuses + 1> allChannels() noexcept {
-        std::array<ChannelRef, kNumTracks + kNumBuses + 1> refs{};
-        for (int i = 0; i < kNumTracks; ++i)
-            refs[static_cast<size_t>(i)] = ChannelRef::track(i);
-        for (int i = 0; i < kNumBuses; ++i)
-            refs[static_cast<size_t>(kNumTracks + i)] = ChannelRef::bus(i);
-        refs[static_cast<size_t>(kNumTracks + kNumBuses)] = ChannelRef::master();
-        return refs;
+    // ---- tracks (UI thread = the single producer) ------------------------------------------
+    // Gives track `id` a free slot, resets the slot's values (fader 0 dB, centre, no mute, solo
+    // or sends) and the format, and queues AddTrack. Returns the track's reference, or one with
+    // index -1 if the id is invalid or already here, the pool is full or the queue is full -
+    // then nothing changed. The slot's values are written now; if the slot's previous track is
+    // still playing its last block (its RemoveTrack is queued), that block may already hear
+    // them - it is being deleted anyway.
+    ChannelRef addTrack(TrackId id, TrackFormat format = TrackFormat::Mono, std::string name = {}) {
+        const ChannelRef none = ChannelRef::track(-1, TrackId{});
+        if (!id.isValid() || slotOf(id) >= 0)
+            return none;
+        const auto freeSlot = std::find_if(slotOwner_.begin(), slotOwner_.end(), [](TrackId t) { return !t.isValid(); });
+        if (freeSlot == slotOwner_.end())
+            return none;
+        const int slot = static_cast<int>(freeSlot - slotOwner_.begin());
+        Track& t = mixer_.getTrack(slot);
+        t.setName(std::move(name));
+        t.setGainDb(0.0f);
+        t.setPan(0.0f);
+        t.setMute(false);
+        t.setSolo(false);
+        for (int b = 0; b < kNumBuses; ++b) {
+            t.setSendLevelDb(b, kMinusInfinityDb);
+            t.setSendPreFader(b, false);
+        }
+        t.setFormat(format);
+        const ChannelRef ref = ChannelRef::track(slot, id);
+        if (!pushCommand(Command::addTrack(ref)))
+            return none;
+        *freeSlot = id;
+        return ref;
+    }
+    // Queues RemoveTrack; the slot is free for the next addTrack() at once. False if the id is
+    // not here or the queue is full (then nothing changed). Removing twice is a harmless false.
+    bool removeTrack(TrackId id) {
+        const int slot = slotOf(id);
+        if (slot < 0 || !pushCommand(Command::removeTrack(ChannelRef::track(slot, id))))
+            return false;
+        slotOwner_[static_cast<size_t>(slot)] = TrackId{};
+        return true;
+    }
+    // The slot the UI gave this track, or -1.
+    int slotOf(TrackId id) const noexcept {
+        if (!id.isValid())
+            return -1;
+        for (int s = 0; s < kMaxTracks; ++s)
+            if (slotOwner_[static_cast<size_t>(s)] == id)
+                return s;
+        return -1;
+    }
+    // The reference every other call needs; index -1 if the id is not here.
+    ChannelRef trackRef(TrackId id) const noexcept {
+        const int slot = slotOf(id);
+        return slot >= 0 ? ChannelRef::track(slot, id) : ChannelRef::track(-1, TrackId{});
+    }
+    // The track's strip, for its values (fader, pan, mute, solo, sends, format, name); nullptr
+    // if the id is not here.
+    Track* getTrack(TrackId id) noexcept {
+        const int slot = slotOf(id);
+        return slot >= 0 ? &mixer_.getTrack(slot) : nullptr;
+    }
+    int getNumTracks() const noexcept {
+        return static_cast<int>(std::count_if(slotOwner_.begin(), slotOwner_.end(), [](TrackId t) { return t.isValid(); }));
     }
 
     bool isPrepared() const noexcept { return prepared_.load(std::memory_order_acquire); }
@@ -127,7 +205,7 @@ public:
     // passes to the engine. Returns an observer pointer that stays valid until the effect is
     // removed AND collectGarbage() has run; nullptr on failure.
     InsertEffect* addInsert(ChannelRef channel, int slot, std::unique_ptr<InsertEffect> effect) {
-        if (!effect || !isPrepared() || mixer_.getStrip(channel) == nullptr)
+        if (!effect || !isPrepared() || uiStrip(channel) == nullptr)
             return nullptr;
         effect->prepare(sampleRate_, maxBlockSize_, kNumChannels);
         effect->publishLatency(); // the UI may ask for it before the audio thread runs
@@ -138,7 +216,7 @@ public:
     // Swaps the effect in `slot` for a new one in one block boundary (no gap, no double
     // processing). Use it to change "prepare-time" settings such as a convolution IR.
     InsertEffect* replaceInsert(ChannelRef channel, int slot, std::unique_ptr<InsertEffect> effect) {
-        if (!effect || !isPrepared() || mixer_.getStrip(channel) == nullptr)
+        if (!effect || !isPrepared() || uiStrip(channel) == nullptr)
             return nullptr;
         effect->prepare(sampleRate_, maxBlockSize_, kNumChannels);
         effect->publishLatency(); // the UI may ask for it before the audio thread runs
@@ -153,11 +231,12 @@ public:
 
     // Replaces the clip list of a track. The list is copied into a new vector here (UI
     // thread); the audio thread swaps one pointer.
-    bool setTrackClips(int track, std::vector<Clip> clips) {
-        if (track < 0 || track >= kNumTracks)
+    bool setTrackClips(TrackId track, std::vector<Clip> clips) {
+        const ChannelRef ref = trackRef(track);
+        if (ref.index < 0)
             return false;
         auto* list = new std::vector<Clip>(std::move(clips));
-        return pushCommand(Command::replaceClips(track, list));
+        return pushCommand(Command::replaceClips(ref, list));
     }
 
     // ---- observing the structure (any thread) ----------------------------------------------
@@ -165,11 +244,11 @@ public:
     // effect is removed and the calling (UI) thread runs collectGarbage(); so only the thread
     // that collects garbage should hold on to it.
     InsertEffect* getInsert(ChannelRef channel, int slot) const noexcept {
-        const ChannelStrip* s = mixer_.getStrip(channel);
+        const ChannelStrip* s = uiStrip(channel);
         return s ? s->getInserts().getInsert(slot) : nullptr;
     }
     int getNumInserts(ChannelRef channel) const noexcept {
-        const ChannelStrip* s = mixer_.getStrip(channel);
+        const ChannelStrip* s = uiStrip(channel);
         return s ? s->getInserts().getNumInserts() : 0;
     }
 
@@ -198,6 +277,9 @@ public:
     uint64_t getCommandsApplied() const noexcept { return commandsApplied_.load(std::memory_order_relaxed); }
     uint64_t getCommandsDropped() const noexcept { return commandsDropped_.load(std::memory_order_relaxed); }
     uint64_t getGarbageLeaked() const noexcept { return garbageLeaked_.load(std::memory_order_relaxed); }
+    // The time processBlock() takes against the block's budget (chapter 15, Step 3). Its load()
+    // and overruns() may be read by any thread; build a CpuMonitor on the UI thread from it.
+    const CpuMeter& getCpuMeter() const noexcept { return cpuMeter_; }
     std::size_t getPendingCommands() const noexcept { return commands_.size(); }
     std::size_t getPendingGarbage() const noexcept { return garbage_.size(); }
 
@@ -209,6 +291,7 @@ public:
             out.clear();
             return;
         }
+        const auto start = std::chrono::steady_clock::now();
         const int total = out.getNumSamples();
         int done = 0;
         while (done < total) {
@@ -216,6 +299,8 @@ public:
             processChunk(out.getSubBlock(done, len));
             done += len;
         }
+        const std::chrono::duration<double> spent = std::chrono::steady_clock::now() - start;
+        cpuMeter_.addBlock(total, spent.count());
     }
 
 private:
@@ -240,9 +325,13 @@ private:
         blocksProcessed_.fetch_add(1, std::memory_order_relaxed);
     }
 
+    // Takes a command only when the garbage queue has room for all it may hand back (removing
+    // a track returns up to kMaxGarbagePerCommand objects). Otherwise the rest waits for the
+    // next block: nothing is ever leaked, and the audio thread never blocks.
     void applyCommands() noexcept {
         Command c;
-        while (commands_.pop(c)) {
+        while (garbage_.capacity() - garbage_.size() >= static_cast<std::size_t>(kMaxGarbagePerCommand) &&
+               commands_.pop(c)) {
             apply(c);
             commandsApplied_.fetch_add(1, std::memory_order_relaxed);
         }
@@ -280,14 +369,33 @@ private:
                 discard(Garbage::of(const_cast<std::vector<Clip>*>(old)));
             break;
         }
+        case CommandType::AddTrack:
+            mixer_.activateTrack(c.channel.index, c.channel.trackId); // a wrong slot or id: nothing happens
+            break;
+        case CommandType::RemoveTrack:
+            mixer_.deactivateTrack(c.channel, [this](auto* object) {
+                using T = std::remove_const_t<std::remove_pointer_t<decltype(object)>>;
+                discard(Garbage::of(const_cast<T*>(object)));
+            });
+            break;
         case CommandType::None: break;
         }
     }
 
-    // Audio thread: hand an object to the UI thread for deletion. If the garbage queue is full
-    // we may not delete here (that would free memory on the audio thread), so the object leaks
-    // and we count it. With kCommandQueueCapacity slots that does not happen as long as
-    // collectGarbage() runs regularly: every command produces at most one garbage ticket.
+    // UI thread: the strip behind a reference, by the UI's OWN slot table (never by the audio
+    // thread's). nullptr if the UI did not give that slot to that id.
+    const ChannelStrip* uiStrip(ChannelRef ref) const noexcept {
+        if (ref.kind == ChannelKind::Track)
+            return (ref.index >= 0 && ref.index < kMaxTracks && ref.trackId.isValid() &&
+                    slotOwner_[static_cast<size_t>(ref.index)] == ref.trackId)
+                       ? &mixer_.getTrack(ref.index)
+                       : nullptr;
+        return mixer_.getStrip(ref); // buses and master never change
+    }
+
+    // Audio thread: hand an object to the UI thread for deletion. applyCommands() makes sure
+    // there is room; should the queue still be full, the object leaks and is counted (we may not
+    // delete it here: that would free memory on the audio thread). The tests expect 0.
     void discard(Garbage g) noexcept {
         if (!garbage_.push(g))
             garbageLeaked_.fetch_add(1, std::memory_order_relaxed);
@@ -310,6 +418,8 @@ private:
 
     Transport transport_;
     Mixer mixer_;
+    CpuMeter cpuMeter_;
+    std::array<TrackId, kMaxTracks> slotOwner_{}; // UI thread only: which id the UI gave each slot
     SpscQueue<Command> commands_;
     SpscQueue<Garbage> garbage_;
 

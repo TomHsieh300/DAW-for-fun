@@ -4,8 +4,10 @@
 //   Stereo  inserts on both channels -> balance (centre unity, image kept)
 
 #include "TestHelpers.h"
+#include "TestTracks.h"
 
-using namespace l14test;
+using namespace l15test;
+using namespace dawlab::engine::test;
 
 namespace {
 
@@ -28,7 +30,7 @@ float lastSample(Engine& e, int ch) {
 
 void setupOneTrack(Engine& e, std::shared_ptr<const AudioBuffer> clip) {
     e.prepare(kSampleRate, kBlockSize);
-    e.setTrackClips(0, {Clip::fromBuffer(std::move(clip), 0, "clip")});
+    e.setTrackClips(testId(0), {Clip::fromBuffer(std::move(clip), 0, "clip")});
 }
 
 void testFormatSelectsPanMode() {
@@ -46,6 +48,7 @@ void testFormatSelectsPanMode() {
 
 void testMonoTrack() {
     Engine e;
+    addTestTracks(e);
     setupOneTrack(e, makeStereoConstant(0.6f, 0.2f, kLen));
     Track& t = e.getMixer().getTrack(0);
     t.setFormat(TrackFormat::Mono);
@@ -62,6 +65,7 @@ void testMonoTrack() {
 
 void testStereoTrack() {
     Engine e;
+    addTestTracks(e);
     setupOneTrack(e, makeStereoConstant(0.6f, 0.2f, kLen));
     Track& t = e.getMixer().getTrack(0);
     t.setFormat(TrackFormat::Stereo);
@@ -79,6 +83,7 @@ void testStereoTrack() {
 // The same mono file (L = R) on a mono and on a stereo track differs by the pan law: 3 dB.
 void testMonoFileOnBothFormats() {
     Engine e;
+    addTestTracks(e);
     setupOneTrack(e, makeConstant(0.5f, kLen));
     Track& t = e.getMixer().getTrack(0);
     t.setFormat(TrackFormat::Mono);
@@ -125,13 +130,14 @@ void testEveryEffectOnOneChannel() {
 void testWideningInsert() {
     auto runWith = [](TrackFormat format) {
         Engine e;
+        addTestTracks(e);
         e.prepare(kSampleRate, kBlockSize);
         auto clip = std::make_shared<AudioBuffer>(makeSine(440.0, kSampleRate, 0.5, 0.5f, 2));
-        e.setTrackClips(0, {Clip::fromBuffer(clip, 0, "sine")});
+        e.setTrackClips(testId(0), {Clip::fromBuffer(clip, 0, "sine")});
         e.getMixer().getTrack(0).setFormat(format);
         auto fx = createEffect(EffectType::Chorus);
         fx->setParameter(fx->findParameter("Stereo Spread"), 1.0f);
-        e.addInsert(ChannelRef::track(0), 0, std::move(fx));
+        e.addInsert(testTrack(0), 0, std::move(fx));
         e.applyPendingCommandsOffline();
         AudioBuffer out = render(e, 12000);
         float d = 0.0f;
@@ -155,5 +161,5 @@ int main() {
     testMonoFileOnBothFormats();
     testEveryEffectOnOneChannel();
     testWideningInsert();
-    return dawlab::test::summary("l14_test_track_format");
+    return dawlab::test::summary("l15_test_track_format");
 }

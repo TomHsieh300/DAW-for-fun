@@ -21,6 +21,8 @@
 #include <random>
 #include <thread>
 
+#include "TestTracks.h"
+
 // ---- allocation counting ------------------------------------------------------------------
 namespace {
 thread_local bool tCounting = false;
@@ -99,7 +101,8 @@ void operator delete[](void* p, std::align_val_t) noexcept { countedAlignedFree(
 void operator delete(void* p, std::size_t, std::align_val_t) noexcept { countedAlignedFree(p); }
 void operator delete[](void* p, std::size_t, std::align_val_t) noexcept { countedAlignedFree(p); }
 
-using namespace l14test;
+using namespace l15test;
+using namespace dawlab::engine::test;
 
 namespace {
 
@@ -140,14 +143,14 @@ void testEachEffect() {
 void buildProject(Engine& e) {
     auto drums = std::make_shared<const AudioBuffer>(makeDrumLoop(kSampleRate, 2, 120.0, 0.7f));
     auto pluck = std::make_shared<const AudioBuffer>(makePluckSequence(kSampleRate, 4.0, 0.4f));
-    for (int t = 0; t < kNumTracks; ++t) {
+    for (int t = 0; t < kTestTracks; ++t) {
         std::vector<Clip> clips;
         for (int k = 0; k < 4; ++k)
             clips.push_back(Clip::fromBuffer(t % 2 ? pluck : drums, k * 192000 + t * 1111));
-        e.setTrackClips(t, std::move(clips));
+        e.setTrackClips(testId(t), std::move(clips));
         // two inserts per track, cycling through all effect types
-        e.addInsert(ChannelRef::track(t), -1, createEffect(static_cast<EffectType>((2 * t) % kNumUserEffectTypes)));
-        e.addInsert(ChannelRef::track(t), -1,
+        e.addInsert(testTrack(t), -1, createEffect(static_cast<EffectType>((2 * t) % kNumUserEffectTypes)));
+        e.addInsert(testTrack(t), -1,
                     createEffect(static_cast<EffectType>((2 * t + 1) % kNumUserEffectTypes)));
         e.getMixer().getTrack(t).setSendLevelDb(t % kNumBuses, -12.0f);
     }
@@ -159,6 +162,7 @@ void buildProject(Engine& e) {
 
 void testEngineUnderFire() {
     Engine e;
+    addTestTracks(e);
     e.prepare(kSampleRate, 512);
     buildProject(e);
     e.getTransport().setLoopRange(0, 4 * 96000);
@@ -208,11 +212,11 @@ void testEngineUnderFire() {
     std::uniform_real_distribution<float> u(0.0f, 1.0f);
     auto pick = [&](int n) { return static_cast<int>(u(rng) * static_cast<float>(n)) % n; };
     auto randomChannel = [&]() {
-        const int k = pick(kNumTracks + kNumBuses + 1);
-        if (k < kNumTracks)
-            return ChannelRef::track(k);
-        if (k < kNumTracks + kNumBuses)
-            return ChannelRef::bus(k - kNumTracks);
+        const int k = pick(kTestTracks + kNumBuses + 1);
+        if (k < kTestTracks)
+            return testTrack(k);
+        if (k < kTestTracks + kNumBuses)
+            return ChannelRef::bus(k - kTestTracks);
         return ChannelRef::master();
     };
     auto pluck = std::make_shared<const AudioBuffer>(makePluckSequence(kSampleRate, 1.0, 0.3f));
@@ -220,12 +224,12 @@ void testEngineUnderFire() {
     while (!done.load()) {
         Mixer& m = e.getMixer();
         switch (pick(16)) {
-        case 0: m.getTrack(pick(kNumTracks)).setGainDb(-40.0f + 52.0f * u(rng)); break;
-        case 1: m.getTrack(pick(kNumTracks)).setPan(2.0f * u(rng) - 1.0f); break;
-        case 2: m.getTrack(pick(kNumTracks)).setMute(u(rng) < 0.2f); break;
-        case 3: m.getTrack(pick(kNumTracks)).setSolo(u(rng) < 0.1f); break;
-        case 4: m.getTrack(pick(kNumTracks)).setSendLevelDb(pick(kNumBuses), -60.0f + 60.0f * u(rng)); break;
-        case 5: m.getTrack(pick(kNumTracks)).setSendPreFader(pick(kNumBuses), u(rng) < 0.5f); break;
+        case 0: m.getTrack(pick(kTestTracks)).setGainDb(-40.0f + 52.0f * u(rng)); break;
+        case 1: m.getTrack(pick(kTestTracks)).setPan(2.0f * u(rng) - 1.0f); break;
+        case 2: m.getTrack(pick(kTestTracks)).setMute(u(rng) < 0.2f); break;
+        case 3: m.getTrack(pick(kTestTracks)).setSolo(u(rng) < 0.1f); break;
+        case 4: m.getTrack(pick(kTestTracks)).setSendLevelDb(pick(kNumBuses), -60.0f + 60.0f * u(rng)); break;
+        case 5: m.getTrack(pick(kTestTracks)).setSendPreFader(pick(kNumBuses), u(rng) < 0.5f); break;
         case 6: { // effect parameter through the observer pointer
             const ChannelRef ch = randomChannel();
             if (InsertEffect* fx = e.getInsert(ch, pick(kMaxInserts)))
@@ -256,7 +260,7 @@ void testEngineUnderFire() {
             std::vector<Clip> clips;
             for (int k = 0; k < 1 + pick(6); ++k)
                 clips.push_back(Clip::fromBuffer(pluck, pick(400000)));
-            e.setTrackClips(pick(kNumTracks), std::move(clips));
+            e.setTrackClips(testId(pick(kTestTracks)), std::move(clips));
             break;
         }
         case 13: e.getTransport().setPosition(pick(400000)); break;
@@ -298,5 +302,5 @@ void testEngineUnderFire() {
 int main() {
     testEachEffect();
     testEngineUnderFire();
-    return dawlab::test::summary("l14_test_realtime_safety");
+    return dawlab::test::summary("l15_test_realtime_safety");
 }
