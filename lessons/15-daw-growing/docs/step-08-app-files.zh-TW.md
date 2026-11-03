@@ -2,7 +2,7 @@
 
 [English](step-08-app-files.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 7 - Track 可以增減的 app](step-07-app-tracks.zh-TW.md) | 下一步：Step 9 - 在 app 中 undo 與 redo（規劃中）
+[總覽](../README.zh-TW.md) | 上一步：[Step 7 - Track 可以增減的 app](step-07-app-tracks.zh-TW.md) | 下一步：[Step 9 - 在 app 中 undo 與 redo](step-09-app-undo.zh-TW.md)
 
 ## 目標
 

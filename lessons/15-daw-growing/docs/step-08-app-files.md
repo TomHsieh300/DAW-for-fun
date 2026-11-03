@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-08-app-files.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 7 - The app with growing tracks](step-07-app-tracks.md) | Next: Step 9 - Undo and redo in the app (planned)
+[Overview](../README.md) | Previous: [Step 7 - The app with growing tracks](step-07-app-tracks.md) | Next: [Step 9 - Undo and redo in the app](step-09-app-undo.md)
 
 ## Goal
 

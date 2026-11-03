@@ -140,9 +140,9 @@ hence `applyEdit`.
 `juce::UndoManager` stores `juce::UndoableAction` objects with virtual `perform()` and `undo()`,
 groups them into transactions with `beginNewTransaction()`, and merges with
 `UndoableAction::createCoalescedAction()`. The ideas are the same - an action, a transaction for
-one user action, merging, a limit - and Step 9 can wrap the `History` in that interface or use
-`UndoManager` directly with actions that hold an `Edit`. This step builds its own small history
-to keep chapter 15 free of JUCE until the app, and because 150 lines show the whole mechanism.
+one user action, merging, a limit. This step builds its own small history to keep chapter 15 free
+of JUCE until the app, and because 150 lines show the whole mechanism. Step 9 then keeps it: the
+app's `History` is this one, applied to the app's `Session` through a small interface.
 
 ## The code
 

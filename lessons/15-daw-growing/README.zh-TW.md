@@ -2,7 +2,8 @@
 
 [English](README.md) | **繁體中文**
 
-> **狀態：進行中。** Step 1-8 已完成；Step 9 還在規劃中，列在下面讓你看到本章接下來的方向。
+> **狀態：** 九個 step 全部完成：可以新增的 track、可以存檔的專案、可以 undo 的編輯，先在小小的 snapshot 裡做
+> （Step 1-5），再做進 engine 和 application（Step 6-9）。
 
 第 14 章刻意把 engine 做成 *static*：8 個 track、2 個 FX bus，所有容器都在 `prepare()` 一次配置
 好，audio thread 永遠不用擴充任何東西。這讓 real-time 的規則很容易遵守。但一個真的能拿來用的 DAW
@@ -57,7 +58,7 @@
 | 6 | [有 track 池的 engine](docs/step-06-engine-pool.zh-TW.md) | 複製並修改第 14 章的 engine：有 id 的 `kMaxTracks` 個 slot、新增 / 刪除 track 的 command、CPU meter；移植第 14 章的測試、池的測試、ThreadSanitizer | 完成 |
 | 7 | [Track 可以增減的 app](docs/step-07-app-tracks.zh-TW.md) | 複製第 14 章的 app 並改用 track id：可以捲動的 arrangement 與 mixer、新增 / 刪除 track、CPU 警告 | 完成 |
 | 8 | [在 app 中存檔與開啟](docs/step-08-app-files.zh-TW.md) | File 選單：用 Step 4 文字的格式 3 存整個專案（insert、send、VST3 state、音訊）；音訊用內容命名 | 完成 |
-| 9 | 在 app 中 undo 與 redo | Edit > Undo / Redo 背後是 Step 5 的歷史紀錄，視窗標題的 `*` | 規劃中 |
+| 9 | [在 app 中 undo 與 redo](docs/step-09-app-undo.zh-TW.md) | 每個變更都是帶有反向操作的 edit、Edit > Undo / Redo、視窗標題的 `*`、丟掉變更前先詢問 | 完成 |
 
 </div>
 

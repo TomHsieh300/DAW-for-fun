@@ -115,8 +115,8 @@ resolution，然後在標準函式庫深處失敗。引數型別來自 `std` 的
 
 `juce::UndoManager` 儲存帶有 virtual `perform()` 和 `undo()` 的 `juce::UndoableAction` 物件，用 `beginNewTransaction()` 把它們
 分組成 transaction，並用 `UndoableAction::createCoalescedAction()` 合併。概念是一樣的：一個動作、一個使用者動作對應一個
-transaction、合併、上限。Step 9 可以把 `History` 包成那個介面，也可以直接用 `UndoManager` 搭配裝著 `Edit` 的 action。這一步自己
-寫一個小小的歷史紀錄，是為了讓第 15 章在 app 之前都不依賴 JUCE，也因為 150 行就能看到整個機制。
+transaction、合併、上限。這一步自己寫一個小小的歷史紀錄，是為了讓第 15 章在 app 之前都不依賴 JUCE，也因為 150 行就能
+看到整個機制。Step 9 就沿用它：app 的 `History` 就是這一個，透過一個小介面套用到 app 的 `Session` 上。
 
 ## 程式碼
 

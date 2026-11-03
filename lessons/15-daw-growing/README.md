@@ -2,8 +2,8 @@
 
 **English** | [繁體中文](README.zh-TW.md)
 
-> **Status: in progress.** Steps 1-8 are finished; Step 9 is planned and listed below so you can
-> see where the chapter is going.
+> **Status:** all nine steps are finished: tracks you can add, projects you can save, edits you can
+> undo - in small snapshots first (Steps 1-5), then in the engine and the application (Steps 6-9).
 
 Chapter 14 built an engine that is deliberately *static*: 8 tracks, 2 FX buses, every container
 allocated once in `prepare()`, so the audio thread never has to grow anything. That made the real-time
@@ -63,7 +63,7 @@ After this chapter you can
 | 6 | [The engine with a track pool](docs/step-06-engine-pool.md) | chapter 14's engine copied and changed: `kMaxTracks` slots with ids, add / remove track commands, the CPU meter; chapter 14's tests ported, pool tests, ThreadSanitizer | done |
 | 7 | [The app with growing tracks](docs/step-07-app-tracks.md) | chapter 14's app copied and moved onto track ids: a scrollable arrangement and mixer, add / delete track, the CPU warning | done |
 | 8 | [Saving and opening in the app](docs/step-08-app-files.md) | the File menu: the whole project (inserts, sends, VST3 state, audio) in format 3 of Step 4's text; audio named by its content | done |
-| 9 | Undo and redo in the app | Step 5's history behind Edit > Undo / Redo, `*` in the window title | planned |
+| 9 | [Undo and redo in the app](docs/step-09-app-undo.md) | every change as an edit with its inverse, Edit > Undo / Redo, `*` in the window title, asking before changes are lost | done |
 
 </div>
 
