@@ -43,6 +43,8 @@ set(L15_APP_SOURCES
     Source/MixerView.cpp
     Source/ParameterPanel.h
     Source/ParameterPanel.cpp
+    Source/ProjectFormat.h
+    Source/ProjectFormat.cpp
     Source/Session.h
     Source/Session.cpp
     Source/SmokeTest.h

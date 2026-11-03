@@ -39,7 +39,8 @@
 #include <dawlab/engine/All.h>
 #include <dawlab/engine/DemoSong.h>
 
-#include "MediaLoader.h" // ConvertedBuffers
+#include "MediaLoader.h"   // ConvertedBuffers
+#include "ProjectFormat.h" // kInsertSlotsPerStrip
 
 #include <juce_events/juce_events.h>
 #include <juce_core/juce_core.h>
@@ -54,7 +55,6 @@ namespace dawlab::app {
 
 class VstInsert;
 
-constexpr int kInsertSlotsPerStrip = 4;
 constexpr int kNewProjectTracks = 8; // what File > New starts with
 
 enum class SlotKind { Empty, Builtin, Vst3 };

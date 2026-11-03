@@ -45,6 +45,11 @@ l15_add_test(l15_test_track_format      tests/test_track_format.cpp)
 l15_add_test(l15_test_track_pool        tests/test_track_pool.cpp)
 target_compile_definitions(l15_test_track_pool PRIVATE DAWLAB_ENGINE_MAX_TRACKS=16)
 
+# The application's project file (Step 8): text in, text out, no JUCE, so it is tested here and
+# runs in every build, not only with -Juce.
+l15_add_test(l15_test_project_format    tests/test_project_format.cpp app/Source/ProjectFormat.cpp)
+target_include_directories(l15_test_project_format PRIVATE app/Source)
+
 # ---- Step 7: the JUCE application "DawLab 15" ----------------------------------------------------
 # Needs -DDAWLAB_WITH_JUCE=ON (build.ps1 -Juce). Without JUCE the chapter stops here.
 if(NOT DAWLAB_WITH_JUCE)
