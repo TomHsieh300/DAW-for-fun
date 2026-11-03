@@ -63,7 +63,7 @@
 所有指令都在專案根目錄的 PowerShell 執行（`scripts/build.ps1` 會依序 configure → build → ctest）：
 
 ```powershell
-.\scripts\build.ps1                                   # 全部純 C++ 部分（00–12、第 14 與 15 章的 engine），Debug，並跑所有測試
+.\scripts\build.ps1                                   # 全部純 C++ 部分（00–12、第 14 與 15 章的 engine、第 16 章的 step），Debug，並跑所有測試
 .\scripts\build.ps1 -Only 02-filter                   # 只建第 02 章
 .\scripts\build.ps1 -Only 02-filter,03-eq             # 多章以逗號分隔
 .\scripts\build.ps1 -Juce                             # 連同第 13–15 章的 JUCE 部分一起建置
@@ -80,7 +80,7 @@ PowerShell 說「無法載入指令碼」時，改用 `powershell -ExecutionPoli
 在 **Linux / macOS** 上，於終端機的專案根目錄執行 `scripts/build.sh`，選項相同：
 
 ```bash
-./scripts/build.sh                                    # 全部純 C++ 部分（00–12、第 14 與 15 章的 engine），Debug，並跑所有測試
+./scripts/build.sh                                    # 全部純 C++ 部分（00–12、第 14 與 15 章的 engine、第 16 章的 step），Debug，並跑所有測試
 ./scripts/build.sh --only 02-filter,03-eq             # 多章以逗號分隔
 ./scripts/build.sh --only 14-daw-8track --juce        # 只建第 14 章，連同 JUCE 應用程式
 ./scripts/build.sh --config Release --no-test         # Release，只建置
@@ -169,6 +169,7 @@ cd build
 | [13](lessons/13-vst-hosting/README.zh-TW.md) | VST3 plugin 與 hosting（JUCE） | plugin 架構與生命週期、參數與 state、latency 與 PDC、掃描與載入第三方 VST3 | `DawLabCompressor` / `DawLabLimiter`（VST3）、`dawlab_plugin_host` 函式庫 |
 | [14](lessons/14-daw-8track/README.zh-TW.md) | **Capstone：8 軌 DAW** | transport 與兩種時鐘、clip、mixer 與 FX bus、lock-free command queue、PDC、offline bounce、real-time safety 測試、JUCE GUI、VST3 insert | 純 C++ 的 `dawlab::engine` 與 JUCE app「DawLab 8」 |
 | [15](lessons/15-daw-growing/README.zh-TW.md) | 讓 DAW 長大 | 穩定的 track id、track slot 池、CPU 預算、專案檔、undo / redo：先在小小的跟著做 snapshot 裡做，再做進第 14 章 engine 與 app 的複本；ThreadSanitizer | 有 track 池的 engine 與 JUCE app「DawLab 15」（新增 / 刪除 track、存檔 / 開檔、undo / redo、CPU 警告） |
+| [16](lessons/16-automation/README.zh-TW.md) | Automation（進行中） | 時間軸上值為 normalized 的點、Linear / Hold 段落與跳躍、只搜尋一次就讀出一個 block；規劃中：精準到 sample 的播放、Read / Touch / Latch / Write、對象、engine 與 app | 第 16 章跟著做的 snapshot |
 
 </div>
 
