@@ -165,6 +165,12 @@ public:
         const int slot = slotOf(id);
         return slot >= 0 ? &mixer_.getTrack(slot) : nullptr;
     }
+    // UI thread: the strip behind any reference (a track, a bus, the master), for its values;
+    // nullptr for a track this engine does not have (any more). It answers by the UI's own slot
+    // table, so a track is here from addTrack() on and gone from removeTrack() on. The UI must
+    // never use Mixer::getStrip(): that one reads the audio thread's table.
+    ChannelStrip* getStrip(ChannelRef ref) noexcept { return const_cast<ChannelStrip*>(uiStrip(ref)); }
+    const ChannelStrip* getStrip(ChannelRef ref) const noexcept { return uiStrip(ref); }
     int getNumTracks() const noexcept {
         return static_cast<int>(std::count_if(slotOwner_.begin(), slotOwner_.end(), [](TrackId t) { return t.isValid(); }));
     }

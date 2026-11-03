@@ -261,6 +261,29 @@ void testSoloOfRemovedTrack() {
     e.collectGarbage();
 }
 
+// Engine::getStrip() answers by the UI's table: a track is there from addTrack() on and gone from
+// removeTrack() on, whatever the audio thread has applied so far (Step 7's app relies on it).
+void testUiStripLookup() {
+    Engine e;
+    e.prepare(kSampleRate, kBlockSize);
+    const ChannelRef a = e.addTrack(TrackId{1}, TrackFormat::Mono, "A");
+    const bool seenBeforeApplied = e.getStrip(a) != nullptr && e.getMixer().trackInSlot(a.index) != TrackId{1};
+    e.applyPendingCommandsOffline();
+    e.removeTrack(TrackId{1});
+    const bool goneBeforeApplied = e.getStrip(a) == nullptr && e.getMixer().trackInSlot(a.index) == TrackId{1};
+    e.applyPendingCommandsOffline();
+    const ChannelRef b = e.addTrack(TrackId{2}); // takes slot 0 over
+    const bool oldRefRefused = e.getStrip(a) == nullptr && e.getStrip(b) != nullptr && a.index == b.index;
+    const bool busAndMaster = e.getStrip(ChannelRef::bus(0)) != nullptr && e.getStrip(ChannelRef::master()) != nullptr;
+    std::printf("  UI lookup: new track seen before the audio thread applied it: %s, removed track gone at once: %s,\n"
+                "  old reference to a reused slot refused: %s, bus and master: %s\n",
+                seenBeforeApplied ? "yes" : "no", goneBeforeApplied ? "yes" : "no", oldRefRefused ? "yes" : "no",
+                busAndMaster ? "yes" : "no");
+    DAWLAB_CHECK(seenBeforeApplied && goneBeforeApplied && oldRefRefused && busAndMaster);
+    e.applyPendingCommandsOffline();
+    e.collectGarbage();
+}
+
 void testCpuMeter() {
     Engine e;
     e.prepare(kSampleRate, kBlockSize);
@@ -286,6 +309,7 @@ int main() {
     testGarbageBackpressure();
     testFullPoolAndIds();
     testSoloOfRemovedTrack();
+    testUiStripLookup();
     testCpuMeter();
     DAWLAB_CHECK(gAlive.load() == 0);
     return dawlab::test::summary("l15_test_track_pool");
