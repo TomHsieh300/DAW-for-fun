@@ -35,6 +35,9 @@ enum : juce::CommandID {
     selectPreviousTrack,
     toggleMuteSelected,
     toggleSoloSelected,
+    addMonoTrack,         // chapter 15: below the selected track
+    addStereoTrack,
+    deleteSelectedTrack,
 
     // View
     zoomIn = 0x2301,

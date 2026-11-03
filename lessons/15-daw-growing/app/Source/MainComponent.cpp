@@ -250,12 +250,48 @@ void MainComponent::loadDroppedFiles(engine::TrackId track, const juce::StringAr
     const int first = session_.indexOf(track);
     if (first < 0)
         return;
-    const int count = std::min(files.size(), session_.getNumTracks() - first);
-    for (int i = 0; i < count; ++i)
-        loadAudioFile(session_.getTrackId(first + i), juce::File(files[i]));
-    if (files.size() > count)
-        setStatus(juce::String(files.size() - count) + " file(s) not loaded: no tracks left below " +
-                  session_.getStripName(session_.trackRef(track)));
+    for (int i = 0; i < files.size(); ++i) {
+        engine::TrackId target = session_.getTrackId(first + i);
+        if (!target.isValid())
+            target = session_.addTrack(); // no track left below: add one at the end
+        if (!target.isValid()) {
+            setStatus(juce::String(files.size() - i) + " file(s) not loaded: " + juce::String(engine::kMaxTracks) +
+                      " tracks is the limit");
+            return;
+        }
+        loadAudioFile(target, juce::File(files[i]));
+    }
+}
+
+engine::TrackId MainComponent::addTrack(engine::TrackFormat format) {
+    // Below the selected track, like most DAWs; at the end in a project without tracks.
+    const int selectedLane = session_.indexOf(arrangement_.getSelectedTrack());
+    const engine::TrackId id = session_.addTrack(format, {}, selectedLane >= 0 ? selectedLane + 1 : -1);
+    if (!id.isValid()) {
+        setStatus(session_.getNumTracks() >= engine::kMaxTracks
+                      ? "No track added: " + juce::String(engine::kMaxTracks) + " tracks is the limit"
+                      : juce::String("No track added: the engine's command queue is full, try again"));
+        return id;
+    }
+    session_.dispatchPendingMessages(); // the arrangement and the mixer add the lane and the strip now
+    arrangement_.setSelectedTrack(id);
+    mixer_.scrollToTrack(id);
+    setStatus("Added " + session_.getStripName(session_.trackRef(id)));
+    return id;
+}
+
+bool MainComponent::deleteSelectedTrack() {
+    const engine::TrackId id = arrangement_.getSelectedTrack();
+    const juce::String name = session_.getStripName(session_.trackRef(id));
+    // Session::removeTrack() calls onInsertWillBeRemoved for every insert: open editors close.
+    if (!session_.removeTrack(id)) {
+        setStatus(session_.hasTrack(id) ? juce::String("Not deleted: the engine's command queue is full, try again")
+                                        : juce::String("No track selected"));
+        return false;
+    }
+    session_.dispatchPendingMessages(); // the arrangement selects the track that took its place
+    setStatus("Deleted " + name);
+    return true;
 }
 
 void MainComponent::loadAudioFile(engine::TrackId track, const juce::File& file) {
@@ -597,7 +633,8 @@ void MainComponent::getAllCommands(juce::Array<juce::CommandID>& c) {
                 CommandIDs::showAudioSettings, juce::StandardApplicationCommandIDs::quit, CommandIDs::playStop,
                 CommandIDs::returnToStart, CommandIDs::toggleLoop, CommandIDs::seekBackOneBar, CommandIDs::seekForwardOneBar,
                 CommandIDs::selectNextTrack, CommandIDs::selectPreviousTrack, CommandIDs::toggleMuteSelected,
-                CommandIDs::toggleSoloSelected, CommandIDs::zoomIn, CommandIDs::zoomOut, CommandIDs::showKeyboardShortcuts};
+                CommandIDs::toggleSoloSelected, CommandIDs::addMonoTrack, CommandIDs::addStereoTrack,
+                CommandIDs::deleteSelectedTrack, CommandIDs::zoomIn, CommandIDs::zoomOut, CommandIDs::showKeyboardShortcuts};
     c.addArray(ids, static_cast<int>(sizeof(ids) / sizeof(ids[0])));
 }
 
@@ -681,6 +718,21 @@ void MainComponent::getCommandInfo(juce::CommandID id, juce::ApplicationCommandI
         info.addDefaultKeypress('s', ModifierKeys::noModifiers);
         info.setActive(idle);
         break;
+    case CommandIDs::addMonoTrack:
+        info.setInfo("Add mono track", "Add a mono track below the selected one", CommandCategories::track, 0);
+        info.addDefaultKeypress('t', cmd);
+        info.setActive(idle && session_.getNumTracks() < engine::kMaxTracks);
+        break;
+    case CommandIDs::addStereoTrack:
+        info.setInfo("Add stereo track", "Add a stereo track below the selected one", CommandCategories::track, 0);
+        info.addDefaultKeypress('t', cmd | ModifierKeys::shiftModifier);
+        info.setActive(idle && session_.getNumTracks() < engine::kMaxTracks);
+        break;
+    case CommandIDs::deleteSelectedTrack:
+        info.setInfo("Delete selected track", "Delete the track with its clips and inserts", CommandCategories::track, 0);
+        info.addDefaultKeypress(KeyPress::deleteKey, cmd);
+        info.setActive(idle && session_.hasTrack(arrangement_.getSelectedTrack()));
+        break;
     case CommandIDs::zoomIn:
         info.setInfo("Zoom in", "", CommandCategories::view, 0);
         info.addDefaultKeypress('=', ModifierKeys::noModifiers);
@@ -731,6 +783,9 @@ bool MainComponent::perform(const InvocationInfo& info) {
             selectedStrip->setSolo(!selectedStrip->isSoloed());
         arrangement_.repaint();
         break;
+    case CommandIDs::addMonoTrack: addTrack(engine::TrackFormat::Mono); break;
+    case CommandIDs::addStereoTrack: addTrack(engine::TrackFormat::Stereo); break;
+    case CommandIDs::deleteSelectedTrack: deleteSelectedTrack(); break;
     case CommandIDs::zoomIn: arrangement_.zoom(1.5, ArrangementView::kHeaderWidth + 0.5f * (arrangement_.getWidth() - ArrangementView::kHeaderWidth)); break;
     case CommandIDs::zoomOut: arrangement_.zoom(1.0 / 1.5, ArrangementView::kHeaderWidth + 0.5f * (arrangement_.getWidth() - ArrangementView::kHeaderWidth)); break;
     case CommandIDs::showKeyboardShortcuts: showKeyboardShortcuts(); break;
@@ -772,6 +827,10 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
         m.addSeparator();
         m.addCommandItem(cm, CommandIDs::toggleMuteSelected);
         m.addCommandItem(cm, CommandIDs::toggleSoloSelected);
+        m.addSeparator();
+        m.addCommandItem(cm, CommandIDs::addMonoTrack);
+        m.addCommandItem(cm, CommandIDs::addStereoTrack);
+        m.addCommandItem(cm, CommandIDs::deleteSelectedTrack);
         break;
     case 3:
         m.addCommandItem(cm, CommandIDs::zoomIn);

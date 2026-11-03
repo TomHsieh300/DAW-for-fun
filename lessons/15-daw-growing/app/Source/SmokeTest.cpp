@@ -612,6 +612,97 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         e.getTransport().stop();
         main.tick();
         DAWLAB_CHECK(main.getTransportBar().getPositionText() == "1.2.030"); // stopped: 24752 = beat 2 + 30 ticks
+
+        // 6b. Tracks come and go through the GUI (chapter 15, Step 7).
+        auto& arrangement = main.getArrangement();
+        auto& mixer = main.getMixer();
+        const int before = s6.getNumTracks();
+        arrangement.selectLane(1); // the bass
+        cm.invokeDirectly(CommandIDs::addStereoTrack, false);
+        const TrackId added = arrangement.getSelectedTrack();
+        const bool placed = s6.indexOf(added) == 2 && s6.getTrackFormat(added) == TrackFormat::Stereo &&
+                            e.getTrack(added) != nullptr && added.value > id0.value;
+        for (int i = 0; i < 40; ++i)
+            cm.invokeDirectly(CommandIDs::addMonoTrack, false);
+        main.tick();
+        const TrackId last = arrangement.getSelectedTrack();
+        const auto lane = arrangement.getLaneBounds(s6.indexOf(last));
+        const bool laneVisible = lane.getY() >= ArrangementView::kRulerHeight && lane.getBottom() <= arrangement.getHeight();
+        const ChannelStripView* lastStrip = mixer.getTrackStrip(last);
+        const auto& viewport = mixer.getTrackViewport();
+        const bool stripVisible = lastStrip != nullptr && lastStrip->getX() >= viewport.getViewPositionX() &&
+                                  lastStrip->getRight() <= viewport.getViewPositionX() + viewport.getViewWidth();
+        e.getTransport().setPosition(0);
+        e.getTransport().play();
+        main.simulatePlayback(24000);
+        main.tick();
+        e.getTransport().stop();
+        const float peakWithMany = main.getTransportBar().getMasterMeter().getPeakDb(0);
+        std::printf("6b. tracks: %d + 1 stereo (at lane %d) + 40 mono = %d tracks, %d strips in the mixer, %d in the engine;\n"
+                    "    arrangement scrolls %d px, newest lane visible: %s, its strip visible: %s, master peak %.1f dBFS\n",
+                    before, s6.indexOf(added) + 1, s6.getNumTracks(), mixer.getNumTracks(), e.getNumTracks(),
+                    arrangement.getMaxScrollY(), laneVisible ? "yes" : "no", stripVisible ? "yes" : "no",
+                    static_cast<double>(peakWithMany));
+        DAWLAB_CHECK(placed);
+        DAWLAB_CHECK(s6.getNumTracks() == before + 41 && mixer.getNumTracks() == before + 41 && e.getNumTracks() == before + 41);
+        DAWLAB_CHECK(mixer.getNumStrips() == s6.getNumStrips());
+        DAWLAB_CHECK(arrangement.getMaxScrollY() > 0 && laneVisible && stripVisible);
+        DAWLAB_CHECK(peakWithMany > -40.0f);
+
+        // Delete the drums while the editor of their compressor is open: the window closes first,
+        // the bass takes the selection, everything the drums owned comes back as garbage.
+        const ChannelRef drums = s6.trackRef(id0);
+        InsertEffect* drumComp = s6.getSlot(drums, 1).effect;
+        main.openInsertEditor(drums, 1, false);
+        const bool editorOpen = main.getParameterWindow(drumComp) != nullptr;
+        arrangement.setSelectedTrack(id0);
+        cm.invokeDirectly(CommandIDs::deleteSelectedTrack, false);
+        const bool editorClosed = main.getParameterWindow(drumComp) == nullptr;
+        main.simulatePlayback(4096); // the audio thread applies RemoveTrack and hands the inserts back
+        main.tick();                 // ... and the UI tick frees them
+        std::printf("    delete the drums: editor open %s -> closed %s, selection -> %s, %d tracks, garbage pending %zu, "
+                    "leaked %llu\n",
+                    editorOpen ? "yes" : "no", editorClosed ? "yes" : "no",
+                    s6.getStripName(s6.trackRef(arrangement.getSelectedTrack())).toRawUTF8(), s6.getNumTracks(),
+                    e.getPendingGarbage(), static_cast<unsigned long long>(e.getGarbageLeaked()));
+        DAWLAB_CHECK(editorOpen && editorClosed);
+        DAWLAB_CHECK(!s6.hasTrack(id0) && e.getTrack(id0) == nullptr && mixer.getTrackStrip(id0) == nullptr);
+        DAWLAB_CHECK(arrangement.getSelectedTrack() == id1);
+        DAWLAB_CHECK(e.getPendingGarbage() == 0 && e.getGarbageLeaked() == 0);
+
+        // Fill the pool: the last add is refused with a message, and the command says so too.
+        int refusedAt = -1;
+        while (refusedAt < 0) {
+            if (!main.addTrack(TrackFormat::Mono).isValid())
+                refusedAt = s6.getNumTracks();
+            e.applyPendingCommandsOffline(); // no audio thread here: keep the queue short
+        }
+        juce::ApplicationCommandInfo addInfo(CommandIDs::addMonoTrack);
+        main.getCommandInfo(CommandIDs::addMonoTrack, addInfo);
+        const bool addDisabled = (addInfo.flags & juce::ApplicationCommandInfo::isDisabled) != 0;
+        std::printf("    pool: full at %d tracks (kMaxTracks %d), add command disabled: %s, status \"%s\"\n", refusedAt,
+                    kMaxTracks, addDisabled ? "yes" : "no", main.getStatus().toRawUTF8());
+        DAWLAB_CHECK(refusedAt == kMaxTracks && addDisabled);
+        DAWLAB_CHECK(main.getStatus().contains("limit"));
+
+        // File > New: back to kNewProjectTracks, with new ids (ids only count up). Files dropped
+        // on the last lane add the tracks they need.
+        TrackId highest;
+        for (int t = 0; t < s6.getNumTracks(); ++t)
+            highest.value = std::max(highest.value, s6.getTrackId(t).value);
+        cm.invokeDirectly(CommandIDs::newProject, false);
+        e.applyPendingCommandsOffline();
+        main.tick();
+        const bool fresh = s6.getNumTracks() == kNewProjectTracks && s6.getTrackId(0).value > highest.value;
+        main.loadDroppedFiles(s6.getTrackId(kNewProjectTracks - 1),
+                              juce::StringArray{"C:/missing/a.wav", "C:/missing/b.wav", "C:/missing/c.wav"});
+        std::printf("    File > New: %d tracks, first id %u (above %u); 3 files dropped on the last lane -> %d tracks\n",
+                    kNewProjectTracks, s6.getTrackId(0).value, highest.value, s6.getNumTracks());
+        DAWLAB_CHECK(fresh);
+        DAWLAB_CHECK(s6.getNumTracks() == kNewProjectTracks + 2);
+        e.applyPendingCommandsOffline();
+        e.collectGarbage();
+        DAWLAB_CHECK(e.getGarbageLeaked() == 0 && e.getCommandsDropped() == 0);
     }
 
     // 7. A device change to 44.1 kHz: clip positions follow (Session::handleSampleRateChange).

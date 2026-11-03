@@ -66,8 +66,8 @@ const Session::TrackModel* Session::findTrack(TrackId id) const noexcept {
 TrackId Session::addTrack(TrackFormat format, const juce::String& name, int index) {
     const TrackId id{nextTrackId_};
     const int at = index >= 0 && index < getNumTracks() ? index : getNumTracks();
-    // The default name counts what the user sees ("Track 9" below eight tracks), not the id.
-    const juce::String trackName = name.isNotEmpty() ? name : "Track " + juce::String(at + 1);
+    // The default name counts the tracks the user sees ("Track 9" with eight), not the ids.
+    const juce::String trackName = name.isNotEmpty() ? name : "Track " + juce::String(getNumTracks() + 1);
     if (engine_.addTrack(id, format, trackName.toStdString()).index < 0)
         return TrackId{}; // pool or queue full: nothing changed, the id is still free
     ++nextTrackId_;

@@ -79,8 +79,15 @@ public:
     int loadDemoSongNow();          // synchronous (snapshot, tests); returns unknown parameter count
     void chooseAudioFileForTrack(engine::TrackId track);
     void loadAudioFile(engine::TrackId track, const juce::File& file); // asynchronous (loader thread)
-    // Files dropped on a lane: the first loads into `track`, the next ones into the tracks below.
+    // Files dropped on a lane: the first loads into `track`, the next ones into the tracks below;
+    // when no track is left below, new ones are added at the end (chapter 15).
     void loadDroppedFiles(engine::TrackId track, const juce::StringArray& files);
+    // Chapter 15: a new track below the selected one, selected and scrolled into view in the
+    // arrangement and the mixer. Invalid id (and a status message) when the pool is full.
+    engine::TrackId addTrack(engine::TrackFormat format);
+    // Deletes the selected track with its clips and inserts (their editors close first); the
+    // track that takes its place becomes the selection. False if nothing was deleted.
+    bool deleteSelectedTrack();
     void exportMixdownInteractive(); // file chooser, then exportMixdown()
     void exportMixdown(const juce::File& file);
     void showAudioSettings();
