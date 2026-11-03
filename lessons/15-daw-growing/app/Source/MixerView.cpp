@@ -128,15 +128,15 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
     if (isTrack) {
         load_.setTooltip("Load an audio file into this track (or drop files on its lane)");
         load_.setWantsKeyboardFocus(false);
-        load_.onClick = [this] { if (onLoadRequested) onLoadRequested(ref_.index); };
+        load_.onClick = [this] { if (onLoadRequested) onLoadRequested(ref_.trackId); };
         addAndMakeVisible(load_);
 
         format_.setWantsKeyboardFocus(false);
         format_.setTooltip("Track format. Mono: inserts run on one channel and the pan law places it.\n"
                            "Stereo: inserts run on both channels and pan works as balance.");
         format_.onClick = [this] {
-            const bool mono = session_.getTrackFormat(ref_.index) == engine::TrackFormat::Mono;
-            session_.setTrackFormat(ref_.index, mono ? engine::TrackFormat::Stereo : engine::TrackFormat::Mono);
+            const bool mono = session_.getTrackFormat(ref_.trackId) == engine::TrackFormat::Mono;
+            session_.setTrackFormat(ref_.trackId, mono ? engine::TrackFormat::Stereo : engine::TrackFormat::Mono);
         };
         addAndMakeVisible(format_);
     }
@@ -157,7 +157,8 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
             knob->setColour(juce::Slider::rotarySliderFillColourId, DawColours::accentWarm());
             // The tooltip and the label follow pre/post-fader and the bus name in update().
             knob->onValueChange = [this, b, k = knob.get()] {
-                strip().setSendLevelDb(b, FaderLaw::toEngineDb(static_cast<float>(k->getValue())));
+                if (auto* s = strip())
+                    s->setSendLevelDb(b, FaderLaw::toEngineDb(static_cast<float>(k->getValue())));
             };
             addAndMakeVisible(*knob);
             sends_.push_back(std::move(knob));
@@ -197,7 +198,10 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
     };
     pan_.setWantsKeyboardFocus(false);
     pan_.setTooltip(isTrack ? "Pan (constant-power law)" : "Balance");
-    pan_.onValueChange = [this] { strip().setPan(static_cast<float>(pan_.getValue())); };
+    pan_.onValueChange = [this] {
+        if (auto* s = strip())
+            s->setPan(static_cast<float>(pan_.getValue()));
+    };
     addAndMakeVisible(pan_);
     panLabel_.setText(isTrack ? "Pan" : "Bal", juce::dontSendNotification);
     panLabel_.setJustificationType(juce::Justification::centred);
@@ -213,7 +217,8 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
     fader_.setTooltip("Fader (double-click: 0 dB)");
     fader_.onValueChange = [this] {
         const float db = FaderLaw::positionToDb(static_cast<float>(fader_.getValue()));
-        strip().setGainDb(FaderLaw::toEngineDb(db)); // atomic; the engine ramps over 50 ms
+        if (auto* s = strip())
+            s->setGainDb(FaderLaw::toEngineDb(db)); // atomic; the engine ramps over 50 ms
         gainLabel_.setText(FaderLaw::format(db), juce::dontSendNotification);
     };
     addAndMakeVisible(fader_);
@@ -228,7 +233,10 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
         mute_.setWantsKeyboardFocus(false);
         mute_.setColour(juce::TextButton::buttonOnColourId, DawColours::mute());
         mute_.setTooltip("Mute");
-        mute_.onClick = [this] { strip().setMute(mute_.getToggleState()); };
+        mute_.onClick = [this] {
+            if (auto* s = strip())
+                s->setMute(mute_.getToggleState());
+        };
         addAndMakeVisible(mute_);
     }
     if (isTrack) { // buses are solo-safe (stage 1): no solo button
@@ -236,7 +244,10 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
         solo_.setWantsKeyboardFocus(false);
         solo_.setColour(juce::TextButton::buttonOnColourId, DawColours::accentWarm());
         solo_.setTooltip("Solo");
-        solo_.onClick = [this] { strip().setSolo(solo_.getToggleState()); };
+        solo_.onClick = [this] {
+            if (auto* s = strip())
+                s->setSolo(solo_.getToggleState());
+        };
         addAndMakeVisible(solo_);
     }
     refreshStructure();
@@ -245,7 +256,8 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
 
 ChannelStripView::~ChannelStripView() = default;
 
-engine::ChannelStrip& ChannelStripView::strip() noexcept { return *session_.getEngine().getMixer().getStrip(ref_); }
+// nullptr once the track is deleted: the view goes away with the next change message.
+engine::ChannelStrip* ChannelStripView::strip() noexcept { return session_.getEngine().getStrip(ref_); }
 
 juce::Slider* ChannelStripView::getSendKnob(int bus) noexcept {
     return (bus >= 0 && bus < static_cast<int>(sends_.size())) ? sends_[static_cast<size_t>(bus)].get() : nullptr;
@@ -264,7 +276,7 @@ void ChannelStripView::refreshStructure() {
     if (ref_.kind == ChannelKind::Master)
         ceiling_.setEnabled(session_.hasMasterLimiter());
     if (ref_.kind == ChannelKind::Track) {
-        const bool mono = session_.getTrackFormat(ref_.index) == engine::TrackFormat::Mono;
+        const bool mono = session_.getTrackFormat(ref_.trackId) == engine::TrackFormat::Mono;
         format_.setButtonText(mono ? "Mono" : "Stereo");
         format_.setToggleState(!mono, juce::dontSendNotification);
         pan_.setTooltip(mono ? "Pan (constant-power law: centre -3 dB per side)"
@@ -274,7 +286,9 @@ void ChannelStripView::refreshStructure() {
 }
 
 void ChannelStripView::update() {
-    engine::ChannelStrip& s = strip();
+    if (strip() == nullptr)
+        return;
+    engine::ChannelStrip& s = *strip();
     meter_.setLevels(s.getPeakDb(0), s.getPeakDb(1), s.getPeakHoldDb(0), s.getPeakHoldDb(1));
 
     // Values can change elsewhere (project load, keyboard shortcut, exercise code): follow them
@@ -317,7 +331,7 @@ void ChannelStripView::paint(juce::Graphics& g) {
     auto r = getLocalBounds().toFloat().reduced(2.0f, 0.0f);
     g.setColour(DawColours::panel());
     g.fillRoundedRectangle(r, 4.0f);
-    juce::Colour stripe = ref_.kind == ChannelKind::Track ? DawColours::track(ref_.index)
+    juce::Colour stripe = ref_.kind == ChannelKind::Track ? DawColours::track(ref_.trackId)
                           : ref_.kind == ChannelKind::Bus ? DawColours::accentWarm()
                                                           : DawColours::accent();
     g.setColour(stripe);
@@ -389,16 +403,13 @@ void ChannelStripView::resized() {
 // ---- MixerView ----------------------------------------------------------------------------------------
 
 MixerView::MixerView(Session& session) : session_(session) {
-    for (int i = 0; i < kNumStrips; ++i) {
-        auto strip = std::make_unique<ChannelStripView>(session_, stripRefAt(i));
-        strip->onLoadRequested = [this](int track) { if (onLoadRequested) onLoadRequested(track); };
-        strip->onSlotClicked = [this](ChannelRef ref, int slot, juce::Component& anchor, bool menu) {
-            if (onSlotClicked)
-                onSlotClicked(ref, slot, anchor, menu);
-        };
-        addAndMakeVisible(*strip);
-        strips_.push_back(std::move(strip));
-    }
+    for (int b = 0; b <= engine::kNumBuses; ++b)
+        fixedStrips_.push_back(makeStrip(b < engine::kNumBuses ? ChannelRef::bus(b) : ChannelRef::master(), *this));
+    trackViewport_.setViewedComponent(&trackArea_, false);
+    trackViewport_.setScrollBarsShown(false, true);
+    trackViewport_.setScrollBarThickness(10);
+    addAndMakeVisible(trackViewport_);
+    rebuildTrackStrips();
     for (auto* l : {&spectrumLabel_, &loudnessLabel_, &latencyLabel_}) {
         l->setFont(DawLookAndFeel::uiFont(12.0f));
         l->setColour(juce::Label::textColourId, DawColours::textDim());
@@ -414,13 +425,77 @@ MixerView::MixerView(Session& session) : session_(session) {
 
 MixerView::~MixerView() { session_.removeChangeListener(this); }
 
+std::unique_ptr<ChannelStripView> MixerView::makeStrip(ChannelRef ref, juce::Component& parent) {
+    auto strip = std::make_unique<ChannelStripView>(session_, ref);
+    strip->onLoadRequested = [this](engine::TrackId track) {
+        if (onLoadRequested)
+            onLoadRequested(track);
+    };
+    strip->onSlotClicked = [this](ChannelRef r, int slot, juce::Component& anchor, bool menu) {
+        if (onSlotClicked)
+            onSlotClicked(r, slot, anchor, menu);
+    };
+    parent.addAndMakeVisible(*strip);
+    return strip;
+}
+
+void MixerView::rebuildTrackStrips() {
+    // One view per track, in display order. A track that is still here keeps its view (and
+    // with it whatever the user is holding); views of deleted tracks are destroyed, which
+    // removes them from trackArea_.
+    std::vector<std::unique_ptr<ChannelStripView>> next;
+    for (int i = 0; i < session_.getNumTracks(); ++i) {
+        const ChannelRef ref = session_.trackRef(session_.getTrackId(i));
+        auto same = std::find_if(trackStrips_.begin(), trackStrips_.end(),
+                                 [&ref](const auto& s) { return s != nullptr && s->getChannel() == ref; });
+        next.push_back(same != trackStrips_.end() ? std::move(*same) : makeStrip(ref, trackArea_));
+    }
+    trackStrips_ = std::move(next);
+    layoutTrackStrips();
+}
+
+void MixerView::layoutTrackStrips() {
+    const int h = trackViewport_.getHeight() - (trackViewport_.isHorizontalScrollBarShown() ? 10 : 0);
+    trackArea_.setSize(getNumTracks() * ChannelStripView::kTrackWidth, std::max(0, h));
+    for (int i = 0; i < getNumTracks(); ++i)
+        trackStrips_[static_cast<size_t>(i)]->setBounds(i * ChannelStripView::kTrackWidth, 0, ChannelStripView::kTrackWidth,
+                                                       trackArea_.getHeight());
+}
+
+ChannelStripView& MixerView::getStrip(int stripIndex) noexcept {
+    const auto i = static_cast<size_t>(stripIndex);
+    return i < trackStrips_.size() ? *trackStrips_[i] : *fixedStrips_[i - trackStrips_.size()];
+}
+
+ChannelStripView* MixerView::getTrackStrip(engine::TrackId track) noexcept {
+    for (auto& s : trackStrips_)
+        if (s->getChannel().trackId == track)
+            return s.get();
+    return nullptr;
+}
+
+void MixerView::scrollToTrack(engine::TrackId track) {
+    if (ChannelStripView* s = getTrackStrip(track)) {
+        const int x = s->getX(), w = trackViewport_.getViewWidth(), view = trackViewport_.getViewPositionX();
+        if (x < view)
+            trackViewport_.setViewPosition(x, 0);
+        else if (x + s->getWidth() > view + w)
+            trackViewport_.setViewPosition(x + s->getWidth() - w, 0);
+    }
+}
+
 void MixerView::changeListenerCallback(juce::ChangeBroadcaster*) {
-    for (auto& s : strips_)
+    rebuildTrackStrips();
+    for (auto& s : trackStrips_)
+        s->refreshStructure();
+    for (auto& s : fixedStrips_)
         s->refreshStructure();
 }
 
 void MixerView::update() {
-    for (auto& s : strips_)
+    for (auto& s : trackStrips_)
+        s->update();
+    for (auto& s : fixedStrips_)
         s->update();
     const auto& master = session_.getEngine().getMixer().getMaster();
     loudness_.setValues(master.getMomentaryLufs(), master.getShortTermLufs(), master.getIntegratedLufs());
@@ -438,16 +513,23 @@ void MixerView::update() {
 void MixerView::paint(juce::Graphics& g) { g.fillAll(DawColours::background()); }
 
 void MixerView::resized() {
+    // Buses, master and the analysers keep their place on the right; the tracks get the rest
+    // and scroll sideways when they do not fit (chapter 15).
     auto area = getLocalBounds().reduced(4, 4);
-    for (int i = 0; i < kNumStrips; ++i) {
-        const ChannelRef ref = stripRefAt(i);
-        if (ref.kind == ChannelKind::Bus && ref.index == 0)
-            area.removeFromLeft(8); // gap between tracks and buses
-        if (ref.kind == ChannelKind::Master)
+    const int fixedWidth = engine::kNumBuses * ChannelStripView::kTrackWidth + ChannelStripView::kMasterWidth + 16;
+    const int tracksWidth = getNumTracks() * ChannelStripView::kTrackWidth;
+    const int minRightWidth = 240; // spectrum and loudness
+    const int trackSpace = std::max(ChannelStripView::kTrackWidth,
+                                    std::min(tracksWidth, area.getWidth() - fixedWidth - 8 - minRightWidth));
+    trackViewport_.setBounds(area.removeFromLeft(trackSpace));
+    area.removeFromLeft(8); // gap between tracks and buses
+    for (size_t i = 0; i < fixedStrips_.size(); ++i) {
+        const bool master = i + 1 == fixedStrips_.size();
+        if (master)
             area.removeFromLeft(8);
-        const int w = ref.kind == ChannelKind::Master ? ChannelStripView::kMasterWidth : ChannelStripView::kTrackWidth;
-        strips_[static_cast<size_t>(i)]->setBounds(area.removeFromLeft(w));
+        fixedStrips_[i]->setBounds(area.removeFromLeft(master ? ChannelStripView::kMasterWidth : ChannelStripView::kTrackWidth));
     }
+    layoutTrackStrips();
     area.removeFromLeft(8);
     auto right = area;
     spectrumLabel_.setBounds(right.removeFromTop(18));

@@ -145,7 +145,7 @@ MediaLoader::~MediaLoader() {
     pool_.removeAllJobs(true, 60000); // wait for a running job (it may be resampling)
 }
 
-void MediaLoader::loadFile(int track, const juce::File& file, double targetSampleRate,
+void MediaLoader::loadFile(engine::TrackId track, const juce::File& file, double targetSampleRate,
                            std::function<void(const LoadedMedia&)> onDone) {
     ++pending_;
     std::weak_ptr<std::atomic<bool>> alive = alive_;

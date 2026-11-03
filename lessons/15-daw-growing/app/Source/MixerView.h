@@ -1,7 +1,8 @@
 #pragma once
-// MixerView: 8 track strips, the FX bus strips and the master section (Steps 15 and 20).
+// MixerView: the track strips, the FX bus strips and the master section (chapter 14, Steps 15
+// and 20; chapter 15, Step 7: as many track strips as tracks, scrolling sideways).
 //
-//   track strip (x8)          bus strip (x2)       master section
+//   track strips (scroll)     bus strip (x2)       master section
 //   +-----------+            +-----------+        +-----------+---------------------+
 //   | 1 Drums   |  name      | Reverb    |        | Master    |  spectrum (master)  |
 //   | [Load...] |  file      |           |        | [slot 1]  |                     |
@@ -61,7 +62,7 @@ public:
     engine::ChannelRef getChannel() const noexcept { return ref_; }
 
     // Callbacks (MainComponent connects them)
-    std::function<void(int track)> onLoadRequested;
+    std::function<void(engine::TrackId track)> onLoadRequested;
     // slot clicked: menu == true for the drop-down arrow / right click, false for the slot body
     std::function<void(engine::ChannelRef, int slot, juce::Component& anchor, bool menu)> onSlotClicked;
 
@@ -84,7 +85,7 @@ public:
 
 private:
     class SlotButton;
-    engine::ChannelStrip& strip() noexcept;
+    engine::ChannelStrip* strip() noexcept;
 
     Session& session_;
     engine::ChannelRef ref_;
@@ -108,14 +109,19 @@ public:
     ~MixerView() override;
 
     // Forwarded to every strip
-    std::function<void(int track)> onLoadRequested;
+    std::function<void(engine::TrackId track)> onLoadRequested;
     std::function<void(engine::ChannelRef, int slot, juce::Component& anchor, bool menu)> onSlotClicked;
 
     void update(); // 30 Hz: strips + loudness (the spectrum is updated by updateSpectrum)
     bool updateSpectrum(dsp::SpectrumAnalyzer& analyzer) { return spectrum_.update(analyzer); }
 
-    ChannelStripView& getStrip(int stripIndex) noexcept { return *strips_[static_cast<size_t>(stripIndex)]; }
-    int getNumStrips() const noexcept { return static_cast<int>(strips_.size()); }
+    // Strips in mixer order (Session::stripRefAt): the tracks, the buses, the master.
+    ChannelStripView& getStrip(int stripIndex) noexcept;
+    int getNumStrips() const noexcept { return static_cast<int>(trackStrips_.size() + fixedStrips_.size()); }
+    int getNumTracks() const noexcept { return static_cast<int>(trackStrips_.size()); }
+    ChannelStripView* getTrackStrip(engine::TrackId track) noexcept; // nullptr if not shown
+    void scrollToTrack(engine::TrackId track);
+    const juce::Viewport& getTrackViewport() const noexcept { return trackViewport_; }
     const LoudnessDisplay& getLoudnessDisplay() const noexcept { return loudness_; }
 
     void paint(juce::Graphics&) override;
@@ -123,9 +129,15 @@ public:
 
 private:
     void changeListenerCallback(juce::ChangeBroadcaster*) override;
+    std::unique_ptr<ChannelStripView> makeStrip(engine::ChannelRef ref, juce::Component& parent);
+    void rebuildTrackStrips();
+    void layoutTrackStrips();
 
     Session& session_;
-    std::vector<std::unique_ptr<ChannelStripView>> strips_;
+    juce::Viewport trackViewport_;
+    juce::Component trackArea_; // the track strips side by side, inside trackViewport_
+    std::vector<std::unique_ptr<ChannelStripView>> trackStrips_; // display order
+    std::vector<std::unique_ptr<ChannelStripView>> fixedStrips_; // the buses, then the master
     SpectrumView spectrum_;
     LoudnessDisplay loudness_;
     juce::Label spectrumLabel_, loudnessLabel_, latencyLabel_;

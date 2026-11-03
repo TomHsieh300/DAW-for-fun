@@ -1,5 +1,5 @@
 #pragma once
-// DawLookAndFeel: the dark theme of DawLab 8 (Step 12).
+// DawLookAndFeel: the dark theme of DawLab 15 (Step 12).
 //
 // JUCE draws every standard widget through a LookAndFeel object. Instead of subclassing each
 // slider, we derive from LookAndFeel_V4 once, set a colour scheme, and override the few drawing
@@ -12,6 +12,8 @@
 //
 // Colours live in one place (DawColours) so that custom components (meters, clips, the
 // arrangement) use the same palette.
+
+#include <dawlab/engine/Constants.h>
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -37,6 +39,8 @@ struct DawColours {
                                                0xff4dd0e1, 0xff7986cb, 0xffba68c8, 0xfff06292};
         return juce::Colour(colours[static_cast<size_t>(index) % (sizeof(colours) / sizeof(colours[0]))]);
     }
+    // A track keeps its colour while tracks above it come and go: the colour follows its id.
+    static juce::Colour track(engine::TrackId id) { return track(static_cast<int>(id.value) - 1); }
 };
 
 class DawLookAndFeel final : public juce::LookAndFeel_V4 {

@@ -1,14 +1,24 @@
 #pragma once
-// Session: the application's model of the project (Steps 15, 16 and 18).
+// Session: the application's model of the project (chapter 14, Steps 15, 16 and 18; chapter 15,
+// Step 7: tracks with ids in a growing list).
 //
 // The engine (stage 1) knows *what to play*: clip lists, insert chains, fader values. It does
-// not know what the GUI needs to show: "slot 3 of track 2 holds a Compressor", the name of a
-// clip, which slots are empty. Session is that bookkeeping layer. It lives on the message
-// thread and is the only object that sends structural changes to the engine:
+// not know what the GUI needs to show: "slot 3 of the bass track holds a Compressor", the name
+// of a clip, which slots are empty, in which order the tracks are shown. Session is that
+// bookkeeping layer. It lives on the message thread and is the only object that sends
+// structural changes to the engine:
 //
-//   GUI component --> Session --> Engine::addInsert / replaceInsert / removeInsert /
-//                                  setTrackClips   (command queue, Step 7)
-//                 --> Engine::getMixer().getTrack(t).setGainDb(...)   (atomics, Step 4)
+//   GUI component --> Session --> Engine::addTrack / removeTrack / addInsert / replaceInsert /
+//                                  removeInsert / setTrackClips   (command queue)
+//                 --> Engine::getStrip(ref)->setGainDb(...)   (atomics)
+//
+// Tracks (chapter 15): the project holds a list of tracks in display order, each with a
+// TrackId. The id is the track's name for the program: every function here takes an id (or a
+// ChannelRef, which carries it), never a position, because positions change when a track above
+// is added or deleted and ids do not. Session hands out the ids, counting up from 1, and never
+// gives the same id twice while the program runs - not even after File > New - so a late result
+// for a deleted track (a file that was still loading, say) finds nothing instead of landing on
+// another track. The display position is only for drawing: getTrackId(index) / indexOf(id).
 //
 // Insert slots: every strip shows kInsertSlotsPerStrip (= 4) slots. The engine's InsertChain is
 // compact (no holes), so a GUI slot is translated into a chain index: the number of occupied
@@ -45,11 +55,7 @@ namespace dawlab::app {
 class VstInsert;
 
 constexpr int kInsertSlotsPerStrip = 4;
-constexpr int kNumStrips = engine::kNumTracks + engine::kNumBuses + 1; // tracks, buses, master
-
-// Strip index (0 .. kNumStrips-1, mixer order) <-> engine::ChannelRef.
-int stripIndexOf(engine::ChannelRef ref) noexcept;
-engine::ChannelRef stripRefAt(int stripIndex) noexcept;
+constexpr int kNewProjectTracks = 8; // what File > New starts with
 
 enum class SlotKind { Empty, Builtin, Vst3 };
 
@@ -76,8 +82,8 @@ public:
     double getSampleRate() const noexcept { return engine_.getSampleRate(); }
 
     // ---- project ---------------------------------------------------------------------------
-    // Empty project: 8 empty tracks, default names, faders at 0 dB, tempo 120, loop bars 1-4
-    // (off), and a Limiter (ceiling -1 dBFS) in master slot 4. The engine must be prepared.
+    // Empty project: kNewProjectTracks empty mono tracks, faders at 0 dB, tempo 120, loop bars
+    // 1-4 (off), and a Limiter (ceiling -1 dBFS) in master slot 4. The engine must be prepared.
     void newProject();
 
     // Replaces the whole project with `song` (generated at the engine's sample rate, see
@@ -86,18 +92,39 @@ public:
 
     juce::String getProjectName() const { return projectName_; }
 
-    // ---- tracks and clips --------------------------------------------------------------------
-    const std::vector<engine::Clip>& getClips(int track) const;
-    void setClips(int track, std::vector<engine::Clip> clips);
+    // ---- tracks ------------------------------------------------------------------------------
+    // Adds a track at display position `index` (-1 = at the end) with a new id. Returns the id,
+    // or an invalid one when the engine's pool (engine::kMaxTracks) or its queue is full.
+    engine::TrackId addTrack(engine::TrackFormat format = engine::TrackFormat::Mono, const juce::String& name = {},
+                             int index = -1);
+    // Deletes the track, its clips and its inserts (onInsertWillBeRemoved is called for each).
+    // False if the id is not here or the engine's queue is full; then nothing changed.
+    bool removeTrack(engine::TrackId id);
+
+    int getNumTracks() const noexcept { return static_cast<int>(tracks_.size()); }
+    engine::TrackId getTrackId(int index) const noexcept; // invalid outside 0 .. getNumTracks()-1
+    int indexOf(engine::TrackId id) const noexcept;        // display position, or -1
+    bool hasTrack(engine::TrackId id) const noexcept { return indexOf(id) >= 0; }
+    // The reference the engine and the strip functions below take; index -1 if the id is not here.
+    engine::ChannelRef trackRef(engine::TrackId id) const noexcept { return engine_.trackRef(id); }
+
+    // ---- strips, in mixer order: the tracks (display order), the buses, the master -----------
+    int getNumStrips() const noexcept { return getNumTracks() + engine::kNumBuses + 1; }
+    engine::ChannelRef stripRefAt(int stripIndex) const noexcept;
+    int stripIndexOf(engine::ChannelRef ref) const noexcept; // -1 for a track that is not here
+
+    // ---- clips -------------------------------------------------------------------------------
+    const std::vector<engine::Clip>& getClips(engine::TrackId track) const; // empty for an unknown id
+    void setClips(engine::TrackId track, std::vector<engine::Clip> clips);
 
     // Replaces the track's clips by one clip that plays `audio` from timeline sample `start`.
     // The audio must already be at getClipSampleRate() (MediaLoader resamples it).
-    void setTrackAudio(int track, std::shared_ptr<const AudioBuffer> audio, const juce::String& clipName,
+    void setTrackAudio(engine::TrackId track, std::shared_ptr<const AudioBuffer> audio, const juce::String& clipName,
                        int64_t start = 0);
 
     // Moves clip `clipIndex` of `track` to `newStart` (clamped to >= 0). Returns the clip's new
     // index in the (start-sorted) list, or -1 if the arguments are invalid.
-    int moveClip(int track, int clipIndex, int64_t newStart);
+    int moveClip(engine::TrackId track, int clipIndex, int64_t newStart);
 
     // End of the last clip on any track (GUI copy; 0 for an empty project).
     int64_t getSongEndSample() const;
@@ -107,8 +134,8 @@ public:
 
     // Mono / stereo track (Step 4). Loading a file sets it from the file's channel count
     // (Step 18); the strip's format button switches it by hand (Step 15).
-    engine::TrackFormat getTrackFormat(int track) const;
-    void setTrackFormat(int track, engine::TrackFormat format);
+    engine::TrackFormat getTrackFormat(engine::TrackId track) const;
+    void setTrackFormat(engine::TrackId track, engine::TrackFormat format);
 
     // ---- insert slots ------------------------------------------------------------------------
     const InsertSlotState& getSlot(engine::ChannelRef ref, int uiSlot) const;
@@ -128,8 +155,8 @@ public:
     // First insert on the strip whose InsertEffect::getName() equals `effectName`.
     engine::InsertEffect* findInsert(engine::ChannelRef ref, const char* effectName) const noexcept;
 
-    // Called (message thread) right before an insert leaves a slot, so editor windows that point
-    // at it can close while the pointer is still valid.
+    // Called (message thread) right before an insert leaves a slot - or leaves with its track -
+    // so editor windows that point at it can close while the pointer is still valid.
     std::function<void(engine::InsertEffect*)> onInsertWillBeRemoved;
 
     // ---- master strip helpers (the "Ceiling" knob drives the first Limiter on the master) -----
@@ -166,16 +193,25 @@ private:
     struct StripModel {
         std::array<InsertSlotState, kInsertSlotsPerStrip> slots;
     };
+    struct TrackModel {
+        engine::TrackId id;
+        std::vector<engine::Clip> clips;
+        StripModel strip;
+    };
 
-    StripModel& strip(engine::ChannelRef ref);
-    const StripModel& strip(engine::ChannelRef ref) const;
-    void removeAllInserts();
-    void resetMixerSettings();
-    void pushClips(int track);
+    TrackModel* findTrack(engine::TrackId id) noexcept;
+    const TrackModel* findTrack(engine::TrackId id) const noexcept;
+    StripModel* findStrip(engine::ChannelRef ref) noexcept;
+    const StripModel* findStrip(engine::ChannelRef ref) const noexcept;
+    void removeAllTracks();
+    void removeBusAndMasterInserts();
+    void resetBusAndMasterSettings();
+    void pushClips(const TrackModel& track);
 
     engine::Engine& engine_;
-    std::array<StripModel, kNumStrips> strips_;
-    std::array<std::vector<engine::Clip>, engine::kNumTracks> clips_;
+    std::vector<TrackModel> tracks_;                          // display order
+    std::array<StripModel, engine::kNumBuses + 1> fixedStrips_; // the buses, then the master
+    std::uint32_t nextTrackId_ = 1;                           // only counts up (see the top)
     double clipSampleRate_ = 0.0; // 0 = not set yet: follow the engine
     juce::String projectName_ = "Untitled";
 };

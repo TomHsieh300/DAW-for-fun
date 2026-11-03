@@ -1,5 +1,5 @@
 #pragma once
-// AppCommands: the command IDs of DawLab 8 (Steps 13 and 21).
+// AppCommands: the command IDs of DawLab 15 (Steps 13 and 21).
 //
 // Every user action that can be triggered from more than one place (menu, keyboard, button)
 // is a juce::ApplicationCommandManager command. The command manager then gives us, for free:

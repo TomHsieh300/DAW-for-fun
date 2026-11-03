@@ -1,5 +1,5 @@
 #pragma once
-// ArrangementView: the timeline with 8 lanes (Step 14).
+// ArrangementView: the timeline, one lane per track (chapter 14, Step 14; chapter 15, Step 7).
 //
 //   +----------+----1--------2--------3--------4------ ruler (click / drag = seek)
 //   | Drums    | [drums][drums]   [drums]  [drums]       one lane per track,
@@ -12,12 +12,18 @@
 //   x(s) = headerWidth + (s - viewStart) / samplesPerPixel
 //   s(x) = viewStart + (x - headerWidth) * samplesPerPixel
 //
+// Lanes (chapter 15): the lanes share the height below the ruler, but none gets lower than
+// kMinLaneHeight. When the tracks do not fit any more, the lanes scroll under the ruler (a
+// scroll bar appears on the right); lane i starts at y = rulerHeight + i * laneHeight - scrollY.
+//
 // Mouse:
 //   ruler: click / drag      seek (snapped to the beat grid; hold Alt for no snapping)
 //   clip:  drag              move the clip along its lane (snapped; Alt = free).
 //                            Session::moveClip() builds a new clip list and sends it to the engine.
 //   lane:  click             select the track (File > Load audio..., M / S shortcuts act on it)
-//   wheel                    scroll in time;  Ctrl + wheel: zoom around the mouse
+//   wheel                    scroll the lanes up and down when they do not all fit, otherwise
+//                            in time; Shift + wheel (or a sideways wheel): in time;
+//                            Ctrl + wheel: zoom around the mouse
 //
 // Drag and drop: audio files dragged in from the file browser (Explorer / Finder) onto a lane
 // load into that track; several files fill that track and the ones below it. The lane under the
@@ -64,10 +70,13 @@ private:
 
 class ArrangementView final : public juce::Component,
                               public juce::FileDragAndDropTarget,
-                              private juce::ChangeListener {
+                              private juce::ChangeListener,
+                              private juce::ScrollBar::Listener {
 public:
     static constexpr int kRulerHeight = 26;
     static constexpr int kHeaderWidth = 132;
+    static constexpr int kMinLaneHeight = 36;
+    static constexpr int kScrollBarWidth = 10;
 
     // With an AudioHost the playhead shows what is heard (AudioHost::getAudiblePosition: the
     // transport position minus the mix latency and the device output latency while playing);
@@ -89,23 +98,35 @@ public:
     void zoom(double factor, float aroundX);
     float sampleToX(double sample) const noexcept;
     double xToSample(float x) const noexcept;
+    // Lanes are counted in display order (Session::getTrackId(lane) is the track in it).
     int laneAt(int y) const noexcept; // -1 outside the lanes
-    juce::Rectangle<int> getLaneBounds(int track) const noexcept;
-    juce::Rectangle<int> getClipBounds(int track, int clipIndex) const;
+    juce::Rectangle<int> getLaneBounds(int lane) const noexcept;
+    juce::Rectangle<int> getClipBounds(int lane, int clipIndex) const;
+    int getLaneHeight() const noexcept;
+
+    // ---- vertical scrolling (chapter 15) --------------------------------------------------------
+    int getScrollY() const noexcept { return scrollY_; }
+    int getMaxScrollY() const noexcept;
+    void setScrollY(int pixels); // clamped to 0 .. getMaxScrollY()
+    void scrollToTrack(engine::TrackId track); // the least scrolling that shows the whole lane
 
     // Snaps to the nearest beat (when `snap`), never below 0.
     int64_t snapToBeat(double sample, bool snap) const noexcept;
 
     // ---- selection -----------------------------------------------------------------------------
-    int getSelectedTrack() const noexcept { return selectedTrack_; }
-    void setSelectedTrack(int track);
-    std::function<void(int track)> onTrackSelected;
+    // The selected track (invalid only in a project without tracks). When it is deleted, the
+    // track that takes its place (or the one above, at the end) is selected.
+    engine::TrackId getSelectedTrack() const noexcept { return selectedTrack_; }
+    void setSelectedTrack(engine::TrackId track);
+    void selectLane(int lane); // clamped to the existing lanes
+    std::function<void(engine::TrackId track)> onTrackSelected;
 
     // ---- drag and drop from the file browser ---------------------------------------------------
     // Called with the lane the files were dropped on and the readable audio files among them (in
     // the order they were dragged). Unreadable files are filtered out before the call.
-    std::function<void(int track, const juce::StringArray& files)> onFilesDropped;
-    int getDropTargetTrack() const noexcept { return dropTrack_; } // -1 when nothing is dragged over
+    std::function<void(engine::TrackId track, const juce::StringArray& files)> onFilesDropped;
+    // Invalid when nothing is dragged over.
+    engine::TrackId getDropTargetTrack() const noexcept { return session_.getTrackId(dropLane_); }
 
     bool isInterestedInFileDrag(const juce::StringArray& files) override;
     void fileDragEnter(const juce::StringArray& files, int x, int y) override;
@@ -124,10 +145,13 @@ public:
 
 private:
     void changeListenerCallback(juce::ChangeBroadcaster*) override;
+    void scrollBarMoved(juce::ScrollBar*, double start) override { setScrollY(static_cast<int>(start)); }
+    void updateScrollBar();
     void paintRuler(juce::Graphics&, juce::Rectangle<int> area);
-    void paintLane(juce::Graphics&, int track, juce::Rectangle<int> area);
-    void paintClip(juce::Graphics&, int track, const engine::Clip& clip, juce::Rectangle<int> bounds, bool selected);
-    int clipAt(int track, float x) const;
+    void paintLane(juce::Graphics&, int lane, juce::Rectangle<int> area);
+    void paintClip(juce::Graphics&, engine::TrackId track, const engine::Clip& clip, juce::Rectangle<int> bounds,
+                   bool selected);
+    int clipAt(int lane, float x) const;
     void seekToX(float x, bool snap);
 
     Session& session_;
@@ -135,14 +159,17 @@ private:
     WaveformCache waveforms_;
     double viewStart_ = 0.0;
     double samplesPerPixel_ = 1000.0;
-    int selectedTrack_ = 0;
-    int dropTrack_ = -1; // lane highlighted while files are dragged over the view
+    engine::TrackId selectedTrack_;
+    int selectedLane_ = 0; // where the selected track was shown: its successor is picked from here
+    int dropLane_ = -1;    // lane highlighted while files are dragged over the view
+    int scrollY_ = 0;
+    juce::ScrollBar scrollBar_{true};
     float lastPlayheadX_ = -1.0f;
 
     // drag state
     enum class Drag { None, Seek, Clip };
     Drag drag_ = Drag::None;
-    int dragTrack_ = -1;
+    engine::TrackId dragTrack_;
     int dragClip_ = -1;
     double dragGrabOffset_ = 0.0;
 };

@@ -2,7 +2,8 @@
 #
 # The chapter starts where chapter 14 ends and replaces its fixed sizes step by step. Like
 # chapter 14's build-along route, every step is a small self-contained snapshot (steps/).
-# Step 6 then brings Steps 1-5 into a copy of chapter 14's engine (engine/). No JUCE needed so far.
+# Step 6 brings Steps 1-3 into a copy of chapter 14's engine (engine/), no JUCE needed; Step 7
+# brings that engine into a copy of chapter 14's application (app/), built with -Juce only.
 
 add_subdirectory(steps)
 
@@ -43,3 +44,12 @@ l15_add_test(l15_test_track_format      tests/test_track_format.cpp)
 # The pool itself (Step 6), with a pool small enough to fill.
 l15_add_test(l15_test_track_pool        tests/test_track_pool.cpp)
 target_compile_definitions(l15_test_track_pool PRIVATE DAWLAB_ENGINE_MAX_TRACKS=16)
+
+# ---- Step 7: the JUCE application "DawLab 15" ----------------------------------------------------
+# Needs -DDAWLAB_WITH_JUCE=ON (build.ps1 -Juce). Without JUCE the chapter stops here.
+if(NOT DAWLAB_WITH_JUCE)
+    message(STATUS "15-daw-growing: the JUCE app (DawLab15) is skipped (use -Juce)")
+    return()
+endif()
+
+add_subdirectory(app)   # targets: l15_daw_app (static library), DawLab15 (the application)

@@ -59,7 +59,7 @@ struct ResamplerSettings {
 using ConvertedBuffers = std::map<std::shared_ptr<const AudioBuffer>, std::shared_ptr<const AudioBuffer>>;
 
 struct LoadedMedia {
-    int track = -1;
+    engine::TrackId track;                     // where the clip goes (chapter 15: by id)
     juce::String name;                         // file name, for the clip and the track
     std::shared_ptr<const AudioBuffer> audio;  // at the target sample rate; nullptr on error
     double fileSampleRate = 0.0;
@@ -78,7 +78,7 @@ public:
 
     // Reads `file` (WAV / AIFF / FLAC / Ogg Vorbis / Opus / MP3) on the loader thread, converts it to stereo float at
     // `targetSampleRate` and calls `onDone` on the message thread.
-    void loadFile(int track, const juce::File& file, double targetSampleRate,
+    void loadFile(engine::TrackId track, const juce::File& file, double targetSampleRate,
                   std::function<void(const LoadedMedia&)> onDone);
 
     // Generates the demo song (engine::makeDemoSong) on the loader thread.

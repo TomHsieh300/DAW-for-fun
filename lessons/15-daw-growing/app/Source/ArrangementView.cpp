@@ -39,8 +39,8 @@ const WaveformCache::Peaks& WaveformCache::get(const std::shared_ptr<const Audio
 
 void WaveformCache::prune(const Session& session) {
     std::set<const AudioBuffer*> used;
-    for (int t = 0; t < engine::kNumTracks; ++t)
-        for (const Clip& c : session.getClips(t))
+    for (int lane = 0; lane < session.getNumTracks(); ++lane)
+        for (const Clip& c : session.getClips(session.getTrackId(lane)))
             used.insert(c.source.get());
     for (auto it = cache_.begin(); it != cache_.end();)
         it = used.count(it->first) ? std::next(it) : cache_.erase(it);
@@ -52,12 +52,24 @@ ArrangementView::ArrangementView(Session& session, const AudioHost* audioHost)
     : session_(session), audioHost_(audioHost) {
     session_.addChangeListener(this);
     setOpaque(true);
+    scrollBar_.setAutoHide(false);
+    scrollBar_.addListener(this);
+    addChildComponent(scrollBar_);
+    selectedTrack_ = session_.getTrackId(0);
 }
 
 ArrangementView::~ArrangementView() { session_.removeChangeListener(this); }
 
 void ArrangementView::changeListenerCallback(juce::ChangeBroadcaster*) {
     waveforms_.prune(session_);
+    // Tracks may have come or gone: the selection must name an existing track, and the
+    // scroll position must stay inside the (possibly shorter) list of lanes.
+    if (!session_.hasTrack(selectedTrack_) && session_.getNumTracks() > 0)
+        selectLane(selectedLane_);
+    else if (session_.hasTrack(selectedTrack_))
+        selectedLane_ = session_.indexOf(selectedTrack_);
+    setScrollY(scrollY_);
+    updateScrollBar();
     repaint();
 }
 
@@ -87,25 +99,61 @@ float ArrangementView::sampleToX(double sample) const noexcept {
 
 double ArrangementView::xToSample(float x) const noexcept { return viewStart_ + (x - kHeaderWidth) * samplesPerPixel_; }
 
-juce::Rectangle<int> ArrangementView::getLaneBounds(int track) const noexcept {
-    const int laneH = (getHeight() - kRulerHeight) / engine::kNumTracks;
-    return {0, kRulerHeight + track * laneH, getWidth(), laneH};
+int ArrangementView::getLaneHeight() const noexcept {
+    const int lanes = std::max(1, session_.getNumTracks());
+    return std::max(kMinLaneHeight, (getHeight() - kRulerHeight) / lanes);
+}
+
+juce::Rectangle<int> ArrangementView::getLaneBounds(int lane) const noexcept {
+    const int laneH = getLaneHeight();
+    return {0, kRulerHeight + lane * laneH - scrollY_, getWidth(), laneH};
 }
 
 int ArrangementView::laneAt(int y) const noexcept {
     if (y < kRulerHeight)
         return -1;
-    const int laneH = std::max(1, (getHeight() - kRulerHeight) / engine::kNumTracks);
-    const int lane = (y - kRulerHeight) / laneH;
-    return lane < engine::kNumTracks ? lane : -1;
+    const int lane = (y - kRulerHeight + scrollY_) / getLaneHeight();
+    return lane < session_.getNumTracks() ? lane : -1;
 }
 
-juce::Rectangle<int> ArrangementView::getClipBounds(int track, int clipIndex) const {
-    const auto& clips = session_.getClips(track);
+int ArrangementView::getMaxScrollY() const noexcept {
+    return std::max(0, session_.getNumTracks() * getLaneHeight() - (getHeight() - kRulerHeight));
+}
+
+void ArrangementView::setScrollY(int pixels) {
+    pixels = std::clamp(pixels, 0, getMaxScrollY());
+    if (pixels != scrollY_) {
+        scrollY_ = pixels;
+        repaint();
+    }
+    scrollBar_.setCurrentRangeStart(scrollY_, juce::dontSendNotification);
+}
+
+void ArrangementView::scrollToTrack(engine::TrackId track) {
+    const int lane = session_.indexOf(track);
+    if (lane < 0)
+        return;
+    const int top = lane * getLaneHeight();
+    const int visible = getHeight() - kRulerHeight;
+    if (top < scrollY_)
+        setScrollY(top);
+    else if (top + getLaneHeight() > scrollY_ + visible)
+        setScrollY(top + getLaneHeight() - visible);
+}
+
+void ArrangementView::updateScrollBar() {
+    const int visible = std::max(0, getHeight() - kRulerHeight);
+    scrollBar_.setRangeLimits(0.0, static_cast<double>(session_.getNumTracks() * getLaneHeight()), juce::dontSendNotification);
+    scrollBar_.setCurrentRange(scrollY_, visible, juce::dontSendNotification);
+    scrollBar_.setVisible(getMaxScrollY() > 0);
+}
+
+juce::Rectangle<int> ArrangementView::getClipBounds(int laneIndex, int clipIndex) const {
+    const auto& clips = session_.getClips(session_.getTrackId(laneIndex));
     if (clipIndex < 0 || clipIndex >= static_cast<int>(clips.size()))
         return {};
     const Clip& c = clips[static_cast<size_t>(clipIndex)];
-    const auto lane = getLaneBounds(track).reduced(0, 3);
+    const auto lane = getLaneBounds(laneIndex).reduced(0, 3);
     const float x0 = sampleToX(static_cast<double>(c.start));
     const float x1 = sampleToX(static_cast<double>(c.end()));
     return juce::Rectangle<float>(x0, static_cast<float>(lane.getY()), std::max(2.0f, x1 - x0),
@@ -120,14 +168,22 @@ int64_t ArrangementView::snapToBeat(double sample, bool snap) const noexcept {
     return std::max<int64_t>(0, static_cast<int64_t>(std::llround(sample)));
 }
 
-void ArrangementView::setSelectedTrack(int track) {
-    track = std::clamp(track, 0, engine::kNumTracks - 1);
+void ArrangementView::setSelectedTrack(engine::TrackId track) {
+    if (!session_.hasTrack(track))
+        return;
     if (track != selectedTrack_) {
         selectedTrack_ = track;
         repaint();
     }
+    selectedLane_ = session_.indexOf(track);
+    scrollToTrack(track);
     if (onTrackSelected)
         onTrackSelected(track);
+}
+
+void ArrangementView::selectLane(int lane) {
+    if (session_.getNumTracks() > 0)
+        setSelectedTrack(session_.getTrackId(std::clamp(lane, 0, session_.getNumTracks() - 1)));
 }
 
 int64_t ArrangementView::getPlayheadPosition() const noexcept {
@@ -156,9 +212,18 @@ void ArrangementView::update() {
 
 void ArrangementView::paint(juce::Graphics& g) {
     g.fillAll(DawColours::background());
+    {
+        // Lanes scroll under the ruler: draw only the visible ones, clipped below the ruler.
+        juce::Graphics::ScopedSaveState save(g);
+        g.reduceClipRegion(0, kRulerHeight, getWidth(), getHeight() - kRulerHeight);
+        for (int lane = scrollY_ / getLaneHeight(); lane < session_.getNumTracks(); ++lane) {
+            const auto bounds = getLaneBounds(lane);
+            if (bounds.getY() >= getHeight())
+                break;
+            paintLane(g, lane, bounds);
+        }
+    }
     paintRuler(g, {0, 0, getWidth(), kRulerHeight});
-    for (int t = 0; t < engine::kNumTracks; ++t)
-        paintLane(g, t, getLaneBounds(t));
 
     // playhead
     const float x = sampleToX(static_cast<double>(getPlayheadPosition()));
@@ -171,14 +236,14 @@ void ArrangementView::paint(juce::Graphics& g) {
     }
 
     // drop target while audio files are dragged over the view
-    if (dropTrack_ >= 0) {
-        const auto lane = getLaneBounds(dropTrack_);
+    if (dropLane_ >= 0) {
+        const auto lane = getLaneBounds(dropLane_);
         g.setColour(DawColours::accent().withAlpha(0.18f));
         g.fillRect(lane);
         g.setColour(DawColours::accent());
         g.drawRect(lane, 2);
         g.setFont(DawLookAndFeel::uiFont(13.0f));
-        g.drawText("Drop to load into track " + juce::String(dropTrack_ + 1),
+        g.drawText("Drop to load into " + session_.getStripName(session_.trackRef(session_.getTrackId(dropLane_))),
                    lane.withTrimmedLeft(kHeaderWidth).reduced(10, 0), juce::Justification::centredLeft);
     }
 }
@@ -195,23 +260,23 @@ bool ArrangementView::isInterestedInFileDrag(const juce::StringArray& files) {
 void ArrangementView::fileDragEnter(const juce::StringArray& files, int x, int y) { fileDragMove(files, x, y); }
 
 void ArrangementView::fileDragMove(const juce::StringArray&, int, int y) {
-    const int track = laneAt(y);
-    if (track != dropTrack_) {
-        dropTrack_ = track;
+    const int lane = laneAt(y);
+    if (lane != dropLane_) {
+        dropLane_ = lane;
         repaint();
     }
 }
 
 void ArrangementView::fileDragExit(const juce::StringArray&) {
-    dropTrack_ = -1;
+    dropLane_ = -1;
     repaint();
 }
 
 void ArrangementView::filesDropped(const juce::StringArray& files, int, int y) {
-    const int track = laneAt(y);
-    dropTrack_ = -1;
+    const engine::TrackId track = session_.getTrackId(laneAt(y));
+    dropLane_ = -1;
     repaint();
-    if (track < 0)
+    if (!track.isValid())
         return;
     juce::StringArray readable;
     for (const auto& path : files)
@@ -266,13 +331,16 @@ void ArrangementView::paintRuler(juce::Graphics& g, juce::Rectangle<int> area) {
     }
 }
 
-void ArrangementView::paintLane(juce::Graphics& g, int track, juce::Rectangle<int> area) {
+void ArrangementView::paintLane(juce::Graphics& g, int lane, juce::Rectangle<int> area) {
     const auto& tr = session_.getEngine().getTransport();
+    const engine::TrackId track = session_.getTrackId(lane);
     const bool selected = track == selectedTrack_;
-    const auto& strip = session_.getEngine().getMixer().getTrack(track);
+    const engine::ChannelStrip* strip = session_.getEngine().getStrip(session_.trackRef(track));
+    if (strip == nullptr)
+        return;
 
     // lane background + bar grid
-    g.setColour(selected ? DawColours::panelLight().withAlpha(0.6f) : (track % 2 ? DawColours::background() : DawColours::background().brighter(0.03f)));
+    g.setColour(selected ? DawColours::panelLight().withAlpha(0.6f) : (lane % 2 ? DawColours::background() : DawColours::background().brighter(0.03f)));
     g.fillRect(area);
     const double bar = tr.getSamplesPerBar();
     if (bar > 0.0 && bar / samplesPerPixel_ > 8.0) {
@@ -288,7 +356,7 @@ void ArrangementView::paintLane(juce::Graphics& g, int track, juce::Rectangle<in
         juce::Graphics::ScopedSaveState save(g);
         g.reduceClipRegion(area.withTrimmedLeft(kHeaderWidth));
         for (int i = 0; i < static_cast<int>(clips.size()); ++i) {
-            const auto bounds = getClipBounds(track, i);
+            const auto bounds = getClipBounds(lane, i);
             if (bounds.getRight() < kHeaderWidth || bounds.getX() > getWidth())
                 continue;
             paintClip(g, track, clips[static_cast<size_t>(i)], bounds,
@@ -305,16 +373,16 @@ void ArrangementView::paintLane(juce::Graphics& g, int track, juce::Rectangle<in
     header.reduce(8, 2);
     g.setColour(selected ? DawColours::text() : DawColours::text().withAlpha(0.8f));
     g.setFont(DawLookAndFeel::uiFont(14.0f, selected));
-    g.drawText(juce::String(track + 1) + "  " + juce::String(strip.getName()), header.removeFromTop(header.getHeight() / 2 + 4),
+    g.drawText(juce::String(lane + 1) + "  " + juce::String(strip->getName()), header.removeFromTop(header.getHeight() / 2 + 4),
                juce::Justification::bottomLeft);
     g.setFont(DawLookAndFeel::uiFont(11.0f));
     juce::String info;
-    if (strip.isMuted())
+    if (strip->isMuted())
         info << "M ";
-    if (strip.isSoloed())
+    if (strip->isSoloed())
         info << "S ";
     info << juce::String(static_cast<int>(clips.size())) << (clips.size() == 1 ? " clip" : " clips");
-    g.setColour(strip.isMuted() ? DawColours::mute() : (strip.isSoloed() ? DawColours::accentWarm() : DawColours::textDim()));
+    g.setColour(strip->isMuted() ? DawColours::mute() : (strip->isSoloed() ? DawColours::accentWarm() : DawColours::textDim()));
     g.drawText(info, header, juce::Justification::topLeft);
 
     g.setColour(DawColours::outline());
@@ -322,7 +390,7 @@ void ArrangementView::paintLane(juce::Graphics& g, int track, juce::Rectangle<in
     g.drawVerticalLine(kHeaderWidth - 1, static_cast<float>(area.getY()), static_cast<float>(area.getBottom()));
 }
 
-void ArrangementView::paintClip(juce::Graphics& g, int track, const Clip& clip, juce::Rectangle<int> bounds,
+void ArrangementView::paintClip(juce::Graphics& g, engine::TrackId track, const Clip& clip, juce::Rectangle<int> bounds,
                                 bool selected) {
     const auto colour = DawColours::track(track);
     const auto r = bounds.toFloat().reduced(0.5f, 0.0f);
@@ -370,12 +438,15 @@ void ArrangementView::paintClip(juce::Graphics& g, int track, const Clip& clip, 
 void ArrangementView::resized() {
     if (samplesPerPixel_ == 1000.0) // first layout: fit the song
         zoomToFit();
+    scrollBar_.setBounds(getWidth() - kScrollBarWidth, kRulerHeight, kScrollBarWidth, std::max(0, getHeight() - kRulerHeight));
+    setScrollY(scrollY_);
+    updateScrollBar();
 }
 
 // ---- mouse ----------------------------------------------------------------------------------------
 
-int ArrangementView::clipAt(int track, float x) const {
-    const auto& clips = session_.getClips(track);
+int ArrangementView::clipAt(int lane, float x) const {
+    const auto& clips = session_.getClips(session_.getTrackId(lane));
     const double s = xToSample(x);
     // Topmost = last drawn = highest index.
     for (int i = static_cast<int>(clips.size()) - 1; i >= 0; --i) {
@@ -402,16 +473,17 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e) {
     const int lane = laneAt(e.y);
     if (lane < 0)
         return;
-    setSelectedTrack(lane);
+    const engine::TrackId track = session_.getTrackId(lane);
+    setSelectedTrack(track);
     if (e.x < kHeaderWidth)
         return;
     const int clip = clipAt(lane, static_cast<float>(e.x));
     if (clip >= 0) {
         drag_ = Drag::Clip;
-        dragTrack_ = lane;
+        dragTrack_ = track;
         dragClip_ = clip;
         dragGrabOffset_ = xToSample(static_cast<float>(e.x)) -
-                          static_cast<double>(session_.getClips(lane)[static_cast<size_t>(clip)].start);
+                          static_cast<double>(session_.getClips(track)[static_cast<size_t>(clip)].start);
         repaint();
     } else if (e.getNumberOfClicks() > 1) {
         seekToX(static_cast<float>(e.x), snap);
@@ -441,6 +513,8 @@ void ArrangementView::mouseUp(const juce::MouseEvent&) {
 void ArrangementView::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) {
     if (e.mods.isCtrlDown() || e.mods.isCommandDown()) {
         zoom(wheel.deltaY > 0 ? 1.25 : 0.8, static_cast<float>(e.x));
+    } else if (getMaxScrollY() > 0 && !e.mods.isShiftDown() && std::abs(wheel.deltaY) >= std::abs(wheel.deltaX)) {
+        setScrollY(scrollY_ - static_cast<int>(std::lround(wheel.deltaY * 4.0f * static_cast<float>(getLaneHeight()))));
     } else {
         const float delta = std::abs(wheel.deltaX) > std::abs(wheel.deltaY) ? wheel.deltaX : wheel.deltaY;
         setView(viewStart_ - delta * 200.0 * samplesPerPixel_, samplesPerPixel_);

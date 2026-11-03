@@ -152,7 +152,7 @@ long long getTestPluginProcessCount() noexcept { return gTestPluginProcessCalls.
 
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     constexpr double sr = 48000.0;
-    std::printf("DawLab 8 smoke test (no audio device)\n\n");
+    std::printf("DawLab 15 smoke test (no audio device)\n\n");
 
     // 1. The resampler used when loading files (MediaLoader.cpp)
     {
@@ -184,7 +184,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         DAWLAB_CHECK(edgeDb < -50.0 && edgeDb > -80.0);
 
         // The file path of the loader: a mono 44.1 kHz WAV becomes a stereo 48 kHz buffer.
-        const juce::File wav = juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l14_app_smoke_44k.wav");
+        const juce::File wav = juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l15_app_smoke_44k.wav");
         juce::String error;
         DAWLAB_CHECK(Exporter::writeWavFile(wav, sine, 44100.0, 24, error));
         const LoadedMedia media = MediaLoader::readAudioFile(wav, 48000.0);
@@ -219,8 +219,8 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         juce::FlacAudioFormat flac;
         juce::OggVorbisAudioFormat ogg;
         const struct { juce::File file; double toleranceDb; } compressed[] = {
-            {writeWith(flac, "l14_app_smoke_44k.flac", 24), 0.05},
-            {writeWith(ogg, "l14_app_smoke_44k.ogg", 16), 0.5},
+            {writeWith(flac, "l15_app_smoke_44k.flac", 24), 0.05},
+            {writeWith(ogg, "l15_app_smoke_44k.ogg", 16), 0.5},
         };
         for (const auto& c : compressed) {
             DAWLAB_CHECK(c.file.existsAsFile());
@@ -253,8 +253,8 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     engine.applyPendingCommandsOffline();
     int slotsUsed = 0;
     bool chainsMatch = true;
-    for (int s = 0; s < kNumStrips; ++s) {
-        const ChannelRef ref = stripRefAt(s);
+    for (int s = 0; s < session.getNumStrips(); ++s) {
+        const ChannelRef ref = session.stripRefAt(s);
         slotsUsed += session.getNumUsedSlots(ref);
         chainsMatch = chainsMatch && engine.getNumInserts(ref) == session.getNumUsedSlots(ref);
         for (int slot = 0; slot < kInsertSlotsPerStrip; ++slot) {
@@ -266,8 +266,8 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     const int latency = engine.getLatencySamples();
     int numClips = 0;
     std::set<const AudioBuffer*> buffers; // clips share buffers (Step 14's waveform cache relies on it)
-    for (int t = 0; t < kNumTracks; ++t)
-        for (const Clip& c : session.getClips(t)) {
+    for (int t = 0; t < session.getNumTracks(); ++t)
+        for (const Clip& c : session.getClips(session.getTrackId(t))) {
             ++numClips;
             buffers.insert(c.source.get());
         }
@@ -287,7 +287,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     AudioBuffer exported;
     {
         ExportOptions options;
-        options.file = juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l14_app_smoke.wav");
+        options.file = juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l15_app_smoke.wav");
         options.numSamples = static_cast<int64_t>(2.0 * sr);
         options.tailSeconds = 0.0;
         const ExportResult r = Exporter::renderToFile(engine, options, &exported);
@@ -382,8 +382,8 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     // 5a. The same plugin on a mono track (the drums): VstInsert runs the stereo plugin on L = R
     //     and folds the result back to one channel. At gain 0.5 (x1) the bounce must not move.
     {
-        const ChannelRef drums = ChannelRef::track(0);
-        DAWLAB_CHECK(session.getTrackFormat(0) == TrackFormat::Mono);
+        const ChannelRef drums = session.trackRef(session.getTrackId(0));
+        DAWLAB_CHECK(session.getTrackFormat(drums.trackId) == TrackFormat::Mono);
         const AudioBuffer before = renderSeconds(engine, 1.0);
         auto hosted = std::make_unique<host::HostedPlugin>(createTestDelayPlugin(100));
         InsertEffect* fx = session.setVstInsert(drums, 3, std::make_unique<VstInsert>(std::move(hosted)));
@@ -408,7 +408,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     //     its ceiling at 0 dB (a pure delay for this track) the bounce must not move.
     {
         host::PluginHost pluginHost;
-        const ChannelRef drums = ChannelRef::track(0);
+        const ChannelRef drums = session.trackRef(session.getTrackId(0));
         const juce::File compressorFile = EffectMenu::chapter13CompressorFile();
         if (compressorFile == juce::File()) {
             std::printf("5b. chapter 13's DawLab Compressor not built in this tree: VST3 file test skipped\n");
@@ -444,11 +444,11 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         } else {
             // The track with the largest insert latency (in the demo song: track 8, convolution reverb).
             int track = 0;
-            for (int t = 1; t < kNumTracks; ++t)
-                if (engine.getMixer().getTrack(t).getInsertLatencySamples() >
-                    engine.getMixer().getTrack(track).getInsertLatencySamples())
+            const auto insertLatency = [&](int lane) { return engine.getTrack(session.getTrackId(lane))->getInsertLatencySamples(); };
+            for (int t = 1; t < session.getNumTracks(); ++t)
+                if (insertLatency(t) > insertLatency(track))
                     track = t;
-            const ChannelRef ref = ChannelRef::track(track);
+            const ChannelRef ref = session.trackRef(session.getTrackId(track));
             const int latencyBefore = engine.getLatencySamples();
             const AudioBuffer without = renderSeconds(engine, 1.0);
             juce::String error;
@@ -474,7 +474,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
                     std::printf("5b. VST3 %s on track %d (insert latency now %d): plugin latency %d, "
                                 "mix latency %d -> %d,\n    |with - without| = %.3g (the two compared %d samples "
                                 "apart: %.3g)\n",
-                                fx->getName(), track + 1, engine.getMixer().getTrack(track).getInsertLatencySamples(),
+                                fx->getName(), track + 1, insertLatency(track),
                                 pluginLatency, latencyBefore, latencyAfter, static_cast<double>(diff), lag,
                                 static_cast<double>(shifted));
                     DAWLAB_CHECK(pluginLatency > 0);
@@ -497,11 +497,14 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         DAWLAB_CHECK_NEAR(FaderLaw::dbToPosition(0.0f), 0.5918, 1e-3);
         DAWLAB_CHECK_NEAR(FaderLaw::positionToDb(FaderLaw::dbToPosition(-12.0f)), -12.0, 1e-4);
         MainComponent main(MainComponent::Mode::Offline);
-        DAWLAB_CHECK(main.getMixer().getNumStrips() == kNumStrips);
+        DAWLAB_CHECK(main.getMixer().getNumStrips() == kNewProjectTracks + kNumBuses + 1);
         DAWLAB_CHECK(main.getMixer().getStrip(0).getNumSendKnobs() == kNumBuses);
         DAWLAB_CHECK(main.loadDemoSongNow() == 0);
         Engine& e = main.getEngine();
+        Session& s6 = main.getSession();
         e.applyPendingCommandsOffline();
+        main.tick(); // delivers the session's change messages: the views follow the new tracks
+        const TrackId id0 = s6.getTrackId(0), id1 = s6.getTrackId(1);
 
         // drag and drop from the file browser -> the lane under the mouse, readable files only
         {
@@ -509,53 +512,52 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
             auto& arrangement = main.getArrangement();
             const auto lane = arrangement.getLaneBounds(2).getCentre();
             const juce::StringArray dragged{"C:/music/kick.flac", "C:/music/readme.txt", "C:/music/bass.mp3"};
-            int droppedTrack = -1;
+            TrackId droppedTrack;
             juce::StringArray droppedFiles;
             auto realHandler = arrangement.onFilesDropped;
-            arrangement.onFilesDropped = [&](int t, const juce::StringArray& f) {
+            arrangement.onFilesDropped = [&](TrackId t, const juce::StringArray& f) {
                 droppedTrack = t;
                 droppedFiles = f;
             };
             DAWLAB_CHECK(arrangement.isInterestedInFileDrag(dragged));
             DAWLAB_CHECK(!arrangement.isInterestedInFileDrag(juce::StringArray{"C:/music/readme.txt"}));
             arrangement.fileDragEnter(dragged, lane.x, lane.y);
-            DAWLAB_CHECK(arrangement.getDropTargetTrack() == 2);
+            DAWLAB_CHECK(arrangement.getDropTargetTrack() == s6.getTrackId(2));
             arrangement.filesDropped(dragged, lane.x, lane.y);
-            DAWLAB_CHECK(arrangement.getDropTargetTrack() == -1);
-            DAWLAB_CHECK(droppedTrack == 2);
+            DAWLAB_CHECK(!arrangement.getDropTargetTrack().isValid());
+            DAWLAB_CHECK(droppedTrack == s6.getTrackId(2));
             DAWLAB_CHECK(droppedFiles.size() == 2 && droppedFiles[0].endsWith("kick.flac") &&
                          droppedFiles[1].endsWith("bass.mp3"));
             arrangement.onFilesDropped = realHandler;
 
             // the strip's format button toggles mono / stereo, and the pan mode follows
-            auto& session6 = main.getSession();
-            const TrackFormat before = session6.getTrackFormat(1);
+            const TrackFormat before = s6.getTrackFormat(id1);
             main.getMixer().getStrip(1).getFormatButton().onClick();
-            const Track& t1 = main.getEngine().getMixer().getTrack(1);
-            DAWLAB_CHECK(session6.getTrackFormat(1) != before);
+            const Track& t1 = *e.getTrack(id1);
+            DAWLAB_CHECK(s6.getTrackFormat(id1) != before);
             DAWLAB_CHECK(t1.getPanMode() == (t1.getFormat() == TrackFormat::Mono ? PanMode::PanLaw : PanMode::Balance));
             main.getMixer().getStrip(1).getFormatButton().onClick();
-            DAWLAB_CHECK(session6.getTrackFormat(1) == before);
+            DAWLAB_CHECK(s6.getTrackFormat(id1) == before);
             std::printf("   format button: track 2 %s -> %s -> %s\n", trackFormatName(before),
                         trackFormatName(before == TrackFormat::Mono ? TrackFormat::Stereo : TrackFormat::Mono),
-                        trackFormatName(session6.getTrackFormat(1)));
+                        trackFormatName(s6.getTrackFormat(id1)));
             DAWLAB_CHECK(arrangement.onFilesDropped != nullptr); // MainComponent wired it up
             std::printf("   drag and drop: %d of 3 dragged files accepted, dropped on track %d\n", droppedFiles.size(),
-                        droppedTrack + 1);
+                        s6.indexOf(droppedTrack) + 1);
         }
 
         // fader -> ChannelStrip::setGainDb
         auto& strip0 = main.getMixer().getStrip(0);
         strip0.getFader().setValue(FaderLaw::dbToPosition(-6.0f), juce::sendNotificationSync);
-        DAWLAB_CHECK_NEAR(e.getMixer().getTrack(0).getGainDb(), -6.0, 0.01);
+        DAWLAB_CHECK_NEAR(e.getTrack(id0)->getGainDb(), -6.0, 0.01);
         // A click on S: Button::triggerClick() would be asynchronous, so do what it does directly.
         strip0.getSoloButton().setToggleState(true, juce::dontSendNotification);
         strip0.getSoloButton().onClick();
-        DAWLAB_CHECK(e.getMixer().getTrack(0).isSoloed());
-        e.getMixer().getTrack(0).setSolo(false);
+        DAWLAB_CHECK(e.getTrack(id0)->isSoloed());
+        e.getTrack(id0)->setSolo(false);
 
         // auto-generated panel -> InsertEffect::setParameter
-        InsertEffect* comp = main.getSession().getSlot(ChannelRef::track(0), 1).effect;
+        InsertEffect* comp = s6.getSlot(s6.trackRef(id0), 1).effect;
         DAWLAB_CHECK(comp != nullptr && std::string(comp->getName()) == "Compressor");
         if (comp != nullptr) {
             ParameterPanel panel(*comp);
@@ -614,10 +616,11 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
 
     // 7. A device change to 44.1 kHz: clip positions follow (Session::handleSampleRateChange).
     {
-        const auto bassBefore = session.getClips(1);
+        const TrackId bass = session.getTrackId(1);
+        const auto bassBefore = session.getClips(bass);
         engine.prepare(44100.0, 512); // what AudioHost does when the device restarts at 44.1 kHz
         session.handleSampleRateChange(sr, 44100.0);
-        const auto& bassAfter = session.getClips(1);
+        const auto& bassAfter = session.getClips(bass);
         const bool sameCount = bassAfter.size() == bassBefore.size() && bassBefore.size() > 2;
         DAWLAB_CHECK(sameCount);
         if (sameCount) {
@@ -662,7 +665,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     auto main = std::make_shared<MainComponent>(MainComponent::Mode::Offline);
     DAWLAB_CHECK(main->loadDemoSongNow() == 0);
     const juce::File file =
-        juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l14_app_export.wav");
+        juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l15_app_export.wav");
     const auto startTime = juce::Time::getMillisecondCounterHiRes();
     main->onExportFinished = [main, file, startTime, onFinished](const ExportResult& r) {
         const double wallSeconds = (juce::Time::getMillisecondCounterHiRes() - startTime) * 0.001;
@@ -693,7 +696,8 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
             //     Session::applySampleRateConversion(). Section 7 tested the conversion itself;
             //     this tests that the app triggers it, keeps the message loop free meanwhile and
             //     resumes playback afterwards.
-            const int64_t before = main->getSession().getClips(1)[2].start;
+            const TrackId bass = main->getSession().getTrackId(1);
+            const int64_t before = main->getSession().getClips(bass)[2].start;
             main->getEngine().getTransport().play();           // the user was listening...
             main->getAudioHost().prepareOffline(44100.0, 512); // ...when the device restarted
             const bool stoppedAtOnce = !main->getEngine().getTransport().isPlaying();
@@ -703,7 +707,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
             // only weakly; the pending message owns it.
             auto poll = std::make_shared<std::function<void()>>();
             std::weak_ptr<std::function<void()>> self = poll;
-            *poll = [main, before, onFinished, stoppedAtOnce, t0, ticks, self]() mutable {
+            *poll = [main, bass, before, onFinished, stoppedAtOnce, t0, ticks, self]() mutable {
                 if (main->isConvertingSampleRate()) {
                     ++*ticks;
                     if (auto p = self.lock())
@@ -711,7 +715,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
                     return;
                 }
                 const double ms = juce::Time::getMillisecondCounterHiRes() - t0;
-                const int64_t after = main->getSession().getClips(1)[2].start;
+                const int64_t after = main->getSession().getClips(bass)[2].start;
                 const bool resumed = main->getEngine().getTransport().isPlaying();
                 std::printf("10. GUI device change 48 -> 44.1 kHz (loader thread): engine %.0f Hz, transport stopped at "
                             "once: %s, bass clip 3 %lld -> %lld,\n    converted in %.0f ms with %d message-loop turns "
@@ -723,14 +727,14 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
                 DAWLAB_CHECK(stoppedAtOnce);
                 DAWLAB_CHECK(before == 96000 && after == 88200);
                 DAWLAB_CHECK(main->getSession().getClipSampleRate() == 44100.0);
-                DAWLAB_CHECK(main->getSession().getClips(1)[2].source->getNumSamples() == 44100);
+                DAWLAB_CHECK(main->getSession().getClips(bass)[2].source->getNumSamples() == 44100);
                 DAWLAB_CHECK(resumed);
                 DAWLAB_CHECK(main->getStatus().startsWith("Sample rate changed to 44100 Hz"));
                 main->getEngine().getTransport().stop();
                 // The GUI goes away on the message thread, after the export thread ended.
                 main.reset();
                 std::printf("\n");
-                onFinished(test::summary("l14_app_smoke_test"));
+                onFinished(test::summary("l15_app_smoke_test"));
             };
             juce::MessageManager::callAsync([poll] { (*poll)(); });
         });
@@ -743,7 +747,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     if (!main->isExporting()) { // nothing will call back: finish now
         main->onExportFinished = nullptr;
         main.reset();
-        onFinished(test::summary("l14_app_smoke_test"));
+        onFinished(test::summary("l15_app_smoke_test"));
     }
 }
 
@@ -767,7 +771,7 @@ int runSnapshot(const juce::File& pngFile) {
         main.simulatePlayback(std::min(tickSamples, target - done));
         main.tick();
     }
-    main.getArrangement().setSelectedTrack(0);
+    main.getArrangement().selectLane(0);
     main.setStatus("Snapshot: demo song at bar 2 beat 3 (simulated playback, no audio device)");
     main.tick();
 
@@ -784,7 +788,8 @@ int runSnapshot(const juce::File& pngFile) {
     // The auto-generated parameter panel of the drum compressor, as a second picture.
     const juce::File panelFile = pngFile.getSiblingFile(pngFile.getFileNameWithoutExtension() + "_panel.png");
     float gainReductionDb = 0.0f;
-    if (InsertEffect* comp = main.getSession().getSlot(ChannelRef::track(0), 1).effect) {
+    Session& session = main.getSession();
+    if (InsertEffect* comp = session.getSlot(session.trackRef(session.getTrackId(0)), 1).effect) {
         gainReductionDb = comp->getMeterDb();
         ParameterPanel panel(*comp);
         panel.setLookAndFeel(&main.getDawLookAndFeel());

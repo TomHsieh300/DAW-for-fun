@@ -71,7 +71,11 @@ MainComponent::MainComponent(Mode mode) : mode_(mode) {
             vst->closeEditor();
     };
     session_.newProject();
-    arrangement_.onFilesDropped = [this](int track, const juce::StringArray& files) { loadDroppedFiles(track, files); };
+    session_.dispatchPendingMessages(); // the views show the new tracks before the first tick
+    arrangement_.onFilesDropped = [this](engine::TrackId track, const juce::StringArray& files) {
+        loadDroppedFiles(track, files);
+    };
+    arrangement_.selectLane(0);
 
     // ---- commands, menu, keyboard ------------------------------------------------------------------
     commandManager_.registerAllCommandsForTarget(this);
@@ -88,7 +92,7 @@ MainComponent::MainComponent(Mode mode) : mode_(mode) {
     transportBar_.onToggleLoop = [this] { toggleLoop(); };
     addAndMakeVisible(transportBar_);
     addAndMakeVisible(arrangement_);
-    mixer_.onLoadRequested = [this](int track) { chooseAudioFileForTrack(track); };
+    mixer_.onLoadRequested = [this](engine::TrackId track) { chooseAudioFileForTrack(track); };
     mixer_.onSlotClicked = [this](ChannelRef ref, int slot, juce::Component& anchor, bool menu) {
         if (menu || session_.getSlot(ref, slot).isEmpty())
             showSlotMenu(ref, slot, anchor);
@@ -228,8 +232,10 @@ int MainComponent::loadDemoSongNow() {
     return unknown;
 }
 
-void MainComponent::chooseAudioFileForTrack(int track) {
-    fileChooser_ = std::make_unique<juce::FileChooser>("Load audio into track " + juce::String(track + 1),
+void MainComponent::chooseAudioFileForTrack(engine::TrackId track) {
+    if (!session_.hasTrack(track))
+        return;
+    fileChooser_ = std::make_unique<juce::FileChooser>("Load audio into " + session_.getStripName(session_.trackRef(track)),
                                                        juce::File::getSpecialLocation(juce::File::userMusicDirectory),
                                                        MediaLoader::getWildcard());
     juce::Component::SafePointer<MainComponent> safe(this);
@@ -240,16 +246,19 @@ void MainComponent::chooseAudioFileForTrack(int track) {
                               });
 }
 
-void MainComponent::loadDroppedFiles(int track, const juce::StringArray& files) {
-    const int count = std::min(files.size(), engine::kNumTracks - track);
+void MainComponent::loadDroppedFiles(engine::TrackId track, const juce::StringArray& files) {
+    const int first = session_.indexOf(track);
+    if (first < 0)
+        return;
+    const int count = std::min(files.size(), session_.getNumTracks() - first);
     for (int i = 0; i < count; ++i)
-        loadAudioFile(track + i, juce::File(files[i]));
+        loadAudioFile(session_.getTrackId(first + i), juce::File(files[i]));
     if (files.size() > count)
-        setStatus(juce::String(files.size() - count) + " file(s) not loaded: no tracks left below track " +
-                  juce::String(track + 1));
+        setStatus(juce::String(files.size() - count) + " file(s) not loaded: no tracks left below " +
+                  session_.getStripName(session_.trackRef(track)));
 }
 
-void MainComponent::loadAudioFile(int track, const juce::File& file) {
+void MainComponent::loadAudioFile(engine::TrackId track, const juce::File& file) {
     setStatus("Loading " + file.getFileName() + "...");
     juce::Component::SafePointer<MainComponent> safe(this);
     // New clip audio must be at the clip rate: normally the engine rate; the old rate while a
@@ -259,6 +268,10 @@ void MainComponent::loadAudioFile(int track, const juce::File& file) {
             return;
         if (media.audio == nullptr) {
             safe->setStatus("Load failed: " + media.error);
+            return;
+        }
+        if (!safe->session_.hasTrack(media.track)) { // deleted while the file was being read
+            safe->setStatus("Not loaded: the track for " + media.name + " was deleted");
             return;
         }
         if (media.targetSampleRate != safe->session_.getClipSampleRate()) {
@@ -274,7 +287,7 @@ void MainComponent::loadAudioFile(int track, const juce::File& file) {
         safe->session_.setTrackAudio(media.track, media.audio, media.name);
         safe->arrangement_.setSelectedTrack(media.track);
         safe->arrangement_.zoomToFit();
-        juce::String text = "Loaded " + media.name + " into track " + juce::String(media.track + 1);
+        juce::String text = "Loaded " + media.name + " into track " + juce::String(safe->session_.indexOf(media.track) + 1);
         if (media.fileSampleRate != media.targetSampleRate)
             text << " (resampled " << juce::String(media.fileSampleRate, 0) << " -> " << juce::String(media.targetSampleRate, 0) << " Hz)";
         safe->setStatus(text);
@@ -548,9 +561,9 @@ ParameterWindow* MainComponent::getParameterWindow(engine::InsertEffect* effect)
 
 void MainComponent::closeAllEditors() {
     parameterWindows_.clear();
-    for (int s = 0; s < kNumStrips; ++s)
+    for (int s = 0; s < session_.getNumStrips(); ++s)
         for (int slot = 0; slot < kInsertSlotsPerStrip; ++slot)
-            if (auto* vst = session_.getSlot(stripRefAt(s), slot).vst)
+            if (auto* vst = session_.getSlot(session_.stripRefAt(s), slot).vst)
                 vst->closeEditor();
 }
 
@@ -620,7 +633,7 @@ void MainComponent::getCommandInfo(juce::CommandID id, juce::ApplicationCommandI
         info.setActive(idle);
         break;
     case juce::StandardApplicationCommandIDs::quit:
-        info.setInfo("Quit", "Quit DawLab 8", CommandCategories::file, 0);
+        info.setInfo("Quit", "Quit DawLab 15", CommandCategories::file, 0);
         info.addDefaultKeypress('q', cmd);
         break;
     case CommandIDs::playStop:
@@ -688,8 +701,9 @@ void MainComponent::getCommandInfo(juce::CommandID id, juce::ApplicationCommandI
 bool MainComponent::perform(const InvocationInfo& info) {
     if (isExporting() && info.commandID != juce::StandardApplicationCommandIDs::quit)
         return true; // swallow everything while rendering
-    const int selected = arrangement_.getSelectedTrack();
-    auto& selectedStrip = engine_.getMixer().getTrack(selected);
+    const engine::TrackId selected = arrangement_.getSelectedTrack();
+    const int selectedLane = session_.indexOf(selected);
+    engine::Track* selectedStrip = engine_.getTrack(selected); // nullptr in a project without tracks
     switch (info.commandID) {
     case CommandIDs::newProject: newProject(); break;
     case CommandIDs::loadDemoSong: loadDemoSongAsync(); break;
@@ -705,10 +719,18 @@ bool MainComponent::perform(const InvocationInfo& info) {
     case CommandIDs::toggleLoop: toggleLoop(); break;
     case CommandIDs::seekBackOneBar: seekBars(-1); break;
     case CommandIDs::seekForwardOneBar: seekBars(+1); break;
-    case CommandIDs::selectNextTrack: arrangement_.setSelectedTrack(selected + 1); break;
-    case CommandIDs::selectPreviousTrack: arrangement_.setSelectedTrack(selected - 1); break;
-    case CommandIDs::toggleMuteSelected: selectedStrip.setMute(!selectedStrip.isMuted()); arrangement_.repaint(); break;
-    case CommandIDs::toggleSoloSelected: selectedStrip.setSolo(!selectedStrip.isSoloed()); arrangement_.repaint(); break;
+    case CommandIDs::selectNextTrack: arrangement_.selectLane(selectedLane + 1); break;
+    case CommandIDs::selectPreviousTrack: arrangement_.selectLane(selectedLane - 1); break;
+    case CommandIDs::toggleMuteSelected:
+        if (selectedStrip != nullptr)
+            selectedStrip->setMute(!selectedStrip->isMuted());
+        arrangement_.repaint();
+        break;
+    case CommandIDs::toggleSoloSelected:
+        if (selectedStrip != nullptr)
+            selectedStrip->setSolo(!selectedStrip->isSoloed());
+        arrangement_.repaint();
+        break;
     case CommandIDs::zoomIn: arrangement_.zoom(1.5, ArrangementView::kHeaderWidth + 0.5f * (arrangement_.getWidth() - ArrangementView::kHeaderWidth)); break;
     case CommandIDs::zoomOut: arrangement_.zoom(1.0 / 1.5, ArrangementView::kHeaderWidth + 0.5f * (arrangement_.getWidth() - ArrangementView::kHeaderWidth)); break;
     case CommandIDs::showKeyboardShortcuts: showKeyboardShortcuts(); break;
