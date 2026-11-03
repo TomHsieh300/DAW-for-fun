@@ -19,6 +19,7 @@
 #include <dawlab/engine/DemoSong.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <set>
@@ -147,6 +148,31 @@ std::unique_ptr<juce::AudioPluginInstance> createTestDelayPlugin(int latencySamp
 }
 int getTestPluginInstanceCount() noexcept { return gTestPluginInstances.load(); }
 long long getTestPluginProcessCount() noexcept { return gTestPluginProcessCalls.load(); }
+
+// ---- a slow insert (chapter 15): more work per block than the block lasts --------------------------
+
+class BusyEffect final : public EffectBase {
+public:
+    enum Param { Gain, kCount };
+    explicit BusyEffect(double secondsPerBlock) : EffectBase(kInfos, kCount), seconds_(secondsPerBlock) {}
+    const char* getName() const noexcept override { return "Busy"; }
+    void prepare(double sr, int, int) override { finishPrepare(sr); }
+    void reset() noexcept override {}
+
+protected:
+    void applyParameter(int, float) noexcept override {}
+    void processDsp(AudioBlock) noexcept override {
+        const auto end = std::chrono::steady_clock::now() + std::chrono::duration<double>(seconds_);
+        while (std::chrono::steady_clock::now() < end) {
+        } // a plugin that is simply too slow for this machine
+    }
+
+private:
+    static constexpr ParameterInfo kInfos[kCount] = {
+        {"Gain", "x", 0.0f, 1.0f, 1.0f, ParameterKind::Float, false, nullptr, 0},
+    };
+    double seconds_;
+};
 
 // ---- --smoke-test --------------------------------------------------------------------------------
 
@@ -334,7 +360,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
                 std::copy_n(device.getReadPointer(ch) + latency, n, played.getWritePointer(ch));
             const float diff = maxAbsDiff(played, 0, exported, 0, n - latency);
             std::printf("4. device callback, %d-sample blocks, 3 outputs: max |callback - bounce| = %.3g, CPU load %.1f%%\n",
-                        blockSize, static_cast<double>(diff), 100.0 * host.getCpuLoad());
+                        blockSize, static_cast<double>(diff), 100.0 * engine.getCpuMeter().load());
             DAWLAB_CHECK(diff < 1.0e-4f);
             DAWLAB_CHECK(device.getMagnitude(2, 0, total) == 0.0f);
         }
@@ -703,6 +729,28 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         e.applyPendingCommandsOffline();
         e.collectGarbage();
         DAWLAB_CHECK(e.getGarbageLeaked() == 0 && e.getCommandsDropped() == 0);
+
+        // 6c. The CPU warning (chapter 15, Step 7): an insert that needs 2.5 times the duration of
+        //     every block makes every block late. The display turns red and the status line says
+        //     what to do. (The insert goes straight to the engine; Session does not need to know.)
+        const ChannelRef busyTrack = s6.trackRef(s6.getTrackId(0));
+        const double blockSeconds = MainComponent::kOfflineBlockSize / e.getSampleRate();
+        e.addInsert(busyTrack, -1, std::make_unique<BusyEffect>(2.5 * blockSeconds));
+        const std::uint32_t lateBefore = e.getCpuMeter().overruns();
+        e.getTransport().play();
+        main.simulatePlayback(4 * MainComponent::kOfflineBlockSize);
+        e.getTransport().stop();
+        main.tick();
+        const CpuStatus cpu = main.getTransportBar().getCpuStatus();
+        std::printf("6c. a 2.5x-too-slow insert: load %.0f %%, %u late blocks, CPU display \"%s\", status \"%s...\"\n",
+                    100.0 * cpu.load, e.getCpuMeter().overruns() - lateBefore, main.getTransportBar().getCpuText().toRawUTF8(),
+                    main.getStatus().substring(0, 40).toRawUTF8());
+        DAWLAB_CHECK(cpu.state == CpuState::Overload && e.getCpuMeter().overruns() - lateBefore == 4);
+        DAWLAB_CHECK(main.getTransportBar().getCpuText() == "CPU overload");
+        DAWLAB_CHECK(main.getStatus().startsWith("Audio dropouts"));
+        e.removeInsert(busyTrack, e.getNumInserts(busyTrack) - 1);
+        e.applyPendingCommandsOffline();
+        e.collectGarbage();
     }
 
     // 7. A device change to 44.1 kHz: clip positions follow (Session::handleSampleRateChange).
@@ -772,6 +820,11 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
                         main->getStatus().upToFirstOccurrenceOf(" ", false, false).toRawUTF8());
             DAWLAB_CHECK(r.ok);
             DAWLAB_CHECK(!main->isExporting());
+            DAWLAB_CHECK(main->getStatus().startsWith("Exported"));
+            // The render ran processBlock() as fast as it could; its slow blocks were never heard,
+            // so they must not show up as dropouts (chapter 15).
+            main->tick();
+            DAWLAB_CHECK(main->getTransportBar().getCpuStatus().state != CpuState::Overload);
             DAWLAB_CHECK(main->getStatus().startsWith("Exported"));
             DAWLAB_CHECK(readBack && wav.buffer.getNumSamples() == 19 * 48000 && wav.buffer.getNumChannels() == 2);
             DAWLAB_CHECK_NEAR(r.seconds, 19.0, 1e-9);

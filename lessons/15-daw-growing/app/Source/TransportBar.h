@@ -12,7 +12,10 @@
 //   playing / loop                        Transport (atomics, stage 1)
 //   master peak                           Mixer::getMaster().getPeakDb() / getPeakHoldDb()
 //   LUFS                                  Mixer::getMaster().getMomentary/ShortTerm/IntegratedLufs()
-//   CPU                                   AudioHost::getCpuLoad() (time in callback / block time)
+//   CPU                                   chapter 15: Engine::getCpuMeter() through a CpuMonitor
+//                                         (Step 3): "CPU 12%" grey, orange from 75 % (back below
+//                                         65 %), red "CPU overload" for 2 s after a block came
+//                                         too late - the listener heard a dropout
 //
 // The tempo slider writes Transport::setTempo() (an atomic). Clips are placed in samples, so a
 // tempo change moves the bar grid, not the audio (stage 1, Exercise 7).
@@ -24,6 +27,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <functional>
+#include <optional>
 
 namespace dawlab::app {
 
@@ -48,6 +52,11 @@ public:
     juce::String getPositionText() const { return barsBeats_.getText(); }
     juce::String getTimeText() const { return time_.getText(); }
     juce::String getCpuText() const { return cpu_.getText(); }
+    // What the last update() saw (chapter 15).
+    const engine::CpuStatus& getCpuStatus() const noexcept { return cpuStatus_; }
+    // Starts the CPU history over. After an export: the offline render runs processBlock() as
+    // fast as it can, and its "late" blocks were never heard (MainComponent::finishExport).
+    void forgetCpuHistory() { cpuMonitor_.emplace(engine_.getCpuMeter()); }
     const MeterBar& getMasterMeter() const noexcept { return masterMeter_; }
 
     void paint(juce::Graphics&) override;
@@ -58,6 +67,8 @@ private:
 
     engine::Engine& engine_;
     AudioHost& audioHost_;
+    std::optional<engine::CpuMonitor> cpuMonitor_{std::in_place, engine_.getCpuMeter()};
+    engine::CpuStatus cpuStatus_;
     std::unique_ptr<IconButton> returnButton_, playButton_, loopButton_;
     juce::Label barsBeats_, time_, cpu_, masterLabel_;
     juce::Slider tempo_{juce::Slider::LinearBar, juce::Slider::TextBoxLeft};

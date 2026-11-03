@@ -8,7 +8,8 @@
 //                                      are known, no callback is running -> Engine::prepare()
 //   audioDeviceIOCallbackWithContext   every buffer: wrap JUCE's float** as a dawlab::AudioBlock
 //      (inputs, outputs, n)            (no copy) and call Engine::processBlock(), then feed the
-//                                      spectrum analyzer and measure the CPU load
+//                                      spectrum analyzer (the engine measures its own CPU
+//                                      load, chapter 15: Engine::getCpuMeter())
 //   audioDeviceStopped()               the device stopped (settings changed, app closing)
 //
 // There is no conversion layer in between: JUCE hands us non-interleaved float channel
@@ -57,7 +58,6 @@ public:
     // ---- status (any thread) --------------------------------------------------------------
     double getSampleRate() const noexcept { return sampleRate_.load(); }
     int getBlockSize() const noexcept { return blockSize_.load(); }
-    float getCpuLoad() const noexcept { return cpuLoad_.load(std::memory_order_relaxed); } // 0..1, smoothed
     uint64_t getNumCallbacks() const noexcept { return callbacks_.load(std::memory_order_relaxed); }
     juce::String getDeviceDescription() const;
 
@@ -105,7 +105,6 @@ private:
     std::atomic<double> sampleRate_{0.0};
     std::atomic<int> blockSize_{0};
     std::atomic<int> outputLatency_{0};
-    std::atomic<float> cpuLoad_{0.0f};
     std::atomic<uint64_t> callbacks_{0};
     std::atomic<bool> analyzerReady_{false};
     bool attached_ = false;

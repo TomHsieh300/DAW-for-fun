@@ -104,7 +104,8 @@ TransportBar::TransportBar(engine::Engine& engine, AudioHost& audioHost) : engin
     addAndMakeVisible(loudness_);
     cpu_.setJustificationType(juce::Justification::centredRight);
     cpu_.setColour(juce::Label::textColourId, DawColours::textDim());
-    cpu_.setTooltip("Time spent in the audio callback / time available");
+    cpu_.setTooltip("Time the engine needs per audio block / time the block lasts (smoothed). Red: blocks came too "
+                    "late and the output had dropouts");
     addAndMakeVisible(cpu_);
     update();
 }
@@ -140,7 +141,13 @@ void TransportBar::update() {
     const engine::ChannelStrip& master = engine_.getMixer().getMaster();
     masterMeter_.setLevels(master.getPeakDb(0), master.getPeakDb(1), master.getPeakHoldDb(0), master.getPeakHoldDb(1));
     loudness_.setValues(master.getMomentaryLufs(), master.getShortTermLufs(), master.getIntegratedLufs());
-    cpu_.setText("CPU " + juce::String(juce::roundToInt(100.0f * audioHost_.getCpuLoad())) + "%", juce::dontSendNotification);
+    cpuStatus_ = cpuMonitor_->poll(juce::Time::getMillisecondCounterHiRes() * 0.001);
+    const bool overload = cpuStatus_.state == engine::CpuState::Overload;
+    cpu_.setText(overload ? juce::String("CPU overload") : "CPU " + juce::String(juce::roundToInt(100.0f * cpuStatus_.load)) + "%",
+                 juce::dontSendNotification);
+    cpu_.setColour(juce::Label::textColourId, overload                                    ? DawColours::meterHigh()
+                                              : cpuStatus_.state == engine::CpuState::High ? DawColours::accentWarm()
+                                                                                          : DawColours::textDim());
 }
 
 void TransportBar::paint(juce::Graphics& g) {
@@ -164,7 +171,7 @@ void TransportBar::resized() {
     area.removeFromLeft(14);
     tempo_.setBounds(area.removeFromLeft(130).reduced(0, 4));
     area.removeFromLeft(20);
-    cpu_.setBounds(area.removeFromRight(80));
+    cpu_.setBounds(area.removeFromRight(100));
     area.removeFromRight(10);
     loudness_.setBounds(area.removeFromRight(230).reduced(0, 4));
     area.removeFromRight(10);

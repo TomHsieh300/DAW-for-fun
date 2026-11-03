@@ -139,6 +139,12 @@ void MainComponent::tick() {
     if (!isExporting())
         engine_.collectGarbage();
     transportBar_.update();
+    // Chapter 15: while the CPU display is red (a dropout in the last 2 s), the status line says
+    // in words what happened and what to do; this matters more than any other message.
+    const juce::String dropouts = "Audio dropouts: the mix takes longer to compute than it lasts. Remove tracks or "
+                                  "effects, or choose a larger buffer size in Audio settings";
+    if (transportBar_.getCpuStatus().state == engine::CpuState::Overload && !isExporting() && getStatus() != dropouts)
+        setStatus(dropouts);
     arrangement_.update();
     mixer_.update();
     if (audioHost_.isAnalyzerReady())
@@ -431,6 +437,7 @@ void MainComponent::exportMixdown(const juce::File& file) {
 void MainComponent::finishExport(const ExportResult& result) {
     exportJob_.reset();
     exportOverlay_.reset();
+    transportBar_.forgetCpuHistory(); // the render's blocks were not played in real time
     if (mode_ == Mode::Live && audioHost_.isDeviceOpen())
         audioHost_.setEngineAttached(true);
     if (result.ok)

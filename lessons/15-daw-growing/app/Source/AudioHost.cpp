@@ -77,7 +77,7 @@ void AudioHost::audioDeviceAboutToStart(juce::AudioIODevice* device) {
     prepareInternal(device->getCurrentSampleRate(), device->getCurrentBufferSizeSamples());
 }
 
-void AudioHost::audioDeviceStopped() { cpuLoad_.store(0.0f); }
+void AudioHost::audioDeviceStopped() {}
 
 void AudioHost::prepareOffline(double sampleRate, int blockSize) {
     outputLatency_.store(0); // no device, no device buffers
@@ -118,7 +118,6 @@ void AudioHost::render(float* const* outputs, int numOutputChannels, int numSamp
     if (numOutputChannels <= 0 || numSamples <= 0)
         return;
     const juce::ScopedNoDenormals noDenormals; // FTZ/DAZ: denormals cost 100x on x86
-    const auto t0 = juce::Time::getHighResolutionTicks();
 
     // The engine renders stereo into the first two device channels, directly in the device's
     // memory: AudioBlock is just a view of JUCE's channel pointer array.
@@ -142,15 +141,6 @@ void AudioHost::render(float* const* outputs, int numOutputChannels, int numSamp
         }
     }
 
-    // CPU load = time spent / time available, smoothed (one-pole, ~10 callbacks).
-    const double sr = sampleRate_.load(std::memory_order_relaxed);
-    if (sr > 0.0) {
-        const double spent = juce::Time::highResolutionTicksToSeconds(juce::Time::getHighResolutionTicks() - t0);
-        const double available = numSamples / sr;
-        const float load = static_cast<float>(spent / available);
-        const float old = cpuLoad_.load(std::memory_order_relaxed);
-        cpuLoad_.store(old + 0.1f * (load - old), std::memory_order_relaxed);
-    }
     callbacks_.fetch_add(1, std::memory_order_relaxed);
 }
 
