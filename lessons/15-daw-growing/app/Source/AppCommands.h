@@ -19,6 +19,9 @@ enum : juce::CommandID {
     loadDemoSong = 0x2001,
     newProject,
     loadAudioIntoTrack,   // into the selected track
+    openProject,          // chapter 15, Step 8
+    saveProject,
+    saveProjectAs,
     exportMixdown,
     showAudioSettings,
     // (quit is juce::StandardApplicationCommandIDs::quit)

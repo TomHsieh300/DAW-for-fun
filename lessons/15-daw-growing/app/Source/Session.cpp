@@ -164,15 +164,13 @@ void Session::resetBusAndMasterSettings() {
     }
 }
 
-void Session::newProject() {
+void Session::clearProject() {
     // Deleting a track deletes its clips and inserts too; a new track starts with the engine's
     // defaults (Engine::addTrack): fader 0 dB, centre, no sends.
     removeAllTracks();
     removeBusAndMasterInserts();
     clipSampleRate_ = engine_.getSampleRate(); // no clips: nothing to convert
     resetBusAndMasterSettings();
-    for (int t = 0; t < kNewProjectTracks; ++t)
-        addTrack(TrackFormat::Mono); // until a loaded file says otherwise
     Transport& tr = engine_.getTransport();
     tr.stop();
     tr.setTempo(120.0);
@@ -180,11 +178,22 @@ void Session::newProject() {
     tr.setLoopRangeBars(1, 4);
     tr.setLoopEnabled(false);
     tr.setPosition(0);
+    engine_.requestReset();
+    projectName_ = "Untitled";
+    sendChangeMessage();
+}
+
+void Session::newProject() {
+    clearProject();
+    for (int t = 0; t < kNewProjectTracks; ++t)
+        addTrack(TrackFormat::Mono); // until a loaded file says otherwise
     // A safety limiter on the master, so that a new project can never clip the converter.
     if (InsertEffect* lim = setBuiltinInsert(ChannelRef::master(), kInsertSlotsPerStrip - 1, EffectType::Limiter))
         lim->setParameterByName("Ceiling", -1.0f);
-    engine_.requestReset();
-    projectName_ = "Untitled";
+}
+
+void Session::setProjectName(const juce::String& name) {
+    projectName_ = name;
     sendChangeMessage();
 }
 

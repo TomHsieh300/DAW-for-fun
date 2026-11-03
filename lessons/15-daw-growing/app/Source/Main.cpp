@@ -34,6 +34,7 @@ public:
         setUsingNativeTitleBar(true);
         auto content = std::make_unique<MainComponent>(MainComponent::Mode::Live);
         content_ = content.get();
+        content_->onTitleChanged = [this](const juce::String& title) { setName(title); };
         setContentOwned(content.release(), true);
         setResizable(true, true);
         setResizeLimits(1100, 720, 4000, 3000);

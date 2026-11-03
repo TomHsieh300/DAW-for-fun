@@ -149,6 +149,11 @@ void MainComponent::tick() {
     mixer_.update();
     if (audioHost_.isAnalyzerReady())
         mixer_.updateSpectrum(audioHost_.getSpectrumAnalyzer());
+    if (const juce::String title = getWindowTitle(); title != lastTitle_) {
+        lastTitle_ = title;
+        if (onTitleChanged)
+            onTitleChanged(title);
+    }
 }
 
 void MainComponent::simulatePlayback(int64_t numSamples, int blockSize) {
@@ -204,9 +209,96 @@ void MainComponent::newProject() {
     closeAllEditors();
     resumeAfterConversion_.store(false); // a new project starts stopped, conversion or not
     session_.newProject();
+    projectFile_ = juce::File();
     arrangement_.zoomToFit();
     setStatus("New project");
 }
+
+// ---- project files (chapter 15, Step 8) -----------------------------------------------------------
+
+ProjectIO::OpenResult MainComponent::openProject(const juce::File& file) {
+    if (isExporting()) {
+        ProjectIO::OpenResult busy;
+        busy.error = "an export is running";
+        return busy;
+    }
+    closeAllEditors();
+    resumeAfterConversion_.store(false); // an opened project starts stopped
+    const ProjectIO::OpenResult r = ProjectIO::open(session_, &pluginHost_, file);
+    if (!r.ok) {
+        setStatus("Not opened: " + r.error); // the current project is unchanged
+        if (mode_ == Mode::Live)
+            juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Open project", r.error);
+        return r;
+    }
+    projectFile_ = file;
+    session_.dispatchPendingMessages(); // the views show the opened tracks now
+    arrangement_.selectLane(0);
+    arrangement_.zoomToFit();
+    juce::String text = "Opened " + file.getFileName() + ": " + juce::String(session_.getNumTracks()) + " tracks, " +
+                        juce::String(r.audioFiles) + " audio files";
+    if (!r.warnings.isEmpty()) {
+        text << ", " << r.warnings.size() << " warning(s): " << r.warnings[0];
+        if (mode_ == Mode::Live)
+            juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Opened with warnings",
+                                                   r.warnings.joinIntoString("\n"));
+    }
+    setStatus(text);
+    return r;
+}
+
+bool MainComponent::saveProject(const juce::File& target) {
+    if (isExporting())
+        return false;
+    const juce::File file = target.hasFileExtension(ProjectIO::kFileExtension)
+                                ? target
+                                : target.withFileExtension(ProjectIO::kFileExtension);
+    juce::String error;
+    if (!ProjectIO::save(session_, file, error)) {
+        setStatus("Not saved: " + error);
+        if (mode_ == Mode::Live)
+            juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Save project", error);
+        return false;
+    }
+    projectFile_ = file;
+    session_.setProjectName(file.getFileNameWithoutExtension());
+    setStatus("Saved " + file.getFullPathName());
+    return true;
+}
+
+void MainComponent::openProjectInteractive() {
+    const juce::File folder = projectFile_ != juce::File() ? projectFile_.getParentDirectory()
+                                                          : juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
+    fileChooser_ = std::make_unique<juce::FileChooser>("Open project", folder, juce::String("*") + ProjectIO::kFileExtension);
+    juce::Component::SafePointer<MainComponent> safe(this);
+    fileChooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                              [safe](const juce::FileChooser& chooser) {
+                                  if (safe != nullptr && chooser.getResult() != juce::File())
+                                      safe->openProject(chooser.getResult());
+                              });
+}
+
+void MainComponent::saveProjectInteractive(bool saveAs) {
+    if (!saveAs && projectFile_ != juce::File()) {
+        saveProject(projectFile_);
+        return;
+    }
+    const juce::File suggestion =
+        projectFile_ != juce::File()
+            ? projectFile_
+            : juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+                  .getChildFile(session_.getProjectName() + ProjectIO::kFileExtension);
+    fileChooser_ = std::make_unique<juce::FileChooser>("Save project as", suggestion, juce::String("*") + ProjectIO::kFileExtension);
+    juce::Component::SafePointer<MainComponent> safe(this);
+    fileChooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles |
+                                  juce::FileBrowserComponent::warnAboutOverwriting,
+                              [safe](const juce::FileChooser& chooser) {
+                                  if (safe != nullptr && chooser.getResult() != juce::File())
+                                      safe->saveProject(chooser.getResult());
+                              });
+}
+
+juce::String MainComponent::getWindowTitle() const { return "DawLab 15 - " + session_.getProjectName(); }
 
 void MainComponent::loadDemoSongAsync() {
     setStatus("Generating the demo song...");
@@ -222,6 +314,7 @@ void MainComponent::loadDemoSongAsync() {
         safe->closeAllEditors();
         safe->resumeAfterConversion_.store(false);
         const int unknown = safe->session_.applyDemoSong(*song);
+        safe->projectFile_ = juce::File();
         safe->arrangement_.zoomToFit();
         safe->setStatus("Demo song loaded: 8 tracks, 19 inserts" +
                         (unknown ? ", " + juce::String(unknown) + " unknown parameters" : juce::String()));
@@ -233,6 +326,7 @@ int MainComponent::loadDemoSongNow() {
     resumeAfterConversion_.store(false);
     const engine::DemoSong song = engine::makeDemoSong(engine_.getSampleRate());
     const int unknown = session_.applyDemoSong(song);
+    projectFile_ = juce::File();
     arrangement_.zoomToFit();
     setStatus("Demo song loaded");
     return unknown;
@@ -636,7 +730,8 @@ void MainComponent::resized() {
 // ---- commands -------------------------------------------------------------------------------------------
 
 void MainComponent::getAllCommands(juce::Array<juce::CommandID>& c) {
-    const juce::CommandID ids[] = {CommandIDs::newProject, CommandIDs::loadDemoSong, CommandIDs::loadAudioIntoTrack, CommandIDs::exportMixdown,
+    const juce::CommandID ids[] = {CommandIDs::newProject, CommandIDs::openProject, CommandIDs::saveProject,
+                CommandIDs::saveProjectAs, CommandIDs::loadDemoSong, CommandIDs::loadAudioIntoTrack, CommandIDs::exportMixdown,
                 CommandIDs::showAudioSettings, juce::StandardApplicationCommandIDs::quit, CommandIDs::playStop,
                 CommandIDs::returnToStart, CommandIDs::toggleLoop, CommandIDs::seekBackOneBar, CommandIDs::seekForwardOneBar,
                 CommandIDs::selectNextTrack, CommandIDs::selectPreviousTrack, CommandIDs::toggleMuteSelected,
@@ -663,7 +758,22 @@ void MainComponent::getCommandInfo(juce::CommandID id, juce::ApplicationCommandI
         break;
     case CommandIDs::loadAudioIntoTrack:
         info.setInfo("Load audio into selected track...", "Load a WAV / AIFF file", CommandCategories::file, 0);
+        info.addDefaultKeypress('i', cmd); // chapter 15: Ctrl+O opens a project now
+        info.setActive(idle);
+        break;
+    case CommandIDs::openProject:
+        info.setInfo("Open project...", "Open a DawLab project file", CommandCategories::file, 0);
         info.addDefaultKeypress('o', cmd);
+        info.setActive(idle);
+        break;
+    case CommandIDs::saveProject:
+        info.setInfo("Save project", "Save the project to its file", CommandCategories::file, 0);
+        info.addDefaultKeypress('s', cmd);
+        info.setActive(idle);
+        break;
+    case CommandIDs::saveProjectAs:
+        info.setInfo("Save project as...", "Save the project to a new file", CommandCategories::file, 0);
+        info.addDefaultKeypress('s', cmd | ModifierKeys::shiftModifier);
         info.setActive(idle);
         break;
     case CommandIDs::exportMixdown:
@@ -767,6 +877,9 @@ bool MainComponent::perform(const InvocationInfo& info) {
     case CommandIDs::newProject: newProject(); break;
     case CommandIDs::loadDemoSong: loadDemoSongAsync(); break;
     case CommandIDs::loadAudioIntoTrack: chooseAudioFileForTrack(selected); break;
+    case CommandIDs::openProject: openProjectInteractive(); break;
+    case CommandIDs::saveProject: saveProjectInteractive(false); break;
+    case CommandIDs::saveProjectAs: saveProjectInteractive(true); break;
     case CommandIDs::exportMixdown: exportMixdownInteractive(); break;
     case CommandIDs::showAudioSettings: showAudioSettings(); break;
     case juce::StandardApplicationCommandIDs::quit:
@@ -811,6 +924,10 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
     switch (index) {
     case 0:
         m.addCommandItem(cm, CommandIDs::newProject);
+        m.addCommandItem(cm, CommandIDs::openProject);
+        m.addCommandItem(cm, CommandIDs::saveProject);
+        m.addCommandItem(cm, CommandIDs::saveProjectAs);
+        m.addSeparator();
         m.addCommandItem(cm, CommandIDs::loadDemoSong);
         m.addCommandItem(cm, CommandIDs::loadAudioIntoTrack);
         m.addSeparator();

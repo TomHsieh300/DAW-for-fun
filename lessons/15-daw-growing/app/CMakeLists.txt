@@ -45,6 +45,8 @@ set(L15_APP_SOURCES
     Source/ParameterPanel.cpp
     Source/ProjectFormat.h
     Source/ProjectFormat.cpp
+    Source/ProjectIO.h
+    Source/ProjectIO.cpp
     Source/Session.h
     Source/Session.cpp
     Source/SmokeTest.h

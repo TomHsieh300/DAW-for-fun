@@ -86,11 +86,16 @@ public:
     // 1-4 (off), and a Limiter (ceiling -1 dBFS) in master slot 4. The engine must be prepared.
     void newProject();
 
+    // A project with nothing in it: no tracks, no inserts, buses and master at their defaults,
+    // tempo 120, loop bars 1-4 (off). What ProjectIO::open() fills in (chapter 15, Step 8).
+    void clearProject();
+
     // Replaces the whole project with `song` (generated at the engine's sample rate, see
     // MediaLoader::loadDemoSong). Returns the number of unknown parameter names (0 expected).
     int applyDemoSong(const engine::DemoSong& song);
 
     juce::String getProjectName() const { return projectName_; }
+    void setProjectName(const juce::String& name);
 
     // ---- tracks ------------------------------------------------------------------------------
     // Adds a track at display position `index` (-1 = at the end) with a new id. Returns the id,

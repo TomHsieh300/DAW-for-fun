@@ -27,6 +27,7 @@
 #include "MediaLoader.h"
 #include "MixerView.h"
 #include "ParameterPanel.h"
+#include "ProjectIO.h"
 #include "Session.h"
 #include "TransportBar.h"
 
@@ -75,6 +76,17 @@ public:
     void toggleLoop();
     void seekBars(int deltaBars);
     void newProject();
+    // Project files (chapter 15, Step 8). openProject() and saveProject() work synchronously and
+    // report on the status line (and, in Live mode, in a message box); the *Interactive versions
+    // ask for the file first. Save asks only for a project that has no file yet.
+    ProjectIO::OpenResult openProject(const juce::File& file);
+    bool saveProject(const juce::File& file);
+    void openProjectInteractive();
+    void saveProjectInteractive(bool saveAs);
+    juce::File getProjectFile() const { return projectFile_; }
+    // "DawLab 15 - <project name>"; onTitleChanged tells the window when it changes (from tick()).
+    juce::String getWindowTitle() const;
+    std::function<void(const juce::String& title)> onTitleChanged;
     void loadDemoSongAsync();       // generates on the loader thread
     int loadDemoSongNow();          // synchronous (snapshot, tests); returns unknown parameter count
     void chooseAudioFileForTrack(engine::TrackId track);
@@ -167,6 +179,8 @@ private:
     AudioBuffer offlineScratch_;
     juce::ApplicationCommandTarget* extraCommandTarget_ = nullptr;
     bool conversionRunning_ = false;                 // message thread only
+    juce::File projectFile_;                         // where Save writes; none for a new project
+    juce::String lastTitle_;
     std::atomic<bool> resumeAfterConversion_{false}; // also set by the device thread
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)

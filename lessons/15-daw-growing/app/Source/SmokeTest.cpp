@@ -8,6 +8,7 @@
 #include "Meters.h"
 #include "MixerView.h"
 #include "ParameterPanel.h"
+#include "ProjectIO.h"
 #include "Session.h"
 #include "VstInsert.h"
 
@@ -751,6 +752,115 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         e.removeInsert(busyTrack, e.getNumInserts(busyTrack) - 1);
         e.applyPendingCommandsOffline();
         e.collectGarbage();
+    }
+
+    // 6d. Save and open (chapter 15, Step 8): the demo song with changes it does not have is saved,
+    //     opened in a second window, rendered by both, and saved again from the second one.
+    {
+        const juce::File dir = juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l15_project");
+        dir.deleteRecursively();
+        dir.createDirectory();
+        const juce::File file = dir.getChildFile("Demo.dawlab");
+
+        MainComponent a(MainComponent::Mode::Offline);
+        DAWLAB_CHECK(a.loadDemoSongNow() == 0);
+        Session& sa = a.getSession();
+        Engine& ea = a.getEngine();
+        const TrackId bass = sa.getTrackId(1), lead = sa.getTrackId(5);
+        sa.setStripName(sa.trackRef(bass), "Bass \"DI\"");
+        ea.getTrack(lead)->setMute(true);
+        ea.getTrack(bass)->setSendLevelDb(0, -12.5f);
+        ea.getTrack(bass)->setSendPreFader(0, true);
+        sa.setInsertBypassed(sa.trackRef(sa.getTrackId(0)), 0, true);
+        ea.getTransport().setTempo(118.0);
+        ea.getTransport().setLoopRangeBars(2, 5);
+        ea.getTransport().setLoopEnabled(true);
+        a.getArrangement().selectLane(7);
+        a.addTrack(TrackFormat::Stereo); // an empty track at the end
+        const bool saved = a.saveProject(file);
+        const juce::String text1 = file.loadFileAsString();
+        const int wavs = ProjectIO::mediaFolderFor(file).getNumberOfChildFiles(juce::File::findFiles, "*.wav");
+        // The files are named by content: buffers with equal samples are stored once.
+        const int distinct = static_cast<int>(ProjectIO::capture(sa, "x").media.size());
+        const auto wavTime = ProjectIO::mediaFolderFor(file).findChildFiles(juce::File::findFiles, false, "*.wav")[0].getLastModificationTime();
+        DAWLAB_CHECK(a.saveProject(file)); // unchanged audio is not written again
+        const bool wavsKept = ProjectIO::mediaFolderFor(file).findChildFiles(juce::File::findFiles, false, "*.wav")[0].getLastModificationTime() == wavTime;
+        ea.getTransport().setLoopEnabled(false); // render the first 2 s straight through, in both
+        ea.applyPendingCommandsOffline();
+        const AudioBuffer before = renderSeconds(ea, 2.0);
+
+        MainComponent b(MainComponent::Mode::Offline);
+        b.addTrack(TrackFormat::Mono); // this window's next ids are now not the ones `a` had
+        const ProjectIO::OpenResult opened = b.openProject(file);
+        Session& sb = b.getSession();
+        Engine& eb = b.getEngine();
+        const bool loopBack = eb.getTransport().isLoopEnabled() && eb.getTransport().getTempo() == 118.0;
+        eb.getTransport().setLoopEnabled(false);
+        eb.applyPendingCommandsOffline();
+        const AudioBuffer after = renderSeconds(eb, 2.0);
+        const float diff = maxAbsDiff(before, 0, after, 0, before.getNumSamples());
+        eb.getTransport().setLoopEnabled(true);
+        const juce::File copy = dir.getChildFile("copy").getChildFile("Demo.dawlab");
+        copy.getParentDirectory().createDirectory();
+        const bool savedAgain = b.saveProject(copy);
+        const bool sameText = copy.loadFileAsString() == text1;
+        std::printf("6d. save: %s, %d lines, %d WAVs for 28 buffers with %d different contents (a second save\n"
+                    "    rewrote none: %s); open: %s, %d tracks, %d warnings,\n"
+                    "    format %d, title \"%s\"; 2 s render of both: max |diff| = %.3g; saved again elsewhere: same text %s\n",
+                    saved ? "ok" : "FAILED", juce::StringArray::fromLines(text1).size(), wavs, distinct, wavsKept ? "yes" : "no",
+                    opened.ok ? "ok" : opened.error.toRawUTF8(), sb.getNumTracks(), opened.warnings.size(),
+                    opened.formatVersion, b.getWindowTitle().toRawUTF8(), static_cast<double>(diff), sameText ? "yes" : "no");
+        DAWLAB_CHECK(saved && savedAgain && opened.ok && opened.warnings.isEmpty());
+        DAWLAB_CHECK(wavs == distinct && distinct > 0 && distinct <= 28 && opened.audioFiles == wavs && wavsKept);
+        DAWLAB_CHECK(sb.getNumTracks() == sa.getNumTracks() && sb.getNumTracks() == kDemoTracks + 1);
+        DAWLAB_CHECK(sb.getStripName(sb.trackRef(sb.getTrackId(1))) == "Bass \"DI\"");
+        DAWLAB_CHECK(sb.getTrackFormat(sb.getTrackId(8)) == TrackFormat::Stereo && sb.getClips(sb.getTrackId(8)).empty());
+        DAWLAB_CHECK(loopBack);
+        DAWLAB_CHECK(diff == 0.0f && peakAbs(after) > 0.01f);
+        DAWLAB_CHECK(sameText);
+        DAWLAB_CHECK(b.getProjectFile() == copy && b.getWindowTitle() == "DawLab 15 - Demo");
+
+        // A broken file is refused with its line, and the open project stays as it was.
+        const juce::File broken = dir.getChildFile("broken.dawlab");
+        broken.replaceWithText("DawLabProject 3\nsampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\nclip 2 0 10 \"x.wav\"\n");
+        const int tracksBefore = sb.getNumTracks();
+        const ProjectIO::OpenResult refused = b.openProject(broken);
+        std::printf("    broken file: %s; still %d tracks, status \"%s\"\n", refused.error.toRawUTF8(), sb.getNumTracks(),
+                    b.getStatus().toRawUTF8());
+        DAWLAB_CHECK(!refused.ok && refused.error.contains("line 4"));
+        DAWLAB_CHECK(sb.getNumTracks() == tracksBefore && sb.getStripName(sb.trackRef(sb.getTrackId(1))) == "Bass \"DI\"");
+        DAWLAB_CHECK(b.getStatus().startsWith("Not opened"));
+
+        // Without its audio folder the project still opens: no clips, one warning per file.
+        const juce::File alone = dir.getChildFile("alone").getChildFile("Demo.dawlab");
+        alone.getParentDirectory().createDirectory();
+        file.copyFileTo(alone);
+        const ProjectIO::OpenResult partial = b.openProject(alone);
+        std::printf("    without its audio: %s, %d tracks, %d clips, %d warnings (\"%s\")\n", partial.ok ? "opened" : "refused",
+                    sb.getNumTracks(), static_cast<int>(sb.getClipSources().size()), partial.warnings.size(),
+                    partial.warnings[0].toRawUTF8());
+        DAWLAB_CHECK(partial.ok && partial.warnings.size() == distinct && sb.getClipSources().empty());
+        DAWLAB_CHECK(sb.getNumTracks() == kDemoTracks + 1);
+
+        // Opened by an engine at 44.1 kHz: positions and audio are converted.
+        MainComponent c(MainComponent::Mode::Offline);
+        c.getAudioHost().prepareOffline(44100.0, 512);
+        const ProjectIO::OpenResult at44 = c.openProject(file);
+        Session& sc = c.getSession();
+        const auto& bassClips = sc.getClips(sc.getTrackId(1));
+        const bool converted = bassClips.size() > 2 && bassClips[2].start == 88200 && sc.getClipSampleRate() == 44100.0;
+        c.getEngine().applyPendingCommandsOffline();
+        const AudioBuffer at44Render = renderSeconds(c.getEngine(), 1.0);
+        std::printf("    opened at 44.1 kHz: %s, bass clip 3 at %lld (88200 expected), peak %.1f dBFS\n",
+                    at44.ok ? "ok" : at44.error.toRawUTF8(), bassClips.size() > 2 ? static_cast<long long>(bassClips[2].start) : -1LL,
+                    static_cast<double>(gainToDb(peakAbs(at44Render))));
+        DAWLAB_CHECK(at44.ok && converted);
+        DAWLAB_CHECK(!hasNanOrInf(at44Render) && peakAbs(at44Render) > 0.01f);
+        for (MainComponent* m : {&a, &b, &c}) {
+            m->getEngine().applyPendingCommandsOffline();
+            m->getEngine().collectGarbage();
+            DAWLAB_CHECK(m->getEngine().getGarbageLeaked() == 0 && m->getEngine().getCommandsDropped() == 0);
+        }
     }
 
     // 7. A device change to 44.1 kHz: clip positions follow (Session::handleSampleRateChange).
