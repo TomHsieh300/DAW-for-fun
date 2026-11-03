@@ -40,3 +40,6 @@ l15_add_test(l15_test_realtime_safety   tests/test_realtime_safety.cpp)
 l15_add_test(l15_test_demo_song         tests/test_demo_song.cpp)
 l15_add_test(l15_test_track_format      tests/test_track_format.cpp)
 
+# The pool itself (Step 6), with a pool small enough to fill.
+l15_add_test(l15_test_track_pool        tests/test_track_pool.cpp)
+target_compile_definitions(l15_test_track_pool PRIVATE DAWLAB_ENGINE_MAX_TRACKS=16)

@@ -11,6 +11,10 @@
 // while the main thread plays "UI": faders, pans, mutes, solos, sends, effect parameters,
 // bypass, add / remove / move / replace inserts, new clip lists, seeks, loops, tempo,
 // play / stop and garbage collection.
+// Part 3 (chapter 15) does the same while tracks come and go: random add / remove track, clips
+// and inserts on the tracks that exist, and late commands for tracks that were removed. The
+// audio thread must still never allocate, and afterwards the UI's slot table and the audio
+// thread's must agree.
 
 #include "TestHelpers.h"
 
@@ -297,10 +301,120 @@ void testEngineUnderFire() {
     DAWLAB_CHECK(uiOps > 100);
 }
 
+// ---- part 3: tracks that come and go ----------------------------------------------------------
+void testTracksComeAndGo() {
+    Engine e;
+    e.prepare(kSampleRate, 512);
+    e.addInsert(ChannelRef::bus(0), -1, createEffect(EffectType::Reverb));
+    e.getTransport().setLoopRange(0, 2 * 96000);
+    e.getTransport().setLoopEnabled(true);
+    e.getTransport().play();
+
+    constexpr long kUiOps = 3000;
+    std::atomic<bool> done{false};
+    std::atomic<long> audioAllocs{0};
+    std::atomic<int> nanBlocks{0};
+    std::thread audio([&] {
+        AudioBuffer buffer(2, 1024);
+        std::mt19937 rng(5);
+        std::uniform_int_distribution<int> sizeDist(16, 1024);
+        while (!done.load()) {
+            AudioBlock block = buffer.toBlock().getSubBlock(0, sizeDist(rng));
+            const long before = gAllocs.load() + gFrees.load();
+            {
+                CountScope scope;
+                e.processBlock(block);
+            }
+            audioAllocs.fetch_add(gAllocs.load() + gFrees.load() - before);
+            if (blockHasNan(block))
+                nanBlocks.fetch_add(1);
+        }
+    });
+
+    std::mt19937 rng(11);
+    std::uniform_real_distribution<float> u(0.0f, 1.0f);
+    auto pick = [&](int n) { return static_cast<int>(u(rng) * static_cast<float>(n)) % n; };
+    auto pluck = std::make_shared<const AudioBuffer>(makePluckSequence(kSampleRate, 1.0, 0.3f));
+    std::vector<TrackId> live;
+    std::vector<ChannelRef> removed; // references of deleted tracks, for late commands
+    std::uint32_t nextId = 1;
+    int adds = 0, removes = 0, late = 0;
+    for (long op = 0; op < kUiOps; ++op) {
+        const int kind = pick(10);
+        if (kind < 3 && live.size() < 24) { // a Debug build stays reasonably fast with <= 24 tracks
+            const TrackId id{nextId++};
+            if (e.addTrack(id, u(rng) < 0.5f ? TrackFormat::Mono : TrackFormat::Stereo).index >= 0) {
+                live.push_back(id);
+                ++adds;
+            }
+        } else if (kind < 5 && !live.empty()) {
+            const size_t i = static_cast<size_t>(pick(static_cast<int>(live.size())));
+            const ChannelRef ref = e.trackRef(live[i]);
+            if (e.removeTrack(live[i])) {
+                removed.push_back(ref);
+                live.erase(live.begin() + static_cast<std::ptrdiff_t>(i));
+                ++removes;
+            }
+        } else if (kind < 6 && !live.empty()) {
+            std::vector<Clip> clips;
+            for (int k = 0; k < 1 + pick(3); ++k)
+                clips.push_back(Clip::fromBuffer(pluck, pick(150000)));
+            e.setTrackClips(live[static_cast<size_t>(pick(static_cast<int>(live.size())))], std::move(clips));
+        } else if (kind < 7 && !live.empty()) {
+            const ChannelRef ref = e.trackRef(live[static_cast<size_t>(pick(static_cast<int>(live.size())))]);
+            if (e.getNumInserts(ref) < 3)
+                e.addInsert(ref, -1, createEffect(static_cast<EffectType>(pick(kNumUserEffectTypes))));
+        } else if (kind < 8 && !removed.empty()) { // late commands for a deleted track
+            const ChannelRef stale = removed[static_cast<size_t>(pick(static_cast<int>(removed.size())))];
+            e.pushCommand(Command::addInsert(stale, -1, createEffect(EffectType::Gain).release()));
+            e.pushCommand(Command::replaceClips(stale, new std::vector<Clip>{Clip::fromBuffer(pluck, 0)}));
+            e.pushCommand(Command::removeTrack(stale));
+            ++late;
+        } else if (!live.empty()) {
+            Track* t = e.getTrack(live[static_cast<size_t>(pick(static_cast<int>(live.size())))]);
+            t->setGainDb(-30.0f + 30.0f * u(rng));
+            t->setPan(2.0f * u(rng) - 1.0f);
+            t->setSolo(u(rng) < 0.05f);
+            t->setSendLevelDb(0, -20.0f);
+        }
+        e.collectGarbage();
+        if (op % 8 == 0)
+            std::this_thread::sleep_for(std::chrono::microseconds(200));
+    }
+    done.store(true);
+    audio.join();
+    // Drain on this thread: apply what is still queued, free what came back.
+    AudioBuffer block(2, 64);
+    for (int i = 0; i < 50 && (e.getPendingCommands() > 0 || e.getPendingGarbage() > 0); ++i) {
+        e.collectGarbage();
+        e.processBlock(block);
+    }
+    e.collectGarbage();
+
+    int mismatches = 0;
+    for (TrackId id : live) {
+        const int slot = e.slotOf(id);
+        if (slot < 0 || e.getMixer().trackInSlot(slot) != id)
+            ++mismatches;
+    }
+    std::printf("  tracks come and go: %d adds, %d removes, %d rounds of late commands; %zu tracks left, the audio thread\n"
+                "  has %d, %d slot mismatches; allocations + frees on the audio thread: %ld, NaN blocks %d, garbage leaked %llu\n",
+                adds, removes, late, live.size(), e.getMixer().getNumActiveTracks(), mismatches, audioAllocs.load(),
+                nanBlocks.load(), static_cast<unsigned long long>(e.getGarbageLeaked()));
+    DAWLAB_CHECK(adds > 300 && removes > 200 && late > 100);
+    DAWLAB_CHECK(e.getMixer().getNumActiveTracks() == static_cast<int>(live.size()));
+    DAWLAB_CHECK(mismatches == 0);
+    DAWLAB_CHECK(audioAllocs.load() == 0);
+    DAWLAB_CHECK(nanBlocks.load() == 0);
+    DAWLAB_CHECK(e.getGarbageLeaked() == 0);
+    DAWLAB_CHECK(e.getPendingCommands() == 0);
+}
+
 } // namespace
 
 int main() {
     testEachEffect();
     testEngineUnderFire();
+    testTracksComeAndGo();
     return dawlab::test::summary("l15_test_realtime_safety");
 }
