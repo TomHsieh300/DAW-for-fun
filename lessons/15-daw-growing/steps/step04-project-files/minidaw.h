@@ -17,7 +17,7 @@
 //   - The file says which format version and which sample rate it was written with.
 //
 // This snapshot is the model only (the UI thread). The audio side of Steps 2 and 3 does not
-// change; Step 6 builds the engine's tracks from an opened Project.
+// change; Step 7 builds the engine's tracks from an opened Project.
 //
 // The format (text, UTF-8, one item per line; '#' starts a comment outside quotes):
 //

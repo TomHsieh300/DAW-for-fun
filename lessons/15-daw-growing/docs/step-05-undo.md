@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-05-undo.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 4 - Saving and opening projects](step-04-project-files.md) | Next: Step 6 - The app (planned)
+[Overview](../README.md) | Previous: [Step 4 - Saving and opening projects](step-04-project-files.md) | Next: [Step 6 - The engine with a track pool](step-06-engine-pool.md)
 
 ## Goal
 
@@ -120,7 +120,7 @@ an undo *tree* instead; that is a lot more machinery for a rarely used feature.)
   keeps its serial through undo and redo. `markSaved()` remembers the serial of the newest
   entry; the project is modified when the newest entry is a different one. That stays correct
   after undo, redo, new edits and dropped entries - and it is what puts the `*` in the window
-  title in Step 6.
+  title in Step 7.
 - **Changes behind its back.** If something changes the project without going through the
   history (a bug elsewhere), an old entry may no longer apply. `undo()` then refuses, leaves the
   project exactly as it is (all or nothing again) and drops that entry, instead of half-applying
@@ -140,7 +140,7 @@ hence `applyEdit`.
 `juce::UndoManager` stores `juce::UndoableAction` objects with virtual `perform()` and `undo()`,
 groups them into transactions with `beginNewTransaction()`, and merges with
 `UndoableAction::createCoalescedAction()`. The ideas are the same - an action, a transaction for
-one user action, merging, a limit - and Step 6 can wrap the `History` in that interface or use
+one user action, merging, a limit - and Step 7 can wrap the `History` in that interface or use
 `UndoManager` directly with actions that hold an `Edit`. This step builds its own small history
 to keep chapter 15 free of JUCE until the app, and because 150 lines show the whole mechanism.
 

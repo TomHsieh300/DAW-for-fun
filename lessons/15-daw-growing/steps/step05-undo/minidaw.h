@@ -12,7 +12,7 @@
 //
 // Ids (Step 1) are what make this work: an undo entry for "Bass" still finds Bass after other
 // tracks were added, deleted or moved, and deleting Bass and undoing it brings Bass back with the
-// SAME id, so older entries that name it keep working. The model is Step 4's Project; Step 6
+// SAME id, so older entries that name it keep working. The model is Step 4's Project; Step 7
 // sends the same edits to the engine (Step 2) as well.
 //
 // YOUR TURN (Step 5): write applyEdit(), History::perform(), History::undo() and History::redo() in

@@ -2,7 +2,7 @@
 
 [English](README.md) | **繁體中文**
 
-> **狀態：進行中。** Step 1-5 已完成；Step 6 還在規劃中，列在下面讓你看到本章接下來的方向。
+> **狀態：進行中。** Step 1-6 已完成；Step 7 還在規劃中，列在下面讓你看到本章接下來的方向。
 
 第 14 章刻意把 engine 做成 *static*：8 個 track、2 個 FX bus，所有容器都在 `prepare()` 一次配置
 好，audio thread 永遠不用擴充任何東西。這讓 real-time 的規則很容易遵守。但一個真的能拿來用的 DAW
@@ -54,7 +54,8 @@
 | 3 | [CPU 預算](docs/step-03-cpu-budget.zh-TW.md) | callback 負載與 xrun 次數；為什麼真正的上限是 CPU 時間，而不是 track 數 | 完成 |
 | 4 | [存檔與開啟專案](docs/step-04-project-files.zh-TW.md) | 以 track id 為基礎、帶版本的專案檔；在不同 sample rate 下開啟 | 完成 |
 | 5 | [Undo 與 redo](docs/step-05-undo.zh-TW.md) | 可以反轉的 command、undo 歷史、哪些操作應該（或不應該）可以 undo | 完成 |
-| 6 | App | 可以捲動的 arrangement 與 mixer、GUI 中新增 / 刪除 track、File 選單 | 規劃中 |
+| 6 | [有 track 池的 engine](docs/step-06-engine-pool.zh-TW.md) | 複製並修改第 14 章的 engine：有 id 的 `kMaxTracks` 個 slot、新增 / 刪除 track 的 command、CPU meter；移植第 14 章的測試、池的測試、ThreadSanitizer | 完成 |
+| 7 | App | 可以捲動的 arrangement 與 mixer、GUI 中新增 / 刪除 track、File 選單、undo、CPU 警告 | 規劃中 |
 
 </div>
 
