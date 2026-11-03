@@ -143,8 +143,6 @@ struct ChannelName {
     std::uint32_t index = 0; // track id or bus index
 };
 
-bool operator==(const ChannelName& a, const ChannelName& b) { return a.kind == b.kind && a.index == b.index; }
-
 std::string channelText(ChannelName c) {
     switch (c.kind) {
     case ChannelName::Kind::Track: return "track:" + std::to_string(c.index);
