@@ -2,7 +2,7 @@
 
 [English](step-07-app-tracks.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 6 - 有 track 池的 engine](step-06-engine-pool.zh-TW.md) | 下一步：Step 8 - 在 app 中存檔與開啟（規劃中）
+[總覽](../README.zh-TW.md) | 上一步：[Step 6 - 有 track 池的 engine](step-06-engine-pool.zh-TW.md) | 下一步：[Step 8 - 在 app 中存檔與開啟](step-08-app-files.zh-TW.md)
 
 ## 目標
 

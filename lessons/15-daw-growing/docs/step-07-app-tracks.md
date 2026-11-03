@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-07-app-tracks.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 6 - The engine with a track pool](step-06-engine-pool.md) | Next: Step 8 - Saving and opening in the app (planned)
+[Overview](../README.md) | Previous: [Step 6 - The engine with a track pool](step-06-engine-pool.md) | Next: [Step 8 - Saving and opening in the app](step-08-app-files.md)
 
 ## Goal
 
