@@ -65,7 +65,7 @@ Install the command-line tools and CMake (`xcode-select --install`, `brew instal
 Run all commands in PowerShell from the project root (`scripts/build.ps1` runs configure → build → ctest in order):
 
 ```powershell
-.\scripts\build.ps1                                   # all pure C++ parts (00–12, the engines of 14 and 15, chapter 16's steps), Debug, and run all tests
+.\scripts\build.ps1                                   # all pure C++ parts (00–12, the engines of 14, 15 and 16, chapter 16's steps), Debug, and run all tests
 .\scripts\build.ps1 -Only 02-filter                   # build only chapter 02
 .\scripts\build.ps1 -Only 02-filter,03-eq             # several chapters, comma-separated
 .\scripts\build.ps1 -Juce                             # also build the JUCE parts of chapters 13–15
@@ -82,7 +82,7 @@ If PowerShell says scripts cannot be loaded, use `powershell -ExecutionPolicy By
 On **Linux / macOS**, run `scripts/build.sh` from the project root in a terminal; it takes the same options:
 
 ```bash
-./scripts/build.sh                                    # all pure C++ parts (00–12, the engines of 14 and 15, chapter 16's steps), Debug, and run all tests
+./scripts/build.sh                                    # all pure C++ parts (00–12, the engines of 14, 15 and 16, chapter 16's steps), Debug, and run all tests
 ./scripts/build.sh --only 02-filter,03-eq             # several chapters, comma-separated
 ./scripts/build.sh --only 14-daw-8track --juce        # build only chapter 14, with the JUCE app
 ./scripts/build.sh --config Release --no-test         # Release, build only
@@ -171,7 +171,7 @@ The chapters go in numeric order, and every chapter uses components from the ear
 | [13](lessons/13-vst-hosting/README.md) | VST3 plugins and hosting (JUCE) | plugin architecture and lifecycle, parameters and state, latency and PDC, scanning and loading third-party VST3 plugins | `DawLabCompressor` / `DawLabLimiter` (VST3), the `dawlab_plugin_host` library |
 | [14](lessons/14-daw-8track/README.md) | **Capstone: the 8-track DAW** | transport and the two kinds of clock, clips, mixer and FX buses, a lock-free command queue, PDC, offline bounce, real-time safety tests, the JUCE GUI, VST3 inserts | the pure C++ `dawlab::engine` and the JUCE app "DawLab 8" |
 | [15](lessons/15-daw-growing/README.md) | Growing the DAW | stable track ids, a pool of track slots, a CPU budget, a project file, undo / redo: first as small build-along snapshots, then in a copy of chapter 14's engine and app; ThreadSanitizer | the engine with a track pool and the JUCE app "DawLab 15" (add / delete tracks, save / open, undo / redo, CPU warning) |
-| [16](lessons/16-automation/README.md) | Automation (in progress) | points on the timeline with normalized values, Linear / Hold segments and jumps, reading a block with one search, sample-accurate playback with a self-checking cursor and a click-free limit, Read / Touch / Latch / Write with recording and thinning, targets that survive moves, undo and the project file, the engine with faders that wait for delayed audio; planned: the app | the build-along snapshots of chapter 16 |
+| [16](lessons/16-automation/README.md) | Automation | points on the timeline with normalized values, sample-accurate playback, Read / Touch / Latch / Write with recording and thinning, targets that survive moves, undo and the project file, faders that wait for delayed audio | **DawLab 16**: lanes under the tracks, points to draw and drag, the mode switch |
 
 </div>
 

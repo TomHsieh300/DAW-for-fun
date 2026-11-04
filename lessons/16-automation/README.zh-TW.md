@@ -2,7 +2,9 @@
 
 [English](README.md) | **繁體中文**
 
-> **狀態：進行中。** Step 1-5 已完成；Step 6 還在規劃中，列在下面讓你看到本章接下來的方向。
+> **狀態：完成。** 六個步驟都已完成；本章的成果是 **DawLab 16**。
+
+<p align="center"><img src="docs/images/dawlab16.png" alt="DawLab 16：Drums 和 Bass track 下方的 automation lane"></p>
 
 DawLab 15（第 15 章）播放的混音，fader 和旋鈕都停在使用者放的位置。真正的音樂會動：fader 在副歌時推上去，filter 在八小節裡慢慢
 打開，delay 只在某一句打開。DAW 把這些動作記錄成 **automation**：每個參數一條沿著時間軸的曲線，audio thread 播放時照著它走。
@@ -44,7 +46,7 @@ automation 會碰到第 15 章做的每一層。它是專案檔和 undo 歷史�
 | 3 | [Automation 與使用者](docs/step-03-modes.zh-TW.md) | Read / Touch / Latch / Write；audio thread 替動作蓋時間戳，UI thread 把它分組成 pass、精簡後打入曲線 | 完成 |
 | 4 | [曲線屬於什麼](docs/step-04-targets.zh-TW.md) | 用 track id、effect id 和參數名稱指定對象；lane 隨擁有者離開和回來；保留無法辨識的參數；專案檔與 undo | 完成 |
 | 5 | [有 automation 的 engine](docs/step-05-engine.zh-TW.md) | 第 15 章 engine 的複本，lane 放在 strip 和效果器裡、fader 會等待延遲的音訊、一個 capture queue；ThreadSanitizer | 完成 |
-| 6 | 有 automation 的 app | track 下方的 lane、畫點和拖動點、模式切換 | 規劃中 |
+| 6 | [有 automation 的 app](docs/step-06-app.zh-TW.md) | 第 15 章 app 的複本：track 下方的 lane、畫點和拖動點、模式切換、用 fader 錄製、專案格式 4 | 完成 |
 
 </div>
 
@@ -54,6 +56,11 @@ automation 會碰到第 15 章做的每一層。它是專案檔和 undo 歷史�
 足夠了，對 automation 卻不夠：每個 block 一個值，在 48 kHz / 512 sample 時就是每秒十階的階梯；而且要知道曲線在每個 sample
 位置的是 audio thread，不是 UI。
 
-## 4. 下一步
+## 4. 開始
 
-從 [Step 1 - Automation 曲線](docs/step-01-curve.zh-TW.md) 開始。
+從 [Step 1 - Automation 曲線](docs/step-01-curve.zh-TW.md) 開始。做到應用程式時：
+
+```powershell
+.\scripts\build.ps1 -Only 16-automation -Juce
+& ".\build\bin\Debug\DawLab 16.exe"
+```

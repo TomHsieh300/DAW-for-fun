@@ -24,17 +24,17 @@ say whether you changed the material.
 Third-party code is **not** part of this repository and keeps its own license. The build fetches or
 uses it from `third_party/`:
 
-- **JUCE** (chapters 13 and 14 and chapter 15's application only). JUCE 9 modules are dual-licensed under the
+- **JUCE** (chapters 13 and 14 and the applications of chapters 15 and 16 only). JUCE 9 modules are dual-licensed under the
   [AGPLv3](https://www.gnu.org/licenses/agpl-3.0.en.html) and the commercial
   [JUCE 9 End User Licence Agreement](https://juce.com/legal/juce-9-licence/). The MIT-licensed code
   in this repository may be combined with JUCE, but **if you distribute a plugin or application
-  built with JUCE (for example the chapter 13 plugins, DawLab 8 or DawLab 15), the combined work must comply
+  built with JUCE (for example the chapter 13 plugins, DawLab 8, DawLab 15 or DawLab 16), the combined work must comply
   with the AGPLv3**, which in practice means publishing its complete source code under the AGPLv3,
   unless you hold a commercial JUCE licence.
 - **VST3 SDK** (bundled inside JUCE): MIT License, Copyright (c) 2025 Steinberg Media Technologies
   GmbH. Using the "VST" name or logo is subject to Steinberg's usage guidelines.
-- Chapters 00–12, the DAW engines (`lessons/14-daw-8track/engine/`, `lessons/15-daw-growing/engine/`)
-  and chapter 15's build-along steps use only the C++ standard library and are not affected by the
+- Chapters 00–12, the DAW engines (`lessons/14-daw-8track/engine/`, `lessons/15-daw-growing/engine/`,
+  `lessons/16-automation/engine/`) and the build-along steps of chapters 15 and 16 use only the C++ standard library and are not affected by the
   JUCE licence.
 
 This summary is informational, not legal advice; the license texts are authoritative.

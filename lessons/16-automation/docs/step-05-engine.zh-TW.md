@@ -2,7 +2,7 @@
 
 [English](step-05-engine.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 4 - 曲線屬於什麼](step-04-targets.zh-TW.md) | 下一步：Step 6 - 有 automation 的 app（規劃中）
+[總覽](../README.zh-TW.md) | 上一步：[Step 4 - 曲線屬於什麼](step-04-targets.zh-TW.md) | 下一步：[Step 6 - 有 automation 的 app](step-06-app.zh-TW.md)
 
 ## 目標
 
@@ -114,7 +114,7 @@ Step 3 的 lane 有自己的 queue。有幾百條 lane 時，那就是好幾 MB 
 
 ## 測試
 
-`tests/test_automation.cpp`（95 項檢查）使用 DC clip，所以每個 gain 都會直接呈現成 sample 的值。
+`tests/test_automation.cpp`（99 項檢查）使用 DC clip，所以每個 gain 都會直接呈現成 sample 的值。
 
 - fader ramp 和 pan ramp 在每個 sample 都等於參考值；跳躍從它的 sample 開始，並走正確的 sample 數，在 96 kHz 也一樣。
 - 1、64、300、512 和隨機大小的 block，跨過 loop 和跳躍，給出完全相同的 sample。
@@ -171,7 +171,7 @@ Step 3 的 lane 有自己的 queue。有幾百條 lane 時，那就是好幾 MB 
 ```text
   1000 blocks with curves arriving, touches, stops, seeks, a loop: 0 allocations or frees (expected 0)
   3000 UI rounds next to a real audio thread: 755 blocks, 188 passes recorded, 0 commands dropped, 0 leaked
-[PASS] l16_test_automation (95 checks passed)
+[PASS] l16_test_automation (99 checks passed)
 ```
 
 （block 和 pass 的數量取決於你的機器和建置方式。）

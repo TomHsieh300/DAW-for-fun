@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-05-engine.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 4 - What a curve belongs to](step-04-targets.md) | Next: Step 6 - The app with automation (planned)
+[Overview](../README.md) | Previous: [Step 4 - What a curve belongs to](step-04-targets.md) | Next: [Step 6 - The app with automation](step-06-app.md)
 
 ## Goal
 
@@ -150,7 +150,7 @@ nothing, through the old rule: the slot is a hint, the id is the truth.
 
 ## Testing
 
-`tests/test_automation.cpp` (95 checks) uses a DC clip, so every gain shows up as a sample value.
+`tests/test_automation.cpp` (99 checks) uses a DC clip, so every gain shows up as a sample value.
 
 - A fader ramp and a pan ramp equal the reference at every sample; a jump starts on its sample and
   takes the right number of samples, also at 96 kHz.
@@ -220,7 +220,7 @@ The output ends like this:
 ```text
   1000 blocks with curves arriving, touches, stops, seeks, a loop: 0 allocations or frees (expected 0)
   3000 UI rounds next to a real audio thread: 755 blocks, 188 passes recorded, 0 commands dropped, 0 leaked
-[PASS] l16_test_automation (95 checks passed)
+[PASS] l16_test_automation (99 checks passed)
 ```
 
 (The number of blocks and passes depends on your machine and build.)

@@ -21,8 +21,8 @@ Copyright (c) 2026 Tom Hsieh.
 
 第三方程式碼**不屬於**本 repository，各自保有原授權。建置時會從 `third_party/` 取得或使用：
 
-- **JUCE**（僅第 13、14 章與第 15 章的應用程式）。JUCE 9 modules 採雙重授權：[AGPLv3](https://www.gnu.org/licenses/agpl-3.0.en.html) 與商業的 [JUCE 9 End User Licence Agreement](https://juce.com/legal/juce-9-licence/)。本 repository 中 MIT 授權的程式碼可以與 JUCE 結合，但**若你散布以 JUCE 建置的 plugin 或應用程式（例如第 13 章的 plugin、DawLab 8 或 DawLab 15），整個結合後的作品必須遵守 AGPLv3**，實務上代表必須以 AGPLv3 公開完整原始碼，除非你持有 JUCE 商業授權。
+- **JUCE**（僅第 13、14 章與第 15、16 章的應用程式）。JUCE 9 modules 採雙重授權：[AGPLv3](https://www.gnu.org/licenses/agpl-3.0.en.html) 與商業的 [JUCE 9 End User Licence Agreement](https://juce.com/legal/juce-9-licence/)。本 repository 中 MIT 授權的程式碼可以與 JUCE 結合，但**若你散布以 JUCE 建置的 plugin 或應用程式（例如第 13 章的 plugin、DawLab 8、DawLab 15 或 DawLab 16），整個結合後的作品必須遵守 AGPLv3**，實務上代表必須以 AGPLv3 公開完整原始碼，除非你持有 JUCE 商業授權。
 - **VST3 SDK**（內含於 JUCE）：MIT License，Copyright (c) 2025 Steinberg Media Technologies GmbH。使用「VST」名稱或標誌須遵守 Steinberg 的使用指引。
-- 第 00–12 章、DAW engine（`lessons/14-daw-8track/engine/`、`lessons/15-daw-growing/engine/`）與第 15 章跟著做的各個 step 僅使用 C++ standard library，不受 JUCE 授權影響。
+- 第 00–12 章、DAW engine（`lessons/14-daw-8track/engine/`、`lessons/15-daw-growing/engine/`、`lessons/16-automation/engine/`）與第 15、16 章跟著做的各個 step 僅使用 C++ standard library，不受 JUCE 授權影響。
 
 本摘要僅供參考，不構成法律意見；授權條文以原文為準。

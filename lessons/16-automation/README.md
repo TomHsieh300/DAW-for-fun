@@ -2,8 +2,9 @@
 
 **English** | [繁體中文](README.zh-TW.md)
 
-> **Status: in progress.** Steps 1-5 are finished; Step 6 is planned and listed below so you can
-> see where the chapter is going.
+> **Status: finished.** All six steps are done; the chapter ends in **DawLab 16**.
+
+<p align="center"><img src="docs/images/dawlab16.png" alt="DawLab 16: automation lanes under the Drums and Bass tracks"></p>
 
 DawLab 15 (chapter 15) plays a mix whose faders and knobs stay where the user left them. Real
 music moves: a fader rises into the chorus, a filter opens over eight bars, a delay is switched on
@@ -52,7 +53,7 @@ After this chapter you can
 | 3 | [Automation and the user](docs/step-03-modes.md) | Read / Touch / Latch / Write; the audio thread stamps the movement, the UI thread groups it into passes, thins them and punches them into the curve | done |
 | 4 | [What a curve belongs to](docs/step-04-targets.md) | targets by track id, effect id and parameter name; lanes that leave and return with their owner; unknown parameters kept; the project file and undo | done |
 | 5 | [The engine with automation](docs/step-05-engine.md) | a copy of chapter 15's engine with lanes inside strips and effects, faders that wait for delayed audio, one capture queue; ThreadSanitizer | done |
-| 6 | The app with automation | lanes under the tracks, drawing and dragging points, the mode switch | planned |
+| 6 | [The app with automation](docs/step-06-app.md) | a copy of chapter 15's app: lanes under the tracks, drawing and dragging points, the mode switch, recording with the fader, project format 4 | done |
 
 </div>
 
@@ -63,6 +64,11 @@ reads once per block (chapter 14, Step 4). That is enough for a knob in the user
 enough for automation: a value per block is a staircase at 48 kHz / 512 samples - ten steps a
 second - and the audio thread, not the UI, has to know where the curve is at every sample.
 
-## 4. Next
+## 4. Start
 
-Start with [Step 1 - The automation curve](docs/step-01-curve.md).
+Start with [Step 1 - The automation curve](docs/step-01-curve.md). When you reach the application:
+
+```powershell
+.\scripts\build.ps1 -Only 16-automation -Juce
+& ".\build\bin\Debug\DawLab 16.exe"
+```
