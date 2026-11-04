@@ -3,13 +3,13 @@
 
 [![CI](https://github.com/TomHsieh300/DAW-for-fun/actions/workflows/ci.yml/badge.svg)](https://github.com/TomHsieh300/DAW-for-fun/actions/workflows/ci.yml)
 
-這是一套給「會基本 C++、但沒學過 DSP」的學習者的教材。本教材為**英文 / 繁體中文雙語**：英文版是主要版本（原檔名，例如 `README.md`），繁體中文版放在同目錄的 `.zh-TW.md` 檔（例如 `README.zh-TW.md`）；每份文件頂端都有語言切換連結，程式碼的註解與輸出皆為英文。從「聲音在電腦裡長什麼樣子」開始，一章做出一個（或一組）真正可用的 DSP 元件：gain、filter、EQ、compressor、limiter、saturation、distortion、gate、delay、modulation、meter、reverb……接著用 JUCE 把它們包成 VST3 plugin、寫出能載入 VST3 的 host，再組成一台能編排 clip、混音、插 plugin、匯出 WAV 的 **8 軌 DAW「DawLab 8」**。最後一章把它擴充成 **「DawLab 15」**：可以新增和刪除的 track、可以存檔再開啟的專案，以及可以 undo 的編輯。
+這是一套給「會基本 C++、但沒學過 DSP」的學習者的教材。本教材為**英文 / 繁體中文雙語**：英文版是主要版本（原檔名，例如 `README.md`），繁體中文版放在同目錄的 `.zh-TW.md` 檔（例如 `README.zh-TW.md`）；每份文件頂端都有語言切換連結，程式碼的註解與輸出皆為英文。從「聲音在電腦裡長什麼樣子」開始，一章做出一個（或一組）真正可用的 DSP 元件：gain、filter、EQ、compressor、limiter、saturation、distortion、gate、delay、modulation、meter、reverb……接著用 JUCE 把它們包成 VST3 plugin、寫出能載入 VST3 的 host，再組成一台能編排 clip、混音、插 plugin、匯出 WAV 的 **8 軌 DAW「DawLab 8」**。第 15 章把它擴充成 **「DawLab 15」**：可以新增和刪除的 track、可以存檔再開啟的專案，以及可以 undo 的編輯。最後一章的成果是 **「DawLab 16」**：fader 和效果器會跟著你畫出或錄下的曲線走。
 
-<p align="center"><img src="docs/images/dawlab8.png" alt="DawLab 8：播放示範歌曲（第 2 小節第 3 拍）"></p>
+<p align="center"><img src="docs/images/dawlab16.png" alt="DawLab 16：播放示範歌曲（第 2 小節第 3 拍），Drums 和 Bass track 下方有 automation lane"></p>
 
-*上圖不是螢幕截圖，而是 app 自己畫出來的：`"DawLab 8.exe" --snapshot <檔名.png>`（第 14 章 Step 12），每次建置時 ctest 都會跑一次。同一個指令還會另存一張參數面板（下圖，鼓組軌的 compressor）：面板上的旋鈕是依各效果器的參數描述自動產生的。*
+*上圖不是螢幕截圖，而是 app 自己畫出來的：`"DawLab 16.exe" --snapshot <檔名.png>`（這個指令來自第 14 章 Step 12），每次建置時 ctest 都會跑一次。Drums 和 Bass track 下方的線條就是 automation（第 16 章）。同一個指令還會另存一張參數面板（下圖，鼓組軌的 compressor）：面板上的旋鈕是依各效果器的參數描述自動產生的。*
 
-<p align="center"><img src="docs/images/dawlab8_panel.png" alt="自動產生的參數面板"></p>
+<p align="center"><img src="docs/images/dawlab16_panel.png" alt="自動產生的參數面板"></p>
 
 ## 這套教材的特色
 
@@ -40,13 +40,13 @@
 
 ### Linux（已在 Ubuntu 24.04 驗證）
 
-所有章節，包括第 13–15 章的 JUCE 部分，都已在 **Ubuntu 24.04 LTS、GCC 13.3、CMake 3.28** 上建置成功並通過全部測試。CI 每次 push 都會檢查，包含 `DawLab 8` 與 `DawLab 15` 的 smoke test 與 snapshot，以及第 15 章的 ThreadSanitizer。
+所有章節，包括第 13–16 章的 JUCE 部分，都已在 **Ubuntu 24.04 LTS、GCC 13.3、CMake 3.28** 上建置成功並通過全部測試。CI 每次 push 都會檢查，包含 `DawLab 8`、`DawLab 15` 與 `DawLab 16` 的 smoke test 與 snapshot，以及第 15、16 章的 ThreadSanitizer。
 
 1. 安裝編譯器與 CMake：
    ```bash
    sudo apt install build-essential cmake git
    ```
-2. 第 13–15 章的 JUCE 部分需要 JUCE 的系統相依套件（ALSA / JACK、X11、freetype、fontconfig、OpenGL、webkit2gtk、curl；見 `third_party/JUCE/docs/Linux Dependencies.md`）：
+2. 第 13–16 章的 JUCE 部分需要 JUCE 的系統相依套件（ALSA / JACK、X11、freetype、fontconfig、OpenGL、webkit2gtk、curl；見 `third_party/JUCE/docs/Linux Dependencies.md`）：
    ```bash
    sudo apt install libasound2-dev libjack-jackd2-dev ladspa-sdk libfreetype-dev libfontconfig1-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libglu1-mesa-dev mesa-common-dev libcurl4-openssl-dev libwebkit2gtk-4.1-dev
    ```
@@ -56,7 +56,7 @@
 
 ### macOS（純 C++ 章節已由 CI 驗證）
 
-安裝 command-line tools 與 CMake（`xcode-select --install`、`brew install cmake`），然後跟 Linux 一樣使用 `./scripts/build.sh`。純 C++ 的章節（00–12，以及第 14、15 章的 engine 部分）每次 push 都會在 GitHub 的 `macos-latest` runner 上用 Apple Clang 以 Debug 和 Release 建置，並通過所有測試（見上方的 CI badge）。第 13–15 章的 JUCE 部分也會在那裡建置，但還沒有驗證：在穩定之前，這個 CI job 允許失敗。
+安裝 command-line tools 與 CMake（`xcode-select --install`、`brew install cmake`），然後跟 Linux 一樣使用 `./scripts/build.sh`。純 C++ 的章節（00–12，以及第 14、15、16 章的 engine 部分）每次 push 都會在 GitHub 的 `macos-latest` runner 上用 Apple Clang 以 Debug 和 Release 建置，並通過所有測試（見上方的 CI badge）。第 13–16 章的 JUCE 部分也會在那裡建置，但還沒有驗證：在穩定之前，這個 CI job 允許失敗。
 
 ## 建置、執行、測試
 
@@ -66,7 +66,7 @@
 .\scripts\build.ps1                                   # 全部純 C++ 部分（00–12、第 14、15、16 章的 engine、第 16 章的 step），Debug，並跑所有測試
 .\scripts\build.ps1 -Only 02-filter                   # 只建第 02 章
 .\scripts\build.ps1 -Only 02-filter,03-eq             # 多章以逗號分隔
-.\scripts\build.ps1 -Juce                             # 連同第 13–15 章的 JUCE 部分一起建置
+.\scripts\build.ps1 -Juce                             # 連同第 13–16 章的 JUCE 部分一起建置
 .\scripts\build.ps1 -Only 14-daw-8track -Juce         # 只建第 14 章
 .\scripts\build.ps1 -Only 15-daw-growing -Juce        # 只建第 15 章，連同它的 app
 .\scripts\build.ps1 -Config Release                   # Release 組態（另有 RelWithDebInfo）
@@ -103,7 +103,8 @@ PowerShell 說「無法載入指令碼」時，改用 `powershell -ExecutionPoli
 | 第 13 章的 VST3 plugin | `build\lessons\13-vst-hosting\plugin\DawLabCompressor_artefacts\Debug\VST3\DawLabCompressor.vst3`（`DawLabLimiter` 同理） |
 | 第 14 章的 DAW | `build\bin\Debug\DawLab 8.exe` |
 | 第 15 章的 DAW | `build\bin\Debug\DawLab 15.exe` |
-| 在 Linux / macOS 上 | `build/bin/lNN_*`、`build/bin/DawLab 8` 與 `build/bin/DawLab 15`（沒有 `Debug/` 子資料夾，也沒有 `.exe`）；VST3 bundle 在 `build/lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/VST3/DawLabCompressor.vst3` |
+| 第 16 章的 DAW | `build\bin\Debug\DawLab 16.exe` |
+| 在 Linux / macOS 上 | `build/bin/lNN_*`、`build/bin/DawLab 8`、`build/bin/DawLab 15` 與 `build/bin/DawLab 16`（沒有 `Debug/` 子資料夾，也沒有 `.exe`）；VST3 bundle 在 `build/lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/VST3/DawLabCompressor.vst3` |
 
 </div>
 
@@ -115,6 +116,7 @@ cd build
 & ".\bin\Debug\DawLab 8.exe"                          # 開啟 DAW（需要音訊裝置）
 & ".\bin\Debug\DawLab 8.exe" --snapshot dawlab_output\dawlab8.png   # 不開視窗，把畫面存成 PNG
 & ".\bin\Debug\DawLab 15.exe"                         # 第 15 章：新增 track、存檔、undo
+& ".\bin\Debug\DawLab 16.exe"                         # 第 16 章：畫出和錄製 automation
 ```
 
 **ctest 的 label**：`example`（範例，不帶參數就能跑完）、`solution`（練習解答，以數字自我檢查）、`test`（元件與 engine 的回歸測試）。`exercises/starter/` 的起始碼只建置、不登記成測試——它們留有 `// TODO`，執行時印出 FAIL 是預期的。
@@ -139,7 +141,7 @@ cd build
 | `lessons/NN-name/exercises/` | 練習題（README.md）與起始碼（starter/） |
 | `lessons/NN-name/solutions/` | 所有題目的解答與解說，以及實作題的完整程式 |
 | `lessons/NN-name/tests/` | （部分章節）元件回歸測試 |
-| `third_party/JUCE/` | JUCE 9.0.4（第 13–15 章） |
+| `third_party/JUCE/` | JUCE 9.0.4（第 13–16 章） |
 
 </div>
 

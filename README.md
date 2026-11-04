@@ -3,15 +3,15 @@
 
 [![CI](https://github.com/TomHsieh300/DAW-for-fun/actions/workflows/ci.yml/badge.svg)](https://github.com/TomHsieh300/DAW-for-fun/actions/workflows/ci.yml)
 
-This course is for learners who "know basic C++ but have never studied DSP". It starts from "what does sound look like inside a computer?" and in each chapter builds a real, usable DSP component (or a family of them): gain, filter, EQ, compressor, limiter, saturation, distortion, gate, delay, modulation, meters, reverb... Then it uses JUCE to wrap them into VST3 plugins, writes a host that can load VST3 plugins, and puts everything together into an **8-track DAW, "DawLab 8"**, that can arrange clips, mix, host plugins and export WAV files. The last chapter then grows it into **"DawLab 15"**: tracks you can add and delete, projects you can save and open again, and edits you can undo.
+This course is for learners who "know basic C++ but have never studied DSP". It starts from "what does sound look like inside a computer?" and in each chapter builds a real, usable DSP component (or a family of them): gain, filter, EQ, compressor, limiter, saturation, distortion, gate, delay, modulation, meters, reverb... Then it uses JUCE to wrap them into VST3 plugins, writes a host that can load VST3 plugins, and puts everything together into an **8-track DAW, "DawLab 8"**, that can arrange clips, mix, host plugins and export WAV files. Chapter 15 grows it into **"DawLab 15"**: tracks you can add and delete, projects you can save and open again, and edits you can undo. The last chapter ends in **"DawLab 16"**: faders and effects that follow curves you draw or record.
 
 The course is **bilingual (English / Traditional Chinese)**. English is the primary version (original file names such as `README.md`); the Traditional Chinese version sits next to it in a `.zh-TW.md` file (such as `README.zh-TW.md`). Every document has a language switcher at the top, and all code comments and program output are in English.
 
-<p align="center"><img src="docs/images/dawlab8.png" alt="DawLab 8: playing the demo song (bar 2, beat 3)"></p>
+<p align="center"><img src="docs/images/dawlab16.png" alt="DawLab 16: playing the demo song (bar 2, beat 3), with automation lanes under the Drums and Bass tracks"></p>
 
-*The image above is not a screenshot. It was drawn by the app itself with `"DawLab 8.exe" --snapshot <file.png>` (chapter 14, Step 12), and ctest runs it on every build. The same command also saves a parameter panel (below, the compressor on the drum track): the knobs on the panel are generated automatically from each effect's parameter description.*
+*The image above is not a screenshot. It was drawn by the app itself with `"DawLab 16.exe" --snapshot <file.png>` (the command comes from chapter 14, Step 12), and ctest runs it on every build. The lines under the Drums and Bass tracks are automation (chapter 16). The same command also saves a parameter panel (below, the compressor on the drum track): the knobs on the panel are generated automatically from each effect's parameter description.*
 
-<p align="center"><img src="docs/images/dawlab8_panel.png" alt="Automatically generated parameter panel"></p>
+<p align="center"><img src="docs/images/dawlab16_panel.png" alt="Automatically generated parameter panel"></p>
 
 ## What makes this course different
 
@@ -42,13 +42,13 @@ The course is **bilingual (English / Traditional Chinese)**. English is the prim
 
 ### Linux (verified on Ubuntu 24.04)
 
-Every chapter, including the JUCE parts of chapters 13–15, builds and passes all its tests on **Ubuntu 24.04 LTS with GCC 13.3 and CMake 3.28**. CI checks this on every push, including the smoke tests and snapshots of `DawLab 8` and `DawLab 15` and chapter 15's ThreadSanitizer run.
+Every chapter, including the JUCE parts of chapters 13–16, builds and passes all its tests on **Ubuntu 24.04 LTS with GCC 13.3 and CMake 3.28**. CI checks this on every push, including the smoke tests and snapshots of `DawLab 8`, `DawLab 15` and `DawLab 16`, and the ThreadSanitizer run of chapters 15 and 16.
 
 1. Install the compiler and CMake:
    ```bash
    sudo apt install build-essential cmake git
    ```
-2. The JUCE parts of chapters 13–15 need JUCE's system dependencies (ALSA / JACK, X11, freetype, fontconfig, OpenGL, webkit2gtk, curl; see `third_party/JUCE/docs/Linux Dependencies.md`):
+2. The JUCE parts of chapters 13–16 need JUCE's system dependencies (ALSA / JACK, X11, freetype, fontconfig, OpenGL, webkit2gtk, curl; see `third_party/JUCE/docs/Linux Dependencies.md`):
    ```bash
    sudo apt install libasound2-dev libjack-jackd2-dev ladspa-sdk libfreetype-dev libfontconfig1-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libglu1-mesa-dev mesa-common-dev libcurl4-openssl-dev libwebkit2gtk-4.1-dev
    ```
@@ -58,7 +58,7 @@ Every chapter, including the JUCE parts of chapters 13–15, builds and passes a
 
 ### macOS (pure C++ chapters verified in CI)
 
-Install the command-line tools and CMake (`xcode-select --install`, `brew install cmake`), then use `./scripts/build.sh` as on Linux. The pure C++ chapters (00–12, and the engine parts of 14 and 15) build and pass all their tests with Apple Clang on GitHub's `macos-latest` runner, in Debug and Release, on every push (see the CI badge above). The JUCE parts of chapters 13–15 are built there too, but not yet verified: the CI job is allowed to fail while it settles.
+Install the command-line tools and CMake (`xcode-select --install`, `brew install cmake`), then use `./scripts/build.sh` as on Linux. The pure C++ chapters (00–12, and the engine parts of 14, 15 and 16) build and pass all their tests with Apple Clang on GitHub's `macos-latest` runner, in Debug and Release, on every push (see the CI badge above). The JUCE parts of chapters 13–16 are built there too, but not yet verified: the CI job is allowed to fail while it settles.
 
 ## Building, running and testing
 
@@ -68,7 +68,7 @@ Run all commands in PowerShell from the project root (`scripts/build.ps1` runs c
 .\scripts\build.ps1                                   # all pure C++ parts (00–12, the engines of 14, 15 and 16, chapter 16's steps), Debug, and run all tests
 .\scripts\build.ps1 -Only 02-filter                   # build only chapter 02
 .\scripts\build.ps1 -Only 02-filter,03-eq             # several chapters, comma-separated
-.\scripts\build.ps1 -Juce                             # also build the JUCE parts of chapters 13–15
+.\scripts\build.ps1 -Juce                             # also build the JUCE parts of chapters 13–16
 .\scripts\build.ps1 -Only 14-daw-8track -Juce         # build only chapter 14
 .\scripts\build.ps1 -Only 15-daw-growing -Juce        # build only chapter 15, with its app
 .\scripts\build.ps1 -Config Release                   # Release configuration (RelWithDebInfo is also available)
@@ -105,7 +105,8 @@ It uses a single-config generator (Ninja if installed, otherwise Makefiles), so 
 | Chapter 13 VST3 plugin | `build\lessons\13-vst-hosting\plugin\DawLabCompressor_artefacts\Debug\VST3\DawLabCompressor.vst3` (`DawLabLimiter` likewise) |
 | Chapter 14 DAW | `build\bin\Debug\DawLab 8.exe` |
 | Chapter 15 DAW | `build\bin\Debug\DawLab 15.exe` |
-| On Linux / macOS | `build/bin/lNN_*`, `build/bin/DawLab 8` and `build/bin/DawLab 15` (no `Debug/` subfolder, no `.exe`); the VST3 bundles are at `build/lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/VST3/DawLabCompressor.vst3` |
+| Chapter 16 DAW | `build\bin\Debug\DawLab 16.exe` |
+| On Linux / macOS | `build/bin/lNN_*`, `build/bin/DawLab 8`, `build/bin/DawLab 15` and `build/bin/DawLab 16` (no `Debug/` subfolder, no `.exe`); the VST3 bundles are at `build/lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/VST3/DawLabCompressor.vst3` |
 
 </div>
 
@@ -117,6 +118,7 @@ cd build
 & ".\bin\Debug\DawLab 8.exe"                          # open the DAW (needs an audio device)
 & ".\bin\Debug\DawLab 8.exe" --snapshot dawlab_output\dawlab8.png   # no window; save the UI as a PNG
 & ".\bin\Debug\DawLab 15.exe"                         # chapter 15: add tracks, save projects, undo
+& ".\bin\Debug\DawLab 16.exe"                         # chapter 16: draw and record automation
 ```
 
 **ctest labels**: `example` (examples, which run to completion with no arguments), `solution` (exercise solutions, which check themselves numerically) and `test` (regression tests for components and the engine). The starter code in `exercises/starter/` is only built, not registered as tests: it contains `// TODO`s, and printing FAIL when you run it is expected.
@@ -141,7 +143,7 @@ cd build
 | `lessons/NN-name/exercises/` | exercises (README.md) and starter code (starter/) |
 | `lessons/NN-name/solutions/` | answers and explanations for all exercises, plus complete programs for the programming ones |
 | `lessons/NN-name/tests/` | (some chapters) component regression tests |
-| `third_party/JUCE/` | JUCE 9.0.4 (chapters 13–15) |
+| `third_party/JUCE/` | JUCE 9.0.4 (chapters 13–16) |
 
 </div>
 
