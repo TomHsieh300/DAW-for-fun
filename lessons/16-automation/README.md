@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](README.zh-TW.md)
 
-> **Status: in progress.** Step 1 is finished; Steps 2-6 are planned and listed below so you can
+> **Status: in progress.** Steps 1-2 are finished; Steps 3-6 are planned and listed below so you can
 > see where the chapter is going.
 
 DawLab 15 (chapter 15) plays a mix whose faders and knobs stay where the user left them. Real
@@ -48,7 +48,7 @@ After this chapter you can
 | Step | Document | Adds | Status |
 |---|---|---|---|
 | 1 | [The automation curve](docs/step-01-curve.md) | points with a position and a normalized value, Linear and Hold segments, jumps, `valueAt()` and a one-search `render()` | done |
-| 2 | Sample-accurate playback | the curve on the audio thread: immutable snapshots swapped like clip lists, a cursor that survives seeks and loops | planned |
+| 2 | [Sample-accurate playback](docs/step-02-playback.md) | the curve on the audio thread: immutable curves swapped like clip lists, a cursor that checks itself across seeks and loops, a limit that stops jumps from clicking | done |
 | 3 | Automation and the user | Read / Touch / Latch / Write; recording a fader move as points and thinning them | planned |
 | 4 | What a curve belongs to | targets by track id and parameter; removed effects; the project file and undo | planned |
 | 5 | The engine with automation | a copy of chapter 15's engine with automation lanes; ThreadSanitizer | planned |

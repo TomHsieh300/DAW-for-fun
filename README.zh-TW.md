@@ -169,7 +169,7 @@ cd build
 | [13](lessons/13-vst-hosting/README.zh-TW.md) | VST3 plugin 與 hosting（JUCE） | plugin 架構與生命週期、參數與 state、latency 與 PDC、掃描與載入第三方 VST3 | `DawLabCompressor` / `DawLabLimiter`（VST3）、`dawlab_plugin_host` 函式庫 |
 | [14](lessons/14-daw-8track/README.zh-TW.md) | **Capstone：8 軌 DAW** | transport 與兩種時鐘、clip、mixer 與 FX bus、lock-free command queue、PDC、offline bounce、real-time safety 測試、JUCE GUI、VST3 insert | 純 C++ 的 `dawlab::engine` 與 JUCE app「DawLab 8」 |
 | [15](lessons/15-daw-growing/README.zh-TW.md) | 讓 DAW 長大 | 穩定的 track id、track slot 池、CPU 預算、專案檔、undo / redo：先在小小的跟著做 snapshot 裡做，再做進第 14 章 engine 與 app 的複本；ThreadSanitizer | 有 track 池的 engine 與 JUCE app「DawLab 15」（新增 / 刪除 track、存檔 / 開檔、undo / redo、CPU 警告） |
-| [16](lessons/16-automation/README.zh-TW.md) | Automation（進行中） | 時間軸上值為 normalized 的點、Linear / Hold 段落與跳躍、只搜尋一次就讀出一個 block；規劃中：精準到 sample 的播放、Read / Touch / Latch / Write、對象、engine 與 app | 第 16 章跟著做的 snapshot |
+| [16](lessons/16-automation/README.zh-TW.md) | Automation（進行中） | 時間軸上值為 normalized 的點、Linear / Hold 段落與跳躍、只搜尋一次就讀出一個 block、精準到 sample 的播放（會自我檢查的 cursor、不產生 click 的限制）；規劃中：Read / Touch / Latch / Write、對象、engine 與 app | 第 16 章跟著做的 snapshot |
 
 </div>
 

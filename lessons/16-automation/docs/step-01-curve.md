@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-01-curve.zh-TW.md)
 
-[Overview](../README.md) | Next: Step 2 - Sample-accurate playback (planned)
+[Overview](../README.md) | Next: [Step 2 - Sample-accurate playback](step-02-playback.md)
 
 ## Goal
 

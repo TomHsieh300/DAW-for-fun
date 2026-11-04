@@ -12,6 +12,7 @@
 | Step | 資料夾 | 你要寫的 | 執行 |
 |---|---|---|---|
 | 1 | `step01-curve` | `AutomationCurve::add`、`remove`、`valueAt`、`render` | `l16_step01_starter` |
+| 2 | `step02-playback` | `CurveCursor::locate`、有 cursor 的 `AutomationCurve::render`、`AutomationLane::render`、`limitSlew` | `l16_step02_starter` |
 
 </div>
 

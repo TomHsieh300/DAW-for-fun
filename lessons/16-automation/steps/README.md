@@ -12,6 +12,7 @@ write the step's functions in `starter/`, the self-check tells you when they wor
 | Step | Folder | You write | Run |
 |---|---|---|---|
 | 1 | `step01-curve` | `AutomationCurve::add`, `remove`, `valueAt`, `render` | `l16_step01_starter` |
+| 2 | `step02-playback` | `CurveCursor::locate`, `AutomationCurve::render` with a cursor, `AutomationLane::render`, `limitSlew` | `l16_step02_starter` |
 
 </div>
 
