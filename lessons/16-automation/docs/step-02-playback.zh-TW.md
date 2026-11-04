@@ -2,7 +2,7 @@
 
 [English](step-02-playback.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 1 - Automation 曲線](step-01-curve.zh-TW.md) | 下一步：Step 3 - Automation 與使用者（規劃中）
+[總覽](../README.zh-TW.md) | 上一步：[Step 1 - Automation 曲線](step-01-curve.zh-TW.md) | 下一步：[Step 3 - Automation 與使用者](step-03-modes.zh-TW.md)
 
 ## 目標
 

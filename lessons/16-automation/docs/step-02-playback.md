@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-02-playback.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 1 - The automation curve](step-01-curve.md) | Next: Step 3 - Automation and the user (planned)
+[Overview](../README.md) | Previous: [Step 1 - The automation curve](step-01-curve.md) | Next: [Step 3 - Automation and the user](step-03-modes.md)
 
 ## Goal
 
