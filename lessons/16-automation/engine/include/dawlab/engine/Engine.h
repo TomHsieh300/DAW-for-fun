@@ -62,7 +62,10 @@ public:
     // The garbage queue holds at least the garbage of one command (kMaxGarbagePerCommand).
     explicit Engine(std::size_t queueCapacity = kCommandQueueCapacity)
         : commands_(queueCapacity),
-          garbage_(std::max(queueCapacity, static_cast<std::size_t>(kMaxGarbagePerCommand))) {}
+          garbage_(std::max(queueCapacity, static_cast<std::size_t>(kMaxGarbagePerCommand))),
+          capture_(kCaptureQueueCapacity) {
+        mixer_.setCaptureQueue(&capture_);
+    }
 
     ~Engine() {
         // Nothing may be processing any more: free what the audio thread handed back, and
@@ -93,6 +96,7 @@ public:
                 if (InsertEffect* fx = s.getInserts().getInsert(i)) {
                     fx->prepare(sampleRate_, maxBlockSize_, kNumChannels);
                     fx->publishLatency();
+                    fx->prepareLanes(sampleRate_);
                 }
         };
         for (int slot = 0; slot < kMaxTracks; ++slot) // free slots have no inserts
@@ -130,6 +134,7 @@ public:
             t.setSendPreFader(b, false);
         }
         t.setFormat(format);
+        t.resetLaneModes();
         const ChannelRef ref = ChannelRef::track(slot, id);
         if (!pushCommand(Command::addTrack(ref)))
             return none;
@@ -215,6 +220,7 @@ public:
             return nullptr;
         effect->prepare(sampleRate_, maxBlockSize_, kNumChannels);
         effect->publishLatency(); // the UI may ask for it before the audio thread runs
+        identify(*effect);
         InsertEffect* observer = effect.get();
         return pushCommand(Command::addInsert(channel, slot, effect.release())) ? observer : nullptr;
     }
@@ -226,6 +232,7 @@ public:
             return nullptr;
         effect->prepare(sampleRate_, maxBlockSize_, kNumChannels);
         effect->publishLatency(); // the UI may ask for it before the audio thread runs
+        identify(*effect);
         InsertEffect* observer = effect.get();
         return pushCommand(Command::replaceInsert(channel, slot, effect.release())) ? observer : nullptr;
     }
@@ -244,6 +251,37 @@ public:
         auto* list = new std::vector<Clip>(std::move(clips));
         return pushCommand(Command::replaceClips(ref, list));
     }
+
+    // ---- automation (UI thread = the single producer; chapter 16, Step 5) ----------------------
+    // The lane of a parameter, for its mode, its knob, touch() and release(); nullptr if its strip or
+    // its effect is not here. The pointer stays valid as long as an insert pointer does (below). An
+    // effect added a moment ago is here once the audio thread has taken it.
+    AutomationLane* getLane(const LaneTarget& target) noexcept {
+        ChannelStrip* strip = getStrip(target.channel);
+        if (strip == nullptr)
+            return nullptr;
+        if (!target.effect.isValid())
+            return strip->getOwnLane(target.parameter);
+        InsertEffect* effect = strip->getInserts().findById(target.effect);
+        return effect != nullptr ? effect->getLane(target.parameter) : nullptr;
+    }
+    // Publishes a copy of `curve`; the audio thread swaps one pointer at the next block. The UI keeps
+    // its own copy to edit: a curve in the engine never changes. False if the strip is not here or the
+    // queue is full. An effect's target is checked on the audio thread, in queue order, so this may
+    // directly follow addInsert(). If that effect is gone by then, the curve comes back as garbage.
+    bool setLaneCurve(const LaneTarget& target, AutomationCurve curve) {
+        if (getStrip(target.channel) == nullptr)
+            return false;
+        syncKnob(target);
+        return pushCommand(Command::replaceCurve(target.channel, target.effect, target.parameter, new AutomationCurve(std::move(curve))));
+    }
+    bool clearLaneCurve(const LaneTarget& target) {
+        return getStrip(target.channel) != nullptr &&
+               pushCommand(Command::replaceCurve(target.channel, target.effect, target.parameter, nullptr));
+    }
+    // What the hand did: AutomationRecorder::collect() takes it from here, on the UI thread.
+    CaptureQueue& getCaptureQueue() noexcept { return capture_; }
+    uint64_t getLanesNotFound() const noexcept { return lanesNotFound_.load(std::memory_order_relaxed); }
 
     // ---- observing the structure (any thread) ----------------------------------------------
     // The effect currently in `slot` (nullptr if empty). The pointer stays valid until the
@@ -325,7 +363,7 @@ private:
             const int numSegments = transport_.advance(n - done, segments, covered);
             if (covered <= 0)
                 covered = n - done;
-            mixer_.process(out.getSubBlock(done, covered), segments, numSegments, transport_.getTempo());
+            mixer_.process(out.getSubBlock(done, covered), segments, numSegments, transport_.getTempo(), transport_.getPosition());
             done += covered;
         }
         blocksProcessed_.fetch_add(1, std::memory_order_relaxed);
@@ -384,8 +422,49 @@ private:
                 discard(Garbage::of(const_cast<T*>(object)));
             });
             break;
+        case CommandType::ReplaceCurve: {
+            const AutomationCurve* old = c.curve; // no such lane: hand the new curve straight back
+            if (AutomationLane* lane = audioLane(strip, c.effectId, c.slot))
+                old = lane->exchangeCurve(c.curve);
+            else
+                lanesNotFound_.fetch_add(1, std::memory_order_relaxed);
+            if (old)
+                discard(Garbage::of(const_cast<AutomationCurve*>(old)));
+            break;
+        }
         case CommandType::None: break;
         }
+    }
+
+    // Audio thread: the lane a command means, by the audio thread's own view of the chain.
+    static AutomationLane* audioLane(ChannelStrip* strip, EffectId effect, int parameter) noexcept {
+        if (strip == nullptr)
+            return nullptr;
+        if (!effect.isValid())
+            return strip->getOwnLane(parameter);
+        InsertEffect* fx = strip->getInserts().findById(effect);
+        return fx != nullptr ? fx->getLane(parameter) : nullptr;
+    }
+
+    // UI thread: gives a new effect its id (or keeps the one undo brought back) and its lanes.
+    void identify(InsertEffect& effect) {
+        if (effect.getEffectId().isValid())
+            nextEffectId_ = std::max(nextEffectId_, effect.getEffectId().value + 1);
+        else
+            effect.setEffectId(EffectId{nextEffectId_++});
+        effect.prepareLanes(sampleRate_);
+    }
+
+    // UI thread: the first curve of an effect's parameter starts from the parameter's value now, which
+    // is where it returns when the curve goes away. (A strip's knob is always current: setGainDb().)
+    void syncKnob(const LaneTarget& target) noexcept {
+        if (!target.effect.isValid())
+            return;
+        const ChannelStrip* strip = uiStrip(target.channel);
+        InsertEffect* effect = strip != nullptr ? strip->getInserts().findById(target.effect) : nullptr;
+        AutomationLane* lane = effect != nullptr ? effect->getLane(target.parameter) : nullptr;
+        if (lane != nullptr && !lane->isActive())
+            lane->setKnobValue(effect->getParameterNormalized(target.parameter));
     }
 
     // UI thread: the strip behind a reference, by the UI's OWN slot table (never by the audio
@@ -413,8 +492,11 @@ private:
             delete c.effect;
         else if (c.type == CommandType::ReplaceClips)
             delete c.clips;
+        else if (c.type == CommandType::ReplaceCurve)
+            delete c.curve;
         c.effect = nullptr;
         c.clips = nullptr;
+        c.curve = nullptr;
     }
 
     double sampleRate_ = 0.0;
@@ -428,11 +510,14 @@ private:
     std::array<TrackId, kMaxTracks> slotOwner_{}; // UI thread only: which id the UI gave each slot
     SpscQueue<Command> commands_;
     SpscQueue<Garbage> garbage_;
+    CaptureQueue capture_;
+    uint32_t nextEffectId_ = 1; // UI thread only
 
     std::atomic<uint64_t> blocksProcessed_{0};
     std::atomic<uint64_t> commandsApplied_{0};
     std::atomic<uint64_t> commandsDropped_{0};
     std::atomic<uint64_t> garbageLeaked_{0};
+    std::atomic<uint64_t> lanesNotFound_{0};
 };
 
 } // namespace dawlab::engine

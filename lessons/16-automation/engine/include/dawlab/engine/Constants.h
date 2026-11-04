@@ -20,6 +20,16 @@ struct TrackId {
     friend constexpr bool operator!=(TrackId a, TrackId b) noexcept { return a.value != b.value; }
 };
 
+// An effect's identity (chapter 16, Step 4): handed out once, never reused, and NOT its slot, so that
+// a curve stays with its effect when the effect moves. 0 means none.
+struct EffectId {
+    std::uint32_t value = 0;
+
+    constexpr bool isValid() const noexcept { return value != 0; }
+    friend constexpr bool operator==(EffectId a, EffectId b) noexcept { return a.value == b.value; }
+    friend constexpr bool operator!=(EffectId a, EffectId b) noexcept { return a.value != b.value; }
+};
+
 // Track slots in the pool. Tests build with a smaller pool (-DDAWLAB_ENGINE_MAX_TRACKS=16) so
 // they can fill it.
 #ifndef DAWLAB_ENGINE_MAX_TRACKS
@@ -39,9 +49,10 @@ constexpr int kMaxInserts = 8;                // insert slots per channel strip 
 constexpr int kDefaultMaxPdcSamples = 16384;  // upper bound for plugin delay compensation (Step 8)
 constexpr int kCommandQueueCapacity = 1024;   // UI -> audio commands in flight (Step 7)
 constexpr float kMaxFaderDb = 12.0f;          // fader range is [-inf, +12] dB
-// The most garbage one command can produce: removing a track hands back all its inserts and
-// its clip list. The audio thread takes a command only when the garbage queue has this much
+constexpr int kCaptureQueueCapacity = 4096;   // audio -> UI automation events in flight (chapter 16)
+// The most garbage one command can produce: removing a track hands back all its inserts, its
+// clip list and the curves of its fader and pan. The audio thread takes a command only when the garbage queue has this much
 // room, so nothing it gives back is ever lost (chapter 15, Step 2).
-constexpr int kMaxGarbagePerCommand = kMaxInserts + 1;
+constexpr int kMaxGarbagePerCommand = kMaxInserts + 3;
 
 } // namespace dawlab::engine

@@ -5,6 +5,7 @@
 //   #include <dawlab/engine/All.h>
 //   using namespace dawlab::engine;
 
+#include "Automation.h"
 #include "ChannelStrip.h"
 #include "Clip.h"
 #include "Commands.h"

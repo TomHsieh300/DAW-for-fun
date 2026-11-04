@@ -45,6 +45,7 @@
 #include <cassert>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "ChannelStrip.h"
 #include "Commands.h"
@@ -80,6 +81,8 @@ public:
         scratch_.setSize(kNumChannels, maxBlockSize_);
         trackSum_.setSize(kNumChannels, maxBlockSize_);
         masterBuffer_.setSize(kNumChannels, maxBlockSize_);
+        laneGains_.assign(static_cast<size_t>(maxBlockSize_), 0.0f);
+        lanePans_.assign(static_cast<size_t>(maxBlockSize_), 0.0f);
         for (auto& b : busBuffers_)
             b.setSize(kNumChannels, maxBlockSize_);
         prepared_ = true;
@@ -129,6 +132,8 @@ public:
     double getSampleRate() const noexcept { return sampleRate_; }
     int getMaxBlockSize() const noexcept { return maxBlockSize_; }
     bool isPrepared() const noexcept { return prepared_; }
+    // Where the lanes send what the hand does (Engine's queue). Setup code; nullptr: nowhere.
+    void setCaptureQueue(CaptureQueue* queue) noexcept { capture_ = queue; }
 
     // ---- the pool: audio thread (or setup code with no audio thread running) -----------------
     // Starts using a free slot for track `id`. False if the slot is out of range or in use, or
@@ -154,6 +159,7 @@ public:
                 discard(fx);
         if (const std::vector<Clip>* clips = t.exchangeClips(nullptr))
             discard(clips);
+        t.discardOwnCurves(discard);
         t.reset();
         trackInSlot_[static_cast<size_t>(ref.index)] = TrackId{};
         return true;
@@ -245,7 +251,15 @@ public:
     // Renders one block (n <= maxBlockSize). `segments` come from Transport::advance() and
     // cover the whole block; zero segments = stopped (tracks read no clips, but every insert
     // keeps running so reverb and delay tails ring out).
-    void process(AudioBlock out, const TimelineSegment* segments, int numSegments, double bpm = 120.0) noexcept {
+    // `playhead`: the transport's position, what the lanes read while stopped.
+    //
+    // Automation (chapter 16, Step 5): a fader comes after the inserts and the PDC delay, so the audio
+    // reaching it is older than the transport's position, by the delay of its own path. Its lanes read
+    // the curve that much earlier (LaneBlock::shift), so that a bounce with the latency compensated
+    // has the jump exactly on the sample the curve says. Limit: at a loop wrap the last `shift` samples
+    // before it are still on their way, but the lane has already wrapped.
+    void process(AudioBlock out, const TimelineSegment* segments, int numSegments, double bpm = 120.0,
+                 int64_t playhead = 0) noexcept {
         const int n = out.getNumSamples();
         assert(prepared_ && n <= maxBlockSize_);
         const bool anySolo = isAnyTrackSoloed();
@@ -253,6 +267,14 @@ public:
         playHead.segments = segments;
         playHead.numSegments = numSegments;
         playHead.bpm = bpm;
+
+        LaneBlock lanes;
+        lanes.segments = segments;
+        lanes.numSegments = numSegments;
+        lanes.playhead = playhead;
+        lanes.capture = capture_;
+        float* laneGains = laneGains_.data();
+        float* lanePans = lanePans_.data();
 
         AudioBlock sum = trackSum_.toBlock().getSubBlock(0, n);
         sum.clear();
@@ -272,6 +294,9 @@ public:
             track.renderClips(tb, segments, numSegments);
             track.beginBlock(!track.isMuted() && (!anySolo || track.isSoloed()));
             track.getInserts().setPlayHead(playHead);
+            const ChannelRef self = ChannelRef::track(slot, trackInSlot_[static_cast<size_t>(slot)]);
+            lanes.shift = 0;
+            track.getInserts().applyLanes(lanes, self, laneGains, n);
             if (track.getFormat() == TrackFormat::Mono) {
                 // Mono track: fold the clips to one channel ((L+R)/2: exact for a mono file,
                 // which the loader stores as L = R), run the inserts and the PDC delay on that
@@ -290,7 +315,8 @@ public:
             for (int b = 0; b < kNumBuses; ++b)
                 if (track.isSendPreFader(b))
                     track.addSend(b, bus[static_cast<size_t>(b)], tb);
-            track.applyFaderAndPan(tb);
+            lanes.shift = track.getInsertLatencySamples() + track.getCompensator().getDelaySamples();
+            track.applyFaderAndPan(tb, lanes, self, laneGains, lanePans);
             for (int b = 0; b < kNumBuses; ++b)
                 if (!track.isSendPreFader(b))
                     track.addSend(b, bus[static_cast<size_t>(b)], tb);
@@ -307,17 +333,23 @@ public:
             AudioBlock bb = bus[static_cast<size_t>(b)];
             strip.beginBlock(!strip.isMuted());
             strip.getInserts().setPlayHead(playHead);
+            lanes.shift = 0;
+            strip.getInserts().applyLanes(lanes, ChannelRef::bus(b), laneGains, n);
             strip.processInserts(bb);
             strip.applyMuteSolo(bb);
-            strip.applyFaderAndPan(bb);
+            lanes.shift = getMaxTrackLatencySamples() + strip.getInsertLatencySamples() + strip.getCompensator().getDelaySamples();
+            strip.applyFaderAndPan(bb, lanes, ChannelRef::bus(b), laneGains, lanePans);
             strip.meter(bb);
             mb.addFrom(bb);
         }
         master_.beginBlock(!master_.isMuted());
         master_.getInserts().setPlayHead(playHead);
+        lanes.shift = 0;
+        master_.getInserts().applyLanes(lanes, ChannelRef::master(), laneGains, n);
         master_.processInserts(mb);
         master_.applyMuteSolo(mb);
-        master_.applyFaderAndPan(mb);
+        lanes.shift = getMaxTrackLatencySamples() + getMaxBusLatencySamples() + master_.getInsertLatencySamples();
+        master_.applyFaderAndPan(mb, lanes, ChannelRef::master(), laneGains, lanePans);
         master_.meter(mb);
 
         out.clear();
@@ -340,6 +372,8 @@ private:
     LatencyCompensator trackSumCompensator_;
 
     AudioBuffer scratch_, trackSum_, masterBuffer_;
+    std::vector<float> laneGains_, lanePans_; // one block of a strip's lanes; used one strip at a time
+    CaptureQueue* capture_ = nullptr;
     std::array<AudioBuffer, kNumBuses> busBuffers_;
 
     std::atomic<bool> pdcEnabled_{true};

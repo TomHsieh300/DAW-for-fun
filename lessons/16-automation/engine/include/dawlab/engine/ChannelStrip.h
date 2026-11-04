@@ -81,6 +81,8 @@ public:
             d.store(kMinusInfinityDb, std::memory_order_relaxed);
         for (auto& p : sendPre_)
             p.store(false, std::memory_order_relaxed);
+        gainLane_.setKnobValue(faderInfo().toNormalized(0.0f));
+        panLane_.setKnobValue(panInfo().toNormalized(0.0f));
     }
     ChannelStrip(const ChannelStrip&) = delete;
     ChannelStrip& operator=(const ChannelStrip&) = delete;
@@ -94,6 +96,8 @@ public:
         audible_.reset(sampleRate, kMuteRampSeconds);
         for (auto& s : sendGain_)
             s.reset(sampleRate, kFaderRampSeconds);
+        gainLane_.prepare(sampleRate);
+        panLane_.prepare(sampleRate);
         compensator_.prepare(maxPdcSamples, kNumChannels);
         levelMeter_.prepare(sampleRate, kNumChannels);
         loudnessMeter_.prepare(sampleRate, kNumChannels);
@@ -112,6 +116,8 @@ public:
         sumSquares_.store(0.0, std::memory_order_relaxed);
         sampleCount_.store(0, std::memory_order_relaxed);
         snapNext_ = true;
+        gainLane_.resetPlayback();
+        panLane_.resetPlayback();
     }
 
     // ---- identity (UI thread only; the audio thread never reads the name) -----------------
@@ -121,10 +127,14 @@ public:
     // ---- parameters (any thread) ------------------------------------------------------------
     void setGainDb(float db) noexcept {
         gainDb_.store(std::clamp(db, kMinusInfinityDb, kMaxFaderDb), std::memory_order_relaxed);
+        gainLane_.setKnobValue(faderInfo().toNormalized(db));
     }
     float getGainDb() const noexcept { return gainDb_.load(std::memory_order_relaxed); }
 
-    void setPan(float pan) noexcept { pan_.store(std::clamp(pan, -1.0f, 1.0f), std::memory_order_relaxed); }
+    void setPan(float pan) noexcept {
+        pan_.store(std::clamp(pan, -1.0f, 1.0f), std::memory_order_relaxed);
+        panLane_.setKnobValue(panInfo().toNormalized(pan));
+    }
     float getPan() const noexcept { return pan_.load(std::memory_order_relaxed); }
 
     void setPanLaw(dsp::PanLaw law) noexcept { panLaw_.store(static_cast<int>(law), std::memory_order_relaxed); }
@@ -171,6 +181,46 @@ public:
         const float g = gainDb > kMinusInfinityDb ? dbToGain(gainDb) : 0.0f;
         left = g * pl;
         right = g * pr;
+    }
+
+    // ---- automation (chapter 16, Step 5) --------------------------------------------------------
+    // The fader's range, linear in dB, and the pan's: what a lane's 0..1 means here.
+    static ParameterInfo faderInfo() noexcept {
+        ParameterInfo i;
+        i.name = "Gain";
+        i.unit = "dB";
+        i.min = kMinusInfinityDb;
+        i.max = kMaxFaderDb;
+        return i;
+    }
+    static ParameterInfo panInfo() noexcept {
+        ParameterInfo i;
+        i.name = "Pan";
+        i.min = -1.0f;
+        i.max = 1.0f;
+        return i;
+    }
+    // kLaneGain or kLanePan; nullptr for anything else.
+    AutomationLane* getOwnLane(int parameter) noexcept {
+        return parameter == kLaneGain ? &gainLane_ : (parameter == kLanePan ? &panLane_ : nullptr);
+    }
+    // What the fader and the pan are at now, curve or not: what the screen shows. getGainDb() and
+    // getPan() stay the knob, the value the user left them at.
+    float getShownGainDb() const noexcept { return gainLane_.isActive() ? faderInfo().fromNormalized(gainLane_.getShownValue()) : getGainDb(); }
+    float getShownPan() const noexcept { return panLane_.isActive() ? panInfo().fromNormalized(panLane_.getShownValue()) : getPan(); }
+    // UI thread, for a new track in a used slot. (The curves went with the old track.)
+    void resetLaneModes() noexcept {
+        for (AutomationLane* lane : {&gainLane_, &panLane_}) {
+            lane->setMode(AutomationMode::Read);
+            lane->release();
+        }
+    }
+    // Audio thread: hands the curves of the fader and the pan to `discard`.
+    template <typename Discard>
+    void discardOwnCurves(Discard&& discard) noexcept {
+        for (AutomationLane* lane : {&gainLane_, &panLane_})
+            if (const AutomationCurve* curve = lane->exchangeCurve(nullptr))
+                discard(curve);
     }
 
     // ---- structure ----------------------------------------------------------------------------
@@ -257,6 +307,51 @@ public:
             gainR_.skip(block.getNumSamples()); // keep both ramps in step
     }
 
+    // The fader and pan with their lanes: one gain per SAMPLE while a lane is active, exactly the
+    // call above (and the same cost, but for a few loads) when none is. gains and pans: room for one
+    // block. At the end the smoothers take over where the lanes stopped, so a curve that goes away
+    // ramps back to the knob from where it was.
+    void applyFaderAndPan(AudioBlock block, const LaneBlock& lanes, ChannelRef self, float* gains, float* pans) noexcept {
+        const LaneTarget gainTarget{self, EffectId{}, kLaneGain}, panTarget{self, EffectId{}, kLanePan};
+        const bool gainActive = gainLane_.isActive(), panActive = panLane_.isActive();
+        if (!gainActive)
+            gainLane_.idle(faderInfo().toNormalized(getGainDb()), lanes, gainTarget);
+        if (!panActive)
+            panLane_.idle(panInfo().toNormalized(getPan()), lanes, panTarget);
+        if (!gainActive && !panActive) {
+            applyFaderAndPan(block);
+            return;
+        }
+        const int n = block.getNumSamples();
+        if (gainActive)
+            gainLane_.render(lanes, gainTarget, gains, n);
+        if (panActive)
+            panLane_.render(lanes, panTarget, pans, n);
+        const ParameterInfo fader = faderInfo(), panner = panInfo();
+        const float fixedDb = getGainDb(), fixedPan = getPan();
+        const dsp::PanLaw law = getPanLaw();
+        const PanMode mode = getPanMode();
+        float* left = block.getNumChannels() >= 1 ? block.getChannelPointer(0) : nullptr;
+        float* right = block.getNumChannels() >= 2 ? block.getChannelPointer(1) : nullptr;
+        float lastGain = -1.0f, lastPan = -1.0f, l = 0.0f, r = 0.0f;
+        for (int i = 0; i < n; ++i) {
+            const float g = gainActive ? gains[i] : 0.0f;
+            const float p = panActive ? pans[i] : 0.0f;
+            if (g != lastGain || p != lastPan) { // a held curve costs no pow() and no sin()
+                computeStripGains(gainActive ? fader.fromNormalized(g) : fixedDb, panActive ? panner.fromNormalized(p) : fixedPan,
+                                  law, mode, l, r);
+                lastGain = g;
+                lastPan = p;
+            }
+            if (left != nullptr)
+                left[i] *= l;
+            if (right != nullptr)
+                right[i] *= r;
+        }
+        gainL_.setCurrentAndTargetValue(l);
+        gainR_.setCurrentAndTargetValue(r);
+    }
+
     // dest += src * sendGain[bus], ramped per sample. Cheap no-op when the send is off.
     void addSend(int bus, AudioBlock dest, const AudioBlock& src) noexcept {
         if (!validBus(bus))
@@ -335,6 +430,7 @@ private:
     std::array<dsp::SmoothedValue, kNumBuses> sendGain_{};
     InsertChain inserts_;
     LatencyCompensator compensator_;
+    AutomationLane gainLane_, panLane_;
 
     dsp::LevelMeter levelMeter_;
     dsp::LoudnessMeter loudnessMeter_;

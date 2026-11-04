@@ -37,6 +37,10 @@
 #include "Constants.h"
 #include "Transport.h"
 
+#include "Automation.h"
+
+#include <memory>
+
 namespace dawlab::engine {
 
 // What an insert may want to know about the timeline of the block it is about to process
@@ -186,7 +190,70 @@ public:
             setParameter(i, getParameterInfo(i).defaultValue);
     }
 
+    // ---- identity and automation (chapter 16, Step 5) ------------------------------------------
+    // Set before the effect reaches the audio thread (Engine::addInsert); constant afterwards.
+    EffectId getEffectId() const noexcept { return effectId_; }
+    void setEffectId(EffectId id) noexcept { effectId_ = id; }
+
+    // Non-audio thread, while the effect is not playing: one lane per parameter, its knob at the
+    // parameter's value. The ParameterInfo is kept here so that the audio thread never has to ask a
+    // plugin for it.
+    void prepareLanes(double sampleRate) {
+        if (lanes_ == nullptr) {
+            numLanes_ = getNumParameters();
+            lanes_ = std::make_unique<ParameterLane[]>(static_cast<std::size_t>(numLanes_));
+            for (int i = 0; i < numLanes_; ++i) {
+                lanes_[static_cast<std::size_t>(i)].info = getParameterInfo(i);
+                lanes_[static_cast<std::size_t>(i)].lane.setKnobValue(getParameterNormalized(i));
+                lanes_[static_cast<std::size_t>(i)].lane.prepare(sampleRate, true);
+            }
+        }
+        (void)sampleRate; // not limited: see applyLanes()
+    }
+    AutomationLane* getLane(int parameter) noexcept {
+        return parameter >= 0 && parameter < numLanes_ ? &lanes_[static_cast<std::size_t>(parameter)].lane : nullptr;
+    }
+
+    // Audio thread, before process(). A parameter takes ONE value per block, the one at the block's
+    // start: an effect has no way to take more. So its lane has no speed limit: to the effect this is
+    // a knob that moved, which it already handles (or, for a switch, must simply obey). When a curve
+    // goes away, the parameter returns to its knob.
+    void applyLanes(const LaneBlock& block, ChannelRef channel, float* scratch, int n) noexcept {
+        bool changed = false;
+        for (int i = 0; i < numLanes_; ++i) {
+            ParameterLane& l = lanes_[static_cast<std::size_t>(i)];
+            const LaneTarget target{channel, effectId_, i};
+            if (l.lane.isActive()) {
+                l.lane.render(block, target, scratch, n);
+                setParameter(i, l.info.fromNormalized(scratch[0]));
+                l.wasActive = true;
+                changed = true;
+            } else {
+                l.lane.idle(l.lane.getKnobValue(), block, target);
+                if (l.wasActive) {
+                    setParameter(i, l.info.fromNormalized(l.lane.getKnobValue()));
+                    l.wasActive = false;
+                    changed = true;
+                }
+            }
+        }
+        if (changed)
+            applyPendingParameters();
+    }
+    void resetLanes() noexcept {
+        for (int i = 0; i < numLanes_; ++i)
+            lanes_[static_cast<std::size_t>(i)].lane.resetPlayback();
+    }
+
 private:
+    struct ParameterLane {
+        AutomationLane lane;
+        ParameterInfo info;
+        bool wasActive = false; // audio thread only
+    };
+    EffectId effectId_;
+    std::unique_ptr<ParameterLane[]> lanes_;
+    int numLanes_ = 0;
     std::atomic<bool> bypassed_{false};
     std::atomic<int> reportedLatency_{0};
 };
@@ -213,8 +280,10 @@ public:
 
     // ---- audio thread ---------------------------------------------------------------------
     void reset() noexcept {
-        for (int i = 0; i < size(); ++i)
+        for (int i = 0; i < size(); ++i) {
             at(i)->reset();
+            at(i)->resetLanes();
+        }
     }
 
     // Also publishes every effect's latency for the UI (InsertEffect::getReportedLatencySamples).
@@ -232,6 +301,20 @@ public:
             if (!e->isBypassed())
                 e->process(block);
         }
+    }
+
+    void applyLanes(const LaneBlock& block, ChannelRef channel, float* scratch, int n) noexcept {
+        for (int i = 0; i < size(); ++i)
+            at(i)->applyLanes(block, channel, scratch, n);
+    }
+    // The effect with this id, in any slot; nullptr if it is not on this chain. Any thread.
+    InsertEffect* findById(EffectId id) const noexcept {
+        for (int i = 0; i < size(); ++i) {
+            InsertEffect* e = at(i); // a reader on another thread may see the last slot just emptied
+            if (e != nullptr && e->getEffectId() == id)
+                return e;
+        }
+        return nullptr;
     }
 
     void setPlayHead(const PlayHead& playHead) noexcept {
