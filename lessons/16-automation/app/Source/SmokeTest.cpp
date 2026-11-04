@@ -1644,6 +1644,8 @@ int runSnapshot(const juce::File& pngFile) {
         main.tick();
     }
     main.getArrangement().selectLane(0);
+    // These blocks were not played against a clock: one that took long says nothing about dropouts.
+    main.getTransportBar().forgetCpuHistory();
     main.setStatus("Snapshot: demo song at bar 2 beat 3 (simulated playback, no audio device)");
     main.tick();
 
