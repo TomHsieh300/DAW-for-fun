@@ -12,7 +12,7 @@
 // The format (UTF-8 text, one item per line, '#' starts a comment outside quotes; numbers in the
 // classic locale; floats with 9 digits, so every float reads back exactly):
 //
-//   DawLabProject 3                                header: the format version
+//   DawLabProject 4                                header: the format version
 //   sampleRate 48000                               the rate of every sample position below
 //   nextTrackId 25                                 (Step 4) above every track id in the file
 //   tempo 120 4 4                                  BPM, time signature
@@ -27,6 +27,14 @@
 //   clip 17 0 96000 "Song_media/000.wav" 0 240 240 linear 0 0 "drums"
 //        track, start, length, audio file, then: source offset, fade in, fade out, fade shape,
 //        gain dB, muted 0/1, clip name
+//   lane 1 track:17 0 "Threshold" touch 0.5        (format 4) number, channel, GUI slot ("-": the strip's
+//                                                  own Gain or Pan), parameter, mode, default 0..1
+//   point 1 48000 0.25 linear                      (format 4) lane number, position, value 0..1, shape
+//
+// A lane names its effect by slot: like a track's id, a slot here is only the file's own reference,
+// because an opened project gets new EffectIds. Points of one lane at one position keep the order of
+// their lines: that is how a jump survives. A parameter this version does not know is not an error
+// (chapter 16, Step 4): the lane stays, silent, and is saved again.
 //
 // Channels are written "track:<id>", "bus:<index>" or "master". Lines that refer to something -
 // a send, an insert, a parameter, a clip - are checked once the whole file is read, so their
@@ -38,6 +46,7 @@
 // say keeps its default.
 
 #include <dawlab/DspMath.h>
+#include <dawlab/engine/Automation.h>
 #include <dawlab/engine/Constants.h>
 #include <dawlab/engine/Track.h>
 
@@ -53,7 +62,7 @@ constexpr int kInsertSlotsPerStrip = 4; // GUI insert slots per strip (Session, 
 
 namespace project {
 
-constexpr int kFormatVersion = 3; // 1: Step 4 without pan; 2: Step 4; 3: the whole app project
+constexpr int kFormatVersion = 4; // 1: Step 4 without pan; 2: Step 4; 3: the whole app project; 4: automation
 
 struct SendState {
     float levelDb = kMinusInfinityDb;
@@ -74,6 +83,20 @@ struct InsertState {
     std::string state;              // VST3 only: the plugin's own state, base64
 };
 
+struct PointState {
+    std::int64_t position = 0;
+    float value = 0.0f;
+    bool hold = false;
+};
+
+struct LaneState {
+    int slot = -1;         // GUI slot of the effect; -1: the strip's own control
+    std::string parameter; // by name
+    engine::AutomationMode mode = engine::AutomationMode::Read;
+    float defaultValue = 0.0f;
+    std::vector<PointState> points; // by position; at one position in the order of their lines
+};
+
 struct StripState {
     std::string name;
     float gainDb = 0.0f;
@@ -82,6 +105,7 @@ struct StripState {
     bool solo = false; // tracks only
     std::array<SendState, engine::kNumBuses> sends{};
     std::vector<InsertState> inserts; // in slot order
+    std::vector<LaneState> lanes;     // format 4
 };
 
 struct TrackState {
@@ -122,6 +146,8 @@ struct ProjectState {
 bool operator==(const SendState& a, const SendState& b);
 bool operator==(const ParamState& a, const ParamState& b);
 bool operator==(const InsertState& a, const InsertState& b);
+bool operator==(const PointState& a, const PointState& b);
+bool operator==(const LaneState& a, const LaneState& b);
 bool operator==(const StripState& a, const StripState& b);
 bool operator==(const TrackState& a, const TrackState& b);
 bool operator==(const ClipState& a, const ClipState& b);

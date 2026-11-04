@@ -254,6 +254,7 @@ struct LaneBlock {
     int64_t playhead = 0;
     int shift = 0;
     CaptureQueue* capture = nullptr;
+    bool readOnly = false; // a bounce: the curves play, whatever the mode says; nothing is recorded
 };
 
 // ---- the lane (Steps 2 and 3) -------------------------------------------------------------------------
@@ -307,7 +308,7 @@ public:
         if (n <= 0)
             return;
         const bool playing = block.numSegments > 0;
-        const bool user = userWins(playing);
+        const bool user = userWins(playing) && !block.readOnly;
         const float knob = getKnobValue();
         const AutomationCurve* curve = getCurve();
         const bool hand = user || curve == nullptr;

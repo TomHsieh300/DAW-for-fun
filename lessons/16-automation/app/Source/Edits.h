@@ -39,6 +39,35 @@ struct StripTarget {
 
     static StripTarget of(engine::ChannelRef ref) noexcept { return {ref.kind, ref.trackId, ref.index}; }
     static StripTarget ofTrack(engine::TrackId id) noexcept { return {engine::ChannelKind::Track, id, 0}; }
+
+    // A track is its id (of() also fills in a slot, which means nothing here), a bus its index.
+    friend bool operator==(const StripTarget& a, const StripTarget& b) noexcept {
+        return a.kind == b.kind && (a.kind != engine::ChannelKind::Track || a.track == b.track) &&
+               (a.kind != engine::ChannelKind::Bus || a.bus == b.bus);
+    }
+};
+
+// What a lane belongs to (chapter 16, Step 4): the strip, the effect by id (none: the strip's own
+// Gain or Pan) and the parameter by name.
+struct LaneAddress {
+    StripTarget strip;
+    engine::EffectId effect;
+    juce::String parameter;
+
+    friend bool operator==(const LaneAddress& a, const LaneAddress& b) {
+        return a.strip == b.strip && a.effect == b.effect && a.parameter == b.parameter;
+    }
+};
+
+struct LaneContent {
+    engine::AutomationMode mode = engine::AutomationMode::Read;
+    engine::AutomationCurve curve;
+};
+
+// A lane of one owner, as values: the owner is known from where this is kept.
+struct OwnedLane {
+    juce::String parameter;
+    LaneContent content;
 };
 
 // An insert slot as values: enough to build the same effect again.
@@ -49,6 +78,8 @@ struct InsertSnapshot {
     bool bypassed = false;
     juce::String vstFile;                               // Vst3: the plugin file ...
     juce::MemoryBlock vstState;                         // ... and its own state
+    engine::EffectId effectId;                          // none: a new effect, which gets a new id
+    std::vector<OwnedLane> lanes;                       // its automation (chapter 16)
 };
 
 struct SendSnapshot {
@@ -68,6 +99,7 @@ struct TrackSnapshot {
     std::array<SendSnapshot, engine::kNumBuses> sends{};
     std::array<InsertSnapshot, kInsertSlotsPerStrip> inserts{};
     std::vector<engine::Clip> clips; // the clips share their audio buffers with the project
+    std::vector<OwnedLane> lanes;    // of its fader and pan; its effects' are in `inserts`
 };
 
 namespace edit {
@@ -119,11 +151,16 @@ struct SetBypass {
 struct SetTempo {
     double bpm = 120.0;
 };
+// A recording, a drawn or dragged point, another mode: the whole lane at once. No content: no lane.
+struct SetLane {
+    LaneAddress address;
+    std::optional<LaneContent> content;
+};
 
 } // namespace edit
 
 using Edit = std::variant<edit::AddTrack, edit::RemoveTrack, edit::SetValue, edit::Rename, edit::SetFormat, edit::SetClips,
-                          edit::SetInsert, edit::SetParameter, edit::SetBypass, edit::SetTempo>;
+                          edit::SetInsert, edit::SetParameter, edit::SetBypass, edit::SetTempo, edit::SetLane>;
 
 // What the History applies edits to (the Session). Returns the inverse, or nothing when the edit
 // does not apply (its track is gone, its slot is empty...) - then nothing changed.

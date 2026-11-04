@@ -64,6 +64,7 @@ inline AudioBuffer renderOffline(Engine& engine, const RenderOptions& options) {
 
     transport.stop();
     transport.setLoopEnabled(false);
+    engine.getMixer().setLanesReadOnly(true); // a bounce plays what is written, in every automation mode
     transport.setPosition(options.startSample);
     if (options.resetBeforeRender)
         engine.requestReset();
@@ -83,6 +84,7 @@ inline AudioBuffer renderOffline(Engine& engine, const RenderOptions& options) {
         done += len;
     }
     transport.stop();
+    engine.getMixer().setLanesReadOnly(false);
 
     if (options.restoreTransport) {
         transport.setLoopEnabled(wasLooping);

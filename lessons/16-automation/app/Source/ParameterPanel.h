@@ -64,6 +64,8 @@ public:
     std::function<void(int index, float value)> onParameterChange;
     std::function<void(bool bypassed)> onBypassChange;
     std::function<void()> onGesture;
+    // Chapter 16: the hand on a control and off it again, for automation.
+    std::function<void(int index, bool down)> onTouch;
 
     void paint(juce::Graphics&) override;
     void resized() override;

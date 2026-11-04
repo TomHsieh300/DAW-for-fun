@@ -32,6 +32,12 @@
 // builds a new vector and hands a copy to the engine with setTrackClips(); the audio thread
 // swaps one pointer and the old list comes back as garbage.
 //
+// Automation (chapter 16, Step 6): Session keeps the GUI copy of every lane, like the clips. Every
+// change makes a new curve and hands a copy to the engine; the audio thread swaps one pointer. A lane
+// is named by LaneAddress, so an edit still finds it after its effect moved, or after undo brought the
+// effect back under the same id. A lane leaves with its owner, and the owner's inverse brings it back.
+// A parameter this version does not know keeps its lane in the model: silent, but saved again.
+//
 // Session broadcasts a change message (juce::ChangeBroadcaster) whenever the structure changes,
 // so the arrangement and the mixer can rebuild what they display.
 
@@ -51,6 +57,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 namespace dawlab::app {
@@ -148,9 +155,10 @@ public:
     int chainIndexOf(engine::ChannelRef ref, int uiSlot) const noexcept;
     int getNumUsedSlots(engine::ChannelRef ref) const noexcept;
 
-    // Puts a new built-in effect of `type` into the slot (replacing what was there). Returns the
-    // new effect (observer pointer) or nullptr if the engine refused it.
-    engine::InsertEffect* setBuiltinInsert(engine::ChannelRef ref, int uiSlot, engine::EffectType type);
+    // Puts a new built-in effect of `type` into the slot (replacing what was there, with its lanes).
+    // Returns the new effect (observer pointer) or nullptr if the engine refused it. `id`: the one
+    // undo brings back; none gets a new one.
+    engine::InsertEffect* setBuiltinInsert(engine::ChannelRef ref, int uiSlot, engine::EffectType type, engine::EffectId id = {});
 
     // Same for a hosted VST3 plugin (Step 17). Ownership passes to the engine.
     engine::InsertEffect* setVstInsert(engine::ChannelRef ref, int uiSlot, std::unique_ptr<VstInsert> plugin);
@@ -194,6 +202,43 @@ public:
     // clips as being at oldRate, resamples every source on the calling thread, scales the clips
     // and the transport. Blocks for as long as the resampling takes. Message thread.
     void handleSampleRateChange(double oldRate, double newRate);
+
+    // ---- automation (chapter 16, Step 6) --------------------------------------------------------
+    const LaneContent* getLane(const LaneAddress& address) const noexcept; // nullptr: no lane
+    // Sets or (no content) removes a lane WITHOUT recording, like setClips(). False if its strip or
+    // effect is not here. An unknown parameter is fine: the lane stays silent.
+    bool setLane(const LaneAddress& address, std::optional<LaneContent> content);
+    // The lanes of a strip (its own and its effects').
+    std::vector<std::pair<LaneAddress, LaneContent>> getLanesOf(engine::ChannelRef ref) const;
+    // Does anything play this lane? False for a parameter this version does not know.
+    bool isLaneLive(const LaneAddress& address) const noexcept;
+    // What can be automated on a strip: Gain, Pan and the parameters of its built-in effects.
+    std::vector<std::pair<juce::String, LaneAddress>> getAutomatableParameters(engine::ChannelRef ref) const;
+    // The GUI slot of an effect on a strip, or -1.
+    int slotOfEffect(engine::ChannelRef ref, engine::EffectId id) const noexcept;
+
+    // Undoable edits. A gesture passes one merge key for all its steps. addPoint() and movePoint()
+    // return the point's index in the lane.
+    int addPoint(const LaneAddress& address, std::int64_t position, float value, std::uint32_t mergeKey = 0);
+    int movePoint(const LaneAddress& address, int index, std::int64_t position, float value, std::uint32_t mergeKey = 0);
+    bool removePoint(const LaneAddress& address, int index);
+    bool setLaneMode(const LaneAddress& address, engine::AutomationMode mode);
+
+    // The user's hand on a control that may be automated. touchLane() and releaseLane() are mouse down
+    // and mouse up. handMoves() takes a value in the parameter's own unit: if the control has an active
+    // lane it goes to the lane's knob and true comes back: the movement is a recording, not an edit of
+    // its own. Otherwise false, and the caller makes the usual undoable edit.
+    void touchLane(const LaneAddress& address) noexcept;
+    void releaseLane(const LaneAddress& address) noexcept;
+    bool handMoves(const LaneAddress& address, float value) noexcept;
+
+    // The UI tick: what the audio thread recorded. Each finished pass goes into its curve as one undo
+    // step ("Record ..."). Returns the number of passes.
+    int collectAutomation();
+
+    // The value the user left a parameter at. While a curve moves the parameter, that is not
+    // getParameter(): this is what is saved and what an undo restores.
+    float knobValue(engine::InsertEffect& effect, int index) const noexcept;
 
     // ---- undo and redo (chapter 15, Step 9) ---------------------------------------------------
     // Every change the GUI makes goes through perform(): it is applied, and its inverse is kept
@@ -250,6 +295,17 @@ private:
     std::optional<Edit> apply(const edit::SetParameter&);
     std::optional<Edit> apply(const edit::SetBypass&);
     std::optional<Edit> apply(const edit::SetTempo&);
+    std::optional<Edit> apply(const edit::SetLane&);
+    engine::InsertEffect* effectOf(const LaneAddress& address) const noexcept;
+    engine::AutomationLane* laneOf(const LaneAddress& address) const noexcept;
+    int parameterIndexOf(const LaneAddress& address) const noexcept; // -1: not known
+    void pushLane(const LaneAddress& address);
+    void forgetLanesOfEffect(engine::EffectId id);
+    void forgetLanesOfTrack(engine::TrackId id);
+    std::vector<OwnedLane> ownedLanes(const StripTarget& strip, engine::EffectId effect) const;
+    bool restoreLanes(const StripTarget& strip, engine::EffectId effect, const std::vector<OwnedLane>& lanes);
+    bool editLane(const LaneAddress& address, LaneContent content, const juce::String& name, std::uint32_t mergeKey);
+    LaneContent contentOrNew(const LaneAddress& address) const;
     void removeBusAndMasterInserts();
     void resetBusAndMasterSettings();
     void pushClips(const TrackModel& track);
@@ -261,6 +317,8 @@ private:
     double clipSampleRate_ = 0.0; // 0 = not set yet: follow the engine
     juce::String projectName_ = "Untitled";
     History history_;
+    std::vector<std::pair<LaneAddress, LaneContent>> lanes_; // the GUI copy of every lane
+    engine::AutomationRecorder recorder_;
 };
 
 } // namespace dawlab::app

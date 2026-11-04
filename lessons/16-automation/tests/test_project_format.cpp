@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <clocale>
 #include <cstdio>
+#include <iterator>
 #include <locale>
 #include <stdexcept>
 #include <string>
@@ -163,7 +164,7 @@ void testErrors() {
         const char* expected; // the error must start with this
     } cases[] = {
         {"", "line 1: not a DawLab project"},
-        {"DawLabProject 4\n", "line 1: made by a newer DawLab"},
+        {"DawLabProject 5\n", "line 1: made by a newer DawLab"},
         {"DawLabProject 3\ntrack 1 \"A\" 0 0 mono 0 0\n", "line 2: sampleRate must come"},
         {head + "volume 1\n", "line 4: unknown keyword"},
         {head + "track 2 \"B\" 0 0\n", "line 4: track needs 7 values"},
@@ -243,13 +244,83 @@ void testLocale() {
 
 } // namespace
 
+// ---- format 4: automation --------------------------------------------------------------------------
+
+void testLanes() {
+    const std::string head = "DawLabProject 4\nsampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\ninsert track:1 2 builtin \"Gain\" 0\n"; // 4 lines
+    const ReadResult r = readProject(head +
+                                     "point 1 2000 0.25 hold\n" // before its lane, out of order, and then a jump
+                                     "point 1 1000 0.5 linear\n"
+                                     "point 1 1000 0.75 linear\n"
+                                     "lane 1 track:1 2 \"Gain\" touch 0.5\n"
+                                     "lane 2 track:1 - \"Pan\" latch 0.125\n"
+                                     "lane 3 master - \"Gain\" write 0\n"
+                                     "lane 4 bus:1 - \"Gain\" read 1\n"
+                                     "lane 5 track:1 2 \"Unknown\" read 0.5\n");
+    DAWLAB_CHECK(r.ok);
+    if (!r.ok) {
+        std::printf("  %s\n", r.error.c_str());
+        return;
+    }
+    const auto& lanes = r.project.tracks[0].strip.lanes;
+    DAWLAB_CHECK(lanes.size() == 3 && r.project.master.lanes.size() == 1 && r.project.buses[1].lanes.size() == 1);
+    DAWLAB_CHECK(lanes[0].slot == 2 && lanes[0].parameter == "Gain" && lanes[0].mode == dawlab::engine::AutomationMode::Touch && lanes[0].defaultValue == 0.5f);
+    DAWLAB_CHECK(lanes[0].points.size() == 3 && lanes[0].points[0].value == 0.5f && lanes[0].points[1].value == 0.75f &&
+                 lanes[0].points[2].position == 2000 && lanes[0].points[2].hold);
+    DAWLAB_CHECK(lanes[1].slot == -1 && lanes[1].parameter == "Pan" && lanes[1].mode == dawlab::engine::AutomationMode::Latch);
+    DAWLAB_CHECK(lanes[2].parameter == "Unknown"); // kept: the file format does not know the effects
+    DAWLAB_CHECK(r.project.master.lanes[0].mode == dawlab::engine::AutomationMode::Write);
+
+    // Everything reads back exactly, also a float that needs 9 digits.
+    ProjectState p = r.project;
+    p.master.lanes[0].points.push_back({123456789012LL, 1.0f / 3.0f, false});
+    const std::string text = writeProject(p);
+    const ReadResult back = readProject(text);
+    DAWLAB_CHECK(back.ok && back.project == p);
+    DAWLAB_CHECK(back.ok && writeProject(back.project) == text);
+
+    struct Bad {
+        std::string body;
+        const char* message;
+    };
+    const std::string lane = "lane 1 track:1 - \"Gain\" read 0.5\n"; // line 5
+    const Bad bad[] = {
+        {head + "lane 1 track:9 - \"Gain\" read 0.5\ntrack 2 \"B\" 0 0 mono 0 0\n", "line 5: lane on track:9"}, // not just the last line
+        {head + "lane 1 track:1 0 \"Gain\" read 0.5\n", "line 5: lane for slot 0"},
+        {head + "lane 1 track:1 9 \"Gain\" read 0.5\n", "line 5: slot must be"},
+        {head + lane + lane, "line 6: lane number 1 used twice"},
+        {head + lane + "lane 2 track:1 - \"Gain\" read 0.5\n", "line 6: two lanes"},
+        {head + lane + "point 2 0 0.5 linear\n", "line 6: point for lane 2"},
+        {head + "lane 0 track:1 - \"Gain\" read 0.5\n", "line 5: lane needs"},
+        {head + "lane 1 track:1 - Gain read 0.5\n", "line 5: lane needs"},
+        {head + "lane 1 track:1 - \"Gain\" auto 0.5\n", "line 5: unknown mode"},
+        {head + "lane 1 track:1 - \"Gain\" read 1.5\n", "line 5: the default"},
+        {head + lane + "point 1 0 1.5 linear\n", "line 6: a point's value"},
+        {head + lane + "point 1 0 nan linear\n", "line 6: a point's value"},
+        {head + lane + "point 1 -1 0.5 linear\n", "line 6: a point's position"},
+        {head + lane + "point 1 0 0.5 curvy\n", "line 6: unknown shape"},
+        {head + lane + "point 1 0 0.5\n", "line 6: point needs"},
+        {"DawLabProject 3\nsampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\nlane 1 track:1 - \"Gain\" read 0\n", "line 4: \"lane\" needs format 4"},
+        {"DawLabProject 3\nsampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\npoint 1 0 0 linear\n", "line 4: \"point\" needs format 4"},
+    };
+    for (const Bad& b : bad) {
+        const ReadResult result = readProject(b.body);
+        const bool right = !result.ok && result.error.rfind(b.message, 0) == 0;
+        if (!right)
+            std::printf("  expected \"%s\", got \"%s\"\n", b.message, result.ok ? "ok" : result.error.c_str());
+        DAWLAB_CHECK(right);
+    }
+    std::printf("  lanes: the file reads back exactly; %d broken files refused with the right line\n", static_cast<int>(std::size(bad)));
+}
+
 int main() {
-    std::printf("l15_test_project_format: the application's project file, format %d\n", kFormatVersion);
+    std::printf("l16_test_project_format: the application's project file, format %d\n", kFormatVersion);
+    testLanes();
     testRoundTrip();
     testAnyOrder();
     testStep4Files();
     testErrors();
     testTextVariants();
     testLocale();
-    return dawlab::test::summary("l15_test_project_format");
+    return dawlab::test::summary("l16_test_project_format");
 }

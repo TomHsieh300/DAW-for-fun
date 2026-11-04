@@ -213,7 +213,15 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
     pan_.setWantsKeyboardFocus(false);
     pan_.setTooltip(isTrack ? "Pan (constant-power law)" : "Balance");
     pan_.onValueChange = [this] { performValue(edit::Field::Pan, static_cast<float>(pan_.getValue()), 0, "Pan", true); };
-    pan_.onDragStart = pan_.onDragEnd = [this] { endGesture(); };
+    const LaneAddress panLane{StripTarget::of(ref_), engine::EffectId{}, "Pan"};
+    pan_.onDragStart = [this, panLane] {
+        endGesture();
+        session_.touchLane(panLane);
+    };
+    pan_.onDragEnd = [this, panLane] {
+        endGesture();
+        session_.releaseLane(panLane);
+    };
     addAndMakeVisible(pan_);
     panLabel_.setText(isTrack ? "Pan" : "Bal", juce::dontSendNotification);
     panLabel_.setJustificationType(juce::Justification::centred);
@@ -232,7 +240,15 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
         performValue(edit::Field::Gain, FaderLaw::toEngineDb(db), 0, "Fader", true); // the engine ramps over 50 ms
         gainLabel_.setText(FaderLaw::format(db), juce::dontSendNotification);
     };
-    fader_.onDragStart = fader_.onDragEnd = [this] { endGesture(); };
+    const LaneAddress gainLane{StripTarget::of(ref_), engine::EffectId{}, "Gain"};
+    fader_.onDragStart = [this, gainLane] {
+        endGesture();
+        session_.touchLane(gainLane);
+    };
+    fader_.onDragEnd = [this, gainLane] {
+        endGesture();
+        session_.releaseLane(gainLane);
+    };
     addAndMakeVisible(fader_);
     addAndMakeVisible(meter_);
     gainLabel_.setJustificationType(juce::Justification::centred);
@@ -267,6 +283,10 @@ engine::ChannelStrip* ChannelStripView::strip() noexcept { return session_.getEn
 
 void ChannelStripView::performValue(edit::Field field, float value, int bus, const juce::String& what, bool continuous) {
     const StripTarget target = StripTarget::of(ref_);
+    // On an automated control the hand is a recording, not an undo step of its own (chapter 16).
+    if ((field == edit::Field::Gain && session_.handMoves({target, engine::EffectId{}, "Gain"}, value)) ||
+        (field == edit::Field::Pan && session_.handMoves({target, engine::EffectId{}, "Pan"}, value)))
+        return;
     const auto key = continuous ? mergeKeyFor(target, static_cast<std::uint32_t>(field) * 16u + static_cast<std::uint32_t>(bus) + 1u) : 0u;
     session_.perform(edit::SetValue{target, field, bus, value}, what + " " + session_.getStripName(ref_), key);
 }
@@ -306,14 +326,14 @@ void ChannelStripView::update() {
     // Values can change elsewhere (project load, keyboard shortcut, exercise code): follow them
     // unless the user is holding the control right now.
     if (!fader_.isMouseButtonDown()) {
-        const float pos = FaderLaw::dbToPosition(s.getGainDb());
+        const float pos = FaderLaw::dbToPosition(s.getShownGainDb()); // a curve moves the fader on screen
         if (std::abs(static_cast<float>(fader_.getValue()) - pos) > 1e-4f) {
             fader_.setValue(pos, juce::dontSendNotification);
         }
         gainLabel_.setText(FaderLaw::format(FaderLaw::positionToDb(static_cast<float>(fader_.getValue()))), juce::dontSendNotification);
     }
-    if (!pan_.isMouseButtonDown() && std::abs(pan_.getValue() - s.getPan()) > 1e-4)
-        pan_.setValue(s.getPan(), juce::dontSendNotification);
+    if (!pan_.isMouseButtonDown() && std::abs(pan_.getValue() - s.getShownPan()) > 1e-4)
+        pan_.setValue(s.getShownPan(), juce::dontSendNotification);
     for (int b = 0; b < static_cast<int>(sends_.size()); ++b) {
         auto& k = *sends_[static_cast<size_t>(b)];
         const float db = std::max(FaderLaw::kBottomDb, s.getSendLevelDb(b));

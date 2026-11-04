@@ -134,6 +134,8 @@ public:
     bool isPrepared() const noexcept { return prepared_; }
     // Where the lanes send what the hand does (Engine's queue). Setup code; nullptr: nowhere.
     void setCaptureQueue(CaptureQueue* queue) noexcept { capture_ = queue; }
+    // While a bounce runs: the curves play in every mode, and no hand is heard or recorded. Any thread.
+    void setLanesReadOnly(bool readOnly) noexcept { lanesReadOnly_.store(readOnly, std::memory_order_relaxed); }
 
     // ---- the pool: audio thread (or setup code with no audio thread running) -----------------
     // Starts using a free slot for track `id`. False if the slot is out of range or in use, or
@@ -273,6 +275,7 @@ public:
         lanes.numSegments = numSegments;
         lanes.playhead = playhead;
         lanes.capture = capture_;
+        lanes.readOnly = lanesReadOnly_.load(std::memory_order_relaxed);
         float* laneGains = laneGains_.data();
         float* lanePans = lanePans_.data();
 
@@ -374,6 +377,7 @@ private:
     AudioBuffer scratch_, trackSum_, masterBuffer_;
     std::vector<float> laneGains_, lanePans_; // one block of a strip's lanes; used one strip at a time
     CaptureQueue* capture_ = nullptr;
+    std::atomic<bool> lanesReadOnly_{false};
     std::array<AudioBuffer, kNumBuses> busBuffers_;
 
     std::atomic<bool> pdcEnabled_{true};

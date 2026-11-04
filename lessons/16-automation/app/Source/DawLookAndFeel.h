@@ -1,5 +1,5 @@
 #pragma once
-// DawLookAndFeel: the dark theme of DawLab 15 (Step 12).
+// DawLookAndFeel: the dark theme of DawLab 16 (Step 12).
 //
 // JUCE draws every standard widget through a LookAndFeel object. Instead of subclassing each
 // slider, we derive from LookAndFeel_V4 once, set a colour scheme, and override the few drawing

@@ -41,3 +41,17 @@ l16_add_test(l16_test_track_format      tests/test_track_format.cpp)
 l16_add_test(l16_test_track_pool        tests/test_track_pool.cpp)
 target_compile_definitions(l16_test_track_pool PRIVATE DAWLAB_ENGINE_MAX_TRACKS=16)
 l16_add_test(l16_test_automation        tests/test_automation.cpp)
+
+# The application's project file: text in, text out, no JUCE, so it is tested here and runs in
+# every build, not only with -Juce.
+l16_add_test(l16_test_project_format    tests/test_project_format.cpp app/Source/ProjectFormat.cpp)
+target_include_directories(l16_test_project_format PRIVATE app/Source)
+
+# ---- Step 6: the JUCE application "DawLab 16" ----------------------------------------------------
+# Needs -DDAWLAB_WITH_JUCE=ON (build.ps1 -Juce). Without JUCE the chapter stops here.
+if(NOT DAWLAB_WITH_JUCE)
+    message(STATUS "16-automation: the JUCE app (DawLab16) is skipped (use -Juce)")
+    return()
+endif()
+
+add_subdirectory(app)   # targets: l16_daw_app (static library), DawLab16 (the application)

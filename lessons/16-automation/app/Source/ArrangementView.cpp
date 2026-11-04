@@ -64,6 +64,14 @@ void ArrangementView::changeListenerCallback(juce::ChangeBroadcaster*) {
     waveforms_.prune(session_);
     // Tracks may have come or gone: the selection must name an existing track, and the
     // scroll position must stay inside the (possibly shorter) list of lanes.
+    // The same for the automation lanes: a track or an effect that went takes its lane off the screen.
+    shownLanes_.erase(std::remove_if(shownLanes_.begin(), shownLanes_.end(),
+                                     [this](const auto& shown) {
+                                         return !session_.hasTrack(shown.first) ||
+                                                (shown.second.effect.isValid() &&
+                                                 session_.slotOfEffect(session_.trackRef(shown.first), shown.second.effect) < 0);
+                                     }),
+                      shownLanes_.end());
     if (!session_.hasTrack(selectedTrack_) && session_.getNumTracks() > 0)
         selectLane(selectedLane_);
     else if (session_.hasTrack(selectedTrack_))
@@ -101,24 +109,47 @@ double ArrangementView::xToSample(float x) const noexcept { return viewStart_ + 
 
 int ArrangementView::getLaneHeight() const noexcept {
     const int lanes = std::max(1, session_.getNumTracks());
-    return std::max(kMinLaneHeight, (getHeight() - kRulerHeight) / lanes);
+    const int automation = static_cast<int>(shownLanes_.size()) * kAutomationHeight;
+    return std::max(kMinLaneHeight, (getHeight() - kRulerHeight - automation) / lanes);
 }
 
+int ArrangementView::rowTop(int lane) const noexcept {
+    int top = lane * getLaneHeight();
+    for (const auto& shown : shownLanes_)
+        if (session_.indexOf(shown.first) < lane)
+            top += kAutomationHeight;
+    return top;
+}
+
+int ArrangementView::rowsHeight() const noexcept { return rowTop(session_.getNumTracks()); }
+
 juce::Rectangle<int> ArrangementView::getLaneBounds(int lane) const noexcept {
-    const int laneH = getLaneHeight();
-    return {0, kRulerHeight + lane * laneH - scrollY_, getWidth(), laneH};
+    return {0, kRulerHeight + rowTop(lane) - scrollY_, getWidth(), getLaneHeight()};
+}
+
+juce::Rectangle<int> ArrangementView::getAutomationBounds(int lane) const noexcept {
+    if (!isAutomationShown(session_.getTrackId(lane)))
+        return {};
+    return {0, getLaneBounds(lane).getBottom(), getWidth(), kAutomationHeight};
 }
 
 int ArrangementView::laneAt(int y) const noexcept {
     if (y < kRulerHeight)
         return -1;
-    const int lane = (y - kRulerHeight + scrollY_) / getLaneHeight();
-    return lane < session_.getNumTracks() ? lane : -1;
+    for (int lane = 0; lane < session_.getNumTracks(); ++lane) {
+        const auto row = getLaneBounds(lane);
+        if (y >= row.getY() && y < row.getBottom() + getAutomationBounds(lane).getHeight())
+            return lane;
+    }
+    return -1;
 }
 
-int ArrangementView::getMaxScrollY() const noexcept {
-    return std::max(0, session_.getNumTracks() * getLaneHeight() - (getHeight() - kRulerHeight));
+int ArrangementView::automationLaneAt(int y) const noexcept {
+    const int lane = laneAt(y);
+    return lane >= 0 && getAutomationBounds(lane).contains(0, y) ? lane : -1;
 }
+
+int ArrangementView::getMaxScrollY() const noexcept { return std::max(0, rowsHeight() - (getHeight() - kRulerHeight)); }
 
 void ArrangementView::setScrollY(int pixels) {
     pixels = std::clamp(pixels, 0, getMaxScrollY());
@@ -133,17 +164,18 @@ void ArrangementView::scrollToTrack(engine::TrackId track) {
     const int lane = session_.indexOf(track);
     if (lane < 0)
         return;
-    const int top = lane * getLaneHeight();
+    const int top = rowTop(lane);
+    const int height = rowTop(lane + 1) - top;
     const int visible = getHeight() - kRulerHeight;
     if (top < scrollY_)
         setScrollY(top);
-    else if (top + getLaneHeight() > scrollY_ + visible)
-        setScrollY(top + getLaneHeight() - visible);
+    else if (top + height > scrollY_ + visible)
+        setScrollY(top + height - visible);
 }
 
 void ArrangementView::updateScrollBar() {
     const int visible = std::max(0, getHeight() - kRulerHeight);
-    scrollBar_.setRangeLimits(0.0, static_cast<double>(session_.getNumTracks() * getLaneHeight()), juce::dontSendNotification);
+    scrollBar_.setRangeLimits(0.0, static_cast<double>(rowsHeight()), juce::dontSendNotification);
     scrollBar_.setCurrentRange(scrollY_, visible, juce::dontSendNotification);
     scrollBar_.setVisible(getMaxScrollY() > 0);
 }
@@ -216,11 +248,16 @@ void ArrangementView::paint(juce::Graphics& g) {
         // Lanes scroll under the ruler: draw only the visible ones, clipped below the ruler.
         juce::Graphics::ScopedSaveState save(g);
         g.reduceClipRegion(0, kRulerHeight, getWidth(), getHeight() - kRulerHeight);
-        for (int lane = scrollY_ / getLaneHeight(); lane < session_.getNumTracks(); ++lane) {
+        for (int lane = 0; lane < session_.getNumTracks(); ++lane) {
             const auto bounds = getLaneBounds(lane);
             if (bounds.getY() >= getHeight())
                 break;
+            const auto automation = getAutomationBounds(lane);
+            if (bounds.getBottom() + automation.getHeight() <= kRulerHeight)
+                continue;
             paintLane(g, lane, bounds);
+            if (!automation.isEmpty())
+                paintAutomation(g, lane, automation);
         }
     }
     paintRuler(g, {0, 0, getWidth(), kRulerHeight});
@@ -384,6 +421,13 @@ void ArrangementView::paintLane(juce::Graphics& g, int lane, juce::Rectangle<int
     info << juce::String(static_cast<int>(clips.size())) << (clips.size() == 1 ? " clip" : " clips");
     g.setColour(strip->isMuted() ? DawColours::mute() : (strip->isSoloed() ? DawColours::accentWarm() : DawColours::textDim()));
     g.drawText(info, header, juce::Justification::topLeft);
+    const auto toggle = getAutomationToggleBounds(lane);
+    const bool shown = isAutomationShown(track);
+    g.setColour(shown ? DawColours::accent() : DawColours::outline());
+    g.drawRect(toggle);
+    g.setColour(shown ? DawColours::accent() : DawColours::textDim());
+    g.setFont(DawLookAndFeel::uiFont(11.0f, shown));
+    g.drawText("A", toggle, juce::Justification::centred);
 
     g.setColour(DawColours::outline());
     g.drawHorizontalLine(area.getBottom() - 1, 0.0f, static_cast<float>(getWidth()));
@@ -475,6 +519,14 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e) {
         return;
     const engine::TrackId track = session_.getTrackId(lane);
     setSelectedTrack(track);
+    if (automationLaneAt(e.y) == lane) {
+        mouseDownInAutomation(e, lane);
+        return;
+    }
+    if (getAutomationToggleBounds(lane).contains(e.x, e.y)) {
+        toggleAutomation(track);
+        return;
+    }
     if (e.x < kHeaderWidth)
         return;
     const int clip = clipAt(lane, static_cast<float>(e.x));
@@ -502,14 +554,19 @@ void ArrangementView::mouseDrag(const juce::MouseEvent& e) {
         const int64_t newStart = snapToBeat(xToSample(static_cast<float>(e.x)) - dragGrabOffset_, snap);
         if (newStart != clips[static_cast<size_t>(dragClip_)].start)
             dragClip_ = session_.moveClip(dragTrack_, dragClip_, newStart); // -> repaint via change message
+    } else if (drag_ == Drag::Point) {
+        if (const LaneAddress* address = getShownLane(dragTrack_))
+            dragPoint_ = session_.movePoint(*address, dragPoint_, snapToBeat(xToSample(static_cast<float>(e.x)), snap),
+                                            yToValue(dragLane_, static_cast<float>(e.y)), dragPointKey_);
     }
 }
 
 void ArrangementView::mouseUp(const juce::MouseEvent&) {
-    if (drag_ == Drag::Clip)
+    if (drag_ == Drag::Clip || drag_ == Drag::Point)
         session_.getHistory().endMerge();
     drag_ = Drag::None;
     dragClip_ = -1;
+    dragPoint_ = -1;
     repaint();
 }
 
@@ -522,6 +579,209 @@ void ArrangementView::mouseWheelMove(const juce::MouseEvent& e, const juce::Mous
         const float delta = std::abs(wheel.deltaX) > std::abs(wheel.deltaY) ? wheel.deltaX : wheel.deltaY;
         setView(viewStart_ - delta * 200.0 * samplesPerPixel_, samplesPerPixel_);
     }
+}
+
+// ---- automation lanes (chapter 16) ------------------------------------------------------------------
+
+const LaneAddress* ArrangementView::getShownLane(engine::TrackId track) const noexcept {
+    for (const auto& shown : shownLanes_)
+        if (shown.first == track)
+            return &shown.second;
+    return nullptr;
+}
+
+bool ArrangementView::isAutomationShown(engine::TrackId track) const noexcept { return getShownLane(track) != nullptr; }
+
+void ArrangementView::showAutomation(engine::TrackId track, const LaneAddress& address) {
+    if (!session_.hasTrack(track))
+        return;
+    hideAutomation(track);
+    shownLanes_.emplace_back(track, address);
+    setScrollY(scrollY_);
+    updateScrollBar();
+    repaint();
+}
+
+void ArrangementView::hideAutomation(engine::TrackId track) {
+    shownLanes_.erase(std::remove_if(shownLanes_.begin(), shownLanes_.end(), [track](const auto& shown) { return shown.first == track; }),
+                      shownLanes_.end());
+    setScrollY(scrollY_);
+    updateScrollBar();
+    repaint();
+}
+
+void ArrangementView::toggleAutomation(engine::TrackId track) {
+    if (isAutomationShown(track))
+        hideAutomation(track);
+    else
+        showAutomation(track, {StripTarget::ofTrack(track), engine::EffectId{}, "Gain"});
+}
+
+juce::Rectangle<int> ArrangementView::getAutomationToggleBounds(int lane) const noexcept {
+    const auto row = getLaneBounds(lane);
+    return {kHeaderWidth - 22, row.getY() + 3, 18, 16};
+}
+
+float ArrangementView::valueToY(int lane, float value) const noexcept {
+    const auto area = getAutomationBounds(lane).reduced(0, kPointRadius + 1);
+    return static_cast<float>(area.getBottom()) - value * static_cast<float>(area.getHeight());
+}
+
+float ArrangementView::yToValue(int lane, float y) const noexcept {
+    const auto area = getAutomationBounds(lane).reduced(0, kPointRadius + 1);
+    return std::clamp((static_cast<float>(area.getBottom()) - y) / static_cast<float>(std::max(1, area.getHeight())), 0.0f, 1.0f);
+}
+
+int ArrangementView::pointAt(int lane, float x, float y) const {
+    const LaneAddress* address = getShownLane(session_.getTrackId(lane));
+    const LaneContent* content = address != nullptr ? session_.getLane(*address) : nullptr;
+    if (content == nullptr)
+        return -1;
+    const auto& points = content->curve.points();
+    const float reach = static_cast<float>(kPointRadius + 2);
+    for (int i = static_cast<int>(points.size()) - 1; i >= 0; --i) { // the one on top
+        const auto& point = points[static_cast<size_t>(i)];
+        if (std::abs(sampleToX(static_cast<double>(point.position)) - x) <= reach && std::abs(valueToY(lane, point.value) - y) <= reach)
+            return i;
+    }
+    return -1;
+}
+
+namespace {
+const char* modeName(engine::AutomationMode mode) noexcept {
+    switch (mode) {
+    case engine::AutomationMode::Read: return "Read";
+    case engine::AutomationMode::Touch: return "Touch";
+    case engine::AutomationMode::Latch: return "Latch";
+    case engine::AutomationMode::Write: return "Write";
+    }
+    return "Read";
+}
+} // namespace
+
+void ArrangementView::paintAutomation(juce::Graphics& g, int lane, juce::Rectangle<int> area) {
+    const engine::TrackId track = session_.getTrackId(lane);
+    const LaneAddress* address = getShownLane(track);
+    if (address == nullptr)
+        return;
+    const LaneContent* content = session_.getLane(*address);
+    const bool live = session_.isLaneLive(*address);
+    g.setColour(DawColours::background().darker(0.25f));
+    g.fillRect(area);
+    {
+        juce::Graphics::ScopedSaveState save(g);
+        g.reduceClipRegion(area.withTrimmedLeft(kHeaderWidth));
+        g.setColour(DawColours::outline().withAlpha(0.5f));
+        const float middle = valueToY(lane, 0.5f);
+        g.drawHorizontalLine(static_cast<int>(middle), static_cast<float>(kHeaderWidth), static_cast<float>(getWidth()));
+        if (content != nullptr && content->curve.size() > 0) {
+            // One value per two pixels: the same curve the audio thread reads, Hold and jumps included.
+            juce::Path line;
+            for (int x = kHeaderWidth; x <= getWidth(); x += 2) {
+                const auto position = static_cast<std::int64_t>(xToSample(static_cast<float>(x)));
+                const float y = valueToY(lane, content->curve.valueAt(position));
+                if (x == kHeaderWidth)
+                    line.startNewSubPath(static_cast<float>(x), y);
+                else
+                    line.lineTo(static_cast<float>(x), y);
+            }
+            const juce::Colour colour = live ? DawColours::track(track) : DawColours::textDim();
+            g.setColour(colour);
+            g.strokePath(line, juce::PathStrokeType(1.5f));
+            for (const engine::AutomationPoint& point : content->curve.points()) {
+                const float x = sampleToX(static_cast<double>(point.position));
+                const float y = valueToY(lane, point.value);
+                g.setColour(colour.brighter(0.4f));
+                g.fillEllipse(x - kPointRadius, y - kPointRadius, 2.0f * kPointRadius, 2.0f * kPointRadius);
+            }
+        } else {
+            g.setColour(DawColours::textDim());
+            g.setFont(DawLookAndFeel::uiFont(11.0f));
+            g.drawText("Click to add a point", area.withTrimmedLeft(kHeaderWidth + 8), juce::Justification::centredLeft);
+        }
+    }
+
+    auto header = area.withWidth(kHeaderWidth);
+    g.setColour(DawColours::panel().darker(0.15f));
+    g.fillRect(header);
+    g.setColour(DawColours::track(track).withAlpha(0.5f));
+    g.fillRect(header.removeFromLeft(5));
+    header.reduce(8, 4);
+    const int effectSlot = session_.slotOfEffect(session_.trackRef(track), address->effect);
+    const juce::String owner = effectSlot >= 0 ? session_.getSlot(session_.trackRef(track), effectSlot).name + ": " : juce::String();
+    g.setColour(live ? DawColours::text() : DawColours::mute());
+    g.setFont(DawLookAndFeel::uiFont(12.0f));
+    g.drawText(owner + address->parameter + (live ? "" : " (unknown)"), header.removeFromTop(header.getHeight() / 2), juce::Justification::centredLeft, true);
+    const auto mode = content != nullptr ? content->mode : engine::AutomationMode::Read;
+    g.setColour(mode == engine::AutomationMode::Read ? DawColours::textDim() : DawColours::accentWarm());
+    g.drawText(modeName(mode), header, juce::Justification::centredLeft);
+    g.setColour(DawColours::outline());
+    g.drawHorizontalLine(area.getBottom() - 1, 0.0f, static_cast<float>(getWidth()));
+    g.drawVerticalLine(kHeaderWidth - 1, static_cast<float>(area.getY()), static_cast<float>(area.getBottom()));
+}
+
+void ArrangementView::mouseDownInAutomation(const juce::MouseEvent& e, int lane) {
+    const engine::TrackId track = session_.getTrackId(lane);
+    const LaneAddress* address = getShownLane(track);
+    if (address == nullptr)
+        return;
+    if (e.x < kHeaderWidth) { // the upper half is the parameter, the lower half the mode
+        if (e.y < getAutomationBounds(lane).getCentreY())
+            showParameterMenu(track);
+        else
+            showModeMenu(track);
+        return;
+    }
+    const LaneAddress target = *address; // the edits below may change what `address` points into
+    const auto x = static_cast<float>(e.x), y = static_cast<float>(e.y);
+    const int hit = pointAt(lane, x, y);
+    if (e.mods.isPopupMenu()) {
+        if (hit >= 0)
+            session_.removePoint(target, hit);
+        return;
+    }
+    session_.getHistory().endMerge();
+    static std::uint32_t nextKey = 0x4c000000u; // "L": every drag of a point its own undo step
+    dragPointKey_ = ++nextKey;
+    dragTrack_ = track;
+    dragLane_ = lane;
+    dragPoint_ = hit >= 0 ? hit
+                          : session_.addPoint(target, snapToBeat(xToSample(x), !e.mods.isAltDown()), yToValue(lane, y), dragPointKey_);
+    if (dragPoint_ >= 0)
+        drag_ = Drag::Point;
+}
+
+void ArrangementView::showParameterMenu(engine::TrackId track) {
+    const auto parameters = session_.getAutomatableParameters(session_.trackRef(track));
+    juce::PopupMenu menu;
+    for (size_t i = 0; i < parameters.size(); ++i) {
+        const LaneAddress* shown = getShownLane(track);
+        menu.addItem(static_cast<int>(i) + 1, parameters[i].first, true, shown != nullptr && *shown == parameters[i].second);
+    }
+    juce::Component::SafePointer<ArrangementView> safe(this);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this), [safe, track, parameters](int chosen) {
+        if (safe != nullptr && chosen > 0)
+            safe->showAutomation(track, parameters[static_cast<size_t>(chosen) - 1].second);
+    });
+}
+
+void ArrangementView::showModeMenu(engine::TrackId track) {
+    const LaneAddress* shown = getShownLane(track);
+    if (shown == nullptr)
+        return;
+    const LaneAddress address = *shown;
+    const LaneContent* content = session_.getLane(address);
+    const auto current = content != nullptr ? content->mode : engine::AutomationMode::Read;
+    juce::PopupMenu menu;
+    const engine::AutomationMode modes[] = {engine::AutomationMode::Read, engine::AutomationMode::Touch, engine::AutomationMode::Latch,
+                                            engine::AutomationMode::Write};
+    for (const auto mode : modes)
+        menu.addItem(static_cast<int>(mode) + 1, modeName(mode), true, mode == current);
+    juce::Component::SafePointer<ArrangementView> safe(this);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this), [safe, address](int chosen) {
+        if (safe != nullptr && chosen > 0)
+            safe->session_.setLaneMode(address, static_cast<engine::AutomationMode>(chosen - 1));
+    });
 }
 
 } // namespace dawlab::app

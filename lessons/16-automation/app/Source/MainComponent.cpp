@@ -154,6 +154,7 @@ void MainComponent::tick() {
     // During an export the render thread collects the garbage (Exporter.h, rule 2).
     if (!isExporting())
         engine_.collectGarbage();
+    session_.collectAutomation();
     transportBar_.update();
     // Chapter 15: while the CPU display is red (a dropout in the last 2 s), the status line says
     // in words what happened and what to do; this matters more than any other message.
@@ -359,7 +360,7 @@ bool MainComponent::redo() {
 }
 
 juce::String MainComponent::getWindowTitle() const {
-    return "DawLab 15 - " + session_.getProjectName() + (session_.getHistory().isModified() ? " *" : "");
+    return "DawLab 16 - " + session_.getProjectName() + (session_.getHistory().isModified() ? " *" : "");
 }
 
 void MainComponent::loadDemoSongAsync() {
@@ -759,7 +760,18 @@ void MainComponent::openInsertEditor(ChannelRef ref, int slot, bool generic) {
         // slot, both fixed for as long as this effect - and so this window - exists.
         ParameterPanel& panel = window->getPanel();
         const StripTarget target = StripTarget::of(ref);
-        panel.onParameterChange = [this, target, slot, key](int index, float value) {
+        const auto laneOfParameter = [target, key](int index) {
+            return LaneAddress{target, key->getEffectId(), key->getParameterInfo(index).name};
+        };
+        panel.onTouch = [this, laneOfParameter](int index, bool down) {
+            if (down)
+                session_.touchLane(laneOfParameter(index));
+            else
+                session_.releaseLane(laneOfParameter(index));
+        };
+        panel.onParameterChange = [this, target, slot, key, laneOfParameter](int index, float value) {
+            if (session_.handMoves(laneOfParameter(index), value))
+                return; // on an automated control the hand is a recording, not an undo step of its own
             session_.perform(edit::SetParameter{target, slot, index, value},
                              juce::String(key->getName()) + " " + key->getParameterInfo(index).name,
                              mergeKeyFor(target, 0x50000000u + static_cast<std::uint32_t>(slot) * 256u +
@@ -830,7 +842,7 @@ void MainComponent::getAllCommands(juce::Array<juce::CommandID>& c) {
                 CommandIDs::returnToStart, CommandIDs::toggleLoop, CommandIDs::seekBackOneBar, CommandIDs::seekForwardOneBar,
                 CommandIDs::selectNextTrack, CommandIDs::selectPreviousTrack, CommandIDs::toggleMuteSelected,
                 CommandIDs::toggleSoloSelected, CommandIDs::addMonoTrack, CommandIDs::addStereoTrack,
-                CommandIDs::deleteSelectedTrack, CommandIDs::zoomIn, CommandIDs::zoomOut, CommandIDs::showKeyboardShortcuts};
+                CommandIDs::deleteSelectedTrack, CommandIDs::toggleAutomationLane, CommandIDs::zoomIn, CommandIDs::zoomOut, CommandIDs::showKeyboardShortcuts};
     c.addArray(ids, static_cast<int>(sizeof(ids) / sizeof(ids[0])));
 }
 
@@ -898,7 +910,7 @@ void MainComponent::getCommandInfo(juce::CommandID id, juce::ApplicationCommandI
         info.setActive(idle);
         break;
     case juce::StandardApplicationCommandIDs::quit:
-        info.setInfo("Quit", "Quit DawLab 15", CommandCategories::file, 0);
+        info.setInfo("Quit", "Quit DawLab 16", CommandCategories::file, 0);
         info.addDefaultKeypress('q', cmd);
         break;
     case CommandIDs::playStop:
@@ -945,6 +957,11 @@ void MainComponent::getCommandInfo(juce::CommandID id, juce::ApplicationCommandI
         info.setInfo("Solo selected track", "", CommandCategories::track, 0);
         info.addDefaultKeypress('s', ModifierKeys::noModifiers);
         info.setActive(idle);
+        break;
+    case CommandIDs::toggleAutomationLane:
+        info.setInfo("Show automation", "Show or hide the automation lane of the selected track", CommandCategories::track, 0);
+        info.addDefaultKeypress('a', 0);
+        info.setActive(session_.hasTrack(arrangement_.getSelectedTrack()));
         break;
     case CommandIDs::addMonoTrack:
         info.setInfo("Add mono track", "Add a mono track below the selected one", CommandCategories::track, 0);
@@ -1019,6 +1036,7 @@ bool MainComponent::perform(const InvocationInfo& info) {
     case CommandIDs::addMonoTrack: addTrack(engine::TrackFormat::Mono); break;
     case CommandIDs::addStereoTrack: addTrack(engine::TrackFormat::Stereo); break;
     case CommandIDs::deleteSelectedTrack: deleteSelectedTrack(); break;
+    case CommandIDs::toggleAutomationLane: arrangement_.toggleAutomation(arrangement_.getSelectedTrack()); break;
     case CommandIDs::zoomIn: arrangement_.zoom(1.5, ArrangementView::kHeaderWidth + 0.5f * (arrangement_.getWidth() - ArrangementView::kHeaderWidth)); break;
     case CommandIDs::zoomOut: arrangement_.zoom(1.0 / 1.5, ArrangementView::kHeaderWidth + 0.5f * (arrangement_.getWidth() - ArrangementView::kHeaderWidth)); break;
     case CommandIDs::showKeyboardShortcuts: showKeyboardShortcuts(); break;
@@ -1072,6 +1090,8 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
         m.addCommandItem(cm, CommandIDs::addMonoTrack);
         m.addCommandItem(cm, CommandIDs::addStereoTrack);
         m.addCommandItem(cm, CommandIDs::deleteSelectedTrack);
+        m.addSeparator();
+        m.addCommandItem(cm, CommandIDs::toggleAutomationLane);
         break;
     case 4:
         m.addCommandItem(cm, CommandIDs::zoomIn);

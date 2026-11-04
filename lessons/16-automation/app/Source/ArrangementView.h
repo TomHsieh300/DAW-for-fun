@@ -16,6 +16,18 @@
 // kMinLaneHeight. When the tracks do not fit any more, the lanes scroll under the ruler (a
 // scroll bar appears on the right); lane i starts at y = rulerHeight + i * laneHeight - scrollY.
 //
+// Automation (chapter 16): a track may show one automation lane under its clips, so rows have two
+// heights and a row's top is a sum, not a product. The lane draws one parameter's curve:
+//
+//   | Drums    | [drums][drums]   [drums]        the track's row
+//   | Gain     |     *-------*                   its automation: value 0 at the bottom, 1 at the top
+//   | Touch    | ---*         \-----*            header: click the name or the mode for a menu
+//
+//   lane:  click on nothing   add a point and drag it (snapped to the beat; Alt = free)
+//          drag a point       move it; one drag is one undo step
+//          right click        remove the point under the mouse
+//   "A" in a track's header (or the key A) shows and hides the lane.
+//
 // Mouse:
 //   ruler: click / drag      seek (snapped to the beat grid; hold Alt for no snapping)
 //   clip:  drag              move the clip along its lane (snapped; Alt = free).
@@ -77,6 +89,8 @@ public:
     static constexpr int kHeaderWidth = 132;
     static constexpr int kMinLaneHeight = 36;
     static constexpr int kScrollBarWidth = 10;
+    static constexpr int kAutomationHeight = 72;
+    static constexpr int kPointRadius = 4;
 
     // With an AudioHost the playhead shows what is heard (AudioHost::getAudiblePosition: the
     // transport position minus the mix latency and the device output latency while playing);
@@ -109,6 +123,19 @@ public:
     int getMaxScrollY() const noexcept;
     void setScrollY(int pixels); // clamped to 0 .. getMaxScrollY()
     void scrollToTrack(engine::TrackId track); // the least scrolling that shows the whole lane
+
+    // ---- automation lanes (chapter 16) -----------------------------------------------------------
+    bool isAutomationShown(engine::TrackId track) const noexcept;
+    void showAutomation(engine::TrackId track, const LaneAddress& address);
+    void hideAutomation(engine::TrackId track);
+    void toggleAutomation(engine::TrackId track); // first time: the track's Gain
+    const LaneAddress* getShownLane(engine::TrackId track) const noexcept; // nullptr: not shown
+    juce::Rectangle<int> getAutomationBounds(int lane) const noexcept;     // empty: not shown
+    juce::Rectangle<int> getAutomationToggleBounds(int lane) const noexcept;
+    int automationLaneAt(int y) const noexcept;                            // -1: not in an automation lane
+    int pointAt(int lane, float x, float y) const;                         // -1: no point there
+    float valueToY(int lane, float value) const noexcept;
+    float yToValue(int lane, float y) const noexcept;
 
     // Snaps to the nearest beat (when `snap`), never below 0.
     int64_t snapToBeat(double sample, bool snap) const noexcept;
@@ -151,6 +178,12 @@ private:
     void paintLane(juce::Graphics&, int lane, juce::Rectangle<int> area);
     void paintClip(juce::Graphics&, engine::TrackId track, const engine::Clip& clip, juce::Rectangle<int> bounds,
                    bool selected);
+    void paintAutomation(juce::Graphics&, int lane, juce::Rectangle<int> area);
+    void mouseDownInAutomation(const juce::MouseEvent&, int lane);
+    void showParameterMenu(engine::TrackId track);
+    void showModeMenu(engine::TrackId track);
+    int rowTop(int lane) const noexcept; // in the lanes' own coordinates: without the ruler and the scrolling
+    int rowsHeight() const noexcept;
     int clipAt(int lane, float x) const;
     void seekToX(float x, bool snap);
 
@@ -167,11 +200,15 @@ private:
     float lastPlayheadX_ = -1.0f;
 
     // drag state
-    enum class Drag { None, Seek, Clip };
+    std::vector<std::pair<engine::TrackId, LaneAddress>> shownLanes_;
+    enum class Drag { None, Seek, Clip, Point };
     Drag drag_ = Drag::None;
     engine::TrackId dragTrack_;
     int dragClip_ = -1;
     double dragGrabOffset_ = 0.0;
+    int dragPoint_ = -1;
+    int dragLane_ = -1;
+    std::uint32_t dragPointKey_ = 0;
 };
 
 } // namespace dawlab::app

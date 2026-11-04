@@ -73,10 +73,24 @@ StripState captureStrip(const Session& session, ChannelRef ref) {
         } else {
             ins.type = effectTypeName(st.type);
             for (int i = 0; i < st.effect->getNumParameters(); ++i)
-                ins.params.push_back({st.effect->getParameterInfo(i).name, st.effect->getParameter(i)});
+                ins.params.push_back({st.effect->getParameterInfo(i).name, session.knobValue(*st.effect, i)});
         }
         s.inserts.push_back(std::move(ins));
     }
+    // Automation: in a fixed order, so that saving an opened project gives the same text again.
+    for (const auto& [address, content] : session.getLanesOf(ref)) {
+        project::LaneState lane;
+        lane.slot = session.slotOfEffect(ref, address.effect);
+        lane.parameter = address.parameter.toStdString();
+        lane.mode = content.mode;
+        lane.defaultValue = content.curve.defaultValue();
+        for (const engine::AutomationPoint& point : content.curve.points())
+            lane.points.push_back({point.position, point.value, point.shape == engine::Shape::Hold});
+        s.lanes.push_back(std::move(lane));
+    }
+    std::sort(s.lanes.begin(), s.lanes.end(), [](const project::LaneState& a, const project::LaneState& b) {
+        return a.slot != b.slot ? a.slot < b.slot : a.parameter < b.parameter;
+    });
     return s;
 }
 
@@ -277,6 +291,30 @@ void restoreInserts(Session& session, host::PluginHost* pluginHost, ChannelRef r
     }
 }
 
+void restoreLanes(Session& session, ChannelRef ref, const StripState& s, juce::StringArray& warnings) {
+    const juce::String where = session.getStripName(ref);
+    for (const project::LaneState& lane : s.lanes) {
+        const juce::String parameter = juce::String::fromUTF8(lane.parameter.c_str());
+        LaneAddress address{StripTarget::of(ref), engine::EffectId{}, parameter};
+        if (lane.slot >= 0) {
+            const InsertSlotState& slot = session.getSlot(ref, lane.slot);
+            if (slot.isEmpty()) { // its plugin did not load: that was already a warning, this is what it costs
+                warnings.add(where + ": automation of \"" + parameter + "\" left out, its effect is missing");
+                continue;
+            }
+            address.effect = slot.effect->getEffectId();
+        }
+        LaneContent content;
+        content.mode = lane.mode;
+        content.curve = engine::AutomationCurve(lane.defaultValue);
+        for (const project::PointState& point : lane.points)
+            content.curve.add({point.position, point.value, point.hold ? engine::Shape::Hold : engine::Shape::Linear});
+        session.setLane(address, std::move(content));
+        if (!session.isLaneLive(address))
+            warnings.add(where + ": no parameter \"" + parameter + "\", so its automation stays silent (it is kept and saved again)");
+    }
+}
+
 void restoreStrip(Session& session, ChannelRef ref, const StripState& s) {
     ChannelStrip* cs = session.getEngine().getStrip(ref);
     if (cs == nullptr)
@@ -341,6 +379,7 @@ ProjectIO::OpenResult ProjectIO::open(Session& session, host::PluginHost* plugin
         const StripState& s = b < kNumBuses ? p.buses[static_cast<size_t>(b)] : p.master;
         restoreStrip(session, ref, s);
         restoreInserts(session, pluginHost, ref, s, r.warnings);
+        restoreLanes(session, ref, s, r.warnings);
     }
 
     std::map<std::uint32_t, TrackId> ids; // the file's id -> the session's
@@ -354,6 +393,7 @@ ProjectIO::OpenResult ProjectIO::open(Session& session, host::PluginHost* plugin
         ids[t.id.value] = id;
         restoreStrip(session, session.trackRef(id), t.strip);
         restoreInserts(session, pluginHost, session.trackRef(id), t.strip, r.warnings);
+        restoreLanes(session, session.trackRef(id), t.strip, r.warnings);
     }
 
     std::map<std::uint32_t, std::vector<Clip>> clips;

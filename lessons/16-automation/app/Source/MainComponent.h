@@ -90,7 +90,7 @@ public:
     bool undo();
     bool redo();
     juce::File getProjectFile() const { return projectFile_; }
-    // "DawLab 15 - <project name>", with " *" while there are unsaved changes (Step 9);
+    // "DawLab 16 - <project name>", with " *" while there are unsaved changes (Step 9);
     // onTitleChanged tells the window when it changes (from tick()).
     juce::String getWindowTitle() const;
     std::function<void(const juce::String& title)> onTitleChanged;

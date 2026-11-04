@@ -1,8 +1,8 @@
-// DawLab 15 - the application entry point (Step 12).
+// DawLab 16 - the application entry point (Step 12).
 //
-//   "DawLab 15.exe"                        the DAW: main window 1400 x 900, default audio output
-//   "DawLab 15.exe" --smoke-test           automated check without audio device (exit code 0/1)
-//   "DawLab 15.exe" --snapshot <file.png>  render the main window with the demo song to a PNG
+//   "DawLab 16.exe"                        the DAW: main window 1400 x 900, default audio output
+//   "DawLab 16.exe" --smoke-test           automated check without audio device (exit code 0/1)
+//   "DawLab 16.exe" --snapshot <file.png>  render the main window with the demo song to a PNG
 //
 // JUCEApplication gives us the message loop (the "message thread" = the GUI thread). The main
 // window is a DocumentWindow whose content is MainComponent; MainComponent owns everything
@@ -53,7 +53,7 @@ private:
 
 class DawLabApplication final : public juce::JUCEApplication {
 public:
-    const juce::String getApplicationName() override { return "DawLab 15"; }
+    const juce::String getApplicationName() override { return "DawLab 16"; }
     const juce::String getApplicationVersion() override { return "1.0.0"; }
     bool moreThanOneInstanceAllowed() override { return true; } // tests may run next to the app
 
@@ -74,7 +74,7 @@ public:
             attachConsoleIfNeeded();
             const juce::String path = args[snap + 1].unquoted();
             if (path.isEmpty()) {
-                std::printf("usage: \"DawLab 15.exe\" --snapshot <file.png>\n");
+                std::printf("usage: \"DawLab 16.exe\" --snapshot <file.png>\n");
                 setApplicationReturnValue(2);
             } else {
                 setApplicationReturnValue(runSnapshot(juce::File::getCurrentWorkingDirectory().getChildFile(path)));

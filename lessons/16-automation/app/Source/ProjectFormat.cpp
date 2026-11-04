@@ -19,9 +19,15 @@ bool operator==(const InsertState& a, const InsertState& b) {
     return a.slot == b.slot && a.vst3 == b.vst3 && a.type == b.type && a.bypassed == b.bypassed && a.params == b.params &&
            a.state == b.state;
 }
+bool operator==(const PointState& a, const PointState& b) {
+    return a.position == b.position && a.value == b.value && a.hold == b.hold;
+}
+bool operator==(const LaneState& a, const LaneState& b) {
+    return a.slot == b.slot && a.parameter == b.parameter && a.mode == b.mode && a.defaultValue == b.defaultValue && a.points == b.points;
+}
 bool operator==(const StripState& a, const StripState& b) {
     return a.name == b.name && a.gainDb == b.gainDb && a.pan == b.pan && a.mute == b.mute && a.solo == b.solo &&
-           a.sends == b.sends && a.inserts == b.inserts;
+           a.sends == b.sends && a.inserts == b.inserts && a.lanes == b.lanes;
 }
 bool operator==(const TrackState& a, const TrackState& b) { return a.id == b.id && a.format == b.format && a.strip == b.strip; }
 bool operator==(const ClipState& a, const ClipState& b) {
@@ -176,7 +182,44 @@ bool parseChannel(const Token& token, ChannelName& out) {
     return false;
 }
 
+// ---- automation modes -----------------------------------------------------------------------------
+
+const char* modeText(engine::AutomationMode m) noexcept {
+    switch (m) {
+    case engine::AutomationMode::Read: return "read";
+    case engine::AutomationMode::Touch: return "touch";
+    case engine::AutomationMode::Latch: return "latch";
+    case engine::AutomationMode::Write: return "write";
+    }
+    return "read";
+}
+
+bool parseMode(const std::string& text, engine::AutomationMode& out) noexcept {
+    for (const engine::AutomationMode m : {engine::AutomationMode::Read, engine::AutomationMode::Touch, engine::AutomationMode::Latch,
+                                           engine::AutomationMode::Write})
+        if (text == modeText(m)) {
+            out = m;
+            return true;
+        }
+    return false;
+}
+
 // ---- writing --------------------------------------------------------------------------------------
+
+// `number` counts the lanes through the file: a lane's number means something only inside it.
+void writeLanes(std::ostream& out, ChannelName channel, const StripState& s, int& number) {
+    for (const LaneState& lane : s.lanes) {
+        ++number;
+        out << "lane " << number << ' ' << channelText(channel) << ' ';
+        if (lane.slot < 0)
+            out << '-';
+        else
+            out << lane.slot;
+        out << ' ' << quote(lane.parameter) << ' ' << modeText(lane.mode) << ' ' << lane.defaultValue << '\n';
+        for (const PointState& point : lane.points)
+            out << "point " << number << ' ' << point.position << ' ' << point.value << ' ' << (point.hold ? "hold" : "linear") << '\n';
+    }
+}
 
 void writeStripDetails(std::ostream& out, ChannelName channel, const StripState& s) {
     const std::string ch = channelText(channel);
@@ -225,6 +268,12 @@ std::string writeProject(const ProjectState& p) {
         out << "clip " << c.track.value << ' ' << c.start << ' ' << c.length << ' ' << quote(c.file) << ' ' << c.sourceOffset
             << ' ' << c.fadeIn << ' ' << c.fadeOut << ' ' << (c.equalPowerFades ? "equalPower" : "linear") << ' ' << c.gainDb
             << ' ' << c.muted << ' ' << quote(c.name) << '\n';
+    int laneNumber = 0;
+    for (const TrackState& t : p.tracks)
+        writeLanes(out, {ChannelName::Kind::Track, t.id.value}, t.strip, laneNumber);
+    for (int b = 0; b < engine::kNumBuses; ++b)
+        writeLanes(out, {ChannelName::Kind::Bus, static_cast<std::uint32_t>(b)}, p.buses[static_cast<size_t>(b)], laneNumber);
+    writeLanes(out, {ChannelName::Kind::Master, 0}, p.master, laneNumber);
     return out.str();
 }
 
@@ -259,6 +308,19 @@ ReadResult readProject(std::string_view text) {
         ParamState param;
     };
     std::vector<Pending> sends, inserts, params;
+    struct PendingLane {
+        int line = 0;
+        int number = 0;
+        ChannelName channel;
+        LaneState lane;
+    };
+    struct PendingPoint {
+        int line = 0;
+        int number = 0;
+        PointState point;
+    };
+    std::vector<PendingLane> lanes;
+    std::vector<PendingPoint> points;
     std::vector<int> clipLines;
 
     std::vector<Token> tok;
@@ -430,6 +492,37 @@ ReadResult readProject(std::string_view text) {
             }
             p.clips.push_back(std::move(c));
             clipLines.push_back(lineNo);
+        } else if (kw == "lane") {
+            if (version < 4)
+                return fail(lineNo, "\"lane\" needs format 4 (this file is format " + std::to_string(version) + ")");
+            PendingLane l;
+            l.line = lineNo;
+            if (tok.size() != 7 || !parseNumber(tok[1], l.number) || l.number <= 0 || !parseChannel(tok[2], l.channel) || !tok[4].quoted ||
+                tok[5].quoted)
+                return fail(lineNo, "lane needs a number, a channel, a slot or -, a parameter in quotes, a mode and a default");
+            if (tok[3].text != "-" && (!parseNumber(tok[3], l.lane.slot) || l.lane.slot < 0 || l.lane.slot >= kInsertSlotsPerStrip))
+                return fail(lineNo, "slot must be - or 0 .. " + std::to_string(kInsertSlotsPerStrip - 1));
+            l.lane.parameter = tok[4].text;
+            if (!parseMode(tok[5].text, l.lane.mode))
+                return fail(lineNo, "unknown mode \"" + tok[5].text + "\"");
+            if (!parseNumber(tok[6], l.lane.defaultValue) || l.lane.defaultValue < 0.0f || l.lane.defaultValue > 1.0f)
+                return fail(lineNo, "the default must be a number from 0 to 1");
+            lanes.push_back(std::move(l));
+        } else if (kw == "point") {
+            if (version < 4)
+                return fail(lineNo, "\"point\" needs format 4 (this file is format " + std::to_string(version) + ")");
+            PendingPoint e;
+            e.line = lineNo;
+            if (tok.size() != 5 || !parseNumber(tok[1], e.number) || tok[4].quoted)
+                return fail(lineNo, "point needs a lane number, a position, a value and a shape");
+            if (!parseNumber(tok[2], e.point.position) || e.point.position < 0)
+                return fail(lineNo, "a point's position must be 0 or more samples");
+            if (!parseNumber(tok[3], e.point.value) || e.point.value < 0.0f || e.point.value > 1.0f)
+                return fail(lineNo, "a point's value must be a number from 0 to 1");
+            if (tok[4].text != "linear" && tok[4].text != "hold")
+                return fail(lineNo, "unknown shape \"" + tok[4].text + "\"");
+            e.point.hold = tok[4].text == "hold";
+            points.push_back(e);
         } else {
             return fail(lineNo, "unknown keyword \"" + kw + "\"");
         }
@@ -481,6 +574,36 @@ ReadResult readProject(std::string_view text) {
                                     ", which has no built-in insert");
         target->params.push_back(s.param);
     }
+    // Lanes: what they refer to must exist. A parameter the effect does not know is NOT checked: that
+    // is for the program that knows the effect, and such a lane stays (see ProjectFormat.h).
+    for (size_t i = 0; i < lanes.size(); ++i) {
+        PendingLane& l = lanes[i];
+        const StripState* strip = stripOf(l.channel);
+        if (strip == nullptr)
+            return fail(l.line, "lane on " + channelText(l.channel) + ", which does not exist");
+        if (l.lane.slot >= 0 && std::none_of(strip->inserts.begin(), strip->inserts.end(),
+                                             [&l](const InsertState& ins) { return ins.slot == l.lane.slot; }))
+            return fail(l.line, "lane for slot " + std::to_string(l.lane.slot) + " of " + channelText(l.channel) + ", which has no insert");
+        for (size_t j = 0; j < i; ++j) {
+            if (lanes[j].number == l.number)
+                return fail(l.line, "lane number " + std::to_string(l.number) + " used twice");
+            if (lanes[j].channel.kind == l.channel.kind && lanes[j].channel.index == l.channel.index && lanes[j].lane.slot == l.lane.slot &&
+                lanes[j].lane.parameter == l.lane.parameter)
+                return fail(l.line, "two lanes for one parameter");
+        }
+    }
+    for (const PendingPoint& e : points) {
+        const auto owner = std::find_if(lanes.begin(), lanes.end(), [&e](const PendingLane& l) { return l.number == e.number; });
+        if (owner == lanes.end())
+            return fail(e.line, "point for lane " + std::to_string(e.number) + ", which does not exist");
+        owner->lane.points.push_back(e.point);
+    }
+    for (PendingLane& l : lanes) {
+        std::stable_sort(l.lane.points.begin(), l.lane.points.end(),
+                         [](const PointState& a, const PointState& b) { return a.position < b.position; });
+        stripOf(l.channel)->lanes.push_back(std::move(l.lane));
+    }
+
     auto bySlot = [](const InsertState& a, const InsertState& b) { return a.slot < b.slot; };
     for (TrackState& t : p.tracks)
         std::sort(t.strip.inserts.begin(), t.strip.inserts.end(), bySlot);

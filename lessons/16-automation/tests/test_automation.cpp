@@ -740,6 +740,29 @@ void testQueuesThatAreFull() {
     }
 }
 
+void testABouncePlaysWhatIsWritten() {
+    Engine e;
+    setUp(e);
+    const AutomationCurve curve = ramp(0, 0.5f, 48000, 1.0f);
+    e.setLaneCurve(gainOf(e), curve);
+    AutomationLane* lane = e.getLane(gainOf(e));
+    lane->setMode(AutomationMode::Write); // the hand would win, if this were not a bounce
+    lane->setKnobValue(0.1f);
+    e.applyPendingCommandsOffline();
+    const AudioBuffer out = render(e, 12000);
+    CaptureEvent event;
+    const bool recorded = e.getCaptureQueue().pop(event);
+    std::printf("  a bounce in Write mode: sample 6000 %.5f (the curve: %.5f), events: %s\n", static_cast<double>(out.getSample(0, 6000)),
+                static_cast<double>(faderGain(curve.valueAt(6000))), recorded ? "yes" : "none");
+    DAWLAB_CHECK(out.getSample(0, 6000) == faderGain(curve.valueAt(6000)));
+    DAWLAB_CHECK(!recorded);
+    // Afterwards the hand counts again.
+    e.getTransport().play();
+    play(e, 6 * 512);
+    DAWLAB_CHECK(lane->getShownValue() == 0.1f);
+    DAWLAB_CHECK(e.getCaptureQueue().pop(event));
+}
+
 void testTrackRemoval() {
     Engine e;
     setUp(e);
@@ -916,6 +939,7 @@ int main() {
     testEventsAreStampedWithWhatIsHeard();
     testEffectsOnBusesAndTheMaster();
     testQueuesThatAreFull();
+    testABouncePlaysWhatIsWritten();
     testTrackRemoval();
     testBounceTwiceIsTheSame();
     testNoAllocationOnTheAudioThread();

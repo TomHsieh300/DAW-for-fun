@@ -176,12 +176,327 @@ private:
     double seconds_;
 };
 
+// ---- automation (chapter 16, Step 6) ---------------------------------------------------------------
+
+juce::MouseEvent mouseAt(ArrangementView& view, int x, int y, juce::ModifierKeys mods, juce::Point<float> down) {
+    return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), {static_cast<float>(x), static_cast<float>(y)}, mods, 1.0f, 0.0f, 0.0f, 0.0f,
+                            0.0f, &view, &view, juce::Time::getCurrentTime(), down, juce::Time::getCurrentTime(), 1, false);
+}
+
+float heardGain(float normalized) {
+    float l = 0.0f, r = 0.0f;
+    ChannelStrip::computeStripGains(ChannelStrip::faderInfo().fromNormalized(normalized), 0.0f, dsp::PanLaw::ConstantPower, PanMode::PanLaw, l, r);
+    return l;
+}
+
+AutomationCurve testRamp(float a, float b) {
+    AutomationCurve c;
+    c.add({0, a, Shape::Linear});
+    c.add({48000, b, Shape::Linear});
+    return c;
+}
+
+void testAutomation() {
+    std::printf("Automation\n");
+    auto main = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    main->setSize(MainComponent::kDefaultWidth, MainComponent::kDefaultHeight);
+    Session& session = main->getSession();
+    Engine& engine = main->getEngine();
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    const TrackId first = session.getTrackId(0), second = session.getTrackId(1);
+    auto dc = std::make_shared<AudioBuffer>(1, 96000);
+    for (int i = 0; i < 96000; ++i)
+        dc->setSample(0, i, 1.0f);
+    engine::Clip clip = engine::Clip::fromBuffer(dc, 0, "dc");
+    session.setClips(first, {clip});
+    const LaneAddress gain{StripTarget::ofTrack(first), EffectId{}, "Gain"};
+    const LaneAddress pan{StripTarget::ofTrack(first), EffectId{}, "Pan"};
+
+    // a. A lane in the model plays, through a bounce (the master's limiter stays out of the way: gain < 1).
+    RenderOptions bounce;
+    bounce.numSamples = 24000;
+    LaneContent lane;
+    lane.curve = testRamp(0.5f, 0.75f);
+    DAWLAB_CHECK(session.perform(edit::SetLane{gain, lane}, "Test"));
+    engine.applyPendingCommandsOffline();
+    const AudioBuffer played = renderOffline(engine, bounce);
+    std::printf("  a lane plays: sample 12000 %.5f (expected %.5f)\n", static_cast<double>(played.getSample(0, 12000)), static_cast<double>(heardGain(lane.curve.valueAt(12000))));
+    DAWLAB_CHECK_NEAR(played.getSample(0, 12000), heardGain(lane.curve.valueAt(12000)), 1e-3);
+    DAWLAB_CHECK(session.undo() && session.getLane(gain) == nullptr);
+    engine.applyPendingCommandsOffline();
+    const AudioBuffer flat = renderOffline(engine, bounce);
+    DAWLAB_CHECK_NEAR(flat.getSample(0, 12000), heardGain(ChannelStrip::faderInfo().toNormalized(0.0f)), 1e-3);
+    DAWLAB_CHECK(session.redo() && session.getLane(gain) != nullptr);
+
+    // b. The point edits: one undo step each, a merged drag one together, sorted by position.
+    const std::size_t steps = session.getHistory().undoCount();
+    const int added = session.addPoint(gain, 24000, 0.25f);
+    DAWLAB_CHECK(added == 1 && session.getLane(gain)->curve.size() == 3);
+    int moved = added;
+    for (int i = 1; i <= 5; ++i)
+        moved = session.movePoint(gain, moved, 24000 + i * 10000, 0.25f + 0.01f * static_cast<float>(i), 77);
+    session.getHistory().endMerge();
+    std::printf("  a point dragged past its neighbour: index %d (expected 2), %d undo steps (expected 2)\n", moved, static_cast<int>(session.getHistory().undoCount() - steps));
+    DAWLAB_CHECK(moved == 2 && session.getHistory().undoCount() == steps + 2);
+    DAWLAB_CHECK(session.removePoint(gain, moved) && session.getLane(gain)->curve.size() == 2);
+    DAWLAB_CHECK(session.undo() && session.getLane(gain)->curve.size() == 3);
+    DAWLAB_CHECK(session.undo() && session.getLane(gain)->curve.points()[1].position == 24000); // the whole drag
+    DAWLAB_CHECK(session.undo() && session.getLane(gain)->curve.size() == 2);
+    DAWLAB_CHECK(session.movePoint(gain, 9, 0, 0.5f) == -1 && !session.removePoint(gain, -1));
+    DAWLAB_CHECK(session.setLaneMode(pan, AutomationMode::Touch) && session.getLane(pan)->mode == AutomationMode::Touch);
+    DAWLAB_CHECK(session.undo() && session.getLane(pan) == nullptr);
+
+    // c. The hand: Touch mode, a recording is one undo step, and moving the fader adds no other.
+    engine.getTrack(first)->setGainDb(-6.0f);
+    DAWLAB_CHECK(session.setLaneMode(gain, AutomationMode::Touch));
+    AudioBuffer block(kNumChannels, 512);
+    engine.getTransport().setPosition(0);
+    engine.getTransport().play();
+    const std::size_t beforeRecording = session.getHistory().undoCount();
+    const float inPass = ChannelStrip::faderInfo().toNormalized(-30.0f);
+    session.touchLane(gain);
+    DAWLAB_CHECK(session.handMoves(gain, -30.0f));
+    for (int b = 0; b < 20; ++b)
+        engine.processBlock(block.toBlock());
+    session.releaseLane(gain);
+    for (int b = 0; b < 2; ++b)
+        engine.processBlock(block.toBlock());
+    engine.getTransport().stop();
+    const int passes = session.collectAutomation();
+    std::printf("  a hand in Touch mode: %d pass, %d undo step, curve at 5120: %.3f (expected 1, 1, %.3f)\n", passes,
+                static_cast<int>(session.getHistory().undoCount() - beforeRecording), static_cast<double>(session.getLane(gain)->curve.valueAt(5120)), static_cast<double>(inPass));
+    DAWLAB_CHECK(passes == 1 && session.getHistory().undoCount() == beforeRecording + 1);
+    DAWLAB_CHECK_NEAR(session.getLane(gain)->curve.valueAt(5120), inPass, 1e-5);
+    DAWLAB_CHECK(session.undo());
+    DAWLAB_CHECK_NEAR(session.getLane(gain)->curve.valueAt(5120), lane.curve.valueAt(5120), 1e-5);
+    DAWLAB_CHECK(!session.handMoves({StripTarget::ofTrack(second), EffectId{}, "Gain"}, -3.0f)); // no lane: the usual edit
+
+    // A first recording, on a fader behind latency, with no curve yet: the curve is the pass, from 0.
+    const LaneAddress secondGain{StripTarget::ofTrack(second), EffectId{}, "Gain"};
+    InsertEffect* limiter = session.setBuiltinInsert(session.trackRef(second), 0, EffectType::Limiter);
+    engine.applyPendingCommandsOffline();
+    engine.getTransport().setPosition(0);
+    DAWLAB_CHECK(session.setLaneMode(secondGain, AutomationMode::Write));
+    engine.getTrack(second)->setGainDb(-12.0f);
+    engine.getTransport().play();
+    for (int b = 0; b < 4; ++b)
+        engine.processBlock(block.toBlock());
+    engine.getTransport().stop();
+    engine.processBlock(block.toBlock());
+    session.collectAutomation();
+    const LaneContent* recorded = session.getLane(secondGain);
+    DAWLAB_CHECK(recorded != nullptr && recorded->curve.size() >= 2 && recorded->curve.points().front().position == 0);
+    DAWLAB_CHECK(recorded != nullptr && recorded->mode == AutomationMode::Write);
+    // With nothing to return to, the curve simply holds the hand's value before and after the pass.
+    DAWLAB_CHECK(recorded != nullptr);
+    if (recorded != nullptr)
+        DAWLAB_CHECK_NEAR(recorded->curve.valueAt(100000), ChannelStrip::faderInfo().toNormalized(-12.0f), 1e-5);
+    (void)limiter;
+    session.setLane(secondGain, std::nullopt);
+    session.clearInsert(session.trackRef(second), 0);
+    engine.applyPendingCommandsOffline();
+    engine.collectGarbage();
+
+    // d. A lane leaves with its owner and comes back with it, under the same id.
+    InsertEffect* fx = session.setBuiltinInsert(session.trackRef(first), 1, EffectType::Gain);
+    engine.applyPendingCommandsOffline();
+    const EffectId fxId = fx->getEffectId();
+    fx->setParameterByName("Gain", -6.0f);
+    const LaneAddress fxGain{StripTarget::ofTrack(first), fxId, "Gain"};
+    LaneContent fxLane;
+    fxLane.curve = testRamp(0.25f, 0.75f);
+    DAWLAB_CHECK(session.setLane(fxGain, fxLane));
+    engine.applyPendingCommandsOffline();
+    engine.processBlock(block.toBlock());
+    engine.collectGarbage();
+    DAWLAB_CHECK_NEAR(session.knobValue(*fx, 0), -6.0f, 1e-4); // not the curve's value
+    const std::size_t lanesWithEffect = session.getLanesOf(session.trackRef(first)).size();
+
+    DAWLAB_CHECK(session.perform(edit::SetInsert{StripTarget::ofTrack(first), 1, InsertSnapshot{}}, "Remove"));
+    DAWLAB_CHECK(session.getLane(fxGain) == nullptr && !session.isLaneLive(fxGain));
+    DAWLAB_CHECK(session.getLanesOf(session.trackRef(first)).size() == lanesWithEffect - 1);
+    DAWLAB_CHECK(session.undo());
+    fx = session.getSlot(session.trackRef(first), 1).effect;
+    std::printf("  effect removed and brought back: id %u (expected %u), lane %s, knob %.1f dB (expected -6.0)\n", fx != nullptr ? fx->getEffectId().value : 0u, fxId.value,
+                session.getLane(fxGain) != nullptr ? "back" : "LOST", fx != nullptr ? static_cast<double>(session.knobValue(*fx, 0)) : 0.0);
+    DAWLAB_CHECK(fx != nullptr && fx->getEffectId() == fxId && session.getLane(fxGain) != nullptr);
+    if (fx != nullptr)
+        DAWLAB_CHECK_NEAR(session.knobValue(*fx, 0), -6.0f, 1e-3); // not the value the curve had moved it to
+    engine.applyPendingCommandsOffline();
+    engine.getTransport().setPosition(24000);
+    engine.processBlock(block.toBlock());
+    DAWLAB_CHECK(fx != nullptr);
+    DAWLAB_CHECK(session.isLaneLive(fxGain));
+    DAWLAB_CHECK_NEAR(fx->getParameterNormalized(0), fxLane.curve.valueAt(24000), 1e-5); // and it plays
+    engine.collectGarbage();
+
+    // Another effect in that slot does not inherit the curve.
+    InsertEffect* other = session.setBuiltinInsert(session.trackRef(first), 1, EffectType::Gain);
+    DAWLAB_CHECK(other != nullptr && other->getEffectId() != fxId && session.getLane(fxGain) == nullptr);
+    engine.applyPendingCommandsOffline();
+    engine.collectGarbage();
+    session.clearInsert(session.trackRef(first), 1);
+    engine.applyPendingCommandsOffline();
+    engine.collectGarbage();
+
+    // The whole track, with an effect and lanes on both.
+    fx = session.setBuiltinInsert(session.trackRef(first), 0, EffectType::Gain);
+    fx->setParameterByName("Gain", -9.0f);
+    const LaneAddress again{StripTarget::ofTrack(first), fx->getEffectId(), "Gain"};
+    DAWLAB_CHECK(session.setLane(again, fxLane));
+    engine.applyPendingCommandsOffline();
+    engine.processBlock(block.toBlock()); // the curve has moved the parameter away from its knob
+    DAWLAB_CHECK(session.perform(edit::RemoveTrack{first}, "Delete"));
+    DAWLAB_CHECK(session.getLane(gain) == nullptr && session.getLane(again) == nullptr);
+    engine.applyPendingCommandsOffline();
+    engine.collectGarbage();
+    DAWLAB_CHECK(session.undo() && session.getLane(gain) != nullptr && session.getLane(again) != nullptr);
+    DAWLAB_CHECK(session.getLane(gain) != nullptr && session.getLane(gain)->curve == lane.curve);
+    DAWLAB_CHECK(session.getLane(gain) != nullptr && session.getLane(gain)->mode == AutomationMode::Touch);
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(engine.getTrack(first) != nullptr && engine.getTrack(first)->getOwnLane(engine::kLaneGain)->getCurve() != nullptr);
+
+    // e. The file: everything comes back, under new ids, also in a project opened again.
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("l16_automation", "");
+    dir.createDirectory();
+    const juce::File file = dir.getChildFile("Song.dawlab");
+    juce::String error;
+    session.setLaneMode(again, AutomationMode::Latch);
+    engine.applyPendingCommandsOffline();
+    engine.processBlock(block.toBlock()); // the curve moves the parameter again, away from its knob
+    DAWLAB_CHECK(ProjectIO::save(session, file, error));
+    const std::string saved = project::writeProject(ProjectIO::capture(session, "Song_media").state);
+    {
+        auto second2 = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+        Session& opened = second2->getSession();
+        // Burn some ids, so the file's cannot match by accident.
+        const TrackId burnt = opened.addTrack();
+        opened.removeTrack(burnt);
+        const ProjectIO::OpenResult r = ProjectIO::open(opened, nullptr, file);
+        DAWLAB_CHECK(r.ok && r.warnings.isEmpty());
+        const TrackId newFirst = opened.getTrackId(0);
+        DAWLAB_CHECK(newFirst != first);
+        const LaneContent* openedGain = opened.getLane({StripTarget::ofTrack(newFirst), EffectId{}, "Gain"});
+        const InsertSlotState& slot = opened.getSlot(opened.trackRef(newFirst), 0);
+        const LaneContent* openedFx = slot.isEmpty() ? nullptr : opened.getLane({StripTarget::ofTrack(newFirst), slot.effect->getEffectId(), "Gain"});
+        std::printf("  saved and opened: fader lane %s, effect lane %s, track id %u -> %u\n", openedGain != nullptr ? "back" : "LOST", openedFx != nullptr ? "back" : "LOST", first.value, newFirst.value);
+        DAWLAB_CHECK(openedGain != nullptr && openedGain->curve == session.getLane(gain)->curve && openedGain->mode == AutomationMode::Touch);
+        DAWLAB_CHECK(openedFx != nullptr && openedFx->mode == AutomationMode::Latch && openedFx->curve == fxLane.curve);
+        if (!slot.isEmpty())
+            DAWLAB_CHECK_NEAR(opened.knobValue(*slot.effect, 0), -9.0f, 1e-3); // the knob is saved, not where the curve was
+        DAWLAB_CHECK(project::writeProject(ProjectIO::capture(opened, "Song_media").state) == saved);
+        second2->getEngine().applyPendingCommandsOffline();
+        // The engine has them too.
+        DAWLAB_CHECK(second2->getEngine().getTrack(newFirst)->getOwnLane(engine::kLaneGain)->getCurve() != nullptr);
+        DAWLAB_CHECK(!slot.isEmpty() && slot.effect->getLane(0)->getCurve() != nullptr);
+    }
+    {
+        // A lane for a parameter this version does not know stays, silent, and is saved again.
+        const juce::String text = file.loadFileAsString() + "lane 99 track:1 0 \"Future\" read 0.5\npoint 99 0 0.25 linear\n";
+        const juce::File edited = dir.getChildFile("Edited.dawlab");
+        DAWLAB_CHECK(edited.replaceWithText(text));
+        DAWLAB_CHECK(dir.getChildFile("Song_media").copyDirectoryTo(dir.getChildFile("Edited_media")));
+        auto third = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+        const ProjectIO::OpenResult r = ProjectIO::open(third->getSession(), nullptr, edited);
+        DAWLAB_CHECK(r.ok && r.warnings.size() == 1 && r.warnings[0].contains("Future"));
+        const std::string again2 = project::writeProject(ProjectIO::capture(third->getSession(), "Edited_media").state);
+        std::printf("  a lane for an unknown parameter: %s; saved again: %s\n", r.warnings.isEmpty() ? "no warning" : r.warnings[0].toRawUTF8(), again2.find("\"Future\"") != std::string::npos ? "kept" : "LOST");
+        DAWLAB_CHECK(again2.find("\"Future\"") != std::string::npos);
+    }
+    dir.deleteRecursively();
+
+    // f. Another sample rate: positions scale, values stay, and the history starts over.
+    const int64_t before = session.getLane(gain)->curve.points()[1].position;
+    session.applySampleRateConversion(session.getClipSampleRate() * 2.0, ConvertedBuffers{});
+    DAWLAB_CHECK(session.getLane(gain)->curve.points()[1].position == before * 2);
+    DAWLAB_CHECK(session.getLane(gain)->curve.points()[1].value == lane.curve.points()[1].value);
+    session.applySampleRateConversion(session.getClipSampleRate() / 2.0, ConvertedBuffers{});
+    DAWLAB_CHECK(session.getLane(gain)->curve.points()[1].position == before);
+
+    // g. The view: rows of two heights, and the mouse.
+    ArrangementView& view = main->getArrangement();
+    session.dispatchPendingMessages();
+    const int laneHeightBefore = view.getLaneHeight();
+    view.toggleAutomation(first);
+    DAWLAB_CHECK(view.isAutomationShown(first) && *view.getShownLane(first) == gain);
+    const auto row0 = view.getLaneBounds(0), lane0 = view.getAutomationBounds(0), row1 = view.getLaneBounds(1);
+    std::printf("  the first track's lane shown: row %d .. %d, lane .. %d, next row from %d; clip rows %d -> %d high\n", row0.getY(), row0.getBottom(), lane0.getBottom(), row1.getY(), laneHeightBefore, view.getLaneHeight());
+    DAWLAB_CHECK(lane0.getY() == row0.getBottom() && row1.getY() == lane0.getBottom() && lane0.getHeight() == ArrangementView::kAutomationHeight);
+    DAWLAB_CHECK(view.getLaneHeight() <= laneHeightBefore && view.getAutomationBounds(1).isEmpty());
+    DAWLAB_CHECK(view.laneAt(lane0.getCentreY()) == 0 && view.automationLaneAt(lane0.getCentreY()) == 0);
+    DAWLAB_CHECK(view.automationLaneAt(row0.getCentreY()) == -1 && view.laneAt(row1.getCentreY()) == 1);
+    DAWLAB_CHECK(session.getLane(gain) != nullptr && view.getLaneHeight() >= ArrangementView::kMinLaneHeight);
+    DAWLAB_CHECK(std::abs(view.yToValue(0, view.valueToY(0, 0.25f)) - 0.25f) < 0.02f);
+
+    // Free from the beat grid (Alt), so that positions are what the mouse says.
+    const juce::ModifierKeys free(juce::ModifierKeys::altModifier | juce::ModifierKeys::leftButtonModifier);
+    const int sizeBefore = session.getLane(gain)->curve.size();
+    const std::size_t historyBefore = session.getHistory().undoCount();
+    const int x = view.getWidth() - 40, y = lane0.getCentreY();
+    const juce::Point<float> at{static_cast<float>(x), static_cast<float>(y)};
+    view.mouseDown(mouseAt(view, x, y, free, at));
+    DAWLAB_CHECK(session.getLane(gain)->curve.size() == sizeBefore + 1);
+    const int point = view.pointAt(0, static_cast<float>(x), static_cast<float>(y));
+    DAWLAB_CHECK(point >= 0);
+    view.mouseDrag(mouseAt(view, x + 5, y - 10, free, at));
+    view.mouseDrag(mouseAt(view, x + 10, y - 20, free, at));
+    view.mouseUp(mouseAt(view, x + 10, y - 20, free, at));
+    const int draggedPoint = view.pointAt(0, static_cast<float>(x + 10), static_cast<float>(y - 20));
+    std::printf("  a click and a drag in the lane: %d points more, %d undo step, the point under the mouse: %s\n", session.getLane(gain)->curve.size() - sizeBefore,
+                static_cast<int>(session.getHistory().undoCount() - historyBefore), draggedPoint >= 0 ? "yes" : "no");
+    DAWLAB_CHECK(draggedPoint >= 0 && session.getLane(gain)->curve.size() == sizeBefore + 1);
+    DAWLAB_CHECK(session.getHistory().undoCount() == historyBefore + 1);
+    // A right click on it removes it; on nothing does nothing.
+    const juce::ModifierKeys right(juce::ModifierKeys::rightButtonModifier);
+    view.mouseDown(mouseAt(view, x + 10, y - 20, right, {static_cast<float>(x + 10), static_cast<float>(y - 20)}));
+    DAWLAB_CHECK(session.getLane(gain)->curve.size() == sizeBefore);
+    view.mouseDown(mouseAt(view, x + 10, y + 20, right, {static_cast<float>(x + 10), static_cast<float>(y + 20)}));
+    DAWLAB_CHECK(session.getLane(gain)->curve.size() == sizeBefore);
+    view.mouseUp(mouseAt(view, x + 10, y + 20, right, {static_cast<float>(x + 10), static_cast<float>(y + 20)}));
+
+    // The "A" in the header toggles the lane; a deleted track takes its lane off the screen.
+    const auto toggle = view.getAutomationToggleBounds(1);
+    const juce::ModifierKeys left(juce::ModifierKeys::leftButtonModifier);
+    view.mouseDown(mouseAt(view, toggle.getCentreX(), toggle.getCentreY(), left, toggle.getCentre().toFloat()));
+    view.mouseUp(mouseAt(view, toggle.getCentreX(), toggle.getCentreY(), left, toggle.getCentre().toFloat()));
+    DAWLAB_CHECK(view.isAutomationShown(second));
+    DAWLAB_CHECK(view.getLaneBounds(2).getY() == view.getAutomationBounds(1).getBottom());
+    DAWLAB_CHECK(session.perform(edit::RemoveTrack{second}, "Delete"));
+    session.dispatchPendingMessages();
+    DAWLAB_CHECK(!view.isAutomationShown(second));
+    const auto parameters = session.getAutomatableParameters(session.trackRef(first));
+    std::printf("  what can be automated on the first track: %d parameters\n", static_cast<int>(parameters.size()));
+    DAWLAB_CHECK(parameters.size() >= 3 && parameters[0].second == gain && parameters[1].second == pan && parameters[2].second == again);
+
+    // A bounce plays the curve, even with a lane in Write mode; nothing is recorded.
+    session.setLaneMode(gain, AutomationMode::Write);
+    engine.applyPendingCommandsOffline();
+    const auto sizeBeforeBounce = session.getLane(gain)->curve.size();
+    renderOffline(engine, bounce);
+    DAWLAB_CHECK(session.collectAutomation() == 0 && session.getLane(gain)->curve.size() == sizeBeforeBounce);
+
+    // File > New and the demo song clear all of it, also on the fixed strips.
+    const LaneAddress masterGain{StripTarget::of(ChannelRef::master()), EffectId{}, "Gain"};
+    DAWLAB_CHECK(session.setLane(masterGain, lane));
+    engine.applyPendingCommandsOffline();
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(session.getLanesOf(ChannelRef::master()).empty());
+    DAWLAB_CHECK(engine.getStrip(ChannelRef::master())->getOwnLane(engine::kLaneGain)->getCurve() == nullptr);
+    DAWLAB_CHECK(!engine.getStrip(ChannelRef::master())->getOwnLane(engine::kLaneGain)->isActive());
+    engine.collectGarbage();
+    DAWLAB_CHECK(engine.getGarbageLeaked() == 0);
+}
+
 // ---- --smoke-test --------------------------------------------------------------------------------
 
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     constexpr double sr = 48000.0;
     std::setvbuf(stdout, nullptr, _IONBF, 0); // unbuffered: a crash must not swallow what was printed
-    std::printf("DawLab 15 smoke test (no audio device)\n\n");
+    std::printf("DawLab 16 smoke test (no audio device)\n\n");
+    testAutomation();
+
 
     // 1. The resampler used when loading files (MediaLoader.cpp)
     {
@@ -213,7 +528,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         DAWLAB_CHECK(edgeDb < -50.0 && edgeDb > -80.0);
 
         // The file path of the loader: a mono 44.1 kHz WAV becomes a stereo 48 kHz buffer.
-        const juce::File wav = juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l15_app_smoke_44k.wav");
+        const juce::File wav = juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l16_app_smoke_44k.wav");
         juce::String error;
         DAWLAB_CHECK(Exporter::writeWavFile(wav, sine, 44100.0, 24, error));
         const LoadedMedia media = MediaLoader::readAudioFile(wav, 48000.0);
@@ -248,8 +563,8 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         juce::FlacAudioFormat flac;
         juce::OggVorbisAudioFormat ogg;
         const struct { juce::File file; double toleranceDb; } compressed[] = {
-            {writeWith(flac, "l15_app_smoke_44k.flac", 24), 0.05},
-            {writeWith(ogg, "l15_app_smoke_44k.ogg", 16), 0.5},
+            {writeWith(flac, "l16_app_smoke_44k.flac", 24), 0.05},
+            {writeWith(ogg, "l16_app_smoke_44k.ogg", 16), 0.5},
         };
         for (const auto& c : compressed) {
             DAWLAB_CHECK(c.file.existsAsFile());
@@ -316,7 +631,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     AudioBuffer exported;
     {
         ExportOptions options;
-        options.file = juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l15_app_smoke.wav");
+        options.file = juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l16_app_smoke.wav");
         options.numSamples = static_cast<int64_t>(2.0 * sr);
         options.tailSeconds = 0.0;
         const ExportResult r = Exporter::renderToFile(engine, options, &exported);
@@ -759,7 +1074,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     // 6d. Save and open (chapter 15, Step 8): the demo song with changes it does not have is saved,
     //     opened in a second window, rendered by both, and saved again from the second one.
     {
-        const juce::File dir = juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l15_project");
+        const juce::File dir = juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l16_project");
         dir.deleteRecursively();
         dir.createDirectory();
         const juce::File file = dir.getChildFile("Demo.dawlab");
@@ -824,7 +1139,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         DAWLAB_CHECK(loopBack);
         DAWLAB_CHECK(diff == 0.0f && peakAbs(after) > 0.01f);
         DAWLAB_CHECK(sameText);
-        DAWLAB_CHECK(b.getProjectFile() == copy && b.getWindowTitle() == "DawLab 15 - Demo");
+        DAWLAB_CHECK(b.getProjectFile() == copy && b.getWindowTitle() == "DawLab 16 - Demo");
 
         // A broken file is refused with its line, and the open project stays as it was.
         const juce::File broken = dir.getChildFile("broken.dawlab");
@@ -964,7 +1279,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         }
 
         // Saved or not: the serial of the newest entry decides, so undo can make a project clean again.
-        const juce::File saved = juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l15_undo").getChildFile("Undo.dawlab");
+        const juce::File saved = juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l16_undo").getChildFile("Undo.dawlab");
         saved.getParentDirectory().createDirectory();
         s.perform(edit::Rename{StripTarget::ofTrack(bass), "Bass 2"}, "Rename Bass"); // the save has something to save
         const bool dirtyBeforeSave = m.getWindowTitle().endsWith(" *");
@@ -1192,7 +1507,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     auto main = std::make_shared<MainComponent>(MainComponent::Mode::Offline);
     DAWLAB_CHECK(main->loadDemoSongNow() == 0);
     const juce::File file =
-        juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l15_app_export.wav");
+        juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l16_app_export.wav");
     const auto startTime = juce::Time::getMillisecondCounterHiRes();
     main->onExportFinished = [main, file, startTime, onFinished](const ExportResult& r) {
         const double wallSeconds = (juce::Time::getMillisecondCounterHiRes() - startTime) * 0.001;
@@ -1266,7 +1581,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
                 // The GUI goes away on the message thread, after the export thread ended.
                 main.reset();
                 std::printf("\n");
-                onFinished(test::summary("l15_app_smoke_test"));
+                onFinished(test::summary("l16_app_smoke_test"));
             };
             juce::MessageManager::callAsync([poll] { (*poll)(); });
         });
@@ -1279,7 +1594,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     if (!main->isExporting()) { // nothing will call back: finish now
         main->onExportFinished = nullptr;
         main.reset();
-        onFinished(test::summary("l15_app_smoke_test"));
+        onFinished(test::summary("l16_app_smoke_test"));
     }
 }
 
@@ -1291,6 +1606,31 @@ int runSnapshot(const juce::File& pngFile) {
     const int unknown = main.loadDemoSongNow();
     Engine& engine = main.getEngine();
     engine.applyPendingCommandsOffline();
+    {
+        // Two lanes on screen: a fader that rises into bar 3, a compressor threshold with a step.
+        Session& demo = main.getSession();
+        const Transport& t = engine.getTransport();
+        const auto bars = [&t](double b) { return static_cast<std::int64_t>(b * t.getSamplesPerBar()); };
+        const TrackId drums = demo.getTrackId(0), bass = demo.getTrackId(1);
+        const LaneAddress fader{StripTarget::ofTrack(drums), EffectId{}, "Gain"};
+        LaneContent rising;
+        rising.curve.add({0, 0.72f, Shape::Linear});
+        rising.curve.add({bars(2.0), 0.72f, Shape::Linear});
+        rising.curve.add({bars(3.0), 0.86f, Shape::Linear});
+        rising.curve.add({bars(6.0), 0.86f, Shape::Hold});
+        rising.curve.add({bars(7.0), 0.78f, Shape::Linear});
+        demo.setLane(fader, rising);
+        main.getArrangement().showAutomation(drums, fader);
+        const LaneAddress panning{StripTarget::ofTrack(bass), EffectId{}, "Pan"};
+        LaneContent moving;
+        moving.mode = AutomationMode::Touch;
+        moving.curve.add({0, 0.5f, Shape::Linear});
+        moving.curve.add({bars(4.0), 0.35f, Shape::Linear});
+        moving.curve.add({bars(8.0), 0.65f, Shape::Linear});
+        demo.setLane(panning, moving);
+        main.getArrangement().showAutomation(bass, panning);
+        engine.applyPendingCommandsOffline();
+    }
 
     // Play from bar 1 until bar 2 beat 3 is *heard*, as if an audio device were running, with UI
     // ticks: the transport ends the mix latency further on (Step 13).

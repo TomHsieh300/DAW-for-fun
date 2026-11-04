@@ -1,11 +1,11 @@
 #pragma once
-// SmokeTest: the command-line modes of DawLab 15 used for automated verification (Step 21).
+// SmokeTest: the command-line modes of DawLab 16 used for automated verification (Step 21).
 //
-//   "DawLab 15.exe" --smoke-test
+//   "DawLab 16.exe" --smoke-test
 //       No window, no audio device. Builds the engine and the session, loads the demo song
 //       through the same code path as the GUI, checks the resampler, the device-callback path,
 //       the VST3-insert path (with an in-process test plugin) and the GUI construction, renders
-//       2 s offline to dawlab_output/l15_app_smoke.wav and checks it (no NaN, not silent, peak
+//       2 s offline to dawlab_output/l16_app_smoke.wav and checks it (no NaN, not silent, peak
 //       below the limiter ceiling). Exit code 0 = all checks passed. Registered as a ctest.
 //       The last two sections export the whole song through the GUI's own File > Export path
 //       (ExportJob on a background thread, result posted back with MessageManager::callAsync)
@@ -14,7 +14,7 @@
 //       asynchronously: runSmokeTest() returns after starting the export, and `onFinished` is
 //       called later, on the message thread, with the exit code.
 //
-//   "DawLab 15.exe" --snapshot <file.png>
+//   "DawLab 16.exe" --snapshot <file.png>
 //       Builds the main window content offline, loads the demo song, plays it to bar 2 beat 3
 //       through the simulated device callback so that meters, spectrum and playhead show
 //       something, and saves a PNG with Component::createComponentSnapshot(). A second PNG

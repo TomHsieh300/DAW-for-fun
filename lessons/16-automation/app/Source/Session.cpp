@@ -95,6 +95,7 @@ bool Session::removeTrack(TrackId id) {
         for (const InsertSlotState& slot : tracks_[static_cast<size_t>(index)].strip.slots)
             if (!slot.isEmpty())
                 onInsertWillBeRemoved(slot.effect);
+    forgetLanesOfTrack(id); // the engine's curves went with the RemoveTrack command
     tracks_.erase(tracks_.begin() + index);
     sendChangeMessage();
     return true;
@@ -156,6 +157,14 @@ void Session::removeBusAndMasterInserts() {
 }
 
 void Session::resetBusAndMasterSettings() {
+    // By now only the fixed strips' own lanes are left; the rest went with their owners.
+    while (!lanes_.empty()) {
+        const LaneAddress address = lanes_.back().first;
+        setLane(address, std::nullopt);
+        if (lanes_.size() > 0 && lanes_.back().first == address)
+            lanes_.pop_back();
+    }
+    recorder_ = engine::AutomationRecorder{};
     for (int b = 0; b <= kNumBuses; ++b) {
         const ChannelRef ref = b < kNumBuses ? ChannelRef::bus(b) : ChannelRef::master();
         ChannelStrip* s = engine_.getStrip(ref);
@@ -382,13 +391,14 @@ int Session::getNumUsedSlots(ChannelRef ref) const noexcept {
     return n;
 }
 
-InsertEffect* Session::setBuiltinInsert(ChannelRef ref, int uiSlot, EffectType type) {
+InsertEffect* Session::setBuiltinInsert(ChannelRef ref, int uiSlot, EffectType type, EffectId id) {
     StripModel* strip = findStrip(ref);
     if (strip == nullptr || !validSlot(uiSlot))
         return nullptr;
     std::unique_ptr<InsertEffect> fx = createEffect(type);
     if (!fx)
         return nullptr;
+    fx->setEffectId(id);
     InsertSlotState& slot = strip->slots[static_cast<size_t>(uiSlot)];
     const int chainIndex = chainIndexOf(ref, uiSlot);
 
@@ -398,11 +408,13 @@ InsertEffect* Session::setBuiltinInsert(ChannelRef ref, int uiSlot, EffectType t
     } else {
         if (onInsertWillBeRemoved)
             onInsertWillBeRemoved(slot.effect);
+        const EffectId old = slot.effect->getEffectId();
         observer = engine_.replaceInsert(ref, chainIndex, std::move(fx));
         if (observer == nullptr) {
             // The old effect is still in the chain (the command was dropped); keep showing it.
             return nullptr;
         }
+        forgetLanesOfEffect(old);
     }
     if (observer == nullptr)
         return nullptr;
@@ -430,7 +442,10 @@ InsertEffect* Session::setVstInsert(ChannelRef ref, int uiSlot, std::unique_ptr<
     } else {
         if (onInsertWillBeRemoved)
             onInsertWillBeRemoved(slot.effect);
+        const EffectId old = slot.effect->getEffectId();
         observer = engine_.replaceInsert(ref, chainIndex, std::move(plugin));
+        if (observer != nullptr)
+            forgetLanesOfEffect(old);
     }
     if (observer == nullptr)
         return nullptr;
@@ -454,6 +469,7 @@ void Session::clearInsert(ChannelRef ref, int uiSlot) {
     // The effect stays alive until the audio thread has unlinked it and our timer has run
     // Engine::collectGarbage(). We forget the observer pointer right now.
     engine_.removeInsert(ref, chainIndexOf(ref, uiSlot));
+    forgetLanesOfEffect(slot.effect->getEffectId());
     slot = InsertSlotState{};
     sendChangeMessage();
 }
@@ -562,6 +578,16 @@ void Session::applySampleRateConversion(double newRate, const ConvertedBuffers& 
         }
         pushClips(t);
     }
+    // A curve's positions are samples too; values, order and jumps stay.
+    for (auto& [address, content] : lanes_) {
+        engine::AutomationCurve scaled(content.curve.defaultValue());
+        for (engine::AutomationPoint point : content.curve.points()) {
+            point.position = scale(point.position);
+            scaled.add(point);
+        }
+        content.curve = std::move(scaled);
+        pushLane(address);
+    }
     clipSampleRate_ = newRate;
     history_.clear(); // its clip lists and positions are at the old rate
     sendChangeMessage();
@@ -618,8 +644,10 @@ InsertSnapshot Session::snapshotInsert(ChannelRef ref, int uiSlot) const {
     } else {
         s.type = st.type;
         for (int i = 0; i < st.effect->getNumParameters(); ++i)
-            s.params.push_back(st.effect->getParameter(i));
+            s.params.push_back(knobValue(*st.effect, i));
     }
+    s.effectId = st.effect->getEffectId();
+    s.lanes = ownedLanes(StripTarget::of(ref), s.effectId);
     return s;
 }
 
@@ -641,6 +669,7 @@ TrackSnapshot Session::snapshotTrack(TrackId id) const {
     for (int slot = 0; slot < kInsertSlotsPerStrip; ++slot)
         s.inserts[static_cast<size_t>(slot)] = snapshotInsert(ref, slot);
     s.clips = getClips(id);
+    s.lanes = ownedLanes(StripTarget::ofTrack(id), EffectId{});
     return s;
 }
 
@@ -651,7 +680,7 @@ bool Session::applyInsertSnapshot(ChannelRef ref, int uiSlot, const InsertSnapsh
         clearInsert(ref, uiSlot);
         return getSlot(ref, uiSlot).isEmpty();
     case SlotKind::Builtin:
-        fx = setBuiltinInsert(ref, uiSlot, insert.type);
+        fx = setBuiltinInsert(ref, uiSlot, insert.type, insert.effectId);
         if (fx != nullptr)
             for (int i = 0; i < std::min(fx->getNumParameters(), static_cast<int>(insert.params.size())); ++i)
                 fx->setParameter(i, insert.params[static_cast<size_t>(i)]);
@@ -663,6 +692,7 @@ bool Session::applyInsertSnapshot(ChannelRef ref, int uiSlot, const InsertSnapsh
         std::unique_ptr<VstInsert> plugin = createVst3(juce::File(insert.vstFile), insert.vstState, error);
         if (plugin == nullptr)
             return false;
+        plugin->setEffectId(insert.effectId);
         fx = setVstInsert(ref, uiSlot, std::move(plugin));
         break;
     }
@@ -670,6 +700,7 @@ bool Session::applyInsertSnapshot(ChannelRef ref, int uiSlot, const InsertSnapsh
     if (fx == nullptr)
         return false;
     setInsertBypassed(ref, uiSlot, insert.bypassed);
+    restoreLanes(StripTarget::of(ref), fx->getEffectId(), insert.lanes); // after its parameters: they are the knobs
     return true;
 }
 
@@ -692,6 +723,7 @@ std::optional<Edit> Session::apply(const edit::AddTrack& e) {
         applyInsertSnapshot(ref, slot, s.inserts[static_cast<size_t>(slot)]); // a plugin that is gone stays out
     if (!s.clips.empty())
         setClips(id, s.clips);
+    restoreLanes(StripTarget::ofTrack(id), EffectId{}, s.lanes);
     return edit::RemoveTrack{id};
 }
 
@@ -776,8 +808,10 @@ std::optional<Edit> Session::apply(const edit::SetParameter& e) {
     if (slot.isEmpty() || e.index < 0 || e.index >= slot.effect->getNumParameters())
         return std::nullopt;
     edit::SetParameter inverse = e;
-    inverse.value = slot.effect->getParameter(e.index);
+    inverse.value = knobValue(*slot.effect, e.index);
     slot.effect->setParameter(e.index, e.value); // an atomic; editor panels follow by their timer
+    if (engine::AutomationLane* lane = slot.effect->getLane(e.index); lane != nullptr && lane->isActive())
+        lane->setKnobValue(slot.effect->getParameterInfo(e.index).toNormalized(e.value));
     return inverse;
 }
 
@@ -799,6 +833,249 @@ std::optional<Edit> Session::apply(const edit::SetTempo& e) {
     tr.setTempo(e.bpm);
     sendChangeMessage();
     return inverse;
+}
+
+// ---- automation (chapter 16, Step 6) -----------------------------------------------------------------
+
+const LaneContent* Session::getLane(const LaneAddress& address) const noexcept {
+    for (const auto& [a, content] : lanes_)
+        if (a == address)
+            return &content;
+    return nullptr;
+}
+
+std::vector<std::pair<LaneAddress, LaneContent>> Session::getLanesOf(ChannelRef ref) const {
+    const StripTarget strip = StripTarget::of(ref);
+    std::vector<std::pair<LaneAddress, LaneContent>> found;
+    for (const auto& lane : lanes_)
+        if (lane.first.strip == strip)
+            found.push_back(lane);
+    return found;
+}
+
+int Session::slotOfEffect(ChannelRef ref, EffectId id) const noexcept {
+    const StripModel* strip = findStrip(ref);
+    if (strip == nullptr || !id.isValid())
+        return -1;
+    for (int s = 0; s < kInsertSlotsPerStrip; ++s) {
+        const InsertSlotState& slot = strip->slots[static_cast<size_t>(s)];
+        if (!slot.isEmpty() && slot.effect->getEffectId() == id)
+            return s;
+    }
+    return -1;
+}
+
+InsertEffect* Session::effectOf(const LaneAddress& address) const noexcept {
+    const ChannelRef ref = refOf(address.strip);
+    const int slot = slotOfEffect(ref, address.effect);
+    return slot >= 0 ? getSlot(ref, slot).effect : nullptr;
+}
+
+int Session::parameterIndexOf(const LaneAddress& address) const noexcept {
+    if (!address.effect.isValid())
+        return address.parameter == "Gain" ? engine::kLaneGain : (address.parameter == "Pan" ? engine::kLanePan : -1);
+    const InsertEffect* effect = effectOf(address);
+    return effect != nullptr ? effect->findParameter(address.parameter.toRawUTF8()) : -1;
+}
+
+// By the effect's own pointer, not through the engine's chain: an effect added a moment ago is not in
+// the chain until the audio thread has taken it, but its lanes are already there.
+engine::AutomationLane* Session::laneOf(const LaneAddress& address) const noexcept {
+    const int parameter = parameterIndexOf(address);
+    if (parameter < 0)
+        return nullptr;
+    if (address.effect.isValid()) {
+        InsertEffect* effect = effectOf(address);
+        return effect != nullptr ? effect->getLane(parameter) : nullptr;
+    }
+    ChannelStrip* strip = const_cast<Engine&>(engine_).getStrip(refOf(address.strip));
+    return strip != nullptr ? strip->getOwnLane(parameter) : nullptr;
+}
+
+bool Session::isLaneLive(const LaneAddress& address) const noexcept { return laneOf(address) != nullptr; }
+
+// Tells the engine what the model says about this lane.
+void Session::pushLane(const LaneAddress& address) {
+    engine::AutomationLane* lane = laneOf(address);
+    if (lane == nullptr)
+        return; // an unknown parameter: nothing plays it
+    const int parameter = parameterIndexOf(address);
+    if (InsertEffect* effect = effectOf(address); effect != nullptr && !lane->isActive())
+        lane->setKnobValue(effect->getParameterNormalized(parameter)); // where it returns when the lane goes
+    const engine::LaneTarget target{refOf(address.strip), address.effect, parameter};
+    const LaneContent* content = getLane(address);
+    lane->setMode(content != nullptr ? content->mode : engine::AutomationMode::Read);
+    if (content != nullptr && content->curve.size() > 0)
+        engine_.setLaneCurve(target, content->curve);
+    else
+        engine_.clearLaneCurve(target);
+}
+
+bool Session::setLane(const LaneAddress& address, std::optional<LaneContent> content) {
+    if (engine_.getStrip(refOf(address.strip)) == nullptr || (address.effect.isValid() && effectOf(address) == nullptr))
+        return false;
+    const auto it = std::find_if(lanes_.begin(), lanes_.end(), [&address](const auto& lane) { return lane.first == address; });
+    if (it != lanes_.end())
+        lanes_.erase(it);
+    if (content)
+        lanes_.emplace_back(address, std::move(*content));
+    pushLane(address);
+    sendChangeMessage();
+    return true;
+}
+
+void Session::forgetLanesOfEffect(EffectId id) {
+    lanes_.erase(std::remove_if(lanes_.begin(), lanes_.end(), [id](const auto& lane) { return lane.first.effect == id; }), lanes_.end());
+}
+
+void Session::forgetLanesOfTrack(TrackId id) {
+    const StripTarget strip = StripTarget::ofTrack(id);
+    lanes_.erase(std::remove_if(lanes_.begin(), lanes_.end(), [&strip](const auto& lane) { return lane.first.strip == strip; }), lanes_.end());
+}
+
+std::vector<OwnedLane> Session::ownedLanes(const StripTarget& strip, EffectId effect) const {
+    std::vector<OwnedLane> owned;
+    for (const auto& [address, content] : lanes_)
+        if (address.strip == strip && address.effect == effect)
+            owned.push_back({address.parameter, content});
+    return owned;
+}
+
+bool Session::restoreLanes(const StripTarget& strip, EffectId effect, const std::vector<OwnedLane>& lanes) {
+    bool ok = true;
+    for (const OwnedLane& lane : lanes)
+        ok = setLane({strip, effect, lane.parameter}, lane.content) && ok;
+    return ok;
+}
+
+std::optional<Edit> Session::apply(const edit::SetLane& e) {
+    const LaneContent* old = getLane(e.address);
+    edit::SetLane inverse{e.address, old != nullptr ? std::optional<LaneContent>(*old) : std::nullopt};
+    if (!setLane(e.address, e.content))
+        return std::nullopt;
+    return inverse;
+}
+
+float Session::knobValue(InsertEffect& effect, int index) const noexcept {
+    const engine::AutomationLane* lane = effect.getLane(index);
+    return lane != nullptr && lane->isActive() ? effect.getParameterInfo(index).fromNormalized(lane->getKnobValue()) : effect.getParameter(index);
+}
+
+LaneContent Session::contentOrNew(const LaneAddress& address) const {
+    const LaneContent* content = getLane(address);
+    return content != nullptr ? *content : LaneContent{};
+}
+
+bool Session::editLane(const LaneAddress& address, LaneContent content, const juce::String& name, std::uint32_t mergeKey) {
+    return perform(edit::SetLane{address, std::move(content)}, name + " " + address.parameter, mergeKey);
+}
+
+int Session::addPoint(const LaneAddress& address, std::int64_t position, float value, std::uint32_t mergeKey) {
+    LaneContent content = contentOrNew(address);
+    const int index = content.curve.add({std::max<std::int64_t>(0, position), value, engine::Shape::Linear});
+    return editLane(address, std::move(content), "Add point", mergeKey) ? index : -1;
+}
+
+int Session::movePoint(const LaneAddress& address, int index, std::int64_t position, float value, std::uint32_t mergeKey) {
+    const LaneContent* old = getLane(address);
+    if (old == nullptr || index < 0 || index >= old->curve.size())
+        return -1;
+    LaneContent content = *old;
+    engine::AutomationPoint point = content.curve.points()[static_cast<size_t>(index)];
+    point.position = std::max<std::int64_t>(0, position);
+    point.value = value;
+    content.curve.remove(index);
+    const int moved = content.curve.add(point);
+    return editLane(address, std::move(content), "Move point", mergeKey) ? moved : -1;
+}
+
+bool Session::removePoint(const LaneAddress& address, int index) {
+    const LaneContent* old = getLane(address);
+    if (old == nullptr || index < 0 || index >= old->curve.size())
+        return false;
+    LaneContent content = *old;
+    content.curve.remove(index);
+    return editLane(address, std::move(content), "Remove point", 0);
+}
+
+bool Session::setLaneMode(const LaneAddress& address, engine::AutomationMode mode) {
+    LaneContent content = contentOrNew(address);
+    content.mode = mode;
+    return editLane(address, std::move(content), "Automation mode", 0);
+}
+
+void Session::touchLane(const LaneAddress& address) noexcept {
+    if (engine::AutomationLane* lane = laneOf(address))
+        lane->touch();
+}
+
+void Session::releaseLane(const LaneAddress& address) noexcept {
+    if (engine::AutomationLane* lane = laneOf(address))
+        lane->release();
+}
+
+bool Session::handMoves(const LaneAddress& address, float value) noexcept {
+    engine::AutomationLane* lane = laneOf(address);
+    if (lane == nullptr || !lane->isActive())
+        return false;
+    if (InsertEffect* effect = effectOf(address)) {
+        lane->setKnobValue(effect->getParameterInfo(parameterIndexOf(address)).toNormalized(value));
+        return true;
+    }
+    ChannelStrip* strip = engine_.getStrip(refOf(address.strip));
+    if (strip == nullptr)
+        return false;
+    if (parameterIndexOf(address) == engine::kLaneGain)
+        strip->setGainDb(value); // the knob follows (ChannelStrip::setGainDb)
+    else
+        strip->setPan(value);
+    return true;
+}
+
+std::vector<std::pair<juce::String, LaneAddress>> Session::getAutomatableParameters(ChannelRef ref) const {
+    std::vector<std::pair<juce::String, LaneAddress>> list;
+    const StripTarget strip = StripTarget::of(ref);
+    list.push_back({"Gain", {strip, EffectId{}, "Gain"}});
+    list.push_back({"Pan", {strip, EffectId{}, "Pan"}});
+    for (int s = 0; s < kInsertSlotsPerStrip; ++s) {
+        const InsertSlotState& slot = getSlot(ref, s);
+        if (slot.isEmpty() || slot.kind != SlotKind::Builtin)
+            continue;
+        for (int i = 0; i < slot.effect->getNumParameters(); ++i) {
+            const juce::String name = slot.effect->getParameterInfo(i).name;
+            list.push_back({slot.name + ": " + name, {strip, slot.effect->getEffectId(), name}});
+        }
+    }
+    return list;
+}
+
+int Session::collectAutomation() {
+    return recorder_.collect(engine_.getCaptureQueue(), [this](const engine::LaneTarget& target, std::vector<engine::AutomationPoint> points) {
+        // The name of the lane, now: a track or an effect deleted since then ends the recording here.
+        const LaneAddress address = [&] {
+            LaneAddress a{StripTarget::of(target.channel), target.effect, {}};
+            if (!target.effect.isValid())
+                a.parameter = target.parameter == engine::kLaneGain ? "Gain" : "Pan";
+            else if (const InsertEffect* effect = effectOf(a); effect != nullptr && target.parameter < effect->getNumParameters())
+                a.parameter = effect->getParameterInfo(target.parameter).name;
+            return a;
+        }();
+        if (address.parameter.isEmpty() || !isLaneLive(address))
+            return;
+        // A fader behind latency hears the start of the song before position 0: that is position 0.
+        for (engine::AutomationPoint& point : points)
+            point.position = std::max<std::int64_t>(0, point.position);
+        LaneContent content = contentOrNew(address);
+        if (content.curve.size() == 0) { // the first recording IS the curve: there is nothing to return to
+            engine::AutomationCurve first(content.curve.defaultValue());
+            for (const engine::AutomationPoint& point : points)
+                first.add(point);
+            content.curve = std::move(first);
+        } else {
+            content.curve = engine::punch(content.curve, points);
+        }
+        editLane(address, std::move(content), "Record", 0);
+    });
 }
 
 } // namespace dawlab::app

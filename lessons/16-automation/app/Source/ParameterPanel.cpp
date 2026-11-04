@@ -88,9 +88,17 @@ ParameterPanel::ParameterPanel(engine::InsertEffect& effect) : effect_(effect) {
                 s->getProperties().set(DawLookAndFeel::kBipolarProperty, true);
             s->setValue(current, juce::dontSendNotification);
             s->onValueChange = [this, i, sl = s.get()] { changeParameter(i, static_cast<float>(sl->getValue())); };
-            s->onDragStart = s->onDragEnd = [this] {
+            s->onDragStart = [this, i] {
                 if (onGesture)
                     onGesture();
+                if (onTouch)
+                    onTouch(i, true);
+            };
+            s->onDragEnd = [this, i] {
+                if (onGesture)
+                    onGesture();
+                if (onTouch)
+                    onTouch(i, false);
             };
             c->slider = std::move(s);
             content_.addAndMakeVisible(*c->slider);
