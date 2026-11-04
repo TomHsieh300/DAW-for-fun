@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-03-modes.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 2 - Sample-accurate playback](step-02-playback.md) | Next: Step 4 - What a curve belongs to (planned)
+[Overview](../README.md) | Previous: [Step 2 - Sample-accurate playback](step-02-playback.md) | Next: [Step 4 - What a curve belongs to](step-04-targets.md)
 
 ## Goal
 

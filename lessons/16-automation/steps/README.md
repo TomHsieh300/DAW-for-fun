@@ -14,6 +14,7 @@ write the step's functions in `starter/`, the self-check tells you when they wor
 | 1 | `step01-curve` | `AutomationCurve::add`, `remove`, `valueAt`, `render` | `l16_step01_starter` |
 | 2 | `step02-playback` | `CurveCursor::locate`, `AutomationCurve::render` with a cursor, `AutomationLane::render`, `limitSlew` | `l16_step02_starter` |
 | 3 | `step03-modes` | `AutomationLane::userWins`, `render`, `thin`, `punch`, `Recorder::collect` | `l16_step03_starter` |
+| 4 | `step04-targets` | `resolve`, `applyEdit`, `writeLanes`, `parseLaneLine`, `attachLanes`, `convertSampleRate` | `l16_step04_starter` |
 
 </div>
 

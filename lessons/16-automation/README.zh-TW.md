@@ -2,7 +2,7 @@
 
 [English](README.md) | **繁體中文**
 
-> **狀態：進行中。** Step 1-3 已完成；Step 4-6 還在規劃中，列在下面讓你看到本章接下來的方向。
+> **狀態：進行中。** Step 1-4 已完成；Step 5-6 還在規劃中，列在下面讓你看到本章接下來的方向。
 
 DawLab 15（第 15 章）播放的混音，fader 和旋鈕都停在使用者放的位置。真正的音樂會動：fader 在副歌時推上去，filter 在八小節裡慢慢
 打開，delay 只在某一句打開。DAW 把這些動作記錄成 **automation**：每個參數一條沿著時間軸的曲線，audio thread 播放時照著它走。
@@ -42,7 +42,7 @@ automation 會碰到第 15 章做的每一層。它是專案檔和 undo 歷史�
 | 1 | [Automation 曲線](docs/step-01-curve.zh-TW.md) | 有位置和 normalized 值的點、Linear 與 Hold 兩種段落、跳躍、`valueAt()` 和只搜尋一次的 `render()` | 完成 |
 | 2 | [精準到 sample 的播放](docs/step-02-playback.zh-TW.md) | audio thread 上的曲線：像 clip 清單一樣交換的 immutable 曲線、跨 seek 和 loop 都會自我檢查的 cursor、讓跳躍不產生 click 的限制 | 完成 |
 | 3 | [Automation 與使用者](docs/step-03-modes.zh-TW.md) | Read / Touch / Latch / Write；audio thread 替動作蓋時間戳，UI thread 把它分組成 pass、精簡後打入曲線 | 完成 |
-| 4 | 曲線屬於什麼 | 以 track id 和參數指定對象；被移除的效果器；專案檔與 undo | 規劃中 |
+| 4 | [曲線屬於什麼](docs/step-04-targets.zh-TW.md) | 用 track id、effect id 和參數名稱指定對象；lane 隨擁有者離開和回來；保留無法辨識的參數；專案檔與 undo | 完成 |
 | 5 | 有 automation 的 engine | 第 15 章 engine 的複本加上 automation lane；ThreadSanitizer | 規劃中 |
 | 6 | 有 automation 的 app | track 下方的 lane、畫點和拖動點、模式切換 | 規劃中 |
 

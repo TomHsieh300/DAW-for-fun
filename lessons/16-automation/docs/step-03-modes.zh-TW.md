@@ -2,7 +2,7 @@
 
 [English](step-03-modes.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 2 - 精準到 sample 的播放](step-02-playback.zh-TW.md) | 下一步：Step 4 - 曲線屬於什麼（規劃中）
+[總覽](../README.zh-TW.md) | 上一步：[Step 2 - 精準到 sample 的播放](step-02-playback.zh-TW.md) | 下一步：[Step 4 - 曲線屬於什麼](step-04-targets.zh-TW.md)
 
 ## 目標
 

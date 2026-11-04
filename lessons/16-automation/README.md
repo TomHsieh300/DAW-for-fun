@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](README.zh-TW.md)
 
-> **Status: in progress.** Steps 1-3 are finished; Steps 4-6 are planned and listed below so you can
+> **Status: in progress.** Steps 1-4 are finished; Steps 5-6 are planned and listed below so you can
 > see where the chapter is going.
 
 DawLab 15 (chapter 15) plays a mix whose faders and knobs stay where the user left them. Real
@@ -50,7 +50,7 @@ After this chapter you can
 | 1 | [The automation curve](docs/step-01-curve.md) | points with a position and a normalized value, Linear and Hold segments, jumps, `valueAt()` and a one-search `render()` | done |
 | 2 | [Sample-accurate playback](docs/step-02-playback.md) | the curve on the audio thread: immutable curves swapped like clip lists, a cursor that checks itself across seeks and loops, a limit that stops jumps from clicking | done |
 | 3 | [Automation and the user](docs/step-03-modes.md) | Read / Touch / Latch / Write; the audio thread stamps the movement, the UI thread groups it into passes, thins them and punches them into the curve | done |
-| 4 | What a curve belongs to | targets by track id and parameter; removed effects; the project file and undo | planned |
+| 4 | [What a curve belongs to](docs/step-04-targets.md) | targets by track id, effect id and parameter name; lanes that leave and return with their owner; unknown parameters kept; the project file and undo | done |
 | 5 | The engine with automation | a copy of chapter 15's engine with automation lanes; ThreadSanitizer | planned |
 | 6 | The app with automation | lanes under the tracks, drawing and dragging points, the mode switch | planned |
 
