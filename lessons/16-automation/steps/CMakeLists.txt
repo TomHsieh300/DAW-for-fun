@@ -13,3 +13,4 @@ function(l16_add_step id dir)
 endfunction()
 
 l16_add_step(step01 step01-curve)
+l16_add_step(step02 step02-playback)
