@@ -14,3 +14,4 @@ endfunction()
 
 l16_add_step(step01 step01-curve)
 l16_add_step(step02 step02-playback)
+l16_add_step(step03 step03-modes)
