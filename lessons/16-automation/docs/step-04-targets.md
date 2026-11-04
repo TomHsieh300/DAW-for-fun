@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-04-targets.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 3 - Automation and the user](step-03-modes.md) | Next: Step 5 - The engine with automation (planned)
+[Overview](../README.md) | Previous: [Step 3 - Automation and the user](step-03-modes.md) | Next: [Step 5 - The engine with automation](step-05-engine.md)
 
 ## Goal
 
