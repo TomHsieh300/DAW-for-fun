@@ -18,3 +18,4 @@ endfunction()
 
 l17_add_step(step01 step01-input-ring)
 l17_add_step(step02 step02-placement)
+l17_add_step(step03 step03-take-on-disk)

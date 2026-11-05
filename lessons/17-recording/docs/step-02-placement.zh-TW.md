@@ -2,7 +2,7 @@
 
 [English](step-02-placement.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 1 - 從 audio thread 到 disk thread](step-01-input-ring.zh-TW.md)
+[總覽](../README.zh-TW.md) | 上一步：[Step 1 - 從 audio thread 到 disk thread](step-01-input-ring.zh-TW.md) | 下一步：[Step 3 - 把 take 寫進硬碟](step-03-take-on-disk.zh-TW.md)
 
 ## 目標
 

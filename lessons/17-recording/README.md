@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](README.zh-TW.md)
 
-> **Status: in progress.** Steps 1 and 2 of 7 are done.
+> **Status: in progress.** Steps 1 to 3 of 7 are done.
 
 DawLab 16 (chapter 16) can play, mix and automate audio that already exists, but its audio callback
 ignores the input. A DAW also has to record, and recording puts together everything the earlier
@@ -45,7 +45,7 @@ After this chapter you can
 |---|---|---|---|
 | 1 | [From the audio thread to the disk thread](docs/step-01-input-ring.md) | a ring of counters that only grow, blocks that go in whole or not at all, gaps that keep the time; ThreadSanitizer | done |
 | 2 | [Where the take belongs](docs/step-02-placement.md) | `P - (L_in + L_out + L_mix)` stamped by the audio thread, a simulated loop-back, measuring the round trip, a take both threads can end | done |
-| 3 | The take on disk | a WAV that grows while recording and survives a crash or a full disk | planned |
+| 3 | [The take on disk](docs/step-03-take-on-disk.md) | a WAV that grows while recording and survives a crash or a full disk, one way to finish a take | done |
 | 4 | Punch and loop | punch points inside a block, one take per pass of a loop | planned |
 | 5 | Input monitoring | what is heard and what is recorded, latency through inserts, feedback | planned |
 | 6 | The engine with recording | a copy of chapter 16's engine: `processBlock` takes the input, tracks can be armed | planned |

@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-02-placement.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 1 - From the audio thread to the disk thread](step-01-input-ring.md)
+[Overview](../README.md) | Previous: [Step 1 - From the audio thread to the disk thread](step-01-input-ring.md) | Next: [Step 3 - The take on disk](step-03-take-on-disk.md)
 
 ## Goal
 
