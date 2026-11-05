@@ -75,5 +75,5 @@ Start with [Step 1 - The automation curve](docs/step-01-curve.md). When you reac
 
 ## 5. Next
 
-This is the last chapter so far. For what a DAW could still grow - recording, MIDI, time-stretching -
-see [Where to go next](../14-daw-8track/README.md#10-where-to-go-next) in chapter 14.
+Continue with [chapter 17 - Recording](../17-recording/README.md). For what a DAW could grow beyond that -
+MIDI, time-stretching - see [Where to go next](../14-daw-8track/README.md#10-where-to-go-next) in chapter 14.

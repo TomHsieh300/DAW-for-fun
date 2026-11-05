@@ -42,7 +42,7 @@ The course is **bilingual (English / Traditional Chinese)**. English is the prim
 
 ### Linux (verified on Ubuntu 24.04)
 
-Every chapter, including the JUCE parts of chapters 13–16, builds and passes all its tests on **Ubuntu 24.04 LTS with GCC 13.3 and CMake 3.28**. CI checks this on every push, including the smoke tests and snapshots of `DawLab 8`, `DawLab 15` and `DawLab 16`, the ThreadSanitizer run of chapters 15 and 16, and an AddressSanitizer + UndefinedBehaviorSanitizer run of every pure C++ chapter.
+Every chapter, including the JUCE parts of chapters 13–16, builds and passes all its tests on **Ubuntu 24.04 LTS with GCC 13.3 and CMake 3.28**. CI checks this on every push, including the smoke tests and snapshots of `DawLab 8`, `DawLab 15` and `DawLab 16`, the ThreadSanitizer run of chapters 15 to 17, and an AddressSanitizer + UndefinedBehaviorSanitizer run of every pure C++ chapter.
 
 1. Install the compiler and CMake:
    ```bash
@@ -174,6 +174,7 @@ The chapters go in numeric order, and every chapter uses components from the ear
 | [14](lessons/14-daw-8track/README.md) | **Capstone: the 8-track DAW** | transport and the two kinds of clock, clips, mixer and FX buses, a lock-free command queue, PDC, offline bounce, real-time safety tests, the JUCE GUI, VST3 inserts | the pure C++ `dawlab::engine` and the JUCE app "DawLab 8" |
 | [15](lessons/15-daw-growing/README.md) | Growing the DAW | stable track ids, a pool of track slots, a CPU budget, a project file, undo / redo: first as small build-along snapshots, then in a copy of chapter 14's engine and app; ThreadSanitizer | the engine with a track pool and the JUCE app "DawLab 15" (add / delete tracks, save / open, undo / redo, CPU warning) |
 | [16](lessons/16-automation/README.md) | Automation | points on the timeline with normalized values, sample-accurate playback, Read / Touch / Latch / Write with recording and thinning, targets that survive moves, undo and the project file, faders that wait for delayed audio | **DawLab 16**: lanes under the tracks, points to draw and drag, the mode switch |
+| [17](lessons/17-recording/README.md) | Recording (in progress) | from the audio input to a clip: a ring that keeps the time when the disk stalls, latency-corrected placement, a take that survives a crash, punch and loop, input monitoring | **DawLab 17**: planned |
 
 </div>
 

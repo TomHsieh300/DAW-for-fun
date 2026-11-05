@@ -67,5 +67,5 @@ automation 會碰到第 15 章做的每一層。它是專案檔和 undo 歷史�
 
 ## 5. 下一步
 
-這是目前的最後一章。DAW 還可以往哪些方向成長（recording、MIDI、time-stretching），請見第 14 章的
+接著讀[第 17 章 - Recording](../17-recording/README.zh-TW.md)。DAW 之後還可以往哪些方向成長（MIDI、time-stretching），請見第 14 章的
 [接下來往哪裡走](../14-daw-8track/README.zh-TW.md#10-接下來往哪裡走)。
