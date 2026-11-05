@@ -42,7 +42,7 @@ The course is **bilingual (English / Traditional Chinese)**. English is the prim
 
 ### Linux (verified on Ubuntu 24.04)
 
-Every chapter, including the JUCE parts of chapters 13–16, builds and passes all its tests on **Ubuntu 24.04 LTS with GCC 13.3 and CMake 3.28**. CI checks this on every push, including the smoke tests and snapshots of `DawLab 8`, `DawLab 15` and `DawLab 16`, and the ThreadSanitizer run of chapters 15 and 16.
+Every chapter, including the JUCE parts of chapters 13–16, builds and passes all its tests on **Ubuntu 24.04 LTS with GCC 13.3 and CMake 3.28**. CI checks this on every push, including the smoke tests and snapshots of `DawLab 8`, `DawLab 15` and `DawLab 16`, the ThreadSanitizer run of chapters 15 and 16, and an AddressSanitizer + UndefinedBehaviorSanitizer run of every pure C++ chapter.
 
 1. Install the compiler and CMake:
    ```bash

@@ -40,7 +40,7 @@
 
 ### Linux（已在 Ubuntu 24.04 驗證）
 
-所有章節，包括第 13–16 章的 JUCE 部分，都已在 **Ubuntu 24.04 LTS、GCC 13.3、CMake 3.28** 上建置成功並通過全部測試。CI 每次 push 都會檢查，包含 `DawLab 8`、`DawLab 15` 與 `DawLab 16` 的 smoke test 與 snapshot，以及第 15、16 章的 ThreadSanitizer。
+所有章節，包括第 13–16 章的 JUCE 部分，都已在 **Ubuntu 24.04 LTS、GCC 13.3、CMake 3.28** 上建置成功並通過全部測試。CI 每次 push 都會檢查，包含 `DawLab 8`、`DawLab 15` 與 `DawLab 16` 的 smoke test 與 snapshot，第 15、16 章的 ThreadSanitizer，以及所有純 C++ 章節的 AddressSanitizer + UndefinedBehaviorSanitizer。
 
 1. 安裝編譯器與 CMake：
    ```bash

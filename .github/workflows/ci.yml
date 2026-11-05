@@ -5,6 +5,7 @@
 #         Windows, Linux (x64 and ARM64) and macOS
 #   tsan  chapters 15-16 under ThreadSanitizer: their checks run a real audio thread next to the
 #         UI thread, and TSan fails the run on any data race between them
+#   asan  every pure C++ chapter under AddressSanitizer and UndefinedBehaviorSanitizer
 #   juce  chapters 13-16 with JUCE, including the smoke tests and snapshots of DawLab 8, 15 and
 #         16 (macOS is built too but allowed to fail until it has passed a few times)
 #
@@ -76,6 +77,22 @@ jobs:
         env:
           TSAN_OPTIONS: halt_on_error=1 second_deadlock_stack=1
         run: ./scripts/build.sh --only 15-daw-growing,16-automation --sanitize thread --build-dir build-tsan
+
+  asan:
+    name: asan + ubsan (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      # The same ASLR limit as for TSan; ASan's shadow memory has the same problem
+      - name: Lower the ASLR entropy for ASan
+        run: sudo sysctl vm.mmap_rnd_bits=28
+
+      # UBSan only prints a message unless it is told to stop, and then the test would still pass
+      - name: Build and test under AddressSanitizer and UndefinedBehaviorSanitizer
+        env:
+          UBSAN_OPTIONS: halt_on_error=1 print_stacktrace=1
+        run: ./scripts/build.sh --sanitize address,undefined --build-dir build-asan
 
   juce:
     name: juce (${{ matrix.os }})
