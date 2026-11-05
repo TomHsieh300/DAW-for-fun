@@ -30,7 +30,7 @@
 
 1. 安裝 [Visual Studio 2022](https://visualstudio.microsoft.com/)：**Build Tools**（純命令列、體積小）或 **Community**（含 IDE、免費）都可以。
 2. 安裝時勾選工作負載 **「使用 C++ 的桌面開發」（Desktop development with C++）**。它會一起裝好 MSVC、Windows SDK 與 CMake；本專案的腳本會自動找到 VS 內附的 CMake，系統 PATH 上不需要有 `cmake`。
-3. 第 13、14 章，以及第 15 章的應用程式，需要 JUCE：
+3. 第 13、14 章，以及第 15、16 章的應用程式，需要 JUCE：
    - 完整的專案資料夾已在 `third_party/JUCE` 附上 JUCE **9.0.4**。**若你是用 git 取得本專案，`third_party/` 不在版本控制內**（列在 `.gitignore`），需要自己 clone JUCE 9.0.4 到 `third_party/JUCE`，或直接跳到下一點讓 CMake 用 FetchContent 下載：
      ```powershell
      git clone --depth 1 --branch 9.0.4 https://github.com/juce-framework/JUCE.git third_party/JUCE
@@ -195,7 +195,7 @@ cd build
 
 - **程式碼**（`*.cpp`、`*.h`、`CMakeLists.txt`、`*.cmake`、腳本）：[MIT License](LICENSE)。
 - **教材文字與圖片**（所有語言的 `*.md`、`docs/images/`、`lessons/*/docs/images/`）：[CC BY 4.0](LICENSE-docs)；重用教材文字時須標示出處。
-- **JUCE**（只有第 13、14 章與第 15 章的應用程式需要，不包含在本 repository 內）：採雙授權，[AGPLv3](https://www.gnu.org/licenses/agpl-3.0.en.html) 或商業的 JUCE EULA。以 AGPLv3 使用 JUCE 並散佈你做出來的 plugin 或 app 時，整個原始碼也必須以 AGPLv3 公開；不想公開就要依 JUCE EULA 取得授權。VST3 SDK（內含於 JUCE）為 MIT License，使用「VST」商標或 logo 須遵守 Steinberg 的使用規範。
+- **JUCE**（只有第 13、14 章與第 15、16 章的應用程式需要，不包含在本 repository 內）：採雙授權，[AGPLv3](https://www.gnu.org/licenses/agpl-3.0.en.html) 或商業的 JUCE EULA。以 AGPLv3 使用 JUCE 並散佈你做出來的 plugin 或 app 時，整個原始碼也必須以 AGPLv3 公開；不想公開就要依 JUCE EULA 取得授權。VST3 SDK（內含於 JUCE）為 MIT License，使用「VST」商標或 logo 須遵守 Steinberg 的使用規範。
 - 只用到第 00–12 章與第 14、15 章的純 C++ engine（`common/`、`dsp/` 與這些章節的程式）時不會連結 JUCE，不受 JUCE 授權影響。
 
 這些摘要僅供參考，不是法律意見；第 13 章 3.7 節有更完整的說明。打算散佈用本教材程式碼做出的 plugin 或 app 前，請自行閱讀授權條款，必要時諮詢法律意見。

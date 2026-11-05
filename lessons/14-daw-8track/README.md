@@ -699,8 +699,9 @@ and a keyboard shortcut map with conflict detection. Solutions and explanations 
 
 You now have a working DAW engine. Where you take it depends on what excites you:
 
-- **Chapter 15** ([Growing the DAW](../15-daw-growing/README.md), in progress) continues from here:
+- **Chapter 15** ([Growing the DAW](../15-daw-growing/README.md)) continues from here:
   tracks you can add and delete, saved projects and undo, keeping the real-time rules of this chapter.
+  **Chapter 16** ([Automation](../16-automation/README.md)) then adds curves you draw or record.
 - **Grow DawLab 8**: wire the solutions of Exercises 8-11 into the app for real - an automation
   lane under every track, a record button with input monitoring, MIDI tracks with a piano-roll
   editor, project files with auto-save and undo (JUCE's `UndoManager` around every `Session`
@@ -718,4 +719,4 @@ You now have a working DAW engine. Where you take it depends on what excites you
 - **Performance**: SIMD for the mixing loops, a Release profile of `l14_realtime_sim`, and
   measuring worst-case (not average) block times.
 
-Thank you for following the course to the end. Build something that makes music.
+Thank you for following the course this far. Build something that makes music.

@@ -32,7 +32,7 @@ The course is **bilingual (English / Traditional Chinese)**. English is the prim
 
 1. Install [Visual Studio 2022](https://visualstudio.microsoft.com/): either **Build Tools** (command line only, small) or **Community** (includes the IDE, free) will do.
 2. During installation, select the workload **"Desktop development with C++"**. It installs MSVC, the Windows SDK and CMake together; the scripts in this project automatically find the CMake bundled with Visual Studio, so `cmake` does not need to be on your system PATH.
-3. Chapters 13 and 14, and the application of chapter 15, need JUCE:
+3. Chapters 13 and 14, and the applications of chapters 15 and 16, need JUCE:
    - The complete project folder already contains JUCE **9.0.4** in `third_party/JUCE`. **If you obtained the project through git, `third_party/` is not under version control** (it is listed in `.gitignore`), so you need to clone JUCE 9.0.4 into `third_party/JUCE` yourself, or skip to the next point and let CMake download it with FetchContent:
      ```powershell
      git clone --depth 1 --branch 9.0.4 https://github.com/juce-framework/JUCE.git third_party/JUCE
@@ -197,7 +197,7 @@ The repository uses two licenses, chosen by file type; the details are in [LICEN
 
 - **Source code** (`*.cpp`, `*.h`, `CMakeLists.txt`, `*.cmake`, scripts): [MIT License](LICENSE).
 - **Course text and images** (`*.md` in all languages, `docs/images/`, `lessons/*/docs/images/`): [CC BY 4.0](LICENSE-docs); attribution is required when you reuse the course text.
-- **JUCE** (needed only by chapters 13 and 14 and by chapter 15's application, and not part of this repository) is dual-licensed under the [AGPLv3](https://www.gnu.org/licenses/agpl-3.0.en.html) or the commercial JUCE EULA. If you use JUCE under the AGPLv3 and distribute a plugin or app you built, its complete source code must also be published under the AGPLv3; if you do not want to publish it, you need a license under the JUCE EULA. The VST3 SDK (bundled in JUCE) is MIT-licensed, and using the "VST" trademark or logo is subject to Steinberg's usage guidelines.
+- **JUCE** (needed only by chapters 13 and 14 and by the applications of chapters 15 and 16, and not part of this repository) is dual-licensed under the [AGPLv3](https://www.gnu.org/licenses/agpl-3.0.en.html) or the commercial JUCE EULA. If you use JUCE under the AGPLv3 and distribute a plugin or app you built, its complete source code must also be published under the AGPLv3; if you do not want to publish it, you need a license under the JUCE EULA. The VST3 SDK (bundled in JUCE) is MIT-licensed, and using the "VST" trademark or logo is subject to Steinberg's usage guidelines.
 - If you only use chapters 00–12 and the pure C++ engines of chapters 14 and 15 (`common/`, `dsp/` and the programs of those chapters), JUCE is not linked and the JUCE licenses do not apply.
 
 These summaries are for information only and are not legal advice; section 3.7 of chapter 13 gives a fuller explanation. Before distributing a plugin or app built from this course's code, read the license terms yourself and consult a lawyer if necessary.

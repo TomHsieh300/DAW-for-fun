@@ -70,4 +70,5 @@ command 裡的 `ChannelRef::track(i)`、`Session::clips_`、`ArrangementView` �
 
 ## 4. 下一步
 
-從 [Step 1 - 穩定的 track ID](docs/step-01-track-ids.zh-TW.md) 開始。
+從 [Step 1 - 穩定的 track ID](docs/step-01-track-ids.zh-TW.md) 開始。完成 Step 9 後，接著讀
+[第 16 章 - Automation](../16-automation/README.zh-TW.md)。

@@ -72,3 +72,8 @@ Start with [Step 1 - The automation curve](docs/step-01-curve.md). When you reac
 .\scripts\build.ps1 -Only 16-automation -Juce
 & ".\build\bin\Debug\DawLab 16.exe"
 ```
+
+## 5. Next
+
+This is the last chapter so far. For what a DAW could still grow - recording, MIDI, time-stretching -
+see [Where to go next](../14-daw-8track/README.md#10-where-to-go-next) in chapter 14.

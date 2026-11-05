@@ -77,4 +77,5 @@ change.
 
 ## 4. Next
 
-Start with [Step 1 - Stable track IDs](docs/step-01-track-ids.md).
+Start with [Step 1 - Stable track IDs](docs/step-01-track-ids.md). When you finish Step 9, continue with
+[chapter 16 - Automation](../16-automation/README.md).

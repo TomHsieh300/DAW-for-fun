@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 project(DawLab
     VERSION 0.1.0
-    DESCRIPTION "C++ audio DSP course: from gain / filter / EQ / dynamics / saturation to VST hosting and an 8-track DAW"
+    DESCRIPTION "C++ audio DSP course: from gain / filter / EQ / dynamics / saturation to VST hosting and a DAW with automation"
     LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -17,7 +17,7 @@ if(MSVC)
     add_compile_options(/utf-8)
 endif()
 
-option(DAWLAB_WITH_JUCE "Build the chapters that need JUCE (13 VST hosting, 14 DAW app)" OFF)
+option(DAWLAB_WITH_JUCE "Build the chapters that need JUCE (13 VST hosting, 14-16 DAW apps)" OFF)
 set(DAWLAB_JUCE_TAG "9.0.4" CACHE STRING "JUCE version (git tag) for FetchContent to download")
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/JUCE/CMakeLists.txt)
     set(_juce_default ${CMAKE_CURRENT_SOURCE_DIR}/third_party/JUCE)
@@ -56,7 +56,7 @@ target_link_libraries(dawlab_dsp INTERFACE dawlab_common)
 # Tests for the shared utilities themselves
 _dawlab_add_program(common_selftest common common/tests/test_common.cpp)
 
-# ---- JUCE (only chapters 13 and 14 need it) ------------------------------
+# ---- JUCE (only chapters 13-16 need it) ----------------------------------
 if(DAWLAB_WITH_JUCE)
     if(DAWLAB_JUCE_DIR)
         add_subdirectory(${DAWLAB_JUCE_DIR} ${CMAKE_BINARY_DIR}/JUCE)

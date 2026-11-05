@@ -64,3 +64,8 @@ automation 會碰到第 15 章做的每一層。它是專案檔和 undo 歷史�
 .\scripts\build.ps1 -Only 16-automation -Juce
 & ".\build\bin\Debug\DawLab 16.exe"
 ```
+
+## 5. 下一步
+
+這是目前的最後一章。DAW 還可以往哪些方向成長（recording、MIDI、time-stretching），請見第 14 章的
+[接下來往哪裡走](../14-daw-8track/README.zh-TW.md#10-接下來往哪裡走)。
