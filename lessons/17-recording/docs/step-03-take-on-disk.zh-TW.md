@@ -2,7 +2,7 @@
 
 [English](step-03-take-on-disk.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 2 - Take 放在哪裡](step-02-placement.zh-TW.md)
+[總覽](../README.zh-TW.md) | 上一步：[Step 2 - Take 放在哪裡](step-02-placement.zh-TW.md) | 下一步：[Step 4 - Punch 與 loop](step-04-punch-and-loop.zh-TW.md)
 
 ## 目標
 

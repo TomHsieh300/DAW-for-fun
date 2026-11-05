@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-03-take-on-disk.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 2 - Where the take belongs](step-02-placement.md)
+[Overview](../README.md) | Previous: [Step 2 - Where the take belongs](step-02-placement.md) | Next: [Step 4 - Punch and loop](step-04-punch-and-loop.md)
 
 ## Goal
 
