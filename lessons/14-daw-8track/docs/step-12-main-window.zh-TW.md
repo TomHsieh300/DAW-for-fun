@@ -2,7 +2,7 @@
 
 [English](step-12-main-window.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 11](step-11-audio-device.zh-TW.md) | 下一步：[Step 13](step-13-transport-bar.zh-TW.md) | 回到[路線圖](../README.zh-TW.md#4-the-twenty-one-steps)
+[總覽](../README.zh-TW.md) | 上一步：[Step 11](step-11-audio-device.zh-TW.md) | 下一步：[Step 13](step-13-transport-bar.zh-TW.md) | 回到[路線圖](../README.zh-TW.md#4-二十一個-step)
 
 ## 目標
 

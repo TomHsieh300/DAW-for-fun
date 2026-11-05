@@ -2,7 +2,7 @@
 
 [English](step-16-inserts-panels.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 15](step-15-mixer.zh-TW.md) | 下一步：[Step 17](step-17-vst3-inserts.zh-TW.md) | 回到[路線圖](../README.zh-TW.md#4-the-twenty-one-steps)
+[總覽](../README.zh-TW.md) | 上一步：[Step 15](step-15-mixer.zh-TW.md) | 下一步：[Step 17](step-17-vst3-inserts.zh-TW.md) | 回到[路線圖](../README.zh-TW.md#4-二十一個-step)
 
 ## 目標
 

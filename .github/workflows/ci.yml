@@ -1,5 +1,6 @@
 # Build every chapter and run its ctest suite (the self-checking examples, solutions and tests).
 #
+#   docs  every relative link and image in the Markdown files
 #   core  every pure C++ chapter (00-12 and the engine parts of 14-16), Debug and Release, on
 #         Windows, Linux (x64 and ARM64) and macOS
 #   tsan  chapters 15-16 under ThreadSanitizer: their checks run a real audio thread next to the
@@ -29,6 +30,15 @@ env:
   JUCE_TAG: "9.0.4"
 
 jobs:
+  docs:
+    name: docs (links)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check the links and images in the Markdown files
+        run: python3 scripts/check_links.py
+
   core:
     name: core (${{ matrix.os }}, ${{ matrix.config }})
     runs-on: ${{ matrix.os }}

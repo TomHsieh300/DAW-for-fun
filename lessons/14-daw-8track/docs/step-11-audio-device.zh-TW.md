@@ -2,7 +2,7 @@
 
 [English](step-11-audio-device.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 10](step-10-realtime-safety.zh-TW.md) | 下一步：[Step 12](step-12-main-window.zh-TW.md) | 回到[路線圖](../README.zh-TW.md#4-the-twenty-one-steps)
+[總覽](../README.zh-TW.md) | 上一步：[Step 10](step-10-realtime-safety.zh-TW.md) | 下一步：[Step 12](step-12-main-window.zh-TW.md) | 回到[路線圖](../README.zh-TW.md#4-二十一個-step)
 
 Stage 2 從這裡開始：接下來我們要建構 **DawLab 8**，一個圍繞 Step 1-10 engine 的 JUCE 應用程式。DAW 需要的第一件事，就是讓喇叭發出聲音。
 

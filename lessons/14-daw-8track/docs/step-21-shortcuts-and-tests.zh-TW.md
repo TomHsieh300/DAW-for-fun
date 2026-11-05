@@ -2,7 +2,7 @@
 
 [English](step-21-shortcuts-and-tests.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 20](step-20-spectrum-loudness.zh-TW.md) | 回到[路線圖](../README.zh-TW.md#4-the-twenty-one-steps)
+[總覽](../README.zh-TW.md) | 上一步：[Step 20](step-20-spectrum-loudness.zh-TW.md) | 回到[路線圖](../README.zh-TW.md#4-二十一個-step)
 
 ## 目標
 
