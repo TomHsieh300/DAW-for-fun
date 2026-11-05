@@ -17,3 +17,4 @@ function(l17_add_step id dir)
 endfunction()
 
 l17_add_step(step01 step01-input-ring)
+l17_add_step(step02 step02-placement)

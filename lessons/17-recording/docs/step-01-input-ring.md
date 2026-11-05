@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-01-input-ring.zh-TW.md)
 
-[Overview](../README.md)
+[Overview](../README.md) | Next: [Step 2 - Where the take belongs](step-02-placement.md)
 
 ## Goal
 

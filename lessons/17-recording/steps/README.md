@@ -12,6 +12,7 @@ write the step's functions in `starter/`, the self-check tells you when they wor
 | Step | Folder | You write | Run |
 |---|---|---|---|
 | 1 | `step01-input-ring` | `InputRing::copyIn`, `copyOut`, `push`, `pop`, `Take::collect` | `l17_step01_starter` |
+| 2 | `step02-placement` | `place`, `measureRoundTrip`, `Recorder::start`, `stop`, `process` | `l17_step02_starter` |
 
 </div>
 

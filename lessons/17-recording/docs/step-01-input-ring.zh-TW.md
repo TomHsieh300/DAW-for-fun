@@ -2,7 +2,7 @@
 
 [English](step-01-input-ring.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md)
+[總覽](../README.zh-TW.md) | 下一步：[Step 2 - Take 放在哪裡](step-02-placement.zh-TW.md)
 
 ## 目標
 

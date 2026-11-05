@@ -12,6 +12,7 @@
 | Step | 資料夾 | 你要寫的 | 執行 |
 |---|---|---|---|
 | 1 | `step01-input-ring` | `InputRing::copyIn`、`copyOut`、`push`、`pop`、`Take::collect` | `l17_step01_starter` |
+| 2 | `step02-placement` | `place`、`measureRoundTrip`、`Recorder::start`、`stop`、`process` | `l17_step02_starter` |
 
 </div>
 
