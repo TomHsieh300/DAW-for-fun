@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](README.zh-TW.md)
 
-> **Status: in progress.** Steps 1 to 5 of 7 are done.
+> **Status: in progress.** Steps 1 to 6 of 7 are done.
 
 DawLab 16 (chapter 16) can play, mix and automate audio that already exists, but its audio callback
 ignores the input. A DAW also has to record, and recording puts together everything the earlier
@@ -48,7 +48,7 @@ After this chapter you can
 | 3 | [The take on disk](docs/step-03-take-on-disk.md) | a WAV that grows while recording and survives a crash or a full disk, one way to finish a take | done |
 | 4 | [Punch and loop](docs/step-04-punch-and-loop.md) | one stream in one file, and takes worked out from it: exact punch points, every pass of a loop | done |
 | 5 | [Input monitoring](docs/step-05-input-monitoring.md) | what is heard and what is recorded, latency through inserts, a guard against feedback | done |
-| 6 | The engine with recording | a copy of chapter 16's engine: `processBlock` takes the input, tracks can be armed | planned |
+| 6 | [The engine with recording](docs/step-06-engine.md) | a copy of chapter 16's engine: `processBlock` takes the input, tracks can be armed, a loop-back through the real mixer; ThreadSanitizer | done |
 | 7 | The app with recording | a copy of chapter 16's app: record button, arming, the waveform while recording, undo, saving | planned |
 
 </div>

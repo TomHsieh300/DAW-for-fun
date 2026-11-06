@@ -17,6 +17,8 @@
 #include "InsertEffect.h"
 #include "LatencyCompensator.h"
 #include "Mixer.h"
+#include "Recording.h"
+#include "RecordingSession.h"
 #include "Renderer.h"
 #include "SpscQueue.h"
 #include "Track.h"

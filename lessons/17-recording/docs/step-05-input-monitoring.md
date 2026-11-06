@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-05-input-monitoring.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 4 - Punch and loop](step-04-punch-and-loop.md)
+[Overview](../README.md) | Previous: [Step 4 - Punch and loop](step-04-punch-and-loop.md) | Next: [Step 6 - The engine with recording](step-06-engine.md)
 
 ## Goal
 

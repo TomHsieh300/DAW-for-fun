@@ -14,7 +14,8 @@ add_library(dawlab::engine17 ALIAS dawlab_engine17)
 target_include_directories(dawlab_engine17 INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/engine/include)
 target_link_libraries(dawlab_engine17 INTERFACE dawlab::dsp)
 
-# Engine tests (ctest label: test). These are chapter 16's tests, unchanged.
+# Engine tests (ctest label: test). All but the last two are chapter 16's tests, unchanged: without
+# an input the engine must do exactly what it did.
 find_package(Threads REQUIRED)
 function(l17_add_test target)
     add_executable(${target} ${ARGN})
@@ -39,3 +40,5 @@ l17_add_test(l17_test_track_format      tests/test_track_format.cpp)
 l17_add_test(l17_test_track_pool        tests/test_track_pool.cpp)
 target_compile_definitions(l17_test_track_pool PRIVATE DAWLAB_ENGINE_MAX_TRACKS=16)
 l17_add_test(l17_test_automation        tests/test_automation.cpp)
+l17_add_test(l17_test_recording         tests/test_recording.cpp)
+l17_add_test(l17_test_recording_threads tests/test_recording_threads.cpp)

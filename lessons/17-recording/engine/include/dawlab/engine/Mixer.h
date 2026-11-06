@@ -36,6 +36,17 @@
 // larger than the target arrives (L - target) samples late. The reported total latency is
 // targetTrack + targetBus + L_m, i.e. the delay of the aligned paths, so a bounce never shifts
 // the aligned audio out of the file. hasPdcOverflow() reports the situation to the UI.
+//
+// Recording (chapter 17, Step 6): each track has a Recorder and a Monitor (Recording.h), and neither
+// knows about the other.
+//
+//   input --> recorder (dry, before everything)
+//         \-> monitor --> track, before its inserts (ThroughInserts): all that the track does, and the
+//                                                     mix's whole compensation
+//                     \-> the output, after the master (Direct): nothing of the above, as early as can be
+//
+// Recorders run in every slot, free ones too: a track can be removed while it is recording, and only
+// the audio thread can confirm that its recording is over. Without an InputBlock nothing changes.
 
 #include <dawlab/AudioBuffer.h>
 
@@ -50,6 +61,7 @@
 #include "ChannelStrip.h"
 #include "Commands.h"
 #include "Constants.h"
+#include "Recording.h"
 #include "Track.h"
 #include "Transport.h"
 
@@ -72,14 +84,17 @@ public:
     void prepare(double sampleRate, int maxBlockSize, int maxPdcSamples = kDefaultMaxPdcSamples) {
         sampleRate_ = sampleRate;
         maxBlockSize_ = std::max(1, maxBlockSize);
-        for (auto& t : tracks_)
+        for (auto& t : tracks_) {
             t.prepare(sampleRate, maxBlockSize_, maxPdcSamples);
+            t.getMonitor().prepare(static_cast<int>(sampleRate));
+        }
         for (auto& b : buses_)
             b.prepare(sampleRate, maxBlockSize_, maxPdcSamples);
         master_.prepare(sampleRate, maxBlockSize_, maxPdcSamples);
         trackSumCompensator_.prepare(maxPdcSamples, kNumChannels);
         scratch_.setSize(kNumChannels, maxBlockSize_);
         trackSum_.setSize(kNumChannels, maxBlockSize_);
+        direct_.setSize(kNumChannels, maxBlockSize_);
         masterBuffer_.setSize(kNumChannels, maxBlockSize_);
         laneGains_.assign(static_cast<size_t>(maxBlockSize_), 0.0f);
         lanePans_.assign(static_cast<size_t>(maxBlockSize_), 0.0f);
@@ -163,6 +178,7 @@ public:
             discard(clips);
         t.discardOwnCurves(discard);
         t.reset();
+        t.getMonitor().clearAudioState();
         trackInSlot_[static_cast<size_t>(ref.index)] = TrackId{};
         return true;
     }
@@ -260,8 +276,10 @@ public:
     // the curve that much earlier (LaneBlock::shift), so that a bounce with the latency compensated
     // has the jump exactly on the sample the curve says. Limit: at a loop wrap the last `shift` samples
     // before it are still on their way, but the lane has already wrapped.
+    //
+    // `input` (chapter 17, Step 6): the device's input for these same frames.
     void process(AudioBlock out, const TimelineSegment* segments, int numSegments, double bpm = 120.0,
-                 int64_t playhead = 0) noexcept {
+                 int64_t playhead = 0, InputBlock input = {}) noexcept {
         const int n = out.getNumSamples();
         assert(prepared_ && n <= maxBlockSize_);
         const bool anySolo = isAnyTrackSoloed();
@@ -287,14 +305,42 @@ public:
             bus[static_cast<size_t>(b)].clear();
         }
 
+        // What the monitors of this block send past the mix (Direct).
+        AudioBlock direct = direct_.toBlock().getSubBlock(0, n);
+        bool anyDirect = false;
+        const int mixLatency = getTotalLatencySamples();
+
         // ---- tracks ----
         AudioBlock tb = scratch_.toBlock().getSubBlock(0, n);
         for (int slot = 0; slot < kMaxTracks; ++slot) {
-            if (!trackInSlot_[static_cast<size_t>(slot)].isValid())
-                continue; // a free slot costs one comparison
             Track& track = tracks_[static_cast<size_t>(slot)];
+
+            // This track's channels of the input. A channel the device does not have is silence.
+            const int firstInput = track.getInputChannel();
+            const int numTrackInputs = firstInput >= 0 ? track.getNumProcessingChannels() : 0;
+            const float* trackInput[2] = {nullptr, nullptr};
+            for (int ch = 0; ch < numTrackInputs; ++ch)
+                if (firstInput + ch < input.numChannels)
+                    trackInput[ch] = input.channels[firstInput + ch];
+            track.getRecorder().process(trackInput, numTrackInputs, segments, numSegments, mixLatency);
+
+            if (!trackInSlot_[static_cast<size_t>(slot)].isValid())
+                continue; // a free slot costs little more than this
             tb.clear();
             track.renderClips(tb, segments, numSegments);
+
+            Monitor& monitor = track.getMonitor();
+            if (!monitor.isSilent() && numTrackInputs > 0) {
+                const bool toDirect = track.getMonitorPath() == MonitorPath::Direct;
+                if (toDirect && !anyDirect) {
+                    direct.clear();
+                    anyDirect = true;
+                }
+                const AudioBlock& target = toDirect ? direct : tb;
+                float* to[kNumChannels] = {target.getChannelPointer(0), target.getChannelPointer(1)};
+                float* clips[kNumChannels] = {tb.getChannelPointer(0), tb.getChannelPointer(1)};
+                monitor.process(trackInput, numTrackInputs, to, kNumChannels, clips, kNumChannels, segments, numSegments, n);
+            }
             track.beginBlock(!track.isMuted() && (!anySolo || track.isSoloed()));
             track.getInserts().setPlayHead(playHead);
             const ChannelRef self = ChannelRef::track(slot, trackInSlot_[static_cast<size_t>(slot)]);
@@ -357,6 +403,8 @@ public:
 
         out.clear();
         out.copyFrom(mb);
+        if (anyDirect)
+            out.addFrom(direct);
     }
 
 private:
@@ -374,7 +422,7 @@ private:
     ChannelStrip master_;
     LatencyCompensator trackSumCompensator_;
 
-    AudioBuffer scratch_, trackSum_, masterBuffer_;
+    AudioBuffer scratch_, trackSum_, masterBuffer_, direct_;
     std::vector<float> laneGains_, lanePans_; // one block of a strip's lanes; used one strip at a time
     CaptureQueue* capture_ = nullptr;
     std::atomic<bool> lanesReadOnly_{false};

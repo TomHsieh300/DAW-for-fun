@@ -2,7 +2,7 @@
 
 [English](step-05-input-monitoring.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 4 - Punch 與 loop](step-04-punch-and-loop.zh-TW.md)
+[總覽](../README.zh-TW.md) | 上一步：[Step 4 - Punch 與 loop](step-04-punch-and-loop.zh-TW.md) | 下一步：[Step 6 - 有錄音的 engine](step-06-engine.zh-TW.md)
 
 ## 目標
 

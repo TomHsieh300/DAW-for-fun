@@ -19,7 +19,6 @@
 15 16 app/Source/TransportBar.h
 14 15 16 app/Source/VstInsert.cpp
 14 15 16 app/Source/VstInsert.h
-16 17 engine/include/dawlab/engine/All.h
 16 17 engine/include/dawlab/engine/Automation.h
 14 15 engine/include/dawlab/engine/ChannelStrip.h
 16 17 engine/include/dawlab/engine/ChannelStrip.h
@@ -30,15 +29,13 @@
 15 16 17 engine/include/dawlab/engine/DemoSong.h
 14 15 16 17 engine/include/dawlab/engine/EffectBase.h
 14 15 16 17 engine/include/dawlab/engine/Effects.h
-16 17 engine/include/dawlab/engine/Engine.h
 14 15 engine/include/dawlab/engine/InsertEffect.h
 16 17 engine/include/dawlab/engine/InsertEffect.h
 14 15 16 17 engine/include/dawlab/engine/LatencyCompensator.h
-16 17 engine/include/dawlab/engine/Mixer.h
 14 15 engine/include/dawlab/engine/Renderer.h
 16 17 engine/include/dawlab/engine/Renderer.h
 14 15 16 17 engine/include/dawlab/engine/SpscQueue.h
-14 15 16 17 engine/include/dawlab/engine/Track.h
+14 15 16 engine/include/dawlab/engine/Track.h
 14 15 16 17 engine/include/dawlab/engine/Transport.h
 15 16 17 tests/TestHelpers.h
 15 16 17 tests/TestTracks.h

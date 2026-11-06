@@ -32,6 +32,10 @@
 // every track command against its own (a stale command changes nothing). Slots are reused at
 // once: the command queue keeps its order, so RemoveTrack always arrives before the AddTrack
 // that reuses the slot. And processBlock() times itself (getCpuMeter(), chapter 15 Step 3).
+//
+// Chapter 17 (Step 6): processBlock() can take the device's input. Tracks are armed and given an input
+// channel (values on the Track, atomics), startRecording() starts their Recorders, and RecordingSession.h
+// is the disk thread's side.
 
 #include <dawlab/AudioBuffer.h>
 
@@ -52,10 +56,14 @@
 #include "CpuMeter.h"
 #include "InsertEffect.h"
 #include "Mixer.h"
+#include "Recording.h"
 #include "SpscQueue.h"
 #include "Transport.h"
 
 namespace dawlab::engine {
+
+// More input channels than this are ignored. Without a limit processBlock() would need an allocation.
+constexpr int kMaxInputChannels = 64;
 
 class Engine {
 public:
@@ -84,6 +92,10 @@ public:
     // changed). Pending commands are applied first, then every insert already in the mixer is
     // prepared again for the new settings, so a running project survives a device change.
     void prepare(double sampleRate, int maxBlockSize, int maxPdcSamples = kDefaultMaxPdcSamples) {
+        // The device has stopped, so no audio thread will confirm the end of a recording. It ends here,
+        // and the disk thread finishes the takes at the old sample rate.
+        for (int slot = 0; slot < kMaxTracks; ++slot)
+            mixer_.getTrack(slot).getRecorder().finishWithoutAudio();
         sampleRate_ = sampleRate;
         maxBlockSize_ = std::max(1, maxBlockSize);
         transport_.prepare(sampleRate);
@@ -135,6 +147,7 @@ public:
         }
         t.setFormat(format);
         t.resetLaneModes();
+        t.resetRecordingValues();
         const ChannelRef ref = ChannelRef::track(slot, id);
         if (!pushCommand(Command::addTrack(ref)))
             return none;
@@ -158,6 +171,10 @@ public:
             if (slotOwner_[static_cast<size_t>(s)] == id)
                 return s;
         return -1;
+    }
+    // The track the UI gave this slot; invalid if the slot is free.
+    TrackId ownerOfSlot(int slot) const noexcept {
+        return slot >= 0 && slot < kMaxTracks ? slotOwner_[static_cast<size_t>(slot)] : TrackId{};
     }
     // The reference every other call needs; index -1 if the id is not here.
     ChannelRef trackRef(TrackId id) const noexcept {
@@ -283,6 +300,36 @@ public:
     CaptureQueue& getCaptureQueue() noexcept { return capture_; }
     uint64_t getLanesNotFound() const noexcept { return lanesNotFound_.load(std::memory_order_relaxed); }
 
+    // ---- recording (UI thread; chapter 17, Step 6) -------------------------------------------------
+    // Starts the Recorders of all armed tracks of this UI's slot table. They begin with the first block
+    // while the transport plays. `device` holds the device's latencies and the trim. The rings hold
+    // `ringSeconds` of audio: how long the disk may stall. Returns how many started; 0 if a recording
+    // is still ending (isRecordingOver()) or nothing is armed. Allocates.
+    int startRecording(const Latencies& device, const RecordRange& range = {}, double ringSeconds = 10.0) {
+        if (!isRecordingOver())
+            return 0;
+        const int ringFrames = std::max(static_cast<int>(sampleRate_ * ringSeconds), maxBlockSize_ * 2);
+        int started = 0;
+        for (int slot = 0; slot < kMaxTracks; ++slot) {
+            Track& t = mixer_.getTrack(slot);
+            if (slotOwner_[static_cast<size_t>(slot)].isValid() && t.isArmed() &&
+                t.getRecorder().start(device, range, t.getNumProcessingChannels(), ringFrames))
+                ++started;
+        }
+        return started;
+    }
+    // The audio thread confirms it with its next block; a transport that stops or jumps does the same.
+    void stopRecording() noexcept {
+        for (int slot = 0; slot < kMaxTracks; ++slot)
+            mixer_.getTrack(slot).getRecorder().stop();
+    }
+    bool isRecordingOver() const noexcept {
+        for (int slot = 0; slot < kMaxTracks; ++slot)
+            if (!mixer_.getTrack(slot).getRecorder().isIdle())
+                return false;
+        return true;
+    }
+
     // ---- observing the structure (any thread) ----------------------------------------------
     // The effect currently in `slot` (nullptr if empty). The pointer stays valid until the
     // effect is removed and the calling (UI) thread runs collectGarbage(); so only the thread
@@ -330,7 +377,10 @@ public:
     // ---- audio thread ----------------------------------------------------------------------------
     // Fills `out` (stereo; a mono `out` gets the left channel). Any block size is accepted:
     // blocks longer than maxBlockSize are processed in chunks.
-    void processBlock(AudioBlock out) noexcept {
+    //
+    // `input` (chapter 17, Step 6): the device's input, at least as long as `out`. The block's frames
+    // arrive together: input frame i came in while output frame i goes out.
+    void processBlock(AudioBlock out, InputBlock input = {}) noexcept {
         if (!isPrepared()) {
             out.clear();
             return;
@@ -340,7 +390,7 @@ public:
         int done = 0;
         while (done < total) {
             const int len = std::min(maxBlockSize_, total - done);
-            processChunk(out.getSubBlock(done, len));
+            processChunk(out.getSubBlock(done, len), input, done);
             done += len;
         }
         const std::chrono::duration<double> spent = std::chrono::steady_clock::now() - start;
@@ -348,7 +398,7 @@ public:
     }
 
 private:
-    void processChunk(AudioBlock out) noexcept {
+    void processChunk(AudioBlock out, InputBlock input, int inputOffset) noexcept {
         applyCommands();
         if (resetRequested_.exchange(false, std::memory_order_relaxed))
             mixer_.reset();
@@ -363,7 +413,13 @@ private:
             const int numSegments = transport_.advance(n - done, segments, covered);
             if (covered <= 0)
                 covered = n - done;
-            mixer_.process(out.getSubBlock(done, covered), segments, numSegments, transport_.getTempo(), transport_.getPosition());
+            // The input starts where this part of the output starts.
+            const int numInputs = std::min(input.numChannels, kMaxInputChannels);
+            const float* inputs[kMaxInputChannels];
+            for (int ch = 0; ch < numInputs; ++ch)
+                inputs[ch] = input.channels[ch] != nullptr ? input.channels[ch] + inputOffset + done : nullptr;
+            mixer_.process(out.getSubBlock(done, covered), segments, numSegments, transport_.getTempo(), transport_.getPosition(),
+                           InputBlock{inputs, numInputs});
             done += covered;
         }
         blocksProcessed_.fetch_add(1, std::memory_order_relaxed);

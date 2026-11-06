@@ -16,6 +16,7 @@
 
 #include "ChannelStrip.h"
 #include "Clip.h"
+#include "Recording.h"
 #include "Transport.h"
 
 namespace dawlab::engine {
@@ -86,7 +87,37 @@ public:
         }
     }
 
+    // ---- recording (chapter 17, Step 6; every slot has these, used or not) -------------------------
+    // Armed: the next Engine::startRecording() records this track. Any thread.
+    void setArmed(bool armed) noexcept { armed_.store(armed, std::memory_order_relaxed); }
+    bool isArmed() const noexcept { return armed_.load(std::memory_order_relaxed); }
+    // The first channel of the device's input for this track (a stereo track also takes the next one);
+    // -1: none. Any thread.
+    void setInputChannel(int firstChannel) noexcept { inputChannel_.store(firstChannel, std::memory_order_relaxed); }
+    int getInputChannel() const noexcept { return inputChannel_.load(std::memory_order_relaxed); }
+    // What the musician hears, and by which way. Any thread.
+    void setMonitorPath(MonitorPath path) noexcept { monitorPath_.store(path, std::memory_order_relaxed); }
+    MonitorPath getMonitorPath() const noexcept { return monitorPath_.load(std::memory_order_relaxed); }
+    Monitor& getMonitor() noexcept { return monitor_; }
+    const Monitor& getMonitor() const noexcept { return monitor_; }
+    Recorder& getRecorder() noexcept { return recorder_; }
+    const Recorder& getRecorder() const noexcept { return recorder_; }
+    // UI thread, for a slot that starts over.
+    void resetRecordingValues() noexcept {
+        setArmed(false);
+        setInputChannel(0);
+        setMonitorPath(MonitorPath::Direct);
+        monitor_.setMode(MonitorMode::Off);
+        monitor_.setLevel(1.0f);
+        monitor_.setRange(RecordRange{});
+    }
+
 private:
+    std::atomic<bool> armed_{false};
+    std::atomic<int> inputChannel_{0};
+    std::atomic<MonitorPath> monitorPath_{MonitorPath::Direct};
+    Monitor monitor_;
+    Recorder recorder_;
     std::atomic<const std::vector<Clip>*> clips_{nullptr};
     std::atomic<int> format_{static_cast<int>(TrackFormat::Mono)}; // matches ChannelStrip's default PanLaw
 };
