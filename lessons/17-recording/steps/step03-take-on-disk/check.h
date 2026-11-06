@@ -650,8 +650,9 @@ void checkRecoveredTakeLands() {
 //
 // Every frame of the signal says which position it came in at, so a take checks itself: frame i is
 // either that value for stamp + i, or silence where the ring dropped something. Three ways to end a
-// take: stop(), a seek, and a full disk that the UI reacts to. Some takes have a disk that keeps
-// stalling, and those are the ones that drop frames.
+// take: stop(), a seek, and a full disk that the UI reacts to. Some takes have a disk that stalls on
+// every write until the audio thread has gone around the ring twice, whatever the machine's speed,
+// and those are the ones that drop frames.
 //
 // The test's own counters are relaxed: they must not synchronize anything for the code under test.
 void checkThreads() {
@@ -694,9 +695,12 @@ void checkThreads() {
 
         std::atomic<std::uint64_t> left{kind == FullDisk ? 2000u + static_cast<std::uint64_t>(round) * 13u : ~std::uint64_t{0}};
         DiskOps ops;
-        ops.write = [&left, kind](const void* bytes, std::size_t numBytes, std::FILE* file) {
-            if (kind == Stalling)
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        ops.write = [&](const void* bytes, std::size_t numBytes, std::FILE* file) {
+            if (kind == Stalling) {
+                const std::int64_t from = transport.load(std::memory_order_relaxed);
+                while (transport.load(std::memory_order_relaxed) - from < 2 * kRing && running())
+                    std::this_thread::yield();
+            }
             const std::uint64_t space = left.load(std::memory_order_relaxed);
             const auto n = static_cast<std::size_t>(std::min<std::uint64_t>(space, numBytes));
             const std::size_t written = std::fwrite(bytes, 1, n, file);

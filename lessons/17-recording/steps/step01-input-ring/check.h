@@ -373,11 +373,21 @@ inline void runThreads(InputRing& ring, FakeDevice& device, Take& take, int bloc
         while (!condition() && std::chrono::steady_clock::now() < giveUp)
             std::this_thread::yield();
     };
-    std::atomic<bool> done{false};
+    // How often the two threads happen to meet at a full ring depends on the machine, so now and then
+    // the disk stalls for certain: it waits until the audio thread has seen a block that does not
+    // fit. Relaxed: the test's own flag must not synchronize anything for the code under test.
+    std::atomic<bool> done{false}, stalled{false};
     std::thread audio([&] {
         Lcg random;
         for (int i = 0; i < blocks; ++i) {
             const int n = 1 + random.below(256);
+            if (drops && i % 256 == 0) {
+                stalled.store(true, std::memory_order_relaxed);
+                while (device.deliver(ring, n) && std::chrono::steady_clock::now() < giveUp) {
+                }
+                stalled.store(false, std::memory_order_relaxed);
+                continue;
+            }
             if (!drops || i % 8 != 0)
                 waitUntil([&] { return ring.capacity() - ring.fillLevel() >= static_cast<std::size_t>(n); });
             device.deliver(ring, n);
@@ -392,6 +402,10 @@ inline void runThreads(InputRing& ring, FakeDevice& device, Take& take, int bloc
     std::thread disk([&] {
         Lcg random;
         while (!done.load(std::memory_order_acquire)) {
+            if (stalled.load(std::memory_order_relaxed)) {
+                std::this_thread::yield();
+                continue;
+            }
             take.collect(ring);
             if (drops && random.below(8) == 0)
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));

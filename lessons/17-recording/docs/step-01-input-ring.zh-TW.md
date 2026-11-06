@@ -149,11 +149,11 @@ ThreadSanitizer，所以在 Windows 上要在 WSL 裡執行，做法同
   2000 blocks, 246 of them dropped: 0 allocations (expected 0)
   200 random sessions, 4996226 frames, 27753 dropped blocks: 0 differ from the reference (expected 0)
   two threads, nothing dropped: 3845387 frames, 0 wrong, 0 silent (expected 0, 0)
-  two threads, the disk stalls: 3845387 frames, 0 wrong, 25513 silent
+  two threads, the disk stalls: 4571679 frames, 0 wrong, 52427 silent
 [PASS] l17_step01 (60 checks passed)
 ```
 
-最後一行的靜音 frame 數取決於兩個 thread 實際的執行情況，每次都不一樣；但那些 0 不會變。
+最後一行的 frame 數和靜音 frame 數取決於兩個 thread 實際的執行情況，每次都不一樣；但那些 0 不會變。
 
 ## 你學到了什麼
 

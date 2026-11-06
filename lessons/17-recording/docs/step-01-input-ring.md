@@ -158,11 +158,11 @@ output ends like this:
   2000 blocks, 246 of them dropped: 0 allocations (expected 0)
   200 random sessions, 4996226 frames, 27753 dropped blocks: 0 differ from the reference (expected 0)
   two threads, nothing dropped: 3845387 frames, 0 wrong, 0 silent (expected 0, 0)
-  two threads, the disk stalls: 3845387 frames, 0 wrong, 25513 silent
+  two threads, the disk stalls: 4571679 frames, 0 wrong, 52427 silent
 [PASS] l17_step01 (60 checks passed)
 ```
 
-The number of silent frames in the last line depends on how the two threads happen to run, and differs
+The numbers of frames and silent frames in the last line depend on how the two threads happen to run, and differ
 from run to run. The zeros do not.
 
 ## What you learned
