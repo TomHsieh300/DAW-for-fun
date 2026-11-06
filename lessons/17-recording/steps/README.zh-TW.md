@@ -15,6 +15,7 @@
 | 2 | `step02-placement` | `place`、`measureRoundTrip`、`Recorder::start`、`stop`、`process` | `l17_step02_starter` |
 | 3 | `step03-take-on-disk` | `makeHeader`、`TakeFile::open`、`write`、`finish`、`sealTake`、`TakeWriter::pump` | `l17_step03_starter` |
 | 4 | `step04-punch-and-loop` | `visibleWindow`、`takesOf`、`bestTake`、`Recorder::process` | `l17_step04_starter` |
+| 5 | `step05-input-monitoring` | `monitorLatency`、`wantsInput`、`FeedbackGuard::listen`、`Monitor::run` | `l17_step05_starter` |
 
 </div>
 

@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-04-punch-and-loop.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 3 - The take on disk](step-03-take-on-disk.md)
+[Overview](../README.md) | Previous: [Step 3 - The take on disk](step-03-take-on-disk.md) | Next: [Step 5 - Input monitoring](step-05-input-monitoring.md)
 
 ## Goal
 

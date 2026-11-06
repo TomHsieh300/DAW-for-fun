@@ -2,7 +2,7 @@
 
 [English](step-04-punch-and-loop.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 3 - 把 take 寫進硬碟](step-03-take-on-disk.zh-TW.md)
+[總覽](../README.zh-TW.md) | 上一步：[Step 3 - 把 take 寫進硬碟](step-03-take-on-disk.zh-TW.md) | 下一步：[Step 5 - Input monitoring](step-05-input-monitoring.zh-TW.md)
 
 ## 目標
 
