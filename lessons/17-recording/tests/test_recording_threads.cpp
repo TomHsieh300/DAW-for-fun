@@ -117,7 +117,7 @@ int main() {
         std::this_thread::yield();
     };
 
-    int recordings = 0, takes = 0, slotChanges = 0;
+    int recordings = 0, takes = 0, slotChanges = 0, livePeeks = 0;
     std::uint64_t frames = 0, wrong = 0;
     std::uint32_t nextId = 100;
     for (int round = 0; round < 60 && running(); ++round) {
@@ -164,6 +164,12 @@ int main() {
         int change = 0;
         while (device.load(std::memory_order_relaxed) < until && running()) {
             for (TrackId id : ids) {
+                LiveTake live;
+                if (session.getLive(id, live)) {
+                    wrong += live.trail->size() > 0 ? 0 : 1;
+                    wrong += live.trail->at(live.trail->size() - 1) >= 0.0f ? 0 : 1;
+                    livePeeks += live.stampedPosition >= 0 ? 1 : 0;
+                }
                 if (Track* t = e.getTrack(id)) {
                     t->getMonitor().setLevel(static_cast<float>(change % 4) * 0.25f);
                     t->getMonitor().resetFeedback();
@@ -235,6 +241,7 @@ int main() {
     DAWLAB_CHECK(takes > 0);
     DAWLAB_CHECK(wrong == 0);
     DAWLAB_CHECK(allocs == 0);
+    DAWLAB_CHECK(livePeeks > 0);
     std::error_code ec;
     fs::remove_all(folder, ec);
     return dawlab::test::summary("l17_test_recording_threads");

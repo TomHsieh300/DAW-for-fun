@@ -32,6 +32,9 @@ enum : juce::CommandID {
     toggleLoop,
     seekBackOneBar,
     seekForwardOneBar,
+    toggleRecord,         // chapter 17
+    togglePunch,
+    setRecordingTrim,
 
     // Track (the selected track)
     selectNextTrack = 0x2201,
@@ -42,6 +45,8 @@ enum : juce::CommandID {
     addStereoTrack,
     deleteSelectedTrack,
     toggleAutomationLane, // chapter 16
+    toggleArmSelected,    // chapter 17
+    cycleMonitorSelected,
 
     // Edit (chapter 15, Step 9)
     undo = 0x2401,

@@ -38,6 +38,10 @@
 // effect back under the same id. A lane leaves with its owner, and the owner's inverse brings it back.
 // A parameter this version does not know keeps its lane in the model: silent, but saved again.
 //
+// Takes (chapter 17, Step 7): a recording is one audio buffer, and each pass of a loop is a part of it
+// (Step 4). The clip plays one of them; choosing another changes its source offset. So a take is a value
+// next to the clips: the clip lists stay what they were, and undo needs nothing new.
+//
 // Session broadcasts a change message (juce::ChangeBroadcaster) whenever the structure changes,
 // so the arrangement and the mixer can rebuild what they display.
 
@@ -149,6 +153,23 @@ public:
     // (Step 18); the strip's format button switches it by hand (Step 15).
     engine::TrackFormat getTrackFormat(engine::TrackId track) const;
     void setTrackFormat(engine::TrackId track, engine::TrackFormat format);
+
+    // ---- recorded takes (chapter 17, Step 7) -----------------------------------------------------
+    // The edit that puts a recording on a track: a clip plays the best of its takes, in the place of
+    // whatever was on the track there. What it covers is cut out of the old clips, not mixed with them.
+    edit::SetClips makeTakeEdit(engine::TrackId track, std::shared_ptr<const AudioBuffer> audio,
+                                std::vector<engine::Placement> takes, const juce::String& name);
+    // `clips` with `clip` in the place of what it covers; the rest of each old clip stays, with new fades.
+    std::vector<engine::Clip> withClipOnTop(std::vector<engine::Clip> clips, const engine::Clip& clip) const;
+    void registerTakes(std::shared_ptr<const AudioBuffer> audio, std::vector<engine::Placement> takes);
+    const std::vector<std::pair<std::shared_ptr<const AudioBuffer>, std::vector<engine::Placement>>>& getTakeSets() const noexcept {
+        return takeSets_;
+    }
+    // The takes this clip can choose from, and which one it plays (-1: none, or it has been cut since).
+    const std::vector<engine::Placement>* getTakesOf(const engine::Clip& clip) const noexcept;
+    int getCurrentTake(const engine::Clip& clip) const noexcept;
+    // Undoable. False if the clip has no such take.
+    bool chooseTake(engine::TrackId track, int clipIndex, int takeIndex);
 
     // ---- insert slots ------------------------------------------------------------------------
     const InsertSlotState& getSlot(engine::ChannelRef ref, int uiSlot) const;
@@ -318,6 +339,7 @@ private:
     juce::String projectName_ = "Untitled";
     History history_;
     std::vector<std::pair<LaneAddress, LaneContent>> lanes_; // the GUI copy of every lane
+    std::vector<std::pair<std::shared_ptr<const AudioBuffer>, std::vector<engine::Placement>>> takeSets_;
     engine::AutomationRecorder recorder_;
 };
 

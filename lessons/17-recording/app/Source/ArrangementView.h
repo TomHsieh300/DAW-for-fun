@@ -28,6 +28,11 @@
 //          right click        remove the point under the mouse
 //   "A" in a track's header (or the key A) shows and hides the lane.
 //
+// Recording (chapter 17): "R" in a track's header arms it, "I" turns its monitor through Off, Auto and
+// Always; a right click on either has the input and the monitor's path. While it records, a track shows
+// what has come in so far: a red clip with the peaks that the disk thread has seen. A right click on a
+// clip that came from a loop lets you choose its take.
+//
 // Mouse:
 //   ruler: click / drag      seek (snapped to the beat grid; hold Alt for no snapping)
 //   clip:  drag              move the clip along its lane (snapped; Alt = free).
@@ -48,6 +53,8 @@
 // only combines buckets.
 
 #include "Session.h"
+
+#include <dawlab/engine/RecordingSession.h>
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -134,6 +141,16 @@ public:
     juce::Rectangle<int> getAutomationToggleBounds(int lane) const noexcept;
     int automationLaneAt(int y) const noexcept;                            // -1: not in an automation lane
     int pointAt(int lane, float x, float y) const;                         // -1: no point there
+
+    // ---- recording (chapter 17) -----------------------------------------------------------------
+    juce::Rectangle<int> getArmBounds(int lane) const noexcept;
+    juce::Rectangle<int> getMonitorBounds(int lane) const noexcept;
+    std::function<void(engine::TrackId track)> onArmClicked;
+    std::function<void(engine::TrackId track)> onMonitorClicked;
+    std::function<void(engine::TrackId track)> onRecordMenu;
+    std::function<void(engine::TrackId track, int clipIndex)> onClipMenu;
+    // What a track has recorded so far (TakeRecorder::getLive); false if nothing.
+    std::function<bool(engine::TrackId track, engine::LiveTake& live)> liveTakeOf;
     float valueToY(int lane, float value) const noexcept;
     float yToValue(int lane, float y) const noexcept;
 
@@ -179,6 +196,7 @@ private:
     void paintClip(juce::Graphics&, engine::TrackId track, const engine::Clip& clip, juce::Rectangle<int> bounds,
                    bool selected);
     void paintAutomation(juce::Graphics&, int lane, juce::Rectangle<int> area);
+    void paintLiveTake(juce::Graphics&, engine::TrackId track, juce::Rectangle<int> area);
     void mouseDownInAutomation(const juce::MouseEvent&, int lane);
     void showParameterMenu(engine::TrackId track);
     void showModeMenu(engine::TrackId track);

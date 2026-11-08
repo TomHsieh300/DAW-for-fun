@@ -10,6 +10,7 @@
 #include "ParameterPanel.h"
 #include "ProjectIO.h"
 #include "Session.h"
+#include "TakeRecorder.h"
 #include "VstInsert.h"
 
 #include <dawlab/Analysis.h>
@@ -23,6 +24,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <random>
 #include <set>
 #include <vector>
@@ -194,6 +196,590 @@ AutomationCurve testRamp(float a, float b) {
     c.add({0, a, Shape::Linear});
     c.add({48000, b, Shape::Linear});
     return c;
+}
+
+// ---- recording (chapter 17, Step 7) -----------------------------------------------------------------
+// There is no audio device here: the input comes from these tests, through the same processBlock() a
+// device calls, and the disk thread is real.
+
+class TakesFolder {
+public:
+    TakesFolder() {
+        folder_ = juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l17_takes_" + juce::String(juce::Time::getHighResolutionTicks()));
+        folder_.createDirectory();
+    }
+    ~TakesFolder() { folder_.deleteRecursively(); }
+    const juce::File& get() const noexcept { return folder_; }
+
+private:
+    juce::File folder_;
+};
+
+// Ticks until the recording is over and its clips are there.
+bool waitForTakes(MainComponent& main) {
+    for (int i = 0; i < 3000 && main.getTakeRecorder().isBusy(); ++i) {
+        main.tick();
+        juce::Thread::sleep(2);
+    }
+    main.tick();
+    return !main.getTakeRecorder().isBusy();
+}
+
+// What frame f of the input is: exact in a float, different for each frame, never 0.
+float inputAt(std::int64_t frame) { return static_cast<float>(frame % (1 << 20) + 1) / static_cast<float>(1 << 21); }
+
+// Plays `frames` frames with that input, from frame `first` of it, and ticks now and then.
+void playInput(MainComponent& main, std::int64_t frames, std::int64_t first = 0, int block = 512) {
+    std::vector<float> in(static_cast<size_t>(block));
+    const float* channels[] = {in.data()};
+    for (std::int64_t done = 0; done < frames; done += block) {
+        const int n = static_cast<int>(std::min<std::int64_t>(block, frames - done));
+        for (int i = 0; i < n; ++i)
+            in[static_cast<size_t>(i)] = inputAt(first + done + i);
+        main.simulatePlayback(n, n, InputBlock{channels, 1});
+        if ((done / block) % 16 == 0) {
+            main.tick();
+            juce::Thread::yield();
+        }
+    }
+}
+
+// One block more with the transport stopped: the audio thread's way of hearing about it.
+void stopTransport(MainComponent& main) {
+    main.getEngine().getTransport().stop();
+    playInput(main, 512);
+}
+
+struct RecordingRig {
+    TakesFolder folder;
+    std::unique_ptr<MainComponent> main = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    Session& session = main->getSession();
+    Engine& engine = main->getEngine();
+    TakeRecorder& recorder = main->getTakeRecorder();
+    TrackId first, second;
+    juce::String said; // the last thing the recorder said: the status line may be showing the CPU
+
+    RecordingRig() {
+        main->setSize(MainComponent::kDefaultWidth, MainComponent::kDefaultHeight);
+        session.newProject();
+        engine.applyPendingCommandsOffline();
+        first = session.getTrackId(0);
+        second = session.getTrackId(1);
+        recorder.setFolder(folder.get());
+        recorder.onMessage = [this](const juce::String& message, bool) { said = message; };
+    }
+    ~RecordingRig() { main.reset(); }
+};
+
+void testRecordingBasics() {
+    RecordingRig rig;
+    MainComponent& main = *rig.main;
+    Session& session = rig.session;
+    Engine& engine = rig.engine;
+
+    // Nothing is armed: nothing starts, and it says so.
+    DAWLAB_CHECK(!main.toggleRecord());
+    DAWLAB_CHECK(main.getStatus().contains("arm"));
+    DAWLAB_CHECK(!engine.getTransport().isPlaying());
+    DAWLAB_CHECK(rig.folder.get().getNumberOfChildFiles(juce::File::findFiles) == 0);
+
+    // An old take under the new one, which stays before and after it.
+    auto old = std::make_shared<AudioBuffer>(1, 240000);
+    for (int i = 0; i < 240000; ++i)
+        old->setSample(0, i, 0.25f);
+    session.setClips(rig.first, {engine::Clip::fromBuffer(old, 0, "old")});
+
+    DAWLAB_CHECK(main.setArmed(rig.first, true));
+    rig.recorder.setTrimSamples(100);
+    engine.getTransport().setPosition(96000);
+    DAWLAB_CHECK(main.toggleRecord());
+    DAWLAB_CHECK(engine.getTransport().isPlaying());
+    DAWLAB_CHECK(rig.recorder.getPhase() == TakeRecorder::Phase::Recording);
+
+    // While it runs: the arrangement shows what has come in, and nothing that would pull the ground
+    // from under it can start.
+    playInput(main, 48000);
+    LiveTake live;
+    for (int i = 0; i < 2000 && !rig.recorder.getLive(rig.first, live); ++i)
+        juce::Thread::sleep(1);
+    DAWLAB_CHECK(rig.recorder.getLive(rig.first, live));
+    DAWLAB_CHECK(!rig.recorder.getLive(rig.second, live));
+    main.tick();
+    const juce::Image shown = main.createComponentSnapshot(main.getLocalBounds(), true, 1.0f);
+    DAWLAB_CHECK(shown.isValid());
+    main.newProject();
+    DAWLAB_CHECK(main.getStatus().contains("recording"));
+    DAWLAB_CHECK(session.getNumTracks() > 0 && session.hasTrack(rig.first));
+    DAWLAB_CHECK(!main.deleteSelectedTrack());
+    DAWLAB_CHECK(session.hasTrack(rig.first));
+    DAWLAB_CHECK(!main.openProject(rig.folder.get().getChildFile("none.dawlab")).ok);
+
+    stopTransport(main);
+    DAWLAB_CHECK(waitForTakes(main));
+    DAWLAB_CHECK(rig.said.contains("Recorded 1 take"));
+
+    const auto& clips = session.getClips(rig.first);
+    DAWLAB_CHECK(clips.size() == 3);
+    const std::int64_t total = engine.getLatencySamples() + 100;
+    if (clips.size() == 3) {
+        const engine::Clip& before = clips[0];
+        const engine::Clip& take = clips[1];
+        const engine::Clip& after = clips[2];
+        // Where it was played, and everything that came in.
+        DAWLAB_CHECK(take.start == 96000 - total);
+        DAWLAB_CHECK(take.sourceOffset == 0);
+        DAWLAB_CHECK(take.length == 48000);
+        // The old take makes room: a piece before, and the rest of it after, at the right source.
+        DAWLAB_CHECK(before.source == old && before.start == 0 && before.length == take.start);
+        DAWLAB_CHECK(after.source == old && after.start == take.end());
+        DAWLAB_CHECK(after.sourceOffset == take.end());
+        DAWLAB_CHECK(after.end() == 240000);
+        DAWLAB_CHECK(after.fadeInSamples > 0 && before.fadeOutSamples > 0);
+        DAWLAB_CHECK(take.fadeInSamples > 0 && take.fadeOutSamples > 0);
+
+        // Through JUCE's reader, which knows nothing about our chunk: bit for bit what came in.
+        DAWLAB_CHECK(take.source != nullptr);
+        int wrong = 0;
+        if (take.source != nullptr)
+            for (int i = 0; i < 48000; ++i)
+                wrong += take.source->getSample(0, i) == inputAt(i) ? 0 : 1;
+        std::printf("  a take through the real paths: at %lld, %lld frames, %d wrong (expected 0)\n", static_cast<long long>(take.start),
+                    static_cast<long long>(take.length), wrong);
+        DAWLAB_CHECK(wrong == 0);
+    }
+    // The file stays, with its final name.
+    DAWLAB_CHECK(rig.folder.get().getNumberOfChildFiles(juce::File::findFiles, "*.wav") == 1);
+    DAWLAB_CHECK(rig.folder.get().getNumberOfChildFiles(juce::File::findFiles, "*.recording") == 0);
+
+    // One undo step, and back.
+    DAWLAB_CHECK(main.undo());
+    DAWLAB_CHECK(session.getClips(rig.first).size() == 1);
+    DAWLAB_CHECK(main.redo());
+    DAWLAB_CHECK(session.getClips(rig.first).size() == 3);
+
+    // Stopped by hand, with the transport going on.
+    engine.getTransport().setPosition(0);
+    DAWLAB_CHECK(main.toggleRecord());
+    playInput(main, 24000);
+    DAWLAB_CHECK(main.toggleRecord());
+    playInput(main, 512);
+    DAWLAB_CHECK(engine.getTransport().isPlaying());
+    DAWLAB_CHECK(waitForTakes(main));
+    stopTransport(main);
+
+    // Two tracks at once: one undo step, and the same place.
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    const TrackId a = session.getTrackId(0), b = session.getTrackId(1);
+    DAWLAB_CHECK(main.setArmed(a, true));
+    DAWLAB_CHECK(main.setArmed(b, true));
+    engine.getTrack(b)->setInputChannel(1);
+    engine.getTransport().setPosition(48000);
+    DAWLAB_CHECK(main.toggleRecord());
+    // Longer than a device block: simulatePlayback() has to hand each block its own part of the input.
+    std::vector<float> left(4096), right(4096);
+    for (int i = 0; i < 4096; ++i) {
+        left[static_cast<size_t>(i)] = inputAt(i);
+        right[static_cast<size_t>(i)] = -inputAt(i);
+    }
+    const float* twoChannels[] = {left.data(), right.data()};
+    for (int i = 0; i < 12; ++i)
+        main.simulatePlayback(4096, 512, InputBlock{twoChannels, 2});
+    stopTransport(main);
+    DAWLAB_CHECK(waitForTakes(main));
+    DAWLAB_CHECK(session.getClips(a).size() == 1 && session.getClips(b).size() == 1);
+    DAWLAB_CHECK(main.undo()); // one undo step takes back both
+    DAWLAB_CHECK(session.getClips(a).empty() && session.getClips(b).empty());
+    DAWLAB_CHECK(main.redo());
+    if (session.getClips(a).size() == 1 && session.getClips(b).size() == 1) {
+        DAWLAB_CHECK(session.getClips(a)[0].start == session.getClips(b)[0].start);
+        const engine::Clip& ca = session.getClips(a)[0];
+        const engine::Clip& cb = session.getClips(b)[0];
+        int wrongFrames = 0;
+        for (int i = 0; i < 4096 * 12; ++i) {
+            wrongFrames += ca.source->getSample(0, i) == inputAt(i % 4096) ? 0 : 1;
+            wrongFrames += cb.source->getSample(0, i) == -inputAt(i % 4096) ? 0 : 1; // its own input
+        }
+        DAWLAB_CHECK(wrongFrames == 0);
+    }
+
+    // Disarming also turns the monitor off.
+    main.cycleMonitor(a);
+    DAWLAB_CHECK(engine.getTrack(a)->getMonitor().mode() == MonitorMode::Auto);
+    DAWLAB_CHECK(main.getStatus().contains("late"));
+    main.cycleMonitor(a);
+    DAWLAB_CHECK(engine.getTrack(a)->getMonitor().mode() == MonitorMode::Always);
+    DAWLAB_CHECK(main.setArmed(a, false));
+    DAWLAB_CHECK(engine.getTrack(a)->getMonitor().mode() == MonitorMode::Off);
+    // A monitor needs an armed track, and arms it.
+    const TrackId c = session.getTrackId(2);
+    main.cycleMonitor(c);
+    DAWLAB_CHECK(engine.getTrack(c)->isArmed());
+}
+
+void testRecordingLoop() {
+    RecordingRig rig;
+    MainComponent& main = *rig.main;
+    Session& session = rig.session;
+    Engine& engine = rig.engine;
+    Transport& tr = engine.getTransport();
+
+    DAWLAB_CHECK(main.setArmed(rig.first, true));
+    tr.setLoopRange(96000, 144000);
+    tr.setLoopEnabled(true);
+    tr.setPosition(96000);
+    DAWLAB_CHECK(main.toggleRecord());
+    const std::int64_t mix = engine.getLatencySamples();
+    playInput(main, mix + 48000 * 3 + 24000);
+    stopTransport(main);
+    DAWLAB_CHECK(waitForTakes(main));
+
+    const auto& clips = session.getClips(rig.first);
+    DAWLAB_CHECK(clips.size() == 1);
+    if (clips.size() != 1)
+        return;
+    const std::vector<Placement>* takes = session.getTakesOf(clips[0]);
+    DAWLAB_CHECK(takes != nullptr);
+    if (takes == nullptr)
+        return;
+    std::printf("  a loop of 3.5 passes: %d takes, one clip plays take %d\n", static_cast<int>(takes->size()), session.getCurrentTake(clips[0]) + 1);
+    DAWLAB_CHECK(takes->size() == 4);
+    DAWLAB_CHECK(session.getCurrentTake(clips[0]) == 2); // the last whole pass, not the piece after it
+    DAWLAB_CHECK(clips[0].start == 96000 && clips[0].length == 48000);
+
+    // Another pass of the same place, as one undo step.
+    DAWLAB_CHECK(session.chooseTake(rig.first, 0, 0));
+    DAWLAB_CHECK(session.getCurrentTake(session.getClips(rig.first)[0]) == 0);
+    DAWLAB_CHECK(session.getClips(rig.first)[0].start == 96000);
+    DAWLAB_CHECK(main.undo());
+    DAWLAB_CHECK(session.getCurrentTake(session.getClips(rig.first)[0]) == 2);
+    DAWLAB_CHECK(!session.chooseTake(rig.first, 0, 9));
+    DAWLAB_CHECK(session.chooseTake(rig.first, 0, 1));
+
+    // Each take is what was played in that pass.
+    const engine::Clip chosen = session.getClips(rig.first)[0];
+    DAWLAB_CHECK(chosen.source->getSample(0, static_cast<int>(chosen.sourceOffset)) == inputAt(chosen.sourceOffset));
+
+    // Saved and opened: the same takes, on the same audio file, and the choice.
+    const juce::File project = rig.folder.get().getChildFile("Song.dawlab");
+    DAWLAB_CHECK(main.saveProject(project));
+    const ProjectIO::OpenResult opened = main.openProject(project);
+    DAWLAB_CHECK(opened.ok);
+    DAWLAB_CHECK(opened.warnings.isEmpty());
+    const TrackId reopened = session.getTrackId(0);
+    DAWLAB_CHECK(session.getClips(reopened).size() == 1);
+    if (session.getClips(reopened).size() == 1) {
+        const engine::Clip& clip = session.getClips(reopened)[0];
+        DAWLAB_CHECK(session.getCurrentTake(clip) == 1);
+        DAWLAB_CHECK(session.getTakesOf(clip) != nullptr && session.getTakesOf(clip)->size() == 4);
+        DAWLAB_CHECK(session.chooseTake(reopened, 0, 2));
+        // An armed track is about now, not about the song.
+        DAWLAB_CHECK(!engine.getTrack(reopened)->isArmed());
+
+        // A device at another rate: the takes follow.
+        session.handleSampleRateChange(48000.0, 24000.0);
+        const engine::Clip& half = session.getClips(reopened)[0];
+        DAWLAB_CHECK(half.start == 48000);
+        DAWLAB_CHECK(session.getCurrentTake(half) == 2);
+        DAWLAB_CHECK(session.chooseTake(reopened, 0, 0));
+    }
+}
+
+void testRecordingPunch() {
+    RecordingRig rig;
+    MainComponent& main = *rig.main;
+    Session& session = rig.session;
+    Engine& engine = rig.engine;
+    Transport& tr = engine.getTransport();
+
+    // The locators are the punch points, without a loop running.
+    auto old = std::make_shared<AudioBuffer>(1, 96000);
+    session.setClips(rig.first, {engine::Clip::fromBuffer(old, 0, "old")});
+    DAWLAB_CHECK(main.setArmed(rig.first, true));
+    tr.setLoopRange(48000, 72000);
+    tr.setLoopEnabled(false);
+    rig.recorder.setPunchEnabled(true);
+    tr.setPosition(24000);
+    DAWLAB_CHECK(main.toggleRecord());
+    playInput(main, 72000 + engine.getLatencySamples());
+    stopTransport(main);
+    DAWLAB_CHECK(waitForTakes(main));
+    const auto& clips = session.getClips(rig.first);
+    DAWLAB_CHECK(clips.size() == 3);
+    if (clips.size() == 3) {
+        DAWLAB_CHECK(clips[1].start == 48000); // exact, wherever the blocks fell
+        DAWLAB_CHECK(clips[1].length == 24000);
+        DAWLAB_CHECK(clips[0].end() == 48000);
+        DAWLAB_CHECK(clips[2].start == 72000);
+        // The frames before the punch are in the file too.
+        DAWLAB_CHECK(clips[1].sourceOffset > 0);
+        // The frame played at the punch-in.
+        const std::int64_t offset = clips[1].sourceOffset;
+        DAWLAB_CHECK(clips[1].source->getSample(0, static_cast<int>(offset)) == inputAt(offset));
+    }
+
+    // Never reached: no clip at all, and nothing goes wrong.
+    session.setClips(rig.first, {});
+    tr.setPosition(0);
+    DAWLAB_CHECK(main.toggleRecord());
+    playInput(main, 4800);
+    stopTransport(main);
+    DAWLAB_CHECK(waitForTakes(main));
+    DAWLAB_CHECK(session.getClips(rig.first).empty());
+    DAWLAB_CHECK(rig.said.contains("Nothing recorded"));
+}
+
+void testRecordingWhenThingsGoWrong() {
+    // The disk fills up: the recording stops, the song plays on, and what fitted is a take.
+    {
+        RecordingRig rig;
+        MainComponent& main = *rig.main;
+        DAWLAB_CHECK(main.setArmed(rig.first, true));
+        DiskOps full;
+        auto left = std::make_shared<std::atomic<std::uint64_t>>(108 + 4 * 24000 + 2);
+        full.write = [left](const void* bytes, std::size_t numBytes, std::FILE* file) {
+            const std::uint64_t space = left->load();
+            const std::size_t written = std::fwrite(bytes, 1, static_cast<std::size_t>(std::min<std::uint64_t>(space, numBytes)), file);
+            left->store(space - written);
+            return written;
+        };
+        rig.recorder.setDiskOps(full);
+        DAWLAB_CHECK(main.toggleRecord());
+        for (int i = 0; i < 100 && rig.recorder.getPhase() == TakeRecorder::Phase::Recording; ++i) {
+            playInput(main, 4800);
+            juce::Thread::sleep(5);
+        }
+        DAWLAB_CHECK(rig.engine.getTransport().isPlaying());
+        DAWLAB_CHECK(waitForTakes(main));
+        const auto& clips = rig.session.getClips(rig.first);
+        DAWLAB_CHECK(clips.size() == 1);
+        if (clips.size() == 1) {
+            const std::int64_t frames = clips[0].sourceOffset + clips[0].length;
+            std::printf("  the disk is full after 24000 frames: a take of %lld frames, recording stopped\n", static_cast<long long>(frames));
+            DAWLAB_CHECK(frames == 24000);
+        }
+        rig.engine.getTransport().stop();
+    }
+    // There is no way to create a file: it says so.
+    {
+        RecordingRig rig;
+        MainComponent& main = *rig.main;
+        DAWLAB_CHECK(main.setArmed(rig.first, true));
+        DiskOps none;
+        none.write = [](const void*, std::size_t, std::FILE*) { return std::size_t{0}; };
+        rig.recorder.setDiskOps(none);
+        juce::String said;
+        rig.recorder.onMessage = [&said](const juce::String& message, bool) { said << message << "\n"; };
+        DAWLAB_CHECK(main.toggleRecord());
+        for (int i = 0; i < 100 && rig.recorder.getPhase() == TakeRecorder::Phase::Recording; ++i) {
+            playInput(main, 4800);
+            juce::Thread::sleep(5);
+        }
+        DAWLAB_CHECK(waitForTakes(main));
+        DAWLAB_CHECK(said.contains("no take file"));
+        DAWLAB_CHECK(rig.session.getClips(rig.first).empty());
+        rig.recorder.onMessage = nullptr;
+        rig.engine.getTransport().stop();
+    }
+    // The disk stalls: silence in the take, its timing right, and it says so.
+    {
+        RecordingRig rig;
+        MainComponent& main = *rig.main;
+        DAWLAB_CHECK(main.setArmed(rig.first, true));
+        DiskOps slow;
+        auto hold = std::make_shared<std::atomic<bool>>(true);
+        slow.write = [hold](const void* bytes, std::size_t numBytes, std::FILE* file) {
+            while (hold->load())
+                juce::Thread::sleep(1);
+            return std::fwrite(bytes, 1, numBytes, file);
+        };
+        rig.recorder.setDiskOps(slow);
+        rig.recorder.setRingSeconds(0.1);
+        juce::String said;
+        rig.recorder.onMessage = [&said](const juce::String& message, bool) { said << message << "\n"; };
+        DAWLAB_CHECK(main.toggleRecord());
+        playInput(main, 48000);
+        main.tick();
+        DAWLAB_CHECK(said.contains("cannot keep up"));
+        hold->store(false);
+        juce::Thread::sleep(300); // it catches up
+        playInput(main, 4800, 48000);
+        juce::Thread::sleep(300);
+        stopTransport(main);
+        DAWLAB_CHECK(waitForTakes(main));
+        const auto& clips = rig.session.getClips(rig.first);
+        DAWLAB_CHECK(clips.size() == 1);
+        if (clips.size() == 1) {
+            const engine::Clip& clip = clips[0];
+            // What came in after the gap is where it belongs: the gap kept the time.
+            DAWLAB_CHECK(clip.sourceOffset + clip.length == 52800);
+            int atPlace = 0, silent = 0, wrong = 0;
+            for (int i = 0; i < 52800; ++i) {
+                const float got = clip.source->getSample(0, i);
+                atPlace += got == inputAt(i) ? 1 : 0;
+                silent += got == 0.0f ? 1 : 0;
+                wrong += got == inputAt(i) || got == 0.0f ? 0 : 1;
+            }
+            std::printf("  the disk stalls: %d frames in place, %d silent, %d wrong (expected 0)\n", atPlace, silent, wrong);
+            DAWLAB_CHECK(wrong == 0);
+            DAWLAB_CHECK(silent > 0);
+            DAWLAB_CHECK(clip.source->getSample(0, 52799) == inputAt(52799));
+        }
+        rig.recorder.onMessage = nullptr;
+    }
+    // The device goes away during a take: nobody confirms, and it ends anyway.
+    {
+        RecordingRig rig;
+        MainComponent& main = *rig.main;
+        DAWLAB_CHECK(main.setArmed(rig.first, true));
+        DAWLAB_CHECK(main.toggleRecord());
+        playInput(main, 24000);
+        rig.engine.finishRecordingsWithoutAudio(); // what AudioHost::audioDeviceStopped() does
+        DAWLAB_CHECK(waitForTakes(main));
+        DAWLAB_CHECK(rig.session.getClips(rig.first).size() == 1);
+    }
+    // The clips went to another rate while the take was on its way: the take follows them.
+    {
+        RecordingRig rig;
+        MainComponent& main = *rig.main;
+        DAWLAB_CHECK(main.setArmed(rig.first, true));
+        rig.engine.getTransport().setPosition(48000);
+        DAWLAB_CHECK(main.toggleRecord());
+        playInput(main, 48000);
+        const std::int64_t mix = rig.engine.getLatencySamples();
+        stopTransport(main);
+        rig.session.handleSampleRateChange(48000.0, 24000.0);
+        DAWLAB_CHECK(waitForTakes(main));
+        const auto& clips = rig.session.getClips(rig.first);
+        DAWLAB_CHECK(clips.size() == 1);
+        if (clips.size() == 1) {
+            DAWLAB_CHECK(clips[0].start == (48000 - mix) / 2);
+            DAWLAB_CHECK(std::abs(clips[0].length - 24000) < 256);
+        }
+    }
+    // The track is deleted (by a way that does not ask): the take stays on disk, and it says where.
+    {
+        RecordingRig rig;
+        MainComponent& main = *rig.main;
+        DAWLAB_CHECK(main.setArmed(rig.first, true));
+        DAWLAB_CHECK(main.toggleRecord());
+        playInput(main, 24000);
+        DAWLAB_CHECK(rig.session.removeTrack(rig.first));
+        playInput(main, 512);
+        rig.engine.stopRecording();
+        playInput(main, 512);
+        DAWLAB_CHECK(waitForTakes(main));
+        DAWLAB_CHECK(rig.said.contains("kept in"));
+        DAWLAB_CHECK(rig.folder.get().getNumberOfChildFiles(juce::File::findFiles, "*.wav") == 1);
+    }
+    // The program dies. The next start finds the take, puts it where it was played, on a new track.
+    {
+        RecordingRig rig;
+        MainComponent& main = *rig.main;
+        const Latencies device{240, 480, 0, 0};
+        {
+            Engine other;
+            const TrackId id{1};
+            other.addTrack(id);
+            other.prepare(48000.0, 512);
+            other.applyPendingCommandsOffline();
+            other.getTrack(id)->setArmed(true);
+            other.getTransport().setPosition(10000);
+            RecordingSession dying;
+            DAWLAB_CHECK(dying.begin(other, std::filesystem::u8path(rig.folder.get().getFullPathName().toStdString()), "crashed", device) == 1);
+            other.getTransport().play();
+            AudioBuffer out(2, 512);
+            std::vector<float> in(512);
+            const float* channels[] = {in.data()};
+            for (int block = 0; block < 100; ++block) {
+                for (int i = 0; i < 512; ++i)
+                    in[static_cast<size_t>(i)] = inputAt(block * 512 + i);
+                other.processBlock(out.toBlock(), InputBlock{channels, 1});
+                dying.pump();
+            }
+        } // never finished
+        DAWLAB_CHECK(rig.folder.get().getNumberOfChildFiles(juce::File::findFiles, "*.recording") == 1);
+        const int tracksBefore = rig.session.getNumTracks();
+        DAWLAB_CHECK(main.getTakeRecorder().recover() == 1);
+        DAWLAB_CHECK(rig.session.getNumTracks() == tracksBefore + 1);
+        DAWLAB_CHECK(rig.folder.get().getNumberOfChildFiles(juce::File::findFiles, "*.recording") == 0);
+        const TrackId recovered = rig.session.getTrackId(tracksBefore);
+        const auto& clips = rig.session.getClips(recovered);
+        DAWLAB_CHECK(clips.size() == 1);
+        if (clips.size() == 1) {
+            std::printf("  a crash: the take comes back at %lld, %lld frames\n", static_cast<long long>(clips[0].start), static_cast<long long>(clips[0].length));
+            DAWLAB_CHECK(clips[0].start == 10000 - 720);
+            DAWLAB_CHECK(clips[0].length == 51200);
+            DAWLAB_CHECK(clips[0].source->getSample(0, 51199) == inputAt(51199));
+        }
+        DAWLAB_CHECK(main.getTakeRecorder().recover() == 0); // only once
+        // A file that is not a take stays what it is.
+        const juce::File junk = rig.folder.get().getChildFile("junk.wav.recording");
+        DAWLAB_CHECK(junk.replaceWithText("not a take"));
+        DAWLAB_CHECK(main.getTakeRecorder().recover() == 1);
+        DAWLAB_CHECK(junk.existsAsFile());
+        DAWLAB_CHECK(rig.said.contains("Could not recover"));
+    }
+}
+
+// The takes are heard back where they were played: the whole way around, through the project's own
+// playback of the recorded clip.
+void testRecordingPlaysBack() {
+    RecordingRig rig;
+    MainComponent& main = *rig.main;
+    Engine& engine = rig.engine;
+    Session& session = rig.session;
+
+    // A click track on one track, and through a cable into another one.
+    auto clicks = std::make_shared<AudioBuffer>(1, 96000);
+    for (int i = 4800; i < 96000; i += 4800)
+        clicks->setSample(0, i, 1.0f);
+    session.setClips(rig.first, {engine::Clip::fromBuffer(clicks, 0, "clicks")});
+    DAWLAB_CHECK(main.setArmed(rig.second, true));
+    constexpr int kCable = 720;
+    rig.recorder.setTrimSamples(kCable); // the "driver" reports nothing here; the trim knows the rest
+    DAWLAB_CHECK(main.toggleRecord());
+
+    constexpr int kBlock = 480;
+    AudioBuffer history(2, 96000 + kBlock);
+    std::vector<float> in(kBlock);
+    const float* channels[] = {in.data()};
+    AudioHost& host = main.getAudioHost();
+    for (int done = 0; done + kBlock <= 96000; done += kBlock) {
+        for (int i = 0; i < kBlock; ++i)
+            in[static_cast<size_t>(i)] = done + i >= kCable ? history.getSample(0, done + i - kCable) : 0.0f;
+        float* outs[] = {history.getWritePointer(0) + done, history.getWritePointer(1) + done};
+        host.processOffline(outs, 2, kBlock, InputBlock{channels, 1});
+        if (done % (kBlock * 16) == 0)
+            main.tick();
+    }
+    stopTransport(main);
+    DAWLAB_CHECK(waitForTakes(main));
+    const auto& clips = session.getClips(rig.second);
+    DAWLAB_CHECK(clips.size() == 1);
+    if (clips.size() != 1)
+        return;
+    const engine::Clip& take = clips[0];
+    int heard = 0, misplaced = 0;
+    for (std::int64_t i = 0; i < take.length; ++i) {
+        if (std::abs(take.source->getSample(0, static_cast<int>(take.sourceOffset + i))) > 0.1f) {
+            ++heard;
+            misplaced += (take.start + i) % 4800 == 0 ? 0 : 1;
+        }
+    }
+    std::printf("  the click track through a cable, with the mix's latency of %d: %d clicks, %d in the wrong place (expected 0)\n",
+                engine.getLatencySamples(), heard, misplaced);
+    DAWLAB_CHECK(heard >= 18);
+    DAWLAB_CHECK(misplaced == 0);
+}
+
+void testRecording() {
+    std::printf("Recording\n");
+    testRecordingBasics();
+    testRecordingLoop();
+    testRecordingPunch();
+    testRecordingWhenThingsGoWrong();
+    testRecordingPlaysBack();
 }
 
 void testAutomation() {
@@ -496,6 +1082,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     std::setvbuf(stdout, nullptr, _IONBF, 0); // unbuffered: a crash must not swallow what was printed
     std::printf("DawLab 17 smoke test (no audio device)\n\n");
     testAutomation();
+    testRecording();
 
 
     // 1. The resampler used when loading files (MediaLoader.cpp)
@@ -1600,6 +2187,8 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
 
 // ---- --snapshot ------------------------------------------------------------------------------------
 
+static constexpr int kSnapshotBlock = 512;
+
 int runSnapshot(const juce::File& pngFile) {
     MainComponent main(MainComponent::Mode::Offline);
     main.setSize(MainComponent::kDefaultWidth, MainComponent::kDefaultHeight);
@@ -1686,6 +2275,63 @@ int runSnapshot(const juce::File& pngFile) {
                 static_cast<double>(master.getIntegratedLufs()), engine.getLatencySamples());
     std::printf("panel snapshot: %s (drum compressor, gain reduction %.1f dB)\n", panelFile.getFullPathName().toRawUTF8(),
                 static_cast<double>(gainReductionDb));
+
+    // A third picture: a recording in progress on a new track, with the song playing on.
+    const juce::File takeFile = pngFile.getSiblingFile(pngFile.getFileNameWithoutExtension() + "_recording.png");
+    {
+        TakesFolder takes;
+        TakeRecorder& recorder = main.getTakeRecorder();
+        recorder.setFolder(takes.get());
+        const TrackId armed = session.addTrack(TrackFormat::Mono, "Vocal");
+        engine.applyPendingCommandsOffline();
+        session.dispatchPendingMessages();
+        main.setArmed(armed, true);
+        engine.getTrack(armed)->getMonitor().setMode(MonitorMode::Auto);
+        main.getArrangement().hideAutomation(session.getTrackId(0));
+        main.getArrangement().hideAutomation(session.getTrackId(1));
+        main.getArrangement().setSelectedTrack(armed);
+        main.getArrangement().scrollToTrack(armed);
+        tr.setPosition(tr.barsBeatsToSamples({3, 1, 0}));
+        if (!main.toggleRecord()) {
+            std::printf("recording snapshot: the recording did not start: %s\n", main.getStatus().toRawUTF8());
+            ok = false;
+        }
+        const AudioBuffer voice = makeSine(220.0, engine.getSampleRate(), 8.0, 0.5f, 1);
+        int offset = 0;
+        const auto sampleRate = static_cast<int>(engine.getSampleRate());
+        for (int seconds = 0; seconds < 6; ++seconds) {
+            std::vector<float> in(static_cast<size_t>(sampleRate));
+            for (int i = 0; i < sampleRate; ++i) // a little phrasing, so that it looks like something
+                in[static_cast<size_t>(i)] = voice.getSample(0, offset + i) * (0.3f + 0.7f * std::abs(std::sin(0.0007f * static_cast<float>(offset + i))));
+            const float* channels[] = {in.data()};
+            main.simulatePlayback(sampleRate, kSnapshotBlock, InputBlock{channels, 1});
+            offset += sampleRate;
+            main.tick();
+            juce::Thread::sleep(20);
+        }
+        juce::Thread::sleep(100);
+        main.getTransportBar().forgetCpuHistory();
+        main.setStatus("Snapshot: recording the armed track (simulated input, no audio device)");
+        main.tick();
+        const juce::Image recording = main.createComponentSnapshot(main.getLocalBounds(), true, 1.0f);
+        takeFile.deleteFile();
+        juce::FileOutputStream out(takeFile);
+        juce::PNGImageFormat png;
+        if (!out.openedOk() || !png.writeImageToStream(recording, out)) {
+            std::printf("recording snapshot: cannot write %s: %s\n", takeFile.getFullPathName().toRawUTF8(),
+                        out.getStatus().getErrorMessage().toRawUTF8());
+            ok = false;
+        }
+        tr.stop();
+        std::vector<float> nothing(512);
+        const float* channels[] = {nothing.data()};
+        main.simulatePlayback(512, 512, InputBlock{channels, 1});
+        for (int i = 0; i < 2000 && recorder.isBusy(); ++i) {
+            main.tick();
+            juce::Thread::sleep(2);
+        }
+    }
+    std::printf("recording snapshot: %s\n", takeFile.getFullPathName().toRawUTF8());
     return ok && unknown == 0 ? 0 : 1;
 }
 

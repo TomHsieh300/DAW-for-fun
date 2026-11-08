@@ -663,6 +663,9 @@ public:
     // Moves what is in the ring to the file. True once the take is over and sealed.
     bool pump();
 
+    // Sees every frame on its way to the file, on the disk thread (a display of the take so far).
+    std::function<void(const float* const* channels, int numChannels, int n)> onFrames;
+
     // The UI can ask at any time, and should stop the recording when there is a problem.
     TakeProblem problem() const noexcept { return file_.problem(); }
     // After pump() returned true. Not ok if the take never began, or there was no file.
@@ -770,6 +773,8 @@ inline bool TakeWriter::pump() {
             info.range = recorder_.range();
             file_.open(finalPath_, info);
         }
+        if (onFrames)
+            onFrames(pointers_.data(), static_cast<int>(scratch_.size()), n);
         file_.write(pointers_.data(), n);
     }
     if (over) {
@@ -926,6 +931,8 @@ public:
 
     // ---- UI thread, at any time ---------------------------------------------------------------
     void setMode(MonitorMode mode) noexcept { mode_.store(mode, std::memory_order_relaxed); }
+    MonitorMode mode() const noexcept { return mode_.load(std::memory_order_relaxed); }
+    float level() const noexcept { return level_.load(std::memory_order_relaxed); }
     void setLevel(float gain) noexcept { level_.store(gain, std::memory_order_relaxed); }
     void setRange(const RecordRange& range) noexcept {
         loopStart_.store(range.loopStart, std::memory_order_relaxed);

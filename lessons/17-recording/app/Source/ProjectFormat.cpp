@@ -35,11 +35,15 @@ bool operator==(const ClipState& a, const ClipState& b) {
            a.sourceOffset == b.sourceOffset && a.fadeIn == b.fadeIn && a.fadeOut == b.fadeOut &&
            a.equalPowerFades == b.equalPowerFades && a.gainDb == b.gainDb && a.muted == b.muted && a.name == b.name;
 }
+bool operator==(const TakeState& a, const TakeState& b) {
+    return a.start == b.start && a.sourceOffset == b.sourceOffset && a.length == b.length;
+}
+bool operator==(const TakeSetState& a, const TakeSetState& b) { return a.file == b.file && a.takes == b.takes; }
 bool operator==(const ProjectState& a, const ProjectState& b) {
     return a.sampleRate == b.sampleRate && a.nextTrackId == b.nextTrackId && a.tempo == b.tempo &&
            a.beatsPerBar == b.beatsPerBar && a.beatUnit == b.beatUnit && a.loopStart == b.loopStart &&
            a.loopEnd == b.loopEnd && a.loopEnabled == b.loopEnabled && a.tracks == b.tracks && a.buses == b.buses &&
-           a.master == b.master && a.clips == b.clips;
+           a.master == b.master && a.clips == b.clips && a.takeSets == b.takeSets;
 }
 
 namespace {
@@ -268,6 +272,12 @@ std::string writeProject(const ProjectState& p) {
         out << "clip " << c.track.value << ' ' << c.start << ' ' << c.length << ' ' << quote(c.file) << ' ' << c.sourceOffset
             << ' ' << c.fadeIn << ' ' << c.fadeOut << ' ' << (c.equalPowerFades ? "equalPower" : "linear") << ' ' << c.gainDb
             << ' ' << c.muted << ' ' << quote(c.name) << '\n';
+    for (const TakeSetState& s : p.takeSets) {
+        out << "takes " << quote(s.file);
+        for (const TakeState& t : s.takes)
+            out << ' ' << t.start << ' ' << t.sourceOffset << ' ' << t.length;
+        out << '\n';
+    }
     int laneNumber = 0;
     for (const TrackState& t : p.tracks)
         writeLanes(out, {ChannelName::Kind::Track, t.id.value}, t.strip, laneNumber);
@@ -492,6 +502,21 @@ ReadResult readProject(std::string_view text) {
             }
             p.clips.push_back(std::move(c));
             clipLines.push_back(lineNo);
+        } else if (kw == "takes") {
+            if (version < 5)
+                return fail(lineNo, "\"takes\" needs format 5 (this file is format " + std::to_string(version) + ")");
+            if (tok.size() < 5 || (tok.size() - 2) % 3 != 0 || !tok[1].quoted)
+                return fail(lineNo, "takes needs a file name in quotes, then a start, a source offset and a length per take");
+            TakeSetState s;
+            s.file = tok[1].text;
+            for (size_t i = 2; i < tok.size(); i += 3) {
+                TakeState t;
+                if (!parseNumber(tok[i], t.start) || t.start < 0 || !parseNumber(tok[i + 1], t.sourceOffset) || t.sourceOffset < 0 ||
+                    !parseNumber(tok[i + 2], t.length) || t.length <= 0)
+                    return fail(lineNo, "a take needs a start and a source offset of 0 or more, and a length of at least 1");
+                s.takes.push_back(t);
+            }
+            p.takeSets.push_back(std::move(s));
         } else if (kw == "lane") {
             if (version < 4)
                 return fail(lineNo, "\"lane\" needs format 4 (this file is format " + std::to_string(version) + ")");

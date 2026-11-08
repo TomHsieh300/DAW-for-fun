@@ -94,8 +94,7 @@ public:
     void prepare(double sampleRate, int maxBlockSize, int maxPdcSamples = kDefaultMaxPdcSamples) {
         // The device has stopped, so no audio thread will confirm the end of a recording. It ends here,
         // and the disk thread finishes the takes at the old sample rate.
-        for (int slot = 0; slot < kMaxTracks; ++slot)
-            mixer_.getTrack(slot).getRecorder().finishWithoutAudio();
+        finishRecordingsWithoutAudio();
         sampleRate_ = sampleRate;
         maxBlockSize_ = std::max(1, maxBlockSize);
         transport_.prepare(sampleRate);
@@ -322,6 +321,11 @@ public:
     void stopRecording() noexcept {
         for (int slot = 0; slot < kMaxTracks; ++slot)
             mixer_.getTrack(slot).getRecorder().stop();
+    }
+    // ONLY while no audio thread is running (a device that stopped): nobody is left to confirm a stop.
+    void finishRecordingsWithoutAudio() noexcept {
+        for (int slot = 0; slot < kMaxTracks; ++slot)
+            mixer_.getTrack(slot).getRecorder().finishWithoutAudio();
     }
     bool isRecordingOver() const noexcept {
         for (int slot = 0; slot < kMaxTracks; ++slot)

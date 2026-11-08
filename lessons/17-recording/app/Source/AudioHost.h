@@ -49,11 +49,21 @@ public:
     void setEngineAttached(bool attached);
     bool isEngineAttached() const noexcept { return attached_; }
 
+    // ---- the input (chapter 17, Step 7) -------------------------------------------------------
+    // The app starts without inputs: asking for one is what brings up the microphone permission on
+    // macOS, and it can make Bluetooth headphones sound like a telephone. The first armed track asks
+    // for them; the device restarts. Returns what went wrong, empty on success. A device whose input
+    // and output cannot run at one sample rate is an error here.
+    juce::String ensureInputsOpen();
+    juce::StringArray getInputNames() const;
+    // What the driver reports, and the trim. The mix's latency is the engine's to add.
+    engine::Latencies getDeviceLatencies(int trimSamples) const noexcept;
+
     // ---- without a device -----------------------------------------------------------------
     // Prepares the engine and the analyzer as audioDeviceAboutToStart() would.
     void prepareOffline(double sampleRate, int blockSize);
     // Runs exactly what the device callback runs, on the calling thread.
-    void processOffline(float* const* outputs, int numOutputChannels, int numSamples) noexcept;
+    void processOffline(float* const* outputs, int numOutputChannels, int numSamples, engine::InputBlock input = {}) noexcept;
 
     // ---- status (any thread) --------------------------------------------------------------
     double getSampleRate() const noexcept { return sampleRate_.load(); }
@@ -95,7 +105,7 @@ private:
     void audioDeviceStopped() override;
 
     void prepareInternal(double sampleRate, int blockSize);
-    void render(float* const* outputs, int numOutputChannels, int numSamples) noexcept;
+    void render(float* const* outputs, int numOutputChannels, int numSamples, engine::InputBlock input) noexcept;
 
     engine::Engine& engine_;
     juce::AudioDeviceManager deviceManager_;
@@ -105,6 +115,7 @@ private:
     std::atomic<double> sampleRate_{0.0};
     std::atomic<int> blockSize_{0};
     std::atomic<int> outputLatency_{0};
+    std::atomic<int> inputLatency_{0};
     std::atomic<uint64_t> callbacks_{0};
     std::atomic<bool> analyzerReady_{false};
     bool attached_ = false;

@@ -1,5 +1,5 @@
-# Chapter 17, Step 7: the JUCE application "DawLab 17" - chapter 15's "DawLab 15" with automation:
-# lanes under the tracks, points to draw and drag, Read / Touch / Latch / Write.
+# Chapter 17, Step 7: the JUCE application "DawLab 17" - chapter 16's "DawLab 16" with recording:
+# a record button, armed tracks, takes that become clips, and takes recovered after a crash.
 #
 #   l17_daw_app   STATIC library with every app class except main() (as l14_daw_app in chapter 14)
 #   DawLab17      the GUI application (product name "DawLab 17") = Main.cpp + l17_daw_app.
@@ -52,6 +52,8 @@ set(L17_APP_SOURCES
     Source/ProjectIO.cpp
     Source/Session.h
     Source/Session.cpp
+    Source/TakeRecorder.h
+    Source/TakeRecorder.cpp
     Source/SmokeTest.h
     Source/SmokeTest.cpp
     Source/TransportBar.h
@@ -88,7 +90,9 @@ endif()
 juce_add_gui_app(DawLab17
     PRODUCT_NAME "DawLab 17"
     COMPANY_NAME "DawLab"
-    VERSION 1.0.0)
+    VERSION 1.0.0
+    MICROPHONE_PERMISSION_ENABLED TRUE
+    MICROPHONE_PERMISSION_TEXT "DawLab 17 records from the audio input.")
 target_sources(DawLab17 PRIVATE Source/Main.cpp)
 target_link_libraries(DawLab17 PRIVATE l17_daw_app)
 target_compile_definitions(DawLab17 PRIVATE

@@ -9,6 +9,7 @@
 //   session_       GUI-side project model, the only sender of structural engine commands
 //   audioHost_     the audio device; destroyed first of the four, so no callback runs after it
 //   loader_        background thread for files and the demo song
+//   takeRecorder_  chapter 17: the disk thread of a recording, and takes that become clips
 //   GUI            menu bar, TransportBar, ArrangementView, MixerView, status bar, windows
 //
 // Threads: everything here runs on the message thread. It talks to the audio thread only
@@ -29,6 +30,7 @@
 #include "ParameterPanel.h"
 #include "ProjectIO.h"
 #include "Session.h"
+#include "TakeRecorder.h"
 #include "TransportBar.h"
 
 #include <dawlab/engine/All.h>
@@ -62,6 +64,7 @@ public:
     Session& getSession() noexcept { return session_; }
     AudioHost& getAudioHost() noexcept { return audioHost_; }
     MediaLoader& getMediaLoader() noexcept { return loader_; }
+    TakeRecorder& getTakeRecorder() noexcept { return takeRecorder_; }
     host::PluginHost& getPluginHost() noexcept { return pluginHost_; }
     juce::ApplicationCommandManager& getCommandManager() noexcept { return commandManager_; }
     TransportBar& getTransportBar() noexcept { return transportBar_; }
@@ -75,6 +78,19 @@ public:
     void returnToStart();
     void toggleLoop();
     void seekBars(int deltaBars);
+    // ---- recording (chapter 17, Step 7) -----------------------------------------------------------
+    // Starts a recording of the armed tracks, and the transport with it; while one runs, ends it and
+    // leaves the transport playing. False if it could not start: the status line says why.
+    bool toggleRecord();
+    // Arms or disarms a track. The first one opens the device's inputs. Saved with nothing: an armed
+    // track is about now, not about the song.
+    bool setArmed(engine::TrackId track, bool armed);
+    void cycleMonitor(engine::TrackId track); // Off, Auto, Always
+    void showRecordMenu(engine::TrackId track);
+    void showClipMenu(engine::TrackId track, int clipIndex);
+    void askForTrim();
+    // True, and it says so on the status line, while a recording prevents `what`.
+    bool refuseWhileRecording(const juce::String& what);
     void newProject();
     // Project files (chapter 15, Step 8). openProject() and saveProject() work synchronously and
     // report on the status line (and, in Live mode, in a message box); the *Interactive versions
@@ -131,7 +147,7 @@ public:
     void tick();
     // Renders `numSamples` through AudioHost::processOffline() in device-sized blocks, as if an
     // audio device were running. Offline mode only (no device may be calling the engine).
-    void simulatePlayback(int64_t numSamples, int blockSize = kOfflineBlockSize);
+    void simulatePlayback(int64_t numSamples, int blockSize = kOfflineBlockSize, engine::InputBlock input = {});
 
     // ---- extension points (Exercises 11 and 13) ------------------------------------------------
     // An extra ApplicationCommandTarget behind this one: its commands are registered with the
@@ -163,6 +179,7 @@ private:
     void finishExport(const ExportResult& result);
     void startClipConversion();
     void finishClipConversion(double fromRate, double toRate, const ConvertedBuffers& converted);
+    void recoverCrashedTakes();
 
     Mode mode_;
     DawLookAndFeel lookAndFeel_;
@@ -171,6 +188,8 @@ private:
     Session session_{engine_};
     AudioHost audioHost_{engine_};
     MediaLoader loader_;
+    TakeRecorder takeRecorder_{session_, audioHost_};
+    std::unique_ptr<juce::PropertiesFile> settings_; // the trim belongs to the machine, not to a song
     juce::ApplicationCommandManager commandManager_;
 
     juce::MenuBarComponent menuBar_;

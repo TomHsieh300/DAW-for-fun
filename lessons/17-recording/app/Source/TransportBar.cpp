@@ -10,7 +10,7 @@ namespace dawlab::app {
 // A flat button that draws a transport icon with juce::Path (no image files needed).
 class TransportBar::IconButton final : public juce::Button {
 public:
-    enum class Icon { ReturnToStart, Play, Stop, Loop };
+    enum class Icon { ReturnToStart, Play, Stop, Loop, Record };
 
     IconButton(const juce::String& name, Icon icon) : juce::Button(name), icon_(icon) {
         setWantsKeyboardFocus(false); // keep the space bar for the main component
@@ -26,6 +26,17 @@ public:
     void paintButton(juce::Graphics& g, bool highlighted, bool down) override {
         auto r = getLocalBounds().toFloat().reduced(1.0f);
         const bool on = getToggleState();
+        if (icon_ == Icon::Record) { // red, and full red while recording
+            const auto red = DawColours::mute();
+            g.setColour(on ? red.withAlpha(0.3f) : (down ? DawColours::outline() : (highlighted ? DawColours::panelLight().brighter(0.08f) : DawColours::panelLight())));
+            g.fillRoundedRectangle(r, 4.0f);
+            g.setColour(on ? red : DawColours::outline());
+            g.drawRoundedRectangle(r, 4.0f, 1.0f);
+            const float radius = std::min(r.getWidth(), r.getHeight()) * 0.25f;
+            g.setColour(red);
+            g.fillEllipse(r.getCentreX() - radius, r.getCentreY() - radius, 2.0f * radius, 2.0f * radius);
+            return;
+        }
         g.setColour(on ? DawColours::accentWarm().withAlpha(0.25f)
                        : (down ? DawColours::outline() : (highlighted ? DawColours::panelLight().brighter(0.08f) : DawColours::panelLight())));
         g.fillRoundedRectangle(r, 4.0f);
@@ -51,6 +62,7 @@ public:
                           c.x + s * 0.65f, c.y - s * 0.75f);
             break;
         }
+        case Icon::Record: break; // above
         }
         g.setColour(icon_ == Icon::Loop ? (on ? DawColours::accentWarm() : DawColours::text())
                                         : (icon_ == Icon::Stop ? DawColours::accent() : DawColours::text()));
@@ -68,6 +80,11 @@ TransportBar::TransportBar(engine::Engine& engine, AudioHost& audioHost) : engin
     returnButton_->setTooltip("Return to start (Home)");
     playButton_->setTooltip("Play / Stop (Space)");
     loopButton_->setTooltip("Loop on/off (L)");
+    recordButton_ = std::make_unique<IconButton>("Record", IconButton::Icon::Record);
+    recordButton_->setTooltip("Record the armed tracks (R)");
+    recordButton_->setClickingTogglesState(false);
+    recordButton_->onClick = [this] { if (onRecord) onRecord(); };
+    addAndMakeVisible(*recordButton_);
     returnButton_->onClick = [this] { if (onReturnToStart) onReturnToStart(); };
     playButton_->onClick = [this] { if (onPlayStop) onPlayStop(); };
     loopButton_->onClick = [this] { if (onToggleLoop) onToggleLoop(); };
@@ -121,6 +138,9 @@ TransportBar::TransportBar(engine::Engine& engine, AudioHost& audioHost) : engin
 
 TransportBar::~TransportBar() = default;
 
+void TransportBar::setRecording(bool recording) { recordButton_->setToggleState(recording, juce::dontSendNotification); }
+bool TransportBar::isRecordingShown() const noexcept { return recordButton_->getToggleState(); }
+
 juce::String TransportBar::formatBarsBeats(const engine::BarsBeats& p) {
     return juce::String(p.bar) + "." + juce::String(p.beat) + "." + juce::String(p.tick).paddedLeft('0', 3);
 }
@@ -171,6 +191,8 @@ void TransportBar::resized() {
     returnButton_->setBounds(area.removeFromLeft(h + 6));
     area.removeFromLeft(4);
     playButton_->setBounds(area.removeFromLeft(h + 14));
+    area.removeFromLeft(4);
+    recordButton_->setBounds(area.removeFromLeft(h + 6));
     area.removeFromLeft(4);
     loopButton_->setBounds(area.removeFromLeft(h + 6));
     area.removeFromLeft(14);

@@ -1,9 +1,7 @@
 # Files that are the same in several chapters, written by scripts/check_copies.py --write.
 # Every line: the chapters, then the path inside each chapter.
-16 17 app/Source/ArrangementView.cpp
-16 17 app/Source/ArrangementView.h
-15 16 17 app/Source/AudioHost.cpp
-15 16 17 app/Source/AudioHost.h
+15 16 app/Source/AudioHost.cpp
+15 16 app/Source/AudioHost.h
 14 15 16 17 app/Source/DawLookAndFeel.cpp
 16 17 app/Source/Edits.h
 14 15 16 17 app/Source/EffectMenu.cpp
@@ -20,14 +18,9 @@
 15 16 17 app/Source/MixerView.h
 16 17 app/Source/ParameterPanel.cpp
 16 17 app/Source/ParameterPanel.h
-16 17 app/Source/ProjectFormat.cpp
-16 17 app/Source/ProjectFormat.h
-16 17 app/Source/ProjectIO.cpp
 15 16 17 app/Source/ProjectIO.h
-16 17 app/Source/Session.cpp
-16 17 app/Source/Session.h
-15 16 17 app/Source/TransportBar.cpp
-15 16 17 app/Source/TransportBar.h
+15 16 app/Source/TransportBar.cpp
+15 16 app/Source/TransportBar.h
 14 15 16 17 app/Source/VstInsert.cpp
 14 15 16 17 app/Source/VstInsert.h
 16 17 engine/include/dawlab/engine/Automation.h

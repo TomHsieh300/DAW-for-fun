@@ -638,6 +638,53 @@ void checkFeedback() {
     std::printf("  the mix makes the loop louder: detected after %d ms, the take has every frame\n", trippedAt * 1000 / 48000);
 }
 
+// What a display can see of a take while it is still being recorded.
+void checkLive() {
+    TempFolder folder;
+    Engine e;
+    const TrackId id{1}, other{2};
+    e.addTrack(id);
+    e.addTrack(other);
+    e.prepare(kSampleRate, kMaxBlock);
+    e.applyPendingCommandsOffline();
+    e.getTrack(id)->setArmed(true);
+    RecordRange range;
+    range.punchIn = 1000;
+    range.punchOut = 90000;
+    RecordingSession session;
+    DAWLAB_CHECK(session.begin(e, folder.path(), "live", Latencies{10, 20, 0, 5}, range) == 1);
+    LiveTake live;
+    DAWLAB_CHECK(!session.getLive(id, live)); // nothing yet
+    e.getTransport().setPosition(700);
+    e.getTransport().play();
+    // Half of it loud on one side of a peak's frames, so that a peak really is the highest frame.
+    play(e, &session, PeakTrail::kFramesPerPeak * 10, 64, [](std::int64_t f) {
+        return f % PeakTrail::kFramesPerPeak == 7 ? -0.75f : static_cast<float>(f % 3) * 0.01f;
+    });
+    DAWLAB_CHECK(session.getLive(id, live));
+    DAWLAB_CHECK(!session.getLive(other, live) || live.trail != nullptr);
+    LiveTake none;
+    DAWLAB_CHECK(!session.getLive(other, none));
+    DAWLAB_CHECK(live.stampedPosition == 700);
+    DAWLAB_CHECK(live.latencies.total() == 35);
+    DAWLAB_CHECK(live.range.punchOut == 90000);
+    DAWLAB_CHECK(live.trail->size() == 10);
+    if (live.trail->size() == 10) {
+        DAWLAB_CHECK(live.trail->at(0) == 0.75f);
+        DAWLAB_CHECK(live.trail->at(9) == 0.75f);
+    }
+    DAWLAB_CHECK(session.droppedFrames() == 0);
+    DAWLAB_CHECK(finish(e, session));
+
+    // It stops growing at its room, and that is all.
+    PeakTrail small(2);
+    std::vector<float> ones(PeakTrail::kFramesPerPeak * 5, 0.5f);
+    const float* channels[] = {ones.data()};
+    small.add(channels, 1, static_cast<int>(ones.size()));
+    DAWLAB_CHECK(small.size() == 2);
+    DAWLAB_CHECK(small.at(1) == 0.5f);
+}
+
 // All the ways a recording can end, and what comes after. One function each: an Engine is big, and
 // MSVC Debug gives every local in a function its own place on the stack.
 float steady(std::int64_t) { return 0.5f; }
@@ -899,6 +946,7 @@ int main() {
     monitorOfANewTrack();
     monitorFollowsTheSession();
     checkFeedback();
+    checkLive();
     checkEnds();
     return dawlab::test::summary("l17_test_recording");
 }

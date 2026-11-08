@@ -12,6 +12,9 @@
 //
 // One session per recording. The folder must exist.
 
+#include <algorithm>
+#include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <memory>
@@ -23,6 +26,48 @@
 #include "Recording.h"
 
 namespace dawlab::engine {
+
+// The peaks of a take so far, for a display. Appended by the disk thread, read by the UI: each entry is
+// written once, and `count_` publishes it. The room is set aside at the start, so that nothing moves; a
+// take longer than that stops growing here, not on disk.
+class PeakTrail {
+public:
+    static constexpr int kFramesPerPeak = 256;
+
+    explicit PeakTrail(std::size_t maxPeaks) : peaks_(maxPeaks, 0.0f) {}
+
+    void add(const float* const* channels, int numChannels, int n) noexcept {
+        for (int i = 0; i < n; ++i) {
+            for (int ch = 0; ch < numChannels; ++ch)
+                peak_ = std::max(peak_, std::abs(channels[ch][i]));
+            if (++inPeak_ == kFramesPerPeak) {
+                const std::size_t count = count_.load(std::memory_order_relaxed);
+                if (count < peaks_.size()) {
+                    peaks_[count] = peak_;
+                    count_.store(count + 1, std::memory_order_release);
+                }
+                peak_ = 0.0f;
+                inPeak_ = 0;
+            }
+        }
+    }
+    std::size_t size() const noexcept { return count_.load(std::memory_order_acquire); }
+    float at(std::size_t index) const noexcept { return peaks_[index]; } // below size()
+
+private:
+    std::vector<float> peaks_;
+    std::atomic<std::size_t> count_{0};
+    float peak_ = 0.0f; // the disk thread's
+    int inPeak_ = 0;    // the disk thread's
+};
+
+// What a track has recorded so far.
+struct LiveTake {
+    std::int64_t stampedPosition = 0;
+    Latencies latencies;
+    RecordRange range;
+    const PeakTrail* trail = nullptr;
+};
 
 class RecordingSession {
 public:
@@ -50,6 +95,11 @@ public:
             entry.recorder = &track.getRecorder();
             entry.writer = std::make_unique<TakeWriter>(track.getRecorder(), freeName(folder, baseName, id),
                                                         static_cast<int>(engine.getSampleRate()), ops);
+            // Three hours at 48 kHz: a little over 2.5 MB per track.
+            entry.trail = std::make_unique<PeakTrail>(static_cast<std::size_t>(engine.getSampleRate() * 3600.0 * 3.0 / PeakTrail::kFramesPerPeak));
+            entry.writer->onFrames = [trail = entry.trail.get()](const float* const* channels, int numChannels, int n) {
+                trail->add(channels, numChannels, n);
+            };
             entries_.push_back(std::move(entry));
         }
         return static_cast<int>(entries_.size());
@@ -71,6 +121,29 @@ public:
         return TakeProblem::None;
     }
 
+    // Any thread: how much the rings have dropped so far, all tracks together.
+    uint64_t droppedFrames() const noexcept {
+        uint64_t dropped = 0;
+        for (const Entry& entry : entries_)
+            dropped += entry.recorder->ring().droppedFrames();
+        return dropped;
+    }
+
+    // UI thread: what a track has recorded so far. False if nothing yet. The first peak came out of the
+    // ring, so the stamp is there, for the same reason as for the file (Step 3).
+    bool getLive(TrackId track, LiveTake& live) const noexcept {
+        for (const Entry& entry : entries_) {
+            if (entry.track == track && entry.trail->size() > 0) {
+                live.stampedPosition = entry.recorder->stampedPosition();
+                live.latencies = entry.recorder->latencies();
+                live.range = entry.recorder->range();
+                live.trail = entry.trail.get();
+                return true;
+            }
+        }
+        return false;
+    }
+
     // After pump() returned true.
     std::vector<Result> results() const {
         std::vector<Result> all;
@@ -84,6 +157,7 @@ private:
         TrackId track;
         Recorder* recorder = nullptr;
         std::unique_ptr<TakeWriter> writer;
+        std::unique_ptr<PeakTrail> trail;
     };
 
     static std::filesystem::path freeName(const std::filesystem::path& folder, const std::string& baseName, TrackId id) {

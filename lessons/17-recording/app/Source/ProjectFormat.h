@@ -12,7 +12,7 @@
 // The format (UTF-8 text, one item per line, '#' starts a comment outside quotes; numbers in the
 // classic locale; floats with 9 digits, so every float reads back exactly):
 //
-//   DawLabProject 4                                header: the format version
+//   DawLabProject 5                                header: the format version
 //   sampleRate 48000                               the rate of every sample position below
 //   nextTrackId 25                                 (Step 4) above every track id in the file
 //   tempo 120 4 4                                  BPM, time signature
@@ -30,6 +30,10 @@
 //   lane 1 track:17 0 "Threshold" touch 0.5        (format 4) number, channel, GUI slot ("-": the strip's
 //                                                  own Gain or Pan), parameter, mode, default 0..1
 //   point 1 48000 0.25 linear                      (format 4) lane number, position, value 0..1, shape
+//
+//   takes "Song_media/000.wav" 48000 1472 5000 48000 6472 5000
+//                                                  (format 5) a recording's passes of a loop, on one audio
+//                                                  file: three numbers per take: start, source offset, length
 //
 // A lane names its effect by slot: like a track's id, a slot here is only the file's own reference,
 // because an opened project gets new EffectIds. Points of one lane at one position keep the order of
@@ -62,7 +66,7 @@ constexpr int kInsertSlotsPerStrip = 4; // GUI insert slots per strip (Session, 
 
 namespace project {
 
-constexpr int kFormatVersion = 4; // 1: Step 4 without pan; 2: Step 4; 3: the whole app project; 4: automation
+constexpr int kFormatVersion = 5; // 1: Step 4 without pan; 2: Step 4; 3: the whole app project; 4: automation; 5: takes
 
 struct SendState {
     float levelDb = kMinusInfinityDb;
@@ -128,6 +132,17 @@ struct ClipState {
     std::string name;
 };
 
+// Which parts of an audio file are the takes of one recording. The clip says which one plays.
+struct TakeState {
+    std::int64_t start = 0;
+    std::int64_t sourceOffset = 0;
+    std::int64_t length = 0; // > 0
+};
+struct TakeSetState {
+    std::string file;
+    std::vector<TakeState> takes;
+};
+
 struct ProjectState {
     double sampleRate = 48000.0;
     std::uint32_t nextTrackId = 1;
@@ -141,6 +156,7 @@ struct ProjectState {
     std::array<StripState, engine::kNumBuses> buses{};
     StripState master;
     std::vector<ClipState> clips; // per track in start order (any order is accepted)
+    std::vector<TakeSetState> takeSets; // format 5
 };
 
 bool operator==(const SendState& a, const SendState& b);
@@ -151,6 +167,8 @@ bool operator==(const LaneState& a, const LaneState& b);
 bool operator==(const StripState& a, const StripState& b);
 bool operator==(const TrackState& a, const TrackState& b);
 bool operator==(const ClipState& a, const ClipState& b);
+bool operator==(const TakeState& a, const TakeState& b);
+bool operator==(const TakeSetState& a, const TakeSetState& b);
 bool operator==(const ProjectState& a, const ProjectState& b);
 
 struct ReadResult {

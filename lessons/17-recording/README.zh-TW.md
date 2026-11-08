@@ -2,7 +2,7 @@
 
 [English](README.md) | **繁體中文**
 
-> **狀態：進行中。** 七個 step 已完成 Step 1 到 6。
+> **狀態：完成。** 全部 7 個 step。真正的錄音、latency 和 monitoring 仍然要用真的裝置試過：見 Step 7 的「你要自己試的」。
 
 DawLab 16（第 16 章）可以播放、混音並 automation 已經存在的音訊，但它的 audio callback 會忽略 input。
 DAW 也必須能錄音，而錄音會把前面各章分開處理的東西全部放在一起：不能等待的 real-time thread、可能卡住
@@ -46,7 +46,7 @@ step 的函式，self-check 會告訴你它們何時能正常運作。請見 [st
 | 4 | [Punch 與 loop](docs/step-04-punch-and-loop.zh-TW.md) | 一個檔案一條 stream，take 由它算出：精確的 punch 點、loop 的每一圈 | 完成 |
 | 5 | [Input monitoring](docs/step-05-input-monitoring.zh-TW.md) | 聽到的與錄到的、經過 insert 的 latency、防 feedback 的 guard | 完成 |
 | 6 | [有錄音的 engine](docs/step-06-engine.zh-TW.md) | 第 16 章 engine 的複本：`processBlock` 接收 input、track 可以 arm、經過真正 mixer 的 loop-back；ThreadSanitizer | 完成 |
-| 7 | 能錄音的 app | 複製第 16 章的 app：錄音鍵、arm、錄音中的波形、undo、存檔 | 規劃中 |
+| 7 | [有錄音的 app](docs/step-07-app.zh-TW.md) | 第 16 章 app 的複本：錄音鍵、arm、需要時才開的 input、錄音中的 take、取代舊內容的 take、loop 的 take、undo、存檔、當機後復原 | 完成 |
 
 </div>
 

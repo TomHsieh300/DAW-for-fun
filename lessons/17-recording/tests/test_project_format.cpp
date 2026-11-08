@@ -164,7 +164,7 @@ void testErrors() {
         const char* expected; // the error must start with this
     } cases[] = {
         {"", "line 1: not a DawLab project"},
-        {"DawLabProject 5\n", "line 1: made by a newer DawLab"},
+        {"DawLabProject 6\n", "line 1: made by a newer DawLab"},
         {"DawLabProject 3\ntrack 1 \"A\" 0 0 mono 0 0\n", "line 2: sampleRate must come"},
         {head + "volume 1\n", "line 4: unknown keyword"},
         {head + "track 2 \"B\" 0 0\n", "line 4: track needs 7 values"},
@@ -313,8 +313,43 @@ void testLanes() {
     std::printf("  lanes: the file reads back exactly; %d broken files refused with the right line\n", static_cast<int>(std::size(bad)));
 }
 
+// Chapter 17, Step 7: a recording's takes on one audio file.
+void testTakes() {
+    ProjectState p;
+    TrackState track;
+    track.id = TrackId{1};
+    p.tracks.push_back(track);
+    p.nextTrackId = 2;
+    TakeSetState set;
+    set.file = "Song_media/my \"take\".wav";
+    set.takes = {{48000, 1472, 5000}, {48000, 6472, 5000}, {0, 11472, 1}};
+    p.takeSets.push_back(set);
+    const std::string text = writeProject(p);
+    const ReadResult back = readProject(text);
+    DAWLAB_CHECK(back.ok);
+    DAWLAB_CHECK(back.project.takeSets.size() == 1);
+    DAWLAB_CHECK(back.project == p);
+    DAWLAB_CHECK(writeProject(back.project) == text);
+
+    const std::string head = "DawLabProject 5\nsampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\n";
+    const auto reads = [&head](const std::string& line) { return readProject(head + line + "\n").ok; };
+    DAWLAB_CHECK(reads("takes \"a.wav\" 0 0 1"));
+    DAWLAB_CHECK(reads("takes \"a.wav\" 0 0 1 5 5 5"));
+    DAWLAB_CHECK(!reads("takes \"a.wav\""));              // no take
+    DAWLAB_CHECK(!reads("takes \"a.wav\" 0 0"));          // not a whole take
+    DAWLAB_CHECK(!reads("takes \"a.wav\" 0 0 1 5"));
+    DAWLAB_CHECK(!reads("takes a.wav 0 0 1"));              // not in quotes
+    DAWLAB_CHECK(!reads("takes \"a.wav\" -1 0 1"));       // before the song
+    DAWLAB_CHECK(!reads("takes \"a.wav\" 0 -1 1"));
+    DAWLAB_CHECK(!reads("takes \"a.wav\" 0 0 0"));        // no length
+    DAWLAB_CHECK(!reads("takes \"a.wav\" 0 0 x"));
+    // An older file cannot have them.
+    DAWLAB_CHECK(!readProject("DawLabProject 4\nsampleRate 48000\ntakes \"a.wav\" 0 0 1\n").ok);
+}
+
 int main() {
     std::printf("l17_test_project_format: the application's project file, format %d\n", kFormatVersion);
+    testTakes();
     testLanes();
     testRoundTrip();
     testAnyOrder();

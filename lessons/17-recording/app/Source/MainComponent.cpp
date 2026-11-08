@@ -6,6 +6,7 @@
 #include <dawlab/engine/DemoSong.h>
 
 #include <algorithm>
+#include <filesystem>
 
 namespace dawlab::app {
 
@@ -87,6 +88,18 @@ MainComponent::MainComponent(Mode mode) : mode_(mode) {
         loadDroppedFiles(track, files);
     };
     arrangement_.selectLane(0);
+    arrangement_.onArmClicked = [this](engine::TrackId track) {
+        const engine::Track* t = engine_.getTrack(track);
+        setArmed(track, t != nullptr && !t->isArmed());
+    };
+    arrangement_.onMonitorClicked = [this](engine::TrackId track) { cycleMonitor(track); };
+    arrangement_.onRecordMenu = [this](engine::TrackId track) { showRecordMenu(track); };
+    arrangement_.onClipMenu = [this](engine::TrackId track, int clip) { showClipMenu(track, clip); };
+    arrangement_.liveTakeOf = [this](engine::TrackId track, engine::LiveTake& live) { return takeRecorder_.getLive(track, live); };
+    takeRecorder_.onMessage = [this](const juce::String& message, bool alarm) {
+        setStatus(message);
+        status_.setColour(juce::Label::textColourId, alarm ? DawColours::mute() : DawColours::textDim());
+    };
 
     // ---- commands, menu, keyboard ------------------------------------------------------------------
     commandManager_.registerAllCommandsForTarget(this);
@@ -101,6 +114,7 @@ MainComponent::MainComponent(Mode mode) : mode_(mode) {
     transportBar_.onPlayStop = [this] { togglePlay(); };
     transportBar_.onReturnToStart = [this] { returnToStart(); };
     transportBar_.onToggleLoop = [this] { toggleLoop(); };
+    transportBar_.onRecord = [this] { toggleRecord(); };
     transportBar_.onTempoChange = [this](double bpm) {
         session_.perform(edit::SetTempo{bpm}, "Tempo", mergeKeyFor(StripTarget{}, 0x54454d50)); // "TEMP"
     };
@@ -127,7 +141,18 @@ MainComponent::MainComponent(Mode mode) : mode_(mode) {
 
     setSize(kDefaultWidth, kDefaultHeight);
     if (mode_ == Mode::Live) {
-        loadDemoSongAsync(); // the app starts with something to listen to
+        juce::PropertiesFile::Options options;
+        options.applicationName = "DawLab 17";
+        options.filenameSuffix = ".settings";
+        options.osxLibrarySubFolder = "Application Support";
+        settings_ = std::make_unique<juce::PropertiesFile>(options);
+        takeRecorder_.setTrimSamples(settings_->getIntValue("recordingTrim", 0));
+        // A take that a crash left behind matters more than the demo song.
+        if (std::filesystem::exists(std::filesystem::u8path(takeRecorder_.getFolder().getFullPathName().toStdString())) &&
+            !engine::findUnfinishedTakes(std::filesystem::u8path(takeRecorder_.getFolder().getFullPathName().toStdString())).empty())
+            recoverCrashedTakes();
+        else
+            loadDemoSongAsync(); // the app starts with something to listen to
         startTimerHz(30);
     }
 }
@@ -155,6 +180,9 @@ void MainComponent::tick() {
     if (!isExporting())
         engine_.collectGarbage();
     session_.collectAutomation();
+    if (!isConvertingSampleRate())
+        takeRecorder_.tick();
+    transportBar_.setRecording(takeRecorder_.getPhase() == TakeRecorder::Phase::Recording);
     transportBar_.update();
     // Chapter 15: while the CPU display is red (a dropout in the last 2 s), the status line says
     // in words what happened and what to do; this matters more than any other message.
@@ -173,14 +201,183 @@ void MainComponent::tick() {
     }
 }
 
-void MainComponent::simulatePlayback(int64_t numSamples, int blockSize) {
+void MainComponent::simulatePlayback(int64_t numSamples, int blockSize, engine::InputBlock input) {
     jassert(!audioHost_.isDeviceOpen() || !audioHost_.isEngineAttached());
     blockSize = std::clamp(blockSize, 1, offlineScratch_.getNumSamples());
     float* channels[engine::kNumChannels] = {offlineScratch_.getWritePointer(0), offlineScratch_.getWritePointer(1)};
     for (int64_t done = 0; done < numSamples; done += blockSize) {
         const int n = static_cast<int>(std::min<int64_t>(blockSize, numSamples - done));
-        audioHost_.processOffline(channels, engine::kNumChannels, n);
+        // The input goes along with the frames it belongs to.
+        const float* inputs[engine::kMaxInputChannels];
+        const int numInputs = std::min(input.numChannels, engine::kMaxInputChannels);
+        for (int ch = 0; ch < numInputs; ++ch)
+            inputs[ch] = input.channels[ch] != nullptr ? input.channels[ch] + done : nullptr;
+        audioHost_.processOffline(channels, engine::kNumChannels, n, engine::InputBlock{inputs, numInputs});
     }
+}
+
+// ---- recording (chapter 17, Step 7) ---------------------------------------------------------------------
+
+bool MainComponent::refuseWhileRecording(const juce::String& what) {
+    if (!takeRecorder_.isBusy())
+        return false;
+    setStatus(what + " has to wait: a recording is running. Stop it first");
+    return true;
+}
+
+bool MainComponent::toggleRecord() {
+    if (takeRecorder_.getPhase() == TakeRecorder::Phase::Recording) {
+        takeRecorder_.stop();
+        return true;
+    }
+    if (isExporting() || isConvertingSampleRate()) {
+        setStatus("Not now: the project is being exported or converted");
+        return false;
+    }
+    const juce::String error = takeRecorder_.start();
+    if (error.isNotEmpty()) {
+        setStatus(error);
+        return false;
+    }
+    status_.setColour(juce::Label::textColourId, DawColours::textDim());
+    engine_.getTransport().play();
+    setStatus("Recording");
+    transportBar_.update();
+    return true;
+}
+
+bool MainComponent::setArmed(engine::TrackId track, bool armed) {
+    engine::Track* t = engine_.getTrack(track);
+    if (t == nullptr)
+        return false;
+    if (armed) {
+        if (const juce::String error = audioHost_.ensureInputsOpen(); error.isNotEmpty()) {
+            setStatus("Cannot open the input: " + error);
+            return false;
+        }
+        deviceInfo_.setText(audioHost_.getDeviceDescription(), juce::dontSendNotification);
+    }
+    t->setArmed(armed);
+    if (!armed) // nothing would explain why an unarmed track goes on being heard
+        t->getMonitor().setMode(engine::MonitorMode::Off);
+    arrangement_.repaint();
+    return true;
+}
+
+void MainComponent::cycleMonitor(engine::TrackId track) {
+    engine::Track* t = engine_.getTrack(track);
+    if (t == nullptr)
+        return;
+    using engine::MonitorMode;
+    const MonitorMode now = t->getMonitor().mode();
+    const MonitorMode next = now == MonitorMode::Off ? MonitorMode::Auto : (now == MonitorMode::Auto ? MonitorMode::Always : MonitorMode::Off);
+    if (next != MonitorMode::Off && !t->isArmed() && !setArmed(track, true))
+        return;
+    t->getMonitor().resetFeedback(); // the user's hand on it: try again
+    t->getMonitor().setMode(next);
+    if (next != MonitorMode::Off) {
+        const engine::Latencies latencies = audioHost_.getDeviceLatencies(0);
+        engine::Latencies withMix = latencies;
+        withMix.mix = engine_.getLatencySamples();
+        const double ms = 1000.0 * static_cast<double>(engine::monitorLatency(withMix, t->getMonitorPath())) / engine_.getSampleRate();
+        setStatus("Monitor " + juce::String(next == MonitorMode::Auto ? "Auto" : "Always") + ": you hear yourself about " +
+                  juce::String(ms, 1) + " ms late. Use headphones: a microphone near a speaker howls");
+    } else {
+        setStatus("Monitor off");
+    }
+    arrangement_.repaint();
+}
+
+void MainComponent::showRecordMenu(engine::TrackId track) {
+    engine::Track* t = engine_.getTrack(track);
+    if (t == nullptr)
+        return;
+    juce::PopupMenu inputs;
+    const juce::StringArray names = audioHost_.getInputNames();
+    const int stereo = t->getNumProcessingChannels() == 2 ? 1 : 0;
+    for (int i = 0; i + stereo < names.size(); ++i)
+        inputs.addItem(100 + i, stereo != 0 ? names[i] + " + " + names[i + 1] : names[i], true, t->getInputChannel() == i);
+    juce::PopupMenu menu;
+    menu.addSectionHeader("Recording");
+    menu.addItem(1, "Armed", true, t->isArmed());
+    menu.addSubMenu("Input", inputs, !names.isEmpty());
+    menu.addSeparator();
+    menu.addSectionHeader("Monitor");
+    menu.addItem(2, "Directly, dry: as early as it can be", true, t->getMonitorPath() == engine::MonitorPath::Direct);
+    menu.addItem(3, "Through this track's effects: with the whole mix's latency", true, t->getMonitorPath() == engine::MonitorPath::ThroughInserts);
+    if (t->getMonitor().feedbackDetected())
+        menu.addItem(4, "Feedback was detected: listen again");
+    juce::Component::SafePointer<MainComponent> safe(this);
+    menu.showMenuAsync(juce::PopupMenu::Options{}, [safe, track](int result) {
+        if (safe == nullptr)
+            return;
+        engine::Track* track_ = safe->engine_.getTrack(track);
+        if (track_ == nullptr || result == 0)
+            return;
+        if (result == 1)
+            safe->setArmed(track, !track_->isArmed());
+        else if (result == 2)
+            track_->setMonitorPath(engine::MonitorPath::Direct);
+        else if (result == 3)
+            track_->setMonitorPath(engine::MonitorPath::ThroughInserts);
+        else if (result == 4)
+            track_->getMonitor().resetFeedback();
+        else if (result >= 100)
+            track_->setInputChannel(result - 100);
+        safe->arrangement_.repaint();
+    });
+}
+
+void MainComponent::showClipMenu(engine::TrackId track, int clipIndex) {
+    const auto& clips = session_.getClips(track);
+    if (clipIndex < 0 || clipIndex >= static_cast<int>(clips.size()))
+        return;
+    const engine::Clip& clip = clips[static_cast<size_t>(clipIndex)];
+    const std::vector<engine::Placement>* takes = session_.getTakesOf(clip);
+    if (takes == nullptr || takes->size() < 2 || session_.getCurrentTake(clip) < 0)
+        return;
+    juce::PopupMenu menu;
+    menu.addSectionHeader("Takes");
+    for (int i = 0; i < static_cast<int>(takes->size()); ++i)
+        menu.addItem(i + 1, "Take " + juce::String(i + 1), true, session_.getCurrentTake(clip) == i);
+    juce::Component::SafePointer<MainComponent> safe(this);
+    menu.showMenuAsync(juce::PopupMenu::Options{}, [safe, track, clipIndex](int result) {
+        if (safe != nullptr && result > 0)
+            safe->session_.chooseTake(track, clipIndex, result - 1);
+    });
+}
+
+void MainComponent::askForTrim() {
+    auto* window = new juce::AlertWindow("Recording latency trim",
+                                         "How many samples later the real round trip is than the driver reports (negative: earlier).\n"
+                                         "Record a click through a cable: the distance from the click to its recording is this number.",
+                                         juce::MessageBoxIconType::NoIcon, this);
+    window->addTextEditor("trim", juce::String(takeRecorder_.getTrimSamples()), "Samples:");
+    window->addButton("OK", 1, juce::KeyPress(juce::KeyPress::returnKey));
+    window->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+    juce::Component::SafePointer<MainComponent> safe(this);
+    window->enterModalState(true, juce::ModalCallbackFunction::create([safe, window](int result) {
+        if (safe != nullptr && result == 1) {
+            const int trim = window->getTextEditorContents("trim").getIntValue();
+            safe->takeRecorder_.setTrimSamples(trim);
+            if (safe->settings_ != nullptr)
+                safe->settings_->setValue("recordingTrim", trim);
+            safe->setStatus("Recording trim: " + juce::String(trim) + " samples");
+        }
+    }), true);
+}
+
+void MainComponent::recoverCrashedTakes() {
+    const int found = takeRecorder_.recover();
+    if (found == 0)
+        return;
+    arrangement_.zoomToFit();
+    const juce::String message = juce::String(found) + (found == 1 ? " take was" : " takes were") +
+                                 " still being recorded when the program ended. They are on new tracks, where they were played. "
+                                 "Save the project to keep them with it. The files are in " + takeRecorder_.getFolder().getFullPathName();
+    setStatus(message);
+    if (mode_ == Mode::Live)
+        juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon, "Recovered takes", message);
 }
 
 // ---- transport ----------------------------------------------------------------------------------------
@@ -223,6 +420,8 @@ void MainComponent::seekBars(int deltaBars) {
 // ---- project ------------------------------------------------------------------------------------------
 
 void MainComponent::newProject() {
+    if (refuseWhileRecording("New project"))
+        return;
     closeAllEditors();
     resumeAfterConversion_.store(false); // a new project starts stopped, conversion or not
     session_.newProject();
@@ -234,6 +433,11 @@ void MainComponent::newProject() {
 // ---- project files (chapter 15, Step 8) -----------------------------------------------------------
 
 ProjectIO::OpenResult MainComponent::openProject(const juce::File& file) {
+    if (refuseWhileRecording("Opening a project")) {
+        ProjectIO::OpenResult refused;
+        refused.error = "a recording is running";
+        return refused;
+    }
     if (isExporting()) {
         ProjectIO::OpenResult busy;
         busy.error = "an export is running";
@@ -448,6 +652,8 @@ engine::TrackId MainComponent::addTrack(engine::TrackFormat format) {
 }
 
 bool MainComponent::deleteSelectedTrack() {
+    if (refuseWhileRecording("Deleting a track"))
+        return false;
     const engine::TrackId id = arrangement_.getSelectedTrack();
     const juce::String name = session_.getStripName(session_.trackRef(id));
     // Session::removeTrack() calls onInsertWillBeRemoved for every insert: open editors close.
@@ -572,7 +778,7 @@ void MainComponent::exportMixdownInteractive() {
 }
 
 void MainComponent::exportMixdown(const juce::File& file) {
-    if (isExporting())
+    if (isExporting() || refuseWhileRecording("The export"))
         return;
     if (isConvertingSampleRate()) {
         setStatus("Export not started: the clips are still being converted to the new sample rate");
@@ -840,6 +1046,7 @@ void MainComponent::getAllCommands(juce::Array<juce::CommandID>& c) {
                 CommandIDs::saveProjectAs, CommandIDs::undo, CommandIDs::redo, CommandIDs::loadDemoSong, CommandIDs::loadAudioIntoTrack, CommandIDs::exportMixdown,
                 CommandIDs::showAudioSettings, juce::StandardApplicationCommandIDs::quit, CommandIDs::playStop,
                 CommandIDs::returnToStart, CommandIDs::toggleLoop, CommandIDs::seekBackOneBar, CommandIDs::seekForwardOneBar,
+                CommandIDs::toggleRecord, CommandIDs::togglePunch, CommandIDs::setRecordingTrim, CommandIDs::toggleArmSelected, CommandIDs::cycleMonitorSelected,
                 CommandIDs::selectNextTrack, CommandIDs::selectPreviousTrack, CommandIDs::toggleMuteSelected,
                 CommandIDs::toggleSoloSelected, CommandIDs::addMonoTrack, CommandIDs::addStereoTrack,
                 CommandIDs::deleteSelectedTrack, CommandIDs::toggleAutomationLane, CommandIDs::zoomIn, CommandIDs::zoomOut, CommandIDs::showKeyboardShortcuts};
@@ -923,6 +1130,32 @@ void MainComponent::getCommandInfo(juce::CommandID id, juce::ApplicationCommandI
         info.setInfo("Return to start", "Move the playhead to bar 1", CommandCategories::transport, 0);
         info.addDefaultKeypress(KeyPress::homeKey, ModifierKeys::noModifiers);
         info.setActive(idle);
+        break;
+    case CommandIDs::toggleRecord:
+        info.setInfo("Record", "Record the armed tracks", CommandCategories::transport, 0);
+        info.addDefaultKeypress('r', ModifierKeys::noModifiers);
+        info.setTicked(takeRecorder_.getPhase() == TakeRecorder::Phase::Recording);
+        break;
+    case CommandIDs::togglePunch:
+        info.setInfo("Punch", "Record only between the loop's locators", CommandCategories::transport, 0);
+        info.addDefaultKeypress('p', ModifierKeys::noModifiers);
+        info.setTicked(takeRecorder_.isPunchEnabled());
+        info.setActive(!takeRecorder_.isBusy());
+        break;
+    case CommandIDs::setRecordingTrim:
+        info.setInfo("Recording Latency Trim...", "Corrects what the driver reports about its latency", CommandCategories::transport, 0);
+        info.setActive(!takeRecorder_.isBusy());
+        break;
+    case CommandIDs::toggleArmSelected:
+        info.setInfo("Arm Track", "Arm the selected track for recording", CommandCategories::track, 0);
+        info.addDefaultKeypress('r', ModifierKeys::shiftModifier);
+        if (const engine::Track* armedTrack = engine_.getTrack(arrangement_.getSelectedTrack()))
+            info.setTicked(armedTrack->isArmed());
+        info.setActive(!takeRecorder_.isBusy());
+        break;
+    case CommandIDs::cycleMonitorSelected:
+        info.setInfo("Monitor", "The selected track's monitor: off, auto, always", CommandCategories::track, 0);
+        info.addDefaultKeypress('i', ModifierKeys::noModifiers);
         break;
     case CommandIDs::toggleLoop:
         info.setInfo("Loop", "Loop on / off", CommandCategories::transport, 0);
@@ -1019,6 +1252,17 @@ bool MainComponent::perform(const InvocationInfo& info) {
     case CommandIDs::playStop: togglePlay(); break;
     case CommandIDs::returnToStart: returnToStart(); break;
     case CommandIDs::toggleLoop: toggleLoop(); break;
+    case CommandIDs::toggleRecord: toggleRecord(); break;
+    case CommandIDs::togglePunch:
+        takeRecorder_.setPunchEnabled(!takeRecorder_.isPunchEnabled());
+        setStatus(takeRecorder_.isPunchEnabled() ? "Punch on: recording only between the loop's locators" : "Punch off");
+        break;
+    case CommandIDs::setRecordingTrim: askForTrim(); break;
+    case CommandIDs::toggleArmSelected:
+        if (const engine::Track* armedTrack = engine_.getTrack(arrangement_.getSelectedTrack()))
+            setArmed(arrangement_.getSelectedTrack(), !armedTrack->isArmed());
+        break;
+    case CommandIDs::cycleMonitorSelected: cycleMonitor(arrangement_.getSelectedTrack()); break;
     case CommandIDs::seekBackOneBar: seekBars(-1); break;
     case CommandIDs::seekForwardOneBar: seekBars(+1); break;
     case CommandIDs::selectNextTrack: arrangement_.selectLane(selectedLane + 1); break;
@@ -1077,6 +1321,10 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
         m.addCommandItem(cm, CommandIDs::returnToStart);
         m.addCommandItem(cm, CommandIDs::toggleLoop);
         m.addSeparator();
+        m.addCommandItem(cm, CommandIDs::toggleRecord);
+        m.addCommandItem(cm, CommandIDs::togglePunch);
+        m.addCommandItem(cm, CommandIDs::setRecordingTrim);
+        m.addSeparator();
         m.addCommandItem(cm, CommandIDs::seekBackOneBar);
         m.addCommandItem(cm, CommandIDs::seekForwardOneBar);
         break;
@@ -1092,6 +1340,9 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
         m.addCommandItem(cm, CommandIDs::deleteSelectedTrack);
         m.addSeparator();
         m.addCommandItem(cm, CommandIDs::toggleAutomationLane);
+        m.addSeparator();
+        m.addCommandItem(cm, CommandIDs::toggleArmSelected);
+        m.addCommandItem(cm, CommandIDs::cycleMonitorSelected);
         break;
     case 4:
         m.addCommandItem(cm, CommandIDs::zoomIn);

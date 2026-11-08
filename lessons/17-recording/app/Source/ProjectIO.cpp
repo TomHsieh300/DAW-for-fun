@@ -198,6 +198,17 @@ ProjectIO::Captured ProjectIO::capture(const Session& session, const juce::Strin
             p.clips.push_back(std::move(cs));
         }
     }
+    for (const auto& [source, takes] : session.getTakeSets()) {
+        const auto named = names.find(source.get());
+        if (named == names.end())
+            continue; // no clip plays this recording any more
+        project::TakeSetState set;
+        set.file = named->second.toStdString();
+        for (const engine::Placement& take : takes)
+            set.takes.push_back({take.timelineStart, take.skipFrames, take.numFrames});
+        p.takeSets.push_back(std::move(set));
+    }
+    std::sort(p.takeSets.begin(), p.takeSets.end(), [](const auto& a, const auto& b) { return a.file < b.file; });
     p.nextTrackId = static_cast<std::uint32_t>(p.tracks.size() + 1);
     for (int b = 0; b < kNumBuses; ++b)
         p.buses[static_cast<size_t>(b)] = captureStrip(session, ChannelRef::bus(b));
@@ -426,6 +437,16 @@ ProjectIO::OpenResult ProjectIO::open(Session& session, host::PluginHost* plugin
     }
     for (auto& [fileId, list] : clips)
         session.setClips(ids[fileId], std::move(list));
+    for (const project::TakeSetState& set : p.takeSets) {
+        const auto source = audio.find(set.file);
+        if (source == audio.end() || source->second == nullptr)
+            continue; // no clip uses that file, or it could not be read
+        std::vector<engine::Placement> takes;
+        for (const project::TakeState& take : set.takes)
+            if (take.sourceOffset + take.length <= source->second->getNumSamples())
+                takes.push_back({take.start, take.sourceOffset, take.length});
+        session.registerTakes(source->second, std::move(takes));
+    }
 
     // Positions and audio are at the file's rate; the engine may run at another one.
     if (p.sampleRate != session.getEngine().getSampleRate())

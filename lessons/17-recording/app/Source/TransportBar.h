@@ -1,7 +1,7 @@
 #pragma once
 // TransportBar: the strip at the top of the window (Step 13).
 //
-//   [|<] [>] [loop]   3.2.480   0:04.250   [ 120.0 BPM ]   master [=====|==  ]  M -14.2 S -15.0 I -15.5   CPU 12%
+//   [|<] [>] [o] [loop]   3.2.480   0:04.250   [ 120.0 BPM ]   master [=====|==  ]  M -14.2 S -15.0 I -15.5   CPU 12%
 //
 // Buttons call back into MainComponent (which owns the commands, so the space bar, the menu and
 // the buttons all do the same thing). Everything shown is *read* from atomics in update(),
@@ -41,10 +41,15 @@ public:
     std::function<void()> onPlayStop;
     std::function<void()> onReturnToStart;
     std::function<void()> onToggleLoop;
+    std::function<void()> onRecord; // chapter 17: start or stop a recording
     // Chapter 15, Step 9: when set, the tempo slider changes the tempo through it (undoable), and
     // onTempoGesture marks the start and the end of a drag. Otherwise it writes the transport.
     std::function<void(double bpm)> onTempoChange;
     std::function<void()> onTempoGesture;
+
+    // The record button shows it. Message thread.
+    void setRecording(bool recording);
+    bool isRecordingShown() const noexcept;
 
     // Pulls the current state from the engine (message thread, ~30 Hz).
     void update();
@@ -73,7 +78,7 @@ private:
     AudioHost& audioHost_;
     std::optional<engine::CpuMonitor> cpuMonitor_{std::in_place, engine_.getCpuMeter()};
     engine::CpuStatus cpuStatus_;
-    std::unique_ptr<IconButton> returnButton_, playButton_, loopButton_;
+    std::unique_ptr<IconButton> returnButton_, playButton_, loopButton_, recordButton_;
     juce::Label barsBeats_, time_, cpu_, masterLabel_;
     juce::Slider tempo_{juce::Slider::LinearBar, juce::Slider::TextBoxLeft};
     MeterBar masterMeter_{MeterBar::Orientation::Horizontal};

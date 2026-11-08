@@ -184,6 +184,7 @@ void Session::clearProject() {
     // Deleting a track deletes its clips and inserts too; a new track starts with the engine's
     // defaults (Engine::addTrack): fader 0 dB, centre, no sends.
     removeAllTracks();
+    takeSets_.clear();
     removeBusAndMasterInserts();
     clipSampleRate_ = engine_.getSampleRate(); // no clips: nothing to convert
     resetBusAndMasterSettings();
@@ -311,6 +312,87 @@ Clip Session::makeAudioClip(std::shared_ptr<const AudioBuffer> audio, const juce
     c.fadeInSamples = static_cast<int>(std::min<int64_t>(fade, c.length / 2));
     c.fadeOutSamples = c.fadeInSamples;
     return c;
+}
+
+std::vector<Clip> Session::withClipOnTop(std::vector<Clip> clips, const Clip& clip) const {
+    const int fade = static_cast<int>(std::lround(0.005 * getClipSampleRate()));
+    std::vector<Clip> result;
+    for (const Clip& old : clips) {
+        if (old.end() <= clip.start || old.start >= clip.end()) {
+            result.push_back(old);
+            continue;
+        }
+        if (old.start < clip.start) { // the part before
+            Clip before = old;
+            before.length = clip.start - old.start;
+            before.fadeInSamples = static_cast<int>(std::min<int64_t>(old.fadeInSamples, before.length / 2));
+            before.fadeOutSamples = static_cast<int>(std::min<int64_t>(fade, before.length / 2));
+            result.push_back(before);
+        }
+        if (old.end() > clip.end()) { // the part after
+            Clip after = old;
+            const int64_t cut = clip.end() - old.start;
+            after.start = clip.end();
+            after.sourceOffset = old.sourceOffset + cut;
+            after.length = old.length - cut;
+            after.fadeInSamples = static_cast<int>(std::min<int64_t>(fade, after.length / 2));
+            after.fadeOutSamples = static_cast<int>(std::min<int64_t>(old.fadeOutSamples, after.length / 2));
+            result.push_back(after);
+        }
+    }
+    result.push_back(clip);
+    std::stable_sort(result.begin(), result.end(), [](const Clip& a, const Clip& b) { return a.start < b.start; });
+    return result;
+}
+
+void Session::registerTakes(std::shared_ptr<const AudioBuffer> audio, std::vector<engine::Placement> takes) {
+    if (audio != nullptr && !takes.empty())
+        takeSets_.emplace_back(std::move(audio), std::move(takes));
+}
+
+edit::SetClips Session::makeTakeEdit(TrackId track, std::shared_ptr<const AudioBuffer> audio, std::vector<engine::Placement> takes,
+                                     const juce::String& name) {
+    const int best = engine::bestTake(takes);
+    const engine::Placement take = takes[static_cast<size_t>(best)];
+    Clip clip = makeAudioClip(audio, name, take.timelineStart);
+    clip.sourceOffset = take.skipFrames;
+    clip.length = take.numFrames;
+    clip.fadeInSamples = static_cast<int>(std::min<int64_t>(clip.fadeInSamples, clip.length / 2));
+    clip.fadeOutSamples = clip.fadeInSamples;
+    registerTakes(std::move(audio), std::move(takes));
+    return {track, withClipOnTop(getClips(track), clip)};
+}
+
+const std::vector<engine::Placement>* Session::getTakesOf(const Clip& clip) const noexcept {
+    for (const auto& [source, takes] : takeSets_)
+        if (source == clip.source)
+            return &takes;
+    return nullptr;
+}
+
+int Session::getCurrentTake(const Clip& clip) const noexcept {
+    if (const std::vector<engine::Placement>* takes = getTakesOf(clip))
+        for (size_t i = 0; i < takes->size(); ++i)
+            if ((*takes)[i].skipFrames == clip.sourceOffset && (*takes)[i].numFrames == clip.length)
+                return static_cast<int>(i);
+    return -1;
+}
+
+bool Session::chooseTake(TrackId track, int clipIndex, int takeIndex) {
+    const TrackModel* t = findTrack(track);
+    if (t == nullptr || clipIndex < 0 || clipIndex >= static_cast<int>(t->clips.size()))
+        return false;
+    std::vector<Clip> list = t->clips;
+    Clip& clip = list[static_cast<size_t>(clipIndex)];
+    const std::vector<engine::Placement>* takes = getTakesOf(clip);
+    if (takes == nullptr || takeIndex < 0 || takeIndex >= static_cast<int>(takes->size()) || getCurrentTake(clip) < 0)
+        return false;
+    // Another pass of the same place. A shorter last pass makes the clip shorter.
+    const engine::Placement& take = (*takes)[static_cast<size_t>(takeIndex)];
+    clip.sourceOffset = take.skipFrames;
+    clip.length = take.numFrames;
+    clip.start = take.timelineStart;
+    return perform(edit::SetClips{track, std::move(list)}, "Choose Take " + juce::String(takeIndex + 1));
 }
 
 int Session::moveClip(TrackId track, int clipIndex, int64_t newStart) {
@@ -578,6 +660,22 @@ void Session::applySampleRateConversion(double newRate, const ConvertedBuffers& 
         }
         pushClips(t);
     }
+    // The takes follow their audio. A recording no clip plays any more has no new buffer, and no undo
+    // can bring it back (the history ends here).
+    std::vector<std::pair<std::shared_ptr<const AudioBuffer>, std::vector<engine::Placement>>> scaledTakes;
+    for (const auto& [source, takes] : takeSets_) {
+        const auto it = converted.find(source);
+        if (it == converted.end())
+            continue;
+        std::vector<engine::Placement> scaled = takes;
+        for (engine::Placement& take : scaled) {
+            take.timelineStart = scale(take.timelineStart);
+            take.skipFrames = scale(take.skipFrames);
+            take.numFrames = std::min<int64_t>(scale(take.numFrames), it->second->getNumSamples() - take.skipFrames);
+        }
+        scaledTakes.emplace_back(it->second, std::move(scaled));
+    }
+    takeSets_ = std::move(scaledTakes);
     // A curve's positions are samples too; values, order and jumps stay.
     for (auto& [address, content] : lanes_) {
         engine::AutomationCurve scaled(content.curve.defaultValue());

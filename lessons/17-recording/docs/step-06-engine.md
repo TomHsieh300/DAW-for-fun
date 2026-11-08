@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-06-engine.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 5 - Input monitoring](step-05-input-monitoring.md)
+[Overview](../README.md) | Previous: [Step 5 - Input monitoring](step-05-input-monitoring.md) | Next: [Step 7 - The app with recording](step-07-app.md)
 
 ## Goal
 

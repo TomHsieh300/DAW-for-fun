@@ -399,6 +399,7 @@ void ArrangementView::paintLane(juce::Graphics& g, int lane, juce::Rectangle<int
             paintClip(g, track, clips[static_cast<size_t>(i)], bounds,
                       drag_ == Drag::Clip && dragTrack_ == track && dragClip_ == i);
         }
+        paintLiveTake(g, track, area);
     }
 
     // header
@@ -428,6 +429,27 @@ void ArrangementView::paintLane(juce::Graphics& g, int lane, juce::Rectangle<int
     g.setColour(shown ? DawColours::accent() : DawColours::textDim());
     g.setFont(DawLookAndFeel::uiFont(11.0f, shown));
     g.drawText("A", toggle, juce::Justification::centred);
+
+    const engine::Track* recordable = session_.getEngine().getTrack(track);
+    const bool armed = recordable != nullptr && recordable->isArmed();
+    const auto armBox = getArmBounds(lane);
+    g.setColour(armed ? DawColours::mute() : DawColours::outline());
+    if (armed)
+        g.fillRect(armBox);
+    else
+        g.drawRect(armBox);
+    g.setColour(armed ? juce::Colours::white : DawColours::textDim());
+    g.setFont(DawLookAndFeel::uiFont(11.0f, armed));
+    g.drawText("R", armBox, juce::Justification::centred);
+    const engine::MonitorMode mode = recordable != nullptr ? recordable->getMonitor().mode() : engine::MonitorMode::Off;
+    const bool monitoring = mode != engine::MonitorMode::Off;
+    const bool howling = recordable != nullptr && recordable->getMonitor().feedbackDetected();
+    const auto monitorBox = getMonitorBounds(lane);
+    g.setColour(howling ? DawColours::mute() : (monitoring ? DawColours::accentWarm() : DawColours::outline()));
+    g.drawRect(monitorBox);
+    g.setColour(howling ? DawColours::mute() : (monitoring ? DawColours::accentWarm() : DawColours::textDim()));
+    g.setFont(DawLookAndFeel::uiFont(11.0f, monitoring));
+    g.drawText(mode == engine::MonitorMode::Auto ? "a" : "I", monitorBox, juce::Justification::centred);
 
     g.setColour(DawColours::outline());
     g.drawHorizontalLine(area.getBottom() - 1, 0.0f, static_cast<float>(getWidth()));
@@ -527,9 +549,27 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e) {
         toggleAutomation(track);
         return;
     }
+    if (getArmBounds(lane).contains(e.x, e.y) || getMonitorBounds(lane).contains(e.x, e.y)) {
+        if (e.mods.isPopupMenu()) {
+            if (onRecordMenu)
+                onRecordMenu(track);
+        } else if (getArmBounds(lane).contains(e.x, e.y)) {
+            if (onArmClicked)
+                onArmClicked(track);
+        } else if (onMonitorClicked) {
+            onMonitorClicked(track);
+        }
+        repaint();
+        return;
+    }
     if (e.x < kHeaderWidth)
         return;
     const int clip = clipAt(lane, static_cast<float>(e.x));
+    if (clip >= 0 && e.mods.isPopupMenu()) {
+        if (onClipMenu)
+            onClipMenu(track, clip);
+        return;
+    }
     if (clip >= 0) {
         session_.getHistory().endMerge(); // this drag is its own undo step (Step 9)
         drag_ = Drag::Clip;
@@ -615,6 +655,50 @@ void ArrangementView::toggleAutomation(engine::TrackId track) {
         hideAutomation(track);
     else
         showAutomation(track, {StripTarget::ofTrack(track), engine::EffectId{}, "Gain"});
+}
+
+juce::Rectangle<int> ArrangementView::getArmBounds(int lane) const noexcept {
+    // Under the "A", and low enough to fit the lowest row.
+    return getAutomationToggleBounds(lane).translated(0, 17).withHeight(14);
+}
+
+juce::Rectangle<int> ArrangementView::getMonitorBounds(int lane) const noexcept {
+    return getArmBounds(lane).translated(-20, 0);
+}
+
+// The last pass of what has come in so far: what is being played now.
+void ArrangementView::paintLiveTake(juce::Graphics& g, engine::TrackId track, juce::Rectangle<int> area) {
+    engine::LiveTake live;
+    if (!liveTakeOf || !liveTakeOf(track, live))
+        return;
+    const std::size_t numPeaks = live.trail->size();
+    const auto numFrames = static_cast<std::int64_t>(numPeaks) * engine::PeakTrail::kFramesPerPeak;
+    const std::vector<engine::Placement> takes = engine::takesOf(live.stampedPosition, live.latencies, live.range, numFrames);
+    if (takes.empty())
+        return;
+    const engine::Placement& take = takes.back();
+    const float x0 = sampleToX(static_cast<double>(take.timelineStart));
+    const float x1 = sampleToX(static_cast<double>(take.timelineStart + take.numFrames));
+    const auto box = juce::Rectangle<float>(x0, static_cast<float>(area.getY() + 1), std::max(1.0f, x1 - x0), static_cast<float>(area.getHeight() - 2));
+    g.setColour(DawColours::mute().withAlpha(0.25f));
+    g.fillRect(box);
+    g.setColour(DawColours::mute());
+    g.drawRect(box);
+    const float middle = box.getCentreY();
+    const float half = box.getHeight() * 0.5f - 2.0f;
+    const int left = std::max(static_cast<int>(x0), kHeaderWidth);
+    const int right = std::min(static_cast<int>(x1), getWidth());
+    for (int x = left; x < right; ++x) {
+        const double from = (xToSample(static_cast<float>(x)) - static_cast<double>(take.timelineStart + 0)) + static_cast<double>(take.skipFrames);
+        const double to = from + samplesPerPixel_;
+        float peak = 0.0f;
+        const auto first = static_cast<std::size_t>(std::max(0.0, from / engine::PeakTrail::kFramesPerPeak));
+        const auto last = std::min(numPeaks, static_cast<std::size_t>(std::max(0.0, to / engine::PeakTrail::kFramesPerPeak)) + 1);
+        for (std::size_t i = first; i < last; ++i)
+            peak = std::max(peak, live.trail->at(i));
+        const float h = std::min(1.0f, peak) * half;
+        g.drawVerticalLine(x, middle - h, middle + h + 1.0f);
+    }
 }
 
 juce::Rectangle<int> ArrangementView::getAutomationToggleBounds(int lane) const noexcept {

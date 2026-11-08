@@ -74,13 +74,17 @@ void AudioHost::prepareInternal(double sampleRate, int blockSize) {
 void AudioHost::audioDeviceAboutToStart(juce::AudioIODevice* device) {
     // The driver's estimate of the time from our callback to the converter, in samples.
     outputLatency_.store(std::max(0, device->getOutputLatencyInSamples()));
+    inputLatency_.store(std::max(0, device->getInputLatencyInSamples()));
     prepareInternal(device->getCurrentSampleRate(), device->getCurrentBufferSizeSamples());
 }
 
-void AudioHost::audioDeviceStopped() {}
+// No callback runs any more and none is on its way, so this is the moment that can say a recording is
+// over without one (Step 6). The takes are finished by the disk thread.
+void AudioHost::audioDeviceStopped() { engine_.finishRecordingsWithoutAudio(); }
 
 void AudioHost::prepareOffline(double sampleRate, int blockSize) {
     outputLatency_.store(0); // no device, no device buffers
+    inputLatency_.store(0);
     prepareInternal(sampleRate, blockSize);
 }
 
@@ -101,8 +105,39 @@ int64_t AudioHost::getAudiblePosition() const noexcept {
                               getDeviceOutputLatencySamples());
 }
 
-void AudioHost::processOffline(float* const* outputs, int numOutputChannels, int numSamples) noexcept {
-    render(outputs, numOutputChannels, numSamples);
+void AudioHost::processOffline(float* const* outputs, int numOutputChannels, int numSamples, engine::InputBlock input) noexcept {
+    render(outputs, numOutputChannels, numSamples, input);
+}
+
+// ---- the input --------------------------------------------------------------------------------------
+
+juce::String AudioHost::ensureInputsOpen() {
+    juce::AudioIODevice* device = deviceManager_.getCurrentAudioDevice();
+    if (device == nullptr)
+        return {}; // offline: the input comes from whoever calls processOffline()
+    const int available = device->getInputChannelNames().size();
+    if (available == 0)
+        return "This audio device has no inputs. Choose another one in Audio settings";
+    if (device->getActiveInputChannels().countNumberOfSetBits() == available)
+        return {};
+    juce::AudioDeviceManager::AudioDeviceSetup setup = deviceManager_.getAudioDeviceSetup();
+    setup.useDefaultInputChannels = false;
+    setup.inputChannels.setRange(0, available, true);
+    return deviceManager_.setAudioDeviceSetup(setup, true);
+}
+
+juce::StringArray AudioHost::getInputNames() const {
+    if (juce::AudioIODevice* device = deviceManager_.getCurrentAudioDevice())
+        return device->getInputChannelNames();
+    return {"Input 1", "Input 2"}; // offline
+}
+
+engine::Latencies AudioHost::getDeviceLatencies(int trimSamples) const noexcept {
+    engine::Latencies latencies;
+    latencies.input = inputLatency_.load(std::memory_order_relaxed);
+    latencies.output = outputLatency_.load(std::memory_order_relaxed);
+    latencies.trim = trimSamples;
+    return latencies;
 }
 
 // ---- the audio callback -------------------------------------------------------------------------
@@ -110,11 +145,11 @@ void AudioHost::processOffline(float* const* outputs, int numOutputChannels, int
 void AudioHost::audioDeviceIOCallbackWithContext(const float* const* inputChannelData, int numInputChannels,
                                                  float* const* outputChannelData, int numOutputChannels,
                                                  int numSamples, const juce::AudioIODeviceCallbackContext& context) {
-    juce::ignoreUnused(inputChannelData, numInputChannels, context); // inputs: Exercise 9
-    render(outputChannelData, numOutputChannels, numSamples);
+    juce::ignoreUnused(context);
+    render(outputChannelData, numOutputChannels, numSamples, engine::InputBlock{inputChannelData, numInputChannels});
 }
 
-void AudioHost::render(float* const* outputs, int numOutputChannels, int numSamples) noexcept {
+void AudioHost::render(float* const* outputs, int numOutputChannels, int numSamples, engine::InputBlock input) noexcept {
     if (numOutputChannels <= 0 || numSamples <= 0)
         return;
     const juce::ScopedNoDenormals noDenormals; // FTZ/DAZ: denormals cost 100x on x86
@@ -122,7 +157,7 @@ void AudioHost::render(float* const* outputs, int numOutputChannels, int numSamp
     // The engine renders stereo into the first two device channels, directly in the device's
     // memory: AudioBlock is just a view of JUCE's channel pointer array.
     const int engineChannels = std::min(numOutputChannels, engine::kNumChannels);
-    engine_.processBlock(AudioBlock(outputs, engineChannels, numSamples));
+    engine_.processBlock(AudioBlock(outputs, engineChannels, numSamples), input);
     for (int ch = engineChannels; ch < numOutputChannels; ++ch)
         if (outputs[ch] != nullptr)
             std::fill_n(outputs[ch], numSamples, 0.0f);
