@@ -9,6 +9,7 @@
 #   "DawLab 17.exe" --smoke-test          no audio device: demo song, checks, 2 s offline render to
 #                                         dawlab_output/l17_app_smoke.wav, exit code 0 = all passed
 #   "DawLab 17.exe" --snapshot <file.png> render the main window (demo song, playhead at bar 2) to PNG
+#   "DawLab 17.exe" --device-test ...     on the real device: record, hold/recover, latency (DeviceTest.h)
 #
 # JUCE modules are not compiled again here: the chapter-13 host library (dawlab_plugin_host)
 # compiles them once. If neither chapter 13 nor chapter 14 is part of this build
@@ -28,6 +29,8 @@ set(L17_APP_SOURCES
     Source/ArrangementView.h
     Source/ArrangementView.cpp
     Source/DawLookAndFeel.h
+    Source/DeviceTest.h
+    Source/DeviceTest.cpp
     Source/DawLookAndFeel.cpp
     Source/EffectMenu.h
     Source/EffectMenu.cpp

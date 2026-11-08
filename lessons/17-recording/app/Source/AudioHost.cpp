@@ -115,12 +115,30 @@ juce::String AudioHost::ensureInputsOpen() {
     juce::AudioIODevice* device = deviceManager_.getCurrentAudioDevice();
     if (device == nullptr)
         return {}; // offline: the input comes from whoever calls processOffline()
+    // Opened without inputs, a device of a type with separate input devices (WASAPI, DirectSound) has
+    // none chosen at all: choose the system's default input first.
+    juce::AudioDeviceManager::AudioDeviceSetup setup = deviceManager_.getAudioDeviceSetup();
+    if (device->getInputChannelNames().isEmpty() && setup.inputDeviceName.isEmpty()) {
+        if (juce::AudioIODeviceType* type = deviceManager_.getCurrentDeviceTypeObject(); type != nullptr && type->hasSeparateInputsAndOutputs()) {
+            const juce::StringArray inputs = type->getDeviceNames(true);
+            const int chosen = type->getDefaultDeviceIndex(true);
+            if (!inputs.isEmpty()) {
+                setup.inputDeviceName = inputs[std::max(0, chosen)];
+                setup.useDefaultInputChannels = true;
+                if (const juce::String error = deviceManager_.setAudioDeviceSetup(setup, true); error.isNotEmpty())
+                    return error;
+                device = deviceManager_.getCurrentAudioDevice();
+                if (device == nullptr)
+                    return "The device did not start again with its input";
+                setup = deviceManager_.getAudioDeviceSetup();
+            }
+        }
+    }
     const int available = device->getInputChannelNames().size();
     if (available == 0)
         return "This audio device has no inputs. Choose another one in Audio settings";
     if (device->getActiveInputChannels().countNumberOfSetBits() == available)
         return {};
-    juce::AudioDeviceManager::AudioDeviceSetup setup = deviceManager_.getAudioDeviceSetup();
     setup.useDefaultInputChannels = false;
     setup.inputChannels.setRange(0, available, true);
     return deviceManager_.setAudioDeviceSetup(setup, true);

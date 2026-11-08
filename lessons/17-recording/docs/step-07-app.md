@@ -51,6 +51,11 @@ The app opens its device without inputs, as chapter 16 did, and the first armed 
 - A device whose input and output cannot run at one sample rate fails here, with JUCE's message on the status line,
   instead of when the app starts.
 
+One thing only a real device showed: on Windows (WASAPI, DirectSound), input and output are separate devices, and a
+device manager opened without inputs has not chosen an input device at all. Enabling input channels then finds none,
+and arming said "This audio device has no inputs" on a laptop with a microphone. So `ensureInputsOpen()` first
+chooses the system's default input when none is chosen, and only then turns its channels on.
+
 ### One recording
 
 ```text
@@ -174,6 +179,38 @@ Recording
 
 How much of a stalled take is silence depends on the threads, and differs from run to run.
 
+### On a real device
+
+CI cannot run these, so they are not a ctest. They open the default device and never show the window; the takes go
+to `dawlab_output/l17_device_test/`, not to the takes folder:
+
+```text
+"DawLab 17.exe" --device-test record [seconds]   record the default input; check the take
+"DawLab 17.exe" --device-test hold <folder>      record until the process is killed
+"DawLab 17.exe" --device-test recover <folder>   what the next start does after that
+"DawLab 17.exe" --device-test latency [buffer]   clicks from the speaker into the microphone: LOUD
+```
+
+`latency` plays eight 10 ms chirps (1 to 6 kHz), one a second, and finds each one in the take by cross-correlation.
+Where a chirp lands, measured from where it was played, is the trim that the driver's latencies still miss.
+
+What they found on a laptop with a Realtek microphone array, WASAPI shared mode, 48 kHz, 480 samples:
+
+<div align="center">
+
+| Test | Result |
+|---|---|
+| record | first failed: arming found no input (the fix above). Then every input was exactly 0: the microphone was muted in Windows. After unmuting: the take in place, 2.985 s, sealed, nothing dropped |
+| hold, kill, recover | killed after 4.6 s; the next start sealed the `.recording` file and put 4.575 s on a new track (the rest was before 0), once |
+| latency | the driver reports 480 + 480 and the mix 240 samples (25 ms); the real round trip was about 380 ms, and moved by 10 to 90 ms between clicks of one take |
+
+</div>
+
+The last row is not a bug that a trim can fix. A built-in microphone array runs through Windows' voice processing
+(noise suppression, echo cancellation), which adds its own delay below the driver and changes it as it adapts. A
+trim corrects one number; this input has no single number. For recording that has to sit on the beat, use an audio
+interface (ASIO, or WASAPI exclusive mode), or turn off the microphone's audio enhancements, and measure again.
+
 ## What you have to try yourself
 
 CI has no microphone and no ears. These are for you:
@@ -181,7 +218,8 @@ CI has no microphone and no ears. These are for you:
 1. **Record a real input.** Arm a track (R in its header, or Shift+R), press R, play, press R again. On macOS the system
    asks for the microphone the first time.
 2. **The latency.** With a cable from an output to an input, record a click track and zoom in: each recorded click
-   should sit on its click. If they do not, set the trim. Do it again at another buffer size.
+   should sit on its click. If they do not, set the trim. Do it again at another buffer size. `--device-test latency`
+   measures it for you; if its clicks do not agree within 1 ms, no trim will help with that input.
 3. **Monitoring.** With headphones: Auto and Always, both paths. Then put a plugin with latency on another track and
    hear the difference through the inserts.
 4. **Feedback.** Carefully, at a low volume, with a microphone near a speaker and the monitor on: the guard should mute

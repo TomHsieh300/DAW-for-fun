@@ -3,12 +3,14 @@
 //   "DawLab 17.exe"                        the DAW: main window 1400 x 900, default audio output
 //   "DawLab 17.exe" --smoke-test           automated check without audio device (exit code 0/1)
 //   "DawLab 17.exe" --snapshot <file.png>  render the main window with the demo song to a PNG
+//   "DawLab 17.exe" --device-test ...      checks on the real audio device (DeviceTest.h)
 //
 // JUCEApplication gives us the message loop (the "message thread" = the GUI thread). The main
 // window is a DocumentWindow whose content is MainComponent; MainComponent owns everything
 // else. The two test modes run inside initialise() and quit immediately afterwards.
 
 #include "MainComponent.h"
+#include "DeviceTest.h"
 #include "SmokeTest.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -67,6 +69,13 @@ public:
                 std::fflush(stdout);
                 quit();
             });
+            return;
+        }
+        if (args.contains("--device-test")) {
+            attachConsoleIfNeeded();
+            setApplicationReturnValue(runDeviceTest(args));
+            std::fflush(stdout);
+            quit();
             return;
         }
         const int snap = args.indexOf("--snapshot");

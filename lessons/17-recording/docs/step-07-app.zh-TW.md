@@ -42,6 +42,8 @@ App 開啟裝置時不開 input，和第 16 章一樣，等第一個 track 被 a
 - 藍牙耳機一旦開啟麥克風，就會切換成電話用的 codec。
 - Input 和 output 無法用同一個取樣率運作的裝置，會在這裡失敗，JUCE 的訊息會顯示在狀態列，而不是在 app 啟動時失敗。
 
+有一件事只有真實裝置才看得出來：在 Windows 上（WASAPI、DirectSound），input 和 output 是不同的裝置，不開 input 就打開的 device manager 根本沒有選任何 input 裝置。這時再去打開 input channel 會找不到任何一個，於是在有麥克風的筆電上 arm 時卻說「This audio device has no inputs」。所以 `ensureInputsOpen()` 在還沒選 input 時，會先選系統預設的 input，再打開它的 channel。
+
 ### 一次錄音
 
 ```text
@@ -144,12 +146,39 @@ Recording
 
 停頓的 take 有多少是靜音取決於 thread 的執行情況，每次執行都不一樣。
 
+### 在真實裝置上
+
+CI 跑不了這些，所以它們不是 ctest。它們打開預設裝置、從不顯示視窗；take 放在 `dawlab_output/l17_device_test/`，而不是 takes 資料夾：
+
+```text
+"DawLab 17.exe" --device-test record [seconds]   錄預設的 input，檢查 take
+"DawLab 17.exe" --device-test hold <folder>      一直錄，直到 process 被強制結束
+"DawLab 17.exe" --device-test recover <folder>   之後下一次啟動會做的事
+"DawLab 17.exe" --device-test latency [buffer]   從喇叭放 click 進麥克風：會發出聲音
+```
+
+`latency` 每秒放一個 10 ms 的 chirp（1 到 6 kHz），共八個，再用 cross-correlation 在 take 裡找出每一個。Chirp 落在哪裡、和它播放的位置相差多少，就是 driver 的 latency 還沒算到、要靠 trim 補的部分。
+
+在一台有 Realtek 麥克風陣列的筆電上，WASAPI shared mode、48 kHz、480 samples，結果如下：
+
+<div align="center">
+
+| 測試 | 結果 |
+|---|---|
+| record | 一開始失敗：arm 時找不到 input（上面的修正）。接著每個 input 都剛好是 0：麥克風在 Windows 裡被靜音了。取消靜音後：take 位置正確、2.985 s、已 seal、沒有丟失 |
+| hold、強制結束、recover | 4.6 s 後被強制結束；下一次啟動把 `.recording` 檔 seal 起來，在新的 track 上放了 4.575 s（其餘落在 0 之前），只做一次 |
+| latency | driver 回報 480 + 480，mix 240 samples（25 ms）；實際的 round trip 約 380 ms，而且同一個 take 裡不同 click 之間會跳動 10 到 90 ms |
+
+</div>
+
+最後一列不是 trim 修得好的 bug。內建麥克風陣列會經過 Windows 的語音處理（降噪、回音消除），它在 driver 底下加上自己的延遲，而且會隨著適應而改變。Trim 修正的是一個數字，這個 input 卻沒有單一的數字。要讓錄音對在拍子上，請用音訊介面（ASIO，或 WASAPI exclusive mode），或關掉麥克風的音效增強，再量一次。
+
 ## 你要自己試的
 
 CI 沒有麥克風，也沒有耳朵。這些要靠你：
 
 1. **錄真正的 input。** Arm 一個 track（標頭的 R，或 Shift+R），按 R，演奏，再按一次 R。在 macOS 上，第一次會跳出麥克風權限。
-2. **Latency。** 用一條線從 output 接到 input，錄一個 click track 並放大來看：每個錄下的 click 都應該落在它的 click 上。如果沒有，就設定 trim。換一個 buffer 大小再做一次。
+2. **Latency。** 用一條線從 output 接到 input，錄一個 click track 並放大來看：每個錄下的 click 都應該落在它的 click 上。如果沒有，就設定 trim。換一個 buffer 大小再做一次。`--device-test latency` 會幫你量；如果它的 click 彼此相差超過 1 ms，那個 input 用什麼 trim 都沒用。
 3. **Monitoring。** 戴耳機：Auto 和 Always，兩條路徑都試。然後在另一個 track 放一個有 latency 的 plugin，聽聽經過 insert 時的差別。
 4. **Feedback。** 小心、用小音量，把麥克風靠近喇叭並打開 monitor：guard 應該在一秒左右把 monitor 靜音。
 5. **Loop。** 錄三圈，在 clip 上按右鍵選另一個 take。
