@@ -42,3 +42,17 @@ target_compile_definitions(l17_test_track_pool PRIVATE DAWLAB_ENGINE_MAX_TRACKS=
 l17_add_test(l17_test_automation        tests/test_automation.cpp)
 l17_add_test(l17_test_recording         tests/test_recording.cpp)
 l17_add_test(l17_test_recording_threads tests/test_recording_threads.cpp)
+
+# The application's project file: text in, text out, no JUCE, so it is tested here and runs in
+# every build, not only with -Juce.
+l17_add_test(l17_test_project_format    tests/test_project_format.cpp app/Source/ProjectFormat.cpp)
+target_include_directories(l17_test_project_format PRIVATE app/Source)
+
+# ---- Step 7: the JUCE application "DawLab 17" ----------------------------------------------------
+# Needs -DDAWLAB_WITH_JUCE=ON (build.ps1 -Juce). Without JUCE the chapter stops here.
+if(NOT DAWLAB_WITH_JUCE)
+    message(STATUS "17-recording: the JUCE app (DawLab17) is skipped (use -Juce)")
+    return()
+endif()
+
+add_subdirectory(app)   # targets: l17_daw_app (static library), DawLab17 (the application)
