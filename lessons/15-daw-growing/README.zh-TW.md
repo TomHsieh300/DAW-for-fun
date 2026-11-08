@@ -68,7 +68,13 @@
 command 裡的 `ChannelRef::track(i)`、`Session::clips_`、`ArrangementView` 的 lane。`kNumTracks`
 出現在第 14 章的 34 個檔案中。Step 1 在動到這些容器之前，先處理問題的根源 - 到底該怎麼指稱一個 track。
 
-## 4. 下一步
+## 4. 練習
+
+見 [exercises/README.zh-TW.md](exercises/README.zh-TW.md)，解答在 [solutions/README.zh-TW.md](solutions/README.zh-TW.md)。
+共六題，都不需要 JUCE：被刪掉的 track 歸誰（概念）、手算 CPU budget（計算）、複製 track、
+有 minor 版本並保留未知內容的專案檔格式、用記憶體限制的 undo history，以及在單次存檔之外保護使用者的成果（設計）。
+
+## 5. 下一步
 
 從 [Step 1 - 穩定的 track ID](docs/step-01-track-ids.zh-TW.md) 開始。完成 Step 9 後，接著讀
 [第 16 章 - Automation](../16-automation/README.zh-TW.md)。

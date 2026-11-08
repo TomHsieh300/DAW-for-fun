@@ -75,7 +75,14 @@ Everything in chapter 14 that refers to a track uses an index between 0 and 7:
 starts with the root of the problem - how to name a track at all - before any of these containers
 change.
 
-## 4. Next
+## 4. Exercises
+
+See [exercises/README.md](exercises/README.md), with the answers in [solutions/README.md](solutions/README.md).
+Six exercises, none needs JUCE: who owns a deleted track (concept), the CPU budget by hand (calculation),
+duplicating a track, a project file format with a minor version that keeps what it does not know, an
+undo history limited by memory, and keeping the user's work safe beyond a single save (design).
+
+## 5. Next
 
 Start with [Step 1 - Stable track IDs](docs/step-01-track-ids.md). When you finish Step 9, continue with
 [chapter 16 - Automation](../16-automation/README.md).

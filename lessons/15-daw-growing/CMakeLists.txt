@@ -7,6 +7,18 @@
 
 add_subdirectory(steps)
 
+# ---- exercises: starters (build only) and solutions (ctest label: solution) -------------------
+# Exercises 3-5 build on the model of Steps 4 and 5 (exercises/model.h); Exercise 2 checks its
+# numbers with the engine's CpuMeter. Exercises 1 and 6 are answered in solutions/README.md.
+dawlab_add_solution(l15_ex2_solution solutions/ex2_cpu_budget.cpp)
+target_include_directories(l15_ex2_solution PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/engine/include)
+dawlab_add_starter(l15_ex3_starter   exercises/starter/ex3_duplicate_track.cpp)
+dawlab_add_solution(l15_ex3_solution solutions/ex3_duplicate_track.cpp)
+dawlab_add_starter(l15_ex4_starter   exercises/starter/ex4_format3.cpp)
+dawlab_add_solution(l15_ex4_solution solutions/ex4_format3.cpp)
+dawlab_add_starter(l15_ex5_starter   exercises/starter/ex5_byte_budget.cpp)
+dawlab_add_solution(l15_ex5_solution solutions/ex5_byte_budget.cpp)
+
 # ---- the chapter-15 engine (header-only, namespace dawlab::engine; Step 6) ------------------
 # A copy of chapter 14's engine whose 8 fixed tracks became a pool of kMaxTracks slots. It uses
 # the same include paths (<dawlab/engine/...>), so it must not be linked together with
