@@ -80,7 +80,9 @@ change.
 See [exercises/README.md](exercises/README.md), with the answers in [solutions/README.md](solutions/README.md).
 Six exercises, none needs JUCE: who owns a deleted track (concept), the CPU budget by hand (calculation),
 duplicating a track, a project file format with a minor version that keeps what it does not know, an
-undo history limited by memory, and keeping the user's work safe beyond a single save (design).
+undo history limited by memory, and keeping the user's work safe beyond a single save (design). Three
+optional projects extend DawLab 15 with JUCE: reordering tracks by dragging, recent projects and
+autosave, and finding missing audio before opening.
 
 ## 5. Next
 

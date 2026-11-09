@@ -3,8 +3,8 @@
 
 [Back to the chapter](../README.md) | [Exercises](../exercises/README.md)
 
-Run all solution programs with `.\scripts\build.ps1 -Only 15-daw-growing -TestLabel solution`. Every
-one ends with `[PASS] l15_exN (... checks passed)`.
+Run all solution programs with `.\scripts\build.ps1 -Only 15-daw-growing -TestLabel solution` (add
+`-Juce` for Exercises 7-9). Every one ends with `[PASS] l15_exN (... checks passed)`.
 
 ---
 
@@ -198,6 +198,81 @@ One design; others are possible.
    shown in grey and silent, with the warning. Saving writes it back unchanged. Then the user can
    find the file later (Exercise 9 lets them choose it again). Leaving such clips out, as Step 8
    does, turns a missing disk into data loss at the next save.
+
+## Exercise 7 - Reorder tracks by dragging
+
+[`solutions/ex7_reorder_tracks.cpp`](ex7_reorder_tracks.cpp)
+
+`moveTrack()` takes the snapshot first, then performs `{RemoveTrack{id}, AddTrack{snapshot, to}}` as
+one change. The history stores the inverses, so undo needs nothing new. The track keeps its id, so
+the selection, which the arrangement keeps by id, stays on it.
+
+The dragger remembers the track under the press only in the header column, ignores movement below
+4 pixels, and maps the mouse to a lane with `laneAt()`, or to the first or last index outside the
+lanes. The move itself happens on release.
+
+```text
+Exercise 7 - reorder tracks by dragging
+  dragged and moved: 2 undo entries, the order is back: yes
+[PASS] l15_ex7 (36 checks passed)
+```
+
+**The cost.** Removing and adding a track again is not free: the engine deactivates its slot, sends
+its inserts and clip list to the garbage queue, and builds new insert instances from the snapshot (a
+VST3 plugin is loaded again from its file and state, which can take a second). Effects lose their
+state - a reverb tail stops. A `MoveTrack` edit would only change the display order in the session:
+the engine does not care about display order at all. Add one as soon as moving is common, or as soon
+as tracks hold heavy plugins.
+
+## Exercise 8 - Recent projects and autosave
+
+[`solutions/ex8_recent_and_autosave.cpp`](ex8_recent_and_autosave.cpp)
+
+- `noteProject()` removes the file wherever it is (comparing `juce::File`s, which compare as the
+  file system does), puts it in front, cuts the list at 8 and writes the settings with
+  `saveIfNeeded()` at once.
+- `getFiles()` filters on `existsAsFile()` when reading, not when storing: a project on a disk that
+  is not connected right now comes back when the disk does.
+- The menu items carry their action (`PopupMenu::Item::setAction`), so the menu needs no command ids.
+- `poll()` keeps the text it wrote last. A project that is modified but whose text is unchanged since
+  the last autosave is not written again. When the project file changes (Open, Save As, New), the
+  remembered text and time are reset.
+
+```text
+Exercise 8 - recent projects and autosave
+  autosaves next to Song.dawlab and in the untitled folder: yes
+[PASS] l15_ex8 (64 checks passed)
+```
+
+What this solution does not do yet, compared with Exercise 6: it writes on the message thread (a
+large project with VST3 states takes noticeable time; a real app hands the captured state to a
+background thread), and the autosave has its own copy of the audio in `Song.autosave_media`.
+
+## Exercise 9 - Find missing audio before opening
+
+[`solutions/ex9_relink_audio.cpp`](ex9_relink_audio.cpp)
+
+- `findMissingAudio()` keeps a map from path to its entry, so each file is checked on disk once and
+  every clip still adds to its `framesNeeded`.
+- `checkCandidate()` converts the frames needed to the candidate's rate, because the opened clip is
+  resampled to the project.
+- `relink()` keeps a list of folders where something was found. Each missing file is looked for there
+  first; only then is the user asked. A second pass at the end catches files that came before the
+  folder was known.
+- The project is rewritten only if something was found, through a `juce::TemporaryFile`, after the
+  old one was copied to `.bak`.
+
+```text
+Exercise 9 - find missing audio before opening
+  a renamed media folder of 23 files: asked 3 times, 22 found nearby, 1 refused
+[PASS] l15_ex9 (33 checks passed)
+```
+
+**The wrong file with the right name.** Step 8 names each media file after a 64-bit hash of its
+content (`01235f213fcc259d.wav`). So for DawLab's own media the relinker can do better than compare
+lengths: read the candidate, compute the same hash, and refuse it if the hash is not its name. A
+file the user imported from elsewhere keeps its own name; for those, the project file would have to
+store the hash next to the path when it saves.
 
 ---
 

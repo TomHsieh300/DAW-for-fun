@@ -73,6 +73,7 @@ command 裡的 `ChannelRef::track(i)`、`Session::clips_`、`ArrangementView` �
 見 [exercises/README.zh-TW.md](exercises/README.zh-TW.md)，解答在 [solutions/README.zh-TW.md](solutions/README.zh-TW.md)。
 共六題，都不需要 JUCE：被刪掉的 track 歸誰（概念）、手算 CPU budget（計算）、複製 track、
 有 minor 版本並保留未知內容的專案檔格式、用記憶體限制的 undo history，以及在單次存檔之外保護使用者的成果（設計）。
+另有三個選做專題用 JUCE 擴充 DawLab 15：拖曳重排 track、最近開過的專案和 autosave，以及開啟前找回不見的音訊。
 
 ## 5. 下一步
 

@@ -3,7 +3,7 @@
 
 [回到本章](../README.zh-TW.md) | [練習](../exercises/README.zh-TW.md)
 
-用 `.\scripts\build.ps1 -Only 15-daw-growing -TestLabel solution` 執行所有解答程式。每一個都以 `[PASS] l15_exN (... checks passed)` 結束。
+用 `.\scripts\build.ps1 -Only 15-daw-growing -TestLabel solution` 執行所有解答程式（練習 7-9 要加 `-Juce`）。每一個都以 `[PASS] l15_exN (... checks passed)` 結束。
 
 ---
 
@@ -117,6 +117,56 @@ Exercise 5 - an undo history limited by memory
 2. **當機之後。**比較 autosave 和專案檔的修改時間；更好的做法是寫檔時把 history 的 serial（或一個計數器）寫進兩個檔案。如果 autosave 比較新，就問：「DawLab 沒有正常關閉。要開啟 14:32 自動儲存的版本嗎？」使用者回答之前兩個檔案都保留。正常存檔或正常結束之後刪掉 autosave。
 3. **音訊。**專案指名的每個音訊檔，都必須在指名它的專案檔被 rename 到定位*之前*完整寫到磁碟上。新的錄音或匯入的檔案先複製到 media 資料夾並 flush，再寫專案檔並 rename。中間當機只會留下一個沒用到的音訊檔，絕不會留下指名不存在檔案的專案。
 4. **開啟時缺檔。**把 clip 保留為一個佔位符：位置、長度和檔名，以灰色、無聲顯示，並附上警告。存檔時原樣寫回。這樣使用者之後還能找到那個檔案（練習 9 讓他重新選擇）。像 Step 8 那樣直接略過這種 clip，會讓一顆不見的硬碟在下次存檔時變成資料遺失。
+
+## 練習 7 - 拖曳重排 track
+
+[`solutions/ex7_reorder_tracks.cpp`](ex7_reorder_tracks.cpp)
+
+`moveTrack()` 先取快照，再把 `{RemoveTrack{id}, AddTrack{snapshot, to}}` 當成一個變更執行。History 存下它們的反向操作，所以 undo 不需要任何新東西。Track 保有它的 id，而 arrangement 是用 id 記住選取的，所以選取會留在它身上。
+
+Dragger 只在標頭欄按下時記住底下的 track，忽略 4 pixel 以內的移動，用 `laneAt()` 把滑鼠位置對應到 lane，在 lane 範圍外則對應到第一個或最後一個位置。移動本身在放開時才發生。
+
+```text
+Exercise 7 - reorder tracks by dragging
+  dragged and moved: 2 undo entries, the order is back: yes
+[PASS] l15_ex7 (36 checks passed)
+```
+
+**成本。**移除再加回一個 track 並不便宜：engine 會停用它的 slot，把它的 insert 和 clip 清單送進 garbage queue，再從快照建立新的 insert instance（VST3 plugin 會從檔案和 state 重新載入，可能要一秒）。效果器會失去狀態——reverb 的尾巴會斷掉。`MoveTrack` edit 只會改變 session 裡的顯示順序：engine 根本不在乎顯示順序。一旦移動變得常見，或 track 上有很重的 plugin，就該加一個。
+
+## 練習 8 - 最近開過的專案和 autosave
+
+[`solutions/ex8_recent_and_autosave.cpp`](ex8_recent_and_autosave.cpp)
+
+- `noteProject()` 不管檔案在清單哪裡都先移除（比較的是 `juce::File`，它的比較方式和檔案系統一致），放到最前面，把清單截到 8 個，並立刻用 `saveIfNeeded()` 寫入設定。
+- `getFiles()` 在讀取時才用 `existsAsFile()` 過濾，而不是在儲存時：放在目前沒接上的硬碟裡的專案，等硬碟接回來就會再出現。
+- 選單項目帶著自己的 action（`PopupMenu::Item::setAction`），所以選單不需要 command id。
+- `poll()` 記住它上次寫出的文字。專案雖然處於修改狀態、但內容自上次 autosave 後沒變，就不會再寫一次。專案檔改變時（Open、Save As、New），記住的文字和時間都會重設。
+
+```text
+Exercise 8 - recent projects and autosave
+  autosaves next to Song.dawlab and in the untitled folder: yes
+[PASS] l15_ex8 (64 checks passed)
+```
+
+和練習 6 相比，這個解答還沒做到的：它在 message thread 上寫檔（有 VST3 state 的大型專案會花上明顯的時間；真正的 app 會把擷取好的狀態交給背景 thread），而且 autosave 在 `Song.autosave_media` 裡有一份自己的音訊複本。
+
+## 練習 9 - 開啟前找回不見的音訊
+
+[`solutions/ex9_relink_audio.cpp`](ex9_relink_audio.cpp)
+
+- `findMissingAudio()` 用一個從路徑到紀錄的 map，所以每個檔案只在磁碟上檢查一次，而每個 clip 仍然會更新它的 `framesNeeded`。
+- `checkCandidate()` 把需要的 frame 數換算到候選檔的取樣率，因為開啟後的 clip 會被 resample 成專案的取樣率。
+- `relink()` 記著找到過東西的資料夾清單。每個不見的檔案都先到那裡找，找不到才問使用者。最後的第二輪會補上那些在資料夾還沒找到之前就輪過的檔案。
+- 只有找到東西時才重寫專案，先把舊檔複製成 `.bak`，再透過 `juce::TemporaryFile` 寫入。
+
+```text
+Exercise 9 - find missing audio before opening
+  a renamed media folder of 23 files: asked 3 times, 22 found nearby, 1 refused
+[PASS] l15_ex9 (33 checks passed)
+```
+
+**名稱對了卻是錯的檔案。**Step 8 用檔案內容的 64-bit hash 替每個 media 檔命名（`01235f213fcc259d.wav`）。所以對 DawLab 自己的 media，relinker 可以做得比比較長度更好：讀取候選檔、算出同樣的 hash，如果 hash 和檔名不符就拒絕。使用者從別處匯入的檔案保有自己的名字；對這些檔案，專案檔就得在存檔時把 hash 和路徑一起存下來。
 
 ---
 

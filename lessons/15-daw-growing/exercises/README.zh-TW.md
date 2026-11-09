@@ -10,6 +10,8 @@
 .\build\bin\Debug\l15_ex3_starter.exe
 ```
 
+**練習 1-6** 是本章的練習，針對各個 step（不需要 JUCE）。**練習 7-9 是選做的專題**，用來擴充 DawLab 15 這個 app。它們需要 JUCE build（`.\scripts\build.ps1 -Only 15-daw-growing -Juce`）；和第 14 章的 JUCE 練習一樣，它們是 console 程式，在 offline 模式下建立真正的 `MainComponent`，所以檢查時不需要音訊裝置、也不用點滑鼠，而且都不修改 app 本身。
+
 練習 3 和 5 建立在 Step 5 的 model 上（`exercises/model.h`：Step 5 的 `minidaw.h`，函式都已經寫好），練習 4 建立在 Step 4 的 model 上。請先做完這些 step。
 
 ---
@@ -89,6 +91,44 @@ Step 4 透過暫存檔和 rename 來存檔。用文字設計 app 在此之外如
 2. **當機之後。** 下次啟動時，app 怎麼知道 autosave 比專案檔新？它要問使用者什麼？
 3. **音訊。** 專案檔會指名音訊檔；錄好或匯入的檔案可能還沒放到它旁邊。在把指名它的專案檔 rename 到定位之前，磁碟上必須已經有什麼？
 4. **開啟時缺檔。** Step 8 開啟音訊檔不見的專案時會給警告。App 應該保留什麼，才不會在下次存檔時永遠失去那個 clip？
+
+## 練習 7 - 拖曳重排 track ★★☆（實作，JUCE）
+
+[`l15_ex7_starter`，檔案 `exercises/starter/ex7_reorder_tracks.cpp`]
+
+DawLab 15 能新增和刪除 track，卻不能移動。從 app 外面把它加上：
+
+- `moveTrack(session, id, index)`：把 track 移到顯示位置 `index`（會 clamp），算**一個** undo 步驟「Move Track」。`Session` 沒有移動用的 edit，但 `RemoveTrack` 加上一個把 track 快照（`Session::snapshotTrack`）放回新位置的 `AddTrack`，合起來就是移動，而 history 早就知道這兩者的反向操作。
+- `TrackDragger`，`ArrangementView` 的一個 `juce::MouseListener`：在 track 標頭按下、上下拖曳、放開。少於 4 pixel 算是點擊（會選取）；拖到 lane 上方就代表「移到最上面」。拖曳時 `getDropIndex()` 告訴你那條指示線該畫在哪裡。
+
+自我檢查會移動一個 track，要求 id、名稱、gain、insert 和 clip（同樣的音訊 buffer）都不變、只有一筆 undo 紀錄、undo 和 redo 都正常，而且什麼都沒移動時不留紀錄。接著它送出滑鼠事件：跨過 lane 邊緣的一次點擊、從 lane 0 拖到 lane 2（選取跟著 track 走）、往上拖進 ruler，以及在 clip 上按下。
+
+想一想：「移除再加回來」在 audio thread 上有什麼成本，是真正的移動 edit 不會有的？什麼時候你會改成在 `Session` 裡加一個 `MoveTrack` edit？
+
+## 練習 8 - 最近開過的專案和 autosave ★★☆（實作，JUCE）
+
+[`l15_ex8_starter`，檔案 `exercises/starter/ex8_recent_and_autosave.cpp`]
+
+練習 6 做了設計，現在實作其中兩部分：
+
+- `RecentProjects`：最近 8 個專案，最新的在前，存在 app 的設定（`juce::PropertiesFile`）裡，而且立刻寫入。UI timer 呼叫 `follow(main.getProjectFile())`，就能記下每個新開啟或新存檔的專案，不必改動 Open 或 Save。`addToMenu()` 加上子選單「Open Recent」（每個還存在的檔案一項，接著是「Clear Menu」；或是一項停用的「No recent projects」），給 `MainComponent::onExtendMenu` 用。
+- `Autosaver::poll(now)`：最多一分鐘一次，只要 history 顯示專案有修改、而且內容和上次 autosave 不同，就用 `ProjectIO::save` 把專案寫到 `Song.dawlab` 旁邊的 `Song.autosave.dawlab`（或 app 某個資料夾裡的 `Untitled.autosave.dawlab`），絕不覆蓋使用者的檔案，也不把它標成已存檔。專案不再處於修改狀態時——存檔了，或 undo 回去了——就刪掉 autosave。`newerAutosave()` 找出比專案新的 autosave：那是當機留下來的。
+
+自我檢查會把清單塞超過 8 個、刪掉一個檔案、重新讀取設定、透過選單項目的 action 開啟專案，並讓 autosave 經歷一分鐘的 poll、一次當機（autosave 開起來和當時的專案一樣）、一次存檔、一次 undo 回到存檔狀態，以及一個沒有檔名的專案。
+
+## 練習 9 - 開啟前找回不見的音訊 ★★★（實作，JUCE）
+
+[`l15_ex9_starter`，檔案 `exercises/starter/ex9_relink_audio.cpp`]
+
+Step 8 開啟音訊檔不見的專案時，會略過那些 clip；之後一存檔，它們就永遠消失了。寫出 DAW 在開啟前會做的事：
+
+- `findMissingAudio(project, state)`：不在原處的各個檔案，每個附上它的 clip 需要的 frame 數（最大的 `sourceOffset + length`），以及有幾個 clip 用到它。
+- `checkCandidate(missing, file, rate)`：一個檔案為什麼不能替代——不是音訊檔，或在它自己的取樣率下太短——可以替代就什麼都不回傳。
+- `relink(project, ask)`：每個不見的檔案，先到之前找到檔案的資料夾裡找（media 資料夾被改名：找到一個，其他的就跟著找到），找不到才 `ask()` 使用者；不合格的候選檔附上理由拒絕；最後再到找到的資料夾裡試一次；然後把舊檔留成 `Song.dawlab.bak`，寫入新的路徑（在專案資料夾內用相對路徑，在外面用絕對路徑）。
+
+自我檢查會把示範歌曲的 media 資料夾（23 個檔案）改名、取消其中一個、提供一個太短的檔案，並要求在一次正確回答之後找回其餘所有檔案；之後專案開啟時每個 clip 都在。它也會把音訊移到專案資料夾外（絕對路徑），並給一個壞掉的專案檔。
+
+想一想：這個檢查只比較長度。名稱和長度都對的檔案，仍然可能是錯的。relinker 要怎麼分辨？（看看 Step 8 怎麼替 media 檔命名。）
 
 ---
 
