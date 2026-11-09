@@ -54,7 +54,9 @@ if (offset >= 0 && offset < n)
 
 播放器和 synth 就是 Step 2-4：固定大小的表、預留好的清單，prepare 之後沒有任何會配置記憶體的東西。有一件事確實改變了，而且是 engine 自己找出來的：每個 track 的 synth 和播放器大約 8 KB，128 個 track 就讓每個 `Engine` 多了 1 MB。複製過來的測試把 `Engine` 放在 stack 上，其中四個因為 stack overflow 而當掉。現在樂器的狀態放在每個 track 一個的 heap 物件裡，在 `prepare()` 中配置，那裡是允許配置記憶體的。
 
-Track 被移除時，它的 MIDI clip 清單像 audio clip 一樣以 garbage 交回，它的 synth 立刻靜音（track 已經不在了，沒有地方可以 release），而這個 slot 也會忘掉它曾經是樂器。
+Track 被移除時，它的 MIDI clip 清單像 audio clip 一樣以 garbage 交回，它的 synth 立刻靜音（track 已經不在了，沒有地方可以 release）。
+
+移除時*不能*做的，是重設樂器旗標，雖然那看起來很整齊——而第一版就這麼做了。這個旗標是 UI 的值，就像 fader 一樣：UI 會立刻重用 slot，所以等到 audio thread 拿到 RemoveTrack 時，UI 可能已經把這個 slot 交給一個新的 instrument track 並設好了旗標。在那裡重設它，就把那個新 track 變回了 audio track。這在 app（Step 8）裡出現：新增 instrument track 後 undo 再 redo，得到一個無聲的 track，開啟專案時也一樣。現在由 `Engine::addTrack()` 在 UI 交出 slot 時重設這個旗標，和新 track 的其他值一起，而測試會移除一個 instrument track，並在 audio thread 看到任何一個之前，在它的 slot 加入一個新的。
 
 ### 測試怎麼知道
 
@@ -62,7 +64,7 @@ Track 被移除時，它的 MIDI clip 清單像 audio clip 一樣以 garbage 交
 
 - **在它的 sample 上。** 位於 tick 960 的音符，第一次被聽到是在 sample 24001——envelope 從 0 開始，所以第一個聲音在 note on 之後一個 sample——不論 block 是 512、64、100、1 或隨機大小。
 - **任何 block 大小都一樣。** 四小節的和弦，加上一段在被修剪過、有 controller 的 clip 中互相重疊的旋律，loop 播三次，用 512、37、1000 和隨機大小的 block 逐位元相同。
-- **不會卡住音。** 停止、seek 到和弦中間、關掉樂器、把 clip 換成空的、移除 track 之後：都是無聲，而舊 slot 裡的新 track 以一般的 audio track 開始。
+- **不會卡住音。** 停止、seek 到和弦中間、關掉樂器、把 clip 換成空的、移除 track 之後：都是無聲，而舊 slot 裡的新 track 以一般的 audio track 開始——或者，若 UI 在 audio thread 看到移除之前就這麼說，以樂器開始。
 - **更多情況。** 往回 seek 到長音符中間會結束它；延音踏板在 seek 之後會被 chase；instrument track 的 audio clip 仍然會播；60 BPM 時 tick 960 是 sample 48000；reset 會讓 synth 靜音。
 - **即時 MIDI。** 沒有 arm：什麼都沒有。Arm 了：從它的 offset 之後一個 sample 開始。Arm 的 audio track：什麼都沒有。在為 512 準備的 engine 上、2048 個 sample 的 block 的第四個 chunk：在它該在的地方。同一個 block 裡也有 clip 的音符：兩者都有。
 - **Garbage。** 擁有所有 insert、audio clip、MIDI clip 和兩條曲線的 track，交回剛好 `kMaxGarbagePerCommand` 個。
@@ -91,7 +93,7 @@ l18_test_midi: instrument tracks in the engine
   removing a track with everything hands back 12 objects (kMaxGarbagePerCommand = 12)
   allocations on the audio thread with clips, a loop, seeks and live MIDI: 0
   UI, audio and MIDI threads for 300 UI steps: 0 allocations on the audio thread, 0 bad blocks, 0 leaked
-[PASS] l18_test_midi (28 checks passed)
+[PASS] l18_test_midi (29 checks passed)
 ```
 
 ## 還沒做的

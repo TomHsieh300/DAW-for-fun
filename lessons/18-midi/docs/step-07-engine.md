@@ -78,7 +78,15 @@ overflow. The instrument's state now lives in one heap object per track, allocat
 is allowed.
 
 When a track is removed, its MIDI clip list goes back as garbage like its audio clips, its synth falls silent at once
-(the track is gone; there is nothing to release into), and the slot forgets that it was an instrument.
+(the track is gone; there is nothing to release into).
+
+What the removal must *not* do is reset the instrument flag, although that looks tidy - and the first version did.
+The flag is the UI's value, like a fader: the UI reuses a slot at once, so by the time the audio thread takes the
+RemoveTrack, the UI may already have given the slot to a new instrument track and set its flag. Resetting it there
+turned that new track back into an audio track. It showed up in the app (Step 8): undo, then redo, of adding an
+instrument track gave a silent track, and so did opening a project. Now `Engine::addTrack()` resets the flag when the
+UI hands out the slot, with the other values of a new track, and the test removes an instrument track and adds a
+new one in its slot before the audio thread has seen either.
 
 ### How the test knows
 
@@ -89,7 +97,8 @@ When a track is removed, its MIDI clip list goes back as garbage like its audio 
 - **The same in any block size.** Four bars of chords and an overlapping melody in a trimmed clip with controllers,
   with a loop played three times, identical to the bit in blocks of 512, 37, 1000 and random sizes.
 - **Nothing hangs.** After a stop, a seek into a chord, the instrument switched off, the clips replaced by none, the
-  track removed: silence, and a new track in the old slot starts as a plain audio track.
+  track removed: silence, and a new track in the old slot starts as a plain audio track - or as an instrument, when
+  the UI says so before the audio thread has even seen the removal.
 - **More cases.** A seek *back* into a long note ends it; the sustain pedal is chased past a seek; an instrument
   track's audio clips still play; tick 960 at 60 BPM is sample 48000; a reset silences the synth.
 - **Live MIDI.** Not armed: nothing. Armed: from the sample after its offset. An armed audio track: nothing. In the
@@ -123,7 +132,7 @@ l18_test_midi: instrument tracks in the engine
   removing a track with everything hands back 12 objects (kMaxGarbagePerCommand = 12)
   allocations on the audio thread with clips, a loop, seeks and live MIDI: 0
   UI, audio and MIDI threads for 300 UI steps: 0 allocations on the audio thread, 0 bad blocks, 0 leaked
-[PASS] l18_test_midi (28 checks passed)
+[PASS] l18_test_midi (29 checks passed)
 ```
 
 ## What is not done yet

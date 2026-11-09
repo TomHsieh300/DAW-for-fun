@@ -183,8 +183,9 @@ public:
             discard(midi);
         t.discardOwnCurves(discard);
         t.reset();
-        t.resetInstrument(); // whatever sounded stops at once: the track is gone
-        t.setInstrument(false);
+        // Whatever sounded stops at once: the track is gone. NOT setInstrument(false): that is the UI's value,
+        // and the UI may already have given this slot to a new instrument track (Engine::addTrack resets it).
+        t.resetInstrument();
         t.getMonitor().clearAudioState();
         trackInSlot_[static_cast<size_t>(ref.index)] = TrackId{};
         return true;

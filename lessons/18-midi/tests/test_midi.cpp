@@ -271,12 +271,25 @@ void testNothingHangs() {
     DAWLAB_CHECK(t.getSynth()->activeVoices() >= 4);
     e.removeTrack(testId(0));
     const AudioBuffer removed = play(e, 512, 512);
-    DAWLAB_CHECK(silentFrom(removed, 0) && t.getSynth()->activeVoices() == 0 && !t.isInstrument());
+    DAWLAB_CHECK(silentFrom(removed, 0) && t.getSynth()->activeVoices() == 0);
     e.collectGarbage();
     DAWLAB_CHECK(e.getGarbageLeaked() == 0);
     const ChannelRef again = e.addTrack(TrackId{100}, TrackFormat::Mono, "New");
     e.applyPendingCommandsOffline();
     DAWLAB_CHECK(again.index == 0 && !e.getMixer().getTrack(0).isInstrument() && e.getMixer().getTrack(0).getMidiClips() == nullptr);
+
+    // The UI reuses a slot at once: an instrument track removed and a new instrument track added in its slot
+    // before the audio thread has seen either. The RemoveTrack that arrives first must not undo what the UI set
+    // up for the new track (undo / redo, opening a project).
+    e.getMixer().getTrack(0).setInstrument(true);
+    e.removeTrack(TrackId{100});
+    const ChannelRef reused = e.addTrack(TrackId{101}, TrackFormat::Mono, "Again");
+    e.getMixer().getTrack(reused.index).setInstrument(true);
+    e.setTrackMidiClips(TrackId{101}, {clipOf(9, 0, kBar, {{0, 960, 60, 100, 0}})});
+    tr.setPosition(0);
+    tr.play();
+    play(e, 4800, 512); // RemoveTrack, AddTrack and the clips arrive in this block, in that order
+    DAWLAB_CHECK(reused.index == 0 && e.getMixer().getTrack(0).isInstrument() && t.getSynth()->activeVoices() == 1);
 }
 
 // What the cases above do not reach.

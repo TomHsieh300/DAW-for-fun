@@ -155,6 +155,7 @@ public:
         t.setFormat(format);
         t.resetLaneModes();
         t.resetRecordingValues();
+        t.setInstrument(false); // chapter 18: the UI's value, so reset here; never by the audio thread
         const ChannelRef ref = ChannelRef::track(slot, id);
         if (!pushCommand(Command::addTrack(ref)))
             return none;
