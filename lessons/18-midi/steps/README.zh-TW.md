@@ -11,6 +11,7 @@
 | Step | 資料夾 | 你要寫的 | 執行 |
 |---|---|---|---|
 | 1 | `step01-midi-time` | `MidiMessage::kind`、`pitchBendValue`、`sampleOfTick`、`firstTickAtOrAfter`、`sortEvents`、`eventsInBlock`、`renderBlock` | `l18_step01_starter` |
+| 2 | `step02-midi-clips` | `MidiClip::place`、`ClipPlayer::allNotesOff`、`chase`、`process` | `l18_step02_starter` |
 
 </div>
 

@@ -2,7 +2,7 @@
 
 [English](step-01-midi-time.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 下一步：Step 2 - 播放 MIDI clip（即將推出）
+[總覽](../README.zh-TW.md) | 下一步：[Step 2 - 播放 MIDI clip](step-02-midi-clips.zh-TW.md)
 
 ## 目標
 

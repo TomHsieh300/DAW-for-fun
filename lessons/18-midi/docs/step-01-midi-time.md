@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-01-midi-time.zh-TW.md)
 
-[Overview](../README.md) | Next: Step 2 - Playing a MIDI clip (coming)
+[Overview](../README.md) | Next: [Step 2 - Playing a MIDI clip](step-02-midi-clips.md)
 
 ## Goal
 

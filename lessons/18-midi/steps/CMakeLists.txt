@@ -17,3 +17,4 @@ function(l18_add_step id dir)
 endfunction()
 
 l18_add_step(step01 step01-midi-time)
+l18_add_step(step02 step02-midi-clips)
