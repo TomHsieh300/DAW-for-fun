@@ -69,3 +69,33 @@ if(NOT DAWLAB_WITH_JUCE)
 endif()
 
 add_subdirectory(app)   # targets: l17_daw_app (static library), DawLab17 (the application)
+
+# ---- optional exercises 8-11 (the application): starters build only, solutions are ctests ------
+# JUCE console programs linked against the app library: they build the real MainComponent in its
+# offline mode and record through the real paths, so they need no audio device and no clicking
+# (chapter 16's l16_add_juce_program).
+function(l17_add_juce_program target label)
+    juce_add_console_app(${target} PRODUCT_NAME ${target})
+    target_sources(${target} PRIVATE ${ARGN})
+    target_link_libraries(${target} PRIVATE l17_daw_app)
+    set_target_properties(${target} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        FOLDER "17-recording")
+    dawlab_set_warnings(${target})
+    if(label)
+        add_test(NAME ${target} COMMAND ${target})
+        set_tests_properties(${target} PROPERTIES
+            LABELS "${label}"
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            TIMEOUT 300)
+    endif()
+endfunction()
+
+l17_add_juce_program(l17_ex8_starter   ""       exercises/starter/ex8_latency_button.cpp)
+l17_add_juce_program(l17_ex8_solution  solution solutions/ex8_latency_button.cpp)
+l17_add_juce_program(l17_ex9_starter   ""       exercises/starter/ex9_take_warnings.cpp)
+l17_add_juce_program(l17_ex9_solution  solution solutions/ex9_take_warnings.cpp)
+l17_add_juce_program(l17_ex10_starter  ""       exercises/starter/ex10_comping_ui.cpp)
+l17_add_juce_program(l17_ex10_solution solution solutions/ex10_comping_ui.cpp)
+l17_add_juce_program(l17_ex11_starter  ""       exercises/starter/ex11_pre_roll.cpp)
+l17_add_juce_program(l17_ex11_solution solution solutions/ex11_pre_roll.cpp)

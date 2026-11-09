@@ -10,6 +10,8 @@
 .\build\bin\Debug\l17_ex3_starter.exe
 ```
 
+**練習 1-7** 是本章的練習，針對各個 step（不需要 JUCE）。**練習 8-11 是選做的專題**，延伸 DawLab 17。它們需要 JUCE build（`.\scripts\build.ps1 -Only 17-recording -Juce`）；和第 16 章的一樣，它們是 console 程式，以 offline 模式建立真正的 `MainComponent`，而且都不修改 app。它們走真正的錄音路徑——disk thread、take 檔、clip——只是 input 來自自我檢查而不是裝置（`exercises/app_rig.h`，smoke test 的做法）。
+
 練習 3 和 6 建立在 Step 4 的 model 上（`exercises/model.h`：Step 4 的 `minidaw.h`，函式都已經寫好）。練習 4 和 5 是獨立的。請先做完這些 step。
 
 ---
@@ -93,6 +95,57 @@ DawLab 17 會拒絕無法以同一個取樣率運作的 input 和 output（Step 
 3. **什麼時候修正。** 錄音時（input 上的自適應 resampler，依 buffer 的滿度調整），還是之後（把完成的 take 依量到的比例伸縮）？各有什麼代價？Take 的檔案又必須存什麼？
 4. **怎麼量。** 在哪個 thread 上數哪些數字，可以得到這個比例？
 5. **使用者。** App 應該說什麼？對錄音樂的人來說，真正的解法是什麼？
+
+## 練習 8 - 「Measure Latency」按鈕 ★★☆（實作，JUCE）
+
+[`l17_ex8_starter`，檔案 `exercises/starter/ex8_latency_button.cpp`]
+
+DawLab 17 要使用者用數字輸入 latency trim。把它做成一個會量的按鈕，像 device test 那樣（Step 7）——練習 4 的搜尋已經提供，就是 `chirpLags()`。
+
+- `LatencyMeter::measure()`：透過給它的裝置函式播放 probe（8 個 chirp），把聽到的 lag 的中位數當作 round trip，並把 trim 設成 round trip 減去 driver 回報的部分。錄音時不做；聽到的 chirp 不到 3/4 時不做；它們相差超過 1 ms 時不做。Status line 會說是哪一種，舊的 trim 保留。
+- `LatencyMeter::revert()`：回到最後一次設定了 trim 的量測之前的 trim，一次。
+- `LatencyMeter::addToMenu(menu)`：「Measure Latency...」和「Undo Latency Measurement」。
+
+自我檢查會模擬房間：round trip 1234 個 sample、driver 什麼都沒回報——然後透過 app 錄一個 click，看它是否剛好落在演奏的位置——driver 回報了一部分、latency 浮動 48 和 49 個 sample 以及 80 ms（Step 7 的筆電）、8 個 chirp 聽到 6 個和 5 個、麥克風靜音、錄音中量測，以及選單。
+
+想一想：probe 是直接送到裝置，不經過 mix。雖然 take 的位置會用到 mix 的 latency（Step 2），為什麼 trim 裡卻不包含它？
+
+## 練習 9 - 說出 take 哪裡不對 ★★☆（實作，JUCE）
+
+[`l17_ex9_starter`，檔案 `exercises/starter/ex9_take_warnings.cpp`]
+
+第一個真實的 take 是三秒的 0，而 app 說「Recorded 1 take」。練習 5 在 disk thread 上監看 input；這裡做比較便宜的另一半：事後檢查。
+
+- `analyse(audio, channels)`：靜音（每個 sample 都剛好是 0）、以 dBFS 表示的 peak、clip（每個聲道上連續 3 個以上同號的滿刻度 sample）。Mono track 的 take 會載入成兩個相同的聲道：只算一次。
+- `describe(report, name)`：每個問題一句話，給 status line 用。
+- `TakeWatcher::attach()`：包裝 recorder 的 `onMessage`；每個新出現在 track 上的錄音只分析一次，app 的處理函式會以 alarm 收到「Recorded 1 take. Track 1: the take is exactly 0 - is the input muted?」。
+
+自我檢查會先分析 buffer——跨過正負號改變的連續段、聲道結尾的連續段、跨兩個聲道的情形、-50 dBFS 兩側——再錄一段靜音的 input、在 undo 和 redo 之後錄一個好的 take、同時錄三個 track（stereo、mono、太小聲），以及一段四圈的靜音 loop，它算一個錄音。
+
+## 練習 10 - 在 app 裡 comping ★★★（實作，JUCE）
+
+[`l17_ex10_starter`，檔案 `exercises/starter/ex10_comping_ui.cpp`]
+
+把練習 6 放到 track 上。Comp 就存在 clip 本身：每個 segment 一個 clip，都在這次錄音的 buffer 上，相鄰的 clip 以交叉淡化的長度重疊——像任何 clip 一樣儲存、undo、播放。練習 6 的 `chooseTake()` 和 `compClips()` 已經提供（請先做練習 6）。
+
+- `Comper::takeOf(clip, takes)`：clip 播放的是哪個 take 的一部分。
+- `Comper::compOf(track, clip)`：從 clip 讀回的 comp；每個交叉淡化一半屬於一邊，comp 的兩端像新的 take 一樣做 5 ms 的淡入淡出。
+- `Comper::choose(track, clip, from, to, take)`：用新 comp 的 clip 取代舊的，一個 undo 步驟「Comp Take 3」；範圍會先限制在那個 take 有的部分。
+- `Comper::addToMenu(menu, track, clip)`：「Take N Between the Locators」。
+
+自我檢查會錄一段從 loop 中間開始的 3.5 圈 loop（所以第一圈比其他圈晚開始），把第二圈 comp 到中段，在整個範圍選最後一圈，接著從這次錄音的任一個 clip 做 60 次隨機選擇，每次之後都和練習 6 的 comp 比對，並逐 frame 混合各個 clip：淡入淡出總和為 1，而且每個 frame 都來自 comp 在那裡的 take。
+
+## 練習 11 - Pre-roll ★★☆（實作，JUCE）
+
+[`l17_ex11_starter`，檔案 `exercises/starter/ex11_pre_roll.cpp`]
+
+按下 Record，錄音立刻從播放頭開始。給演奏者一兩個小節：transport 提早開始，而 take 剛好從播放頭開始。
+
+- `PreRoll::startFor(position)`：往前推依 tempo 和拍號算出的整數小節，不早於 0。
+- `PreRoll::record()`：punch 開著時，pre-roll 放在 punch-in 之前。沒開時就暫借 punch 一下——locator 設成 [播放頭, 很遠)、打開 punch、開始錄音，然後立刻把兩者還原：`TakeRecorder::start()` 在開始時就取走了範圍。Loop 本身就是 pre-roll。
+- `PreRoll::addToMenu(menu)`：「No Pre-roll」、「Pre-roll 1 Bar」、「Pre-roll 2 Bars」。
+
+自我檢查會算出 60 BPM 3/4 拍和 133 BPM 時的起點，在舊 take 上錄兩小節 pre-roll，要求 take 精確地從播放頭開始、它之前的舊 take 完整無缺、pre-roll 留在檔案裡；然後測 punch、loop、沒有 pre-roll（punch 開與不開），以及無法開始的錄音——它必須讓播放頭、locator 和 punch 開關保持原樣。
 
 ---
 

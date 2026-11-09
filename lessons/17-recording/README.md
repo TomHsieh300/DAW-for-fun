@@ -66,7 +66,8 @@ See [exercises/README.md](exercises/README.md), with the answers in [solutions/R
 Seven exercises, none needs JUCE: why recording is so careful (concept), recording by the numbers
 (calculation), writing only what a take can use, measuring the latency and knowing when not to trust it,
 telling the user what is wrong with the input, comping the best parts of a loop's passes, and two devices
-with two clocks (design).
+with two clocks (design). Four optional projects extend DawLab 17 (they need `-Juce`): a "Measure Latency"
+button, warnings about a silent, quiet or clipped take, comping on the track, and pre-roll.
 
 ## 5. Next
 

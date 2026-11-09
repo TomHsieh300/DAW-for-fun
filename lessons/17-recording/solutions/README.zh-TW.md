@@ -3,7 +3,7 @@
 
 [回到本章](../README.zh-TW.md) | [練習](../exercises/README.zh-TW.md)
 
-用 `.\scripts\build.ps1 -Only 17-recording -TestLabel solution` 執行所有解答程式。每一個都以 `[PASS] l17_exN (... checks passed)` 結束。
+用 `.\scripts\build.ps1 -Only 17-recording -TestLabel solution` 執行所有解答程式（練習 8-11 要加上 `-Juce`）。每一個都以 `[PASS] l17_exN (... checks passed)` 結束。
 
 ---
 
@@ -129,6 +129,70 @@ Exercise 6 - comping
    - *之後*：照原樣錄下 input，在 seal 時依量到的比例伸縮完成的 take。精確又便宜，audio thread 上什麼都不做，但錄音期間即時波形和 monitor 會漂移。檔案必須存下這個比例（在 `dlab` chunk 裡，和 latency 放在一起），讓復原的 take 用同樣的方式伸縮。
 4. **怎麼量。**在 audio thread 上數收到的 input frame 和 render 的 output frame，連同一個時鐘（JUCE 每次 callback 都會傳入 host time）。兩個計數在一段長時間窗內的比例就是漂移。50 ppm 在 48 kHz 是每秒 2.4 個 frame，所以要量得準需要幾十秒——這沒關係，因為它只隨溫度改變。
 5. **使用者。** 當 input 和 output 是不同裝置時，直接說清楚：「錄音可能相對歌曲每分鐘漂移最多 3 ms。」對音樂來說真正的解法是 input 和 output 用同一個介面——同一個時鐘——或是有漂移修正的聚集裝置，或把裝置鎖到共用的 word clock。
+
+## 練習 8 - 「Measure Latency」按鈕
+
+[`solutions/ex8_latency_button.cpp`](ex8_latency_button.cpp)
+
+`measure()` 在播放任何東西之前先拒絕：錄音期間裝置歸錄音所有。接著它播放 probe，留下聽到的 chirp 的 lag，排序後取中間那個（`size / 2`，兩個中間值取較大的）以及 spread。三種失敗依使用者能採取的行動順序檢查——什麼都沒聽到（靜音了？）、聽到太少（太小聲？）、聽到了但會浮動（語音處理？）——只有最後一種情況會動到 recorder，而且先為 `revert()` 保留舊的 trim。每則訊息都送到 status line；`revert()` 只能用一次，錄音時也不行。
+
+```text
+Exercise 8 - a Measure Latency button
+  Latency trim: 1234 samples (the round trip is 25.7 ms)
+  a click played at 120000 is at 120000 in the take
+  Latency: it moves, by 80.2 ms within one test. A trim cannot fix that: try without the system's voice processing, or another input. The trim stays 1282 samples
+[PASS] l17_ex8 (34 checks passed)
+```
+
+**為什麼不含 mix。** Trim 是 driver 沒有回報的那部分裝置 round trip。Mix 的 latency 是 engine 自己的——每換一個 plugin 就會變——recorder 放置 take 時會自己加上它（`Latencies::mix`，Step 2）。Probe 繞過 mix，所以它的 round trip 純粹是裝置的；如果經過 mix 量，trim 就會包含當下的 plugin delay，下一個 plugin 就會讓每個 take 都落在錯的位置。
+
+## 練習 9 - 說出 take 哪裡不對
+
+[`solutions/ex9_take_warnings.cpp`](ex9_take_warnings.cpp)
+
+`analyse()` 每個聲道用一個有正負號的連續段計數，就像練習 5 跨 block 時那樣：正的代表 +滿刻度的 sample，負的代表 -滿刻度。低於滿刻度或正負號相反的 sample 會結束連續段（夠長就算一次）；聲道結束也會，而下一個聲道的計數從 0 重新開始。靜音就是 peak 剛好為 0。
+
+`attach()` 用目前 track 上的東西填好 `seen_`，再把 app 的處理函式移進新的函式。每則訊息都會檢查每個 track 上的每個 clip source：`seen_.insert(...).second` 只有第一次是 true，所以一個 loop 的四個 take（同一個 buffer）只報告一次，redo 帶回來的也不算新的。警告接在 recorder 的訊息後面，以 alarm 交給 app 的處理函式——知道怎麼顯示的是它。
+
+```text
+Exercise 9 - say what is wrong with a take
+  the status line: Recorded 1 take. Track 1: the take is exactly 0 - is the input muted?
+  the status line: Recorded 3 takes. Track 1: the take clipped 3 times (the longest 7 samples) - turn the input gain down; Track 2: the take clipped 3 times (the longest 7 samples) - turn the input gain down; Track 3: the take is very quiet (peak -64.4 dBFS) - turn the input gain up
+[PASS] l17_ex9 (44 checks passed)
+```
+
+直接去改 status line 行不通：30 Hz 的 tick 也會把 CPU meter 的警告放上去，自我檢查的第一版就正是在這裡失敗的。把訊息交下去，也才能保留 alarm 的顏色。
+
+## 練習 10 - 在 app 裡 comping
+
+[`solutions/ex10_comping_ui.cpp`](ex10_comping_ui.cpp)
+
+`takeOf()` 只比較一個數字：一個 take 的音訊在檔案和 timeline 之間有固定的距離（`skipFrames - timelineStart`），clip 也是（`sourceOffset - start`）。`compOf()` 依序走過 track 上同一個 buffer 的 clip——清單依起點排序——把每個交叉淡化的一半讓給鄰居，就變回它的 segment，只有 comp 的兩端例外。
+
+`choose()` 把範圍限制在那個 take 內，拒絕空的範圍（練習 6 的 `chooseTake()` 假設 `from < to`：給它 `from > to` 時，範圍前後的片段會重疊）和不會改變的 comp，再組出新的清單：track 上的其他 clip，加上每個 `compClips()` 片段一份被點選 clip 的複本。第一個和最後一個片段像新的 take 一樣做 5 ms 的淡入淡出，最多是它們長度的一半。複製兩端 clip 目前的淡入淡出是錯的：很短的端點 clip 會縮短它的淡入淡出，短 clip 不見之後 comp 仍會留著那個短的淡入淡出。一個 `SetClips`，所以 undo 不用另外做。
+
+```text
+Exercise 10 - comping in the app
+  pass 4 over the whole range: 2 segments, the last from 132000
+  60 choices (44 changed the comp): 0 wrong (expected 0)
+[PASS] l17_ex10 (44 checks passed)
+```
+
+沒有存任何新東西，這正是重點：專案檔、undo 歷史和 engine 都認得 clip，而 comp 就是 clip。代價是 `compOf()` 必須讀得回 comp——所以每個片段的 take 都必須只靠它的 offset 就能推出來。
+
+## 練習 11 - Pre-roll
+
+[`solutions/ex11_pre_roll.cpp`](ex11_pre_roll.cpp)
+
+`startFor()` 減去 `llround(bars x samplesPerBar)`：133 BPM 時一小節是 86616.54 個 sample，直接截斷會早半個 sample 開始。`record()` 先處理不需要 pre-roll 的情況。Punch 開著時只移動起點。否則它記下 locator，把它們設成 `[播放頭, 播放頭 + 2^40)`，打開 punch，移動播放頭，呼叫 `toggleRecord()`，然後立刻還原 locator 和開關——那時 `TakeRecorder::start()` 已經把範圍複製進 `RecordingSession` 了。如果錄音沒有開始，播放頭也會移回去。
+
+```text
+Exercise 11 - pre-roll
+  2 bars of pre-roll from 96000: the take starts at 288000, 192240 frames into its file
+[PASS] l17_ex11 (45 checks passed)
+```
+
+Take 從它檔案的第 192240 個 frame 開始：兩小節 pre-roll（192000）加上 mix 的 latency（240，master 的 limiter）。這些 frame 會保留，所以把 clip 的起點往左拉，就能找回播放頭之前演奏的內容——提早進來的演奏者要的正是這個。
 
 ---
 

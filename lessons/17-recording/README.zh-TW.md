@@ -60,7 +60,7 @@ step 的函式，self-check 會告訴你它們何時能正常運作。請見 [st
 
 見 [exercises/README.zh-TW.md](exercises/README.zh-TW.md)，解答在 [solutions/README.zh-TW.md](solutions/README.zh-TW.md)。
 共七題，都不需要 JUCE：錄音為什麼要這麼小心（概念）、用數字看錄音（計算）、只寫 take 用得到的部分、
-量測 latency 也要知道何時不能信、告訴使用者 input 出了什麼問題、把 loop 各圈最好的部分 comp 起來，以及兩個裝置、兩個時鐘（設計）。
+量測 latency 也要知道何時不能信、告訴使用者 input 出了什麼問題、把 loop 各圈最好的部分 comp 起來，以及兩個裝置、兩個時鐘（設計）。另有四個選做專題延伸 DawLab 17（需要 `-Juce`）：「Measure Latency」按鈕、take 靜音、太小聲或 clipping 時的警告、在 track 上 comping，以及 pre-roll。
 
 ## 5. 下一步
 

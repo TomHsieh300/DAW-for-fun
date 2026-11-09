@@ -3,8 +3,8 @@
 
 [Back to the chapter](../README.md) | [Exercises](../exercises/README.md)
 
-Run all solution programs with `.\scripts\build.ps1 -Only 17-recording -TestLabel solution`. Every one
-ends with `[PASS] l17_exN (... checks passed)`.
+Run all solution programs with `.\scripts\build.ps1 -Only 17-recording -TestLabel solution` (add
+`-Juce` for Exercises 8-11). Every one ends with `[PASS] l17_exN (... checks passed)`.
 
 ---
 
@@ -214,6 +214,105 @@ One design; others are possible.
    against the song by up to 3 ms a minute." The real answer for music is one interface for both input
    and output - one clock - or an aggregate device with drift correction, or devices locked to a shared
    word clock.
+
+## Exercise 8 - A "Measure Latency" button
+
+[`solutions/ex8_latency_button.cpp`](ex8_latency_button.cpp)
+
+`measure()` refuses first, before anything is played: a recording owns the device. Then it plays the
+probe, keeps the lags of the heard chirps, sorts them, and takes the middle one (`size / 2`, the upper of
+two middles) and the spread. The three ways to fail are checked in the order a user can act on them -
+nothing heard (muted?), too few heard (too quiet?), heard but moving (voice processing?) - and only the
+last case touches the recorder, after keeping the old trim for `revert()`. Each message goes to the
+status line; `revert()` works once, and not while recording.
+
+```text
+Exercise 8 - a Measure Latency button
+  Latency trim: 1234 samples (the round trip is 25.7 ms)
+  a click played at 120000 is at 120000 in the take
+  Latency: it moves, by 80.2 ms within one test. A trim cannot fix that: try without the system's voice processing, or another input. The trim stays 1282 samples
+[PASS] l17_ex8 (34 checks passed)
+```
+
+**Why not the mix.** The trim is what the driver does not report about the device's round trip. The mix's
+latency is the engine's own - it changes with every plugin - and the recorder adds it when it places a
+take (`Latencies::mix`, Step 2). The probe bypasses the mix, so its round trip is the device's alone;
+measured through the mix, the trim would hold the plugin delay of the moment, and the next plugin would
+make every take land in the wrong place.
+
+## Exercise 9 - Say what is wrong with a take
+
+[`solutions/ex9_take_warnings.cpp`](ex9_take_warnings.cpp)
+
+`analyse()` keeps one signed run counter per channel, as Exercise 5 does across blocks: positive for
+samples at +full scale, negative for -full scale. A sample below full scale or of the other sign ends
+the run (and counts it if it was long enough); so does the end of the channel, and the counter starts
+again at 0 for the next channel. Silence is a peak of exactly 0.
+
+`attach()` fills `seen_` with what is on the tracks now and moves the app's handler into the new one.
+On each message it looks at every clip source on every track: `seen_.insert(...).second` is true only the
+first time, so a loop's four takes (one buffer) give one report, and a redo brings back nothing new. The
+warnings go after the recorder's message, and the app's handler gets it as an alarm - it is the one that
+knows how to show it.
+
+```text
+Exercise 9 - say what is wrong with a take
+  the status line: Recorded 1 take. Track 1: the take is exactly 0 - is the input muted?
+  the status line: Recorded 3 takes. Track 1: the take clipped 3 times (the longest 7 samples) - turn the input gain down; Track 2: the take clipped 3 times (the longest 7 samples) - turn the input gain down; Track 3: the take is very quiet (peak -64.4 dBFS) - turn the input gain up
+[PASS] l17_ex9 (44 checks passed)
+```
+
+Watching the status line itself would not work: the 30 Hz tick puts the CPU meter's warnings there too,
+and the first version of the self-check failed on exactly that. Handing the message on is also what
+keeps the alarm colour.
+
+## Exercise 10 - Comping in the app
+
+[`solutions/ex10_comping_ui.cpp`](ex10_comping_ui.cpp)
+
+`takeOf()` compares one number: a take's audio sits at a fixed distance between the file and the
+timeline (`skipFrames - timelineStart`), and so does a clip's (`sourceOffset - start`). `compOf()` walks
+the track's clips on the same buffer - the list is sorted by start - and turns each back into its segment
+by giving away half of each crossfade, except at the comp's two ends.
+
+`choose()` limits the range to the take, refuses an empty range (Exercise 6's `chooseTake()` assumes
+`from < to`: given `from > to`, its pieces before and after the range overlap) and a comp that would not
+change, and builds the new list: the track's other clips, plus one copy of the clicked clip per
+`compClips()` piece. The first and last pieces fade in and out over 5 ms, as a new take does, at most half
+their length. Copying the fades the end clips have now would be wrong: a short end clip shrinks its fade,
+and the comp would keep the short fade after the short clip is gone. One `SetClips`, so undo is free.
+
+```text
+Exercise 10 - comping in the app
+  pass 4 over the whole range: 2 segments, the last from 132000
+  60 choices (44 changed the comp): 0 wrong (expected 0)
+[PASS] l17_ex10 (44 checks passed)
+```
+
+Nothing new is stored, and that is the point: the project file, the undo history and the engine know
+clips, and a comp is clips. The cost is that `compOf()` must be able to read the comp back - which is
+why each piece's take has to follow from its offset alone.
+
+## Exercise 11 - Pre-roll
+
+[`solutions/ex11_pre_roll.cpp`](ex11_pre_roll.cpp)
+
+`startFor()` subtracts `llround(bars x samplesPerBar)`: at 133 BPM a bar is 86616.54 samples, and
+truncating would start half a sample early. `record()` handles the cases that need no pre-roll first.
+With the punch on, only the start moves. Otherwise it remembers the locators, sets them to `[playhead,
+playhead + 2^40)`, switches the punch on, seeks, calls `toggleRecord()`, and puts the locators and the
+switch back at once - `TakeRecorder::start()` has copied the range into the `RecordingSession` by then.
+If the recording did not start, the playhead goes back as well.
+
+```text
+Exercise 11 - pre-roll
+  2 bars of pre-roll from 96000: the take starts at 288000, 192240 frames into its file
+[PASS] l17_ex11 (45 checks passed)
+```
+
+The take starts 192240 frames into its file: the two bars of pre-roll (192000) plus the mix's latency
+(240, the master's limiter). Those frames are kept, so dragging the clip's start to the left brings back
+what was played before the playhead - which is what a player who came in early wants.
 
 ---
 

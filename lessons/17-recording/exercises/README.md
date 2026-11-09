@@ -12,6 +12,13 @@ Difficulty: ★☆☆ easy, ★★☆ medium, ★★★ hard. Implementation exe
 .\build\bin\Debug\l17_ex3_starter.exe
 ```
 
+**Exercises 1-7** are the chapter's exercise set, about the steps (no JUCE). **Exercises 8-11 are
+optional projects** that extend DawLab 17. They need a JUCE build
+(`.\scripts\build.ps1 -Only 17-recording -Juce`); like chapter 16's they are console programs that
+build the real `MainComponent` in its offline mode, and none of them changes the app. They record
+through the real paths - the disk thread, the take files, the clips - with the input coming from the
+self-check instead of a device (`exercises/app_rig.h`, the smoke test's way).
+
 Exercises 3 and 6 build on Step 4's model (`exercises/model.h`: Step 4's `minidaw.h` with its functions
 solved). Exercises 4 and 5 stand alone. Do the steps first.
 
@@ -141,6 +148,86 @@ own crystal. Design, in writing, what a DAW does about it. Cover:
    what must the take's file then store?
 4. **Measure it how?** Which numbers, counted on which thread, give the ratio?
 5. **The user.** What should the app say, and what is the real answer for someone who records music?
+
+## Exercise 8 - A "Measure Latency" button ★★☆ (implementation, JUCE)
+
+[`l17_ex8_starter`, file `exercises/starter/ex8_latency_button.cpp`]
+
+DawLab 17 asks for the latency trim as a number. Make it a button that measures it, as the device test
+does (Step 7) - Exercise 4's search is given, as `chirpLags()`.
+
+- `LatencyMeter::measure()`: plays the probe (8 chirps) through the device function it was given,
+  takes the median of the heard lags as the round trip, and sets the trim to the round trip minus what
+  the driver reports. Not while recording; not when fewer than 3/4 of the chirps were heard; not when
+  they disagree by more than 1 ms. The status line says which, and the old trim stays.
+- `LatencyMeter::revert()`: the trim from before the last measurement that set one, once.
+- `LatencyMeter::addToMenu(menu)`: "Measure Latency..." and "Undo Latency Measurement".
+
+The self-check simulates rooms: a round trip of 1234 samples with nothing reported - and then records a
+click through the app to see it land exactly where it was played - a driver that reports part of it,
+latencies that move by 48 and 49 samples and by 80 ms (Step 7's laptop), 6 and 5 chirps of 8, a muted
+microphone, a measurement while recording, and the menu.
+
+Think about it: the probe is played straight to the device, not through the mix. Why is the mix's
+latency then not part of the trim, although a take is placed with it (Step 2)?
+
+## Exercise 9 - Say what is wrong with a take ★★☆ (implementation, JUCE)
+
+[`l17_ex9_starter`, file `exercises/starter/ex9_take_warnings.cpp`]
+
+The first real take was three seconds of zeros, and the app said "Recorded 1 take". Exercise 5 watches
+the input on the disk thread; here the cheaper half, after the fact.
+
+- `analyse(audio, channels)`: silent (every sample exactly 0), the peak in dBFS, clips (3 or more
+  full-scale samples of one sign in a row, per channel). A mono track's take is loaded as two equal
+  channels: count it once.
+- `describe(report, name)`: one sentence per problem for the status line.
+- `TakeWatcher::attach()`: wraps the recorder's `onMessage`; each recording that is new on a track is
+  analysed once, and the app's handler gets "Recorded 1 take. Track 1: the take is exactly 0 - is the
+  input muted?" as an alarm.
+
+The self-check analyses buffers - runs across a change of sign, at the end of a channel, across two
+channels, -50 dBFS on both sides - then records a muted input, a good take after an undo and redo, three
+tracks at once (stereo, mono, quiet), and a silent loop of four passes, which is one recording.
+
+## Exercise 10 - Comping in the app ★★★ (implementation, JUCE)
+
+[`l17_ex10_starter`, file `exercises/starter/ex10_comping_ui.cpp`]
+
+Put Exercise 6 on the track. A comp is stored in the clips themselves: one clip per segment on the
+recording's buffer, neighbours overlapping by their crossfade - saved, undone and played like any clips.
+Exercise 6's `chooseTake()` and `compClips()` are given (do Exercise 6 first).
+
+- `Comper::takeOf(clip, takes)`: which take a clip plays a part of.
+- `Comper::compOf(track, clip)`: the comp read back from the clips; half of each crossfade belongs to
+  each side; the comp's two ends fade over 5 ms, as a new take does.
+- `Comper::choose(track, clip, from, to, take)`: the new comp's clips in place of the old, one undo step
+  "Comp Take 3"; the range is first limited to what that take has.
+- `Comper::addToMenu(menu, track, clip)`: "Take N Between the Locators".
+
+The self-check records a loop of 3.5 passes that starts in the middle of the loop (so the first pass
+begins later than the others), comps the second pass into the middle, chooses the last pass over
+everything, then makes 60 random choices from any of the recording's clips, and after
+each one compares the comp with Exercise 6's and mixes the clips frame by frame: the fades add up to 1,
+and every frame comes from the take the comp has there.
+
+## Exercise 11 - Pre-roll ★★☆ (implementation, JUCE)
+
+[`l17_ex11_starter`, file `exercises/starter/ex11_pre_roll.cpp`]
+
+Record starts at the playhead, at once. Give the player a bar or two: the transport starts earlier,
+and the take starts exactly at the playhead.
+
+- `PreRoll::startFor(position)`: whole bars of the tempo and meter before, not before 0.
+- `PreRoll::record()`: with the punch on, the pre-roll goes before the punch-in. Without it, the punch is
+  lent for a moment - locators at [playhead, far away), punch on, record, and both given back at once:
+  `TakeRecorder::start()` takes its range when it starts. A loop is its own pre-roll.
+- `PreRoll::addToMenu(menu)`: "No Pre-roll", "Pre-roll 1 Bar", "Pre-roll 2 Bars".
+
+The self-check works out the start at 60 BPM in 3/4 and at 133 BPM, records two bars of pre-roll over an
+old take and requires the take at the playhead to the sample, the old take intact before it and the
+pre-roll in the file; then a punch, a loop, no pre-roll (with and without the punch), and a record that cannot start, which must leave
+the playhead, the locators and the punch switch as they were.
 
 ---
 
