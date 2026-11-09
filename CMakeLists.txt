@@ -89,7 +89,8 @@ set(DAWLAB_LESSONS
     14-daw-8track
     15-daw-growing
     16-automation
-    17-recording)
+    17-recording
+    18-midi)
 
 foreach(lesson IN LISTS DAWLAB_LESSONS)
     set(_dir ${CMAKE_CURRENT_SOURCE_DIR}/lessons/${lesson})

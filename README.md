@@ -177,6 +177,7 @@ The chapters go in numeric order, and every chapter uses components from the ear
 | [15](lessons/15-daw-growing/README.md) | Growing the DAW | stable track ids, a pool of track slots, a CPU budget, a project file, undo / redo: first as small build-along snapshots, then in a copy of chapter 14's engine and app; ThreadSanitizer | the engine with a track pool and the JUCE app "DawLab 15" (add / delete tracks, save / open, undo / redo, CPU warning) |
 | [16](lessons/16-automation/README.md) | Automation | points on the timeline with normalized values, sample-accurate playback, Read / Touch / Latch / Write with recording and thinning, targets that survive moves, undo and the project file, faders that wait for delayed audio | **DawLab 16**: lanes under the tracks, points to draw and drag, the mode switch |
 | [17](lessons/17-recording/README.md) | Recording | from the audio input to a clip: a ring that keeps the time when the disk stalls, latency-corrected placement, a take that survives a crash, punch and loop, input monitoring | **DawLab 17**: a record button, armed tracks, takes that become clips, punch, takes of a loop, takes recovered after a crash |
+| [18](lessons/18-midi/README.md) | MIDI (in progress) | notes in musical time, sample-accurate events, MIDI clips without hanging notes, a polyphonic instrument, a keyboard through a lock-free FIFO, recording and quantize | **DawLab 18**: planned |
 
 </div>
 

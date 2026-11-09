@@ -71,4 +71,5 @@ button, warnings about a silent, quiet or clipped take, comping on the track, an
 
 ## 5. Next
 
-Start with [Step 1 - From the audio thread to the disk thread](docs/step-01-input-ring.md).
+Start with [Step 1 - From the audio thread to the disk thread](docs/step-01-input-ring.md). After the chapter, continue
+with [chapter 18 - MIDI](../18-midi/README.md).

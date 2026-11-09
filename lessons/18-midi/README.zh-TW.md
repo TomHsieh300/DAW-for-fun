@@ -1,0 +1,53 @@
+# 第 18 章：MIDI - 音樂時間裡的音符、樂器與鍵盤
+
+[English](README.md) | **繁體中文**
+
+> **狀態：進行中。** 8 個 step 中的第 1 個。
+
+DawLab 17（第 17 章）會錄音也會播放音訊：已經存在的聲音，以 sample 擺放。DAW 也會播放*音符*——給樂器的指令，以拍子擺放，只有在播放時才變成聲音——並從鍵盤把它們錄下來。音符有它自己的問題：沒有結束的音符會永遠響下去、樂器的 voice 數量有限、鍵盤從另一個 thread 送出事件而且有自己的時間觀，而錄下的演奏常常希望比彈的時候更整齊一點。
+
+## 如何使用本章
+
+和第 15 到 17 章一樣，每個 step 都是 `steps/stepNN-*/` 裡一個小而完整的 snapshot：你在 `starter/` 裡寫出該 step 的函式，self-check 會告訴你它們何時能正常運作。請見 [steps/README.zh-TW.md](steps/README.zh-TW.md)。
+
+```powershell
+.\scripts\build.ps1 -Only 18-midi          # no JUCE needed
+.\build\bin\Debug\l18_step01_starter.exe
+```
+
+在 Linux / macOS：`./scripts/build.sh --only 18-midi`，然後執行 `./build/bin/l18_step01_starter`。
+
+## 1. 學習目標
+
+完成本章後，你可以
+
+- 表示 MIDI 訊息，把音符放在音樂時間裡，並在精確的 sample 上播放每個事件；
+- 播放 MIDI clip 經過 loop、seek 和停止時，不留下任何卡住的音；
+- 做出一個複音樂器：沒有 aliasing 的 oscillator、envelope、voice 與 voice stealing；
+- 把鍵盤的事件從它的 thread 送到 audio thread，並在 latency 和 jitter 之間做取捨；
+- 把演奏錄在彈奏的位置，並在不失去原始演奏的情況下 quantize。
+
+## 2. 各個 step
+
+<div align="center">
+
+| Step | 文件 | 新增的內容 | 狀態 |
+|---|---|---|---|
+| 1 | [MIDI 事件與音樂時間](docs/step-01-midi-time.zh-TW.md) | 三個 byte 的訊息、存在 tick 裡的音符、block 邊界的精確反函數、note off 在前、在每個事件處切開的樂器 | 完成 |
+| 2 | 播放 MIDI clip | 跨過 block、clip、loop 邊界的音符；停止、seek、繞回、mute、刪除時不留卡住的音；seek 時補回 controller | 規劃中 |
+| 3 | 一個 voice | 沒有 aliasing 的 oscillator（PolyBLEP）、ADSR envelope、filter、velocity；沒有爆音、不配置記憶體 | 規劃中 |
+| 4 | 複音 | voice 分配與 stealing、同一個音再彈一次、延音踏板、pitch bend | 規劃中 |
+| 5 | 鍵盤 | 從 MIDI thread 經 lock-free FIFO 送來的事件、把時間戳換成 sample offset：latency 或 jitter | 規劃中 |
+| 6 | 錄 MIDI | 擺放演奏、loop 疊加或取代、保留原始演奏的 quantize | 規劃中 |
+| 7 | 有樂器的 engine | 第 17 章 engine 的複本：instrument track、經 command queue 送入的 MIDI clip | 規劃中 |
+| 8 | 有樂器的 app | 第 17 章 app 的複本：instrument track、MIDI clip、piano roll、鍵盤輸入、錄音、quantize、存檔、undo | 規劃中 |
+
+</div>
+
+## 3. 本章的起點
+
+DawLab 17 裡沒有任何東西認得音符。它的 track 播放 audio clip，clip 是 sample，而它的 `Transport` 計數 tick（一個四分音符 960 個）只是為了顯示小節和拍子。Step 1 從音符是什麼開始。
+
+## 4. 下一步
+
+從 [Step 1 - MIDI 事件與音樂時間](docs/step-01-midi-time.zh-TW.md) 開始。

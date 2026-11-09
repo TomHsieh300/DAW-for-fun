@@ -175,6 +175,7 @@ cd build
 | [15](lessons/15-daw-growing/README.zh-TW.md) | 讓 DAW 長大 | 穩定的 track id、track slot 池、CPU 預算、專案檔、undo / redo：先在小小的跟著做 snapshot 裡做，再做進第 14 章 engine 與 app 的複本；ThreadSanitizer | 有 track 池的 engine 與 JUCE app「DawLab 15」（新增 / 刪除 track、存檔 / 開檔、undo / redo、CPU 警告） |
 | [16](lessons/16-automation/README.zh-TW.md) | Automation | 時間軸上值為 normalized 的點、精準到 sample 的播放、Read / Touch / Latch / Write 與錄製和精簡、撐得過移動、undo 和專案檔的對象、會等待延遲音訊的 fader | **DawLab 16**：track 下方的 lane、可以畫和拖動的點、模式切換 |
 | [17](lessons/17-recording/README.zh-TW.md) | Recording | 從音訊 input 到 clip：硬碟卡住時保持時間位置的 ring、校正 latency 的擺放、撐得過當機的 take、punch 與 loop、input monitoring | **DawLab 17**：錄音鍵、armed track、變成 clip 的 take、punch、loop 的 take、當機後復原的 take |
+| [18](lessons/18-midi/README.zh-TW.md) | MIDI（進行中） | 音樂時間裡的音符、sample 精確的事件、不留卡住音符的 MIDI clip、複音樂器、經 lock-free FIFO 送來的鍵盤輸入、錄音與 quantize | **DawLab 18**：規劃中 |
 
 </div>
 

@@ -64,4 +64,4 @@ step 的函式，self-check 會告訴你它們何時能正常運作。請見 [st
 
 ## 5. 下一步
 
-從 [Step 1 - 從 audio thread 到 disk thread](docs/step-01-input-ring.zh-TW.md) 開始。
+從 [Step 1 - 從 audio thread 到 disk thread](docs/step-01-input-ring.zh-TW.md) 開始。讀完本章後，接著讀[第 18 章 - MIDI](../18-midi/README.zh-TW.md)。
