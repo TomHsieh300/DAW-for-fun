@@ -43,3 +43,17 @@ l18_add_test(l18_test_recording         tests/test_recording.cpp)
 l18_add_test(l18_test_recording_threads tests/test_recording_threads.cpp)
 # Chapter 18: instrument tracks (the last test, new).
 l18_add_test(l18_test_midi              tests/test_midi.cpp)
+
+# The application's project file: text in, text out, no JUCE, so it is tested here and runs in
+# every build, not only with -Juce.
+l18_add_test(l18_test_project_format    tests/test_project_format.cpp app/Source/ProjectFormat.cpp)
+target_include_directories(l18_test_project_format PRIVATE app/Source)
+
+# ---- Step 8: the JUCE application "DawLab 18" ----------------------------------------------------
+# Needs -DDAWLAB_WITH_JUCE=ON (build.ps1 -Juce). Without JUCE the chapter stops here.
+if(NOT DAWLAB_WITH_JUCE)
+    message(STATUS "18-midi: the JUCE app (DawLab18) is skipped (use -Juce)")
+    return()
+endif()
+
+add_subdirectory(app)   # targets: l18_daw_app (static library), DawLab18 (the application)
