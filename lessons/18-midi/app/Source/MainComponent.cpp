@@ -633,10 +633,12 @@ void MainComponent::loadDroppedFiles(engine::TrackId track, const juce::StringAr
     }
 }
 
-engine::TrackId MainComponent::addTrack(engine::TrackFormat format) {
+engine::TrackId MainComponent::addTrack(engine::TrackFormat format, bool instrument) {
     // Below the selected track, like most DAWs; at the end in a project without tracks.
     const int selectedLane = session_.indexOf(arrangement_.getSelectedTrack());
-    const edit::AddTrack add = session_.makeNewTrack(format, selectedLane >= 0 ? selectedLane + 1 : -1);
+    const edit::AddTrack add = session_.makeNewTrack(format, selectedLane >= 0 ? selectedLane + 1 : -1,
+                                                     instrument ? "Synth " + juce::String(session_.getNumTracks() + 1) : juce::String(),
+                                                     instrument);
     const engine::TrackId id = session_.perform(add, "Add track " + add.track.name) ? add.track.id : engine::TrackId{};
     if (!id.isValid()) {
         setStatus(session_.getNumTracks() >= engine::kMaxTracks

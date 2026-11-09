@@ -171,6 +171,19 @@ public:
     // Undoable. False if the clip has no such take.
     bool chooseTake(engine::TrackId track, int clipIndex, int takeIndex);
 
+    // ---- instruments and MIDI clips (chapter 18, Step 8) -------------------------------------------
+    // WITHOUT recording, like setClips(); the edits SetInstrument and SetMidiClips record.
+    bool isInstrument(engine::TrackId track) const noexcept;
+    void setInstrument(engine::TrackId track, bool instrument);
+    const std::vector<MidiClipModel>& getMidiClips(engine::TrackId track) const; // empty for an unknown id
+    // Sorted by start; a clip with id 0 gets a new one. The engine gets each clip's quantized notes.
+    void setMidiClips(engine::TrackId track, std::vector<MidiClipModel> clips);
+    // A clip id never handed out before.
+    int newMidiClipId() noexcept { return nextMidiClipId_++; }
+    // The timeline sample where a tick plays at the tempo now.
+    int64_t sampleOfTick(int64_t tick) const noexcept;
+    int64_t tickOfSample(int64_t sample) const noexcept; // the nearest tick
+
     // ---- insert slots ------------------------------------------------------------------------
     const InsertSlotState& getSlot(engine::ChannelRef ref, int uiSlot) const;
     int chainIndexOf(engine::ChannelRef ref, int uiSlot) const noexcept;
@@ -278,7 +291,7 @@ public:
 
     // The edit that adds a NEW track at display position `index` (-1 = at the end). It names the
     // next id; applying it moves the id counter on (and undoing it never moves it back).
-    edit::AddTrack makeNewTrack(engine::TrackFormat format, int index = -1, const juce::String& name = {}) const;
+    edit::AddTrack makeNewTrack(engine::TrackFormat format, int index = -1, const juce::String& name = {}, bool instrument = false) const;
     TrackSnapshot snapshotTrack(engine::TrackId id) const;
     InsertSnapshot snapshotInsert(engine::ChannelRef ref, int uiSlot) const;
     engine::ChannelRef refOf(const StripTarget& target) const noexcept;
@@ -297,6 +310,8 @@ private:
         engine::TrackId id;
         std::vector<engine::Clip> clips;
         StripModel strip;
+        bool instrument = false;               // chapter 18
+        std::vector<MidiClipModel> midiClips;  // chapter 18, by start
     };
 
     TrackModel* findTrack(engine::TrackId id) noexcept;
@@ -317,6 +332,9 @@ private:
     std::optional<Edit> apply(const edit::SetBypass&);
     std::optional<Edit> apply(const edit::SetTempo&);
     std::optional<Edit> apply(const edit::SetLane&);
+    std::optional<Edit> apply(const edit::SetMidiClips&);
+    std::optional<Edit> apply(const edit::SetInstrument&);
+    void pushMidiClips(const TrackModel& track);
     engine::InsertEffect* effectOf(const LaneAddress& address) const noexcept;
     engine::AutomationLane* laneOf(const LaneAddress& address) const noexcept;
     int parameterIndexOf(const LaneAddress& address) const noexcept; // -1: not known
@@ -335,6 +353,7 @@ private:
     std::vector<TrackModel> tracks_;                          // display order
     std::array<StripModel, engine::kNumBuses + 1> fixedStrips_; // the buses, then the master
     std::uint32_t nextTrackId_ = 1;                           // only counts up (see the top)
+    int nextMidiClipId_ = 1;                                  // only counts up: the engine's player knows clips by it
     double clipSampleRate_ = 0.0; // 0 = not set yet: follow the engine
     juce::String projectName_ = "Untitled";
     History history_;

@@ -35,6 +35,18 @@
 //                                                  (format 5) a recording's passes of a loop, on one audio
 //                                                  file: three numbers per take: start, source offset, length
 //
+//   instrument 17                                  (format 6) track 17 is an instrument track
+//   midiclip 17 1 3840 15360 0 0 "Bass" 240 1 0    (format 6) track, clip number, start, length, offset (TICKS,
+//                                                  960 to a quarter note), muted, name, quantize grid (ticks),
+//                                                  strength 0..1 (0: as played), swing 0..0.5
+//   note 1 0 480 36 100 0                          (format 6) clip number, start, length (ticks from the clip's
+//                                                  own zero), pitch, velocity 1..127, channel 0..15 - as PLAYED:
+//                                                  quantize is applied when the clip plays
+//   cc 1 0 64 127 0                                (format 6) clip number, tick, controller, value, channel
+//
+// MIDI is in ticks, so it means the same at any sample rate and follows the tempo: an opened project at
+// another rate converts its audio positions and leaves its notes alone.
+//
 // A lane names its effect by slot: like a track's id, a slot here is only the file's own reference,
 // because an opened project gets new EffectIds. Points of one lane at one position keep the order of
 // their lines: that is how a jump survives. A parameter this version does not know is not an error
@@ -66,7 +78,8 @@ constexpr int kInsertSlotsPerStrip = 4; // GUI insert slots per strip (Session, 
 
 namespace project {
 
-constexpr int kFormatVersion = 5; // 1: Step 4 without pan; 2: Step 4; 3: the whole app project; 4: automation; 5: takes
+constexpr int kFormatVersion = 6; // 1: Step 4 without pan; 2: Step 4; 3: the whole app project; 4: automation; 5: takes;
+                                  // 6: instruments and MIDI clips
 
 struct SendState {
     float levelDb = kMinusInfinityDb;
@@ -116,6 +129,20 @@ struct TrackState {
     engine::TrackId id;
     engine::TrackFormat format = engine::TrackFormat::Mono;
     StripState strip;
+    bool instrument = false; // format 6
+};
+
+// A MIDI clip (format 6): the engine's clip as values, its played notes, and how they are quantized.
+struct MidiClipState {
+    engine::TrackId track;
+    std::int64_t start = 0, length = 0, offset = 0; // ticks
+    bool muted = false;
+    std::string name;
+    std::int64_t grid = 240;
+    float strength = 0.0f;
+    float swing = 0.0f;
+    std::vector<engine::Note> notes;                  // by start
+    std::vector<engine::ControllerPoint> controllers; // by tick
 };
 
 struct ClipState {
@@ -157,6 +184,7 @@ struct ProjectState {
     StripState master;
     std::vector<ClipState> clips; // per track in start order (any order is accepted)
     std::vector<TakeSetState> takeSets; // format 5
+    std::vector<MidiClipState> midiClips; // format 6, per track in start order
 };
 
 bool operator==(const SendState& a, const SendState& b);
@@ -169,6 +197,7 @@ bool operator==(const TrackState& a, const TrackState& b);
 bool operator==(const ClipState& a, const ClipState& b);
 bool operator==(const TakeState& a, const TakeState& b);
 bool operator==(const TakeSetState& a, const TakeSetState& b);
+bool operator==(const MidiClipState& a, const MidiClipState& b);
 bool operator==(const ProjectState& a, const ProjectState& b);
 
 struct ReadResult {

@@ -283,6 +283,65 @@ int Session::applyDemoSong(const DemoSong& song) {
     return unknown;
 }
 
+// ---- instruments and MIDI clips (chapter 18) --------------------------------------------------------
+
+namespace {
+const std::vector<MidiClipModel> kNoMidiClips;
+} // namespace
+
+bool Session::isInstrument(TrackId track) const noexcept {
+    const TrackModel* t = findTrack(track);
+    return t != nullptr && t->instrument;
+}
+
+void Session::setInstrument(TrackId track, bool instrument) {
+    TrackModel* t = findTrack(track);
+    if (t == nullptr)
+        return;
+    t->instrument = instrument;
+    if (engine::Track* et = engine_.getTrack(track))
+        et->setInstrument(instrument);
+    sendChangeMessage();
+}
+
+const std::vector<MidiClipModel>& Session::getMidiClips(TrackId track) const {
+    const TrackModel* t = findTrack(track);
+    return t ? t->midiClips : kNoMidiClips;
+}
+
+void Session::pushMidiClips(const TrackModel& track) {
+    std::vector<engine::MidiClip> clips;
+    clips.reserve(track.midiClips.size());
+    for (const MidiClipModel& c : track.midiClips)
+        clips.push_back(c.toEngine());
+    engine_.setTrackMidiClips(track.id, std::move(clips));
+}
+
+void Session::setMidiClips(TrackId track, std::vector<MidiClipModel> clips) {
+    TrackModel* t = findTrack(track);
+    if (t == nullptr)
+        return;
+    for (MidiClipModel& c : clips) {
+        if (c.id == 0)
+            c.id = newMidiClipId();
+        nextMidiClipId_ = std::max(nextMidiClipId_, c.id + 1);
+    }
+    std::stable_sort(clips.begin(), clips.end(), [](const MidiClipModel& a, const MidiClipModel& b) { return a.start < b.start; });
+    t->midiClips = std::move(clips);
+    pushMidiClips(*t);
+    sendChangeMessage();
+}
+
+int64_t Session::sampleOfTick(int64_t tick) const noexcept {
+    const Transport& tr = engine_.getTransport();
+    return engine::sampleOfTick(tick, engine::samplesPerTick(getClipSampleRate(), tr.getTempo()));
+}
+
+int64_t Session::tickOfSample(int64_t sample) const noexcept {
+    const Transport& tr = engine_.getTransport();
+    return std::llround(static_cast<double>(sample) / engine::samplesPerTick(getClipSampleRate(), tr.getTempo()));
+}
+
 // ---- clips ---------------------------------------------------------------------------------------
 
 const std::vector<Clip>& Session::getClips(TrackId track) const {
@@ -418,9 +477,12 @@ int Session::moveClip(TrackId track, int clipIndex, int64_t newStart) {
 
 int64_t Session::getSongEndSample() const {
     int64_t end = 0;
-    for (const TrackModel& t : tracks_)
+    for (const TrackModel& t : tracks_) {
         for (const Clip& c : t.clips)
             end = std::max(end, c.end());
+        for (const MidiClipModel& c : t.midiClips) // chapter 18: at the tempo now
+            end = std::max(end, sampleOfTick(c.end()));
+    }
     return end;
 }
 
@@ -719,10 +781,11 @@ ChannelRef Session::refOf(const StripTarget& t) const noexcept {
     return ChannelRef::master();
 }
 
-edit::AddTrack Session::makeNewTrack(TrackFormat format, int index, const juce::String& name) const {
+edit::AddTrack Session::makeNewTrack(TrackFormat format, int index, const juce::String& name, bool instrument) const {
     edit::AddTrack a;
     a.track.id = TrackId{nextTrackId_};
     a.track.format = format;
+    a.track.instrument = instrument;
     a.track.name = name.isNotEmpty() ? name : "Track " + juce::String(getNumTracks() + 1);
     a.index = index;
     return a;
@@ -768,6 +831,8 @@ TrackSnapshot Session::snapshotTrack(TrackId id) const {
         s.inserts[static_cast<size_t>(slot)] = snapshotInsert(ref, slot);
     s.clips = getClips(id);
     s.lanes = ownedLanes(StripTarget::ofTrack(id), EffectId{});
+    s.instrument = isInstrument(id);
+    s.midiClips = getMidiClips(id);
     return s;
 }
 
@@ -822,6 +887,10 @@ std::optional<Edit> Session::apply(const edit::AddTrack& e) {
     if (!s.clips.empty())
         setClips(id, s.clips);
     restoreLanes(StripTarget::ofTrack(id), EffectId{}, s.lanes);
+    if (s.instrument)
+        setInstrument(id, true);
+    if (!s.midiClips.empty())
+        setMidiClips(id, s.midiClips);
     return edit::RemoveTrack{id};
 }
 
@@ -880,6 +949,22 @@ std::optional<Edit> Session::apply(const edit::SetFormat& e) {
         return std::nullopt;
     edit::SetFormat inverse{e.track, getTrackFormat(e.track)};
     setTrackFormat(e.track, e.format);
+    return inverse;
+}
+
+std::optional<Edit> Session::apply(const edit::SetMidiClips& e) {
+    if (!hasTrack(e.track))
+        return std::nullopt;
+    edit::SetMidiClips inverse{e.track, getMidiClips(e.track)};
+    setMidiClips(e.track, e.clips);
+    return inverse;
+}
+
+std::optional<Edit> Session::apply(const edit::SetInstrument& e) {
+    if (!hasTrack(e.track))
+        return std::nullopt;
+    edit::SetInstrument inverse{e.track, isInstrument(e.track)};
+    setInstrument(e.track, e.instrument);
     return inverse;
 }
 

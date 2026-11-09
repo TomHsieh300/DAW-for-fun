@@ -17,6 +17,7 @@
 
 #include <dawlab/engine/All.h>
 
+#include "MidiModel.h"     // MidiClipModel (chapter 18)
 #include "ProjectFormat.h" // kInsertSlotsPerStrip
 
 #include <juce_core/juce_core.h>
@@ -100,6 +101,8 @@ struct TrackSnapshot {
     std::array<InsertSnapshot, kInsertSlotsPerStrip> inserts{};
     std::vector<engine::Clip> clips; // the clips share their audio buffers with the project
     std::vector<OwnedLane> lanes;    // of its fader and pan; its effects' are in `inserts`
+    bool instrument = false;                // chapter 18
+    std::vector<MidiClipModel> midiClips;   // chapter 18
 };
 
 namespace edit {
@@ -132,6 +135,16 @@ struct SetClips {
     engine::TrackId track;
     std::vector<engine::Clip> clips;
 };
+// Chapter 18: a track's MIDI clips, all at once (a note drawn, a clip moved, a recording, a quantize).
+struct SetMidiClips {
+    engine::TrackId track;
+    std::vector<MidiClipModel> clips;
+};
+// Chapter 18: an audio track becomes an instrument track, or back.
+struct SetInstrument {
+    engine::TrackId track;
+    bool instrument = false;
+};
 struct SetInsert { // add, replace or (an Empty snapshot) remove an insert
     StripTarget strip;
     int slot = 0;
@@ -160,7 +173,8 @@ struct SetLane {
 } // namespace edit
 
 using Edit = std::variant<edit::AddTrack, edit::RemoveTrack, edit::SetValue, edit::Rename, edit::SetFormat, edit::SetClips,
-                          edit::SetInsert, edit::SetParameter, edit::SetBypass, edit::SetTempo, edit::SetLane>;
+                          edit::SetInsert, edit::SetParameter, edit::SetBypass, edit::SetTempo, edit::SetLane, edit::SetMidiClips,
+                          edit::SetInstrument>;
 
 // What the History applies edits to (the Session). Returns the inverse, or nothing when the edit
 // does not apply (its track is gone, its slot is empty...) - then nothing changed.

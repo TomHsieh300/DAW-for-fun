@@ -1075,12 +1075,111 @@ void testAutomation() {
     DAWLAB_CHECK(engine.getGarbageLeaked() == 0);
 }
 
+// ---- instruments and MIDI clips (chapter 18, Step 8) --------------------------------------------------
+
+engine::Track* engineTrack(MainComponent& main, TrackId id) { return main.getEngine().getTrack(id); }
+
+MidiClipModel midiClip(std::int64_t start, std::vector<engine::Note> played) {
+    MidiClipModel c;
+    c.start = start;
+    c.length = 4 * 960;
+    c.name = "Riff";
+    c.played = std::move(played);
+    return c;
+}
+
+void testMidiModel() {
+    std::printf("instruments and MIDI clips: the model\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    Session& session = main.getSession();
+    Engine& engine = main.getEngine();
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+
+    // An instrument track, as one undo step.
+    const TrackId synth = main.addTrack(TrackFormat::Mono, true);
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(synth.isValid() && session.isInstrument(synth) && engineTrack(main, synth)->isInstrument());
+    DAWLAB_CHECK(session.getStripName(session.trackRef(synth)).startsWith("Synth"));
+    DAWLAB_CHECK(main.undo() && !session.hasTrack(synth));
+    DAWLAB_CHECK(main.redo() && session.isInstrument(synth));
+    engine.applyPendingCommandsOffline();
+
+    // A clip, as one undo step: it gets an id, and the engine plays it.
+    DAWLAB_CHECK(session.perform(edit::SetMidiClips{synth, {midiClip(0, {{0, 960, 60, 100, 0}, {250, 960, 64, 100, 0}})}}, "Add MIDI clip"));
+    engine.applyPendingCommandsOffline();
+    const auto& clips = session.getMidiClips(synth);
+    DAWLAB_CHECK(clips.size() == 1 && clips[0].id > 0);
+    const std::vector<engine::MidiClip>* playing = engineTrack(main, synth)->getMidiClips();
+    DAWLAB_CHECK(playing != nullptr && playing->size() == 1 && (*playing)[0].notes.size() == 2);
+    engine.getTransport().setPosition(0);
+    engine.getTransport().play();
+    main.simulatePlayback(4800);
+    DAWLAB_CHECK(engineTrack(main, synth)->getSynth()->activeVoices() == 1); // the note at tick 250 is at 6250
+    main.simulatePlayback(4800);
+    DAWLAB_CHECK(engineTrack(main, synth)->getSynth()->activeVoices() == 2);
+    engine.getTransport().stop();
+    main.simulatePlayback(512);
+
+    // Quantize: the engine plays 250 on the grid, the clip keeps 250 as played.
+    std::vector<MidiClipModel> quantized = session.getMidiClips(synth);
+    quantized[0].quantize = {240, 1.0, 0.0};
+    DAWLAB_CHECK(session.perform(edit::SetMidiClips{synth, quantized}, "Quantize"));
+    engine.applyPendingCommandsOffline();
+    playing = engineTrack(main, synth)->getMidiClips();
+    DAWLAB_CHECK(playing != nullptr && (*playing)[0].notes[1].start == 240 && session.getMidiClips(synth)[0].played[1].start == 250);
+    const int clipId = session.getMidiClips(synth)[0].id;
+    DAWLAB_CHECK((*playing)[0].id == clipId); // the same clip for the player, through the edit
+    DAWLAB_CHECK(main.undo());
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(session.getMidiClips(synth)[0].quantize.strength == 0.0 && (*engineTrack(main, synth)->getMidiClips())[0].notes[1].start == 250);
+    DAWLAB_CHECK(main.redo());
+
+    // Not an instrument any more, and back, as undo steps.
+    DAWLAB_CHECK(session.perform(edit::SetInstrument{synth, false}, "Audio track"));
+    DAWLAB_CHECK(!session.isInstrument(synth) && !engineTrack(main, synth)->isInstrument());
+    DAWLAB_CHECK(main.undo() && session.isInstrument(synth) && engineTrack(main, synth)->isInstrument());
+
+    // Deleted and brought back: the instrument and its clips, with the same clip ids.
+    const std::vector<MidiClipModel> before = session.getMidiClips(synth);
+    main.getArrangement().setSelectedTrack(synth);
+    DAWLAB_CHECK(main.deleteSelectedTrack() && !session.hasTrack(synth));
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(main.undo() && session.hasTrack(synth) && session.isInstrument(synth));
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(session.getMidiClips(synth) == before && engineTrack(main, synth)->isInstrument());
+    DAWLAB_CHECK(engineTrack(main, synth)->getMidiClips() != nullptr && engineTrack(main, synth)->getMidiClips()->size() == 1);
+
+    // Saved and opened: the same, with the played notes and the quantize; new clip ids are fine.
+    TakesFolder folder;
+    const juce::File file = folder.get().getChildFile("Midi.dawlab");
+    DAWLAB_CHECK(main.saveProject(file));
+    const ProjectIO::OpenResult opened = main.openProject(file);
+    DAWLAB_CHECK(opened.ok && opened.warnings.isEmpty());
+    engine.applyPendingCommandsOffline();
+    TrackId reopened;
+    for (int i = 0; i < session.getNumTracks(); ++i)
+        if (session.isInstrument(session.getTrackId(i)))
+            reopened = session.getTrackId(i);
+    DAWLAB_CHECK(reopened.isValid() && session.getMidiClips(reopened).size() == 1);
+    if (reopened.isValid() && session.getMidiClips(reopened).size() == 1) {
+        MidiClipModel a = session.getMidiClips(reopened)[0], b = before[0];
+        a.id = b.id = 0;
+        DAWLAB_CHECK(a == b && a.quantize.strength == 1.0 && a.played[1].start == 250);
+        DAWLAB_CHECK(engineTrack(main, reopened)->isInstrument());
+    }
+    engine.collectGarbage();
+    DAWLAB_CHECK(engine.getGarbageLeaked() == 0);
+}
+
 // ---- --smoke-test --------------------------------------------------------------------------------
 
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     constexpr double sr = 48000.0;
     std::setvbuf(stdout, nullptr, _IONBF, 0); // unbuffered: a crash must not swallow what was printed
     std::printf("DawLab 18 smoke test (no audio device)\n\n");
+    testMidiModel();
     testAutomation();
     testRecording();
 

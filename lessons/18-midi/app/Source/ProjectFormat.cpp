@@ -29,7 +29,22 @@ bool operator==(const StripState& a, const StripState& b) {
     return a.name == b.name && a.gainDb == b.gainDb && a.pan == b.pan && a.mute == b.mute && a.solo == b.solo &&
            a.sends == b.sends && a.inserts == b.inserts && a.lanes == b.lanes;
 }
-bool operator==(const TrackState& a, const TrackState& b) { return a.id == b.id && a.format == b.format && a.strip == b.strip; }
+bool operator==(const TrackState& a, const TrackState& b) {
+    return a.id == b.id && a.format == b.format && a.strip == b.strip && a.instrument == b.instrument;
+}
+bool operator==(const MidiClipState& a, const MidiClipState& b) {
+    auto sameControllers = [](const std::vector<engine::ControllerPoint>& x, const std::vector<engine::ControllerPoint>& y) {
+        if (x.size() != y.size())
+            return false;
+        for (size_t i = 0; i < x.size(); ++i)
+            if (x[i].tick != y[i].tick || x[i].number != y[i].number || x[i].value != y[i].value || x[i].channel != y[i].channel)
+                return false;
+        return true;
+    };
+    return a.track == b.track && a.start == b.start && a.length == b.length && a.offset == b.offset && a.muted == b.muted &&
+           a.name == b.name && a.grid == b.grid && a.strength == b.strength && a.swing == b.swing && a.notes == b.notes &&
+           sameControllers(a.controllers, b.controllers);
+}
 bool operator==(const ClipState& a, const ClipState& b) {
     return a.track == b.track && a.start == b.start && a.length == b.length && a.file == b.file &&
            a.sourceOffset == b.sourceOffset && a.fadeIn == b.fadeIn && a.fadeOut == b.fadeOut &&
@@ -43,7 +58,7 @@ bool operator==(const ProjectState& a, const ProjectState& b) {
     return a.sampleRate == b.sampleRate && a.nextTrackId == b.nextTrackId && a.tempo == b.tempo &&
            a.beatsPerBar == b.beatsPerBar && a.beatUnit == b.beatUnit && a.loopStart == b.loopStart &&
            a.loopEnd == b.loopEnd && a.loopEnabled == b.loopEnabled && a.tracks == b.tracks && a.buses == b.buses &&
-           a.master == b.master && a.clips == b.clips && a.takeSets == b.takeSets;
+           a.master == b.master && a.clips == b.clips && a.takeSets == b.takeSets && a.midiClips == b.midiClips;
 }
 
 namespace {
@@ -278,6 +293,20 @@ std::string writeProject(const ProjectState& p) {
             out << ' ' << t.start << ' ' << t.sourceOffset << ' ' << t.length;
         out << '\n';
     }
+    for (const TrackState& t : p.tracks)
+        if (t.instrument)
+            out << "instrument " << t.id.value << '\n';
+    int clipNumber = 0;
+    for (const MidiClipState& c : p.midiClips) {
+        ++clipNumber;
+        out << "midiclip " << c.track.value << ' ' << clipNumber << ' ' << c.start << ' ' << c.length << ' ' << c.offset << ' '
+            << c.muted << ' ' << quote(c.name) << ' ' << c.grid << ' ' << c.strength << ' ' << c.swing << '\n';
+        for (const engine::Note& n : c.notes)
+            out << "note " << clipNumber << ' ' << n.start << ' ' << n.length << ' ' << n.pitch << ' ' << n.velocity << ' ' << n.channel
+                << '\n';
+        for (const engine::ControllerPoint& cc : c.controllers)
+            out << "cc " << clipNumber << ' ' << cc.tick << ' ' << cc.number << ' ' << cc.value << ' ' << cc.channel << '\n';
+    }
     int laneNumber = 0;
     for (const TrackState& t : p.tracks)
         writeLanes(out, {ChannelName::Kind::Track, t.id.value}, t.strip, laneNumber);
@@ -332,6 +361,19 @@ ReadResult readProject(std::string_view text) {
     std::vector<PendingLane> lanes;
     std::vector<PendingPoint> points;
     std::vector<int> clipLines;
+    // Format 6: MIDI clips by their number in the file, and what refers to them.
+    std::vector<int> midiClipNumbers, midiClipLines;
+    struct PendingNote {
+        int line = 0, clip = 0;
+        engine::Note note;
+    };
+    struct PendingCc {
+        int line = 0, clip = 0;
+        engine::ControllerPoint cc;
+    };
+    std::vector<PendingNote> notes;
+    std::vector<PendingCc> ccs;
+    std::vector<std::pair<int, engine::TrackId>> instruments; // line, track
 
     std::vector<Token> tok;
     std::string error;
@@ -517,6 +559,56 @@ ReadResult readProject(std::string_view text) {
                 s.takes.push_back(t);
             }
             p.takeSets.push_back(std::move(s));
+        } else if (kw == "instrument" || kw == "midiclip" || kw == "note" || kw == "cc") {
+            if (version < 6)
+                return fail(lineNo, "\"" + kw + "\" needs format 6 (this file is format " + std::to_string(version) + ")");
+            if (kw == "instrument") {
+                engine::TrackId id;
+                if (tok.size() != 2 || !parseNumber(tok[1], id.value) || !id.isValid())
+                    return fail(lineNo, "instrument needs a track id");
+                instruments.push_back({lineNo, id});
+            } else if (kw == "midiclip") {
+                MidiClipState c;
+                int number = 0;
+                if (tok.size() != 11 || !parseNumber(tok[1], c.track.value) || !c.track.isValid() || !parseNumber(tok[2], number))
+                    return fail(lineNo, "midiclip needs a track id, a clip number, start, length, offset, muted, a name, grid, strength, swing");
+                if (!parseNumber(tok[3], c.start) || c.start < 0 || !parseNumber(tok[4], c.length) || c.length <= 0 ||
+                    !parseNumber(tok[5], c.offset) || c.offset < 0)
+                    return fail(lineNo, "a MIDI clip needs a start and an offset of 0 or more ticks, and a length of at least 1");
+                if (!parseFlag(tok[6], c.muted) || !tok[7].quoted)
+                    return fail(lineNo, "a MIDI clip needs 0/1 for muted and a name in quotes");
+                c.name = tok[7].text;
+                if (!parseNumber(tok[8], c.grid) || c.grid <= 0 || !parseNumber(tok[9], c.strength) || c.strength < 0.0f ||
+                    c.strength > 1.0f || !parseNumber(tok[10], c.swing) || c.swing < 0.0f || c.swing > 0.5f)
+                    return fail(lineNo, "quantize needs a grid of at least 1 tick, a strength from 0 to 1 and a swing from 0 to 0.5");
+                if (std::find(midiClipNumbers.begin(), midiClipNumbers.end(), number) != midiClipNumbers.end())
+                    return fail(lineNo, "MIDI clip number " + std::to_string(number) + " used twice");
+                midiClipNumbers.push_back(number);
+                midiClipLines.push_back(lineNo);
+                p.midiClips.push_back(std::move(c));
+            } else if (kw == "note") {
+                PendingNote e;
+                e.line = lineNo;
+                engine::Note& n = e.note;
+                if (tok.size() != 7 || !parseNumber(tok[1], e.clip) || !parseNumber(tok[2], n.start) || !parseNumber(tok[3], n.length) ||
+                    !parseNumber(tok[4], n.pitch) || !parseNumber(tok[5], n.velocity) || !parseNumber(tok[6], n.channel))
+                    return fail(lineNo, "note needs a clip number, start, length, pitch, velocity and channel");
+                if (n.start < 0 || n.length <= 0 || n.pitch < 0 || n.pitch > 127 || n.velocity < 1 || n.velocity > 127 || n.channel < 0 ||
+                    n.channel > 15)
+                    return fail(lineNo, "a note needs a start of 0 or more, a length of at least 1, a pitch 0-127, a velocity 1-127 "
+                                        "and a channel 0-15");
+                notes.push_back(e);
+            } else {
+                PendingCc e;
+                e.line = lineNo;
+                engine::ControllerPoint& c = e.cc;
+                if (tok.size() != 6 || !parseNumber(tok[1], e.clip) || !parseNumber(tok[2], c.tick) || !parseNumber(tok[3], c.number) ||
+                    !parseNumber(tok[4], c.value) || !parseNumber(tok[5], c.channel))
+                    return fail(lineNo, "cc needs a clip number, a tick, a controller, a value and a channel");
+                if (c.tick < 0 || c.number < 0 || c.number > 127 || c.value < 0 || c.value > 127 || c.channel < 0 || c.channel > 15)
+                    return fail(lineNo, "a controller point needs a tick of 0 or more, a controller and a value 0-127 and a channel 0-15");
+                ccs.push_back(e);
+            }
         } else if (kw == "lane") {
             if (version < 4)
                 return fail(lineNo, "\"lane\" needs format 4 (this file is format " + std::to_string(version) + ")");
@@ -643,6 +735,40 @@ ReadResult readProject(std::string_view text) {
         const TrackId owner = p.clips[i].track;
         if (std::none_of(p.tracks.begin(), p.tracks.end(), [owner](const TrackState& t) { return t.id == owner; }))
             return fail(clipLines[i], "clip on track " + std::to_string(owner.value) + ", which does not exist");
+    }
+    auto hasTrack = [&p](engine::TrackId id) {
+        return std::any_of(p.tracks.begin(), p.tracks.end(), [id](const TrackState& t) { return t.id == id; });
+    };
+    for (const auto& [line, id] : instruments) {
+        if (!hasTrack(id))
+            return fail(line, "instrument track " + std::to_string(id.value) + ", which does not exist");
+        for (TrackState& t : p.tracks)
+            if (t.id == id)
+                t.instrument = true;
+    }
+    for (size_t i = 0; i < p.midiClips.size(); ++i)
+        if (!hasTrack(p.midiClips[i].track))
+            return fail(midiClipLines[i], "MIDI clip on track " + std::to_string(p.midiClips[i].track.value) + ", which does not exist");
+    auto clipNumbered = [&](int number) -> MidiClipState* {
+        const auto it = std::find(midiClipNumbers.begin(), midiClipNumbers.end(), number);
+        return it == midiClipNumbers.end() ? nullptr : &p.midiClips[static_cast<size_t>(it - midiClipNumbers.begin())];
+    };
+    for (const PendingNote& e : notes) {
+        MidiClipState* c = clipNumbered(e.clip);
+        if (c == nullptr)
+            return fail(e.line, "note for MIDI clip " + std::to_string(e.clip) + ", which does not exist");
+        c->notes.push_back(e.note);
+    }
+    for (const PendingCc& e : ccs) {
+        MidiClipState* c = clipNumbered(e.clip);
+        if (c == nullptr)
+            return fail(e.line, "cc for MIDI clip " + std::to_string(e.clip) + ", which does not exist");
+        c->controllers.push_back(e.cc);
+    }
+    for (MidiClipState& c : p.midiClips) {
+        std::stable_sort(c.notes.begin(), c.notes.end(), [](const engine::Note& a, const engine::Note& b) { return a.start < b.start; });
+        std::stable_sort(c.controllers.begin(), c.controllers.end(),
+                         [](const engine::ControllerPoint& a, const engine::ControllerPoint& b) { return a.tick < b.tick; });
     }
     if (maxId == std::numeric_limits<std::uint32_t>::max())
         return fail(lineNo, "no track ids left");

@@ -119,7 +119,8 @@ public:
     void loadDroppedFiles(engine::TrackId track, const juce::StringArray& files);
     // Chapter 15: a new track below the selected one, selected and scrolled into view in the
     // arrangement and the mixer. Invalid id (and a status message) when the pool is full.
-    engine::TrackId addTrack(engine::TrackFormat format);
+    // Chapter 18: `instrument` adds an instrument track (a synth that plays MIDI clips and the keyboard).
+    engine::TrackId addTrack(engine::TrackFormat format, bool instrument = false);
     // Deletes the selected track with its clips and inserts (their editors close first); the
     // track that takes its place becomes the selection. False if nothing was deleted.
     bool deleteSelectedTrack();

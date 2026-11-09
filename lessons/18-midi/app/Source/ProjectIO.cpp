@@ -172,7 +172,23 @@ ProjectIO::Captured ProjectIO::capture(const Session& session, const juce::Strin
         t.id = TrackId{static_cast<std::uint32_t>(lane + 1)}; // the file's own references, 1..N
         t.format = session.getTrackFormat(id);
         t.strip = captureStrip(session, session.trackRef(id));
+        t.instrument = session.isInstrument(id);
         p.tracks.push_back(std::move(t));
+        for (const MidiClipModel& m : session.getMidiClips(id)) { // chapter 18: in ticks, saved as played
+            project::MidiClipState ms;
+            ms.track = p.tracks.back().id;
+            ms.start = m.start;
+            ms.length = m.length;
+            ms.offset = m.offset;
+            ms.muted = m.muted;
+            ms.name = m.name.toStdString();
+            ms.grid = m.quantize.grid;
+            ms.strength = static_cast<float>(m.quantize.strength);
+            ms.swing = static_cast<float>(m.quantize.swing);
+            ms.notes = m.played;
+            ms.controllers = m.controllers;
+            p.midiClips.push_back(std::move(ms));
+        }
         for (const Clip& c : session.getClips(id)) {
             if (c.source == nullptr)
                 continue;
@@ -437,6 +453,27 @@ ProjectIO::OpenResult ProjectIO::open(Session& session, host::PluginHost* plugin
     }
     for (auto& [fileId, list] : clips)
         session.setClips(ids[fileId], std::move(list));
+    // Chapter 18: instruments and MIDI clips. Ticks: nothing to convert at another sample rate.
+    for (const TrackState& t : p.tracks)
+        if (t.instrument && ids.count(t.id.value) != 0)
+            session.setInstrument(ids[t.id.value], true);
+    std::map<std::uint32_t, std::vector<MidiClipModel>> midi;
+    for (const project::MidiClipState& ms : p.midiClips) {
+        if (ids.count(ms.track.value) == 0)
+            continue;
+        MidiClipModel m;
+        m.start = ms.start;
+        m.length = ms.length;
+        m.offset = ms.offset;
+        m.muted = ms.muted;
+        m.name = juce::String::fromUTF8(ms.name.c_str());
+        m.quantize = {ms.grid, ms.strength, ms.swing};
+        m.played = ms.notes;
+        m.controllers = ms.controllers;
+        midi[ms.track.value].push_back(std::move(m)); // id 0: the session gives each a new one
+    }
+    for (auto& [fileId, list] : midi)
+        session.setMidiClips(ids[fileId], std::move(list));
     for (const project::TakeSetState& set : p.takeSets) {
         const auto source = audio.find(set.file);
         if (source == audio.end() || source->second == nullptr)

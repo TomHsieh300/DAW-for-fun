@@ -41,6 +41,7 @@ set(L18_APP_SOURCES
     Source/History.cpp
     Source/MainComponent.h
     Source/MainComponent.cpp
+    Source/MidiModel.h
     Source/MediaLoader.h
     Source/MediaLoader.cpp
     Source/Meters.h

@@ -164,7 +164,7 @@ void testErrors() {
         const char* expected; // the error must start with this
     } cases[] = {
         {"", "line 1: not a DawLab project"},
-        {"DawLabProject 6\n", "line 1: made by a newer DawLab"},
+        {"DawLabProject 7\n", "line 1: made by a newer DawLab"},
         {"DawLabProject 3\ntrack 1 \"A\" 0 0 mono 0 0\n", "line 2: sampleRate must come"},
         {head + "volume 1\n", "line 4: unknown keyword"},
         {head + "track 2 \"B\" 0 0\n", "line 4: track needs 7 values"},
@@ -347,8 +347,84 @@ void testTakes() {
     DAWLAB_CHECK(!readProject("DawLabProject 4\nsampleRate 48000\ntakes \"a.wav\" 0 0 1\n").ok);
 }
 
+// Chapter 18: instrument tracks and MIDI clips (format 6).
+void testMidi() {
+    ProjectState p;
+    p.nextTrackId = 3;
+    TrackState a;
+    a.id = TrackId{1};
+    a.strip.name = "Bass";
+    a.instrument = true;
+    TrackState b;
+    b.id = TrackId{2};
+    b.strip.name = "Audio";
+    p.tracks = {a, b};
+    MidiClipState c;
+    c.track = TrackId{1};
+    c.start = 3840;
+    c.length = 7680;
+    c.offset = 240;
+    c.name = "Riff \"one\"";
+    c.grid = 120;
+    c.strength = 0.75f;
+    c.swing = 1.0f / 3.0f;
+    c.notes = {{0, 480, 36, 100, 0}, {0, 240, 43, 90, 9}, {481, 1, 127, 1, 15}};
+    c.controllers = {{0, 64, 127, 0}, {960, 1, 0, 3}};
+    MidiClipState d;
+    d.track = TrackId{1};
+    d.start = 20000;
+    d.length = 1;
+    d.muted = true;
+    p.midiClips = {c, d};
+    const std::string text = writeProject(p);
+    const ReadResult back = readProject(text);
+    DAWLAB_CHECK(back.ok && back.formatVersion == 6);
+    DAWLAB_CHECK(back.project == p);
+    DAWLAB_CHECK(writeProject(back.project) == text);
+    DAWLAB_CHECK(back.project.tracks.size() == 2 && back.project.tracks[0].instrument && !back.project.tracks[1].instrument);
+
+    const std::string head = "DawLabProject 6\nsampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\n";
+    const auto reads = [&head](const std::string& lines) { return readProject(head + lines + "\n").ok; };
+    DAWLAB_CHECK(reads("instrument 1"));
+    DAWLAB_CHECK(!reads("instrument 2"));    // no such track
+    DAWLAB_CHECK(!reads("instrument x"));
+    DAWLAB_CHECK(reads("midiclip 1 7 0 960 0 0 \"c\" 240 0 0"));
+    DAWLAB_CHECK(!reads("midiclip 2 7 0 960 0 0 \"c\" 240 0 0"));     // no such track
+    DAWLAB_CHECK(!reads("midiclip 1 7 0 0 0 0 \"c\" 240 0 0"));       // no length
+    DAWLAB_CHECK(!reads("midiclip 1 7 -1 960 0 0 \"c\" 240 0 0"));    // before the song
+    DAWLAB_CHECK(!reads("midiclip 1 7 0 960 -1 0 \"c\" 240 0 0"));    // a negative offset
+    DAWLAB_CHECK(!reads("midiclip 1 7 0 960 0 0 c 240 0 0"));         // the name not in quotes
+    DAWLAB_CHECK(!reads("midiclip 1 7 0 960 0 0 \"c\" 0 0 0"));       // no grid
+    DAWLAB_CHECK(!reads("midiclip 1 7 0 960 0 0 \"c\" 240 1.5 0"));   // too strong
+    DAWLAB_CHECK(!reads("midiclip 1 7 0 960 0 0 \"c\" 240 0 0.6"));   // too much swing
+    DAWLAB_CHECK(!reads("midiclip 1 7 0 960 0 0 \"c\" 240 0 0\nmidiclip 1 7 0 960 0 0 \"d\" 240 0 0")); // one number twice
+    const std::string clip = "midiclip 1 7 0 960 0 0 \"c\" 240 0 0\n";
+    DAWLAB_CHECK(reads(clip + "note 7 0 480 60 100 0"));
+    DAWLAB_CHECK(reads("note 7 0 480 60 100 0\n" + clip)); // in any order
+    DAWLAB_CHECK(!reads(clip + "note 8 0 480 60 100 0"));  // no such clip
+    DAWLAB_CHECK(!reads(clip + "note 7 0 0 60 100 0"));    // no length
+    DAWLAB_CHECK(!reads(clip + "note 7 0 480 128 100 0")); // pitch
+    DAWLAB_CHECK(!reads(clip + "note 7 0 480 60 0 0"));    // velocity 0 is a note off, not a note
+    DAWLAB_CHECK(!reads(clip + "note 7 0 480 60 100 16")); // channel
+    DAWLAB_CHECK(!reads(clip + "note 7 0 480 60 100"));
+    DAWLAB_CHECK(reads(clip + "cc 7 0 64 127 0"));
+    DAWLAB_CHECK(!reads(clip + "cc 7 0 128 127 0"));
+    DAWLAB_CHECK(!reads(clip + "cc 7 0 64 128 0"));
+    DAWLAB_CHECK(!reads(clip + "cc 9 0 64 127 0"));
+    // Notes come back sorted by start, in line order at one start.
+    const ReadResult sorted = readProject(head + clip + "note 7 500 1 60 1 0\nnote 7 0 1 61 1 0\nnote 7 500 1 62 1 0\n");
+    DAWLAB_CHECK(sorted.ok && sorted.project.midiClips.size() == 1 && sorted.project.midiClips[0].notes.size() == 3);
+    if (sorted.ok && sorted.project.midiClips[0].notes.size() == 3) {
+        const auto& n = sorted.project.midiClips[0].notes;
+        DAWLAB_CHECK(n[0].pitch == 61 && n[1].pitch == 60 && n[2].pitch == 62);
+    }
+    // An older file cannot have them.
+    DAWLAB_CHECK(!readProject("DawLabProject 5\nsampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\ninstrument 1\n").ok);
+}
+
 int main() {
     std::printf("l18_test_project_format: the application's project file, format %d\n", kFormatVersion);
+    testMidi();
     testTakes();
     testLanes();
     testRoundTrip();
