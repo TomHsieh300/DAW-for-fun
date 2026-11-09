@@ -56,6 +56,12 @@ step 的函式，self-check 會告訴你它們何時能正常運作。請見 [st
 `AudioHost::openDefaultDevice` 預設不要求任何 input channel，`Engine::processBlock` 也只有 output。engine
 的其他部分完全不知道聲音可以來自外部。Step 1 還不會動到這些，它先處理錄音要做的第一件事。
 
-## 4. 下一步
+## 4. 練習
+
+見 [exercises/README.zh-TW.md](exercises/README.zh-TW.md)，解答在 [solutions/README.zh-TW.md](solutions/README.zh-TW.md)。
+共六題，都不需要 JUCE：錄音為什麼要這麼小心（概念）、用數字看錄音（計算）、只寫 take 用得到的部分、
+量測 latency 也要知道何時不能信、告訴使用者 input 出了什麼問題，以及兩個裝置、兩個時鐘（設計）。
+
+## 5. 下一步
 
 從 [Step 1 - 從 audio thread 到 disk thread](docs/step-01-input-ring.zh-TW.md) 開始。

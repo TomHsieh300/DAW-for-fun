@@ -60,6 +60,13 @@ away, `AudioHost::openDefaultDevice` asks for no input channels by default, and
 `Engine::processBlock` only has an output. Nothing else in the engine knows that a sound can come from
 outside. Step 1 does not touch any of this yet: it starts with the first thing a recording has to do.
 
-## 4. Next
+## 4. Exercises
+
+See [exercises/README.md](exercises/README.md), with the answers in [solutions/README.md](solutions/README.md).
+Six exercises, none needs JUCE: why recording is so careful (concept), recording by the numbers
+(calculation), writing only what a take can use, measuring the latency and knowing when not to trust it,
+telling the user what is wrong with the input, and two devices with two clocks (design).
+
+## 5. Next
 
 Start with [Step 1 - From the audio thread to the disk thread](docs/step-01-input-ring.md).
