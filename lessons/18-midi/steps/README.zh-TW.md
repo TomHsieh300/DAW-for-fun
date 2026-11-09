@@ -15,6 +15,7 @@
 | 3 | `step03-one-voice` | `noteFrequency`、`polyBlep`、`Saw::next`、`Adsr::noteOn`、`noteOff`、`next`、`Voice::start`、`release`、`render` | `l18_step03_starter` |
 | 4 | `step04-polyphony` | `Synth::allocate`、`handle`、`render` | `l18_step04_starter` |
 | 5 | `step05-keyboard` | `MidiParser::feed`、`MidiFifo::push`、`pop`、`peek`、`drain` | `l18_step05_starter` |
+| 6 | `step06-recording` | `songSampleAt`、`tickAt`、`NoteRecorder::noteOn`、`noteOff`、`stop`、`mergeTake`、`quantize` | `l18_step06_starter` |
 
 </div>
 

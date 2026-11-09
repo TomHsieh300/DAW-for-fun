@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-05-keyboard.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 4 - Polyphony](step-04-polyphony.md) | Next: Step 6 - Recording MIDI (coming)
+[Overview](../README.md) | Previous: [Step 4 - Polyphony](step-04-polyphony.md) | Next: [Step 6 - Recording MIDI](step-06-recording.md)
 
 ## Goal
 

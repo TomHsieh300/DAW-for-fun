@@ -2,7 +2,7 @@
 
 [English](README.md) | **繁體中文**
 
-> **狀態：進行中。** 8 個 step 中的第 1-5 個。
+> **狀態：進行中。** 8 個 step 中的第 1-6 個。
 
 DawLab 17（第 17 章）會錄音也會播放音訊：已經存在的聲音，以 sample 擺放。DAW 也會播放*音符*——給樂器的指令，以拍子擺放，只有在播放時才變成聲音——並從鍵盤把它們錄下來。音符有它自己的問題：沒有結束的音符會永遠響下去、樂器的 voice 數量有限、鍵盤從另一個 thread 送出事件而且有自己的時間觀，而錄下的演奏常常希望比彈的時候更整齊一點。
 
@@ -38,7 +38,7 @@ DawLab 17（第 17 章）會錄音也會播放音訊：已經存在的聲音，�
 | 3 | [一個 voice](docs/step-03-one-voice.zh-TW.md) | 用 PolyBLEP 的鋸齒波並量測它的 alias；絕不跳躍的 ADSR；filter、velocity；加進混音的 voice | 完成 |
 | 4 | [複音](docs/step-04-polyphony.zh-TW.md) | voice 池、同一個音回到自己的 voice、不爆音地搶最不會被想念的 voice、延音踏板、pitch bend、all notes off | 完成 |
 | 5 | [鍵盤](docs/step-05-keyboard.zh-TW.md) | byte parser（running status、real time、SysEx）、來自 MIDI thread 的 SPSC FIFO、把時間戳換成 sample offset：jitter 或固定延遲；ThreadSanitizer | 完成 |
-| 6 | 錄 MIDI | 擺放演奏、loop 疊加或取代、保留原始演奏的 quantize | 規劃中 |
+| 6 | [錄 MIDI](docs/step-06-recording.zh-TW.md) | 依按鍵按下的時間擺放音符（輸出與 mix latency，沒有 input latency）、loop 的 pass、疊加或取代、有 strength 和 swing 且保留原始演奏的 quantize | 完成 |
 | 7 | 有樂器的 engine | 第 17 章 engine 的複本：instrument track、經 command queue 送入的 MIDI clip | 規劃中 |
 | 8 | 有樂器的 app | 第 17 章 app 的複本：instrument track、MIDI clip、piano roll、鍵盤輸入、錄音、quantize、存檔、undo | 規劃中 |
 
