@@ -149,6 +149,14 @@ public:
     std::function<void(engine::TrackId track)> onMonitorClicked;
     std::function<void(engine::TrackId track)> onRecordMenu;
     std::function<void(engine::TrackId track, int clipIndex)> onClipMenu;
+
+    // ---- MIDI clips (chapter 18) ------------------------------------------------------------------
+    // On an instrument track: double click on nothing = a new clip of one bar there; drag = move (snapped to
+    // the beat; Alt = free); double click on a clip = edit its notes; right click = its menu.
+    juce::Rectangle<int> getMidiClipBounds(int lane, int clipIndex) const;
+    int midiClipAt(int lane, float x) const;
+    std::function<void(engine::TrackId track, int clipIndex)> onEditMidiClip;
+    std::function<void(engine::TrackId track, int clipIndex)> onMidiClipMenu;
     // What a track has recorded so far (TakeRecorder::getLive); false if nothing.
     std::function<bool(engine::TrackId track, engine::LiveTake& live)> liveTakeOf;
     float valueToY(int lane, float value) const noexcept;
@@ -196,6 +204,7 @@ private:
     void paintClip(juce::Graphics&, engine::TrackId track, const engine::Clip& clip, juce::Rectangle<int> bounds,
                    bool selected);
     void paintAutomation(juce::Graphics&, int lane, juce::Rectangle<int> area);
+    void paintMidiClip(juce::Graphics&, engine::TrackId track, const MidiClipModel& clip, juce::Rectangle<int> bounds, bool selected);
     void paintLiveTake(juce::Graphics&, engine::TrackId track, juce::Rectangle<int> area);
     void mouseDownInAutomation(const juce::MouseEvent&, int lane);
     void showParameterMenu(engine::TrackId track);
@@ -219,7 +228,8 @@ private:
 
     // drag state
     std::vector<std::pair<engine::TrackId, LaneAddress>> shownLanes_;
-    enum class Drag { None, Seek, Clip, Point };
+    enum class Drag { None, Seek, Clip, Point, MidiClip };
+    std::uint32_t dragMidiKey_ = 0;
     Drag drag_ = Drag::None;
     engine::TrackId dragTrack_;
     int dragClip_ = -1;

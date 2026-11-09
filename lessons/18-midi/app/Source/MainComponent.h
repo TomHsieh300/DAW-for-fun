@@ -28,6 +28,7 @@
 #include "MediaLoader.h"
 #include "MixerView.h"
 #include "ParameterPanel.h"
+#include "PianoRoll.h"
 #include "ProjectIO.h"
 #include "Session.h"
 #include "TakeRecorder.h"
@@ -88,6 +89,13 @@ public:
     void cycleMonitor(engine::TrackId track); // Off, Auto, Always
     void showRecordMenu(engine::TrackId track);
     void showClipMenu(engine::TrackId track, int clipIndex);
+    // ---- MIDI clips (chapter 18, Step 8) ---------------------------------------------------------------
+    // Opens (or brings to the front) the piano roll of a clip. Offline (tests) there are no windows: nullptr.
+    PianoRollWindow* openPianoRoll(engine::TrackId track, int clipIndex);
+    void showMidiClipMenu(engine::TrackId track, int clipIndex);
+    // The menu's items, as undoable edits: quantize (strength 0 = off), mute, delete.
+    bool quantizeMidiClip(engine::TrackId track, int clipIndex, QuantizeSettings settings);
+    bool setMidiClipMuted(engine::TrackId track, int clipIndex, bool muted);
     void askForTrim();
     // True, and it says so on the status line, while a recording prevents `what`.
     bool refuseWhileRecording(const juce::String& what);
@@ -203,6 +211,7 @@ private:
     std::unique_ptr<ExportJob> exportJob_;
     std::unique_ptr<juce::FileChooser> fileChooser_;
     std::map<engine::InsertEffect*, std::unique_ptr<ParameterWindow>> parameterWindows_;
+    std::map<int, std::unique_ptr<PianoRollWindow>> pianoRolls_; // by clip id (chapter 18)
     AudioBuffer offlineScratch_;
     juce::ApplicationCommandTarget* extraCommandTarget_ = nullptr;
     bool conversionRunning_ = false;                 // message thread only

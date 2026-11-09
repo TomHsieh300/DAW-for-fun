@@ -1173,6 +1173,115 @@ void testMidiModel() {
     DAWLAB_CHECK(engine.getGarbageLeaked() == 0);
 }
 
+void testMidiEditing() {
+    std::printf("instruments and MIDI clips: editing\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    main.setSize(MainComponent::kDefaultWidth, MainComponent::kDefaultHeight);
+    Session& session = main.getSession();
+    Engine& engine = main.getEngine();
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    const TrackId synth = main.addTrack(TrackFormat::Mono, true);
+    engine.applyPendingCommandsOffline();
+    History& history = session.getHistory();
+
+    // A clip of one bar at bar 2, moved by a drag of three steps: one undo step.
+    const int added = session.addMidiClip(synth, 3840, 3840);
+    DAWLAB_CHECK(added == 0 && history.getUndoName() == "New MIDI clip");
+    history.endMerge();
+    const std::uint32_t key = 0x12345678u;
+    session.moveMidiClip(synth, 0, 4800, key);
+    session.moveMidiClip(synth, 0, 5760, key);
+    session.moveMidiClip(synth, 0, 7680, key);
+    history.endMerge();
+    DAWLAB_CHECK(session.getMidiClips(synth)[0].start == 7680 && history.getUndoName() == "Move MIDI clip");
+    DAWLAB_CHECK(main.undo() && session.getMidiClips(synth)[0].start == 3840);
+    DAWLAB_CHECK(main.redo());
+
+    // The arrangement finds it where it plays (bar 3 at 120 BPM: sample 192000).
+    ArrangementView& view = main.getArrangement();
+    view.setView(0.0, 400.0);
+    const int lane = session.indexOf(synth);
+    const juce::Rectangle<int> bounds = view.getMidiClipBounds(lane, 0);
+    DAWLAB_CHECK(!bounds.isEmpty() && std::abs(view.xToSample(static_cast<float>(bounds.getX())) - 192000.0) < 800.0);
+    DAWLAB_CHECK(view.midiClipAt(lane, static_cast<float>(bounds.getCentreX())) == 0);
+    DAWLAB_CHECK(view.midiClipAt(lane, static_cast<float>(bounds.getX() - 20)) == -1);
+
+    // The piano roll, with gestures instead of a mouse.
+    const int clipId = session.getMidiClips(synth)[0].id;
+    PianoRoll roll(session, synth, clipId);
+    roll.setSize(900, 480);
+    roll.setView(0.0, 4.0); // 4 ticks a pixel
+    roll.setGrid(240);
+    auto at = [&roll](double tick, int pitch) { return juce::Point<float>(roll.tickToX(tick), roll.pitchToY(pitch) + 4.0f); };
+    const juce::ModifierKeys none;
+    const juce::ModifierKeys alt(juce::ModifierKeys::altModifier);
+    const juce::ModifierKeys right(juce::ModifierKeys::rightButtonModifier);
+    auto played = [&session, synth] { return session.getMidiClips(synth)[0].played; };
+
+    // Draw: a note on the grid (250 -> 240), dragged out to tick 900 (the line after it: 960).
+    roll.press(at(250, 60), none);
+    roll.dragTo(at(600, 60), none);
+    roll.dragTo(at(900, 60), none);
+    roll.release();
+    DAWLAB_CHECK((played().size() == 1 && played()[0] == engine::Note{240, 720, 60, 100, 0} && history.getUndoName() == "Add note"));
+    // Move: in time (on the grid) and in pitch, three steps, one undo step.
+    roll.press(at(300, 60), none);
+    roll.dragTo(at(500, 61), none);
+    roll.dragTo(at(780, 62), none);
+    roll.release();
+    DAWLAB_CHECK(played().size() == 1 && played()[0].start == 720 && played()[0].pitch == 62 && played()[0].length == 720);
+    DAWLAB_CHECK(history.getUndoName() == "Move note");
+    DAWLAB_CHECK(main.undo() && played()[0].start == 240 && played()[0].pitch == 60);
+    DAWLAB_CHECK(main.redo());
+    // Resize: grab its end and drag.
+    const juce::Rectangle<float> note = roll.getNoteBounds(0);
+    roll.press({note.getRight() - 2.0f, note.getCentreY()}, none);
+    roll.dragTo({roll.tickToX(1900), note.getCentreY()}, none);
+    roll.release();
+    DAWLAB_CHECK(played()[0].start == 720 && played()[0].length == 1920 - 720 && history.getUndoName() == "Note length");
+    // Velocity: Alt and up.
+    roll.press({note.getCentreX(), note.getCentreY()}, alt);
+    roll.dragTo({note.getCentreX(), note.getCentreY() - 40.0f}, alt);
+    roll.release();
+    DAWLAB_CHECK(played()[0].velocity == 120 && played()[0].start == 720 && history.getUndoName() == "Note velocity");
+    // A second note, then delete the first with a right click.
+    roll.press(at(2000, 64), none);
+    roll.release();
+    DAWLAB_CHECK(played().size() == 2);
+    roll.press({roll.getNoteBounds(0).getCentreX(), roll.getNoteBounds(0).getCentreY()}, right);
+    roll.release();
+    DAWLAB_CHECK(played().size() == 1 && played()[0].pitch == 64 && history.getUndoName() == "Delete note");
+    // A click on nothing outside the notes area does nothing.
+    roll.press({10.0f, 100.0f}, none);
+    roll.release();
+    DAWLAB_CHECK(played().size() == 1);
+    // Six gestures, six undo steps back to the empty clip.
+    for (int i = 0; i < 6; ++i)
+        main.undo();
+    DAWLAB_CHECK(played().empty() && session.getMidiClips(synth)[0].start == 7680);
+
+    // Quantize and mute from the clip's menu, as undo steps; the roll and the arrangement paint it all.
+    for (int i = 0; i < 6; ++i)
+        main.redo();
+    DAWLAB_CHECK(main.quantizeMidiClip(synth, 0, {240, 1.0, 1.0 / 3.0}) && history.getUndoName() == "Quantize");
+    DAWLAB_CHECK(session.getMidiClips(synth)[0].played[0].start == 1920 && session.getMidiClips(synth)[0].notes()[0].start == 1920);
+    DAWLAB_CHECK(main.setMidiClipMuted(synth, 0, true) && session.getMidiClips(synth)[0].muted);
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK((*engine.getTrack(synth)->getMidiClips())[0].muted);
+    const juce::Image rollImage = roll.createComponentSnapshot(roll.getLocalBounds());
+    const juce::Image mainImage = main.createComponentSnapshot(main.getLocalBounds());
+    DAWLAB_CHECK(rollImage.isValid() && mainImage.isValid());
+    // The clip deleted while its roll is open: the roll draws that it is gone, and its gestures do nothing.
+    DAWLAB_CHECK(session.removeMidiClip(synth, 0) && roll.getClip() == nullptr);
+    roll.press(at(250, 60), none);
+    roll.release();
+    DAWLAB_CHECK(session.getMidiClips(synth).empty());
+    DAWLAB_CHECK(roll.createComponentSnapshot(roll.getLocalBounds()).isValid());
+    DAWLAB_CHECK(main.openPianoRoll(synth, 0) == nullptr); // offline, and no such clip anyway
+}
+
 // ---- --smoke-test --------------------------------------------------------------------------------
 
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
@@ -1180,6 +1289,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     std::setvbuf(stdout, nullptr, _IONBF, 0); // unbuffered: a crash must not swallow what was printed
     std::printf("DawLab 18 smoke test (no audio device)\n\n");
     testMidiModel();
+    testMidiEditing();
     testAutomation();
     testRecording();
 

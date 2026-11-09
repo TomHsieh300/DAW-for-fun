@@ -47,6 +47,7 @@ enum : juce::CommandID {
     toggleAutomationLane, // chapter 16
     toggleArmSelected,    // chapter 17
     cycleMonitorSelected,
+    addInstrumentTrack,   // chapter 18
 
     // Edit (chapter 15, Step 9)
     undo = 0x2401,

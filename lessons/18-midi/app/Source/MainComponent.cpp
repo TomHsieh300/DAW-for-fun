@@ -95,6 +95,8 @@ MainComponent::MainComponent(Mode mode) : mode_(mode) {
     arrangement_.onMonitorClicked = [this](engine::TrackId track) { cycleMonitor(track); };
     arrangement_.onRecordMenu = [this](engine::TrackId track) { showRecordMenu(track); };
     arrangement_.onClipMenu = [this](engine::TrackId track, int clip) { showClipMenu(track, clip); };
+    arrangement_.onEditMidiClip = [this](engine::TrackId track, int clip) { openPianoRoll(track, clip); };
+    arrangement_.onMidiClipMenu = [this](engine::TrackId track, int clip) { showMidiClipMenu(track, clip); };
     arrangement_.liveTakeOf = [this](engine::TrackId track, engine::LiveTake& live) { return takeRecorder_.getLive(track, live); };
     takeRecorder_.onMessage = [this](const juce::String& message, bool alarm) {
         setStatus(message);
@@ -1010,8 +1012,100 @@ ParameterWindow* MainComponent::getParameterWindow(engine::InsertEffect* effect)
     return it != parameterWindows_.end() ? it->second.get() : nullptr;
 }
 
+// ---- MIDI clips (chapter 18) ------------------------------------------------------------------------------
+
+PianoRollWindow* MainComponent::openPianoRoll(engine::TrackId track, int clipIndex) {
+    const auto& clips = session_.getMidiClips(track);
+    if (clipIndex < 0 || clipIndex >= static_cast<int>(clips.size()) || mode_ == Mode::Offline)
+        return nullptr;
+    const MidiClipModel& clip = clips[static_cast<size_t>(clipIndex)];
+    auto& window = pianoRolls_[clip.id];
+    if (window == nullptr) {
+        const juce::String title = session_.getStripName(session_.trackRef(track)) + " - " + clip.name;
+        window = std::make_unique<PianoRollWindow>(session_, track, clip.id, title, &lookAndFeel_);
+        const int id = clip.id;
+        juce::Component::SafePointer<MainComponent> safe(this);
+        window->onClose = [safe, id] {
+            if (safe != nullptr)
+                juce::MessageManager::callAsync([safe, id] {
+                    if (safe != nullptr)
+                        safe->pianoRolls_.erase(id);
+                });
+        };
+        window->centreWithSize(900, 480);
+        window->getRoll().setView(static_cast<double>(clip.offset), 4.0);
+    }
+    window->setVisible(true);
+    window->toFront(true);
+    return window.get();
+}
+
+bool MainComponent::quantizeMidiClip(engine::TrackId track, int clipIndex, QuantizeSettings settings) {
+    const auto& clips = session_.getMidiClips(track);
+    if (clipIndex < 0 || clipIndex >= static_cast<int>(clips.size()))
+        return false;
+    MidiClipModel clip = clips[static_cast<size_t>(clipIndex)];
+    clip.quantize = settings;
+    return session_.replaceMidiClip(track, clipIndex, std::move(clip), settings.strength > 0.0 ? "Quantize" : "Quantize off") >= 0;
+}
+
+bool MainComponent::setMidiClipMuted(engine::TrackId track, int clipIndex, bool muted) {
+    const auto& clips = session_.getMidiClips(track);
+    if (clipIndex < 0 || clipIndex >= static_cast<int>(clips.size()))
+        return false;
+    MidiClipModel clip = clips[static_cast<size_t>(clipIndex)];
+    clip.muted = muted;
+    return session_.replaceMidiClip(track, clipIndex, std::move(clip), muted ? "Mute MIDI clip" : "Unmute MIDI clip") >= 0;
+}
+
+void MainComponent::showMidiClipMenu(engine::TrackId track, int clipIndex) {
+    const auto& clips = session_.getMidiClips(track);
+    if (clipIndex < 0 || clipIndex >= static_cast<int>(clips.size()))
+        return;
+    const MidiClipModel& clip = clips[static_cast<size_t>(clipIndex)];
+    const int id = clip.id;
+    juce::Component::SafePointer<MainComponent> safe(this);
+    // The clip is found again by its id when an item runs: the list may have changed meanwhile.
+    auto withClip = [safe, track, id](std::function<void(MainComponent&, int index)> f) {
+        return [safe, track, id, f] {
+            if (safe == nullptr)
+                return;
+            const auto& list = safe->session_.getMidiClips(track);
+            for (size_t i = 0; i < list.size(); ++i)
+                if (list[i].id == id)
+                    f(*safe, static_cast<int>(i));
+        };
+    };
+    juce::PopupMenu quantize;
+    struct Choice {
+        const char* name;
+        QuantizeSettings settings;
+    };
+    const Choice choices[] = {{"Off (as played)", {240, 0.0, 0.0}},  {"1/4", {960, 1.0, 0.0}},          {"1/8", {480, 1.0, 0.0}},
+                              {"1/16", {240, 1.0, 0.0}},             {"1/16, 50 %", {240, 0.5, 0.0}},  {"1/8 swing", {480, 1.0, 1.0 / 3.0}},
+                              {"1/16 swing", {240, 1.0, 1.0 / 3.0}}};
+    for (const Choice& c : choices) {
+        const QuantizeSettings s = c.settings;
+        const bool current = clip.quantize == s || (s.strength == 0.0 && clip.quantize.strength == 0.0);
+        quantize.addItem(juce::PopupMenu::Item(c.name).setTicked(current).setAction(
+            withClip([track, s](MainComponent& m, int index) { m.quantizeMidiClip(track, index, s); })));
+    }
+    juce::PopupMenu menu;
+    menu.addSectionHeader(clip.name);
+    menu.addItem(juce::PopupMenu::Item("Edit Notes...").setAction(withClip([track](MainComponent& m, int index) { m.openPianoRoll(track, index); })));
+    menu.addSubMenu("Quantize", quantize);
+    menu.addItem(juce::PopupMenu::Item("Mute").setTicked(clip.muted).setAction(
+        withClip([track, muted = clip.muted](MainComponent& m, int index) { m.setMidiClipMuted(track, index, !muted); })));
+    menu.addSeparator();
+    menu.addItem(juce::PopupMenu::Item("Delete").setAction(withClip([track](MainComponent& m, int index) {
+        m.session_.removeMidiClip(track, index);
+    })));
+    menu.showMenuAsync(juce::PopupMenu::Options{});
+}
+
 void MainComponent::closeAllEditors() {
     parameterWindows_.clear();
+    pianoRolls_.clear();
     for (int s = 0; s < session_.getNumStrips(); ++s)
         for (int slot = 0; slot < kInsertSlotsPerStrip; ++slot)
             if (auto* vst = session_.getSlot(session_.stripRefAt(s), slot).vst)
@@ -1050,7 +1144,7 @@ void MainComponent::getAllCommands(juce::Array<juce::CommandID>& c) {
                 CommandIDs::returnToStart, CommandIDs::toggleLoop, CommandIDs::seekBackOneBar, CommandIDs::seekForwardOneBar,
                 CommandIDs::toggleRecord, CommandIDs::togglePunch, CommandIDs::setRecordingTrim, CommandIDs::toggleArmSelected, CommandIDs::cycleMonitorSelected,
                 CommandIDs::selectNextTrack, CommandIDs::selectPreviousTrack, CommandIDs::toggleMuteSelected,
-                CommandIDs::toggleSoloSelected, CommandIDs::addMonoTrack, CommandIDs::addStereoTrack,
+                CommandIDs::toggleSoloSelected, CommandIDs::addMonoTrack, CommandIDs::addStereoTrack, CommandIDs::addInstrumentTrack,
                 CommandIDs::deleteSelectedTrack, CommandIDs::toggleAutomationLane, CommandIDs::zoomIn, CommandIDs::zoomOut, CommandIDs::showKeyboardShortcuts};
     c.addArray(ids, static_cast<int>(sizeof(ids) / sizeof(ids[0])));
 }
@@ -1203,6 +1297,11 @@ void MainComponent::getCommandInfo(juce::CommandID id, juce::ApplicationCommandI
         info.addDefaultKeypress('t', cmd);
         info.setActive(idle && session_.getNumTracks() < engine::kMaxTracks);
         break;
+    case CommandIDs::addInstrumentTrack:
+        info.setInfo("Add instrument track", "Add a synth track for MIDI below the selected one", CommandCategories::track, 0);
+        info.addDefaultKeypress('t', cmd | ModifierKeys::altModifier);
+        info.setActive(idle && session_.getNumTracks() < engine::kMaxTracks);
+        break;
     case CommandIDs::addStereoTrack:
         info.setInfo("Add stereo track", "Add a stereo track below the selected one", CommandCategories::track, 0);
         info.addDefaultKeypress('t', cmd | ModifierKeys::shiftModifier);
@@ -1281,6 +1380,7 @@ bool MainComponent::perform(const InvocationInfo& info) {
         break;
     case CommandIDs::addMonoTrack: addTrack(engine::TrackFormat::Mono); break;
     case CommandIDs::addStereoTrack: addTrack(engine::TrackFormat::Stereo); break;
+    case CommandIDs::addInstrumentTrack: addTrack(engine::TrackFormat::Mono, true); break;
     case CommandIDs::deleteSelectedTrack: deleteSelectedTrack(); break;
     case CommandIDs::toggleAutomationLane: arrangement_.toggleAutomation(arrangement_.getSelectedTrack()); break;
     case CommandIDs::zoomIn: arrangement_.zoom(1.5, ArrangementView::kHeaderWidth + 0.5f * (arrangement_.getWidth() - ArrangementView::kHeaderWidth)); break;
@@ -1339,6 +1439,7 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
         m.addSeparator();
         m.addCommandItem(cm, CommandIDs::addMonoTrack);
         m.addCommandItem(cm, CommandIDs::addStereoTrack);
+        m.addCommandItem(cm, CommandIDs::addInstrumentTrack);
         m.addCommandItem(cm, CommandIDs::deleteSelectedTrack);
         m.addSeparator();
         m.addCommandItem(cm, CommandIDs::toggleAutomationLane);

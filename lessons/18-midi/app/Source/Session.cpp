@@ -332,6 +332,62 @@ void Session::setMidiClips(TrackId track, std::vector<MidiClipModel> clips) {
     sendChangeMessage();
 }
 
+namespace {
+int indexOfClipId(const std::vector<MidiClipModel>& clips, int id) {
+    for (size_t i = 0; i < clips.size(); ++i)
+        if (clips[i].id == id)
+            return static_cast<int>(i);
+    return -1;
+}
+} // namespace
+
+int Session::addMidiClip(TrackId track, int64_t startTick, int64_t lengthTicks) {
+    if (!isInstrument(track) || lengthTicks <= 0)
+        return -1;
+    std::vector<MidiClipModel> list = getMidiClips(track);
+    MidiClipModel c;
+    c.id = newMidiClipId();
+    c.start = std::max<int64_t>(0, startTick);
+    c.length = lengthTicks;
+    c.name = "MIDI " + juce::String(c.id);
+    list.push_back(c);
+    if (!perform(edit::SetMidiClips{track, std::move(list)}, "New MIDI clip"))
+        return -1;
+    return indexOfClipId(getMidiClips(track), c.id);
+}
+
+int Session::moveMidiClip(TrackId track, int index, int64_t newStartTick, std::uint32_t mergeKey) {
+    std::vector<MidiClipModel> list = getMidiClips(track);
+    if (index < 0 || index >= static_cast<int>(list.size()))
+        return -1;
+    const int id = list[static_cast<size_t>(index)].id;
+    list[static_cast<size_t>(index)].start = std::max<int64_t>(0, newStartTick);
+    if (!perform(edit::SetMidiClips{track, std::move(list)}, "Move MIDI clip", mergeKey))
+        return -1;
+    return indexOfClipId(getMidiClips(track), id);
+}
+
+int Session::replaceMidiClip(TrackId track, int index, MidiClipModel clip, const juce::String& name, std::uint32_t mergeKey) {
+    std::vector<MidiClipModel> list = getMidiClips(track);
+    if (index < 0 || index >= static_cast<int>(list.size()))
+        return -1;
+    clip.id = list[static_cast<size_t>(index)].id; // the same clip for the engine's player
+    sortNotes(clip.played);
+    list[static_cast<size_t>(index)] = std::move(clip);
+    const int id = list[static_cast<size_t>(index)].id;
+    if (!perform(edit::SetMidiClips{track, std::move(list)}, name, mergeKey))
+        return -1;
+    return indexOfClipId(getMidiClips(track), id);
+}
+
+bool Session::removeMidiClip(TrackId track, int index) {
+    std::vector<MidiClipModel> list = getMidiClips(track);
+    if (index < 0 || index >= static_cast<int>(list.size()))
+        return false;
+    list.erase(list.begin() + index);
+    return perform(edit::SetMidiClips{track, std::move(list)}, "Delete MIDI clip");
+}
+
 int64_t Session::sampleOfTick(int64_t tick) const noexcept {
     const Transport& tr = engine_.getTransport();
     return engine::sampleOfTick(tick, engine::samplesPerTick(getClipSampleRate(), tr.getTempo()));

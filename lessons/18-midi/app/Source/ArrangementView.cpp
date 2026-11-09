@@ -193,6 +193,72 @@ juce::Rectangle<int> ArrangementView::getClipBounds(int laneIndex, int clipIndex
         .getSmallestIntegerContainer();
 }
 
+juce::Rectangle<int> ArrangementView::getMidiClipBounds(int laneIndex, int clipIndex) const {
+    const auto& clips = session_.getMidiClips(session_.getTrackId(laneIndex));
+    if (clipIndex < 0 || clipIndex >= static_cast<int>(clips.size()))
+        return {};
+    const MidiClipModel& c = clips[static_cast<size_t>(clipIndex)];
+    const auto lane = getLaneBounds(laneIndex).reduced(0, 3);
+    const float x0 = sampleToX(static_cast<double>(session_.sampleOfTick(c.start)));
+    const float x1 = sampleToX(static_cast<double>(session_.sampleOfTick(c.end())));
+    return juce::Rectangle<float>(x0, static_cast<float>(lane.getY()), std::max(2.0f, x1 - x0), static_cast<float>(lane.getHeight()))
+        .getSmallestIntegerContainer();
+}
+
+int ArrangementView::midiClipAt(int lane, float x) const {
+    const auto& clips = session_.getMidiClips(session_.getTrackId(lane));
+    const double s = xToSample(x);
+    for (int i = static_cast<int>(clips.size()) - 1; i >= 0; --i) {
+        const MidiClipModel& c = clips[static_cast<size_t>(i)];
+        if (s >= static_cast<double>(session_.sampleOfTick(c.start)) && s < static_cast<double>(session_.sampleOfTick(c.end())))
+            return i;
+    }
+    return -1;
+}
+
+void ArrangementView::paintMidiClip(juce::Graphics& g, engine::TrackId track, const MidiClipModel& clip, juce::Rectangle<int> bounds,
+                                    bool selected) {
+    const auto colour = DawColours::track(track);
+    const auto r = bounds.toFloat().reduced(0.5f, 0.0f);
+    g.setColour(colour.withAlpha(clip.muted ? 0.06f : 0.16f));
+    g.fillRoundedRectangle(r, 3.0f);
+    g.setColour(selected ? DawColours::text() : colour.withAlpha(0.8f));
+    g.drawRoundedRectangle(r, 3.0f, selected ? 1.5f : 1.0f);
+    g.setColour(DawColours::text().withAlpha(0.85f));
+    g.setFont(DawLookAndFeel::uiFont(11.0f));
+    juce::String label = clip.name;
+    if (clip.quantize.strength > 0.0)
+        label << "  Q";
+    g.drawText(label, r.reduced(4.0f, 1.0f).toNearestInt(), juce::Justification::topLeft, true);
+
+    // The notes as they play (quantized), as bars, the clip's pitch range over its height.
+    const std::vector<engine::Note> notes = clip.notes();
+    if (notes.empty())
+        return;
+    int lo = 127, hi = 0;
+    for (const engine::Note& n : notes) {
+        lo = std::min(lo, n.pitch);
+        hi = std::max(hi, n.pitch);
+    }
+    if (hi - lo < 12) {
+        lo = std::max(0, (lo + hi) / 2 - 6);
+        hi = std::min(127, lo + 12);
+    }
+    const float top = r.getY() + 14.0f, height = std::max(4.0f, r.getHeight() - 17.0f);
+    const float row = height / static_cast<float>(hi - lo + 1);
+    g.setColour(colour.withAlpha(clip.muted ? 0.3f : 0.95f));
+    for (const engine::Note& n : notes) {
+        if (n.start < clip.offset || n.start >= clip.offset + clip.length)
+            continue; // before a trimmed start, or after the end: not played
+        const int64_t on = clip.start + n.start - clip.offset;
+        const int64_t off = std::min(on + n.length, clip.end());
+        const float x0 = std::max(r.getX(), sampleToX(static_cast<double>(session_.sampleOfTick(on))));
+        const float x1 = std::min(r.getRight(), sampleToX(static_cast<double>(session_.sampleOfTick(off))));
+        const float y = top + static_cast<float>(hi - n.pitch) * row;
+        g.fillRect(juce::Rectangle<float>(x0, y, std::max(1.0f, x1 - x0), std::max(1.0f, row - 1.0f)));
+    }
+}
+
 int64_t ArrangementView::snapToBeat(double sample, bool snap) const noexcept {
     const double beat = session_.getEngine().getTransport().getSamplesPerBeat();
     if (snap && beat > 0.0)
@@ -399,6 +465,13 @@ void ArrangementView::paintLane(juce::Graphics& g, int lane, juce::Rectangle<int
             paintClip(g, track, clips[static_cast<size_t>(i)], bounds,
                       drag_ == Drag::Clip && dragTrack_ == track && dragClip_ == i);
         }
+        const auto& midi = session_.getMidiClips(track); // chapter 18
+        for (int i = 0; i < static_cast<int>(midi.size()); ++i) {
+            const auto bounds = getMidiClipBounds(lane, i);
+            if (bounds.getRight() < kHeaderWidth || bounds.getX() > getWidth())
+                continue;
+            paintMidiClip(g, track, midi[static_cast<size_t>(i)], bounds, drag_ == Drag::MidiClip && dragTrack_ == track && dragClip_ == i);
+        }
         paintLiveTake(g, track, area);
     }
 
@@ -419,7 +492,12 @@ void ArrangementView::paintLane(juce::Graphics& g, int lane, juce::Rectangle<int
         info << "M ";
     if (strip->isSoloed())
         info << "S ";
-    info << juce::String(static_cast<int>(clips.size())) << (clips.size() == 1 ? " clip" : " clips");
+    if (session_.isInstrument(track)) { // chapter 18
+        const auto n = session_.getMidiClips(track).size();
+        info << "synth, " << juce::String(static_cast<int>(n)) << (n == 1 ? " MIDI clip" : " MIDI clips");
+    } else {
+        info << juce::String(static_cast<int>(clips.size())) << (clips.size() == 1 ? " clip" : " clips");
+    }
     g.setColour(strip->isMuted() ? DawColours::mute() : (strip->isSoloed() ? DawColours::accentWarm() : DawColours::textDim()));
     g.drawText(info, header, juce::Justification::topLeft);
     const auto toggle = getAutomationToggleBounds(lane);
@@ -564,6 +642,41 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e) {
     }
     if (e.x < kHeaderWidth)
         return;
+    if (session_.isInstrument(track)) { // chapter 18: MIDI clips first
+        const int midi = midiClipAt(lane, static_cast<float>(e.x));
+        if (midi >= 0 && e.mods.isPopupMenu()) {
+            if (onMidiClipMenu)
+                onMidiClipMenu(track, midi);
+            return;
+        }
+        if (midi >= 0 && e.getNumberOfClicks() > 1) {
+            if (onEditMidiClip)
+                onEditMidiClip(track, midi);
+            return;
+        }
+        if (midi >= 0) {
+            session_.getHistory().endMerge();
+            static std::uint32_t nextKey = 0x4d430000u; // "MC": every drag its own undo step
+            dragMidiKey_ = ++nextKey;
+            drag_ = Drag::MidiClip;
+            dragTrack_ = track;
+            dragClip_ = midi;
+            dragGrabOffset_ = xToSample(static_cast<float>(e.x)) -
+                              static_cast<double>(session_.sampleOfTick(session_.getMidiClips(track)[static_cast<size_t>(midi)].start));
+            repaint();
+            return;
+        }
+        if (e.getNumberOfClicks() > 1 && clipAt(lane, static_cast<float>(e.x)) < 0 && !e.mods.isPopupMenu()) {
+            // A new clip of one bar, from the bar the click is in.
+            const double bar = session_.getEngine().getTransport().getSamplesPerBar();
+            const double at = bar > 0.0 ? std::floor(xToSample(static_cast<float>(e.x)) / bar) * bar : xToSample(static_cast<float>(e.x));
+            const int added = session_.addMidiClip(track, session_.tickOfSample(static_cast<int64_t>(at)),
+                                                   static_cast<int64_t>(session_.getEngine().getTransport().getTimeSignature().numerator) * 960);
+            if (added >= 0 && onEditMidiClip)
+                onEditMidiClip(track, added);
+            return;
+        }
+    }
     const int clip = clipAt(lane, static_cast<float>(e.x));
     if (clip >= 0 && e.mods.isPopupMenu()) {
         if (onClipMenu)
@@ -594,6 +707,13 @@ void ArrangementView::mouseDrag(const juce::MouseEvent& e) {
         const int64_t newStart = snapToBeat(xToSample(static_cast<float>(e.x)) - dragGrabOffset_, snap);
         if (newStart != clips[static_cast<size_t>(dragClip_)].start)
             dragClip_ = session_.moveClip(dragTrack_, dragClip_, newStart); // -> repaint via change message
+    } else if (drag_ == Drag::MidiClip) {
+        const auto& clips = session_.getMidiClips(dragTrack_);
+        if (dragClip_ < 0 || dragClip_ >= static_cast<int>(clips.size()))
+            return;
+        const int64_t newStart = session_.tickOfSample(snapToBeat(xToSample(static_cast<float>(e.x)) - dragGrabOffset_, snap));
+        if (newStart != clips[static_cast<size_t>(dragClip_)].start)
+            dragClip_ = session_.moveMidiClip(dragTrack_, dragClip_, newStart, dragMidiKey_);
     } else if (drag_ == Drag::Point) {
         if (const LaneAddress* address = getShownLane(dragTrack_))
             dragPoint_ = session_.movePoint(*address, dragPoint_, snapToBeat(xToSample(static_cast<float>(e.x)), snap),
@@ -602,7 +722,7 @@ void ArrangementView::mouseDrag(const juce::MouseEvent& e) {
 }
 
 void ArrangementView::mouseUp(const juce::MouseEvent&) {
-    if (drag_ == Drag::Clip || drag_ == Drag::Point)
+    if (drag_ == Drag::Clip || drag_ == Drag::Point || drag_ == Drag::MidiClip)
         session_.getHistory().endMerge();
     drag_ = Drag::None;
     dragClip_ = -1;

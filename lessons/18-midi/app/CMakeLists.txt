@@ -50,6 +50,8 @@ set(L18_APP_SOURCES
     Source/MixerView.cpp
     Source/ParameterPanel.h
     Source/ParameterPanel.cpp
+    Source/PianoRoll.h
+    Source/PianoRoll.cpp
     Source/ProjectFormat.h
     Source/ProjectFormat.cpp
     Source/ProjectIO.h

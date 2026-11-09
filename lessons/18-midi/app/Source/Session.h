@@ -180,6 +180,12 @@ public:
     void setMidiClips(engine::TrackId track, std::vector<MidiClipModel> clips);
     // A clip id never handed out before.
     int newMidiClipId() noexcept { return nextMidiClipId_++; }
+    // Undoable edits of one track's MIDI clips (each is a SetMidiClips of the whole list). A drag passes one
+    // merge key for all its steps. They return the clip's index in the (start-sorted) list, or -1.
+    int addMidiClip(engine::TrackId track, int64_t startTick, int64_t lengthTicks);
+    int moveMidiClip(engine::TrackId track, int index, int64_t newStartTick, std::uint32_t mergeKey);
+    int replaceMidiClip(engine::TrackId track, int index, MidiClipModel clip, const juce::String& name, std::uint32_t mergeKey = 0);
+    bool removeMidiClip(engine::TrackId track, int index);
     // The timeline sample where a tick plays at the tempo now.
     int64_t sampleOfTick(int64_t tick) const noexcept;
     int64_t tickOfSample(int64_t sample) const noexcept; // the nearest tick
