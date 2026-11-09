@@ -6,6 +6,17 @@
 
 add_subdirectory(steps)
 
+# ---- exercises: starters (build only) and solutions (ctest label: solution) -------------------
+# Exercises 3-5 build on the models of the steps; Exercise 2 checks its numbers in a program.
+# Exercises 1 and 6 are answered in solutions/README.md.
+dawlab_add_solution(l16_ex2_solution solutions/ex2_automation_numbers.cpp)
+dawlab_add_starter(l16_ex3_starter   exercises/starter/ex3_curve_shape.cpp)
+dawlab_add_solution(l16_ex3_solution solutions/ex3_curve_shape.cpp)
+dawlab_add_starter(l16_ex4_starter   exercises/starter/ex4_trim.cpp)
+dawlab_add_solution(l16_ex4_solution solutions/ex4_trim.cpp)
+dawlab_add_starter(l16_ex5_starter   exercises/starter/ex5_clipboard.cpp)
+dawlab_add_solution(l16_ex5_solution solutions/ex5_clipboard.cpp)
+
 # ---- the chapter-16 engine (header-only, namespace dawlab::engine; Step 5) ------------------
 # A copy of chapter 15's engine with automation lanes. It uses the same include paths
 # (<dawlab/engine/...>), so it must not be linked together with another chapter's engine; the

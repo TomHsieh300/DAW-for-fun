@@ -73,7 +73,14 @@ Start with [Step 1 - The automation curve](docs/step-01-curve.md). When you reac
 & ".\build\bin\Debug\DawLab 16.exe"
 ```
 
-## 5. Next
+## 5. Exercises
+
+See [exercises/README.md](exercises/README.md), with the answers in [solutions/README.md](solutions/README.md).
+Six exercises, none needs JUCE: who may touch a curve (concept), automation by the numbers (calculation),
+a curved segment with a tension, a Trim mode that adds to a curve instead of replacing it, copying and
+pasting automation, and automating a VST3 plugin properly (design).
+
+## 6. Next
 
 Continue with [chapter 17 - Recording](../17-recording/README.md). For what a DAW could grow beyond that -
 MIDI, time-stretching - see [Where to go next](../14-daw-8track/README.md#10-where-to-go-next) in chapter 14.
