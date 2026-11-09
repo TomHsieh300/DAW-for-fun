@@ -15,6 +15,7 @@ write the step's functions in `starter/`, the self-check tells you when they wor
 | 2 | `step02-midi-clips` | `MidiClip::place`, `ClipPlayer::allNotesOff`, `chase`, `process` | `l18_step02_starter` |
 | 3 | `step03-one-voice` | `noteFrequency`, `polyBlep`, `Saw::next`, `Adsr::noteOn`, `noteOff`, `next`, `Voice::start`, `release`, `render` | `l18_step03_starter` |
 | 4 | `step04-polyphony` | `Synth::allocate`, `handle`, `render` | `l18_step04_starter` |
+| 5 | `step05-keyboard` | `MidiParser::feed`, `MidiFifo::push`, `pop`, `peek`, `drain` | `l18_step05_starter` |
 
 </div>
 

@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](README.zh-TW.md)
 
-> **Status: in progress.** Steps 1-4 of 8.
+> **Status: in progress.** Steps 1-5 of 8.
 
 DawLab 17 (chapter 17) records and plays audio: sound that already exists, placed in samples. A DAW also
 plays *notes* - instructions to an instrument, placed in beats, that become sound only when they are played
@@ -43,7 +43,7 @@ After this chapter you can
 | 2 | [Playing a MIDI clip](docs/step-02-midi-clips.md) | clips as windows on their notes; a table of what was started, so no note hangs after a stop, seek, wrap, mute or delete; controllers chased after a jump | done |
 | 3 | [One voice](docs/step-03-one-voice.md) | a sawtooth with PolyBLEP, its aliases measured; an ADSR that never jumps; a filter, velocity; a voice that adds to the mix | done |
 | 4 | [Polyphony](docs/step-04-polyphony.md) | a pool of voices, the same note on its own voice, stealing what is missed least without a click, the sustain pedal, pitch bend, all notes off | done |
-| 5 | A keyboard | events from the MIDI thread through a lock-free FIFO, timestamps into sample offsets: latency or jitter | planned |
+| 5 | [A keyboard](docs/step-05-keyboard.md) | a byte parser (running status, real time, SysEx), an SPSC FIFO from the MIDI thread, timestamps into sample offsets: jitter or a constant delay; ThreadSanitizer | done |
 | 6 | Recording MIDI | placing a performance, loop overdub or replace, quantize that keeps what was played | planned |
 | 7 | The engine with instruments | a copy of chapter 17's engine: instrument tracks, MIDI clips through the command queue | planned |
 | 8 | The app with instruments | a copy of chapter 17's app: instrument tracks, MIDI clips, a piano roll, a keyboard input, recording, quantize, saving, undo | planned |

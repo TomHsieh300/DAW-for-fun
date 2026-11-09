@@ -2,7 +2,7 @@
 
 [English](step-04-polyphony.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 3 - 一個 voice](step-03-one-voice.zh-TW.md) | 下一步：Step 5 - 鍵盤（即將推出）
+[總覽](../README.zh-TW.md) | 上一步：[Step 3 - 一個 voice](step-03-one-voice.zh-TW.md) | 下一步：[Step 5 - 鍵盤](step-05-keyboard.zh-TW.md)
 
 ## 目標
 

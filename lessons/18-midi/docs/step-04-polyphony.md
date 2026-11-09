@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-04-polyphony.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 3 - One voice](step-03-one-voice.md) | Next: Step 5 - A keyboard (coming)
+[Overview](../README.md) | Previous: [Step 3 - One voice](step-03-one-voice.md) | Next: [Step 5 - A keyboard](step-05-keyboard.md)
 
 ## Goal
 
