@@ -70,6 +70,7 @@ automation 會碰到第 15 章做的每一層。它是專案檔和 undo 歷史�
 見 [exercises/README.zh-TW.md](exercises/README.zh-TW.md)，解答在 [solutions/README.zh-TW.md](solutions/README.zh-TW.md)。
 共六題，都不需要 JUCE：誰可以碰曲線（概念）、用數字看 automation（計算）、帶 tension 的曲線段、
 把變化加到曲線上而不是取代它的 Trim 模式、複製和貼上 automation，以及正確地 automate 一個 VST3 plugin（設計）。
+另有三個選做專題用 JUCE 擴充 DawLab 16：畫線工具、顯示被碰到的控制項的 lane，以及能 thin、清除和移除的 lane 選單。
 
 ## 6. 下一步
 

@@ -66,3 +66,30 @@ if(NOT DAWLAB_WITH_JUCE)
 endif()
 
 add_subdirectory(app)   # targets: l16_daw_app (static library), DawLab16 (the application)
+
+# ---- optional exercises 7-9 (the application): starters build only, solutions are ctests -------
+# JUCE console programs linked against the app library: they build the real MainComponent in its
+# offline mode, so they need no audio device and no clicking (chapter 15's l15_add_juce_program).
+function(l16_add_juce_program target label)
+    juce_add_console_app(${target} PRODUCT_NAME ${target})
+    target_sources(${target} PRIVATE ${ARGN})
+    target_link_libraries(${target} PRIVATE l16_daw_app)
+    set_target_properties(${target} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        FOLDER "16-automation")
+    dawlab_set_warnings(${target})
+    if(label)
+        add_test(NAME ${target} COMMAND ${target})
+        set_tests_properties(${target} PROPERTIES
+            LABELS "${label}"
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            TIMEOUT 300)
+    endif()
+endfunction()
+
+l16_add_juce_program(l16_ex7_starter  ""       exercises/starter/ex7_line_tool.cpp)
+l16_add_juce_program(l16_ex7_solution solution solutions/ex7_line_tool.cpp)
+l16_add_juce_program(l16_ex8_starter  ""       exercises/starter/ex8_follow_touch.cpp)
+l16_add_juce_program(l16_ex8_solution solution solutions/ex8_follow_touch.cpp)
+l16_add_juce_program(l16_ex9_starter  ""       exercises/starter/ex9_lane_menu.cpp)
+l16_add_juce_program(l16_ex9_solution solution solutions/ex9_lane_menu.cpp)

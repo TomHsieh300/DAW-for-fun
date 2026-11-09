@@ -3,8 +3,8 @@
 
 [Back to the chapter](../README.md) | [Exercises](../exercises/README.md)
 
-Run all solution programs with `.\scripts\build.ps1 -Only 16-automation -TestLabel solution`. Every
-one ends with `[PASS] l16_exN (... checks passed)`.
+Run all solution programs with `.\scripts\build.ps1 -Only 16-automation -TestLabel solution` (add
+`-Juce` for Exercises 7-9). Every one ends with `[PASS] l16_exN (... checks passed)`.
 
 ---
 
@@ -177,6 +177,65 @@ One design; others are possible.
    versions - unlike the name, which may be translated or renamed. Store the plugin's class id with
    the effect, and the `ParamID` and the name with the lane: the id to find the parameter, the name to
    show the user something when the plugin is missing.
+
+## Exercise 7 - A line tool for automation lanes
+
+[`solutions/ex7_line_tool.cpp`](ex7_line_tool.cpp)
+
+`drawLine()` is `engine::punch()` with a pass of two points: punch already keeps the curve outside and
+puts a jump at both ends where needed. `drawLineInLane()` copies the lane's content (or starts with
+`LaneContent{}`, as `Session::addPoint()` does), changes the curve and performs one `SetLane`. The tool
+remembers the press, keeps the end inside the lane's bounds while dragging, and on release turns both
+ends into samples (`snapToBeat(xToSample(x), !Alt)`) and values (`yToValue()`).
+
+```text
+Exercise 7 - a line tool for automation lanes
+  a line from 120000 (0.08) to 384000 (0.92): 4 points, undo "Draw line Gain"
+[PASS] l16_ex7 (31 checks passed)
+```
+
+**Why on top.** A mouse listener sees the events *as well as* the arrangement: a press on an automation
+lane would add a point there (the arrangement's own behaviour) and start a line at the same time. A
+component on top with `hitTest()` takes the event *instead of* the arrangement - but only where it says
+yes, so the clips, the headers and the ruler behave as before.
+
+## Exercise 8 - Touch a control, see its automation
+
+[`solutions/ex8_follow_touch.cpp`](ex8_follow_touch.cpp)
+
+`attach()` moves the old `onTouch` into the new lambda, calls it first, and on a touch (not a release)
+calls `touched()` with the parameter's address. `touched()` returns early unless the following is on
+and the address is a track that exists; `showAutomation()` replaces what the track showed, and
+`setSelectedTrack()` selects it and scrolls it into view (the first version of this solution called
+`scrollToTrack()` as well; a mutant that removed it changed nothing, and that is how it was found to be
+redundant).
+
+```text
+Exercise 8 - touch a control, see its automation
+  touched Threshold on track 7: its lane is shown at y 287..359 of 359
+[PASS] l16_ex8 (22 checks passed)
+```
+
+## Exercise 9 - A lane menu: thin, clear, remove
+
+[`solutions/ex9_lane_menu.cpp`](ex9_lane_menu.cpp)
+
+`thinCurve()` walks the points once. Each anchor closes a run that started at the previous anchor; the
+run goes through `engine::thin()` (whose first and last points are those two anchors) and the kept
+points are added after the first one. The point after a Hold point must be an anchor: the hold ends
+there with a jump, and if the point happens to lie on the line from the hold to the next point,
+thinning would drop it and the hold would go on too long. A jump smaller than the tolerance would be
+dropped by thinning as well; the user drew it, so it stays.
+
+The menu computes the thinned curve when the menu opens, so the item can say "154 -> 67" and be
+disabled when nothing would go.
+
+```text
+Exercise 9 - a lane menu: thin, clear, remove
+  thinned 154 points to 67, off by at most 0.00199 (tolerance 0.002)
+  menu: "Thin Points (154 -> 67)"
+[PASS] l16_ex9 (29 checks passed)
+```
 
 ---
 

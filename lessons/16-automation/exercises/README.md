@@ -12,6 +12,11 @@ Difficulty: ★☆☆ easy, ★★☆ medium, ★★★ hard. Implementation exe
 .\build\bin\Debug\l16_ex3_starter.exe
 ```
 
+**Exercises 1-6** are the chapter's exercise set, about the steps (no JUCE). **Exercises 7-9 are
+optional projects** that extend DawLab 16. They need a JUCE build
+(`.\scripts\build.ps1 -Only 16-automation -Juce`); like chapter 15's they are console programs that
+build the real `MainComponent` in its offline mode, and none of them changes the app.
+
 Exercise 3 builds on Step 1's curve, Exercises 4 and 5 on Step 4's model (`exercises/model.h`: Step
 4's `minidaw.h` with its edits solved). Do the steps first.
 
@@ -139,6 +144,61 @@ plugin automation needs. Cover:
    alone. What goes wrong for a plugin late in a chain with 2000 samples of lookahead in front of it?
 5. **Identity.** Step 4 names parameters by name. What do VST3 plugins offer instead, and what
    should the project file store?
+
+## Exercise 7 - A line tool for automation lanes ★★☆ (implementation, JUCE)
+
+[`l16_ex7_starter`, file `exercises/starter/ex7_line_tool.cpp`]
+
+DawLab 16 draws automation point by point. Add a line tool: press where a fade starts, release where
+it ends, and a straight line replaces what was in between.
+
+- `drawLine(old, x0, v0, x1, v1)`: the curve with the line in place of that range (either way round;
+  one position draws nothing). Step 3's `engine::punch()` already does the hard part.
+- `drawLineInLane(session, lane, ...)`: the same as one undo step "Draw line Gain".
+- `LineTool`, a transparent component over the `ArrangementView`. While active it takes the mouse in
+  the automation lanes only: `hitTest()` says no over the header, the clips and the ruler, so they still
+  get their clicks. Positions snap to the beat like the arrangement's own points (Alt = free), and the
+  end of the line stays inside the lane it started in.
+
+The self-check draws lines left to right, right to left, with Alt and out of the lane, compares each
+lane with `drawLine()` of the curve before, requires one undo step per line and none for a click, and
+undoes them all.
+
+Think about it: why a component on top with its own `hitTest()`, rather than a mouse listener on the
+arrangement as in chapter 15's Exercise 7?
+
+## Exercise 8 - Touch a control, see its automation ★☆☆ (implementation, JUCE)
+
+[`l16_ex8_starter`, file `exercises/starter/ex8_follow_touch.cpp`]
+
+Grab the compressor's threshold, and the arrangement shows the threshold's lane under its track.
+
+- `LaneFollower::attach(panel, ref)`: wraps a `ParameterPanel`'s `onTouch`. The app's own handler must
+  still run first - it is what tells the lane that a hand is on it, for Touch and Latch.
+- `LaneFollower::touched(address)`: shows the lane under its track and selects the track (which
+  scrolls it into view). Buses and the master have no rows: nothing.
+- `LaneFollower::addToMenu(menu)`: "Show Touched Automation", ticked while on, for the View menu.
+
+The self-check makes the rows tall so that the track starts out of view, grabs three parameters, lets
+go of a control, touches a track's Gain, a bus and the master, and switches the following off from the
+menu - the app's handler keeps running regardless.
+
+## Exercise 9 - A lane menu: thin, clear, remove ★★★ (implementation, JUCE)
+
+[`l16_ex9_starter`, file `exercises/starter/ex9_lane_menu.cpp`]
+
+- `thinCurve(curve, tolerance)`: Step 3 thins one pass, whose positions strictly increase. A whole curve
+  has holds and jumps, and those must come out exactly. So some points are anchors that always stay -
+  the first and last, every Hold point and the point after it, both points of every jump, however small
+  - and only the runs of plain line points between two anchors go through `engine::thin()`.
+- `clearRange(curve, start, end)`: no points strictly between them, a straight line from the value at
+  `start` to the value the curve reaches at `end`.
+- `addLaneItems(menu, session, lane)`: "Thin Points (n -> m)", "Clear Between Locators" (the loop's)
+  and "Remove Lane", each one undo step, each enabled only when it would change something.
+
+The self-check thins a curve with a wobble, a hold, a point on a line right after the hold, a jump of
+0.001 and a straight ramp of 49 points, and requires every sample within the tolerance, the hold and
+both jumps exact, and the ramp down to its ends. Then it runs the three menu items and undoes each.
 
 ---
 

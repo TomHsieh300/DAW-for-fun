@@ -78,7 +78,9 @@ Start with [Step 1 - The automation curve](docs/step-01-curve.md). When you reac
 See [exercises/README.md](exercises/README.md), with the answers in [solutions/README.md](solutions/README.md).
 Six exercises, none needs JUCE: who may touch a curve (concept), automation by the numbers (calculation),
 a curved segment with a tension, a Trim mode that adds to a curve instead of replacing it, copying and
-pasting automation, and automating a VST3 plugin properly (design).
+pasting automation, and automating a VST3 plugin properly (design). Three optional projects extend
+DawLab 16 with JUCE: a line tool, showing the lane of a touched control, and a lane menu that thins,
+clears and removes.
 
 ## 6. Next
 

@@ -10,6 +10,8 @@
 .\build\bin\Debug\l16_ex3_starter.exe
 ```
 
+**練習 1-6** 是本章的練習，針對各個 step（不需要 JUCE）。**練習 7-9 是選做的專題**，用來擴充 DawLab 16。它們需要 JUCE build（`.\scripts\build.ps1 -Only 16-automation -Juce`）；和第 15 章一樣，它們是 console 程式，在 offline 模式下建立真正的 `MainComponent`，而且都不修改 app 本身。
+
 練習 3 建立在 Step 1 的曲線上，練習 4 和 5 建立在 Step 4 的 model 上（`exercises/model.h`：Step 4 的 `minidaw.h`，edit 都已經寫好）。請先做完這些 step。
 
 ---
@@ -85,6 +87,42 @@ DawLab 16 還沒有把 VST3 insert 的參數當成 target（Step 6，「這一�
 3. **從 plugin 自己的視窗錄製。** 使用者轉的是 plugin 編輯器裡的旋鈕，不是 DawLab 的。Host 怎麼知道一次 touch 開始和結束，讓 Touch 和 Latch 能運作？
 4. **Latency。** Step 5 會依 fader 之前的 latency 平移它的 lane，但不動效果器的 lane。如果一個 plugin 在 chain 的後段，前面有 2000 samples 的 lookahead，會出什麼問題？
 5. **身分。** Step 4 用名稱指稱參數。VST3 plugin 提供了什麼替代方案？專案檔應該存什麼？
+
+## 練習 7 - Automation lane 的畫線工具 ★★☆（實作，JUCE）
+
+[`l16_ex7_starter`，檔案 `exercises/starter/ex7_line_tool.cpp`]
+
+DawLab 16 的 automation 只能一點一點畫。加上一個畫線工具：在 fade 開始處按下、在結束處放開，中間的內容就被一條直線取代。
+
+- `drawLine(old, x0, v0, x1, v1)`：在那個範圍以直線取代的曲線（兩個方向都可以；同一個位置什麼都不畫）。Step 3 的 `engine::punch()` 已經做好了困難的部分。
+- `drawLineInLane(session, lane, ...)`：同樣的事，算一個 undo 步驟「Draw line Gain」。
+- `LineTool`，一個蓋在 `ArrangementView` 上的透明 component。啟用時它只在 automation lane 上接收滑鼠：在標頭、clip 和 ruler 上 `hitTest()` 都說不，所以它們照樣收到點擊。位置和 arrangement 自己的點一樣對齊拍子（Alt = 不對齊），線的終點也會留在它開始的那條 lane 裡。
+
+自我檢查會由左到右、由右到左、按著 Alt，以及拖出 lane 外各畫一條線，每次都把 lane 和對原曲線呼叫 `drawLine()` 的結果比較，要求每條線一個 undo 步驟、點擊則不留步驟，最後全部 undo。
+
+想一想：為什麼要用一個有自己 `hitTest()` 的 component 蓋在上面，而不像第 15 章練習 7 那樣在 arrangement 上掛一個 mouse listener？
+
+## 練習 8 - 碰到控制項，就看到它的 automation ★☆☆（實作，JUCE）
+
+[`l16_ex8_starter`，檔案 `exercises/starter/ex8_follow_touch.cpp`]
+
+抓住 compressor 的 threshold，arrangement 就在它的 track 下方顯示 threshold 的 lane。
+
+- `LaneFollower::attach(panel, ref)`：包裝 `ParameterPanel` 的 `onTouch`。App 自己的處理函式仍然要先執行——Touch 和 Latch 就是靠它知道有手放在 lane 上。
+- `LaneFollower::touched(address)`：在 track 下方顯示 lane 並選取 track（這會把它捲進畫面）。Bus 和 master 沒有列：什麼都不做。
+- `LaneFollower::addToMenu(menu)`：「Show Touched Automation」，開啟時打勾，放進 View 選單。
+
+自我檢查會把各列撐高，讓那個 track 一開始不在畫面內，接著抓三個參數、放開一個控制項、碰 track 的 Gain、一個 bus 和 master，再從選單關掉跟隨——app 的處理函式無論如何都繼續執行。
+
+## 練習 9 - Lane 選單：thin、清除、移除 ★★★（實作，JUCE）
+
+[`l16_ex9_starter`，檔案 `exercises/starter/ex9_lane_menu.cpp`]
+
+- `thinCurve(curve, tolerance)`：Step 3 thin 的是一個 pass，它的位置嚴格遞增。整條曲線有 hold 和跳變，它們必須原封不動。所以有些點是永遠保留的錨點——第一點和最後一點、每個 Hold 點和它的下一點、每個跳變的兩個點（不論多小）——只有兩個錨點之間純粹的直線段才交給 `engine::thin()`。
+- `clearRange(curve, start, end)`：兩者之間嚴格不留任何點，從 `start` 的值到曲線到達 `end` 時的值畫一條直線。
+- `addLaneItems(menu, session, lane)`：「Thin Points (n -> m)」、「Clear Between Locators」（loop 的 locator）和「Remove Lane」，各為一個 undo 步驟，只有在會改變東西時才啟用。
+
+自我檢查會 thin 一條曲線，裡面有晃動、一段 hold、緊接在 hold 之後剛好落在直線上的一點、一個 0.001 的跳變，以及一段 49 點的直線 ramp；要求每個 sample 都在 tolerance 之內、hold 和兩個跳變都精確保留、ramp 只剩兩端。接著執行三個選單項目，並逐一 undo。
 
 ---
 

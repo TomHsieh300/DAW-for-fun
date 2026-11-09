@@ -3,7 +3,7 @@
 
 [回到本章](../README.zh-TW.md) | [練習](../exercises/README.zh-TW.md)
 
-用 `.\scripts\build.ps1 -Only 16-automation -TestLabel solution` 執行所有解答程式。每一個都以 `[PASS] l16_exN (... checks passed)` 結束。
+用 `.\scripts\build.ps1 -Only 16-automation -TestLabel solution` 執行所有解答程式（練習 7-9 要加 `-Juce`）。每一個都以 `[PASS] l16_exN (... checks passed)` 結束。
 
 ---
 
@@ -95,6 +95,47 @@ Exercise 5 - copy and paste automation
 3. **Plugin 自己的視窗。**VST3 plugin 會宣告一個 gesture：`beginEdit()`、`performEdit()` 的值、`endEdit()`。JUCE 把它們轉成 `AudioProcessorParameter::Listener::parameterGestureChanged()` 和 `parameterValueChanged()`。Host 把 begin 對應到 `touch()`、每個值對應到 `setKnobValue()`、end 對應到 `release()`——和 DawLab 自己的 fader 完全一樣——所以 Touch、Latch 和錄製都照樣運作。
 4. **Latency。**位於 2000-sample lookahead 之後的 plugin，聽到的音訊是 2000 samples（42 ms）之前的。沒有平移的 lane 會提早 42 ms 移動參數：應該在鼓擊時打開的濾波器掃頻，會在鼓擊之前就打開。Lane 應該在 transport 位置減去 chain 中它前面所有東西的 latency（再加上 track 的 PDC，和 fader 一樣）的地方讀取，錄下的 gesture 也要同樣平移。
 5. **身分。**VST3 參數有一個 `ParamID`，plugin 承諾在各版本之間保持不變的數字——不像名稱，可能被翻譯或改名。效果器要存 plugin 的 class id，lane 要存 `ParamID` 和名稱：用 id 找到參數，plugin 不見時用名稱讓使用者看到一點東西。
+
+## 練習 7 - Automation lane 的畫線工具
+
+[`solutions/ex7_line_tool.cpp`](ex7_line_tool.cpp)
+
+`drawLine()` 就是用兩點的 pass 呼叫 `engine::punch()`：punch 本來就會保留範圍外的曲線，並在需要時於兩端加上跳變。`drawLineInLane()` 複製 lane 的內容（或從 `LaneContent{}` 開始，和 `Session::addPoint()` 一樣）、修改曲線，再執行一個 `SetLane`。工具記住按下的位置，拖曳時把終點限制在 lane 的範圍內，放開時把兩端轉成 sample（`snapToBeat(xToSample(x), !Alt)`）和值（`yToValue()`）。
+
+```text
+Exercise 7 - a line tool for automation lanes
+  a line from 120000 (0.08) to 384000 (0.92): 4 points, undo "Draw line Gain"
+[PASS] l16_ex7 (31 checks passed)
+```
+
+**為什麼蓋在上面。**Mouse listener 會*和* arrangement *一起*收到事件：在 automation lane 上按下，會在那裡新增一點（arrangement 自己的行為），同時又開始一條線。蓋在上面、有 `hitTest()` 的 component 則是*取代* arrangement 接收事件——但只在它說好的地方，所以 clip、標頭和 ruler 的行為都和原本一樣。
+
+## 練習 8 - 碰到控制項，就看到它的 automation
+
+[`solutions/ex8_follow_touch.cpp`](ex8_follow_touch.cpp)
+
+`attach()` 把舊的 `onTouch` 移進新的 lambda，先呼叫它，在 touch（不是放開）時以參數的位址呼叫 `touched()`。`touched()` 除非跟隨已開啟、位址是存在的 track，否則提早返回；`showAutomation()` 取代 track 原本顯示的 lane，`setSelectedTrack()` 選取它並捲進畫面（這個解答的第一版還多呼叫了 `scrollToTrack()`；把它拿掉的 mutant 什麼都沒改變，就是這樣發現它是多餘的）。
+
+```text
+Exercise 8 - touch a control, see its automation
+  touched Threshold on track 7: its lane is shown at y 287..359 of 359
+[PASS] l16_ex8 (22 checks passed)
+```
+
+## 練習 9 - Lane 選單：thin、清除、移除
+
+[`solutions/ex9_lane_menu.cpp`](ex9_lane_menu.cpp)
+
+`thinCurve()` 走過所有點一次。每個錨點結束一段從前一個錨點開始的 run；這段 run 交給 `engine::thin()`（它的第一點和最後一點就是那兩個錨點），保留下來的點接在第一點之後加入。Hold 點之後的那一點必須是錨點：hold 在那裡以跳變結束，如果那一點剛好落在從 hold 到下一點的直線上，thinning 會把它丟掉，hold 就會持續太久。比 tolerance 小的跳變也會被 thinning 丟掉；但那是使用者畫的，所以要保留。
+
+選單在打開時就計算好 thin 之後的曲線，所以項目可以寫出「154 -> 67」，在什麼都不會少時停用。
+
+```text
+Exercise 9 - a lane menu: thin, clear, remove
+  thinned 154 points to 67, off by at most 0.00199 (tolerance 0.002)
+  menu: "Thin Points (154 -> 67)"
+[PASS] l16_ex9 (29 checks passed)
+```
 
 ---
 
