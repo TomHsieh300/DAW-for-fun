@@ -373,6 +373,12 @@ void testLiveMidi() {
     play(e, 512, 512, nullptr, nullptr, &up);
     play(e, 24000, 512);
     DAWLAB_CHECK(inst.getSynth()->activeVoices() == 0);
+    // An armed instrument track records MIDI, not audio: only the armed audio track starts a Recorder.
+    e.getMixer().getTrack(1).setArmed(true);
+    DAWLAB_CHECK(e.startRecording(Latencies{}) == 1 && !e.getMixer().getTrack(1).getRecorder().isIdle() && inst.getRecorder().isIdle());
+    e.stopRecording();
+    play(e, 512, 512);
+    e.getMixer().getTrack(1).setArmed(false);
     // An armed audio track does not play MIDI.
     inst.setArmed(false);
     e.getMixer().getTrack(1).setArmed(true);

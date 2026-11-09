@@ -87,7 +87,7 @@ public:
         for (int slot = 0; slot < kMaxTracks; ++slot) {
             const TrackId id = engine.ownerOfSlot(slot);
             Track& track = engine.getMixer().getTrack(slot);
-            if (!id.isValid() || !track.isArmed())
+            if (!id.isValid() || !track.isArmed() || track.isInstrument()) // chapter 18: those record MIDI
                 continue;
             track.getMonitor().setRange(range);
             Entry entry;

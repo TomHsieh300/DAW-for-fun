@@ -35,6 +35,7 @@ enum : juce::CommandID {
     toggleRecord,         // chapter 17
     togglePunch,
     setRecordingTrim,
+    toggleMidiReplace,    // chapter 18: MIDI loop recording replaces instead of overdubbing
 
     // Track (the selected track)
     selectNextTrack = 0x2201,

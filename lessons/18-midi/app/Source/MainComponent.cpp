@@ -184,7 +184,15 @@ void MainComponent::tick() {
     session_.collectAutomation();
     if (!isConvertingSampleRate())
         takeRecorder_.tick();
-    transportBar_.setRecording(takeRecorder_.getPhase() == TakeRecorder::Phase::Recording);
+    // Chapter 18: the keyboard's keys into the takes; a transport that stopped ends a MIDI recording.
+    if (midiRecording_.isRecording()) {
+        midiRecording_.poll();
+        if (!engine_.getTransport().isPlaying()) {
+            const int notes = midiRecording_.stop();
+            setStatus(notes > 0 ? "Recorded " + juce::String(notes) + (notes == 1 ? " note" : " notes") : juce::String("No notes recorded"));
+        }
+    }
+    transportBar_.setRecording(takeRecorder_.getPhase() == TakeRecorder::Phase::Recording || midiRecording_.isRecording());
     transportBar_.update();
     // Chapter 15: while the CPU display is red (a dropout in the last 2 s), the status line says
     // in words what happened and what to do; this matters more than any other message.
@@ -228,8 +236,36 @@ bool MainComponent::refuseWhileRecording(const juce::String& what) {
 }
 
 bool MainComponent::toggleRecord() {
-    if (takeRecorder_.getPhase() == TakeRecorder::Phase::Recording) {
-        takeRecorder_.stop();
+    const bool recordingAudio = takeRecorder_.getPhase() == TakeRecorder::Phase::Recording;
+    if (recordingAudio || midiRecording_.isRecording()) {
+        if (recordingAudio)
+            takeRecorder_.stop();
+        if (midiRecording_.isRecording()) { // chapter 18: one undo step for all the takes
+            const int notes = midiRecording_.stop();
+            if (!recordingAudio)
+                setStatus(notes > 0 ? "Recorded " + juce::String(notes) + (notes == 1 ? " note" : " notes")
+                                    : juce::String("No notes recorded"));
+        }
+        return true;
+    }
+    // Chapter 18: armed audio tracks record audio, armed instrument tracks record the keyboard.
+    bool audioArmed = false, midiArmed = false;
+    for (int i = 0; i < session_.getNumTracks(); ++i) {
+        const engine::TrackId id = session_.getTrackId(i);
+        const engine::Track* t = engine_.getTrack(id);
+        if (t != nullptr && t->isArmed())
+            (session_.isInstrument(id) ? midiArmed : audioArmed) = true;
+    }
+    if (midiArmed && !audioArmed) {
+        if (isExporting() || isConvertingSampleRate()) {
+            setStatus("Not now: the project is being exported or converted");
+            return false;
+        }
+        midiRecording_.start(midiMode_);
+        status_.setColour(juce::Label::textColourId, DawColours::textDim());
+        engine_.getTransport().play();
+        setStatus(midiMode_ == MidiRecordMode::Overdub ? "Recording MIDI (overdub)" : "Recording MIDI (replace)");
+        transportBar_.update();
         return true;
     }
     if (isExporting() || isConvertingSampleRate()) {
@@ -241,6 +277,8 @@ bool MainComponent::toggleRecord() {
         setStatus(error);
         return false;
     }
+    if (midiArmed)
+        midiRecording_.start(midiMode_);
     status_.setColour(juce::Label::textColourId, DawColours::textDim());
     engine_.getTransport().play();
     setStatus("Recording");
@@ -252,7 +290,14 @@ bool MainComponent::setArmed(engine::TrackId track, bool armed) {
     engine::Track* t = engine_.getTrack(track);
     if (t == nullptr)
         return false;
-    if (armed) {
+    if (armed && session_.isInstrument(track)) {
+        // Chapter 18: an instrument track listens to the keyboard, not to the audio input.
+        if (mode_ == Mode::Live) {
+            const juce::StringArray keyboards = audioHost_.openMidiInputs();
+            setStatus(keyboards.isEmpty() ? juce::String("No MIDI keyboard found: connect one and arm the track again")
+                                          : "Playing " + session_.getStripName(session_.trackRef(track)) + " from " + keyboards.joinIntoString(", "));
+        }
+    } else if (armed) {
         if (const juce::String error = audioHost_.ensureInputsOpen(); error.isNotEmpty()) {
             setStatus("Cannot open the input: " + error);
             return false;
@@ -1142,7 +1187,7 @@ void MainComponent::getAllCommands(juce::Array<juce::CommandID>& c) {
                 CommandIDs::saveProjectAs, CommandIDs::undo, CommandIDs::redo, CommandIDs::loadDemoSong, CommandIDs::loadAudioIntoTrack, CommandIDs::exportMixdown,
                 CommandIDs::showAudioSettings, juce::StandardApplicationCommandIDs::quit, CommandIDs::playStop,
                 CommandIDs::returnToStart, CommandIDs::toggleLoop, CommandIDs::seekBackOneBar, CommandIDs::seekForwardOneBar,
-                CommandIDs::toggleRecord, CommandIDs::togglePunch, CommandIDs::setRecordingTrim, CommandIDs::toggleArmSelected, CommandIDs::cycleMonitorSelected,
+                CommandIDs::toggleRecord, CommandIDs::togglePunch, CommandIDs::setRecordingTrim, CommandIDs::toggleMidiReplace, CommandIDs::toggleArmSelected, CommandIDs::cycleMonitorSelected,
                 CommandIDs::selectNextTrack, CommandIDs::selectPreviousTrack, CommandIDs::toggleMuteSelected,
                 CommandIDs::toggleSoloSelected, CommandIDs::addMonoTrack, CommandIDs::addStereoTrack, CommandIDs::addInstrumentTrack,
                 CommandIDs::deleteSelectedTrack, CommandIDs::toggleAutomationLane, CommandIDs::zoomIn, CommandIDs::zoomOut, CommandIDs::showKeyboardShortcuts};
@@ -1231,6 +1276,12 @@ void MainComponent::getCommandInfo(juce::CommandID id, juce::ApplicationCommandI
         info.setInfo("Record", "Record the armed tracks", CommandCategories::transport, 0);
         info.addDefaultKeypress('r', ModifierKeys::noModifiers);
         info.setTicked(takeRecorder_.getPhase() == TakeRecorder::Phase::Recording);
+        break;
+    case CommandIDs::toggleMidiReplace:
+        info.setInfo("MIDI Loop Replaces", "Each pass of a loop replaces what the last one played (otherwise: overdub)",
+                     CommandCategories::transport, 0);
+        info.setTicked(midiMode_ == MidiRecordMode::Replace);
+        info.setActive(!midiRecording_.isRecording());
         break;
     case CommandIDs::togglePunch:
         info.setInfo("Punch", "Record only between the loop's locators", CommandCategories::transport, 0);
@@ -1359,6 +1410,11 @@ bool MainComponent::perform(const InvocationInfo& info) {
         setStatus(takeRecorder_.isPunchEnabled() ? "Punch on: recording only between the loop's locators" : "Punch off");
         break;
     case CommandIDs::setRecordingTrim: askForTrim(); break;
+    case CommandIDs::toggleMidiReplace:
+        midiMode_ = midiMode_ == MidiRecordMode::Replace ? MidiRecordMode::Overdub : MidiRecordMode::Replace;
+        setStatus(midiMode_ == MidiRecordMode::Replace ? "MIDI loop recording: each pass replaces the last"
+                                                       : "MIDI loop recording: overdub, every pass is kept");
+        break;
     case CommandIDs::toggleArmSelected:
         if (const engine::Track* armedTrack = engine_.getTrack(arrangement_.getSelectedTrack()))
             setArmed(arrangement_.getSelectedTrack(), !armedTrack->isArmed());
@@ -1425,6 +1481,7 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
         m.addSeparator();
         m.addCommandItem(cm, CommandIDs::toggleRecord);
         m.addCommandItem(cm, CommandIDs::togglePunch);
+        m.addCommandItem(cm, CommandIDs::toggleMidiReplace);
         m.addCommandItem(cm, CommandIDs::setRecordingTrim);
         m.addSeparator();
         m.addCommandItem(cm, CommandIDs::seekBackOneBar);

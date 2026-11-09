@@ -1282,6 +1282,144 @@ void testMidiEditing() {
     DAWLAB_CHECK(main.openPianoRoll(synth, 0) == nullptr); // offline, and no such clip anyway
 }
 
+// A player at a keyboard, against the offline device: the test's clock, blocks of 512 samples, no output
+// latency. Block k is heard at k x 512 / rate (its blockTime); a key played in time with what is heard at
+// unwrapped song sample S (counted from the recording's start, through loop wraps) goes down at
+// (S + mix latency) / rate. Every key arrives before the block that is being rendered when it goes down.
+struct Keyboard {
+    MainComponent& main;
+    double clock = 0.0;
+    struct Key {
+        double time;
+        engine::MidiMessage message;
+    };
+    std::vector<Key> keys;
+
+    explicit Keyboard(MainComponent& m) : main(m) {
+        main.getAudioHost().setClock([this] { return clock; });
+    }
+    ~Keyboard() { main.getAudioHost().setClock({}); }
+    Keyboard(const Keyboard&) = delete;
+    Keyboard& operator=(const Keyboard&) = delete;
+
+    // A note at unwrapped song tick `tick`, `length` ticks long, at 120 BPM (25 samples a tick).
+    void note(std::int64_t tick, std::int64_t length, int pitch, int velocity = 100) {
+        const double mix = main.getEngine().getLatencySamples();
+        keys.push_back({(25.0 * static_cast<double>(tick) + mix) / 48000.0, engine::MidiMessage::noteOn(0, pitch, velocity)});
+        keys.push_back({(25.0 * static_cast<double>(tick + length) + mix) / 48000.0, engine::MidiMessage::noteOff(0, pitch)});
+    }
+    // Plays `blocks` blocks, from the time of block `first` (k x 512 / 48000).
+    void play(int first, int blocks) {
+        std::stable_sort(keys.begin(), keys.end(), [](const Key& a, const Key& b) { return a.time < b.time; });
+        for (int k = first; k < first + blocks; ++k) {
+            clock = k * 512.0 / 48000.0;
+            for (auto it = keys.begin(); it != keys.end() && it->time <= clock + 512.0 / 48000.0;) {
+                main.getAudioHost().pushMidi({it->time, it->message});
+                it = keys.erase(it);
+            }
+            main.simulatePlayback(512);
+            if (k % 8 == 0)
+                main.tick();
+        }
+    }
+};
+
+void testMidiRecording() {
+    std::printf("instruments and MIDI clips: recording the keyboard\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    Session& session = main.getSession();
+    Engine& engine = main.getEngine();
+    Transport& tr = engine.getTransport();
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    const TrackId synth = main.addTrack(TrackFormat::Mono, true);
+    const TrackId audio = session.getTrackId(0);
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(main.setArmed(synth, true));
+
+    // Two bars, straight: every note on the tick it was played, its length as held.
+    {
+        Keyboard kb(main);
+        kb.note(0, 480, 60);
+        kb.note(960, 480, 64, 90);
+        kb.note(1920, 240, 67);
+        kb.note(3001, 299, 72); // off the beat: recorded where it was played
+        tr.setPosition(0);
+        DAWLAB_CHECK(main.toggleRecord() && main.getMidiRecording().isRecording() && tr.isPlaying());
+        kb.play(0, 20);
+        DAWLAB_CHECK(engine.getTrack(synth)->getSynth()->activeVoices() == 1); // the key heard while recording
+        kb.play(20, 355);                                                         // to 2 bars
+        DAWLAB_CHECK(main.toggleRecord() && !main.getMidiRecording().isRecording());
+    }
+    tr.stop();
+    main.simulatePlayback(512);
+    DAWLAB_CHECK(session.getMidiClips(synth).size() == 1 && session.getHistory().getUndoName() == "Record MIDI");
+    if (session.getMidiClips(synth).size() == 1) {
+        const MidiClipModel& take = session.getMidiClips(synth)[0];
+        // It ends where the song was heard when Record was pressed again: the last block's time, minus the mix.
+        DAWLAB_CHECK(take.start == 0 && take.length > 7500 && take.length < 7680 && take.played.size() == 4);
+        if (take.played.size() == 4) {
+            DAWLAB_CHECK((take.played[0] == engine::Note{0, 480, 60, 100, 0} && take.played[1] == engine::Note{960, 480, 64, 90, 0}));
+            DAWLAB_CHECK((take.played[2] == engine::Note{1920, 240, 67, 100, 0} && take.played[3] == engine::Note{3001, 299, 72, 100, 0}));
+        }
+        std::printf("  4 notes played against a device in 512-sample blocks: recorded at ticks %lld, %lld, %lld, %lld\n",
+                    static_cast<long long>(take.played[0].start), static_cast<long long>(take.played[1].start),
+                    static_cast<long long>(take.played[2].start), static_cast<long long>(take.played[3].start));
+    }
+    DAWLAB_CHECK(session.getClips(audio).empty()); // no audio take: only an instrument track was armed
+    DAWLAB_CHECK(main.undo() && session.getMidiClips(synth).empty());
+
+    // A loop of one bar, 2.5 passes, over an old clip with a note at beat 4. Pass 0 plays beat 1, pass 1 beat 2,
+    // pass 2 beat 1 again and stops at beat 3.
+    auto loopTake = [&](MidiRecordMode mode) {
+        session.setMidiClips(synth, {midiClip(0, {{2880, 240, 48, 100, 0}})});
+        engine.applyPendingCommandsOffline();
+        tr.setLoopRange(0, 96000);
+        tr.setLoopEnabled(true);
+        tr.setPosition(0);
+        main.setMidiRecordMode(mode);
+        Keyboard kb(main);
+        kb.note(0, 240, 60);
+        kb.note(3840 + 960, 240, 62);
+        kb.note(7680, 240, 64);
+        DAWLAB_CHECK(main.toggleRecord());
+        kb.play(0, 470); // 2.45 bars
+        tr.stop();       // stopping the transport ends it too
+        kb.play(470, 1);
+        main.tick();
+        DAWLAB_CHECK(!main.getMidiRecording().isRecording());
+        tr.setLoopEnabled(false);
+    };
+    loopTake(MidiRecordMode::Overdub);
+    std::vector<int> pitches;
+    for (const MidiClipModel& c : session.getMidiClips(synth))
+        for (const engine::Note& n : c.played)
+            pitches.push_back(n.pitch);
+    std::sort(pitches.begin(), pitches.end());
+    DAWLAB_CHECK((pitches == std::vector<int>{48, 60, 62, 64})); // everything
+    DAWLAB_CHECK(main.undo());
+    loopTake(MidiRecordMode::Replace);
+    pitches.clear();
+    for (const MidiClipModel& c : session.getMidiClips(synth))
+        for (const engine::Note& n : c.played)
+            pitches.push_back(n.pitch);
+    // Pass 1 covered the whole loop: pass 0's note and the old note at beat 4 are gone. Pass 2 covered beats
+    // 1-2: pass 1's note at beat 2 is gone too.
+    DAWLAB_CHECK((pitches == std::vector<int>{64}));
+    if (session.getMidiClips(synth).size() == 2) {
+        const MidiClipModel& take = session.getMidiClips(synth)[1];
+        DAWLAB_CHECK(take.start == 0 && take.length == 3840 && take.played.size() == 1 && take.played[0].start == 0);
+    }
+    DAWLAB_CHECK(main.undo() && session.getMidiClips(synth)[0].played.size() == 1); // the old note back
+
+    // Nothing armed: nothing starts. An armed instrument track and an armed audio track: both record.
+    DAWLAB_CHECK(main.setArmed(synth, false));
+    DAWLAB_CHECK(!main.toggleRecord() && !main.getMidiRecording().isRecording());
+    tr.stop();
+    main.simulatePlayback(512);
+}
+
 // ---- --smoke-test --------------------------------------------------------------------------------
 
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
@@ -1290,6 +1428,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     std::printf("DawLab 18 smoke test (no audio device)\n\n");
     testMidiModel();
     testMidiEditing();
+    testMidiRecording();
     testAutomation();
     testRecording();
 

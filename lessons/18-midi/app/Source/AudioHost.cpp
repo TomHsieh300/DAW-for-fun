@@ -4,7 +4,7 @@
 
 namespace dawlab::app {
 
-AudioHost::AudioHost(engine::Engine& engine) : engine_(engine) {}
+AudioHost::AudioHost(engine::Engine& engine) : engine_(engine) { midiEvents_.reserve(engine::MidiFifo::kCapacity); }
 
 AudioHost::~AudioHost() { closeDevice(); }
 
@@ -22,6 +22,7 @@ juce::String AudioHost::openDefaultDevice(int numInputChannels, int numOutputCha
 }
 
 void AudioHost::closeDevice() {
+    deviceManager_.removeMidiInputDeviceCallback({}, this); // chapter 18: no more keys from the driver's thread
     setEngineAttached(false);
     deviceManager_.closeAudioDevice();
     deviceOpen_ = false;
@@ -158,6 +159,86 @@ engine::Latencies AudioHost::getDeviceLatencies(int trimSamples) const noexcept 
     return latencies;
 }
 
+// ---- the keyboard (chapter 18) ----------------------------------------------------------------------
+
+double AudioHost::now() const { return clock_ ? clock_() : juce::Time::getMillisecondCounterHiRes() * 0.001; }
+
+juce::StringArray AudioHost::openMidiInputs() {
+    juce::StringArray names;
+    for (const juce::MidiDeviceInfo& device : juce::MidiInput::getAvailableDevices()) {
+        if (!deviceManager_.isMidiInputDeviceEnabled(device.identifier))
+            deviceManager_.setMidiInputDeviceEnabled(device.identifier, true);
+        names.add(device.name);
+    }
+    deviceManager_.removeMidiInputDeviceCallback({}, this); // never twice
+    deviceManager_.addMidiInputDeviceCallback({}, this);    // {}: every enabled input
+    return names;
+}
+
+juce::StringArray AudioHost::getMidiInputNames() const {
+    juce::StringArray names;
+    for (const juce::MidiDeviceInfo& device : juce::MidiInput::getAvailableDevices())
+        if (deviceManager_.isMidiInputDeviceEnabled(device.identifier))
+            names.add(device.name);
+    return names;
+}
+
+void AudioHost::handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage& m) {
+    // The driver's thread. JUCE has already parsed the bytes (Step 5's MidiParser does the same) and stamped
+    // the message with Time::getMillisecondCounterHiRes() / 1000 - our now().
+    const juce::uint8* raw = m.getRawData();
+    if (m.getRawDataSize() < 1 || raw[0] < 0x80 || raw[0] >= 0xF0)
+        return; // only channel messages
+    engine::MidiMessage message;
+    message.status = raw[0];
+    message.data1 = m.getRawDataSize() > 1 ? raw[1] : 0;
+    message.data2 = m.getRawDataSize() > 2 ? raw[2] : 0;
+    pushMidi({m.getTimeStamp(), message});
+}
+
+void AudioHost::pushMidi(const engine::TimedMidi& message) noexcept {
+    playFifo_.push(message);
+    recordFifo_.push(message);
+}
+
+void AudioHost::publishAnchor(const Anchor& a) noexcept {
+    const uint64_t v = anchorVersion_.load(std::memory_order_relaxed);
+    anchorVersion_.store(v + 1, std::memory_order_relaxed); // odd: writing
+    std::atomic_thread_fence(std::memory_order_release);
+    anchorTime_.store(a.blockTime, std::memory_order_relaxed);
+    anchorSample_.store(a.songSample, std::memory_order_relaxed);
+    anchorRate_.store(a.sampleRate, std::memory_order_relaxed);
+    anchorMix_.store(a.mixLatency, std::memory_order_relaxed);
+    anchorPlaying_.store(a.playing, std::memory_order_relaxed);
+    anchorBlock_.store(a.block, std::memory_order_relaxed);
+    anchorRendered_.store(a.renderedBefore, std::memory_order_relaxed);
+    anchorNumSamples_.store(a.numSamples, std::memory_order_relaxed);
+    anchorVersion_.store(v + 2, std::memory_order_release); // even: done
+}
+
+bool AudioHost::getAnchor(Anchor& out) const noexcept {
+    for (int attempt = 0; attempt < 1000; ++attempt) {
+        const uint64_t v0 = anchorVersion_.load(std::memory_order_acquire);
+        if (v0 % 2 != 0)
+            continue;
+        Anchor a;
+        a.blockTime = anchorTime_.load(std::memory_order_relaxed);
+        a.songSample = anchorSample_.load(std::memory_order_relaxed);
+        a.sampleRate = anchorRate_.load(std::memory_order_relaxed);
+        a.mixLatency = anchorMix_.load(std::memory_order_relaxed);
+        a.playing = anchorPlaying_.load(std::memory_order_relaxed);
+        a.block = anchorBlock_.load(std::memory_order_relaxed);
+        a.renderedBefore = anchorRendered_.load(std::memory_order_relaxed);
+        a.numSamples = anchorNumSamples_.load(std::memory_order_relaxed);
+        std::atomic_thread_fence(std::memory_order_acquire);
+        if (anchorVersion_.load(std::memory_order_relaxed) == v0) {
+            out = a;
+            return v0 != 0;
+        }
+    }
+    return false;
+}
+
 // ---- the audio callback -------------------------------------------------------------------------
 
 void AudioHost::audioDeviceIOCallbackWithContext(const float* const* inputChannelData, int numInputChannels,
@@ -175,7 +256,30 @@ void AudioHost::render(float* const* outputs, int numOutputChannels, int numSamp
     // The engine renders stereo into the first two device channels, directly in the device's
     // memory: AudioBlock is just a view of JUCE's channel pointer array.
     const int engineChannels = std::min(numOutputChannels, engine::kNumChannels);
-    engine_.processBlock(AudioBlock(outputs, engineChannels, numSamples), input);
+
+    // Chapter 18: the keyboard. This block's first sample is heard after the device's output latency; a key is
+    // played a fixed delay after it arrived - two blocks and that latency, the worst case of Step 5 - so every
+    // note is late by the same amount instead of by however the block periods fell.
+    const double rate = sampleRate_.load(std::memory_order_relaxed);
+    const double outputSeconds = rate > 0.0 ? outputLatency_.load(std::memory_order_relaxed) / rate : 0.0;
+    const double blockTime = now() + outputSeconds;
+    long late = 0;
+    if (rate > 0.0)
+        engine::drainMidi(playFifo_, blockTime, numSamples, rate, engine::MidiTiming::Scheduled,
+                          2.0 * numSamples / rate + outputSeconds, midiEvents_, late);
+    else
+        midiEvents_.clear();
+    if (late > 0)
+        lateMidi_.fetch_add(late, std::memory_order_relaxed);
+    const engine::Transport& tr = engine_.getTransport();
+    const bool playing = tr.isPlaying();
+    publishAnchor({blockTime, tr.getPosition(), rate, engine_.getLatencySamples(), playing, callbacks_.load(std::memory_order_relaxed) + 1,
+                   renderedWhilePlaying_, numSamples});
+    if (playing)
+        renderedWhilePlaying_ += numSamples;
+
+    engine_.processBlock(AudioBlock(outputs, engineChannels, numSamples), input,
+                         engine::MidiBlock{midiEvents_.data(), static_cast<int>(midiEvents_.size())});
     for (int ch = engineChannels; ch < numOutputChannels; ++ch)
         if (outputs[ch] != nullptr)
             std::fill_n(outputs[ch], numSamples, 0.0f);

@@ -329,7 +329,8 @@ public:
         int started = 0;
         for (int slot = 0; slot < kMaxTracks; ++slot) {
             Track& t = mixer_.getTrack(slot);
-            if (slotOwner_[static_cast<size_t>(slot)].isValid() && t.isArmed() &&
+            // An armed instrument track listens to the keyboard (chapter 18): it records MIDI, not audio.
+            if (slotOwner_[static_cast<size_t>(slot)].isValid() && t.isArmed() && !t.isInstrument() &&
                 t.getRecorder().start(device, range, t.getNumProcessingChannels(), ringFrames))
                 ++started;
         }

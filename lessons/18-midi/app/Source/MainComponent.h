@@ -26,6 +26,7 @@
 #include "DawLookAndFeel.h"
 #include "Exporter.h"
 #include "MediaLoader.h"
+#include "MidiRecording.h"
 #include "MixerView.h"
 #include "ParameterPanel.h"
 #include "PianoRoll.h"
@@ -88,6 +89,10 @@ public:
     bool setArmed(engine::TrackId track, bool armed);
     void cycleMonitor(engine::TrackId track); // Off, Auto, Always
     void showRecordMenu(engine::TrackId track);
+    // Chapter 18: MIDI recording (MidiRecording).
+    MidiRecording& getMidiRecording() noexcept { return midiRecording_; }
+    void setMidiRecordMode(MidiRecordMode mode) noexcept { midiMode_ = mode; }
+    MidiRecordMode getMidiRecordMode() const noexcept { return midiMode_; }
     void showClipMenu(engine::TrackId track, int clipIndex);
     // ---- MIDI clips (chapter 18, Step 8) ---------------------------------------------------------------
     // Opens (or brings to the front) the piano roll of a clip. Offline (tests) there are no windows: nullptr.
@@ -198,6 +203,8 @@ private:
     AudioHost audioHost_{engine_};
     MediaLoader loader_;
     TakeRecorder takeRecorder_{session_, audioHost_};
+    MidiRecording midiRecording_{session_, audioHost_}; // chapter 18: the keyboard, while recording
+    MidiRecordMode midiMode_ = MidiRecordMode::Overdub;
     std::unique_ptr<juce::PropertiesFile> settings_; // the trim belongs to the machine, not to a song
     juce::ApplicationCommandManager commandManager_;
 

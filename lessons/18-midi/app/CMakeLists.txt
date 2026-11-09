@@ -42,6 +42,8 @@ set(L18_APP_SOURCES
     Source/MainComponent.h
     Source/MainComponent.cpp
     Source/MidiModel.h
+    Source/MidiRecording.h
+    Source/MidiRecording.cpp
     Source/MediaLoader.h
     Source/MediaLoader.cpp
     Source/Meters.h

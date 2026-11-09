@@ -21,6 +21,7 @@
 
 #include <dawlab/dsp/SpectrumAnalyzer.h>
 #include <dawlab/engine/Engine.h>
+#include <dawlab/engine/Midi.h>
 
 #include <juce_audio_devices/juce_audio_devices.h>
 
@@ -31,7 +32,7 @@
 
 namespace dawlab::app {
 
-class AudioHost final : private juce::AudioIODeviceCallback {
+class AudioHost final : private juce::AudioIODeviceCallback, private juce::MidiInputCallback {
 public:
     explicit AudioHost(engine::Engine& engine);
     ~AudioHost() override;
@@ -58,6 +59,40 @@ public:
     juce::StringArray getInputNames() const;
     // What the driver reports, and the trim. The mix's latency is the engine's to add.
     engine::Latencies getDeviceLatencies(int trimSamples) const noexcept;
+
+    // ---- the keyboard (chapter 18, Step 8) -------------------------------------------------------
+    // The driver's thread pushes every channel message twice, with its time on the shared clock (now()): into
+    // the FIFO the audio thread plays from (scheduled: Step 5, a fixed delay after it arrived), and into the one
+    // the UI thread records from (MidiRecording). Opens every MIDI input the system has. Returns their names;
+    // none (offline, or no keyboard) is not an error.
+    juce::StringArray openMidiInputs();
+    juce::StringArray getMidiInputNames() const;
+    // What the driver's callback does; also for tests, which play their keys this way. Any thread.
+    void pushMidi(const engine::TimedMidi& message) noexcept;
+    engine::MidiFifo& getRecordFifo() noexcept { return recordFifo_; }
+    // Seconds on the clock the MIDI time stamps use (JUCE's Time::getMillisecondCounterHiRes()). Tests replace it.
+    double now() const;
+    void setClock(std::function<double()> clock) { clock_ = std::move(clock); }
+
+    // What the last block was, for placing what the keyboard played (Step 6): when its first sample will be
+    // heard, which song sample it rendered there, the mix's latency, and whether the transport played. A
+    // seqlock: the audio thread writes it every block, the UI thread reads a consistent copy. False until a
+    // block has been processed.
+    struct Anchor {
+        double blockTime = 0.0;
+        int64_t songSample = 0;
+        double sampleRate = 48000.0;
+        int mixLatency = 0;
+        bool playing = false;
+        uint64_t block = 0;         // counts the blocks
+        int64_t renderedBefore = 0; // samples rendered while playing, before this block: it only grows, through
+                                    // loop wraps too, so it unwraps a loop's positions (MidiRecording)
+        int numSamples = 0;
+        // What renderedBefore will be for the next block.
+        int64_t renderedAfter() const noexcept { return renderedBefore + (playing ? numSamples : 0); }
+    };
+    bool getAnchor(Anchor& out) const noexcept;
+    long getLateMidi() const noexcept { return lateMidi_.load(std::memory_order_relaxed); }
 
     // ---- without a device -----------------------------------------------------------------
     // Prepares the engine and the analyzer as audioDeviceAboutToStart() would.
@@ -105,6 +140,8 @@ private:
     void audioDeviceStopped() override;
 
     void prepareInternal(double sampleRate, int blockSize);
+    void handleIncomingMidiMessage(juce::MidiInput* source, const juce::MidiMessage& message) override;
+    void publishAnchor(const Anchor& a) noexcept;
     void render(float* const* outputs, int numOutputChannels, int numSamples, engine::InputBlock input) noexcept;
 
     engine::Engine& engine_;
@@ -120,6 +157,21 @@ private:
     std::atomic<bool> analyzerReady_{false};
     bool attached_ = false;
     bool deviceOpen_ = false;
+
+    // chapter 18
+    engine::MidiFifo playFifo_, recordFifo_;
+    std::vector<engine::BlockEvent> midiEvents_; // the audio thread's: one block's live MIDI (reserved)
+    std::atomic<long> lateMidi_{0};
+    std::function<double()> clock_;
+    std::atomic<uint64_t> anchorVersion_{0}; // odd while the audio thread writes
+    std::atomic<double> anchorTime_{0.0}, anchorRate_{48000.0};
+    std::atomic<int64_t> anchorSample_{0};
+    std::atomic<int> anchorMix_{0};
+    std::atomic<bool> anchorPlaying_{false};
+    std::atomic<uint64_t> anchorBlock_{0};
+    std::atomic<int64_t> anchorRendered_{0};
+    std::atomic<int> anchorNumSamples_{0};
+    int64_t renderedWhilePlaying_ = 0; // audio thread only
 };
 
 } // namespace dawlab::app

@@ -50,8 +50,8 @@ juce::String TakeRecorder::start() {
         return "A recording is still running";
     Engine& engine = session_.getEngine();
     bool anyArmed = false;
-    for (int i = 0; i < session_.getNumTracks(); ++i)
-        anyArmed = anyArmed || engine.getTrack(session_.getTrackId(i))->isArmed();
+    for (int i = 0; i < session_.getNumTracks(); ++i) // an instrument track records MIDI (chapter 18)
+        anyArmed = anyArmed || (engine.getTrack(session_.getTrackId(i))->isArmed() && !session_.isInstrument(session_.getTrackId(i)));
     if (!anyArmed)
         return "Nothing to record: arm a track first (R in its header)";
     if (const juce::Result made = folder_.createDirectory(); made.failed())
