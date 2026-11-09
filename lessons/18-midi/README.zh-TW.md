@@ -2,7 +2,7 @@
 
 [English](README.md) | **繁體中文**
 
-> **狀態：進行中。** 8 個 step 中的第 1-7 個。
+> **狀態：完成。** 全部 8 個 step。用真的鍵盤彈奏和錄音仍然要親手試過：見 Step 8 的「你要自己試的」。
 
 DawLab 17（第 17 章）會錄音也會播放音訊：已經存在的聲音，以 sample 擺放。DAW 也會播放*音符*——給樂器的指令，以拍子擺放，只有在播放時才變成聲音——並從鍵盤把它們錄下來。音符有它自己的問題：沒有結束的音符會永遠響下去、樂器的 voice 數量有限、鍵盤從另一個 thread 送出事件而且有自己的時間觀，而錄下的演奏常常希望比彈的時候更整齊一點。
 
@@ -40,7 +40,7 @@ DawLab 17（第 17 章）會錄音也會播放音訊：已經存在的聲音，�
 | 5 | [鍵盤](docs/step-05-keyboard.zh-TW.md) | byte parser（running status、real time、SysEx）、來自 MIDI thread 的 SPSC FIFO、把時間戳換成 sample offset：jitter 或固定延遲；ThreadSanitizer | 完成 |
 | 6 | [錄 MIDI](docs/step-06-recording.zh-TW.md) | 依按鍵按下的時間擺放音符（輸出與 mix latency，沒有 input latency）、loop 的 pass、疊加或取代、有 strength 和 swing 且保留原始演奏的 quantize | 完成 |
 | 7 | [有樂器的 engine](docs/step-07-engine.zh-TW.md) | 第 17 章 engine 的複本：synth 在 insert 之前加入 track 的 instrument track、經 command queue 送入的 MIDI clip、給 armed track 的即時 MIDI；ThreadSanitizer | 完成 |
-| 8 | 有樂器的 app | 第 17 章 app 的複本：instrument track、MIDI clip、piano roll、鍵盤輸入、錄音、quantize、存檔、undo | 規劃中 |
+| 8 | [有樂器的 app](docs/step-08-app.zh-TW.md) | 第 17 章 app 的複本：instrument track、MIDI clip、piano roll、鍵盤輸入、錄音、quantize、存檔、undo | 完成 |
 
 </div>
 

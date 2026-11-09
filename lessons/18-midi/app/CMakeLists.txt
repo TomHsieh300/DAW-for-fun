@@ -1,5 +1,5 @@
 # Chapter 18, Step 8: the JUCE application "DawLab 18" - chapter 17's "DawLab 17" with instruments:
-# a record button, armed tracks, takes that become clips, and takes recovered after a crash.
+# instrument tracks, MIDI clips, a piano roll, a MIDI keyboard, MIDI recording and quantize.
 #
 #   l18_daw_app   STATIC library with every app class except main() (as l14_daw_app in chapter 14)
 #   DawLab18      the GUI application (product name "DawLab 18") = Main.cpp + l18_daw_app.

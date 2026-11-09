@@ -2,7 +2,7 @@
 
 [English](step-07-engine.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 6 - 錄 MIDI](step-06-recording.zh-TW.md) | 下一步：Step 8 - 有樂器的 app（即將推出）
+[總覽](../README.zh-TW.md) | 上一步：[Step 6 - 錄 MIDI](step-06-recording.zh-TW.md) | 下一步：[Step 8 - 有樂器的 app](step-08-app.zh-TW.md)
 
 ## 目標
 

@@ -7,8 +7,8 @@
 #   tsan  chapters 15-18 under ThreadSanitizer: their checks run a real audio thread next to the
 #         UI thread, and TSan fails the run on any data race between them
 #   asan  every pure C++ chapter under AddressSanitizer and UndefinedBehaviorSanitizer
-#   juce  chapters 13-17 with JUCE, including the smoke tests and snapshots of DawLab 8, 15, 16 and
-#         17 (macOS is built too but allowed to fail until it has passed a few times)
+#   juce  chapters 13-18 with JUCE, including the smoke tests and snapshots of DawLab 8, 15, 16, 17 and
+#         18 (macOS is built too but allowed to fail until it has passed a few times)
 #
 # Linux ARM64 (ubuntu-24.04-arm) stands in for embedded aarch64 boards such as NXP's
 # FRDM i.MX 95. It is allowed to fail in both jobs until it has passed a few times.
@@ -140,17 +140,17 @@ jobs:
       - name: Build and test (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: .\scripts\build.ps1 -Only 13-vst-hosting,14-daw-8track,15-daw-growing,16-automation,17-recording -Juce -Config Release
+        run: .\scripts\build.ps1 -Only 13-vst-hosting,14-daw-8track,15-daw-growing,16-automation,17-recording,18-midi -Juce -Config Release
 
       # The apps' smoke tests and snapshots create real windows, so give them a virtual X display
       - name: Build and test (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run -a ./scripts/build.sh --only 13-vst-hosting,14-daw-8track,15-daw-growing,16-automation,17-recording --juce --config Release
+        run: xvfb-run -a ./scripts/build.sh --only 13-vst-hosting,14-daw-8track,15-daw-growing,16-automation,17-recording,18-midi --juce --config Release
 
       # macOS runners have a desktop session, so the GUI tests need no virtual display
       - name: Build and test (macOS)
         if: runner.os == 'macOS'
-        run: ./scripts/build.sh --only 13-vst-hosting,14-daw-8track,15-daw-growing,16-automation,17-recording --juce --config Release
+        run: ./scripts/build.sh --only 13-vst-hosting,14-daw-8track,15-daw-growing,16-automation,17-recording,18-midi --juce --config Release
 
       - name: Upload the snapshots of DawLab 8, 15, 16 and 17
         if: always()

@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-07-engine.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 6 - Recording MIDI](step-06-recording.md) | Next: Step 8 - The app with instruments (coming)
+[Overview](../README.md) | Previous: [Step 6 - Recording MIDI](step-06-recording.md) | Next: [Step 8 - The app with instruments](step-08-app.md)
 
 ## Goal
 
