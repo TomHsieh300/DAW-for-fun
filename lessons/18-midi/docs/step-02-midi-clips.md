@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-02-midi-clips.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 1 - MIDI events and musical time](step-01-midi-time.md) | Next: Step 3 - One voice (coming)
+[Overview](../README.md) | Previous: [Step 1 - MIDI events and musical time](step-01-midi-time.md) | Next: [Step 3 - One voice](step-03-one-voice.md)
 
 ## Goal
 

@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](README.zh-TW.md)
 
-> **Status: in progress.** Steps 1-2 of 8.
+> **Status: in progress.** Steps 1-3 of 8.
 
 DawLab 17 (chapter 17) records and plays audio: sound that already exists, placed in samples. A DAW also
 plays *notes* - instructions to an instrument, placed in beats, that become sound only when they are played
@@ -41,7 +41,7 @@ After this chapter you can
 |---|---|---|---|
 | 1 | [MIDI events and musical time](docs/step-01-midi-time.md) | three-byte messages, notes in ticks, the exact inverse for a block's edges, note offs first, an instrument cut at every event | done |
 | 2 | [Playing a MIDI clip](docs/step-02-midi-clips.md) | clips as windows on their notes; a table of what was started, so no note hangs after a stop, seek, wrap, mute or delete; controllers chased after a jump | done |
-| 3 | One voice | an oscillator without aliasing (PolyBLEP), an ADSR envelope, a filter, velocity; no clicks, no allocation | planned |
+| 3 | [One voice](docs/step-03-one-voice.md) | a sawtooth with PolyBLEP, its aliases measured; an ADSR that never jumps; a filter, velocity; a voice that adds to the mix | done |
 | 4 | Polyphony | voice allocation and stealing, the same note again, the sustain pedal, pitch bend | planned |
 | 5 | A keyboard | events from the MIDI thread through a lock-free FIFO, timestamps into sample offsets: latency or jitter | planned |
 | 6 | Recording MIDI | placing a performance, loop overdub or replace, quantize that keeps what was played | planned |

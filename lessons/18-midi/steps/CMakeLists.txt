@@ -18,3 +18,4 @@ endfunction()
 
 l18_add_step(step01 step01-midi-time)
 l18_add_step(step02 step02-midi-clips)
+l18_add_step(step03 step03-one-voice)

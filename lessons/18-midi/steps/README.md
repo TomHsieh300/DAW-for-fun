@@ -13,6 +13,7 @@ write the step's functions in `starter/`, the self-check tells you when they wor
 |---|---|---|---|
 | 1 | `step01-midi-time` | `MidiMessage::kind`, `pitchBendValue`, `sampleOfTick`, `firstTickAtOrAfter`, `sortEvents`, `eventsInBlock`, `renderBlock` | `l18_step01_starter` |
 | 2 | `step02-midi-clips` | `MidiClip::place`, `ClipPlayer::allNotesOff`, `chase`, `process` | `l18_step02_starter` |
+| 3 | `step03-one-voice` | `noteFrequency`, `polyBlep`, `Saw::next`, `Adsr::noteOn`, `noteOff`, `next`, `Voice::start`, `release`, `render` | `l18_step03_starter` |
 
 </div>
 

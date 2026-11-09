@@ -2,7 +2,7 @@
 
 [English](step-02-midi-clips.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 1 - MIDI 事件與音樂時間](step-01-midi-time.zh-TW.md) | 下一步：Step 3 - 一個 voice（即將推出）
+[總覽](../README.zh-TW.md) | 上一步：[Step 1 - MIDI 事件與音樂時間](step-01-midi-time.zh-TW.md) | 下一步：[Step 3 - 一個 voice](step-03-one-voice.zh-TW.md)
 
 ## 目標
 
