@@ -2,7 +2,7 @@
 
 [English](step-06-recording.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 5 - 鍵盤](step-05-keyboard.zh-TW.md) | 下一步：Step 7 - 有樂器的 engine（即將推出）
+[總覽](../README.zh-TW.md) | 上一步：[Step 5 - 鍵盤](step-05-keyboard.zh-TW.md) | 下一步：[Step 7 - 有樂器的 engine](step-07-engine.zh-TW.md)
 
 ## 目標
 

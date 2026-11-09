@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](README.zh-TW.md)
 
-> **Status: in progress.** Steps 1-6 of 8.
+> **Status: in progress.** Steps 1-7 of 8.
 
 DawLab 17 (chapter 17) records and plays audio: sound that already exists, placed in samples. A DAW also
 plays *notes* - instructions to an instrument, placed in beats, that become sound only when they are played
@@ -45,7 +45,7 @@ After this chapter you can
 | 4 | [Polyphony](docs/step-04-polyphony.md) | a pool of voices, the same note on its own voice, stealing what is missed least without a click, the sustain pedal, pitch bend, all notes off | done |
 | 5 | [A keyboard](docs/step-05-keyboard.md) | a byte parser (running status, real time, SysEx), an SPSC FIFO from the MIDI thread, timestamps into sample offsets: jitter or a constant delay; ThreadSanitizer | done |
 | 6 | [Recording MIDI](docs/step-06-recording.md) | notes placed by when the key went down (output and mix latency, no input latency), passes of a loop, overdub or replace, quantize with strength and swing that keeps what was played | done |
-| 7 | The engine with instruments | a copy of chapter 17's engine: instrument tracks, MIDI clips through the command queue | planned |
+| 7 | [The engine with instruments](docs/step-07-engine.md) | a copy of chapter 17's engine: instrument tracks whose synth joins the track before its inserts, MIDI clips through the command queue, live MIDI for armed tracks; ThreadSanitizer | done |
 | 8 | The app with instruments | a copy of chapter 17's app: instrument tracks, MIDI clips, a piano roll, a keyboard input, recording, quantize, saving, undo | planned |
 
 </div>

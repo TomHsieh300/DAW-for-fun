@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-06-recording.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 5 - A keyboard](step-05-keyboard.md) | Next: Step 7 - The engine with instruments (coming)
+[Overview](../README.md) | Previous: [Step 5 - A keyboard](step-05-keyboard.md) | Next: [Step 7 - The engine with instruments](step-07-engine.md)
 
 ## Goal
 

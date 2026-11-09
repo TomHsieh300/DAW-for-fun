@@ -36,6 +36,11 @@
 // Chapter 17 (Step 6): processBlock() can take the device's input. Tracks are armed and given an input
 // channel (values on the Track, atomics), startRecording() starts their Recorders, and RecordingSession.h
 // is the disk thread's side.
+//
+// Chapter 18 (Step 7): instrument tracks (Track::setInstrument) play MIDI clips (setTrackMidiClips, the
+// command ReplaceMidiClips) through a synth, and processBlock() can take a block of live MIDI, which the
+// armed instrument tracks play. Midi.h has the rest; the host turns its MIDI input into that block with
+// MidiFifo and drainMidi().
 
 #include <dawlab/AudioBuffer.h>
 
@@ -64,6 +69,8 @@ namespace dawlab::engine {
 
 // More input channels than this are ignored. Without a limit processBlock() would need an allocation.
 constexpr int kMaxInputChannels = 64;
+// More live MIDI events in one processBlock() than this are ignored (chapter 18).
+constexpr int kMaxLiveMidiEvents = 1024;
 
 class Engine {
 public:
@@ -97,6 +104,7 @@ public:
         finishRecordingsWithoutAudio();
         sampleRate_ = sampleRate;
         maxBlockSize_ = std::max(1, maxBlockSize);
+        midiSlice_.reserve(kMaxLiveMidiEvents);
         transport_.prepare(sampleRate);
         mixer_.prepare(sampleRate, maxBlockSize_, maxPdcSamples);
         cpuMeter_.prepare(sampleRate);
@@ -267,6 +275,15 @@ public:
         auto* list = new std::vector<Clip>(std::move(clips));
         return pushCommand(Command::replaceClips(ref, list));
     }
+    // The same for the MIDI clips of an instrument track (chapter 18). Each clip's notes and controller points
+    // must be sorted by their tick, and every clip needs its own id.
+    bool setTrackMidiClips(TrackId track, std::vector<MidiClip> clips) {
+        const ChannelRef ref = trackRef(track);
+        if (ref.index < 0)
+            return false;
+        auto* list = new std::vector<MidiClip>(std::move(clips));
+        return pushCommand(Command::replaceMidiClips(ref, list));
+    }
 
     // ---- automation (UI thread = the single producer; chapter 16, Step 5) ----------------------
     // The lane of a parameter, for its mode, its knob, touch() and release(); nullptr if its strip or
@@ -384,7 +401,10 @@ public:
     //
     // `input` (chapter 17, Step 6): the device's input, at least as long as `out`. The block's frames
     // arrive together: input frame i came in while output frame i goes out.
-    void processBlock(AudioBlock out, InputBlock input = {}) noexcept {
+    //
+    // `midi` (chapter 18, Step 7): this block's live MIDI, offsets in this block, sorted; the armed
+    // instrument tracks play it. At most kMaxLiveMidiEvents are taken.
+    void processBlock(AudioBlock out, InputBlock input = {}, MidiBlock midi = {}) noexcept {
         if (!isPrepared()) {
             out.clear();
             return;
@@ -394,7 +414,7 @@ public:
         int done = 0;
         while (done < total) {
             const int len = std::min(maxBlockSize_, total - done);
-            processChunk(out.getSubBlock(done, len), input, done);
+            processChunk(out.getSubBlock(done, len), input, done, midi);
             done += len;
         }
         const std::chrono::duration<double> spent = std::chrono::steady_clock::now() - start;
@@ -402,7 +422,18 @@ public:
     }
 
 private:
-    void processChunk(AudioBlock out, InputBlock input, int inputOffset) noexcept {
+    // The live events of [from, from + n) of the block, with offsets from `from`, in midiSlice_.
+    MidiBlock sliceMidi(MidiBlock midi, int from, int n) noexcept {
+        midiSlice_.clear();
+        for (int e = 0; e < midi.numEvents && midiSlice_.size() < midiSlice_.capacity(); ++e) {
+            const int offset = midi.events[e].offset - from;
+            if (offset >= 0 && offset < n)
+                midiSlice_.push_back({offset, midi.events[e].message});
+        }
+        return {midiSlice_.data(), static_cast<int>(midiSlice_.size())};
+    }
+
+    void processChunk(AudioBlock out, InputBlock input, int inputOffset, MidiBlock midi) noexcept {
         applyCommands();
         if (resetRequested_.exchange(false, std::memory_order_relaxed))
             mixer_.reset();
@@ -423,7 +454,7 @@ private:
             for (int ch = 0; ch < numInputs; ++ch)
                 inputs[ch] = input.channels[ch] != nullptr ? input.channels[ch] + inputOffset + done : nullptr;
             mixer_.process(out.getSubBlock(done, covered), segments, numSegments, transport_.getTempo(), transport_.getPosition(),
-                           InputBlock{inputs, numInputs});
+                           InputBlock{inputs, numInputs}, sliceMidi(midi, inputOffset + done, covered));
             done += covered;
         }
         blocksProcessed_.fetch_add(1, std::memory_order_relaxed);
@@ -492,6 +523,14 @@ private:
                 discard(Garbage::of(const_cast<AutomationCurve*>(old)));
             break;
         }
+        case CommandType::ReplaceMidiClips: {
+            const std::vector<MidiClip>* old = c.midiClips;
+            if (c.channel.kind == ChannelKind::Track && strip != nullptr)
+                old = static_cast<Track*>(strip)->exchangeMidiClips(c.midiClips);
+            if (old)
+                discard(Garbage::of(const_cast<std::vector<MidiClip>*>(old)));
+            break;
+        }
         case CommandType::None: break;
         }
     }
@@ -554,9 +593,12 @@ private:
             delete c.clips;
         else if (c.type == CommandType::ReplaceCurve)
             delete c.curve;
+        else if (c.type == CommandType::ReplaceMidiClips)
+            delete c.midiClips;
         c.effect = nullptr;
         c.clips = nullptr;
         c.curve = nullptr;
+        c.midiClips = nullptr;
     }
 
     double sampleRate_ = 0.0;
@@ -571,6 +613,7 @@ private:
     SpscQueue<Command> commands_;
     SpscQueue<Garbage> garbage_;
     CaptureQueue capture_;
+    std::vector<BlockEvent> midiSlice_; // audio thread: one chunk's live MIDI (chapter 18)
     uint32_t nextEffectId_ = 1; // UI thread only
 
     std::atomic<uint64_t> blocksProcessed_{0};

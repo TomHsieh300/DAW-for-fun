@@ -16,6 +16,7 @@
 #include "Engine.h"
 #include "InsertEffect.h"
 #include "LatencyCompensator.h"
+#include "Midi.h"
 #include "Mixer.h"
 #include "Recording.h"
 #include "RecordingSession.h"

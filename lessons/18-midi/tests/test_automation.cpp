@@ -736,7 +736,9 @@ void testQueuesThatAreFull() {
         e.removeTrack(kTrack);
         e.processBlock(block.toBlock());
         DAWLAB_CHECK(e.getGarbageLeaked() == 0);
-        DAWLAB_CHECK(e.collectGarbage() == kMaxGarbagePerCommand);
+        // Chapter 18: a track can also hand back a MIDI clip list, which this one does not have.
+        // test_midi.cpp removes one that has everything.
+        DAWLAB_CHECK(e.collectGarbage() == kMaxGarbagePerCommand - 1);
     }
 }
 

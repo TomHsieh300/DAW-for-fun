@@ -41,3 +41,5 @@ target_compile_definitions(l18_test_track_pool PRIVATE DAWLAB_ENGINE_MAX_TRACKS=
 l18_add_test(l18_test_automation        tests/test_automation.cpp)
 l18_add_test(l18_test_recording         tests/test_recording.cpp)
 l18_add_test(l18_test_recording_threads tests/test_recording_threads.cpp)
+# Chapter 18: instrument tracks (the last test, new).
+l18_add_test(l18_test_midi              tests/test_midi.cpp)

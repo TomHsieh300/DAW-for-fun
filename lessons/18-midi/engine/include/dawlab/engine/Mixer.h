@@ -87,6 +87,7 @@ public:
         for (auto& t : tracks_) {
             t.prepare(sampleRate, maxBlockSize_, maxPdcSamples);
             t.getMonitor().prepare(static_cast<int>(sampleRate));
+            t.prepareInstrument(sampleRate, maxBlockSize_);
         }
         for (auto& b : buses_)
             b.prepare(sampleRate, maxBlockSize_, maxPdcSamples);
@@ -106,8 +107,10 @@ public:
 
     // Audio thread (or setup code).
     void reset() noexcept {
-        for (auto& t : tracks_)
+        for (auto& t : tracks_) {
             t.reset();
+            t.resetInstrument();
+        }
         for (auto& b : buses_)
             b.reset();
         master_.reset();
@@ -176,8 +179,12 @@ public:
                 discard(fx);
         if (const std::vector<Clip>* clips = t.exchangeClips(nullptr))
             discard(clips);
+        if (const std::vector<MidiClip>* midi = t.exchangeMidiClips(nullptr))
+            discard(midi);
         t.discardOwnCurves(discard);
         t.reset();
+        t.resetInstrument(); // whatever sounded stops at once: the track is gone
+        t.setInstrument(false);
         t.getMonitor().clearAudioState();
         trackInSlot_[static_cast<size_t>(ref.index)] = TrackId{};
         return true;
@@ -278,8 +285,10 @@ public:
     // before it are still on their way, but the lane has already wrapped.
     //
     // `input` (chapter 17, Step 6): the device's input for these same frames.
+    //
+    // `midi` (chapter 18, Step 7): this block's live MIDI, for the armed instrument tracks.
     void process(AudioBlock out, const TimelineSegment* segments, int numSegments, double bpm = 120.0,
-                 int64_t playhead = 0, InputBlock input = {}) noexcept {
+                 int64_t playhead = 0, InputBlock input = {}, MidiBlock midi = {}) noexcept {
         const int n = out.getNumSamples();
         assert(prepared_ && n <= maxBlockSize_);
         const bool anySolo = isAnyTrackSoloed();
@@ -328,6 +337,7 @@ public:
                 continue; // a free slot costs little more than this
             tb.clear();
             track.renderClips(tb, segments, numSegments);
+            track.renderInstrument(tb, segments, numSegments, bpm, midi); // chapter 18: nothing unless an instrument
 
             Monitor& monitor = track.getMonitor();
             if (!monitor.isSilent() && numTrackInputs > 0) {

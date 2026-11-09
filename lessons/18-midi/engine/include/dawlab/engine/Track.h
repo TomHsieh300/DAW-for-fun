@@ -12,10 +12,12 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "ChannelStrip.h"
 #include "Clip.h"
+#include "Midi.h"
 #include "Recording.h"
 #include "Transport.h"
 
@@ -38,7 +40,10 @@ inline const char* trackFormatName(TrackFormat f) noexcept { return f == TrackFo
 class Track : public ChannelStrip {
 public:
     Track() = default;
-    ~Track() { delete clips_.load(std::memory_order_relaxed); }
+    ~Track() {
+        delete clips_.load(std::memory_order_relaxed);
+        delete midiClips_.load(std::memory_order_relaxed);
+    }
 
     // Any thread (an atomic, read once per block by the audio thread). Also selects the pan
     // mode that belongs to the format: Mono -> PanMode::PanLaw, Stereo -> PanMode::Balance.
@@ -112,7 +117,94 @@ public:
         monitor_.setRange(RecordRange{});
     }
 
+    // ---- instruments (chapter 18, Step 7; every slot has these, used or not) -----------------------------
+    // An instrument track plays its MIDI clips, and when armed the live MIDI of processBlock(), through its
+    // synth; the synth's sound is added to the track like a clip's, before the inserts. Its audio clips still
+    // play. Any thread (an atomic, read once per block). Turning it off silences the synth at once.
+    void setInstrument(bool instrument) noexcept { instrument_.store(instrument, std::memory_order_relaxed); }
+    bool isInstrument() const noexcept { return instrument_.load(std::memory_order_relaxed); }
+
+    // As exchangeClips(), for the MIDI clips (Engine command ReplaceMidiClips).
+    const std::vector<MidiClip>* exchangeMidiClips(const std::vector<MidiClip>* newClips) noexcept {
+        return midiClips_.exchange(newClips, std::memory_order_acq_rel);
+    }
+    const std::vector<MidiClip>* getMidiClips() const noexcept { return midiClips_.load(std::memory_order_acquire); }
+
+    // Setup (Mixer::prepare): the synth at this rate, room for a block's events and the synth's sound. The
+    // instrument lives on the heap: 8 KB a track, 128 tracks, and an Engine on the stack would not fit.
+    void prepareInstrument(double sampleRate, int maxBlockSize) {
+        if (state_ == nullptr)
+            state_ = std::make_unique<InstrumentState>();
+        state_->synth.prepare(sampleRate, VoiceSettings{});
+        state_->player.reset();
+        state_->events.reserve(kMaxBlockEvents);
+        state_->merged.reserve(kMaxBlockEvents);
+        state_->out.assign(static_cast<size_t>(std::max(1, maxBlockSize)), 0.0f);
+        state_->sampleRate = sampleRate;
+    }
+    // Audio thread: silent at once, nothing remembered (the track is gone, or the engine was reset).
+    void resetInstrument() noexcept {
+        if (state_ == nullptr)
+            return;
+        state_->synth.reset();
+        state_->player.reset();
+        state_->wasOn = false;
+    }
+
+    // Audio thread: the clips' events and (when armed) the live ones, merged in order of offset, through the
+    // synth, ADDED to both channels of dest.
+    void renderInstrument(AudioBlock dest, const TimelineSegment* segments, int numSegments, double bpm, MidiBlock live) noexcept {
+        if (state_ == nullptr)
+            return; // not prepared
+        InstrumentState& in = *state_;
+        if (!isInstrument()) {
+            if (in.wasOn)
+                resetInstrument();
+            return;
+        }
+        in.wasOn = true;
+        const int n = dest.getNumSamples();
+        in.events.clear();
+        in.player.process(getMidiClips(), segments, numSegments, in.sampleRate, bpm, in.events);
+        // The clips' events are in order within each segment, and the segments follow each other; the live
+        // ones are in order. Merge: at one offset the clips' first.
+        in.merged.clear();
+        const int numLive = isArmed() ? live.numEvents : 0;
+        size_t a = 0;
+        int b = 0;
+        while ((a < in.events.size() || b < numLive) && in.merged.size() < in.merged.capacity()) {
+            if (b >= numLive || (a < in.events.size() && in.events[a].offset <= live.events[b].offset))
+                in.merged.push_back(in.events[a++]);
+            else
+                in.merged.push_back(live.events[b++]);
+        }
+        float* mono = in.out.data();
+        std::fill(mono, mono + n, 0.0f);
+        in.synth.render(in.merged.data(), static_cast<int>(in.merged.size()), mono, n);
+        for (int ch = 0; ch < dest.getNumChannels(); ++ch) {
+            float* d = dest.getChannelPointer(ch);
+            for (int i = 0; i < n; ++i)
+                d[i] += mono[i];
+        }
+    }
+    // For tests and meters; nullptr before prepare().
+    const Synth* getSynth() const noexcept { return state_ != nullptr ? &state_->synth : nullptr; }
+    const ClipPlayer* getClipPlayer() const noexcept { return state_ != nullptr ? &state_->player : nullptr; }
+
 private:
+    static constexpr int kMaxBlockEvents = 4096;
+    struct InstrumentState {
+        ClipPlayer player;
+        Synth synth;
+        std::vector<BlockEvent> events, merged;
+        std::vector<float> out;
+        double sampleRate = 48000.0;
+        bool wasOn = false; // audio thread only
+    };
+    std::atomic<bool> instrument_{false};
+    std::atomic<const std::vector<MidiClip>*> midiClips_{nullptr};
+    std::unique_ptr<InstrumentState> state_;
+
     std::atomic<bool> armed_{false};
     std::atomic<int> inputChannel_{0};
     std::atomic<MonitorPath> monitorPath_{MonitorPath::Direct};
