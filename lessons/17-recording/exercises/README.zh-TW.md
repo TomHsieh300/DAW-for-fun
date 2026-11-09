@@ -10,7 +10,7 @@
 .\build\bin\Debug\l17_ex3_starter.exe
 ```
 
-練習 3 建立在 Step 4 的 model 上（`exercises/model.h`：Step 4 的 `minidaw.h`，函式都已經寫好）。練習 4 和 5 是獨立的。請先做完這些 step。
+練習 3 和 6 建立在 Step 4 的 model 上（`exercises/model.h`：Step 4 的 `minidaw.h`，函式都已經寫好）。練習 4 和 5 是獨立的。請先做完這些 step。
 
 ---
 
@@ -73,7 +73,18 @@ DawLab 17 第一個真實的 take 是 3 秒剛好為 0 的資料——麥克風�
 
 想一想：音訊介面裡的 noise gate 在音符之間輸出剛好為 0 的資料。它會觸發哪一條規則？你要怎麼把它和被靜音的 input 分辨開來？
 
-## 練習 6 - 兩個時鐘 ★★☆（設計）
+## 練習 6 - Comping ★★★（實作）
+
+[`l17_ex6_starter`，檔案 `exercises/starter/ex6_comping.cpp`]
+
+一個 loop 錄下了一段 solo 的四圈。開頭幾小節第 2 圈最好，中段第 4 圈最好，結尾第 1 圈最好。*Comp* 說明哪一圈在哪裡播放，並變成 Step 4 那一個 take 檔上的 clip：
+
+- `chooseTake(comp, from, to, take)`：在視窗的 $`[from, to)`$ 內改用 `take` 的 comp——必要處切開 segment，相鄰且 take 相同的合併。Comp 是一個值，所以 undo 就是保留上一個（`CompHistory`，已提供）。
+- `compClips(comp, takes, fade)`：每個 segment 一個 clip，播放它自己那一圈，在每個邊界以邊界為中心做 `fade` 個 frame 的線性交叉淡化——segment 太短或那一圈沒有更多 frame 時就短一點，而且永遠是偶數，讓兩個 clip 都剛好越過邊界一半。
+
+自我檢查會對照一個簡單的 model 做 3000 次隨機選擇，接著逐 frame 混合各個 clip，要求 gain 在每個地方的總和都剛好是 1、每個 clip 都只播放自己那一圈——包括 960 frame 的交叉淡化、300 frame 的 segment 周圍、提早結束的那一圈的尾端、奇數和 0。
+
+## 練習 7 - 兩個時鐘 ★★☆（設計）
 
 DawLab 17 會拒絕無法以同一個取樣率運作的 input 和 output（Step 7）。但 USB 麥克風和電腦的喇叭可以都跑在 48 kHz，卻仍然不同步：每個裝置都有自己的晶振。用文字設計 DAW 該怎麼處理，包括：
 

@@ -158,7 +158,36 @@ gate from a dropout, look at what came just before the zeros: a gate closes afte
 to almost nothing, a dropout cuts it off in the middle, at full level. Remembering the last few samples'
 level before each run of zeros is enough.
 
-## Exercise 6 - Two clocks
+## Exercise 6 - Comping
+
+[`solutions/ex6_comping.cpp`](ex6_comping.cpp)
+
+- `chooseTake()` walks the segments once. Each gives up to three
+  pieces - before the range, inside it, after it - and a `push()` drops empty pieces and merges a piece
+  into the last one when both have the same take. That one rule keeps the comp in its normal form,
+  whatever the user chose before.
+- `compClips()` works out the crossfade at every boundary first, because each clip needs the one before
+  it and the one after it. The limits are the two segments' lengths and how far each pass reaches past
+  the boundary: the earlier pass must have frames up to $`b + x/2`$, the later one from $`b - x/2`$.
+  Then each clip runs from $`from - fadeIn/2`$ to $`to + fadeOut/2`$.
+
+Why the sum is exactly 1: in the crossfade around $`b`$, the earlier clip's gain is $`(b + x/2 - p)/x`$ and
+the later one's $`(p - (b - x/2))/x`$; they add up to $`x/x = 1`$. With an odd $`x`$ the halves would be
+fractions of a frame, which is why it is made even.
+
+```text
+Exercise 6 - comping
+  3000 random choices: 0 wrong (expected 0), 8 segments at the end
+  three passes, 960-frame crossfades: gains off by 0.0e+00, 0 frames from the wrong pass
+[PASS] l17_ex6 (28 checks passed)
+```
+
+A linear crossfade keeps the *amplitude* constant, which is right for two passes of the same part played
+alike - they are strongly correlated. Between two very different takes an equal-power crossfade
+($`\sin`$ / $`\cos`$) avoids a dip in the middle; a DAW lets the user choose (chapter 14's clip fades have
+both).
+
+## Exercise 7 - Two clocks
 
 One design; others are possible.
 

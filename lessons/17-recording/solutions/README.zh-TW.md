@@ -100,7 +100,25 @@ Exercise 5 - tell the user what is wrong with the input
 
 **Noise gate。**介面裡的 gate 在音符之間輸出剛好為 0 的資料，所以 0.1 秒以上的停頓會觸發「中斷」規則——誤報。被靜音的 input 不一樣：*每個* sample 都是 0。要分辨 gate 和中斷，看 0 之前是什麼：gate 是在訊號淡到幾乎沒有之後才關上，中斷則是在中途、以完整音量被切斷。記住每段 0 之前最後幾個 sample 的音量就夠了。
 
-## 練習 6 - 兩個時鐘
+## 練習 6 - Comping
+
+[`solutions/ex6_comping.cpp`](ex6_comping.cpp)
+
+- `chooseTake()` 走過所有 segment 一次。每個 segment 最多產生三段——範圍之前、範圍之內、範圍之後——由 `push()` 丟掉空的段，並在兩段的 take 相同時把它併入前一段。這一條規則就讓 comp 不論使用者之前怎麼選，都保持標準形式。
+- `compClips()` 先算出每個邊界的交叉淡化，因為每個 clip 都需要它前後兩個。限制是兩個 segment 的長度，以及每一圈越過邊界能延伸多遠：前一圈必須有到 $`b + x/2`$ 的 frame，後一圈必須從 $`b - x/2`$ 就有。然後每個 clip 從 $`from - fadeIn/2`$ 到 $`to + fadeOut/2`$。
+
+為什麼總和剛好是 1：在 $`b`$ 周圍的交叉淡化中，前一個 clip 的 gain 是 $`(b + x/2 - p)/x`$，後一個是 $`(p - (b - x/2))/x`$；相加是 $`x/x = 1`$。如果 $`x`$ 是奇數，一半就會是 frame 的小數，所以要把它變成偶數。
+
+```text
+Exercise 6 - comping
+  3000 random choices: 0 wrong (expected 0), 8 segments at the end
+  three passes, 960-frame crossfades: gains off by 0.0e+00, 0 frames from the wrong pass
+[PASS] l17_ex6 (28 checks passed)
+```
+
+線性交叉淡化保持*振幅*不變，這對同一段演奏得差不多的兩圈是對的——它們高度相關。在兩個非常不同的 take 之間，equal-power 交叉淡化（$`\sin`$ / $`\cos`$）可以避免中間凹陷；DAW 會讓使用者選擇（第 14 章的 clip fade 兩種都有）。
+
+## 練習 7 - 兩個時鐘
 
 一種設計；也有其他可行的做法。
 

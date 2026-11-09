@@ -1,5 +1,5 @@
 #pragma once
-// model.h - the model of Step 4, solved, for Exercise 3.
+// model.h - the model of Step 4, solved, for Exercises 3 and 6.
 //
 // Step 4's minidaw.h (the ring, the take file, placement, punch and loop) with visibleWindow(),
 // takesOf(), bestTake() and Recorder::process() defined here, exactly as in

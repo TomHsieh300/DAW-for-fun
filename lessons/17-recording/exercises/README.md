@@ -12,7 +12,7 @@ Difficulty: ★☆☆ easy, ★★☆ medium, ★★★ hard. Implementation exe
 .\build\bin\Debug\l17_ex3_starter.exe
 ```
 
-Exercise 3 builds on Step 4's model (`exercises/model.h`: Step 4's `minidaw.h` with its functions
+Exercises 3 and 6 build on Step 4's model (`exercises/model.h`: Step 4's `minidaw.h` with its functions
 solved). Exercises 4 and 5 stand alone. Do the steps first.
 
 ---
@@ -108,7 +108,25 @@ clips, two channels, a 0.2 s dropout, and silence before and after a take that i
 Think about it: a noise gate in an audio interface outputs exact zeros between notes. Which of these
 rules would it trip, and how would you tell it from a muted input?
 
-## Exercise 6 - Two clocks ★★☆ (design)
+## Exercise 6 - Comping ★★★ (implementation)
+
+[`l17_ex6_starter`, file `exercises/starter/ex6_comping.cpp`]
+
+A loop recorded four passes of a solo. The first bars were best in pass 2, the middle in pass 4, the end
+in pass 1. A *comp* says which pass plays where, and becomes clips on the one take file of Step 4:
+
+- `chooseTake(comp, from, to, take)`: the comp with `take` in $`[from, to)`$ of the window - segments cut
+  where needed, neighbours with the same take merged. A comp is a value, so undo is keeping the last
+  one (`CompHistory`, provided).
+- `compClips(comp, takes, fade)`: one clip per segment, playing its own pass, with a linear crossfade of
+  `fade` frames centred on every boundary - shorter where a segment is short or a pass has no more
+  frames, and always even, so that both clips reach exactly half of it past the boundary.
+
+The self-check runs 3000 random choices against a plain model, then mixes the clips frame by frame and
+requires the gains to add up to exactly 1 everywhere and every clip to play only its own pass - with
+crossfades of 960 frames, around a segment of 300, at the end of a pass that stopped early, odd and zero.
+
+## Exercise 7 - Two clocks ★★☆ (design)
 
 DawLab 17 refuses an input and an output that cannot run at one sample rate (Step 7). But a USB
 microphone and the computer's speakers can both run at 48 kHz and still not agree: each device has its

@@ -63,9 +63,10 @@ outside. Step 1 does not touch any of this yet: it starts with the first thing a
 ## 4. Exercises
 
 See [exercises/README.md](exercises/README.md), with the answers in [solutions/README.md](solutions/README.md).
-Six exercises, none needs JUCE: why recording is so careful (concept), recording by the numbers
+Seven exercises, none needs JUCE: why recording is so careful (concept), recording by the numbers
 (calculation), writing only what a take can use, measuring the latency and knowing when not to trust it,
-telling the user what is wrong with the input, and two devices with two clocks (design).
+telling the user what is wrong with the input, comping the best parts of a loop's passes, and two devices
+with two clocks (design).
 
 ## 5. Next
 
