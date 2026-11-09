@@ -2,7 +2,7 @@
 
 [English](README.md) | **繁體中文**
 
-> **狀態：進行中。** 8 個 step 中的第 1-3 個。
+> **狀態：進行中。** 8 個 step 中的第 1-4 個。
 
 DawLab 17（第 17 章）會錄音也會播放音訊：已經存在的聲音，以 sample 擺放。DAW 也會播放*音符*——給樂器的指令，以拍子擺放，只有在播放時才變成聲音——並從鍵盤把它們錄下來。音符有它自己的問題：沒有結束的音符會永遠響下去、樂器的 voice 數量有限、鍵盤從另一個 thread 送出事件而且有自己的時間觀，而錄下的演奏常常希望比彈的時候更整齊一點。
 
@@ -36,7 +36,7 @@ DawLab 17（第 17 章）會錄音也會播放音訊：已經存在的聲音，�
 | 1 | [MIDI 事件與音樂時間](docs/step-01-midi-time.zh-TW.md) | 三個 byte 的訊息、存在 tick 裡的音符、block 邊界的精確反函數、note off 在前、在每個事件處切開的樂器 | 完成 |
 | 2 | [播放 MIDI clip](docs/step-02-midi-clips.zh-TW.md) | clip 是音符上的視窗；記下啟動過的音符，停止、seek、繞回、mute、刪除後都不留卡住的音；跳躍後 chase controller | 完成 |
 | 3 | [一個 voice](docs/step-03-one-voice.zh-TW.md) | 用 PolyBLEP 的鋸齒波並量測它的 alias；絕不跳躍的 ADSR；filter、velocity；加進混音的 voice | 完成 |
-| 4 | 複音 | voice 分配與 stealing、同一個音再彈一次、延音踏板、pitch bend | 規劃中 |
+| 4 | [複音](docs/step-04-polyphony.zh-TW.md) | voice 池、同一個音回到自己的 voice、不爆音地搶最不會被想念的 voice、延音踏板、pitch bend、all notes off | 完成 |
 | 5 | 鍵盤 | 從 MIDI thread 經 lock-free FIFO 送來的事件、把時間戳換成 sample offset：latency 或 jitter | 規劃中 |
 | 6 | 錄 MIDI | 擺放演奏、loop 疊加或取代、保留原始演奏的 quantize | 規劃中 |
 | 7 | 有樂器的 engine | 第 17 章 engine 的複本：instrument track、經 command queue 送入的 MIDI clip | 規劃中 |

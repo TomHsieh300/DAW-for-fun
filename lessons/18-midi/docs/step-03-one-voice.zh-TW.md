@@ -2,7 +2,7 @@
 
 [English](step-03-one-voice.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 2 - 播放 MIDI clip](step-02-midi-clips.zh-TW.md) | 下一步：Step 4 - 複音（即將推出）
+[總覽](../README.zh-TW.md) | 上一步：[Step 2 - 播放 MIDI clip](step-02-midi-clips.zh-TW.md) | 下一步：[Step 4 - 複音](step-04-polyphony.zh-TW.md)
 
 ## 目標
 

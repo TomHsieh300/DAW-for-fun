@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-03-one-voice.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 2 - Playing a MIDI clip](step-02-midi-clips.md) | Next: Step 4 - Polyphony (coming)
+[Overview](../README.md) | Previous: [Step 2 - Playing a MIDI clip](step-02-midi-clips.md) | Next: [Step 4 - Polyphony](step-04-polyphony.md)
 
 ## Goal
 
