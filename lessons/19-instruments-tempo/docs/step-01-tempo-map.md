@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-01-tempo-map.zh-TW.md)
 
-[Overview](../README.md) | Next: Step 2 - A transport on a tempo map (coming)
+[Overview](../README.md) | Next: [Step 2 - A transport on a tempo map](step-02-transport.md)
 
 ## Goal
 

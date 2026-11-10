@@ -17,3 +17,4 @@ function(l19_add_step id dir)
 endfunction()
 
 l19_add_step(step01 step01-tempo-map)
+l19_add_step(step02 step02-transport)

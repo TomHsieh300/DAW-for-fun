@@ -11,6 +11,7 @@
 | Step | 資料夾 | 你要寫的 | 執行 |
 |---|---|---|---|
 | 1 | `step01-tempo-map` | `TempoMap::prepare`、`bpmAt`、`secondsAt`、`tickAt`、`sampleOfTick`、`firstTickAtOrAfter` | `l19_step01_starter` |
+| 2 | `step02-transport` | `Transport::setMap`、`advance`、`clicksIn` | `l19_step02_starter` |
 
 </div>
 

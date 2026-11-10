@@ -12,6 +12,7 @@ write the step's functions in `starter/`, the self-check tells you when they wor
 | Step | Folder | You write | Run |
 |---|---|---|---|
 | 1 | `step01-tempo-map` | `TempoMap::prepare`, `bpmAt`, `secondsAt`, `tickAt`, `sampleOfTick`, `firstTickAtOrAfter` | `l19_step01_starter` |
+| 2 | `step02-transport` | `Transport::setMap`, `advance`, `clicksIn` | `l19_step02_starter` |
 
 </div>
 

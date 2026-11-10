@@ -2,7 +2,7 @@
 
 [English](step-01-tempo-map.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 下一步：Step 2 - Tempo map 上的 transport（即將推出）
+[總覽](../README.zh-TW.md) | 下一步：[Step 2 - Tempo map 上的 transport](step-02-transport.zh-TW.md)
 
 ## 目標
 
