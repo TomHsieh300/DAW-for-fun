@@ -5,15 +5,18 @@
 
 Difficulty: ★☆☆ easy, ★★☆ medium, ★★★ hard. Implementation exercises have a starter file in
 `exercises/starter/` that compiles and runs; until you complete it, its self-check prints `FAIL`
-(that is expected). Build target names are given in brackets. None of them needs JUCE:
+(that is expected). Build target names are given in brackets. Exercises 1-6 need no JUCE:
 
 ```powershell
 .\scripts\build.ps1 -Only 19-instruments-tempo
 .\build\bin\Debug\l19_ex3_starter.exe
 ```
 
-**Exercises 1-6** are the chapter's exercise set, about the steps (no JUCE).
-**Exercises 7-9 will be optional projects** that extend DawLab 19; they are still to come.
+**Exercises 1-6** are the chapter's exercise set, about the steps (no JUCE). **Exercises 7-9 are optional
+projects** that extend DawLab 19. They need a JUCE build (`.\scripts\build.ps1 -Only 19-instruments-tempo -Juce`);
+like chapter 18's they are console programs that build the real `MainComponent` in its offline mode
+(`exercises/app_rig.h`), and none of them changes the app. Exercises 8 and 9 use Exercises 4 and 5, solved, from
+`exercises/tempo_model.h` - do those two first.
 
 Exercises 2, 4 and 5 build on Step 1's tempo map (`steps/step02-transport/minidaw.h` has it solved). Exercise 3
 stands alone. Do the steps first.
@@ -113,3 +116,45 @@ follows the tempo", in a page:
 4. How does the player know which audio a block needs, so that a long clip does not drift? (Step 2 already
    gives it what it needs.)
 5. What do recording, the project file and undo have to do differently?
+
+---
+
+## Exercise 7 - A click track ★☆☆ (optional project, JUCE)
+
+[`l19_ex7_starter`, file `exercises/starter/ex7_click_track.cpp`]
+
+The metronome clicks while you play; the drummer who gets the song as a file needs the click *in* the song.
+Write `addClickTrack()`: a new instrument track "Click" with one clip that has a note on every beat of the bars
+you name, a higher and louder one on the first beat of each bar - as one undo step.
+
+The self-check plays it: at 120 BPM bar 2 is heard after 2 s, at 60 BPM after 4 s, and with a ramp between the
+two after $`4 \ln 2`$ s. Nobody moved a note: they are in ticks. It also fills the project with click tracks until
+there is no room, and expects the last one to be refused with nothing left behind.
+
+## Exercise 8 - Tap tempo ★★☆ (optional project, JUCE)
+
+[`l19_ex8_starter`, file `exercises/starter/ex8_tap_tempo.cpp`]
+
+Exercise 4 in the app, with the history:
+
+- `applyTapTempo()`: the "Tap" button. The median tempo of the taps, rounded to a tenth of a BPM, becomes the
+  tempo of the map's first point; the other points stay. One undo step - and none at all when the tempo is the
+  one the map already has.
+- `followBeats()`: the map becomes the one that puts the song's beats where they were heard, as one undo step;
+  refused when it would need more than the engine's 256 points.
+
+The self-check asks the engine's transport for the sample of every beat of 100 random bands: within one sample
+of where it was heard.
+
+## Exercise 9 - A better MIDI import ★★☆ (optional project, JUCE)
+
+[`l19_ex9_starter`, file `exercises/starter/ex9_better_import.cpp`]
+
+Step 5's import keeps every k-th tempo when a file has more than the map's 256. Put Exercise 5 before it:
+
+- `prepareTempos()`: the file's tempos as a list a map can be made of (clamped, the first at tick 0, the later of
+  two at one tick), then thinned with a tolerance of 0 - which drops every tempo that only repeats - and, only if
+  that is still too many, with the smallest of 0.5 ms, 1 ms, 2 ms ... that fits.
+- `importSongBetter()`: the app's `importSong()` for the song with these tempos - still one undo step.
+
+The self-check imports a file with 700 tempos both ways and compares how far the beats move.

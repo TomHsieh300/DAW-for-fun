@@ -60,7 +60,8 @@ MIDI files, of a synth panel and of a plugin instrument; this chapter builds the
 See [exercises/README.md](exercises/README.md), with the answers in [solutions/README.md](solutions/README.md).
 Six exercises, none needs JUCE: why the chapter does it this way (concept), tempo by the numbers (calculation),
 a meter map, a tempo map from the times of the beats, the fewest tempo points within a timing tolerance, and
-audio that follows the tempo (design). Three optional projects that extend DawLab 19 are still to come.
+audio that follows the tempo (design). Three optional projects extend DawLab 19 (they need `-Juce`): a click
+track, tap tempo, and a MIDI import that keeps the beats in place when a file has too many tempos.
 
 ## 5. Next
 

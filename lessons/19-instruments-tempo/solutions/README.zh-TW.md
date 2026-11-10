@@ -3,7 +3,7 @@
 
 [回到本章](../README.zh-TW.md) | [練習](../exercises/README.zh-TW.md)
 
-用 `.\scripts\build.ps1 -Only 19-instruments-tempo -TestLabel solution` 執行所有解答程式。每一個都以 `[PASS] l19_exN (... checks passed)` 結尾。
+用 `.\scripts\build.ps1 -Only 19-instruments-tempo -TestLabel solution` 執行所有解答程式（練習 7-9 要加上 `-Juce`）。每一個都以 `[PASS] l19_exN (... checks passed)` 結尾。
 
 ---
 
@@ -100,3 +100,59 @@ Exercise 5 - thin a tempo list
 3. **Stretcher 在哪裡跑。** *在 audio thread 上*：新的 tempo 馬上聽得到，但 stretcher 是以幾十毫秒的 window 在工作，所以它有 latency——track 必須回報它，就像 Step 3 的樂器——而且它的成本每個 block、每個 clip 都要付，付在最付不起的那個 thread 上。它的比例必須能每個 block 改變。*事先算好*：worker thread 把拉伸後的 audio render 到 buffer，engine 用一個 command 拿到它，和拿到其他東西的方式一樣；audio thread 播的是普通的 clip，沒有 latency，也沒有額外成本。代價是：tempo 編輯之後，在 render 完成前 clip 是過時的（先播移到新起點的舊 render，或把 clip 靜音，好了再換上去），而且第二份複本要佔記憶體。對 DawLab 來說，事先算好比較合適：`ClipPlayer` 不用改，交接也是 engine 已經有的那一種。能讓你邊聽邊拖 tempo 的 DAW 需要 real-time 的那種，通常再加上 render 結果的 cache。
 4. **不漂移。** Segment 帶著它的 tick（Step 2）。對每個 block，player 向 marker 問 `tickFrom` 和 `tickTo` 各對應檔案裡的哪個 sample，然後剛好餵那麼多給 stretcher——位置每個 block 都從 tick 算出來，從不用比例一路累加。於是 clip 裡的 ramp 沒什麼特別：只是每個 block 的比例不一樣。
 5. **其餘的。** *錄音*：take 拿到它錄製時那個 map 的 marker，所以錄完當下它照原樣播放（比例 1），之後 map 改變時再相對於它拉伸。關掉 metronome 錄的 take 沒有 marker，只有起點跟著走。*專案檔*：每個 clip 存模式和 marker——新的格式編號，舊檔讀進來是「不跟著走」。*Undo*：tempo 這邊沒有新東西：`SetTempoMap` 這個 edit 本來就會還原 map，而 clip 是以 tick 存的，所以會跟著回去。改變 clip 的模式或 marker 是另外一個 edit。Render 不存檔也不 undo：它們是 cache，從檔案、marker 和 map 重新做出來。
+
+---
+
+## 練習 7 - Click track
+
+[`solutions/ex7_click_track.cpp`](ex7_click_track.cpp)
+
+Clip 在任何東西改變之前就先建好：每 960 個 tick 一個音符，`beat % 4` 是 0 的地方用 pitch 84、velocity 127。然後由 `makeNewTrack()` 得到的一個 `edit::AddTrack` 把它放在 `track.midiClips` 裡帶進去，所以 track 和它的 clip 在 history 裡是同一筆——先加 track 再加 clip 會是兩筆，undo 一次就會留下一條叫「Click」的空 track。`perform()` 會回報有沒有空間；確定之後才填結果。
+
+```text
+Exercise 7 - a click track in DawLab 19
+  three bars of click from bar 2: 12 notes; heard from sample 96240 (120 BPM), 192240 (60 BPM), 133324 (a ramp from 60 to 120)
+  refused: bar 0, no bars, 1000 bars, and track 129 of a project that holds 128
+[PASS] l19_ex7 (18 checks passed)
+```
+
+這三個數字就是本章的重點，濃縮成一行。音符只寫了一次，以 tick 存放；120 BPM、60 BPM 和 ramp 是三個不同的 map，而 click 在每一個 map 裡都落在第 2 小節所在的位置（晚 240 sample：mix 的 latency）。用 audio 做的 click 每換一個 map 就得重新 render 一次。
+
+## 練習 8 - Tap tempo
+
+[`solutions/ex8_tap_tempo.cpp`](ex8_tap_tempo.cpp)
+
+兩個函式都只有幾行，因為工作已經做完了：計算由練習 4 負責，`Session::setTempoPoints()` 會記錄一個 `edit::SetTempoMap` 並通知 engine。剩下的是決定什麼*不該*發生：
+
+- 超出 map 範圍的 tempo 在碰任何東西之前就被拒絕（少於兩次 tap 會得到 0，也在範圍之外）；
+- 和 map 現有的 tempo 相同時，在 edit 之前就 return：一個什麼都沒改的 undo 步驟，是使用者得多按一次才過得去的步驟；
+- 只改第一個點：tap 的意思是「這首歌的 tempo」，結尾有 ritardando 的歌會保住它。
+
+```text
+Exercise 8 - tap tempo in DawLab 19
+  taps 0.48 s apart with one missed: 125.0 BPM; 0.47 s apart: 127.7 BPM
+  beats 0.6, 0.6, 0.5, 0.5, 0.4 s apart: 3 tempo points, beat 6 at sample 124800
+  100 random bands of up to 200 beats: 0 refused, 0 with a beat more than a sample off
+[PASS] l19_ex8 (27 checks passed)
+```
+
+取整到 0.1 不是為了好看。Tap 只準到幾毫秒，所以小數第一位之後的數字都是雜訊——而 tempo 欄位裡顯示 127.65957 卻像在說相反的事。
+
+## 練習 9 - 更好的 MIDI 匯入
+
+[`solutions/ex9_better_import.cpp`](ex9_better_import.cpp)
+
+`prepareTempos()` 先做出練習 5 接受的 list，然後只要求剛好夠用的容許值：先用 0，因為很多「tempo 太多」的檔案只是每小節重複同一個 tempo，拿掉它們不花任何代價。加倍是在粗的刻度上找最小的容許值；每試一次都是把整個 dynamic programming 重跑一遍，對匯入來說沒問題，對滑鼠拖曳就不行。`thinTempo()` 算出來的 tempo 可能因為取整而落在 20 .. 999 外面一點點，所以在交給 map 之前再 clamp 一次。
+
+`importSongBetter()` 只改了歌的一份複本裡的一個欄位，然後呼叫 app 的匯入。Track、clip 和單一 undo 步驟都不用重寫——這就是把 tempo 放在匯入*之前*處理、而不是放進匯入裡面的理由。
+
+```text
+Exercise 9 - a better MIDI import in DawLab 19
+  700 tempos into 256 points: 179 points within 4.0 ms (the worst beat 3.99 ms off)
+  700 tempos into  64 points:  44 points within 64.0 ms (the worst beat 63.79 ms off)
+  700 tempos into  16 points:  12 points within 512.0 ms (the worst beat 506.31 ms off)
+  a file of 700 tempos imported: 179 points, the worst beat 3.99 ms off; the app's import: 234 points, 222 ms off
+[PASS] l19_ex9 (33 checks passed)
+```
+
+同一個檔案，點更少，最差的那一拍只偏了幾毫秒，而每 k 個留一個的做法偏了五分之一秒。老實說，下一步應該是把它變成 app 的匯入——`MidiFileIO.cpp` 大約十行的修改，並把 `tempo_model.h` 的 `thinTempo()` 搬到它旁邊。

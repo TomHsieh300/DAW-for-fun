@@ -3,8 +3,8 @@
 
 [Back to the chapter](../README.md) | [Exercises](../exercises/README.md)
 
-Run all solution programs with `.\scripts\build.ps1 -Only 19-instruments-tempo -TestLabel solution`. Every one
-ends with `[PASS] l19_exN (... checks passed)`.
+Run all solution programs with `.\scripts\build.ps1 -Only 19-instruments-tempo -TestLabel solution` (add `-Juce`
+for Exercises 7-9). Every one ends with `[PASS] l19_exN (... checks passed)`.
 
 ---
 
@@ -186,3 +186,76 @@ because a point that stays keeps its own tempo for the beats of the ones that we
    the `SetTempoMap` edit already restores the map, and the clips are in ticks, so they follow it back. Changing
    a clip's mode or markers is one more edit. The renders are not saved and not undone: they are a cache, made
    again from the file, the markers and the map.
+
+---
+
+## Exercise 7 - A click track
+
+[`solutions/ex7_click_track.cpp`](ex7_click_track.cpp)
+
+The clip is built before anything changes: a note every 960 ticks, pitch 84 and velocity 127 where `beat % 4`
+is 0. Then one `edit::AddTrack` from `makeNewTrack()` carries it in `track.midiClips`, so the track and its clip
+are one entry in the history - adding the track and then its clip would be two, and one undo would leave an empty
+track called "Click". `perform()` says whether there was room; only then is the result filled in.
+
+```text
+Exercise 7 - a click track in DawLab 19
+  three bars of click from bar 2: 12 notes; heard from sample 96240 (120 BPM), 192240 (60 BPM), 133324 (a ramp from 60 to 120)
+  refused: bar 0, no bars, 1000 bars, and track 129 of a project that holds 128
+[PASS] l19_ex7 (18 checks passed)
+```
+
+The three numbers are the point of the chapter in one line. The notes were written once, in ticks; 120 BPM, 60 BPM
+and a ramp are three maps, and the click is where bar 2 is in each (240 samples later: the mix's latency). A click
+made of audio would have to be rendered again for every one of them.
+
+## Exercise 8 - Tap tempo
+
+[`solutions/ex8_tap_tempo.cpp`](ex8_tap_tempo.cpp)
+
+Both functions are a few lines, because the work is done: Exercise 4 computes, and `Session::setTempoPoints()`
+records one `edit::SetTempoMap` and tells the engine. What is left is deciding what must *not* happen:
+
+- a tempo outside the map's range is refused before anything is touched (fewer than two taps give 0, which is
+  outside it);
+- the tempo the map already has returns before the edit: an undo step that changes nothing is a step the user
+  has to press through;
+- only the first point changes: tapping is "the song's tempo", and a song with a ritardando at its end keeps it.
+
+```text
+Exercise 8 - tap tempo in DawLab 19
+  taps 0.48 s apart with one missed: 125.0 BPM; 0.47 s apart: 127.7 BPM
+  beats 0.6, 0.6, 0.5, 0.5, 0.4 s apart: 3 tempo points, beat 6 at sample 124800
+  100 random bands of up to 200 beats: 0 refused, 0 with a beat more than a sample off
+[PASS] l19_ex8 (27 checks passed)
+```
+
+Rounding to a tenth is not cosmetic. A tap is accurate to some milliseconds, so the digits after the first
+decimal are noise - and a tempo of 127.65957 in the tempo field says the opposite.
+
+## Exercise 9 - A better MIDI import
+
+[`solutions/ex9_better_import.cpp`](ex9_better_import.cpp)
+
+`prepareTempos()` first makes a list that Exercise 5 accepts, then asks for as little tolerance as it takes: 0
+first, because many files with "too many tempos" only repeat one tempo every bar, and those cost nothing to
+drop. The doubling is a search for the smallest tolerance on a coarse scale; each try is the whole dynamic
+program again, which is fine for an import and not for a mouse drag. Tempos that `thinTempo()` computed can land
+a hair outside 20 .. 999 by rounding, so they are clamped once more before the map sees them.
+
+`importSongBetter()` changes one field of a copy of the song and calls the app's import. Nothing of the tracks,
+clips and the single undo step had to be written again - the reason to do the tempos *before* the import, not
+inside it.
+
+```text
+Exercise 9 - a better MIDI import in DawLab 19
+  700 tempos into 256 points: 179 points within 4.0 ms (the worst beat 3.99 ms off)
+  700 tempos into  64 points:  44 points within 64.0 ms (the worst beat 63.79 ms off)
+  700 tempos into  16 points:  12 points within 512.0 ms (the worst beat 506.31 ms off)
+  a file of 700 tempos imported: 179 points, the worst beat 3.99 ms off; the app's import: 234 points, 222 ms off
+[PASS] l19_ex9 (33 checks passed)
+```
+
+Same file, fewer points, and the worst beat is off by a few milliseconds where every k-th tempo is off by a fifth
+of a second. The honest next step is to make this the app's import - a change to `MidiFileIO.cpp` of about ten
+lines, with `tempo_model.h`'s `thinTempo()` moved next to it.

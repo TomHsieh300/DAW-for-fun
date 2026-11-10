@@ -3,14 +3,14 @@
 
 [回到本章](../README.zh-TW.md) | [解答](../solutions/README.zh-TW.md)
 
-難度：★☆☆ 簡單、★★☆ 中等、★★★ 困難。實作題在 `exercises/starter/` 裡有一個可以編譯執行的 starter 檔；完成之前，它的 self-check 會印出 `FAIL`（這是預期的）。建置 target 名稱寫在方括號裡。它們都不需要 JUCE：
+難度：★☆☆ 簡單、★★☆ 中等、★★★ 困難。實作題在 `exercises/starter/` 裡有一個可以編譯執行的 starter 檔；完成之前，它的 self-check 會印出 `FAIL`（這是預期的）。建置 target 名稱寫在方括號裡。練習 1-6 不需要 JUCE：
 
 ```powershell
 .\scripts\build.ps1 -Only 19-instruments-tempo
 .\build\bin\Debug\l19_ex3_starter.exe
 ```
 
-**練習 1-6** 是本章的練習，關於各個 step（不需要 JUCE）。**練習 7-9 會是選做專題**，延伸 DawLab 19；之後才會加上。
+**練習 1-6** 是本章的練習，關於各個 step（不需要 JUCE）。**練習 7-9 是選做專題**，延伸 DawLab 19。它們需要 JUCE 建置（`.\scripts\build.ps1 -Only 19-instruments-tempo -Juce`）；和第 18 章的一樣，它們是在 offline 模式下建立真正 `MainComponent` 的 console 程式（`exercises/app_rig.h`），都不會修改 app。練習 8 和 9 會用到 `exercises/tempo_model.h` 裡解好的練習 4 和 5——請先做那兩題。
 
 練習 2、4 和 5 建立在 Step 1 的 tempo map 上（`steps/step02-transport/minidaw.h` 裡有解好的版本）。練習 3 是獨立的。請先完成各個 step。
 
@@ -78,3 +78,35 @@ Self-check 會對 400 個短的 list 和所有可能的選法比對，並把一�
 3. 改變 clip 的速度而不改變音高，需要 time-stretcher。它應該在 audio thread 上跑，還是事先算好？兩種選擇各有什麼代價，歌在播放時 map 改變又會發生什麼事？
 4. Player 怎麼知道一個 block 需要哪一段 audio，才不會讓很長的 clip 漂移？（Step 2 已經給了它需要的東西。）
 5. 錄音、專案檔和 undo 各有什麼地方要改？
+
+---
+
+## 練習 7 - Click track ★☆☆（選做專題，JUCE）
+
+[`l19_ex7_starter`，檔案 `exercises/starter/ex7_click_track.cpp`]
+
+Metronome 在你演奏時發出 click；但拿到歌曲檔案的鼓手需要 click 在歌*裡面*。寫出 `addClickTrack()`：一條新的樂器 track「Click」，裡面一個 clip，在你指定的那些小節的每一拍都有一個音符，每小節第一拍的比較高也比較大聲——整個是一個 undo 步驟。
+
+Self-check 會把它播出來：120 BPM 時第 2 小節在 2 s 後聽到，60 BPM 時在 4 s 後，兩者之間用 ramp 時在 $`4 \ln 2`$ s 後。沒有人移動過音符：它們是以 tick 存的。它還會一直加 click track 直到專案放不下，並預期最後一次被拒絕，而且不留下任何東西。
+
+## 練習 8 - Tap tempo ★★☆（選做專題，JUCE）
+
+[`l19_ex8_starter`，檔案 `exercises/starter/ex8_tap_tempo.cpp`]
+
+把練習 4 放進 app，並接上 history：
+
+- `applyTapTempo()`：「Tap」按鈕。Tap 的中位數 tempo 取整到 0.1 BPM，成為 map 第一個點的 tempo；其他點不動。一個 undo 步驟——如果 tempo 和 map 現有的一樣，就完全沒有 undo 步驟。
+- `followBeats()`：map 變成把歌的拍子放到它們被聽到的位置的那一個，一個 undo 步驟；需要的點超過 engine 的 256 個時拒絕。
+
+Self-check 會向 engine 的 transport 問 100 個隨機樂團每一拍的 sample：和它被聽到的位置相差不超過一個 sample。
+
+## 練習 9 - 更好的 MIDI 匯入 ★★☆（選做專題，JUCE）
+
+[`l19_ex9_starter`，檔案 `exercises/starter/ex9_better_import.cpp`]
+
+檔案的 tempo 超過 map 的 256 個時，Step 5 的匯入每 k 個留一個。把練習 5 放在它前面：
+
+- `prepareTempos()`：把檔案的 tempo 整理成可以做成 map 的 list（clamp、第一個放在 tick 0、同一個 tick 上取後面那個），然後以容許值 0 變稀疏——這會拿掉所有只是重複的 tempo——只有在還是太多時，才用 0.5 ms、1 ms、2 ms……之中放得下的最小那個。
+- `importSongBetter()`：用這些 tempo 呼叫 app 的 `importSong()`——仍然是一個 undo 步驟。
+
+Self-check 會用兩種方式匯入一個有 700 個 tempo 的檔案，比較拍子各移動了多少。

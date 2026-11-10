@@ -72,3 +72,30 @@ if(NOT DAWLAB_WITH_JUCE)
 endif()
 
 add_subdirectory(app)   # targets: l19_daw_app (static library), DawLab19 (the application)
+
+# ---- optional exercises 7-9 (the application): starters build only, solutions are ctests ------
+# JUCE console programs linked against the app library: they build the real MainComponent in its
+# offline mode, so they need no audio device and no clicking (chapter 18's l18_add_juce_program).
+function(l19_add_juce_program target label)
+    juce_add_console_app(${target} PRODUCT_NAME ${target})
+    target_sources(${target} PRIVATE ${ARGN})
+    target_link_libraries(${target} PRIVATE l19_daw_app)
+    set_target_properties(${target} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        FOLDER "19-instruments-tempo")
+    dawlab_set_warnings(${target})
+    if(label)
+        add_test(NAME ${target} COMMAND ${target})
+        set_tests_properties(${target} PROPERTIES
+            LABELS "${label}"
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            TIMEOUT 300)
+    endif()
+endfunction()
+
+l19_add_juce_program(l19_ex7_starter   ""       exercises/starter/ex7_click_track.cpp)
+l19_add_juce_program(l19_ex7_solution  solution solutions/ex7_click_track.cpp)
+l19_add_juce_program(l19_ex8_starter   ""       exercises/starter/ex8_tap_tempo.cpp)
+l19_add_juce_program(l19_ex8_solution  solution solutions/ex8_tap_tempo.cpp)
+l19_add_juce_program(l19_ex9_starter   ""       exercises/starter/ex9_better_import.cpp)
+l19_add_juce_program(l19_ex9_solution  solution solutions/ex9_better_import.cpp)
