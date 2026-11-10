@@ -66,4 +66,5 @@ VST3 instrument on a track.
 
 ## 5. Next
 
-Start with [Step 1 - MIDI events and musical time](docs/step-01-midi-time.md).
+Start with [Step 1 - MIDI events and musical time](docs/step-01-midi-time.md). After the chapter, continue with
+[chapter 19 - Instruments and tempo](../19-instruments-tempo/README.md).

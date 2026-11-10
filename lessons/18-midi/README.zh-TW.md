@@ -55,4 +55,4 @@ DawLab 17 裡沒有任何東西認得音符。它的 track 播放 audio clip，c
 
 ## 5. 下一步
 
-從 [Step 1 - MIDI 事件與音樂時間](docs/step-01-midi-time.zh-TW.md) 開始。
+從 [Step 1 - MIDI 事件與音樂時間](docs/step-01-midi-time.zh-TW.md) 開始。讀完本章後，接著讀[第 19 章 - 樂器與 tempo](../19-instruments-tempo/README.zh-TW.md)。

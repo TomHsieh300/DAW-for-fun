@@ -178,6 +178,7 @@ cd build
 | [16](lessons/16-automation/README.zh-TW.md) | Automation | 時間軸上值為 normalized 的點、精準到 sample 的播放、Read / Touch / Latch / Write 與錄製和精簡、撐得過移動、undo 和專案檔的對象、會等待延遲音訊的 fader | **DawLab 16**：track 下方的 lane、可以畫和拖動的點、模式切換 |
 | [17](lessons/17-recording/README.zh-TW.md) | Recording | 從音訊 input 到 clip：硬碟卡住時保持時間位置的 ring、校正 latency 的擺放、撐得過當機的 take、punch 與 loop、input monitoring | **DawLab 17**：錄音鍵、armed track、變成 clip 的 take、punch、loop 的 take、當機後復原的 take |
 | [18](lessons/18-midi/README.zh-TW.md) | MIDI | 音樂時間裡的音符、sample 精確的事件、不留卡住音符的 MIDI clip、複音樂器、經 lock-free FIFO 送來的鍵盤輸入、錄音與 quantize | **DawLab 18**：instrument track、MIDI clip、piano roll、鍵盤、MIDI 錄音、quantize |
+| [19](lessons/19-instruments-tempo/README.zh-TW.md) | 樂器與 tempo（進行中） | 由跳躍和 ramp 組成的 tempo map、跨 tempo 變化的 block、樂器 latency 的補償 | **DawLab 19**：規劃中 |
 
 </div>
 
