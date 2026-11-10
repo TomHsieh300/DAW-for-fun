@@ -406,6 +406,14 @@ public:
         level_ = s.level;
         reset();
     }
+    // Audio thread: new settings for the notes that sound and the ones to come (the instrument's settings
+    // panel, exercise 8). Nothing is reset; an envelope keeps its stage and level.
+    void setSettings(const VoiceSettings& s) noexcept {
+        filter_.setCutoff(static_cast<float>(std::min(s.cutoffHz, 0.45 * sampleRate_)));
+        filter_.setQ(static_cast<float>(s.resonance));
+        env_.set(sampleRate_, s.attack, s.decay, s.sustain, s.release);
+        level_ = s.level;
+    }
     void start(int pitch, int velocity) noexcept {
         stealing_ = false;
         if (!env_.isActive()) {
@@ -413,7 +421,7 @@ public:
             filter_.reset();
         }
         pitch_ = pitch;
-        gain_ = velocityGain(velocity) * level_;
+        gain_ = velocityGain(velocity);
         saw_.setFrequency(noteFrequency(pitch, bend_), sampleRate_);
         env_.noteOn();
     }
@@ -448,7 +456,7 @@ public:
                 start(pitch_, pendingVelocity_);
             if (!env_.isActive())
                 return;
-            out[i] += filter_.processSample(0, saw_.next()) * env_.next() * gain_;
+            out[i] += filter_.processSample(0, saw_.next()) * env_.next() * (gain_ * level_);
         }
     }
     bool isActive() const noexcept { return env_.isActive(); }
@@ -479,6 +487,11 @@ public:
         for (Voice& v : voices_)
             v.prepare(sampleRate, settings);
         reset();
+    }
+    // Audio thread: see Voice::setSettings().
+    void setSettings(const VoiceSettings& settings) noexcept {
+        for (Voice& v : voices_)
+            v.setSettings(settings);
     }
     // Silent at once: every voice, the pedal, the bend.
     void reset() noexcept {
@@ -597,6 +610,84 @@ private:
     long clock_ = 0, stolen_ = 0;
     bool pedal_ = false;
     double bend_ = 0.0;
+};
+
+// ---- what a track plays its notes with (added after the chapter, for exercises 8 and 12) ------------------
+// Every slot of the engine has the built-in synth, as a SynthInstrument. Engine::setTrackInstrument() can put
+// another Instrument in its place - a VST3 instrument, say - and take it out again.
+//
+// Threading contract (as InsertEffect's):
+//   prepare()   non-audio thread, may allocate; never while the instrument is in a running engine
+//               (Engine::setTrackInstrument() prepares it for you).
+//   reset(), render()  audio thread only.
+class Instrument {
+public:
+    virtual ~Instrument() = default;
+    virtual void prepare(double sampleRate, int maxBlockSize) = 0;
+    // Silent at once, nothing remembered.
+    virtual void reset() noexcept = 0;
+    // The block's events (sorted by offset) through the instrument; its sound ADDED to out[0 .. numChannels).
+    virtual void render(const BlockEvent* events, int numEvents, float* const* out, int numChannels, int numSamples) noexcept = 0;
+};
+
+// The built-in synth as an Instrument. Its settings can change while it plays: setSettings() may be called on
+// any thread, and the next block hands them to the voices. Each value is an atomic of its own, so for one block
+// a change may be half applied; the next block applies the rest.
+class SynthInstrument final : public Instrument {
+public:
+    explicit SynthInstrument(const VoiceSettings& settings = {}) noexcept { setSettings(settings); }
+
+    void setSettings(const VoiceSettings& s) noexcept {
+        cutoffHz_.store(s.cutoffHz, std::memory_order_relaxed);
+        resonance_.store(s.resonance, std::memory_order_relaxed);
+        attack_.store(s.attack, std::memory_order_relaxed);
+        decay_.store(s.decay, std::memory_order_relaxed);
+        sustain_.store(s.sustain, std::memory_order_relaxed);
+        release_.store(s.release, std::memory_order_relaxed);
+        level_.store(s.level, std::memory_order_relaxed);
+        version_.fetch_add(1, std::memory_order_release);
+    }
+    VoiceSettings getSettings() const noexcept {
+        VoiceSettings s;
+        s.cutoffHz = cutoffHz_.load(std::memory_order_relaxed);
+        s.resonance = resonance_.load(std::memory_order_relaxed);
+        s.attack = attack_.load(std::memory_order_relaxed);
+        s.decay = decay_.load(std::memory_order_relaxed);
+        s.sustain = sustain_.load(std::memory_order_relaxed);
+        s.release = release_.load(std::memory_order_relaxed);
+        s.level = level_.load(std::memory_order_relaxed);
+        return s;
+    }
+
+    void prepare(double sampleRate, int maxBlockSize) override {
+        applied_ = version_.load(std::memory_order_acquire);
+        synth_.prepare(sampleRate, getSettings());
+        mono_.assign(static_cast<size_t>(std::max(1, maxBlockSize)), 0.0f);
+    }
+    void reset() noexcept override { synth_.reset(); }
+    void render(const BlockEvent* events, int numEvents, float* const* out, int numChannels, int numSamples) noexcept override {
+        const std::uint32_t version = version_.load(std::memory_order_acquire);
+        if (version != applied_) {
+            applied_ = version;
+            synth_.setSettings(getSettings());
+        }
+        const int n = std::min(numSamples, static_cast<int>(mono_.size()));
+        float* mono = mono_.data();
+        std::fill(mono, mono + n, 0.0f);
+        synth_.render(events, numEvents, mono, n);
+        for (int ch = 0; ch < numChannels; ++ch)
+            for (int i = 0; i < n; ++i)
+                out[ch][i] += mono[i];
+    }
+    const Synth& synth() const noexcept { return synth_; }
+
+private:
+    Synth synth_;
+    std::vector<float> mono_;
+    std::atomic<double> cutoffHz_{0.0}, resonance_{0.0}, attack_{0.0}, decay_{0.0}, sustain_{0.0}, release_{0.0};
+    std::atomic<float> level_{0.0f};
+    std::atomic<std::uint32_t> version_{0};
+    std::uint32_t applied_ = 0; // audio thread
 };
 
 // ---- Step 5: for the host ---------------------------------------------------------------------------------

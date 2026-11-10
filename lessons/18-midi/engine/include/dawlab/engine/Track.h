@@ -130,23 +130,41 @@ public:
     }
     const std::vector<MidiClip>* getMidiClips() const noexcept { return midiClips_.load(std::memory_order_acquire); }
 
-    // Setup (Mixer::prepare): the synth at this rate, room for a block's events and the synth's sound. The
-    // instrument lives on the heap: 8 KB a track, 128 tracks, and an Engine on the stack would not fit.
+    // Setup (Mixer::prepare): the synth at this rate (and an instrument put in its place), room for a block's
+    // events. The instrument lives on the heap: 8 KB a track, 128 tracks, and an Engine on the stack would not
+    // fit.
     void prepareInstrument(double sampleRate, int maxBlockSize) {
         if (state_ == nullptr)
             state_ = std::make_unique<InstrumentState>();
-        state_->synth.prepare(sampleRate, VoiceSettings{});
+        state_->builtin.prepare(sampleRate, maxBlockSize);
+        if (state_->replacement != nullptr)
+            state_->replacement->prepare(sampleRate, maxBlockSize);
         state_->player.reset();
         state_->events.reserve(kMaxBlockEvents);
         state_->merged.reserve(kMaxBlockEvents);
-        state_->out.assign(static_cast<size_t>(std::max(1, maxBlockSize)), 0.0f);
         state_->sampleRate = sampleRate;
     }
+    // Audio thread (Engine command ReplaceInstrument): `next` plays the track's notes instead of the built-in
+    // synth (nullptr: the built-in synth again). Returns the one it replaces, for the garbage.
+    Instrument* exchangeInstrument(Instrument* next) noexcept {
+        if (state_ == nullptr)
+            return next; // not prepared: hand it straight back
+        Instrument* old = state_->replacement;
+        state_->replacement = next;
+        state_->builtin.reset();
+        return old;
+    }
+    // The built-in synth, for its settings (any thread may call setSettings()); nullptr before prepare().
+    SynthInstrument* getBuiltinInstrument() noexcept { return state_ != nullptr ? &state_->builtin : nullptr; }
+    // The instrument in the synth's place, as the audio thread last took it (tests; the UI keeps its own).
+    const Instrument* getReplacementInstrument() const noexcept { return state_ != nullptr ? state_->replacement : nullptr; }
     // Audio thread: silent at once, nothing remembered (the track is gone, or the engine was reset).
     void resetInstrument() noexcept {
         if (state_ == nullptr)
             return;
-        state_->synth.reset();
+        state_->builtin.reset();
+        if (state_->replacement != nullptr)
+            state_->replacement->reset();
         state_->player.reset();
         state_->wasOn = false;
     }
@@ -178,26 +196,24 @@ public:
             else
                 in.merged.push_back(live.events[b++]);
         }
-        float* mono = in.out.data();
-        std::fill(mono, mono + n, 0.0f);
-        in.synth.render(in.merged.data(), static_cast<int>(in.merged.size()), mono, n);
-        for (int ch = 0; ch < dest.getNumChannels(); ++ch) {
-            float* d = dest.getChannelPointer(ch);
-            for (int i = 0; i < n; ++i)
-                d[i] += mono[i];
-        }
+        float* channels[kNumChannels] = {};
+        const int numChannels = std::min(dest.getNumChannels(), kNumChannels);
+        for (int ch = 0; ch < numChannels; ++ch)
+            channels[ch] = dest.getChannelPointer(ch);
+        Instrument& instrument = in.replacement != nullptr ? *in.replacement : static_cast<Instrument&>(in.builtin);
+        instrument.render(in.merged.data(), static_cast<int>(in.merged.size()), channels, numChannels, n);
     }
     // For tests and meters; nullptr before prepare().
-    const Synth* getSynth() const noexcept { return state_ != nullptr ? &state_->synth : nullptr; }
+    const Synth* getSynth() const noexcept { return state_ != nullptr ? &state_->builtin.synth() : nullptr; }
     const ClipPlayer* getClipPlayer() const noexcept { return state_ != nullptr ? &state_->player : nullptr; }
 
 private:
     static constexpr int kMaxBlockEvents = 4096;
     struct InstrumentState {
         ClipPlayer player;
-        Synth synth;
+        SynthInstrument builtin;
+        Instrument* replacement = nullptr; // owned; audio thread (set up by prepare() before)
         std::vector<BlockEvent> events, merged;
-        std::vector<float> out;
         double sampleRate = 48000.0;
         bool wasOn = false; // audio thread only
     };

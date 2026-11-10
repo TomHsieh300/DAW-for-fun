@@ -34,6 +34,7 @@ namespace dawlab::engine {
 class InsertEffect;
 struct Clip;
 struct MidiClip;
+class Instrument;
 class AutomationCurve;
 
 enum class ChannelKind : uint8_t { Track, Bus, Master };
@@ -65,6 +66,7 @@ enum class CommandType : uint8_t {
     RemoveTrack,   // channel (a track)                      (its inserts and clips -> garbage)
     ReplaceCurve,  // channel, effectId, slot (the parameter), curve  (old curve -> garbage)
     ReplaceMidiClips, // channel (a track), midiClips       (old list -> garbage; chapter 18)
+    ReplaceInstrument, // channel (a track), instrument (nullptr: the built-in synth)  (old one -> garbage)
 };
 
 struct Command {
@@ -77,7 +79,15 @@ struct Command {
     EffectId effectId;
     const AutomationCurve* curve = nullptr;
     std::vector<MidiClip>* midiClips = nullptr;
+    Instrument* instrument = nullptr;
 
+    static Command replaceInstrument(ChannelRef track, Instrument* instrument) noexcept {
+        Command c;
+        c.type = CommandType::ReplaceInstrument;
+        c.channel = track;
+        c.instrument = instrument;
+        return c;
+    }
     static Command replaceMidiClips(ChannelRef track, std::vector<MidiClip>* clips) noexcept {
         Command c;
         c.type = CommandType::ReplaceMidiClips;

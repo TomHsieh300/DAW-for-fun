@@ -6,6 +6,8 @@
 //   3. Live MIDI reaches the armed instrument tracks only, at its offset, also when processBlock() is given more
 //      than one chunk.
 //   4. Removing a track that has everything hands back exactly kMaxGarbagePerCommand objects.
+//   4b. Another instrument in the synth's place gets the track's events; the synth's settings change while it
+//       plays (the hook added after the chapter for exercises 8 and 12).
 //   5. The audio thread never allocates, with clips, loops, seeks and live MIDI (this file replaces operator new).
 //   6. Three threads at once - UI, audio, MIDI - for ThreadSanitizer.
 
@@ -419,6 +421,8 @@ void testGarbageOfAFullTrack() {
     e.processBlock(block.toBlock());
     e.setLaneCurve(LaneTarget{testTrack(0), EffectId{}, kLanePan}, curve);
     e.processBlock(block.toBlock());
+    e.setTrackInstrument(testId(0), std::make_unique<SynthInstrument>());
+    e.processBlock(block.toBlock());
     e.collectGarbage();
     e.removeTrack(testId(0));
     e.processBlock(block.toBlock());
@@ -426,6 +430,75 @@ void testGarbageOfAFullTrack() {
     const int handedBack = static_cast<int>(e.collectGarbage());
     std::printf("  removing a track with everything hands back %d objects (kMaxGarbagePerCommand = %d)\n", handedBack, kMaxGarbagePerCommand);
     DAWLAB_CHECK(handedBack == kMaxGarbagePerCommand);
+}
+
+// An instrument that writes down what it gets and adds 0.5 from each note on to the block's end.
+class Recorder final : public Instrument {
+public:
+    explicit Recorder(std::vector<std::pair<int64_t, MidiMessage>>& log) : log_(log) {}
+    void prepare(double, int) override { prepared_ = true; }
+    void reset() noexcept override { ++resets_; }
+    void render(const BlockEvent* events, int numEvents, float* const* out, int numChannels, int numSamples) noexcept override {
+        for (int k = 0; k < numEvents; ++k) {
+            if (log_.size() < log_.capacity())
+                log_.push_back({rendered_ + events[k].offset, events[k].message});
+            if (events[k].message.kind() == MidiKind::NoteOn)
+                for (int ch = 0; ch < numChannels; ++ch)
+                    for (int i = events[k].offset; i < numSamples; ++i)
+                        out[ch][i] += 0.5f;
+        }
+        rendered_ += numSamples;
+    }
+    bool prepared_ = false;
+    int resets_ = 0;
+
+private:
+    std::vector<std::pair<int64_t, MidiMessage>>& log_;
+    int64_t rendered_ = 0;
+};
+
+void testAnotherInstrument() {
+    Engine e;
+    setUp(e);
+    e.setTrackMidiClips(testId(0), {clipOf(1, 0, kBar, {{960, 480, 60, 100, 0}, {1920, 480, 64, 90, 0}})});
+    std::vector<std::pair<int64_t, MidiMessage>> log;
+    log.reserve(64);
+    auto recorder = std::make_unique<Recorder>(log);
+    Recorder* observer = recorder.get();
+    DAWLAB_CHECK(e.setTrackInstrument(testId(0), std::move(recorder)) == observer && observer->prepared_);
+    DAWLAB_CHECK(e.setTrackInstrument(TrackId{999}, std::make_unique<SynthInstrument>()) == nullptr); // no such track
+    e.getTransport().play();
+    const AudioBuffer out = play(e, kBar * 25, 512);
+    // Its events at their samples (25 a tick), its sound in the track, and nothing of the synth.
+    const bool events = log.size() == 4 && log[0].first == 24000 && log[0].second.note() == 60 && log[1].first == 36000 &&
+                        log[2].first == 48000 && log[2].second.note() == 64 && log[3].first == 60000;
+    DAWLAB_CHECK(events && e.getMixer().getTrack(0).getReplacementInstrument() == observer);
+    DAWLAB_CHECK(out.getSample(0, 23999) == 0.0f && out.getSample(0, 24000) > 0.1f && e.getMixer().getTrack(0).getSynth()->activeVoices() == 0);
+    std::printf("  another instrument in the synth's place: %zu events at their samples, its sound on the track\n", log.size());
+
+    // Back to the synth: the old one comes back as garbage, and the synth plays the clip again.
+    e.getTransport().setPosition(0);
+    DAWLAB_CHECK(e.setTrackInstrument(testId(0), nullptr) == nullptr);
+    play(e, 512, 512);
+    DAWLAB_CHECK(e.collectGarbage() == 1 && e.getMixer().getTrack(0).getReplacementInstrument() == nullptr);
+    play(e, 30000, 512);
+    DAWLAB_CHECK(e.getMixer().getTrack(0).getSynth()->activeVoices() == 1);
+
+    // The synth's settings change while a note sounds: level 0 silences it at the next block, without a reset.
+    SynthInstrument* synth = e.getTrackSynth(testId(0));
+    DAWLAB_CHECK(synth != nullptr && synth->getSettings().level == VoiceSettings{}.level);
+    VoiceSettings quiet;
+    quiet.level = 0.0f;
+    synth->setSettings(quiet);
+    const AudioBuffer after = play(e, 1024, 512);
+    DAWLAB_CHECK(silentFrom(after, 0) &&e.getMixer().getTrack(0).getSynth()->activeVoices() == 1);
+    // A new track in the slot starts with the synth's own sound.
+    e.removeTrack(testId(0));
+    play(e, 512, 512);
+    e.collectGarbage();
+    const ChannelRef again = e.addTrack(TrackId{77});
+    DAWLAB_CHECK(again.index == 0 && e.getTrackSynth(TrackId{77})->getSettings().level == VoiceSettings{}.level);
+    std::printf("  the synth again, its settings changed while a note sounds, a new track with the default sound\n");
 }
 
 void testNoAllocation() {
@@ -447,6 +520,11 @@ void testNoAllocation() {
     tr.setPosition(10000); // a seek
     play(e, 48000, 0, &allocs, &rng);
     e.setTrackMidiClips(testId(0), song()); // a new list arrives
+    play(e, 48000, 0, &allocs, &rng);
+    VoiceSettings bright;
+    bright.cutoffHz = 9000.0;
+    bright.attack = 0.05;
+    e.getTrackSynth(testId(0))->setSettings(bright); // new settings while notes sound
     play(e, 48000, 0, &allocs, &rng);
     tr.stop();
     play(e, 48000, 0, &allocs, &rng);
@@ -526,6 +604,7 @@ int main() {
     testMoreCases();
     testLiveMidi();
     testGarbageOfAFullTrack();
+    testAnotherInstrument();
     testNoAllocation();
     testThreads();
     return dawlab::test::summary("l18_test_midi");

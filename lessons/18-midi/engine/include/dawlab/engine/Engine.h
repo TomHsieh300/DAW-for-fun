@@ -156,6 +156,8 @@ public:
         t.resetLaneModes();
         t.resetRecordingValues();
         t.setInstrument(false); // chapter 18: the UI's value, so reset here; never by the audio thread
+        if (SynthInstrument* builtin = t.getBuiltinInstrument())
+            builtin->setSettings(VoiceSettings{}); // the same: a new track has the synth's own sound
         const ChannelRef ref = ChannelRef::track(slot, id);
         if (!pushCommand(Command::addTrack(ref)))
             return none;
@@ -284,6 +286,27 @@ public:
             return false;
         auto* list = new std::vector<MidiClip>(std::move(clips));
         return pushCommand(Command::replaceMidiClips(ref, list));
+    }
+
+    // Puts `instrument` in the place of the track's built-in synth (nullptr: the built-in synth again). It is
+    // prepared here (allocation happens on the calling thread) and owned by the engine from now on; the one it
+    // replaces comes back through collectGarbage(). Returns an observer pointer, valid until it is replaced or
+    // its track removed AND collectGarbage() has run; nullptr if the track is not here, the queue is full or
+    // `instrument` was nullptr.
+    Instrument* setTrackInstrument(TrackId track, std::unique_ptr<Instrument> instrument) {
+        const ChannelRef ref = trackRef(track);
+        if (ref.index < 0 || !isPrepared())
+            return nullptr;
+        if (instrument != nullptr)
+            instrument->prepare(sampleRate_, maxBlockSize_);
+        Instrument* observer = instrument.get();
+        return pushCommand(Command::replaceInstrument(ref, instrument.release())) ? observer : nullptr;
+    }
+    // The built-in synth of a track, for its settings; nullptr if the track is not here. The pointer stays valid
+    // as long as the engine; after the track is removed it belongs to the next track in its slot.
+    SynthInstrument* getTrackSynth(TrackId track) noexcept {
+        const int slot = slotOf(track);
+        return slot >= 0 ? mixer_.getTrack(slot).getBuiltinInstrument() : nullptr;
     }
 
     // ---- automation (UI thread = the single producer; chapter 16, Step 5) ----------------------
@@ -533,6 +556,14 @@ private:
                 discard(Garbage::of(const_cast<std::vector<MidiClip>*>(old)));
             break;
         }
+        case CommandType::ReplaceInstrument: {
+            Instrument* old = c.instrument;
+            if (c.channel.kind == ChannelKind::Track && strip != nullptr)
+                old = static_cast<Track*>(strip)->exchangeInstrument(c.instrument);
+            if (old)
+                discard(Garbage::of(old));
+            break;
+        }
         case CommandType::None: break;
         }
     }
@@ -597,6 +628,8 @@ private:
             delete c.curve;
         else if (c.type == CommandType::ReplaceMidiClips)
             delete c.midiClips;
+        else if (c.type == CommandType::ReplaceInstrument)
+            delete c.instrument;
         c.effect = nullptr;
         c.clips = nullptr;
         c.curve = nullptr;

@@ -129,10 +129,12 @@ The output looks like this:
 l18_test_midi: instrument tracks in the engine
   a note at tick 960 sounds from sample 24001 in blocks of 512, 64, 100, 1 and random: yes
   a song with a loop, 7 bars: the same in blocks of 512, 37, 1000 and random: yes (peak 0.47)
-  removing a track with everything hands back 12 objects (kMaxGarbagePerCommand = 12)
+  removing a track with everything hands back 13 objects (kMaxGarbagePerCommand = 13)
+  another instrument in the synth's place: 4 events at their samples, its sound on the track
+  the synth again, its settings changed while a note sounds, a new track with the default sound
   allocations on the audio thread with clips, a loop, seeks and live MIDI: 0
   UI, audio and MIDI threads for 300 UI steps: 0 allocations on the audio thread, 0 bad blocks, 0 leaked
-[PASS] l18_test_midi (29 checks passed)
+[PASS] l18_test_midi (40 checks passed)
 ```
 
 ## What is not done yet
@@ -140,6 +142,25 @@ l18_test_midi: instrument tracks in the engine
 - The app: instrument tracks in the arrangement, MIDI clips, a piano roll, a keyboard through `AudioHost`, recording
   with Step 6's recorder, quantize, the project file, undo. That is Step 8.
 - The synth has one sound. Its settings (`VoiceSettings`) are fixed in `prepare()`; a panel for them is an exercise.
+
+## Added after the chapter: another instrument
+
+Exercises 8 and 12 need two things this step did not have: the synth's settings changing while it plays, and an
+instrument other than the synth. So the engine got one hook more, after the chapter was done:
+
+- `Instrument` (in `Midi.h`) is what a track plays its notes with: `prepare()`, `reset()`, and `render()`, which
+  ADDS its sound to the track's channels. Every slot has the built-in synth as a `SynthInstrument`.
+- `SynthInstrument::setSettings()` may be called on any thread: each value is an atomic, and the next block hands
+  them to the voices without resetting them (`Voice::setSettings()`). The velocity's gain and the level are now
+  kept apart, so that the level reaches the notes that already sound. `Engine::getTrackSynth()` finds a track's
+  synth; `Engine::addTrack()` gives a new track the default sound, as it resets the instrument flag.
+- `Engine::setTrackInstrument(track, instrument)` puts another instrument in the synth's place (nullptr: the
+  synth again) through the command `ReplaceInstrument`, the way `replaceInsert()` swaps an effect: prepared on
+  the calling thread, swapped in at a block boundary, the old one back through `collectGarbage()`. Removing a
+  track hands its instrument back too, so `kMaxGarbagePerCommand` is now `kMaxInserts + 5`.
+
+`tests/test_midi.cpp` checks it (`testAnotherInstrument`, and the full track and no-allocation tests); the app
+does not use it yet.
 
 ## What you learned
 

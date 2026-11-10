@@ -51,8 +51,9 @@ constexpr int kCommandQueueCapacity = 1024;   // UI -> audio commands in flight 
 constexpr float kMaxFaderDb = 12.0f;          // fader range is [-inf, +12] dB
 constexpr int kCaptureQueueCapacity = 4096;   // audio -> UI automation events in flight (chapter 16)
 // The most garbage one command can produce: removing a track hands back all its inserts, its
-// clip list, its MIDI clip list (chapter 18) and the curves of its fader and pan. The audio thread takes a command only when
-// the garbage queue has this much room, so nothing it gives back is ever lost (chapter 15, Step 2).
-constexpr int kMaxGarbagePerCommand = kMaxInserts + 4;
+// clip list, its MIDI clip list and its instrument (chapter 18) and the curves of its fader and pan. The audio
+// thread takes a command only when the garbage queue has this much room, so nothing it gives back is ever lost
+// (chapter 15, Step 2).
+constexpr int kMaxGarbagePerCommand = kMaxInserts + 5;
 
 } // namespace dawlab::engine

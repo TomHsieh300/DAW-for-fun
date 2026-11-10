@@ -90,16 +90,28 @@ Track 被移除時，它的 MIDI clip 清單像 audio clip 一樣以 garbage 交
 l18_test_midi: instrument tracks in the engine
   a note at tick 960 sounds from sample 24001 in blocks of 512, 64, 100, 1 and random: yes
   a song with a loop, 7 bars: the same in blocks of 512, 37, 1000 and random: yes (peak 0.47)
-  removing a track with everything hands back 12 objects (kMaxGarbagePerCommand = 12)
+  removing a track with everything hands back 13 objects (kMaxGarbagePerCommand = 13)
+  another instrument in the synth's place: 4 events at their samples, its sound on the track
+  the synth again, its settings changed while a note sounds, a new track with the default sound
   allocations on the audio thread with clips, a loop, seeks and live MIDI: 0
   UI, audio and MIDI threads for 300 UI steps: 0 allocations on the audio thread, 0 bad blocks, 0 leaked
-[PASS] l18_test_midi (29 checks passed)
+[PASS] l18_test_midi (40 checks passed)
 ```
 
 ## 還沒做的
 
 - App：arrangement 裡的 instrument track、MIDI clip、piano roll、經由 `AudioHost` 的鍵盤、用 Step 6 的 recorder 錄音、quantize、專案檔、undo。那是 Step 8。
 - Synth 只有一種音色。它的設定（`VoiceSettings`）在 `prepare()` 中固定；設定面板是一個練習。
+
+## 本章之後加上的：另一個樂器
+
+練習 8 和 12 需要這個 step 沒有的兩件事：synth 的設定在播放時改變，以及 synth 以外的樂器。所以在本章完成之後，engine 多了一個 hook：
+
+- `Instrument`（在 `Midi.h` 裡）是 track 用來播放音符的東西：`prepare()`、`reset()`，以及把聲音*加到* track 各 channel 上的 `render()`。每個 slot 都有內建的 synth，以 `SynthInstrument` 的形式存在。
+- `SynthInstrument::setSettings()` 可以在任何 thread 呼叫：每個值都是一個 atomic，下一個 block 會把它們交給 voice，而不重設 voice（`Voice::setSettings()`）。Velocity 的 gain 和 level 現在分開保存，讓 level 也能作用在已經在響的音上。`Engine::getTrackSynth()` 找到 track 的 synth；`Engine::addTrack()` 會給新的 track 預設的音色，就像它重設樂器旗標一樣。
+- `Engine::setTrackInstrument(track, instrument)` 透過 command `ReplaceInstrument` 把另一個樂器放到 synth 的位置（nullptr：再換回 synth），就像 `replaceInsert()` 替換 effect 一樣：在呼叫的 thread 上 prepare，在 block 邊界換上，舊的經由 `collectGarbage()` 回來。移除 track 也會交回它的樂器，所以 `kMaxGarbagePerCommand` 現在是 `kMaxInserts + 5`。
+
+`tests/test_midi.cpp` 會檢查它（`testAnotherInstrument`，以及完整 track 和不配置記憶體的測試）；app 還沒有用到它。
 
 ## 你學到了什麼
 

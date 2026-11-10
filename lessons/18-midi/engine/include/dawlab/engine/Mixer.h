@@ -181,6 +181,8 @@ public:
             discard(clips);
         if (const std::vector<MidiClip>* midi = t.exchangeMidiClips(nullptr))
             discard(midi);
+        if (Instrument* instrument = t.exchangeInstrument(nullptr))
+            discard(instrument);
         t.discardOwnCurves(discard);
         t.reset();
         // Whatever sounded stops at once: the track is gone. NOT setInstrument(false): that is the UI's value,
