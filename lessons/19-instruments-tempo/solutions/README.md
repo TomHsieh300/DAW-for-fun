@@ -244,18 +244,20 @@ program again, which is fine for an import and not for a mouse drag. Tempos that
 a hair outside 20 .. 999 by rounding, so they are clamped once more before the map sees them.
 
 `importSongBetter()` changes one field of a copy of the song and calls the app's import. Nothing of the tracks,
-clips and the single undo step had to be written again - the reason to do the tempos *before* the import, not
-inside it.
+clips and the single undo step had to be written again.
 
 ```text
 Exercise 9 - a better MIDI import in DawLab 19
   700 tempos into 256 points: 179 points within 4.0 ms (the worst beat 3.99 ms off)
   700 tempos into  64 points:  44 points within 64.0 ms (the worst beat 63.79 ms off)
   700 tempos into  16 points:  12 points within 512.0 ms (the worst beat 506.31 ms off)
-  a file of 700 tempos imported: 179 points, the worst beat 3.99 ms off; the app's import: 234 points, 222 ms off
-[PASS] l19_ex9 (33 checks passed)
+  a file of 700 tempos imported: 179 points, the worst beat 3.99 ms off; every k-th tempo: 234 points, 222 ms off
+[PASS] l19_ex9 (34 checks passed)
 ```
 
 Same file, fewer points, and the worst beat is off by a few milliseconds where every k-th tempo is off by a fifth
-of a second. The honest next step is to make this the app's import - a change to `MidiFileIO.cpp` of about ten
-lines, with `tempo_model.h`'s `thinTempo()` moved next to it.
+of a second. That is why this became the app's import: `app/Source/TempoThinning.h` is `thinTempo()` and the
+search for the tolerance, `importSong()` calls it, and the status line says by how much a beat may have moved.
+Two things are different there. A tempo between two points that both stay is left bit for bit, so a file that
+fits comes in exactly as it is; and `tests/test_tempo_thinning.cpp` tests it without JUCE, in every build. The
+last check of this exercise imports the file with the app alone and expects the same number of points.

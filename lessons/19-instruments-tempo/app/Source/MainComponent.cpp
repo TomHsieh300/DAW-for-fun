@@ -903,7 +903,7 @@ bool MainComponent::importMidi(const juce::File& file) {
                         (r.tracks.size() == 1 ? " track, " : " tracks, ") + juce::String(r.notes) + " notes, " + juce::String(r.tempos) +
                         (r.tempos == 1 ? " tempo" : " tempos");
     if (r.thinned)
-        text << " (the file had more than the tempo map holds)";
+        text << " (the file had more than the tempo map holds: no beat moved by more than " << juce::String(1000.0 * r.tolerance, 1) << " ms)";
     if (r.dropped > 0)
         text << "; " << r.dropped << " other events (pitch bend, program changes) left out";
     setStatus(text);

@@ -86,12 +86,15 @@ MIDI file put them in the menu.
   be the obvious choice, and it is 2 ms off after one beat from 120 to 60 BPM; the right one keeps every sixteenth
   on time.
 - **In.** Tempo events may be in any track, out of order, twice at one tick: they are sorted, and the last at a tick
-  stays. They become jumps of the tempo map; more than its 256 points are thinned, and the status line says so. The
+  stays. They become jumps of the tempo map. A file may have more than the map's 256 points; keeping every k-th
+  one would let the song drift by seconds, so `TempoThinning.h` keeps the *fewest* points with which no tick
+  moves by more than a tolerance - 0 first, which only drops tempos that repeat, then the smallest of 0.5 ms,
+  1 ms, 2 ms ... that fits - and the status line says which (Exercises 5 and 9 are this, to write yourself). The
   tracks and the tempos are **one** undo step.
 
 ## Checks
 
-The smoke test has two new parts, and two tests run without JUCE:
+The smoke test has two new parts, and three tests run without JUCE:
 
 ```text
 the tempo map
@@ -99,6 +102,7 @@ the tempo map
   the lane: a point added and dragged, a point that stops at its neighbour, a ramp, a delete - each one undo step
 MIDI files
   2 tracks and a map with a ramp out and in again: 6 tempo points, the ramp's sixteenths and bar 3 off by at most 0.0002 ms
+  a file with 700 tempos in: 179 tempo points, the worst beat 3.99 ms off ("the file had more than the tempo map holds: no beat moved by more than 4.0 ms")
 ```
 
 ```text
@@ -108,6 +112,16 @@ l19_test_midi_file: Standard MIDI Files with tempo changes
   1000 of 1000 random songs (tempos, names, every kind of message) came back the same
   14 of 14 broken files refused, 75 files cut short refused, 20000 damaged files: no crash (1338 still readable)
 [PASS] l19_test_midi_file (10 checks passed)
+```
+
+```text
+l19_test_tempo_thinning: the fewest tempo points within a timing tolerance
+  400 of 400 random lists: as few points as the best of every choice (678 points dropped)
+  700 tempos into 256 points: 179 points, the worst beat 3.99 ms off (within 4.0 ms); every k-th: 234 points, 222 ms off
+  700 tempos into  64 points:  44 points, the worst beat 63.79 ms off (within 64.0 ms); every k-th:  64 points, 2557 ms off
+  700 tempos into  16 points:  12 points, the worst beat 506.31 ms off (within 512.0 ms); every k-th:  16 points, 6067 ms off
+  700 tempos into   2 points:   2 points, the worst beat 16888.37 ms off (within 32768.0 ms); every k-th:   2 points, 49216 ms off
+[PASS] l19_test_tempo_thinning (49 checks passed)
 ```
 
 ## What you have to try yourself

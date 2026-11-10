@@ -90,8 +90,9 @@ of a microsecond of where it was heard.
 [`l19_ex5_starter`, file `exercises/starter/ex5_thin_tempo.cpp`]
 
 Exercise 4's map of a real band has a point on every beat, and a MIDI file from another program may have a
-thousand. DawLab 19's import keeps every k-th point and lets the song drift (Step 5). Write `thinTempo()`: the
-*fewest* points with which no tick of the song moves by more than a tolerance.
+thousand. The easy way - keep every k-th point - lets the song drift. Write `thinTempo()`: the *fewest* points
+with which no tick of the song moves by more than a tolerance. (DawLab 19's import does this, in
+`app/Source/TempoThinning.h` - which gives the exercise away, so look at it afterwards.)
 
 - A point that stays gets the tempo that brings the next point that stays at exactly its old time, so that a
   point that stays never moves and errors do not add up. The last point stays as it is: its tempo holds for ever.
@@ -150,11 +151,14 @@ of where it was heard.
 
 [`l19_ex9_starter`, file `exercises/starter/ex9_better_import.cpp`]
 
-Step 5's import keeps every k-th tempo when a file has more than the map's 256. Put Exercise 5 before it:
+A file may have more tempos than the map's 256, and keeping every k-th one lets the song drift. Put Exercise 5
+before the import. (The app's import does this itself today, in `app/Source/TempoThinning.h`; at first it kept
+every k-th tempo. Write it yourself before you look.)
 
 - `prepareTempos()`: the file's tempos as a list a map can be made of (clamped, the first at tick 0, the later of
   two at one tick), then thinned with a tolerance of 0 - which drops every tempo that only repeats - and, only if
   that is still too many, with the smallest of 0.5 ms, 1 ms, 2 ms ... that fits.
 - `importSongBetter()`: the app's `importSong()` for the song with these tempos - still one undo step.
 
-The self-check imports a file with 700 tempos both ways and compares how far the beats move.
+The self-check imports a file with 700 tempos your way and with every k-th tempo, compares how far the beats
+move, and expects the app's own import to need the same number of points.

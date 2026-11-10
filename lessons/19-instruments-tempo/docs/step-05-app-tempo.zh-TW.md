@@ -60,11 +60,11 @@ Arrangement 上方的一條，用同一個時間軸：tempo 維持的地方是�
 第 18 章的練習 3 和 9 成為 app 的一部分。`MidiFile.h` 讀寫 byte（不需要 JUCE，每次建置都測試）；`MidiFileIO.h` 把專案變成歌、把歌變成 track；File > Import MIDI file 和 Export MIDI file 把它們放進選單。
 
 - **匯出。** 每個 tempo 點是一個 tempo 事件。檔案沒有 ramp，所以 ramp 變成一個十六分音符一階的階梯——每一階的 tempo 讓這一階的長度正好等於 ramp 在這段的長度。用這一階中間的 tempo 是直覺的選擇，但從 120 到 60 BPM 一拍之後就差了 2 ms；正確的那個讓每個十六分音符都準時。
-- **匯入。** Tempo 事件可能在任何 track、順序錯亂、同一個 tick 有兩個：會先排序，同一個 tick 留最後一個。它們變成 tempo map 的跳躍；超過 256 個點會被精簡，status line 會說明。Track 和 tempo 是**一個** undo 步驟。
+- **匯入。** Tempo 事件可能在任何 track、順序錯亂、同一個 tick 有兩個：會先排序，同一個 tick 留最後一個。它們變成 tempo map 的跳躍。檔案的 tempo 可能超過 map 的 256 個點；每 k 個留一個會讓歌漂移好幾秒，所以 `TempoThinning.h` 留下*最少*的點，讓任何 tick 的移動都不超過容許值——先用 0，這只會拿掉重複的 tempo，再用 0.5 ms、1 ms、2 ms……之中放得下的最小那個——status line 會說明用了哪一個（練習 5 和 9 就是自己寫出這個）。Track 和 tempo 是**一個** undo 步驟。
 
 ## 檢查
 
-Smoke test 有兩個新的部分，另有兩個測試不需要 JUCE：
+Smoke test 有兩個新的部分，另有三個測試不需要 JUCE：
 
 ```text
 the tempo map
@@ -72,6 +72,7 @@ the tempo map
   the lane: a point added and dragged, a point that stops at its neighbour, a ramp, a delete - each one undo step
 MIDI files
   2 tracks and a map with a ramp out and in again: 6 tempo points, the ramp's sixteenths and bar 3 off by at most 0.0002 ms
+  a file with 700 tempos in: 179 tempo points, the worst beat 3.99 ms off ("the file had more than the tempo map holds: no beat moved by more than 4.0 ms")
 ```
 
 ```text
@@ -81,6 +82,16 @@ l19_test_midi_file: Standard MIDI Files with tempo changes
   1000 of 1000 random songs (tempos, names, every kind of message) came back the same
   14 of 14 broken files refused, 75 files cut short refused, 20000 damaged files: no crash (1338 still readable)
 [PASS] l19_test_midi_file (10 checks passed)
+```
+
+```text
+l19_test_tempo_thinning: the fewest tempo points within a timing tolerance
+  400 of 400 random lists: as few points as the best of every choice (678 points dropped)
+  700 tempos into 256 points: 179 points, the worst beat 3.99 ms off (within 4.0 ms); every k-th: 234 points, 222 ms off
+  700 tempos into  64 points:  44 points, the worst beat 63.79 ms off (within 64.0 ms); every k-th:  64 points, 2557 ms off
+  700 tempos into  16 points:  12 points, the worst beat 506.31 ms off (within 512.0 ms); every k-th:  16 points, 6067 ms off
+  700 tempos into   2 points:   2 points, the worst beat 16888.37 ms off (within 32768.0 ms); every k-th:   2 points, 49216 ms off
+[PASS] l19_test_tempo_thinning (49 checks passed)
 ```
 
 ## 你要自己試的

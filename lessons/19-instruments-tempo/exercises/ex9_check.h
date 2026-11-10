@@ -126,14 +126,25 @@ inline void checkImport() {
     const double ours = worstBeat(file, [&](double tick) { return rig.session.getTempoMap().secondsAt(tick); });
     DAWLAB_CHECK(better.result.ok && ours <= better.tolerance + 2e-9);
 
-    // The app's own import of the same file: every k-th tempo.
+    // What the app's import did at first: every k-th tempo, each with the tempo it had.
+    midifile::Song kth = song;
+    kth.tempos.clear();
+    const size_t every = (file.size() + engine::TempoMap::kMaxPoints - 1) / engine::TempoMap::kMaxPoints;
+    for (size_t i = 0; i < file.size(); i += every)
+        kth.tempos.push_back(file[i]);
     Rig plain;
-    const MidiImport app = importSong(plain.session, song);
+    const MidiImport first = importSong(plain.session, kth);
     plain.engine.applyPendingCommandsOffline();
     const double theirs = worstBeat(file, [&](double tick) { return plain.session.getTempoMap().secondsAt(tick); });
-    DAWLAB_CHECK(app.ok && app.thinned && theirs > 10.0 * ours);
-    std::printf("  a file of 700 tempos imported: %d points, the worst beat %.2f ms off; the app's import: %d points, %.0f ms off\n", better.result.tempos,
-                1000.0 * ours, app.tempos, 1000.0 * theirs);
+    DAWLAB_CHECK(first.ok && theirs > 10.0 * ours);
+    std::printf("  a file of 700 tempos imported: %d points, the worst beat %.2f ms off; every k-th tempo: %d points, %.0f ms off\n", better.result.tempos,
+                1000.0 * ours, first.tempos, 1000.0 * theirs);
+    // The app's import does today what this exercise asks for (TempoThinning.h): the same number of points
+    // within the same tolerance.
+    Rig today;
+    const MidiImport app = importSong(today.session, song);
+    today.engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(app.ok && app.thinned && near(app.tolerance, better.tolerance) && app.tempos == better.result.tempos);
 
     // One undo step takes the track and the tempos back.
     DAWLAB_CHECK(rig.session.undo() && rig.session.getNumTracks() == tracksBefore && rig.tempoPoints().size() == mapBefore.size() &&

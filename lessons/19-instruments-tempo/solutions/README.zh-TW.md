@@ -144,15 +144,15 @@ Exercise 8 - tap tempo in DawLab 19
 
 `prepareTempos()` 先做出練習 5 接受的 list，然後只要求剛好夠用的容許值：先用 0，因為很多「tempo 太多」的檔案只是每小節重複同一個 tempo，拿掉它們不花任何代價。加倍是在粗的刻度上找最小的容許值；每試一次都是把整個 dynamic programming 重跑一遍，對匯入來說沒問題，對滑鼠拖曳就不行。`thinTempo()` 算出來的 tempo 可能因為取整而落在 20 .. 999 外面一點點，所以在交給 map 之前再 clamp 一次。
 
-`importSongBetter()` 只改了歌的一份複本裡的一個欄位，然後呼叫 app 的匯入。Track、clip 和單一 undo 步驟都不用重寫——這就是把 tempo 放在匯入*之前*處理、而不是放進匯入裡面的理由。
+`importSongBetter()` 只改了歌的一份複本裡的一個欄位，然後呼叫 app 的匯入。Track、clip 和單一 undo 步驟都不用重寫。
 
 ```text
 Exercise 9 - a better MIDI import in DawLab 19
   700 tempos into 256 points: 179 points within 4.0 ms (the worst beat 3.99 ms off)
   700 tempos into  64 points:  44 points within 64.0 ms (the worst beat 63.79 ms off)
   700 tempos into  16 points:  12 points within 512.0 ms (the worst beat 506.31 ms off)
-  a file of 700 tempos imported: 179 points, the worst beat 3.99 ms off; the app's import: 234 points, 222 ms off
-[PASS] l19_ex9 (33 checks passed)
+  a file of 700 tempos imported: 179 points, the worst beat 3.99 ms off; every k-th tempo: 234 points, 222 ms off
+[PASS] l19_ex9 (34 checks passed)
 ```
 
-同一個檔案，點更少，最差的那一拍只偏了幾毫秒，而每 k 個留一個的做法偏了五分之一秒。老實說，下一步應該是把它變成 app 的匯入——`MidiFileIO.cpp` 大約十行的修改，並把 `tempo_model.h` 的 `thinTempo()` 搬到它旁邊。
+同一個檔案，點更少，最差的那一拍只偏了幾毫秒，而每 k 個留一個的做法偏了五分之一秒。所以它成了 app 的匯入：`app/Source/TempoThinning.h` 就是 `thinTempo()` 加上找容許值的那一段，`importSong()` 會呼叫它，status line 會說明拍子最多可能移動了多少。那裡有兩點不同。兩個都留下的相鄰點之間的 tempo 一個 bit 都不動，所以放得下的檔案匯入後和原本完全一樣；而且 `tests/test_tempo_thinning.cpp` 不需要 JUCE，每次建置都會測試它。這題的最後一個檢查只用 app 匯入同一個檔案，並預期得到一樣多的點。

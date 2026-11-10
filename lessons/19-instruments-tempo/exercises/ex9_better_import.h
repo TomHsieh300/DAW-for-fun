@@ -1,9 +1,11 @@
 #pragma once
 // Exercise 9 - A better MIDI import in DawLab 19 (optional, JUCE).
 //
-// A MIDI file may have more tempo events than the engine's map has points (256). Step 5's import then keeps every
-// k-th one, each with its own tempo - and the tempos it drops are gone, so the notes drift away from where the
-// file had them. Exercise 5 knows better. Put it before the import, without changing the app:
+// A MIDI file may have more tempo events than the engine's map has points (256). An import that keeps every
+// k-th one, each with its own tempo, loses the tempos it drops, and the notes drift away from where the file
+// had them. Exercise 5 knows better. Put it before the import, without changing the app.
+// (The app's import did keep every k-th tempo at first; today it does this itself, in TempoThinning.h. The
+// exercise is to write it yourself: the self-check compares yours with every k-th tempo and with the app's.)
 //
 //   prepareTempos(tempos, maxPoints)
 //       The file's tempos as a list a map can be made of, and then as few points as it takes:

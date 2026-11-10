@@ -8,8 +8,9 @@
 //   importSong()  every track of a song as a new instrument track at the end, with one clip from tick 0 to the end of
 //                 its last bar. A note off ends the note of its key and channel that started first; a note that is
 //                 never ended ends with the track. Controllers become the clip's; the rest (pitch bend, program
-//                 changes) is counted. The song's tempos become the project's tempo map - jumps, thinned to the map's
-//                 256 points if there are more. All of it is ONE undo step, "Import MIDI".
+//                 changes) is counted. The song's tempos become the project's tempo map - jumps; if there are more
+//                 than its 256 points, the fewest that keep every tick within a tolerance (TempoThinning.h).
+//                 All of it is ONE undo step, "Import MIDI".
 //
 // The files themselves are MidiFile.h's.
 
@@ -32,7 +33,8 @@ struct MidiImport {
     int notes = 0;
     int dropped = 0;      // events that are neither notes nor controllers
     int tempos = 0;       // tempo points of the map now
-    bool thinned = false; // the file had more tempos than the map can hold
+    bool thinned = false; // the file had more tempos than the map can hold: some ticks moved
+    double tolerance = 0.0; // seconds: no tick moved by more than this (0: none moved)
 };
 
 MidiExport songOf(const Session& session);

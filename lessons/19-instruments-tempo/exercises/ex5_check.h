@@ -167,7 +167,7 @@ inline void checkBand() {
         if (out.empty())
             break;
         last = out.size();
-        // What chapter 19's import does to get under the same number: every k-th point with its own tempo (here
+        // The easy way to get under the same number: every k-th point with its own tempo (here
         // with the last point too, so that the two are compared within the song, not an hour after it).
         const size_t every = (band.size() + out.size() - 1) / out.size();
         std::vector<TempoPoint> kth;

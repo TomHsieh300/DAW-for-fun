@@ -60,6 +60,7 @@ set(L19_APP_SOURCES
     Source/MidiFile.cpp
     Source/MidiFileIO.h
     Source/MidiFileIO.cpp
+    Source/TempoThinning.h
     Source/PluginInstrument.h
     Source/PluginInstrument.cpp
     Source/SynthPanel.h

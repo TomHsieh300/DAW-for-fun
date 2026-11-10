@@ -63,6 +63,9 @@ target_include_directories(l19_test_project_format PRIVATE app/Source)
 # The same for Standard MIDI Files (chapter 19, Step 5).
 l19_add_test(l19_test_midi_file         tests/test_midi_file.cpp app/Source/MidiFile.cpp)
 target_include_directories(l19_test_midi_file PRIVATE app/Source)
+# And for the tempos of an imported file: the fewest points within a tolerance (Exercises 5 and 9 in the app).
+l19_add_test(l19_test_tempo_thinning    tests/test_tempo_thinning.cpp)
+target_include_directories(l19_test_tempo_thinning PRIVATE app/Source)
 
 # ---- Steps 5 and 6: the JUCE application "DawLab 19" ---------------------------------------------
 # Needs -DDAWLAB_WITH_JUCE=ON (build.ps1 -Juce). Without JUCE the chapter stops here.

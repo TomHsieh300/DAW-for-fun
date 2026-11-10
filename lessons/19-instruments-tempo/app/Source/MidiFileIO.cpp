@@ -1,5 +1,7 @@
 #include "MidiFileIO.h"
 
+#include "TempoThinning.h"
+
 #include <algorithm>
 #include <deque>
 #include <map>
@@ -123,20 +125,21 @@ MidiImport importSong(Session& session, const midifile::Song& song) {
         edits.push_back(add);
     }
 
-    // The tempos: jumps. More than the map can hold: every k-th, the first always.
+    // The tempos: jumps. A tempo that only repeats the one before is dropped; more than the map can hold are
+    // thinned to the fewest points that keep every tick within a tolerance (TempoThinning.h).
     std::vector<engine::TempoPoint> points;
-    const size_t n = song.tempos.size();
-    const size_t every = (n + engine::TempoMap::kMaxPoints - 1) / engine::TempoMap::kMaxPoints;
-    result.thinned = every > 1;
-    for (size_t i = 0; i < n; i += std::max<size_t>(every, 1)) {
-        const double bpm = std::clamp(song.tempos[i].bpm, engine::TempoMap::kMinBpm, engine::TempoMap::kMaxBpm);
-        if (points.empty() || song.tempos[i].tick > points.back().tick)
-            points.push_back({points.empty() ? 0 : song.tempos[i].tick, bpm, false});
+    for (const midifile::Tempo& tempo : song.tempos) {
+        const double bpm = std::clamp(tempo.bpm, engine::TempoMap::kMinBpm, engine::TempoMap::kMaxBpm);
+        if (points.empty() || tempo.tick > points.back().tick)
+            points.push_back({points.empty() ? 0 : tempo.tick, bpm, false});
     }
     if (points.empty())
         points.push_back({0, 120.0, false});
-    result.tempos = static_cast<int>(points.size());
-    edits.push_back(edit::SetTempoMap{points});
+    const tempothin::Fitted fitted = tempothin::fitTempoPoints(points);
+    result.thinned = fitted.tolerance > 0.0;
+    result.tolerance = fitted.tolerance;
+    result.tempos = static_cast<int>(fitted.points.size());
+    edits.push_back(edit::SetTempoMap{fitted.points});
 
     if (!session.perform(std::move(edits), "Import MIDI")) {
         result.error = "the project has no room for " + juce::String(static_cast<int>(song.tracks.size())) + " more tracks";

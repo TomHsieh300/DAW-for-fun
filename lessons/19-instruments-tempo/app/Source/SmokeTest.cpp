@@ -8,6 +8,7 @@
 #include "Exporter.h"
 #include "MainComponent.h"
 #include "MediaLoader.h"
+#include "MidiFile.h"
 #include "Meters.h"
 #include "MixerView.h"
 #include "ParameterPanel.h"
@@ -1766,6 +1767,43 @@ void testMidiFiles() {
     DAWLAB_CHECK(main.undo() && session.getNumTracks() == tracksBefore && session.getTempoMap().size() == 1);
     DAWLAB_CHECK(main.redo() && session.getNumTracks() == tracksBefore + 2 && session.getTempoMap().size() == 6);
     engine.applyPendingCommandsOffline();
+
+    // A file with more tempos than the map holds - a band, a tempo on each of 700 beats: the fewest points that
+    // keep every beat within a tolerance, and the status line says which.
+    {
+        midifile::Song band;
+        std::mt19937 rng(9);
+        double bpm = 120.0;
+        for (int k = 0; k < 700; ++k) {
+            if (std::uniform_int_distribution<int>(0, 5)(rng) == 0)
+                bpm = std::clamp(bpm * std::uniform_real_distribution<double>(0.9, 1.1)(rng), 60.0, 240.0);
+            band.tempos.push_back({static_cast<std::int64_t>(k) * 960, bpm * (1.0 + std::uniform_real_distribution<double>(-0.01, 0.01)(rng))});
+        }
+        midifile::Track notes;
+        notes.name = "Band";
+        notes.events = {{0, {0x90, 60, 100}}, {480, {0x80, 60, 0}}};
+        band.tracks.push_back(notes);
+        const juce::File bandFile = folder.get().getChildFile("band.mid");
+        const std::vector<std::uint8_t> bytes = midifile::write(band);
+        DAWLAB_CHECK(bandFile.replaceWithData(bytes.data(), bytes.size()));
+        engine::TempoMap before = session.getTempoMap();
+        DAWLAB_CHECK(main.importMidi(bandFile) && main.getStatus().contains("no beat moved by more than"));
+        engine.applyPendingCommandsOffline();
+        const engine::TempoMap& thin = session.getTempoMap();
+        DAWLAB_CHECK(thin.size() > 16 && thin.size() <= engine::TempoMap::kMaxPoints);
+        // Where the file has its beats (its tempos are whole microseconds a beat), and where they are now.
+        const std::vector<midifile::Tempo> beats = midifile::read(bytes).song.tempos;
+        double seconds = 0.0, worst = 0.0;
+        for (size_t k = 0; k < beats.size(); ++k) {
+            worst = std::max(worst, std::abs(thin.secondsAt(static_cast<double>(beats[k].tick)) - seconds));
+            seconds += 60.0 / beats[k].bpm;
+        }
+        std::printf("  a file with %zu tempos in: %d tempo points, the worst beat %.2f ms off (\"%s\")\n", beats.size(), thin.size(), worst * 1e3,
+                    main.getStatus().fromFirstOccurrenceOf("(", false, false).upToLastOccurrenceOf(")", false, false).toRawUTF8());
+        DAWLAB_CHECK(beats.size() == 700 && worst < 0.008);
+        DAWLAB_CHECK(main.undo() && session.getNumTracks() == tracksBefore + 2 && session.getTempoMap().size() == before.size());
+        engine.applyPendingCommandsOffline();
+    }
 
     // Not a MIDI file, and no file.
     const juce::File bad = folder.get().getChildFile("bad.mid");

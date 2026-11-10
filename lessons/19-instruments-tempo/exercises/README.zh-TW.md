@@ -61,7 +61,7 @@ Self-check 會為 300 個隨機樂團建立 map，並問 Step 1 的 map 每一�
 
 [`l19_ex5_starter`，檔案 `exercises/starter/ex5_thin_tempo.cpp`]
 
-練習 4 從真實樂團做出的 map 每一拍都有一個點，而別的程式匯出的 MIDI 檔可能有上千個。DawLab 19 的匯入每 k 個點留一個，任由歌漂移（Step 5）。寫出 `thinTempo()`：用*最少*的點，讓歌裡任何一個 tick 的移動都不超過容許值。
+練習 4 從真實樂團做出的 map 每一拍都有一個點，而別的程式匯出的 MIDI 檔可能有上千個。簡單的做法——每 k 個點留一個——會任由歌漂移。寫出 `thinTempo()`：用*最少*的點，讓歌裡任何一個 tick 的移動都不超過容許值。（DawLab 19 的匯入就是這樣做的，在 `app/Source/TempoThinning.h`——它等於這題的解答，請做完再看。）
 
 - 留下的點拿到的 tempo，要讓下一個留下的點剛好在它原本的時間到，這樣留下的點永遠不動，誤差也不會累加。最後一個點原樣留下：它的 tempo 會一直持續下去。
 - 一段連續的點可以拿掉的條件是：拿掉之後，其中每個點的播放時間和原本相差都在容許值內。
@@ -104,9 +104,9 @@ Self-check 會向 engine 的 transport 問 100 個隨機樂團每一拍的 sampl
 
 [`l19_ex9_starter`，檔案 `exercises/starter/ex9_better_import.cpp`]
 
-檔案的 tempo 超過 map 的 256 個時，Step 5 的匯入每 k 個留一個。把練習 5 放在它前面：
+檔案的 tempo 可能超過 map 的 256 個，而每 k 個留一個會讓歌漂移。把練習 5 放在匯入前面。（App 的匯入現在自己就這樣做，在 `app/Source/TempoThinning.h`；它一開始是每 k 個留一個。請先自己寫，再去看。）
 
 - `prepareTempos()`：把檔案的 tempo 整理成可以做成 map 的 list（clamp、第一個放在 tick 0、同一個 tick 上取後面那個），然後以容許值 0 變稀疏——這會拿掉所有只是重複的 tempo——只有在還是太多時，才用 0.5 ms、1 ms、2 ms……之中放得下的最小那個。
 - `importSongBetter()`：用這些 tempo 呼叫 app 的 `importSong()`——仍然是一個 undo 步驟。
 
-Self-check 會用兩種方式匯入一個有 700 個 tempo 的檔案，比較拍子各移動了多少。
+Self-check 會用你的方式和「每 k 個留一個」各匯入一個有 700 個 tempo 的檔案，比較拍子各移動了多少，並預期 app 自己的匯入需要一樣多的點。

@@ -3,8 +3,9 @@
 //
 // A tempo map made from a band's beats (Exercise 4) has a point on every beat, and a MIDI file exported by
 // another program may have a tempo event every few ticks. DawLab's map holds 256 points, and nobody wants to edit
-// a lane with a thousand. Chapter 19's import keeps every k-th point - and the song drifts, because the tempos it
-// throws away are simply gone. Do it properly: the FEWEST points with which no tick of the song moves by more than
+// a lane with a thousand. The easy way is to keep every k-th point - and the song drifts, because the tempos
+// thrown away are simply gone. (DawLab 19's import did that at first. Today it does what this exercise asks
+// for: app/Source/TempoThinning.h gives the exercise away.) Do it properly: the FEWEST points with which no tick of the song moves by more than
 // a tolerance.
 //
 //   thinTempo(points, toleranceSeconds, out)
