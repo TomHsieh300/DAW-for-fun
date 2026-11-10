@@ -10,7 +10,7 @@
 .\build\bin\Debug\l18_ex3_starter.exe
 ```
 
-**練習 1-7** 是本章的練習，關於各個 step（不需要 JUCE）。**練習 8-12 是選做專題**，延伸 DawLab 18（需要 JUCE 建置）；它們之後才會加上。
+**練習 1-7** 是本章的練習，關於各個 step（不需要 JUCE）。**練習 8-12 是選做專題**，延伸 DawLab 18。它們需要 JUCE 建置（`.\scripts\build.ps1 -Only 18-midi -Juce`）；和第 17 章的一樣，它們是在 offline 模式下建立真正 `MainComponent` 的 console 程式（`exercises/app_rig.h`），都不會修改 app。練習 8 和 12 用到 engine 在本章之後加上的 hook：把另一個樂器放到 synth 的位置，以及在 synth 播放時改變它的設定（Step 7「本章之後加上的」）。
 
 練習 2、3 和 5 建立在 Step 1 的 model 上（`exercises/model.h`：Step 1 的 `minidaw.h`，函式都已解好），練習 6 建立在 Step 4 已解好的 voice 元件（`Saw`、`Adsr`）上。練習 4 是獨立的。請先完成各個 step。
 
@@ -89,3 +89,46 @@ DawLab 18 的樂器是它自己的 synth（Step 7）。第 13 章掛載 VST3 *ef
 4. **尾巴。** Transport 停了，plugin 還在 release 一個音。Engine 要繼續呼叫它嗎？Mute 的 track、bypass 的 track，以及 offline render 的結尾呢？
 5. **狀態。** 專案檔要保存什麼，怎麼在第一個音之前還原，哪個 thread 可以呼叫 `setStateInformation()`？
 6. **信任。** Step 7 的測試證明 synth 絕不在 audio thread 上配置記憶體。Host 能對 plugin 證明什麼，又改做什麼？
+
+## 練習 8 - Synth 設定面板 ★★☆（實作，JUCE）
+
+[`l18_ex8_starter`，檔案 `exercises/starter/ex8_synth_panel.cpp`]
+
+Synth 原本只有一種音色。本章之後，engine 為它加了一個 hook（Step 7「本章之後加上的」）：synth 播放時，可以在 UI thread 呼叫 `Engine::getTrackSynth(track)->setSettings()`，下一個 block 會把值交給 voice。做出它前面的面板：
+
+- `SynthPanel::showTrack()` 用七個 slider 顯示一個 track 的 cutoff、resonance、envelope 和 level——顯示時什麼都不送出。不是樂器的 track，或已經不在的 track，會關掉 slider 並說明原因。
+- 移動 slider 會把整組設定送到那個 track 的 synth。面板每次都用 track 的 id 找 synth：被刪除的 track 的 slot 屬於下一個 track，面板不能改到它的音色。
+- `toText()` 和 `fromText()`：設定寫成一行，`cutoff=4000 resonance=0.9 ...`，用能精確讀回的最少位數——專案檔會保存的東西。每個 key 一次，每個值都在它 slider 的範圍內。
+
+Self-check 會播一個長音，把 cutoff 從 8000 移到 200 Hz：聲音必須暗超過十倍；而 level 0 必須從下一個 block 起讓它無聲，同時那個音仍在響。
+
+## 練習 9 - DawLab 18 裡的 MIDI 檔 ★★☆（實作，JUCE）
+
+[`l18_ex9_starter`，檔案 `exercises/starter/ex9_midi_files.cpp`]
+
+練習 3 讀寫的是事件；DawLab 把音符存在 clip 裡。寫出兩者之間的那一步（練習 3 的 reader 和 writer 已解好，放在 `exercises/smf_model.h`）：
+
+- `songOf()`：專案播放時的樣子——每個有東西可播的 instrument track，每個沒有 mute 的 clip，quantize 之後落在它視窗裡的聲音，在 clip 結尾切掉。
+- `importSong()`：檔案的每個 track 變成一個新的 instrument track，帶一個 clip。Note off 結束同一個鍵和 channel 最先開始的那個音；從沒結束的音隨 track 結束；pitch bend 和 program change 只計數，不保留。檔案的 tempo 變成專案的。全部是一個 undo 步驟「Import MIDI」。
+
+Self-check 會匯出一個有 offset 的 quantize clip 和一個 mute 的複本、匯入同一個鍵重疊的音和一個從沒結束的音、用一次 undo 全部收回，並把 198 個隨機的音經由檔案送進另一個專案：它們必須原樣回來。
+
+## 練習 10 - 把電腦鍵盤當 MIDI 鍵盤 ★☆☆（實作，JUCE）
+
+[`l18_ex10_starter`，檔案 `exercises/starter/ex10_computer_keyboard.cpp`]
+
+`a w s e d f t g y h u j k o l p` 彈 C4 到 D#5，`z` 和 `x` 換八度，`c` 和 `v` 改 velocity，音符送到 MIDI 鍵盤送的地方：`AudioHost::pushMidi()`。電腦鍵盤在三方面不是 MIDI 鍵盤，忘了任何一個都會留下卡住的音：按住的鍵會重複、JUCE 不會告訴你哪個鍵放開了，而視窗在背景時放開的鍵永遠不會被看到。還有，換了八度之後放開的鍵，必須結束它當初開始的那個音。
+
+## 練習 11 - 一次編輯很多音符 ★★☆（實作，JUCE）
+
+[`l18_ex11_starter`，檔案 `exercises/starter/ex11_note_editor.cpp`]
+
+用矩形選取 clip 的音符；移調、移動、在它們後面複製、刪除——每個都是一個 undo 步驟——以及這一切的按鍵。難的是選取：它屬於音符，所以被排序移到清單另一個位置的音仍然被選取；而它屬於編輯器最後看到的 clip，所以 undo 會清掉它，而不是讓它留在別的音符上。
+
+## 練習 12 - Track 上的 VST3 樂器 ★★★（實作，JUCE）
+
+[`l18_ex12_starter`，檔案 `exercises/starter/ex12_plugin_instrument.cpp`]
+
+把練習 7 的設計做出來：`PluginInstrument` 把一個 JUCE `AudioProcessor`——第 13 章的 `PluginHost` 為 VST3 檔給的就是它——包成一個 `engine::Instrument`，而 `Engine::setTrackInstrument()` 把它放到 track 的 synth 的位置。Block 的事件依 offset 放進 `MidiBuffer`，processor 的輸出加到 track 上，狀態可以存成 base64 文字。`render()` 跑在 audio thread 上：self-check 會計算其中的記憶體配置次數，必須是零。
+
+Self-check 的樂器是它自己的一個小 processor，因為不能假設跑 check 的地方有 VST3 樂器。想聽真的，就在你自己的程式裡用 `PluginInstrument::load()` 載入你有的 VST3 樂器，或把它接到 DawLab 18 的 track 選單。

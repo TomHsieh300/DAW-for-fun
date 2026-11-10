@@ -13,7 +13,11 @@ Difficulty: ★☆☆ easy, ★★☆ medium, ★★★ hard. Implementation exe
 ```
 
 **Exercises 1-7** are the chapter's exercise set, about the steps (no JUCE). **Exercises 8-12 are
-optional projects** that extend DawLab 18 (they need a JUCE build); they are still to come.
+optional projects** that extend DawLab 18. They need a JUCE build
+(`.\scripts\build.ps1 -Only 18-midi -Juce`); like chapter 17's they are console programs that build the real
+`MainComponent` in its offline mode (`exercises/app_rig.h`), and none of them changes the app. Exercises 8 and 12
+use the hook the engine got after the chapter: another instrument in the synth's place, and the synth's settings
+changed while it plays (Step 7, "Added after the chapter").
 
 Exercises 2, 3 and 5 build on Step 1's model (`exercises/model.h`: Step 1's `minidaw.h` with its functions
 solved), Exercise 6 on Step 4's solved voice parts (`Saw`, `Adsr`). Exercise 4 stands alone. Do the steps
@@ -142,3 +146,71 @@ VST3 *instrument* where the synth is. Before that, design it in writing. Cover:
    may call `setStateInformation()`?
 6. **Trust.** Step 7's tests prove the synth never allocates on the audio thread. What can the host prove
    about a plugin, and what does it do instead?
+
+## Exercise 8 - A synth settings panel ★★☆ (implementation, JUCE)
+
+[`l18_ex8_starter`, file `exercises/starter/ex8_synth_panel.cpp`]
+
+The synth had one sound. After the chapter the engine got a hook for it (Step 7, "Added after the chapter"):
+`Engine::getTrackSynth(track)->setSettings()` may be called on the UI thread while the synth plays, and the next
+block hands the values to the voices. Build the panel in front of it:
+
+- `SynthPanel::showTrack()` shows a track's cutoff, resonance, envelope and level on seven sliders - and sends
+  nothing while it does. A track that is not an instrument, or is gone, turns the sliders off and says why.
+- Moving a slider sends the whole settings to that track's synth. The panel finds the synth by the track's id every
+  time: a deleted track's slot belongs to the next track, and the panel must not change its sound.
+- `toText()` and `fromText()`: the settings as one line, `cutoff=4000 resonance=0.9 ...`, with the fewest digits that
+  come back exactly - what a project file would keep. Every key once, every value inside its slider's range.
+
+The self-check plays a long note and moves the cutoff from 8000 to 200 Hz: the sound must get darker by more than
+ten times, and level 0 must silence it from the next block while the note still sounds.
+
+## Exercise 9 - MIDI files in DawLab 18 ★★☆ (implementation, JUCE)
+
+[`l18_ex9_starter`, file `exercises/starter/ex9_midi_files.cpp`]
+
+Exercise 3 reads and writes events; DawLab keeps notes in clips. Write the step between (Exercise 3's reader and
+writer are given, solved, in `exercises/smf_model.h`):
+
+- `songOf()`: the project as it plays - every instrument track with something to play, each clip that is not muted,
+  what sounds inside its window after quantize, cut at the clip's end.
+- `importSong()`: every track of a file as a new instrument track with one clip. A note off ends the note of its key
+  and channel that started first; a note never ended ends with the track; pitch bend and program changes are
+  counted, not kept. The file's tempo becomes the project's. All of it is one undo step, "Import MIDI".
+
+The self-check exports a quantized clip with an offset and a muted copy, imports overlapping notes of one key and a
+note that never ends, takes it all back with one undo, and sends 198 random notes through a file into another
+project: they must come back the same.
+
+## Exercise 10 - The computer keyboard as a MIDI keyboard ★☆☆ (implementation, JUCE)
+
+[`l18_ex10_starter`, file `exercises/starter/ex10_computer_keyboard.cpp`]
+
+`a w s e d f t g y h u j k o l p` play C4 to D#5, `z` and `x` change the octave, `c` and `v` the velocity, and
+the notes go where a MIDI keyboard's go: `AudioHost::pushMidi()`. A computer keyboard is not a MIDI keyboard in
+three ways, and each one is a hanging note if it is forgotten: a held key repeats, JUCE does not say which key went
+up, and a key released while the window is in the background is never seen. And a key that goes up after an octave
+change must end the note it started.
+
+## Exercise 11 - Edit many notes at once ★★☆ (implementation, JUCE)
+
+[`l18_ex11_starter`, file `exercises/starter/ex11_note_editor.cpp`]
+
+Select a clip's notes by a rectangle; transpose them, move them, duplicate them after themselves, delete them - each
+one undo step - and the keys for all of it. The selection is the hard part: it belongs to the notes, so a note that
+the sort moves to another place in the list stays selected; and it belongs to the clip as the editor last saw it,
+so an undo clears it instead of leaving it on other notes.
+
+## Exercise 12 - A VST3 instrument on a track ★★★ (implementation, JUCE)
+
+[`l18_ex12_starter`, file `exercises/starter/ex12_plugin_instrument.cpp`]
+
+Exercise 7's design, built: `PluginInstrument` wraps a JUCE `AudioProcessor` - which is what chapter 13's
+`PluginHost` gives for a VST3 file - as an `engine::Instrument`, and `Engine::setTrackInstrument()` puts it in a
+track's synth's place. The block's events go into a `MidiBuffer` at their offsets, the processor's output is
+added to the track, and the state can be kept as base64 text. `render()` runs on the audio thread: the self-check
+counts the allocations in it, and there must be none.
+
+The self-check's instrument is a small processor of its own, since no VST3 instrument can be assumed where the
+check runs. To hear a real one, load a VST3 instrument you have with `PluginInstrument::load()` in a program of your
+own, or wire it into DawLab 18's track menu.

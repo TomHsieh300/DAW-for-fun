@@ -3,7 +3,7 @@
 
 [回到本章](../README.zh-TW.md) | [練習](../exercises/README.zh-TW.md)
 
-用 `.\scripts\build.ps1 -Only 18-midi -TestLabel solution` 執行所有解答程式。每一個都以 `[PASS] l18_exN (... checks passed)` 結尾。
+用 `.\scripts\build.ps1 -Only 18-midi -TestLabel solution` 執行所有解答程式（練習 8-12 要加上 `-Juce`）。每一個都以 `[PASS] l18_exN (... checks passed)` 結尾。
 
 ---
 
@@ -147,3 +147,99 @@ Exercise 6 - mono, legato and glide
 4. **尾巴。** 不論停止與否，engine 每個 block 都繼續呼叫 plugin，沒有事件時就給空的 buffer——release、reverb、delay 都繼續。Mute 的 track 仍然會被處理（它的 note off 必須送到），只是輸出不混音。Bypass 的樂器輸出無聲（`processBlockBypassed`），但仍然收到 note off。Offline render 在歌曲結尾之後繼續 `getTailLengthSeconds()` 那麼久，或者——當它說「無限」時——直到輸出低於 -90 dB 持續一秒。
 5. **狀態。** 專案保存 plugin 的身分（格式、檔案、unique id）和 `getStateInformation()` 的 blob，以 base64 寫在一行文字裡。開啟專案時在 message thread 上建立 instance、在那裡呼叫 `setStateInformation()`，之後才透過 command queue 交給 engine，就像任何 insert 一樣（第 15 章）。沒有安裝的 plugin 會把它的 blob 保留在一個無聲的佔位裡，這樣存檔時才不會遺失。
 6. **信任。** 什麼都證明不了：plugin 可能配置記憶體、上鎖、寫 log 到檔案，或當掉。Host 改為量測——每次呼叫的時間對照 block 的期限、dropout、每個 plugin 的 CPU 表——謹慎的 host 會把 plugin 放在另一個 process 裡跑，讓當掉只損失 plugin 而不是整首歌。DawLab 的 engine 測試繼續用內建的 synth；plugin 則用第 13 章自己的那個來測，它的行為是已知的。
+
+## 練習 8 - Synth 設定面板
+
+[`solutions/ex8_synth_panel.cpp`](ex8_synth_panel.cpp)
+
+`showTrack()` 以 `juce::dontSendNotification` 把 synth 的值寫進 slider：顯示一個 track 不是修改它；如果帶著通知，面板會把設定送回去——對值本身無害，但對 audio thread 來說是一個新版本，更糟的是會養成「打開面板就是一次編輯」的習慣。`sliderMoved()` 每次都用 track 的 id 重新找 synth；check 會在面板底下刪掉一個 track，再加一個佔用同一個 slot 的新 track。
+
+文字格式先用 `%.15g` 印出每個值，只有 15 位讀回來不是同一個 double 時才試 16 和 17 位——所以預設音色寫成 `resonance=0.9` 而不是 `0.90000000000000002`，而每個隨機值仍然精確讀回。讀取用 `std::strtod`，它會正確捨入；JUCE 快速的 `getDoubleValue()` 不一定，500 組隨機設定的來回測試就會找到這一點。
+
+```text
+Exercise 8 - a synth settings panel
+  the default sound as text: cutoff=4000 resonance=0.9 attack=0.005 decay=0.2 sustain=0.6 release=0.3 level=0.25
+  500 random settings back exactly from their text; 10 of 10 bad lines refused
+  one long note, cutoff 8000 Hz then 200 Hz from the panel: brightness 0.00619, then 0.00019
+  level 0 while the note sounds: silent, the note still held; back to 0.25: heard again
+  an audio track, a deleted track, no track: the sliders off, and why
+[PASS] l18_ex8 (16 checks passed)
+```
+
+它沒做的：設定既不能 undo 也不會存檔——那需要一個新的 edit 和專案檔裡的一行，而那是對 app 的修改。文字格式就是那一行。
+
+## 練習 9 - DawLab 18 裡的 MIDI 檔
+
+[`solutions/ex9_midi_files.cpp`](ex9_midi_files.cpp)
+
+匯出走的是 `notes()`——engine 播放的、quantize 之後的音——而不是 `played`，並依 Step 2 的規則擺放每個音：clip 素材的 tick $`t`$ 在 $`start + t - offset`$ 播放，而且只在 $`[offset, offset + length)`$ 之內。匯入用每個鍵和 channel 一個佇列來配對音符，最舊的優先：檔案無法說明一個 off 屬於同一個鍵的兩個重疊音裡的哪一個，而先進先出是大多數程式的假設。
+
+`Session::makeNewTrack()` 會給出下一個 id 但不會佔用它，所以呼叫兩次會得到同一個 id；匯入自己從第一個開始為 track 編號，套用 AddTrack edit 時計數器會移到它們之後。所有 edit 和 SetTempo 都交給同一個 `perform()`，所以一次 undo 就收回整個匯入。
+
+```text
+Exercise 9 - MIDI files in DawLab 18
+  a quantized clip with an offset, a muted copy, an empty track: 3 notes on one track "Bass" at 96 BPM
+  two tracks, overlapping notes of one key, a note that never ends, a bend and a program: 5 notes, 2 dropped
+  undo, redo, and a song with no track refused
+  198 random notes to l18_ex9_round_trip.mid (1708 bytes) and back into another project: the same
+[PASS] l18_ex9 (24 checks passed)
+```
+
+## 練習 10 - 把電腦鍵盤當 MIDI 鍵盤
+
+[`solutions/ex10_computer_keyboard.cpp`](ex10_computer_keyboard.cpp)
+
+每個按住的鍵都記下它的 key code 和它開始的音高。重複時找到自己的 key code 就什麼都不做；`keyStateChanged()` 逐一詢問每個按住的鍵是否仍按著，結束那些已放開的，用它們當初的音高；`allNotesOff()` 結束全部。App 會從擁有鍵盤焦點的 component 的 `focusLost()`，以及視窗的 `activeWindowStatusChanged()` 呼叫它。
+
+```text
+Exercise 10 - the computer keyboard as a MIDI keyboard
+  a: C4 at velocity 100, at the host's time:       yes
+  a held: the repeats send nothing:                yes
+  w, k and p:                                      yes
+  a up:                                            yes
+  z, a, then w up:                                 yes
+  v v c, the octave up to +3, then j:              yes
+  Ctrl+s, Alt+d, q, 1:                             yes
+  focus lost with k, p, a and j held:              yes
+  the armed instrument track plays h (A at octave -3), and stops when it goes up
+[PASS] l18_ex10 (27 checks passed)
+```
+
+## 練習 11 - 一次編輯很多音符
+
+[`solutions/ex11_note_editor.cpp`](ex11_note_editor.cpp)
+
+每個操作都建立「音符與它是否被選取」的配對，`write()` 先排序這些配對——旗標就跟著它的音符走——再把音符交給 `Session::replaceMidiClip()`。`sync()` 把 clip 和編輯器最後看到的音符比較；任何其他改變 clip 的事都會清掉選取。
+
+```text
+Exercise 11 - edit many notes at once
+  the chord up a whole tone:                   yes
+  undo; the selection is cleared:              yes
+  74 moved to the start, still selected:       yes
+  then only it a tone down:                    yes
+  duplicate the chord and 72@960:              yes
+  duplicate on a grid of a bar grows the clip to two bars; remove takes the copies away
+  Up, Shift+Up, Right, Right, Down:            yes
+  Ctrl+D, Delete, Ctrl+A, Backspace: the clip is empty
+  everything undone:                           yes
+  the clip deleted: every operation refused
+[PASS] l18_ex11 (36 checks passed)
+```
+
+## 練習 12 - Track 上的 VST3 樂器
+
+[`solutions/ex12_plugin_instrument.cpp`](ex12_plugin_instrument.cpp)
+
+`prepare()` 為最壞的 block 預留空間：buffer 是 block 的大小，`MidiBuffer` 容得下 512 個事件。之後 `render()` 只縮小 buffer 的可見範圍（`setSize(..., avoidReallocating = true)`）、依 byte 加入事件、再處理——不配置記憶體，check 用替換 `operator new` 來計數。Processor 的 channel 對應到 track 的 channel；mono 的對應到兩邊。
+
+```text
+Exercise 12 - a VST3 instrument on a track
+  events at their samples (a note, a pedal, a bend, a program change), the sound added, reset: done
+  allocations while rendering: 0
+  a mono processor on both channels; the state as "4....f9." and back
+  on an instrument track: the note on at sample 24000, its end at 48000, heard in the mix
+  (chapter 13's plugin is not built here: loading a real VST3 is not checked)
+[PASS] l18_ex12 (18 checks passed)
+```
+
+Plugin 的 latency 沒有補償：預先讀取的 sampler 會晚它的 latency 那麼多。練習 7 第 3 題說明了它該放在哪裡——在 track 的 latency 裡，交給第 14 章的補償。

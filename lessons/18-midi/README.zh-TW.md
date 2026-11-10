@@ -51,7 +51,7 @@ DawLab 17 裡沒有任何東西認得音符。它的 track 播放 audio clip，c
 ## 4. 練習
 
 見 [exercises/README.zh-TW.md](exercises/README.zh-TW.md)，解答在 [solutions/README.zh-TW.md](solutions/README.zh-TW.md)。
-共七題，都不需要 JUCE：音符為什麼需要這麼小心（概念）、用數字看 MIDI（計算）、讀寫 Standard MIDI File、tempo map、arpeggiator、有 legato 和 glide 的 mono synth，以及 track 上的 VST3 樂器（設計）。DawLab 18 的選做專題會接著加上。
+共七題，都不需要 JUCE：音符為什麼需要這麼小心（概念）、用數字看 MIDI（計算）、讀寫 Standard MIDI File、tempo map、arpeggiator、有 legato 和 glide 的 mono synth，以及 track 上的 VST3 樂器（設計）。另有五個選做專題延伸 DawLab 18（需要 `-Juce`）：synth 設定面板、MIDI 檔的匯入匯出、把電腦鍵盤當 MIDI 鍵盤、一次編輯很多音符，以及 track 上的 VST3 樂器。
 
 ## 5. 下一步
 

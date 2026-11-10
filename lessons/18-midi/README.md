@@ -60,7 +60,9 @@ counts ticks (960 to a quarter note) only to show bars and beats. Step 1 starts 
 See [exercises/README.md](exercises/README.md), with the answers in [solutions/README.md](solutions/README.md).
 Seven exercises, none needs JUCE: why notes need so much care (concept), MIDI by the numbers (calculation),
 reading and writing Standard MIDI Files, a tempo map, an arpeggiator, a mono synth with legato and glide,
-and a VST3 instrument on a track (design). The optional projects for DawLab 18 follow.
+and a VST3 instrument on a track (design). Five optional projects extend DawLab 18 (they need `-Juce`): a synth
+settings panel, MIDI files in and out, the computer keyboard as a MIDI keyboard, editing many notes at once, and a
+VST3 instrument on a track.
 
 ## 5. Next
 

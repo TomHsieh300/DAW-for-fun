@@ -3,8 +3,8 @@
 
 [Back to the chapter](../README.md) | [Exercises](../exercises/README.md)
 
-Run all solution programs with `.\scripts\build.ps1 -Only 18-midi -TestLabel solution`. Every one ends
-with `[PASS] l18_exN (... checks passed)`.
+Run all solution programs with `.\scripts\build.ps1 -Only 18-midi -TestLabel solution` (add `-Juce` for
+Exercises 8-12). Every one ends with `[PASS] l18_exN (... checks passed)`.
 
 ---
 
@@ -258,3 +258,121 @@ samples to $`|target - pitch| \cdot samplesPerSemitone`$ is all it takes.
    careful one runs plugins in another process, so that a crash costs the plugin and not the song. DawLab's
    engine tests keep using the built-in synth; a plugin is tested with chapter 13's own, which is known to
    behave.
+
+## Exercise 8 - A synth settings panel
+
+[`solutions/ex8_synth_panel.cpp`](ex8_synth_panel.cpp)
+
+`showTrack()` writes the synth's values into the sliders with `juce::dontSendNotification`: showing a track is not
+changing it, and with a notification the panel would send the settings back - harmless for the values, but a new
+version for the audio thread and, worse, a habit that turns opening a panel into an edit. `sliderMoved()` looks the
+synth up again by the track's id, every time; the check deletes a track under the panel and adds a new one, which
+takes the same slot.
+
+The text form prints each value with `%.15g` and tries 16 and 17 digits only when 15 do not come back as the same
+double - so the default sound reads `resonance=0.9`, not `0.90000000000000002`, and every random value still comes
+back exactly. It is read with `std::strtod`, which rounds correctly; JUCE's quick `getDoubleValue()` does not always,
+and the round trip of 500 random settings finds it.
+
+```text
+Exercise 8 - a synth settings panel
+  the default sound as text: cutoff=4000 resonance=0.9 attack=0.005 decay=0.2 sustain=0.6 release=0.3 level=0.25
+  500 random settings back exactly from their text; 10 of 10 bad lines refused
+  one long note, cutoff 8000 Hz then 200 Hz from the panel: brightness 0.00619, then 0.00019
+  level 0 while the note sounds: silent, the note still held; back to 0.25: heard again
+  an audio track, a deleted track, no track: the sliders off, and why
+[PASS] l18_ex8 (16 checks passed)
+```
+
+What it does not do: the settings are neither undoable nor saved - that needs a new edit and a line in the project
+file, which is a change to the app. The text form is that line.
+
+## Exercise 9 - MIDI files in DawLab 18
+
+[`solutions/ex9_midi_files.cpp`](ex9_midi_files.cpp)
+
+The export walks `notes()` - what the engine plays, after quantize - not `played`, and places each note by Step 2's
+rule: material tick $`t`$ of a clip plays at $`start + t - offset`$, and only inside $`[offset, offset + length)`$.
+The import pairs notes with a queue per key and channel, oldest first: a file cannot say which of two overlapping
+notes of one key an off belongs to, and first in, first out is what most programs assume.
+
+`Session::makeNewTrack()` names the next id but does not take it, so two calls give the same id; the import numbers
+the tracks itself from the first one, and applying the AddTrack edits moves the counter past them. All the edits and
+the SetTempo go to one `perform()`, so one undo takes the whole import back.
+
+```text
+Exercise 9 - MIDI files in DawLab 18
+  a quantized clip with an offset, a muted copy, an empty track: 3 notes on one track "Bass" at 96 BPM
+  two tracks, overlapping notes of one key, a note that never ends, a bend and a program: 5 notes, 2 dropped
+  undo, redo, and a song with no track refused
+  198 random notes to l18_ex9_round_trip.mid (1708 bytes) and back into another project: the same
+[PASS] l18_ex9 (24 checks passed)
+```
+
+## Exercise 10 - The computer keyboard as a MIDI keyboard
+
+[`solutions/ex10_computer_keyboard.cpp`](ex10_computer_keyboard.cpp)
+
+Each held key is remembered with its key code and the pitch it started. A repeat finds its key code and does
+nothing; `keyStateChanged()` asks for every held key whether it is still down and ends those that are not, with
+the pitch they started; `allNotesOff()` ends them all. The app would call it from `focusLost()` of the component
+that has the keyboard focus, and from its window's `activeWindowStatusChanged()`.
+
+```text
+Exercise 10 - the computer keyboard as a MIDI keyboard
+  a: C4 at velocity 100, at the host's time:       yes
+  a held: the repeats send nothing:                yes
+  w, k and p:                                      yes
+  a up:                                            yes
+  z, a, then w up:                                 yes
+  v v c, the octave up to +3, then j:              yes
+  Ctrl+s, Alt+d, q, 1:                             yes
+  focus lost with k, p, a and j held:              yes
+  the armed instrument track plays h (A at octave -3), and stops when it goes up
+[PASS] l18_ex10 (27 checks passed)
+```
+
+## Exercise 11 - Edit many notes at once
+
+[`solutions/ex11_note_editor.cpp`](ex11_note_editor.cpp)
+
+Every operation builds pairs of a note and whether it is selected, and `write()` sorts the pairs - so the flag
+travels with its note - before it hands the notes to `Session::replaceMidiClip()`. `sync()` compares the clip with
+the notes the editor saw last; anything else that changed the clip clears the selection.
+
+```text
+Exercise 11 - edit many notes at once
+  the chord up a whole tone:                   yes
+  undo; the selection is cleared:              yes
+  74 moved to the start, still selected:       yes
+  then only it a tone down:                    yes
+  duplicate the chord and 72@960:              yes
+  duplicate on a grid of a bar grows the clip to two bars; remove takes the copies away
+  Up, Shift+Up, Right, Right, Down:            yes
+  Ctrl+D, Delete, Ctrl+A, Backspace: the clip is empty
+  everything undone:                           yes
+  the clip deleted: every operation refused
+[PASS] l18_ex11 (36 checks passed)
+```
+
+## Exercise 12 - A VST3 instrument on a track
+
+[`solutions/ex12_plugin_instrument.cpp`](ex12_plugin_instrument.cpp)
+
+`prepare()` makes room for the worst block: the buffer at the block size, the `MidiBuffer` for 512 events.
+`render()` then only shrinks the buffer's view (`setSize(..., avoidReallocating = true)`), adds the events by their
+bytes, and processes - no allocation, which the check counts by replacing `operator new`. A processor's channels go
+to the track's channels; a mono one to both.
+
+```text
+Exercise 12 - a VST3 instrument on a track
+  events at their samples (a note, a pedal, a bend, a program change), the sound added, reset: done
+  allocations while rendering: 0
+  a mono processor on both channels; the state as "4....f9." and back
+  on an instrument track: the note on at sample 24000, its end at 48000, heard in the mix
+  (chapter 13's plugin is not built here: loading a real VST3 is not checked)
+[PASS] l18_ex12 (18 checks passed)
+```
+
+The plugin's latency is not compensated: a sampler that reads ahead would be late by its latency. Exercise 7,
+question 3, says where it belongs - in the track's latency, for chapter 14's compensation.

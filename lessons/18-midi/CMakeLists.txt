@@ -70,3 +70,43 @@ if(NOT DAWLAB_WITH_JUCE)
 endif()
 
 add_subdirectory(app)   # targets: l18_daw_app (static library), DawLab18 (the application)
+
+# ---- optional exercises 8-12 (the application): starters build only, solutions are ctests ------
+# JUCE console programs linked against the app library: they build the real MainComponent in its
+# offline mode, so they need no audio device, no MIDI keyboard and no clicking (chapter 17's
+# l17_add_juce_program).
+function(l18_add_juce_program target label)
+    juce_add_console_app(${target} PRODUCT_NAME ${target})
+    target_sources(${target} PRIVATE ${ARGN})
+    target_link_libraries(${target} PRIVATE l18_daw_app)
+    set_target_properties(${target} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        FOLDER "18-midi")
+    dawlab_set_warnings(${target})
+    if(label)
+        add_test(NAME ${target} COMMAND ${target})
+        set_tests_properties(${target} PROPERTIES
+            LABELS "${label}"
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            TIMEOUT 300)
+    endif()
+endfunction()
+
+l18_add_juce_program(l18_ex8_starter   ""       exercises/starter/ex8_synth_panel.cpp)
+l18_add_juce_program(l18_ex8_solution  solution solutions/ex8_synth_panel.cpp)
+l18_add_juce_program(l18_ex9_starter   ""       exercises/starter/ex9_midi_files.cpp)
+l18_add_juce_program(l18_ex9_solution  solution solutions/ex9_midi_files.cpp)
+l18_add_juce_program(l18_ex10_starter  ""       exercises/starter/ex10_computer_keyboard.cpp)
+l18_add_juce_program(l18_ex10_solution solution solutions/ex10_computer_keyboard.cpp)
+l18_add_juce_program(l18_ex11_starter  ""       exercises/starter/ex11_note_editor.cpp)
+l18_add_juce_program(l18_ex11_solution solution solutions/ex11_note_editor.cpp)
+l18_add_juce_program(l18_ex12_starter  ""       exercises/starter/ex12_plugin_instrument.cpp)
+l18_add_juce_program(l18_ex12_solution solution solutions/ex12_plugin_instrument.cpp)
+# Exercise 12 checks that chapter 13's DawLab Compressor (an effect) is refused as an instrument, when it is built.
+if(TARGET DawLabCompressor_VST3)
+    foreach(_t l18_ex12_starter l18_ex12_solution)
+        target_compile_definitions(${_t} PRIVATE
+            "DAWLAB_L13_COMPRESSOR_VST3=\"${CMAKE_BINARY_DIR}/lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/$<CONFIG>/VST3/DawLabCompressor.vst3\"")
+        add_dependencies(${_t} DawLabCompressor_VST3)
+    endforeach()
+endif()
