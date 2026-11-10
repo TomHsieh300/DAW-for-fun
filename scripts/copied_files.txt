@@ -1,30 +1,45 @@
 # Files that are the same in several chapters, written by scripts/check_copies.py --write.
 # Every line: the chapters, then the path inside each chapter.
+18 19 app/Source/ArrangementView.cpp
+18 19 app/Source/ArrangementView.h
 15 16 app/Source/AudioHost.cpp
+18 19 app/Source/AudioHost.cpp
 15 16 app/Source/AudioHost.h
-14 15 16 17 18 app/Source/DawLookAndFeel.cpp
+18 19 app/Source/AudioHost.h
+14 15 16 17 18 19 app/Source/DawLookAndFeel.cpp
 16 17 app/Source/Edits.h
-14 15 16 17 18 app/Source/EffectMenu.cpp
-14 15 16 17 18 app/Source/EffectMenu.h
-14 15 16 17 18 app/Source/Exporter.cpp
-14 15 16 17 18 app/Source/Exporter.h
-15 16 17 18 app/Source/History.cpp
-15 16 17 18 app/Source/History.h
-15 16 17 18 app/Source/MediaLoader.cpp
-15 16 17 18 app/Source/MediaLoader.h
-14 15 16 17 18 app/Source/Meters.cpp
-14 15 16 17 18 app/Source/Meters.h
-16 17 18 app/Source/MixerView.cpp
-15 16 17 18 app/Source/MixerView.h
-16 17 18 app/Source/ParameterPanel.cpp
-16 17 18 app/Source/ParameterPanel.h
-15 16 17 18 app/Source/ProjectIO.h
+18 19 app/Source/Edits.h
+14 15 16 17 18 19 app/Source/EffectMenu.cpp
+14 15 16 17 18 19 app/Source/EffectMenu.h
+14 15 16 17 18 19 app/Source/Exporter.cpp
+14 15 16 17 18 19 app/Source/Exporter.h
+15 16 17 18 19 app/Source/History.cpp
+15 16 17 18 19 app/Source/History.h
+15 16 17 18 19 app/Source/MediaLoader.cpp
+15 16 17 18 19 app/Source/MediaLoader.h
+14 15 16 17 18 19 app/Source/Meters.cpp
+14 15 16 17 18 19 app/Source/Meters.h
+18 19 app/Source/MidiModel.h
+18 19 app/Source/MidiRecording.cpp
+18 19 app/Source/MidiRecording.h
+16 17 18 19 app/Source/MixerView.cpp
+15 16 17 18 19 app/Source/MixerView.h
+16 17 18 19 app/Source/ParameterPanel.cpp
+16 17 18 19 app/Source/ParameterPanel.h
+18 19 app/Source/PianoRoll.cpp
+18 19 app/Source/PianoRoll.h
+18 19 app/Source/ProjectFormat.cpp
+18 19 app/Source/ProjectFormat.h
+18 19 app/Source/ProjectIO.cpp
+15 16 17 18 19 app/Source/ProjectIO.h
+18 19 app/Source/Session.cpp
+18 19 app/Source/Session.h
 15 16 app/Source/TransportBar.cpp
-17 18 app/Source/TransportBar.cpp
+17 18 19 app/Source/TransportBar.cpp
 15 16 app/Source/TransportBar.h
-17 18 app/Source/TransportBar.h
-14 15 16 17 18 app/Source/VstInsert.cpp
-14 15 16 17 18 app/Source/VstInsert.h
+17 18 19 app/Source/TransportBar.h
+14 15 16 17 18 19 app/Source/VstInsert.cpp
+14 15 16 17 18 19 app/Source/VstInsert.h
 18 19 engine/include/dawlab/engine/All.h
 16 17 18 19 engine/include/dawlab/engine/Automation.h
 14 15 engine/include/dawlab/engine/ChannelStrip.h
