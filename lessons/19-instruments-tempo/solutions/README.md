@@ -109,3 +109,80 @@ Exercise 4 - a tempo map from beats
 
 A real band's beats all differ by a little, and every beat becomes a point: Exercise 5 thins such a map without
 moving a beat by more than a tolerance.
+
+## Exercise 5 - Thin a tempo list
+
+[`solutions/ex5_thin_tempo.cpp`](ex5_thin_tempo.cpp)
+
+Draw the song as a curve: ticks along, seconds up. A list of jumps is a line with a corner at every point, and
+thinning it means drawing a line with fewer corners, from corner to corner of the old one, that never leaves it
+by more than the tolerance. A run from point $`i`$ to point $`j`$ *fits* if the straight line between them - one
+tempo, $`\frac{60}{960} \cdot \frac{tick_j - tick_i}{t_j - t_i}`$ - passes every point between within the
+tolerance. Only the corners need a look: between two of them both lines are straight.
+
+The fewest runs is a shortest path. `fewest[j]` is the fewest runs from the first point to point $`j`$:
+
+```math
+fewest_j = \min_{i < j,\ (i, j)\ fits} fewest_i + 1
+```
+
+and `from[j]` remembers the $`i`$ that won, to walk back from the last point. The last point is then added as it
+is. That is $`n^2 / 2`$ pairs with up to $`n`$ points each - for 250 beats two and a half million comparisons,
+once, on the message thread.
+
+Why not the longest run that fits, again and again? Because "fits" is not inherited: a run can fit although a
+part of it, from a later start to the same end, does not. A wobble of ±9 ms around a steady tempo fits a
+tolerance of 10 ms from one calm beat to another; from a beat that was 9 ms late, the line starts 9 ms off and
+the early beats are 18 ms from it. The greedy run ends where it must, perhaps on such a beat, and pays for it
+with the next run. The self-check's 400 short lists catch a greedy solution.
+
+```text
+Exercise 5 - thin a tempo list
+  beats of 0.50, 0.52, 0.48, 0.50 s within 15 ms: 117.65 BPM, 122.45 from beat 3; the worst tick is 10.0 ms off
+  400 random lists of up to 12 points against every choice: 0 refused, 0 that move a tick too far, 0 not the fewest (240 got shorter)
+  250 beats within  0.0 ms: 250 points (worst tick 0.00 ms off); every 1. point instead: 0 ms off
+  250 beats within  1.0 ms: 166 points (worst tick 0.98 ms off); every 2. point instead: 71 ms off
+  250 beats within  5.0 ms:  44 points (worst tick 4.80 ms off); every 6. point instead: 394 ms off
+  250 beats within 20.0 ms:  27 points (worst tick 19.63 ms off); every 10. point instead: 643 ms off
+[PASS] l19_ex5 (23 checks passed)
+```
+
+The last column is DawLab 19's import: with the same number of points it is off by tens of times as much,
+because a point that stays keeps its own tempo for the beats of the ones that went. Exercise 9 puts
+`thinTempo()` in its place.
+
+## Exercise 6 - Audio that follows the tempo
+
+1. **Two meanings.** *The start follows*: the clip's start is a tick, not a sample; when the map changes the
+   clip moves and plays at its own speed. It needs nothing but the tick, and it is right for what has no beat
+   of its own or must not change: a spoken line, a sound effect on bar 17, a cymbal. *Everything follows*: every
+   beat in the clip stays on its beat of the song, so the audio is played faster or slower. That needs to know
+   where the beats in the audio are, and a time-stretcher; it is right for loops and for takes of a band. A
+   third choice is cheap and honest: play faster by resampling, as a tape does - pitch goes with the speed. Fine
+   for drums, wrong for a singer.
+2. **What the clip stores.** Its start and length in ticks, and a list of pairs *(sample in the file, tick in
+   the song)* - warp markers. Between two markers the audio is spread evenly over the ticks. A loop of known
+   tempo needs two markers; a take recorded over a map gets a marker at every point of the map under it (and a
+   ramp enough of them: Exercise 5 says how few, for a tolerance). Storing only "it was recorded at 120 BPM" is
+   the special case of two markers, and cannot describe a take over a ramp.
+3. **Where the stretcher runs.** *On the audio thread*: a new tempo is heard at once, but a stretcher works on
+   windows of some tens of milliseconds, so it has latency - which the track must report, as an instrument does
+   in Step 3 - and its cost is paid on every block, for every clip, in the thread that can least afford it. Its
+   ratio must be changeable per block. *Ahead of time*: a worker thread renders the stretched audio to a buffer,
+   and the engine gets it in a command, as it gets everything else; the audio thread plays a plain clip, with no
+   latency and no extra cost. The price: after a tempo edit the clip is stale until the render is done (play the
+   old render moved to its new start, or the clip muted, and swap when ready), and memory for a second copy. For
+   DawLab ahead of time is the fit: `ClipPlayer` does not change, and the hand-over is the one the engine
+   already has. A DAW that lets you drag the tempo while listening needs the real-time one, usually with a
+   cache of the rendered result.
+4. **No drift.** A segment carries its ticks (Step 2). For a block the player asks the markers which file
+   samples belong to `tickFrom` and `tickTo`, and feeds the stretcher exactly that many - the position is
+   computed from ticks every block, never counted up by a ratio. A ramp inside the clip is then nothing special:
+   the ratio just differs from block to block.
+5. **The rest.** *Recording*: a take gets the markers of the map it was recorded over, so that right afterwards
+   it plays as it was (ratio 1), and stretches against that when the map changes later. A take made with the
+   metronome off gets no markers and follows with its start only. *Project file*: per clip the mode and the
+   markers - a new format number, and old files load as "does not follow". *Undo*: nothing new for the tempo:
+   the `SetTempoMap` edit already restores the map, and the clips are in ticks, so they follow it back. Changing
+   a clip's mode or markers is one more edit. The renders are not saved and not undone: they are a cache, made
+   again from the file, the markers and the map.

@@ -12,10 +12,10 @@ Difficulty: ★☆☆ easy, ★★☆ medium, ★★★ hard. Implementation exe
 .\build\bin\Debug\l19_ex3_starter.exe
 ```
 
-**Exercises 1-6** are the chapter's exercise set, about the steps (no JUCE); 5 and 6 are still to come.
-**Exercises 7-9 will be optional projects** that extend DawLab 19.
+**Exercises 1-6** are the chapter's exercise set, about the steps (no JUCE).
+**Exercises 7-9 will be optional projects** that extend DawLab 19; they are still to come.
 
-Exercises 2 and 4 build on Step 1's tempo map (`steps/step02-transport/minidaw.h` has it solved). Exercise 3
+Exercises 2, 4 and 5 build on Step 1's tempo map (`steps/step02-transport/minidaw.h` has it solved). Exercise 3
 stands alone. Do the steps first.
 
 ---
@@ -81,3 +81,35 @@ A band recorded without a click, and the grid fits nowhere. Turn it around: from
 
 The self-check builds maps for 300 random bands and asks Step 1's map where each beat plays: within a tenth
 of a microsecond of where it was heard.
+
+## Exercise 5 - Thin a tempo list ★★★ (implementation)
+
+[`l19_ex5_starter`, file `exercises/starter/ex5_thin_tempo.cpp`]
+
+Exercise 4's map of a real band has a point on every beat, and a MIDI file from another program may have a
+thousand. DawLab 19's import keeps every k-th point and lets the song drift (Step 5). Write `thinTempo()`: the
+*fewest* points with which no tick of the song moves by more than a tolerance.
+
+- A point that stays gets the tempo that brings the next point that stays at exactly its old time, so that a
+  point that stays never moves and errors do not add up. The last point stays as it is: its tempo holds for ever.
+- A run of points may go if each of them then plays within the tolerance of its old time.
+- Taking the longest run that fits, again and again, is not always the fewest. Find the fewest.
+
+The self-check compares with every possible choice for 400 short lists, and thins a band of 250 beats within
+1, 5 and 20 ms - next to what "every k-th point" does with the same number of points.
+
+## Exercise 6 - Audio that follows the tempo ★★★ (design)
+
+No code. In DawLab 19 the notes move with the tempo map and the audio clips stay where they are in samples
+(Step 2): drag a tempo point, and the recorded guitar is no longer with the drums. Design the option "this clip
+follows the tempo", in a page:
+
+1. "Follow" can mean two things: the clip's *start* stays on its bar, or *everything in it* stays on its beat.
+   What does each need, and which audio is each right for?
+2. What must a clip store so that it knows where its audio belongs in the music - also when it was recorded
+   over a map with a ramp?
+3. Changing a clip's speed without its pitch needs a time-stretcher. Should it run on the audio thread or
+   ahead of time? What does each choice cost, and what happens when the map changes while the song plays?
+4. How does the player know which audio a block needs, so that a long clip does not drift? (Step 2 already
+   gives it what it needs.)
+5. What do recording, the project file and undo have to do differently?

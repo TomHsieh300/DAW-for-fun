@@ -47,7 +47,7 @@ DawLab 18 的 `Transport` 只有一個 tempo，`sampleOfTick()` 是一個乘法�
 
 ## 4. 練習
 
-見 [exercises/README.zh-TW.md](exercises/README.zh-TW.md)，解答在 [solutions/README.zh-TW.md](solutions/README.zh-TW.md)。前四題已經有了，都不需要 JUCE：本章為什麼這樣做（概念）、用數字看 tempo（計算）、meter map，以及從拍點的時間做出 tempo map。另外兩題和三個延伸 DawLab 19 的選做專題之後才會加上。
+見 [exercises/README.zh-TW.md](exercises/README.zh-TW.md)，解答在 [solutions/README.zh-TW.md](solutions/README.zh-TW.md)。共六題，都不需要 JUCE：本章為什麼這樣做（概念）、用數字看 tempo（計算）、meter map、從拍點的時間做出 tempo map、在時間容許值內用最少的 tempo 點，以及跟著 tempo 走的 audio（設計）。三個延伸 DawLab 19 的選做專題之後才會加上。
 
 ## 5. 下一步
 

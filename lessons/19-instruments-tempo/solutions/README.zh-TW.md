@@ -63,3 +63,40 @@ Exercise 4 - a tempo map from beats
 ```
 
 真實樂團的每一拍都差一點點，於是每一拍都變成一個點：練習 5 會在不讓任何一拍移動超過容許值的前提下，把這樣的 map 變稀疏。
+
+## 練習 5 - 把 tempo 點變稀疏
+
+[`solutions/ex5_thin_tempo.cpp`](ex5_thin_tempo.cpp)
+
+把歌畫成一條曲線：橫軸是 tick，縱軸是秒。一串跳躍點是一條在每個點都有轉角的折線，把它變稀疏就是畫一條轉角比較少的折線，從舊折線的一個轉角連到另一個轉角，而且和舊折線的距離永遠不超過容許值。從點 $`i`$ 到點 $`j`$ 的一段*合格*的條件是：兩點之間的直線——也就是單一的 tempo $`\frac{60}{960} \cdot \frac{tick_j - tick_i}{t_j - t_i}`$——經過中間每個點時都在容許值內。只需要看轉角：兩個轉角之間，兩條線都是直的。
+
+最少的段數是一個最短路徑問題。`fewest[j]` 是從第一個點到點 $`j`$ 最少要幾段：
+
+```math
+fewest_j = \min_{i < j,\ (i, j)\ fits} fewest_i + 1
+```
+
+`from[j]` 記住勝出的那個 $`i`$，用來從最後一個點走回去。最後一個點再原樣加上去。一共 $`n^2 / 2`$ 對，每對最多 $`n`$ 個點——250 拍是兩百五十萬次比較，只做一次，而且在 message thread 上。
+
+為什麼不每次都拿合格的最長一段？因為「合格」不會繼承：一段合格，不代表它從較晚的起點到同一個終點的那一部分也合格。在穩定 tempo 上下 ±9 ms 的晃動，從一個平穩的拍到另一個平穩的拍，在 10 ms 的容許值內是合格的；但從晚了 9 ms 的那一拍出發，直線一開始就偏了 9 ms，早到的那些拍離它就有 18 ms。貪心的那一段在它不得不停的地方結束，也許正好停在這樣的拍上，代價由下一段來付。Self-check 的 400 個短 list 抓得到貪心的解法。
+
+```text
+Exercise 5 - thin a tempo list
+  beats of 0.50, 0.52, 0.48, 0.50 s within 15 ms: 117.65 BPM, 122.45 from beat 3; the worst tick is 10.0 ms off
+  400 random lists of up to 12 points against every choice: 0 refused, 0 that move a tick too far, 0 not the fewest (240 got shorter)
+  250 beats within  0.0 ms: 250 points (worst tick 0.00 ms off); every 1. point instead: 0 ms off
+  250 beats within  1.0 ms: 166 points (worst tick 0.98 ms off); every 2. point instead: 71 ms off
+  250 beats within  5.0 ms:  44 points (worst tick 4.80 ms off); every 6. point instead: 394 ms off
+  250 beats within 20.0 ms:  27 points (worst tick 19.63 ms off); every 10. point instead: 643 ms off
+[PASS] l19_ex5 (23 checks passed)
+```
+
+最後一欄是 DawLab 19 的匯入：同樣的點數，它偏了幾十倍，因為留下的點把自己的 tempo 用在被拿掉的那些點的拍上。練習 9 會用 `thinTempo()` 取代它。
+
+## 練習 6 - 跟著 tempo 走的 audio
+
+1. **兩種意思。** *起點跟著走*：clip 的起點是 tick，不是 sample；map 改變時 clip 移動，並以它自己的速度播放。它只需要那個 tick，適合本身沒有拍、或不能被改變的東西：一句口白、第 17 小節上的音效、一聲 cymbal。*全部跟著走*：clip 裡的每一拍都留在歌的那一拍上，所以 audio 要播得快一點或慢一點。這需要知道 audio 裡的拍在哪裡，還需要 time-stretcher；適合 loop 和樂團的 take。第三種選擇便宜而誠實：像錄音帶那樣用 resample 播快一點——音高跟著速度走。鼓沒問題，歌手就不行。
+2. **Clip 存什麼。** 它的起點和長度（以 tick 表示），以及一串*（檔案裡的 sample，歌裡的 tick）*配對——warp marker。兩個 marker 之間，audio 平均攤在那些 tick 上。已知 tempo 的 loop 只需要兩個 marker；在 map 上錄的 take，在它底下 map 的每個點都放一個 marker（ramp 則放足夠多個：練習 5 說明了在某個容許值下可以少到多少）。只存「它是在 120 BPM 錄的」是兩個 marker 的特例，描述不了在 ramp 上錄的 take。
+3. **Stretcher 在哪裡跑。** *在 audio thread 上*：新的 tempo 馬上聽得到，但 stretcher 是以幾十毫秒的 window 在工作，所以它有 latency——track 必須回報它，就像 Step 3 的樂器——而且它的成本每個 block、每個 clip 都要付，付在最付不起的那個 thread 上。它的比例必須能每個 block 改變。*事先算好*：worker thread 把拉伸後的 audio render 到 buffer，engine 用一個 command 拿到它，和拿到其他東西的方式一樣；audio thread 播的是普通的 clip，沒有 latency，也沒有額外成本。代價是：tempo 編輯之後，在 render 完成前 clip 是過時的（先播移到新起點的舊 render，或把 clip 靜音，好了再換上去），而且第二份複本要佔記憶體。對 DawLab 來說，事先算好比較合適：`ClipPlayer` 不用改，交接也是 engine 已經有的那一種。能讓你邊聽邊拖 tempo 的 DAW 需要 real-time 的那種，通常再加上 render 結果的 cache。
+4. **不漂移。** Segment 帶著它的 tick（Step 2）。對每個 block，player 向 marker 問 `tickFrom` 和 `tickTo` 各對應檔案裡的哪個 sample，然後剛好餵那麼多給 stretcher——位置每個 block 都從 tick 算出來，從不用比例一路累加。於是 clip 裡的 ramp 沒什麼特別：只是每個 block 的比例不一樣。
+5. **其餘的。** *錄音*：take 拿到它錄製時那個 map 的 marker，所以錄完當下它照原樣播放（比例 1），之後 map 改變時再相對於它拉伸。關掉 metronome 錄的 take 沒有 marker，只有起點跟著走。*專案檔*：每個 clip 存模式和 marker——新的格式編號，舊檔讀進來是「不跟著走」。*Undo*：tempo 這邊沒有新東西：`SetTempoMap` 這個 edit 本來就會還原 map，而 clip 是以 tick 存的，所以會跟著回去。改變 clip 的模式或 marker 是另外一個 edit。Render 不存檔也不 undo：它們是 cache，從檔案、marker 和 map 重新做出來。
