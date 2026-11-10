@@ -187,6 +187,8 @@ void testNotesFollowTheMap() {
     e.getTransport().setTempoMap(map);
     const BarsBeats bar4 = e.getTransport().samplesToBarsBeats(map.sampleOfTick(3 * kBar, kSampleRate));
     DAWLAB_CHECK(bar4.bar == 4 && bar4.beat == 1 && bar4.tick == 0);
+    const BarsBeats after = e.getTransport().samplesToBarsBeats(map.sampleOfTick(3 * kBar, kSampleRate) + 1); // between two ticks
+    DAWLAB_CHECK(after.bar == 4 && after.beat == 1 && after.tick == 0);
     DAWLAB_CHECK(e.getTransport().barsBeatsToSamples({6, 1, 0}) == map.sampleOfTick(5 * kBar, kSampleRate));
     DAWLAB_CHECK(e.getTransport().getTempo() == 90.0);
 }
@@ -195,7 +197,7 @@ void testLoopInTicks() {
     // 999 BPM at 8 kHz: two ticks a sample. The loop's edges sit on shared samples; every pass plays both notes.
     Engine e;
     Logger* log = setUp(e, 8000.0);
-    e.setTrackMidiClips(testId(0), {clipOf(1, 0, 4 * kBar, {{960, 1, 60, 100, 0}, {1920, 1, 62, 100, 0}})});
+    e.setTrackMidiClips(testId(0), {clipOf(1, 0, 4 * kBar, {{959, 1, 59, 100, 0}, {960, 1, 60, 100, 0}, {1920, 1, 62, 100, 0}})});
     Transport& tr = e.getTransport();
     tr.setTempo(999.0);
     tr.setLoopRangeTicks(960, 1921);
@@ -204,12 +206,23 @@ void testLoopInTicks() {
     const TempoMap& map = tr.getTempoMap();
     const int64_t first = map.sampleOfTick(960, 8000.0), len = map.sampleOfTick(1921, 8000.0) - first;
     play(e, first + 7 * len, 0, nullptr, 5);
-    int c60 = 0, c62 = 0;
-    for (const Logger::Logged& l : log->log)
-        if (l.message.kind() == MidiKind::NoteOn)
-            (l.message.note() == 60 ? c60 : c62)++;
-    std::printf("  a loop of ticks 960-1920 where two ticks share a sample, 7 passes in random blocks: %d and %d note ons\n", c60, c62);
-    DAWLAB_CHECK(c60 == 7 && c62 == 7);
+    // Each pass: tick 960 at its first sample, tick 1920 on its last (it shares a sample with the loop's end).
+    int c59 = 0, c60 = 0, c62 = 0, misplaced = 0;
+    for (const Logger::Logged& l : log->log) {
+        if (l.message.kind() != MidiKind::NoteOn)
+            continue;
+        const int64_t pass = (l.sample - first) / len, into = (l.sample - first) % len;
+        if (l.message.note() == 59)
+            ++c59;
+        else if (l.message.note() == 60)
+            ++c60, misplaced += into == 0 ? 0 : 1;
+        else
+            ++c62, misplaced += into == len - 1 && pass >= 0 ? 0 : 1;
+    }
+    std::printf("  a loop of ticks 960-1920 where two ticks share a sample, 7 passes in random blocks: %d and %d note ons, %d misplaced;\n"
+                "    the note at 959 before it once: %d\n",
+                c60, c62, misplaced, c59);
+    DAWLAB_CHECK(c60 == 7 && c62 == 7 && misplaced == 0 && c59 == 1);
     DAWLAB_CHECK(tr.isLoopInTicks() && tr.getLoopStart() == first && tr.getLoopEnd() == first + len);
     // Bars are ticks: they move with the tempo.
     tr.setLoopRangeBars(2, 1);
@@ -286,6 +299,84 @@ void testInstrumentLatency() {
     }
 }
 
+void testLowLatencyOnTheFasterTrack() {
+    // The synth (no latency) armed, the sampler (1000) not: with low-latency monitoring the synth does not wait for
+    // the sampler, which is still compensated against the rest.
+    Engine e;
+    setUp(e, kSampleRate, 1000);
+    e.getMixer().getTrack(1).setInstrument(true);
+    e.setTrackInstrument(testId(1), std::make_unique<Logger>(0));
+    e.setTrackMidiClips(testId(0), {clipOf(1, 0, kBar, {{960, 480, 60, 100, 0}})});
+    e.setTrackMidiClips(testId(1), {clipOf(2, 0, kBar, {{960, 480, 60, 100, 0}})});
+    e.getMixer().setLatencyCompensationEnabled(true);
+    e.getMixer().setLowLatencyMonitoring(true);
+    e.getMixer().getTrack(1).setArmed(true);
+    e.applyPendingCommandsOffline();
+    e.getTransport().play();
+    const AudioBuffer out = play(e, 48000, 512);
+    std::vector<int> at;
+    for (int i = 0; i < out.getNumSamples(); ++i)
+        if (out.getSample(0, i) != 0.0f)
+            at.push_back(i);
+    std::printf("  the synth armed next to the sampler, low-latency monitoring: the synth at %d, the sampler at %d\n", at.empty() ? -1 : at[0],
+                at.size() < 2 ? -1 : at[1]);
+    DAWLAB_CHECK(e.getLatencySamples() == 1000 && at == std::vector<int>({24000, 25000}));
+}
+
+// An insert that writes down the tempo its play head says, block by block.
+class TempoSpy final : public InsertEffect {
+public:
+    std::vector<double> bpms;
+    TempoSpy() { bpms.reserve(4096); }
+    const char* getName() const noexcept override { return "Spy"; }
+    void prepare(double, int, int) override {}
+    void reset() noexcept override {}
+    void process(AudioBlock) noexcept override {}
+    int getNumParameters() const noexcept override { return 0; }
+    ParameterInfo getParameterInfo(int) const noexcept override { return {}; }
+    void setParameter(int, float) noexcept override {}
+    float getParameter(int) const noexcept override { return 0.0f; }
+    void setPlayHead(const PlayHead& p) noexcept override {
+        if (p.isPlaying() && bpms.size() < bpms.capacity())
+            bpms.push_back(p.bpm);
+    }
+};
+
+void testPlayHeadTempo() {
+    // An insert sees the tempo where the block plays: through a ramp from 60 to 120 BPM, rising.
+    Engine e;
+    setUp(e);
+    auto spy = std::make_unique<TempoSpy>();
+    TempoSpy* observer = spy.get();
+    e.addInsert(testTrack(0), -1, std::move(spy));
+    e.getTransport().setTempoMap(mapOf({{0, 60.0, true}, {4 * kBar, 120.0, false}}));
+    e.applyPendingCommandsOffline();
+    e.getTransport().play();
+    play(e, 48000 * 12, 512);
+    const auto& b = observer->bpms;
+    const bool rising = b.size() > 100 && b.front() == 60.0 && std::is_sorted(b.begin(), b.end()) && b.back() == 120.0;
+    std::printf("  an insert's play head through a ramp from 60 to 120 BPM: %.1f at the start, %.1f at the end, never down\n",
+                b.empty() ? 0.0 : b.front(), b.empty() ? 0.0 : b.back());
+    DAWLAB_CHECK(rising);
+}
+
+void testSwitchedOnWhilePlaying() {
+    // A track that becomes an instrument while the song plays chases its controllers at once.
+    Engine e;
+    Logger* log = setUp(e);
+    e.getMixer().getTrack(0).setInstrument(false);
+    MidiClip clip = clipOf(1, 0, 8 * kBar, {});
+    clip.controllers = {{0, 64, 127, 0}};
+    e.setTrackMidiClips(testId(0), {clip});
+    e.applyPendingCommandsOffline();
+    e.getTransport().play();
+    play(e, 96000, 512);
+    e.getMixer().getTrack(0).setInstrument(true);
+    play(e, 512, 512);
+    const bool chased = !log->log.empty() && log->log[0].message.kind() == MidiKind::Controller && log->log[0].message.note() == 64;
+    DAWLAB_CHECK(chased);
+}
+
 void testNoAllocation() {
     Engine e;
     setUp(e);
@@ -351,6 +442,9 @@ int main() {
     testLoopInTicks();
     testNewMapWhileANoteSounds();
     testInstrumentLatency();
+    testLowLatencyOnTheFasterTrack();
+    testPlayHeadTempo();
+    testSwitchedOnWhilePlaying();
     testNoAllocation();
     testThreads();
     return dawlab::test::summary("l19_test_tempo");

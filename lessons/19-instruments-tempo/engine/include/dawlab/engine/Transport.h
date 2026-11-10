@@ -219,10 +219,8 @@ public:
             jumpTo(kFindTick);
         }
         samplesCovered = std::max(0, numSamples);
-        if (!isPlaying() || numSamples <= 0) {
-            jumpTo(kFindTick); // the next play starts its ticks where the playhead is
+        if (!isPlaying() || numSamples <= 0)
             return 0;
-        }
 
         int64_t pos = position_.load(std::memory_order_relaxed);
         const bool inTicks = loopInTicks_.load(std::memory_order_acquire);

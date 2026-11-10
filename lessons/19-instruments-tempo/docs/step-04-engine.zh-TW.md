@@ -52,13 +52,16 @@ UI thread 隨時會給 transport 一個新的 map；audio thread 用一個 map �
 ```text
 l19_test_tempo: a tempo map and instrument latency in the engine
   32 beats over a map that speeds up, jumps and slows down: every note on at its sample in blocks of 512, random and 7: yes
-  a loop of ticks 960-1920 where two ticks share a sample, 7 passes in random blocks: 7 and 7 note ons
+  a loop of ticks 960-1920 where two ticks share a sample, 7 passes in random blocks: 7 and 7 note ons, 0 misplaced;
+    the note at 959 before it once: 1
   a tempo change half way through a held note: 1 note on, 1 note off, at 335872 (wanted 335872)
   a sampler 1000 samples late next to an instant synth: mix latency 1000, both heard at 25000
   the sampler armed, low-latency monitoring: mix latency 0, the synth at 24000, the sampler on its own at 25000
+  the synth armed next to the sampler, low-latency monitoring: the synth at 24000, the sampler at 25000
+  an insert's play head through a ramp from 60 to 120 BPM: 60.0 at the start, 120.0 at the end, never down
   29 new maps while a loop plays: 0 allocations on the audio thread
-  133069 maps of up to 200 points from the UI thread while the audio thread plays 2001 blocks: 0 torn
-[PASS] l19_test_tempo (14 checks passed)
+  N maps of up to 200 points from the UI thread while the audio thread plays 2001 blocks: 0 torn
+[PASS] l19_test_tempo (18 checks passed)
 ```
 
 ## 你學到了什麼
