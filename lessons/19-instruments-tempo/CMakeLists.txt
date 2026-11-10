@@ -6,6 +6,15 @@
 
 add_subdirectory(steps)
 
+# ---- exercises: starters (build only) and solutions (ctest label: solution) -------------------
+# Exercises 2 and 4 build on Step 1's map (steps/step02-transport/minidaw.h has it solved); Exercise 3 stands
+# alone; Exercise 2 checks its numbers in a program. Exercise 1 is answered in solutions/README.md.
+dawlab_add_solution(l19_ex2_solution solutions/ex2_tempo_numbers.cpp)
+dawlab_add_starter(l19_ex3_starter   exercises/starter/ex3_meter_map.cpp)
+dawlab_add_solution(l19_ex3_solution solutions/ex3_meter_map.cpp)
+dawlab_add_starter(l19_ex4_starter   exercises/starter/ex4_beats_to_map.cpp)
+dawlab_add_solution(l19_ex4_solution solutions/ex4_beats_to_map.cpp)
+
 # ---- the chapter-19 engine (header-only, namespace dawlab::engine; Step 4) ------------------
 # A copy of chapter 18's engine with a tempo map and instrument latency. It uses the same include paths
 # (<dawlab/engine/...>), so it must not be linked together with another chapter's engine; the chapters never

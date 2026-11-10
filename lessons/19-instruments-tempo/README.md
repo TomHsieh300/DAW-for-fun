@@ -55,6 +55,13 @@ chapter 18's Step 7, "Added after the chapter": an `Instrument` in the synth's p
 changed while it plays. Chapter 18's Exercises 4, 3, 8, 9 and 12 built the first versions of a tempo map, of
 MIDI files, of a synth panel and of a plugin instrument; this chapter builds them into DawLab.
 
-## 4. Next
+## 4. Exercises
+
+See [exercises/README.md](exercises/README.md), with the answers in [solutions/README.md](solutions/README.md).
+The first four are there, none needs JUCE: why the chapter does it this way (concept), tempo by the numbers
+(calculation), a meter map, and a tempo map from the times of the beats. Two more and three optional projects
+that extend DawLab 19 are still to come.
+
+## 5. Next
 
 Start with [Step 1 - A tempo map](docs/step-01-tempo-map.md).

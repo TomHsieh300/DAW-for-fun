@@ -45,6 +45,10 @@ DawLab 18（第 18 章）以單一 tempo、用它自己的 synth 播放音符，
 
 DawLab 18 的 `Transport` 只有一個 tempo，`sampleOfTick()` 是一個乘法。它的 engine 有第 18 章 Step 7「本章之後加上的」那個 hook：取代 synth 的 `Instrument`，以及在 synth 播放時改變它的設定。第 18 章的練習 4、3、8、9 和 12 做出了 tempo map、MIDI 檔、synth 面板和 plugin 樂器的第一個版本；本章把它們做進 DawLab。
 
-## 4. 下一步
+## 4. 練習
+
+見 [exercises/README.zh-TW.md](exercises/README.zh-TW.md)，解答在 [solutions/README.zh-TW.md](solutions/README.zh-TW.md)。前四題已經有了，都不需要 JUCE：本章為什麼這樣做（概念）、用數字看 tempo（計算）、meter map，以及從拍點的時間做出 tempo map。另外兩題和三個延伸 DawLab 19 的選做專題之後才會加上。
+
+## 5. 下一步
 
 從 [Step 1 - Tempo map](docs/step-01-tempo-map.zh-TW.md) 開始。
