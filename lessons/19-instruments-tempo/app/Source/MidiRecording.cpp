@@ -82,8 +82,13 @@ bool MidiRecording::start(MidiRecordMode mode) {
     const engine::Transport& tr = engine.getTransport();
     startTick_ = session_.tickOfSample(tr.getPosition());
     LoopTicks loop;
-    if (tr.isLoopEnabled() && tr.getLoopEnd() > tr.getLoopStart())
+    loopStartSample_ = loopEndSample_ = 0;
+    if (tr.isLoopEnabled() && tr.getLoopEnd() > tr.getLoopStart()) {
         loop = {session_.tickOfSample(tr.getLoopStart()), session_.tickOfSample(tr.getLoopEnd())};
+        loopStartSample_ = tr.getLoopStart();
+        loopEndSample_ = tr.getLoopEnd();
+    }
+    loopTicks_ = loop;
     for (int i = 0; i < session_.getNumTracks(); ++i) {
         const engine::TrackId id = session_.getTrackId(i);
         const engine::Track* t = engine.getTrack(id);
@@ -117,7 +122,16 @@ int64_t MidiRecording::unwrappedTick(double time) const noexcept {
     // Where the song was heard at `time`, counted from the start of the recording without wrapping.
     const double sample = static_cast<double>(startSample_ + (a.renderedBefore - startRendered_)) + (time - a.blockTime) * a.sampleRate -
                           static_cast<double>(a.mixLatency);
-    return session_.tickOfSample(std::llround(sample));
+    // Chapter 19: the tempo may change along the way, so a pass of the loop is not a fixed number of ticks per
+    // sample. Wrap the SAMPLE into its pass first, find its tick through the map, then count the passes on in ticks.
+    const int64_t s = std::llround(sample);
+    if (loopEndSample_ > loopStartSample_ && s >= loopEndSample_) {
+        const int64_t length = loopEndSample_ - loopStartSample_;
+        const int64_t pass = (s - loopEndSample_) / length + 1;
+        const int64_t songSample = loopStartSample_ + (s - loopEndSample_) % length;
+        return session_.tickOfSample(songSample) + pass * loopTicks_.length();
+    }
+    return session_.tickOfSample(s);
 }
 
 void MidiRecording::poll() {

@@ -54,6 +54,8 @@ set(L19_APP_SOURCES
     Source/ParameterPanel.cpp
     Source/PianoRoll.h
     Source/PianoRoll.cpp
+    Source/TempoLane.h
+    Source/TempoLane.cpp
     Source/ProjectFormat.h
     Source/ProjectFormat.cpp
     Source/ProjectIO.h

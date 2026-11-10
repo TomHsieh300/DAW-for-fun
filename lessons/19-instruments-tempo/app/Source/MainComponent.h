@@ -22,6 +22,7 @@
 
 #include "AppCommands.h"
 #include "ArrangementView.h"
+#include "TempoLane.h"
 #include "AudioHost.h"
 #include "DawLookAndFeel.h"
 #include "Exporter.h"
@@ -71,6 +72,7 @@ public:
     juce::ApplicationCommandManager& getCommandManager() noexcept { return commandManager_; }
     TransportBar& getTransportBar() noexcept { return transportBar_; }
     ArrangementView& getArrangement() noexcept { return arrangement_; }
+    TempoLane& getTempoLane() noexcept { return tempoLane_; } // chapter 19
     MixerView& getMixer() noexcept { return mixer_; }
     DawLookAndFeel& getDawLookAndFeel() noexcept { return lookAndFeel_; }
     Mode getMode() const noexcept { return mode_; }
@@ -211,6 +213,8 @@ private:
     juce::MenuBarComponent menuBar_;
     TransportBar transportBar_{engine_, audioHost_};
     ArrangementView arrangement_{session_, &audioHost_}; // playhead = what is heard (Step 14)
+    TempoLane tempoLane_{session_, arrangement_};         // chapter 19: above the arrangement, on its time axis
+    double laneViewStart_ = -1.0, laneSamplesPerPixel_ = -1.0; // the view the tempo lane was last painted for
     MixerView mixer_{session_};
     juce::Label status_, deviceInfo_;
     juce::TooltipWindow tooltips_{this, 600};

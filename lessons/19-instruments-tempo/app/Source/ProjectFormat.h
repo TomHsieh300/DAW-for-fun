@@ -17,6 +17,10 @@
 //   nextTrackId 25                                 (Step 4) above every track id in the file
 //   tempo 120 4 4                                  BPM, time signature
 //   loop 0 384000 0                                start, end (samples), enabled 0/1
+//   loop 0 15360 0 ticks                           (format 7) a loop set in bars: start, end in TICKS
+//   tempopoint 7680 140 1                          (format 7) a point of the tempo map: tick, BPM, 1 = ramps to
+//                                                  the next point. All points of a map that has more than one,
+//                                                  the first at tick 0 (its BPM is the tempo line's)
 //   track 17 "Drums" -2 0 mono 0 0                 id, name, gain dB, pan, format, mute, solo
 //   bus 0 "Reverb" -2 0 0                          index, name, gain dB, pan, mute
 //   master "Master" 0 0 0                          name, gain dB, pan, mute
@@ -78,7 +82,7 @@ constexpr int kInsertSlotsPerStrip = 4; // GUI insert slots per strip (Session, 
 
 namespace project {
 
-constexpr int kFormatVersion = 6; // 1: Step 4 without pan; 2: Step 4; 3: the whole app project; 4: automation; 5: takes;
+constexpr int kFormatVersion = 7; // 1: Step 4 without pan; 2: Step 4; 3: the whole app project; 4: automation; 5: takes;
                                   // 6: instruments and MIDI clips
 
 struct SendState {
@@ -170,6 +174,16 @@ struct TakeSetState {
     std::vector<TakeState> takes;
 };
 
+// A point of the tempo map (format 7).
+struct TempoPointState {
+    std::int64_t tick = 0;
+    double bpm = 120.0;
+    bool ramp = false;
+};
+bool operator==(const TempoPointState& a, const TempoPointState& b);
+
+constexpr int kMaxTempoPoints = 256; // engine::TempoMap::kMaxPoints
+
 struct ProjectState {
     double sampleRate = 48000.0;
     std::uint32_t nextTrackId = 1;
@@ -179,6 +193,8 @@ struct ProjectState {
     std::int64_t loopStart = 0;
     std::int64_t loopEnd = 0;
     bool loopEnabled = false;
+    bool loopInTicks = false;                // format 7
+    std::vector<TempoPointState> tempoPoints; // format 7: empty for one tempo
     std::vector<TrackState> tracks; // display order
     std::array<StripState, engine::kNumBuses> buses{};
     StripState master;

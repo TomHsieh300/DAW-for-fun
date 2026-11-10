@@ -89,6 +89,8 @@ private:
     AudioHost& host_;
     bool recording_ = false;
     int64_t startSample_ = 0;   // the transport's position when the recording started
+    int64_t loopStartSample_ = 0, loopEndSample_ = 0; // the loop then, in samples (none: equal) and in ticks
+    LoopTicks loopTicks_;
     int64_t startRendered_ = 0; // the anchors' renderedBefore of the recording's first block
     uint64_t startBlock_ = 0;   // the last block before the recording started
     MidiRecordMode mode_ = MidiRecordMode::Overdub;

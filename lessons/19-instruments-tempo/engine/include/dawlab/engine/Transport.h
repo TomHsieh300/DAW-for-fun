@@ -155,6 +155,9 @@ public:
     void setLoopEnabled(bool enabled) noexcept { loopEnabled_.store(enabled, std::memory_order_relaxed); }
     bool isLoopEnabled() const noexcept { return loopEnabled_.load(std::memory_order_relaxed); }
     bool isLoopInTicks() const noexcept { return loopInTicks_.load(std::memory_order_acquire); }
+    // As it was set: ticks when isLoopInTicks(), samples otherwise (a project file keeps it that way).
+    int64_t getLoopStartValue() const noexcept { return loopStart_.load(std::memory_order_relaxed); }
+    int64_t getLoopEndValue() const noexcept { return loopEnd_.load(std::memory_order_relaxed); }
     // In samples, whichever way it was set (UI thread: through its own map).
     int64_t getLoopStart() const noexcept { return loopSample(loopStart_.load(std::memory_order_relaxed), maps_->ui); }
     int64_t getLoopEnd() const noexcept { return loopSample(loopEnd_.load(std::memory_order_relaxed), maps_->ui); }

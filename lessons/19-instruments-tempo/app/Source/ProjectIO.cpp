@@ -161,9 +161,14 @@ ProjectIO::Captured ProjectIO::capture(const Session& session, const juce::Strin
     p.tempo = tr.getTempo();
     p.beatsPerBar = tr.getTimeSignature().numerator;
     p.beatUnit = tr.getTimeSignature().denominator;
-    p.loopStart = tr.getLoopStart();
-    p.loopEnd = tr.getLoopEnd();
+    p.loopInTicks = tr.isLoopInTicks(); // as it was set: a loop in bars follows the tempo
+    p.loopStart = tr.getLoopStartValue();
+    p.loopEnd = tr.getLoopEndValue();
     p.loopEnabled = tr.isLoopEnabled();
+    const engine::TempoMap& map = tr.getTempoMap();
+    if (map.size() > 1) // one tempo is the tempo line
+        for (const engine::TempoPoint& t : map.points())
+            p.tempoPoints.push_back({t.tick, t.bpm, t.rampToNext});
 
     std::map<const AudioBuffer*, juce::String> names;
     for (int lane = 0; lane < session.getNumTracks(); ++lane) {
@@ -396,9 +401,19 @@ ProjectIO::OpenResult ProjectIO::open(Session& session, host::PluginHost* plugin
     session.clearProject();
     Transport& tr = session.getEngine().getTransport();
     tr.setTempo(p.tempo);
+    if (!p.tempoPoints.empty()) {
+        std::vector<engine::TempoPoint> points;
+        for (const project::TempoPointState& t : p.tempoPoints)
+            points.push_back({t.tick, t.bpm, t.ramp});
+        session.setTempoMap(points); // checked by readProject()
+    }
     tr.setTimeSignature(p.beatsPerBar, p.beatUnit);
-    if (p.loopEnd > p.loopStart)
-        tr.setLoopRange(p.loopStart, p.loopEnd);
+    if (p.loopEnd > p.loopStart) {
+        if (p.loopInTicks)
+            tr.setLoopRangeTicks(p.loopStart, p.loopEnd);
+        else
+            tr.setLoopRange(p.loopStart, p.loopEnd);
+    }
     tr.setLoopEnabled(p.loopEnabled);
 
     for (int b = 0; b <= kNumBuses; ++b) {

@@ -54,8 +54,10 @@ bool operator==(const TakeState& a, const TakeState& b) {
     return a.start == b.start && a.sourceOffset == b.sourceOffset && a.length == b.length;
 }
 bool operator==(const TakeSetState& a, const TakeSetState& b) { return a.file == b.file && a.takes == b.takes; }
+bool operator==(const TempoPointState& a, const TempoPointState& b) { return a.tick == b.tick && a.bpm == b.bpm && a.ramp == b.ramp; }
 bool operator==(const ProjectState& a, const ProjectState& b) {
     return a.sampleRate == b.sampleRate && a.nextTrackId == b.nextTrackId && a.tempo == b.tempo &&
+           a.loopInTicks == b.loopInTicks && a.tempoPoints == b.tempoPoints &&
            a.beatsPerBar == b.beatsPerBar && a.beatUnit == b.beatUnit && a.loopStart == b.loopStart &&
            a.loopEnd == b.loopEnd && a.loopEnabled == b.loopEnabled && a.tracks == b.tracks && a.buses == b.buses &&
            a.master == b.master && a.clips == b.clips && a.takeSets == b.takeSets && a.midiClips == b.midiClips;
@@ -268,7 +270,13 @@ std::string writeProject(const ProjectState& p) {
     out << "sampleRate " << p.sampleRate << '\n';
     out << "nextTrackId " << p.nextTrackId << '\n';
     out << "tempo " << p.tempo << ' ' << p.beatsPerBar << ' ' << p.beatUnit << '\n';
-    out << "loop " << p.loopStart << ' ' << p.loopEnd << ' ' << p.loopEnabled << '\n';
+    out << "loop " << p.loopStart << ' ' << p.loopEnd << ' ' << p.loopEnabled << (p.loopInTicks ? " ticks" : "") << '\n';
+    {
+        const auto digits = out.precision(std::numeric_limits<double>::max_digits10); // a tempo is a double
+        for (const TempoPointState& t : p.tempoPoints)
+            out << "tempopoint " << t.tick << ' ' << t.bpm << ' ' << t.ramp << '\n';
+        out.precision(digits);
+    }
     for (const TrackState& t : p.tracks)
         out << "track " << t.id.value << ' ' << quote(t.strip.name) << ' ' << t.strip.gainDb << ' ' << t.strip.pan << ' '
             << (t.format == engine::TrackFormat::Mono ? "mono" : "stereo") << ' ' << t.strip.mute << ' ' << t.strip.solo
@@ -427,9 +435,24 @@ ReadResult readProject(std::string_view text) {
             if (!parseNumber(tok[3], p.beatUnit) || p.beatUnit < 1 || p.beatUnit > 32 || (p.beatUnit & (p.beatUnit - 1)) != 0)
                 return fail(lineNo, "the beat unit must be 1, 2, 4, 8, 16 or 32");
         } else if (kw == "loop") {
-            if (tok.size() != 4 || !parseNumber(tok[1], p.loopStart) || !parseNumber(tok[2], p.loopEnd) ||
+            const bool ticks = version >= 7 && tok.size() == 5 && tok[4].text == "ticks";
+            if ((tok.size() != 4 && !ticks) || !parseNumber(tok[1], p.loopStart) || !parseNumber(tok[2], p.loopEnd) ||
                 !parseFlag(tok[3], p.loopEnabled) || p.loopStart < 0 || p.loopEnd < p.loopStart)
-                return fail(lineNo, "loop needs start >= 0, end >= start (samples) and 0/1");
+                return fail(lineNo, version >= 7 ? "loop needs start >= 0, end >= start, 0/1 and, for a loop in ticks, \"ticks\""
+                                                 : "loop needs start >= 0, end >= start (samples) and 0/1");
+            p.loopInTicks = ticks;
+        } else if (kw == "tempopoint") {
+            TempoPointState t;
+            if (version < 7)
+                return fail(lineNo, "tempopoint needs format 7");
+            if (tok.size() != 4 || !parseNumber(tok[1], t.tick) || !parseNumber(tok[2], t.bpm) || !parseFlag(tok[3], t.ramp) ||
+                t.bpm < 20.0 || t.bpm > 999.0)
+                return fail(lineNo, "tempopoint needs a tick, BPM (20 .. 999) and 0/1");
+            if (p.tempoPoints.empty() ? t.tick != 0 : t.tick <= p.tempoPoints.back().tick)
+                return fail(lineNo, "tempo points start at tick 0, each after the one before");
+            if (static_cast<int>(p.tempoPoints.size()) == kMaxTempoPoints)
+                return fail(lineNo, "more than " + std::to_string(kMaxTempoPoints) + " tempo points");
+            p.tempoPoints.push_back(t);
         } else if (kw == "track") {
             const size_t expected = version >= 3 ? 8 : version == 2 ? 5 : 4; // 1: no pan; 3: format, mute, solo
             if (tok.size() != expected)

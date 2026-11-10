@@ -1324,6 +1324,123 @@ struct Keyboard {
     }
 };
 
+// Chapter 19: the tempo map in the app - the model, the lane's gestures, the project file.
+void testTempoMap() {
+    std::printf("the tempo map\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    main.setSize(MainComponent::kDefaultWidth, MainComponent::kDefaultHeight);
+    Session& session = main.getSession();
+    Engine& engine = main.getEngine();
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    Transport& tr = engine.getTransport();
+    const size_t undo0 = session.getHistory().undoCount();
+
+    // A map as one undo step: 120 BPM, then 60 from bar 2. Bar 3 moves from 4 s to 6 s.
+    DAWLAB_CHECK(session.sampleOfTick(2 * 3840) == 192000);
+    DAWLAB_CHECK(session.setTempoPoints({{0, 120.0, false}, {3840, 60.0, false}}, "Tempo"));
+    DAWLAB_CHECK(session.getTempoMap().size() == 2 && session.sampleOfTick(2 * 3840) == 288000 && session.tickOfSample(288000) == 2 * 3840);
+    DAWLAB_CHECK(!session.setTempoPoints({{960, 120.0, false}}, "Bad") && session.getTempoMap().size() == 2); // not a map: refused
+    DAWLAB_CHECK(session.getHistory().undoCount() == undo0 + 1);
+    // The transport bar's tempo is the first point's; the others stay.
+    DAWLAB_CHECK(session.perform(edit::SetTempo{100.0}, "Tempo"));
+    DAWLAB_CHECK(tr.getTempo() == 100.0 && session.getTempoMap().size() == 2 && session.getTempoMap().point(1).bpm == 60.0);
+    DAWLAB_CHECK(main.undo() && tr.getTempo() == 120.0 && session.getTempoMap().size() == 2);
+    // The grid and the loop (in bars: ticks) follow the map.
+    DAWLAB_CHECK(tr.isLoopInTicks() && tr.getLoopStart() == 0 && tr.getLoopEnd() == session.sampleOfTick(4 * 3840));
+    DAWLAB_CHECK(tr.getLoopEnd() == 96000 + 3 * 192000);
+
+    // An instrument track's notes follow it: a note at bar 2 beat 2 (tick 4800) sounds from 96000 + 48000.
+    const TrackId synth = main.addTrack(TrackFormat::Mono, true);
+    DAWLAB_CHECK(session.perform(edit::SetMidiClips{synth, {midiClip(3840, {{960, 480, 60, 100, 0}})}}, "Add MIDI clip")); // a clip at bar 2
+    engine.applyPendingCommandsOffline();
+    tr.setPosition(0);
+    tr.play();
+    main.simulatePlayback(143872); // 281 blocks: just before 144000
+    DAWLAB_CHECK(engineTrack(main, synth)->getSynth()->activeVoices() == 0);
+    main.simulatePlayback(512);
+    DAWLAB_CHECK(engineTrack(main, synth)->getSynth()->activeVoices() == 1);
+    tr.stop();
+    main.simulatePlayback(512);
+    std::printf("  120 then 60 BPM from bar 2: bar 3 at sample %lld, a note at bar 2 beat 2 sounds from 144000\n",
+                static_cast<long long>(session.sampleOfTick(2 * 3840)));
+
+    // The lane: a double click adds a point on the nearest beat and drags on; one undo step.
+    TempoLane& lane = main.getTempoLane();
+    main.getArrangement().setView(0.0, 600.0);
+    const size_t undo1 = session.getHistory().undoCount();
+    const float x = lane.tickToX(2 * 3840 + 100); // a little after bar 3
+    lane.press({x, lane.bpmToY(90.0)}, {}, 2);
+    DAWLAB_CHECK(session.getTempoMap().size() == 3 && session.getTempoMap().point(2).tick == 2 * 3840 && session.getTempoMap().point(2).bpm == 90.0);
+    lane.dragTo({x, lane.bpmToY(150.0)}, {});
+    lane.dragTo({x, lane.bpmToY(180.0)}, {});
+    lane.release();
+    DAWLAB_CHECK(session.getTempoMap().point(2).bpm == 180.0 && session.getHistory().undoCount() == undo1 + 1);
+    // Drag the middle point a bar later: it reads the mouse through the map of the drag's start, and stops a tick
+    // before the next point.
+    const juce::Point<float> middle = lane.getPointPosition(1);
+    DAWLAB_CHECK(lane.pointAt(middle) == 1);
+    const float beatLater = lane.tickToX(3840 + 960);
+    lane.press(middle, {}, 1);
+    lane.dragTo({beatLater, middle.y}, {});
+    DAWLAB_CHECK(session.getTempoMap().point(1).tick == 3840 + 960 && session.getTempoMap().point(1).bpm == 60.0);
+    lane.dragTo({beatLater, middle.y}, {}); // the mouse stays: so does the point, though the beats moved
+    DAWLAB_CHECK(session.getTempoMap().point(1).tick == 3840 + 960);
+    lane.dragTo({10000.0f, middle.y}, {});
+    DAWLAB_CHECK(session.getTempoMap().point(1).tick == 2 * 3840 - 1);
+    lane.release();
+    DAWLAB_CHECK(session.getHistory().undoCount() == undo1 + 2);
+    DAWLAB_CHECK(main.undo() && session.getTempoMap().point(1).tick == 3840);
+    // The first point moves in tempo only.
+    lane.press(lane.getPointPosition(0), {}, 1);
+    lane.dragTo({lane.getPointPosition(0).x + 200.0f, lane.bpmToY(100.0)}, {});
+    lane.release();
+    DAWLAB_CHECK(session.getTempoMap().point(0).tick == 0 && session.getTempoMap().point(0).bpm == 100.0);
+    DAWLAB_CHECK(main.undo());
+    // Alt click: a ramp, and back. Not on the last point.
+    lane.press(lane.getPointPosition(1), juce::ModifierKeys::altModifier, 1);
+    DAWLAB_CHECK(session.getTempoMap().point(1).rampToNext);
+    lane.press(lane.getPointPosition(2), juce::ModifierKeys::altModifier, 1);
+    DAWLAB_CHECK(!session.getTempoMap().point(2).rampToNext);
+    // Right click deletes - but not the first.
+    lane.press(lane.getPointPosition(0), juce::ModifierKeys::popupMenuClickModifier, 1);
+    DAWLAB_CHECK(session.getTempoMap().size() == 3);
+    lane.press(lane.getPointPosition(2), juce::ModifierKeys::popupMenuClickModifier, 1);
+    DAWLAB_CHECK(session.getTempoMap().size() == 2);
+    DAWLAB_CHECK(main.undo() && session.getTempoMap().size() == 3);
+    // A single click on nothing, and a double click on a beat that has a point: nothing.
+    const size_t undo2 = session.getHistory().undoCount();
+    lane.press({lane.tickToX(960), lane.bpmToY(200.0)}, {}, 1);
+    lane.press({lane.tickToX(3840), lane.bpmToY(200.0)}, {}, 2);
+    lane.release();
+    DAWLAB_CHECK(session.getTempoMap().size() == 3 && session.getHistory().undoCount() == undo2);
+    std::printf("  the lane: a point added and dragged, a point that stops at its neighbour, a ramp, a delete - each one undo step\n");
+
+    // Saved and opened: the map and the loop in ticks.
+    const std::vector<engine::TempoPoint> before = session.getTempoMap().points();
+    tr.setLoopRangeBars(2, 2);
+    TakesFolder folder;
+    const juce::File file = folder.get().getChildFile("Tempo.dawlab");
+    DAWLAB_CHECK(main.saveProject(file));
+    DAWLAB_CHECK(file.loadFileAsString().contains("tempopoint 3840 60 1") && file.loadFileAsString().contains("loop 3840 11520 0 ticks"));
+    session.setTempoPoints({{0, 77.0, false}}, "Other");
+    const ProjectIO::OpenResult opened = main.openProject(file);
+    DAWLAB_CHECK(opened.ok && opened.warnings.isEmpty());
+    engine.applyPendingCommandsOffline();
+    const engine::TempoMap& map = session.getTempoMap();
+    bool same = map.size() == static_cast<int>(before.size());
+    for (int i = 0; same && i < map.size(); ++i)
+        same = map.point(i).tick == before[static_cast<size_t>(i)].tick && map.point(i).bpm == before[static_cast<size_t>(i)].bpm &&
+               map.point(i).rampToNext == before[static_cast<size_t>(i)].rampToNext;
+    DAWLAB_CHECK(same && tr.isLoopInTicks() && tr.getLoopStart() == session.sampleOfTick(3840) && tr.getLoopEnd() == session.sampleOfTick(3 * 3840));
+    // A new project has one tempo again.
+    session.newProject();
+    DAWLAB_CHECK(session.getTempoMap().size() == 1 && tr.getTempo() == 120.0);
+    engine.applyPendingCommandsOffline();
+    engine.collectGarbage();
+}
+
 void testMidiRecording() {
     std::printf("instruments and MIDI clips: recording the keyboard\n");
     auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
@@ -1429,6 +1546,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testMidiModel();
     testMidiEditing();
     testMidiRecording();
+    testTempoMap();
     testAutomation();
     testRecording();
 

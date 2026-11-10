@@ -161,8 +161,13 @@ struct SetBypass {
     int slot = 0;
     bool bypassed = false;
 };
+// The tempo of the map's first point: THE tempo of a song with one (the transport bar's field).
 struct SetTempo {
     double bpm = 120.0;
+};
+// Chapter 19: the whole tempo map - a point added, moved, deleted, a ramp switched, an imported MIDI file.
+struct SetTempoMap {
+    std::vector<engine::TempoPoint> points;
 };
 // A recording, a drawn or dragged point, another mode: the whole lane at once. No content: no lane.
 struct SetLane {
@@ -174,7 +179,7 @@ struct SetLane {
 
 using Edit = std::variant<edit::AddTrack, edit::RemoveTrack, edit::SetValue, edit::Rename, edit::SetFormat, edit::SetClips,
                           edit::SetInsert, edit::SetParameter, edit::SetBypass, edit::SetTempo, edit::SetLane, edit::SetMidiClips,
-                          edit::SetInstrument>;
+                          edit::SetInstrument, edit::SetTempoMap>;
 
 // What the History applies edits to (the Session). Returns the inverse, or nothing when the edit
 // does not apply (its track is gone, its slot is empty...) - then nothing changed.

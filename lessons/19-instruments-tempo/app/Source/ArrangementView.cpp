@@ -88,9 +88,10 @@ void ArrangementView::setView(double viewStartSamples, double samplesPerPixel) {
 }
 
 void ArrangementView::zoomToFit() {
-    const auto& tr = session_.getEngine().getTransport();
-    const double end = std::max<double>(static_cast<double>(session_.getSongEndSample()), 4.0 * tr.getSamplesPerBar()) +
-                       tr.getSamplesPerBar();
+    // Four bars at least, and one more. Bars are ticks: through the tempo map (chapter 19).
+    const int64_t barTicks = static_cast<int64_t>(session_.getEngine().getTransport().getTimeSignature().numerator) * 960;
+    const double end = std::max<double>(static_cast<double>(session_.getSongEndSample()), static_cast<double>(session_.sampleOfTick(4 * barTicks))) +
+                       static_cast<double>(session_.sampleOfTick(barTicks));
     const int width = std::max(100, getWidth() - kHeaderWidth);
     setView(0.0, end / width);
 }
@@ -260,9 +261,8 @@ void ArrangementView::paintMidiClip(juce::Graphics& g, engine::TrackId track, co
 }
 
 int64_t ArrangementView::snapToBeat(double sample, bool snap) const noexcept {
-    const double beat = session_.getEngine().getTransport().getSamplesPerBeat();
-    if (snap && beat > 0.0)
-        sample = std::round(sample / beat) * beat;
+    if (snap) // the nearest beat, wherever the tempo map puts it (chapter 19)
+        return std::max<int64_t>(0, session_.sampleOfTick(std::llround(session_.exactTickOfSample(sample) / 960.0) * 960));
     return std::max<int64_t>(0, static_cast<int64_t>(std::llround(sample)));
 }
 
@@ -406,18 +406,16 @@ void ArrangementView::paintRuler(juce::Graphics& g, juce::Rectangle<int> area) {
     }
 
     // bar lines and numbers, beat ticks
-    const double beat = tr.getSamplesPerBeat();
+    // Beats are ticks; the tempo map says where they are, so they lie closer where the song is faster.
     const int beatsPerBar = tr.getTimeSignature().numerator;
-    if (beat <= 0.0)
-        return;
-    const double pixelsPerBeat = beat / samplesPerPixel_;
-    const int barStep = pixelsPerBeat * beatsPerBar < 30.0 ? 4 : 1; // fewer numbers when zoomed out
-    const auto firstBeat = static_cast<juce::int64>(std::floor(viewStart_ / beat));
-    const auto lastBeat = static_cast<juce::int64>(std::ceil(xToSample(static_cast<float>(getWidth())) / beat));
+    const auto firstBeat = static_cast<juce::int64>(std::floor(session_.exactTickOfSample(viewStart_) / 960.0));
+    const auto lastBeat = static_cast<juce::int64>(std::ceil(session_.exactTickOfSample(xToSample(static_cast<float>(getWidth()))) / 960.0));
     for (auto b = std::max<juce::int64>(0, firstBeat); b <= lastBeat; ++b) {
-        const float x = sampleToX(static_cast<double>(b) * beat);
+        const float x = sampleToX(static_cast<double>(session_.sampleOfTick(b * 960)));
         if (x < kHeaderWidth)
             continue;
+        const double pixelsPerBeat = static_cast<double>(sampleToX(static_cast<double>(session_.sampleOfTick((b + 1) * 960))) - x);
+        const int barStep = pixelsPerBeat * beatsPerBar < 30.0 ? 4 : 1; // fewer numbers when zoomed out
         const bool isBar = b % beatsPerBar == 0;
         const auto bar = b / beatsPerBar + 1;
         if (isBar) {
@@ -445,12 +443,17 @@ void ArrangementView::paintLane(juce::Graphics& g, int lane, juce::Rectangle<int
     // lane background + bar grid
     g.setColour(selected ? DawColours::panelLight().withAlpha(0.6f) : (lane % 2 ? DawColours::background() : DawColours::background().brighter(0.03f)));
     g.fillRect(area);
-    const double bar = tr.getSamplesPerBar();
-    if (bar > 0.0 && bar / samplesPerPixel_ > 8.0) {
-        g.setColour(DawColours::outline().withAlpha(0.5f));
-        for (double s = std::floor(viewStart_ / bar) * bar; sampleToX(s) < getWidth(); s += bar)
-            if (sampleToX(s) >= kHeaderWidth)
-                g.drawVerticalLine(static_cast<int>(sampleToX(s)), static_cast<float>(area.getY()), static_cast<float>(area.getBottom()));
+    const int64_t barTicks = static_cast<int64_t>(tr.getTimeSignature().numerator) * 960;
+    g.setColour(DawColours::outline().withAlpha(0.5f));
+    float lastX = -100.0f;
+    for (int64_t t = static_cast<int64_t>(std::floor(session_.exactTickOfSample(viewStart_) / static_cast<double>(barTicks))) * barTicks;; t += barTicks) {
+        const float x = sampleToX(static_cast<double>(session_.sampleOfTick(t)));
+        if (x >= static_cast<float>(getWidth()))
+            break;
+        if (x >= kHeaderWidth && x - lastX > 8.0f) { // not when the bars are too close to tell apart
+            g.drawVerticalLine(static_cast<int>(x), static_cast<float>(area.getY()), static_cast<float>(area.getBottom()));
+            lastX = x;
+        }
     }
 
     // clips
@@ -668,10 +671,9 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e) {
         }
         if (e.getNumberOfClicks() > 1 && clipAt(lane, static_cast<float>(e.x)) < 0 && !e.mods.isPopupMenu()) {
             // A new clip of one bar, from the bar the click is in.
-            const double bar = session_.getEngine().getTransport().getSamplesPerBar();
-            const double at = bar > 0.0 ? std::floor(xToSample(static_cast<float>(e.x)) / bar) * bar : xToSample(static_cast<float>(e.x));
-            const int added = session_.addMidiClip(track, session_.tickOfSample(static_cast<int64_t>(at)),
-                                                   static_cast<int64_t>(session_.getEngine().getTransport().getTimeSignature().numerator) * 960);
+            const int64_t barTicks = static_cast<int64_t>(session_.getEngine().getTransport().getTimeSignature().numerator) * 960;
+            const double tick = std::max(0.0, session_.exactTickOfSample(xToSample(static_cast<float>(e.x))));
+            const int added = session_.addMidiClip(track, static_cast<int64_t>(std::floor(tick / static_cast<double>(barTicks))) * barTicks, barTicks);
             if (added >= 0 && onEditMidiClip)
                 onEditMidiClip(track, added);
             return;

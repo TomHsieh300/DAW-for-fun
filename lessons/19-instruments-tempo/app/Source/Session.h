@@ -186,9 +186,17 @@ public:
     int moveMidiClip(engine::TrackId track, int index, int64_t newStartTick, std::uint32_t mergeKey);
     int replaceMidiClip(engine::TrackId track, int index, MidiClipModel clip, const juce::String& name, std::uint32_t mergeKey = 0);
     bool removeMidiClip(engine::TrackId track, int index);
-    // The timeline sample where a tick plays at the tempo now.
+    // The timeline sample where a tick plays, through the tempo map (chapter 19).
     int64_t sampleOfTick(int64_t tick) const noexcept;
     int64_t tickOfSample(int64_t sample) const noexcept; // the nearest tick
+    double exactTickOfSample(double sample) const noexcept; // with its fraction
+
+    // ---- the tempo map (chapter 19, Step 5) --------------------------------------------------------
+    const engine::TempoMap& getTempoMap() const noexcept { return engine_.getTransport().getTempoMap(); }
+    // WITHOUT recording. False (nothing changes) if the points are not a map (TempoMap::set).
+    bool setTempoMap(const std::vector<engine::TempoPoint>& points);
+    // Undoable (an edit::SetTempoMap).
+    bool setTempoPoints(std::vector<engine::TempoPoint> points, const juce::String& name, std::uint32_t mergeKey = 0);
 
     // ---- insert slots ------------------------------------------------------------------------
     const InsertSlotState& getSlot(engine::ChannelRef ref, int uiSlot) const;
@@ -337,6 +345,7 @@ private:
     std::optional<Edit> apply(const edit::SetParameter&);
     std::optional<Edit> apply(const edit::SetBypass&);
     std::optional<Edit> apply(const edit::SetTempo&);
+    std::optional<Edit> apply(const edit::SetTempoMap&);
     std::optional<Edit> apply(const edit::SetLane&);
     std::optional<Edit> apply(const edit::SetMidiClips&);
     std::optional<Edit> apply(const edit::SetInstrument&);

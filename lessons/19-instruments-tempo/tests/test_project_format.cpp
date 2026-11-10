@@ -164,7 +164,7 @@ void testErrors() {
         const char* expected; // the error must start with this
     } cases[] = {
         {"", "line 1: not a DawLab project"},
-        {"DawLabProject 7\n", "line 1: made by a newer DawLab"},
+        {"DawLabProject 8\n", "line 1: made by a newer DawLab"},
         {"DawLabProject 3\ntrack 1 \"A\" 0 0 mono 0 0\n", "line 2: sampleRate must come"},
         {head + "volume 1\n", "line 4: unknown keyword"},
         {head + "track 2 \"B\" 0 0\n", "line 4: track needs 7 values"},
@@ -378,7 +378,7 @@ void testMidi() {
     p.midiClips = {c, d};
     const std::string text = writeProject(p);
     const ReadResult back = readProject(text);
-    DAWLAB_CHECK(back.ok && back.formatVersion == 6);
+    DAWLAB_CHECK(back.ok && back.formatVersion == kFormatVersion);
     DAWLAB_CHECK(back.project == p);
     DAWLAB_CHECK(writeProject(back.project) == text);
     DAWLAB_CHECK(back.project.tracks.size() == 2 && back.project.tracks[0].instrument && !back.project.tracks[1].instrument);
@@ -422,6 +422,48 @@ void testMidi() {
     DAWLAB_CHECK(!readProject("DawLabProject 5\nsampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\ninstrument 1\n").ok);
 }
 
+// Chapter 19: the tempo map and a loop in ticks (format 7).
+void testTempoMap() {
+    ProjectState p;
+    p.tempo = 97.5;
+    p.tempoPoints = {{0, 97.5, true}, {7680, 140.0, false}, {11520, 100.123456789012, true}, {19200, 70.0, false}};
+    p.loopStart = 3840;
+    p.loopEnd = 11520;
+    p.loopEnabled = true;
+    p.loopInTicks = true;
+    const std::string text = writeProject(p);
+    DAWLAB_CHECK(text.find("loop 3840 11520 1 ticks\n") != std::string::npos);
+    DAWLAB_CHECK(text.find("tempopoint 7680 140 0\n") != std::string::npos && text.find("tempopoint 0 97.5 1\n") != std::string::npos);
+    const ReadResult back = readProject(text);
+    DAWLAB_CHECK(back.ok && back.project == p && writeProject(back.project) == text);
+    DAWLAB_CHECK(back.ok && back.project.tempoPoints.size() == 4 && back.project.tempoPoints[2].bpm == 100.123456789012);
+    std::printf("the tempo map: 4 points and a loop in ticks written and read back exactly\n");
+
+    // One tempo: no tempopoint lines, a loop in samples as before.
+    ProjectState plain;
+    plain.loopEnd = 48000;
+    const std::string plainText = writeProject(plain);
+    DAWLAB_CHECK(plainText.find("tempopoint") == std::string::npos && plainText.find("loop 0 48000 0\n") != std::string::npos);
+
+    const std::string head = "DawLabProject 7\nsampleRate 48000\ntempo 120 4 4\n";
+    const auto reads = [&head](const std::string& lines) { return readProject(head + lines + "\n").ok; };
+    DAWLAB_CHECK(reads("tempopoint 0 120 0\ntempopoint 960 60 1\ntempopoint 1920 90 0"));
+    DAWLAB_CHECK(!reads("tempopoint 960 120 0"));                       // the first is not at 0
+    DAWLAB_CHECK(!reads("tempopoint 0 120 0\ntempopoint 0 90 0"));      // twice at one tick
+    DAWLAB_CHECK(!reads("tempopoint 0 120 0\ntempopoint 960 90 0\ntempopoint 480 90 0")); // back in time
+    DAWLAB_CHECK(!reads("tempopoint 0 19 0") && !reads("tempopoint 0 1000 0") && !reads("tempopoint 0 nan 0"));
+    DAWLAB_CHECK(!reads("tempopoint 0 120") && !reads("tempopoint 0 120 2") && !reads("tempopoint x 120 0"));
+    DAWLAB_CHECK(reads("loop 0 3840 1 ticks") && !reads("loop 0 3840 1 beats") && !reads("loop 3840 0 1 ticks"));
+    std::string many;
+    for (int i = 0; i < 256; ++i)
+        many += "tempopoint " + std::to_string(i * 10) + " 120 0\n";
+    DAWLAB_CHECK(reads(many) && !reads(many + "tempopoint 9999 120 0"));
+    // An older file cannot have them.
+    DAWLAB_CHECK(!readProject("DawLabProject 6\nsampleRate 48000\ntempopoint 0 120 0\n").ok);
+    DAWLAB_CHECK(!readProject("DawLabProject 6\nsampleRate 48000\nloop 0 3840 1 ticks\n").ok);
+    DAWLAB_CHECK(readProject("DawLabProject 6\nsampleRate 48000\nloop 0 3840 1\n").ok);
+}
+
 int main() {
     std::printf("l19_test_project_format: the application's project file, format %d\n", kFormatVersion);
     testMidi();
@@ -433,5 +475,6 @@ int main() {
     testErrors();
     testTextVariants();
     testLocale();
+    testTempoMap();
     return dawlab::test::summary("l19_test_project_format");
 }

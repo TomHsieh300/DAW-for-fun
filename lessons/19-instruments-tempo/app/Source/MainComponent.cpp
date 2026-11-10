@@ -123,6 +123,7 @@ MainComponent::MainComponent(Mode mode) : mode_(mode) {
     transportBar_.onTempoGesture = [this] { session_.getHistory().endMerge(); };
     addAndMakeVisible(transportBar_);
     addAndMakeVisible(arrangement_);
+    addAndMakeVisible(tempoLane_);
     mixer_.onLoadRequested = [this](engine::TrackId track) { chooseAudioFileForTrack(track); };
     mixer_.onSlotClicked = [this](ChannelRef ref, int slot, juce::Component& anchor, bool menu) {
         if (menu || session_.getSlot(ref, slot).isEmpty())
@@ -182,6 +183,12 @@ void MainComponent::tick() {
     if (!isExporting())
         engine_.collectGarbage();
     session_.collectAutomation();
+    // Chapter 19: the tempo lane shares the arrangement's time axis, and follows its scrolling and zooming.
+    if (arrangement_.getViewStart() != laneViewStart_ || arrangement_.getSamplesPerPixel() != laneSamplesPerPixel_) {
+        laneViewStart_ = arrangement_.getViewStart();
+        laneSamplesPerPixel_ = arrangement_.getSamplesPerPixel();
+        tempoLane_.repaint();
+    }
     if (!isConvertingSampleRate())
         takeRecorder_.tick();
     // Chapter 18: the keyboard's keys into the takes; a transport that stopped ends a MIDI recording.
@@ -1175,6 +1182,7 @@ void MainComponent::resized() {
     status_.setBounds(statusRow);
     const int mixerHeight = std::max(430, area.getHeight() * 55 / 100);
     mixer_.setBounds(area.removeFromBottom(mixerHeight));
+    tempoLane_.setBounds(area.removeFromTop(TempoLane::kHeight));
     arrangement_.setBounds(area);
     if (exportOverlay_ != nullptr)
         exportOverlay_->setBounds(getLocalBounds());

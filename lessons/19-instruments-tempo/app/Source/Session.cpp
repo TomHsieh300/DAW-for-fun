@@ -389,13 +389,28 @@ bool Session::removeMidiClip(TrackId track, int index) {
 }
 
 int64_t Session::sampleOfTick(int64_t tick) const noexcept {
-    const Transport& tr = engine_.getTransport();
-    return engine::sampleOfTick(tick, engine::samplesPerTick(getClipSampleRate(), tr.getTempo()));
+    return getTempoMap().sampleOfTick(tick, getClipSampleRate());
 }
 
 int64_t Session::tickOfSample(int64_t sample) const noexcept {
-    const Transport& tr = engine_.getTransport();
-    return std::llround(static_cast<double>(sample) / engine::samplesPerTick(getClipSampleRate(), tr.getTempo()));
+    return std::llround(exactTickOfSample(static_cast<double>(sample)));
+}
+
+double Session::exactTickOfSample(double sample) const noexcept {
+    return getTempoMap().tickAtSample(sample, getClipSampleRate());
+}
+
+bool Session::setTempoMap(const std::vector<engine::TempoPoint>& points) {
+    engine::TempoMap map;
+    if (!map.set(points))
+        return false;
+    engine_.getTransport().setTempoMap(map);
+    sendChangeMessage();
+    return true;
+}
+
+bool Session::setTempoPoints(std::vector<engine::TempoPoint> points, const juce::String& name, std::uint32_t mergeKey) {
+    return perform(edit::SetTempoMap{std::move(points)}, name, mergeKey);
 }
 
 // ---- clips ---------------------------------------------------------------------------------------
@@ -733,7 +748,8 @@ void Session::scaleTransportPositions(double oldRate, double newRate) {
     const double ratio = newRate / oldRate;
     const auto scale = [ratio](int64_t v) { return static_cast<int64_t>(std::llround(static_cast<double>(v) * ratio)); };
     Transport& tr = engine_.getTransport();
-    tr.setLoopRange(scale(tr.getLoopStart()), scale(tr.getLoopEnd()));
+    if (!tr.isLoopInTicks()) // a loop in ticks means the same at any rate
+        tr.setLoopRange(scale(tr.getLoopStart()), scale(tr.getLoopEnd()));
     tr.setPosition(scale(tr.getPosition()));
 }
 
@@ -1067,10 +1083,19 @@ std::optional<Edit> Session::apply(const edit::SetBypass& e) {
 std::optional<Edit> Session::apply(const edit::SetTempo& e) {
     if (!(e.bpm > 0.0))
         return std::nullopt;
-    Transport& tr = engine_.getTransport();
-    edit::SetTempo inverse{tr.getTempo()};
-    tr.setTempo(e.bpm);
-    sendChangeMessage();
+    // The first point's tempo; the other points of the map stay.
+    edit::SetTempo inverse{getTempoMap().point(0).bpm};
+    std::vector<engine::TempoPoint> points = getTempoMap().points();
+    points[0].bpm = std::clamp(e.bpm, engine::TempoMap::kMinBpm, engine::TempoMap::kMaxBpm);
+    if (!setTempoMap(points))
+        return std::nullopt;
+    return inverse;
+}
+
+std::optional<Edit> Session::apply(const edit::SetTempoMap& e) {
+    edit::SetTempoMap inverse{getTempoMap().points()};
+    if (!setTempoMap(e.points))
+        return std::nullopt;
     return inverse;
 }
 
