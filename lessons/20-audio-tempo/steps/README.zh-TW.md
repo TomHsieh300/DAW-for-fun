@@ -12,6 +12,7 @@
 |---|---|---|---|
 | 1 | `step01-warp-map` | `WarpMap::sourceAt`、`tickAt`、`sourceAtSample`、`songSecondsOf`、`speedAt`、`markersForLoop`、`markersForTake` | `l20_step01_starter` |
 | 2 | `step02-follow-start` | `setFollow`、`startUnder`、`retime`、`moveTo`、`moveToTick`、`endTick`、`gaps`、`jumpInClip` | `l20_step02_starter` |
+| 3 | `step03-varispeed` | `semitonesOf`、`readAt`、`positionsFor`、`firstSample`、`endSample`、`renderWarped` | `l20_step03_starter` |
 
 </div>
 
@@ -22,6 +23,6 @@
 - `starter/stepNN.cpp` - 你的程式碼，含 TODO。可以無警告地建置，在該 step 完成前會印出 `[FAIL]`。
 - `solution/stepNN.cpp` - 一份解答；ctest 會以 `l20_stepNN_solution` 執行（label `solution`）。
 
-資料夾旁邊的 `tempo_map.h` 是第 19 章解好的 tempo map：每個 step 都從它開始。
+資料夾旁邊的 `tempo_map.h` 是第 19 章解好的 tempo map：每個 step 都從它開始。`warp_map.h` 是解好的 Step 1，給 Step 3 和 4 用。
 
 在 repository 根目錄用 `.\scripts\build.ps1 -Only 20-audio-tempo` 建置（不需要 JUCE），並從 `build` 資料夾執行程式，例如 `.\bin\Debug\l20_step01_starter.exe`。每個 step 文件（`../docs/step-NN-*.zh-TW.md`）的「換你了」一節會說明任務並列出預期的輸出。

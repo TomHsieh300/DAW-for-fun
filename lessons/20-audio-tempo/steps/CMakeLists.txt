@@ -7,12 +7,14 @@
 #   starter/stepNN.cpp   the functions YOU write, with TODOs  -> l20_stepNN_starter  (build only)
 #   solution/stepNN.cpp  a worked solution                   -> l20_stepNN_solution (ctest, label "solution")
 #
-# tempo_map.h is chapter 19's tempo map, solved: every step starts from it.
+# tempo_map.h is chapter 19's tempo map, solved: every step starts from it. warp_map.h is Step 1, solved, for
+# Steps 3 and 4.
 
 function(l20_add_step id dir)
-    dawlab_add_starter(l20_${id}_starter ${dir}/starter/${id}.cpp ${dir}/minidaw.h ${dir}/check.h tempo_map.h)
-    dawlab_add_solution(l20_${id}_solution ${dir}/solution/${id}.cpp ${dir}/minidaw.h ${dir}/check.h tempo_map.h)
+    dawlab_add_starter(l20_${id}_starter ${dir}/starter/${id}.cpp ${dir}/minidaw.h ${dir}/check.h tempo_map.h warp_map.h)
+    dawlab_add_solution(l20_${id}_solution ${dir}/solution/${id}.cpp ${dir}/minidaw.h ${dir}/check.h tempo_map.h warp_map.h)
 endfunction()
 
 l20_add_step(step01 step01-warp-map)
 l20_add_step(step02 step02-follow-start)
+l20_add_step(step03 step03-varispeed)

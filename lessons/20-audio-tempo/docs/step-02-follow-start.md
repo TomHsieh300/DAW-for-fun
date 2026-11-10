@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-02-follow-start.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 1 - A warp map](step-01-warp-map.md)
+[Overview](../README.md) | Previous: [Step 1 - A warp map](step-01-warp-map.md) | Next: [Step 3 - Varispeed](step-03-varispeed.md)
 
 ## Goal
 

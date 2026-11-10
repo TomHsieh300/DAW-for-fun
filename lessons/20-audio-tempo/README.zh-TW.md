@@ -2,7 +2,7 @@
 
 [English](README.md) | **繁體中文**
 
-> **狀態：進行中。** 7 個 step 完成了 Step 1 和 2。
+> **狀態：進行中。** 7 個 step 完成了 Step 1 到 3。
 
 在 DawLab 19（第 19 章）裡 tempo 可以改變，音符會跟著走：它們是以 tick 存的。Audio clip 則是以 sample 存的，留在原地——拖一下 tempo 點，錄好的吉他就和鼓對不上了。第 19 章的練習 6 在紙上設計了解法。本章把它做出來：一個知道自己的 audio 屬於音樂哪個位置的 clip，依 tempo 的要求播得快一點或慢一點——像磁帶那樣，或是不改變音高。
 
@@ -35,7 +35,7 @@
 |---|---|---|---|
 | 1 | [Warp map](docs/step-01-warp-map.zh-TW.md) | 把檔案的 sample 綁到歌的 tick 的 marker，雙向換算；tempo 要求的速度；loop 和 take 的 marker，以及 ramp 需要幾個 | 完成 |
 | 2 | [起點跟著 tempo 的 clip](docs/step-02-follow-start.zh-TW.md) | 起點存成 tick、sample 由它推導，拖到 sample 和拖到 grid，長度會怎樣，接縫的空隙和重疊，播放中改變 tempo | 完成 |
-| 3 | Varispeed | 用 resampling 改變速度，每個 block 的位置都從 tick 算 | 計畫中 |
+| 3 | [Varispeed](docs/step-03-varispeed.zh-TW.md) | 速度和音高；每個 block 都從歌的 sample 算檔案裡的位置，在 knot 和 grid 上精確；linear、Hermite 和 windowed sinc 的讀法與量測；讀得比較快時的 aliasing；clip 是 source 的範圍，在任何 tempo 下都相接 | 完成 |
 | 4 | Time-stretcher | WSOLA：另一個速度、同樣的音高 | 計畫中 |
 | 5 | Engine | 第 19 章 engine 的複本：clip 事先算好再交接 | 計畫中 |
 | 6 | App | 第 19 章 app 的複本：每個 clip 的模式、錄音帶來的 marker、專案檔、undo | 計畫中 |

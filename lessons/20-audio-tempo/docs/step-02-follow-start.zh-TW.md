@@ -2,7 +2,7 @@
 
 [English](step-02-follow-start.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 1 - Warp map](step-01-warp-map.zh-TW.md)
+[總覽](../README.zh-TW.md) | 上一步：[Step 1 - Warp map](step-01-warp-map.zh-TW.md) | 下一步：[Step 3 - Varispeed](step-03-varispeed.zh-TW.md)
 
 ## 目標
 
