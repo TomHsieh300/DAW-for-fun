@@ -216,6 +216,12 @@ private:
         std::vector<BlockEvent> events, merged;
         double sampleRate = 48000.0;
         bool wasOn = false; // audio thread only
+
+        InstrumentState() = default;
+        InstrumentState(const InstrumentState&) = delete;
+        InstrumentState& operator=(const InstrumentState&) = delete;
+        // The engine is going away, and with it the audio thread: an instrument still in the synth's place goes too.
+        ~InstrumentState() { delete replacement; }
     };
     std::atomic<bool> instrument_{false};
     std::atomic<const std::vector<MidiClip>*> midiClips_{nullptr};
