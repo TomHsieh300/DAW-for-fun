@@ -6,6 +6,15 @@
 
 add_subdirectory(steps)
 
+# ---- exercises: starters (build only) and solutions (ctest label: solution) -------------------
+# Exercises 2 and 3 build on Step 1's model (exercises/model.h); Exercise 4 stands alone; Exercise 2 checks
+# its numbers in a program. Exercise 1 is answered in solutions/README.md.
+dawlab_add_solution(l18_ex2_solution solutions/ex2_midi_numbers.cpp)
+dawlab_add_starter(l18_ex3_starter   exercises/starter/ex3_smf.cpp)
+dawlab_add_solution(l18_ex3_solution solutions/ex3_smf.cpp)
+dawlab_add_starter(l18_ex4_starter   exercises/starter/ex4_tempo_map.cpp)
+dawlab_add_solution(l18_ex4_solution solutions/ex4_tempo_map.cpp)
+
 # ---- the chapter-18 engine (header-only, namespace dawlab::engine; Step 7) ------------------
 # A copy of chapter 17's engine with instruments. It uses the same include paths (<dawlab/engine/...>),
 # so it must not be linked together with another chapter's engine; the chapters never share a target.

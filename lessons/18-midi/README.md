@@ -55,6 +55,13 @@ After this chapter you can
 Nothing in DawLab 17 knows a note. Its tracks play audio clips, its clips are samples, and its `Transport`
 counts ticks (960 to a quarter note) only to show bars and beats. Step 1 starts with what a note is.
 
-## 4. Next
+## 4. Exercises
+
+See [exercises/README.md](exercises/README.md), with the answers in [solutions/README.md](solutions/README.md).
+So far four of them, none needs JUCE: why notes need so much care (concept), MIDI by the numbers
+(calculation), reading and writing Standard MIDI Files, and a tempo map. More exercises and the optional
+projects for DawLab 18 follow.
+
+## 5. Next
 
 Start with [Step 1 - MIDI events and musical time](docs/step-01-midi-time.md).

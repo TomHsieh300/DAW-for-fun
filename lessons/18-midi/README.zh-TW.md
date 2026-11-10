@@ -48,6 +48,11 @@ DawLab 17（第 17 章）會錄音也會播放音訊：已經存在的聲音，�
 
 DawLab 17 裡沒有任何東西認得音符。它的 track 播放 audio clip，clip 是 sample，而它的 `Transport` 計數 tick（一個四分音符 960 個）只是為了顯示小節和拍子。Step 1 從音符是什麼開始。
 
-## 4. 下一步
+## 4. 練習
+
+見 [exercises/README.zh-TW.md](exercises/README.zh-TW.md)，解答在 [solutions/README.zh-TW.md](solutions/README.zh-TW.md)。
+目前有四題，都不需要 JUCE：音符為什麼需要這麼小心（概念）、用數字看 MIDI（計算）、讀寫 Standard MIDI File，以及 tempo map。更多練習和 DawLab 18 的選做專題會接著加上。
+
+## 5. 下一步
 
 從 [Step 1 - MIDI 事件與音樂時間](docs/step-01-midi-time.zh-TW.md) 開始。
