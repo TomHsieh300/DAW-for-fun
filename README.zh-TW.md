@@ -40,13 +40,13 @@
 
 ### Linux（已在 Ubuntu 24.04 驗證）
 
-所有章節，包括第 13–18 章的 JUCE 部分，都已在 **Ubuntu 24.04 LTS、GCC 13.3、CMake 3.28** 上建置成功並通過全部測試。CI 每次 push 都會檢查，包含 `DawLab 8`、`DawLab 15`、`DawLab 16`、`DawLab 17` 與 `DawLab 18` 的 smoke test 與 snapshot，第 15 到 19 章的 ThreadSanitizer，以及所有純 C++ 章節的 AddressSanitizer + UndefinedBehaviorSanitizer。
+所有章節，包括第 13–19 章的 JUCE 部分，都已在 **Ubuntu 24.04 LTS、GCC 13.3、CMake 3.28** 上建置成功並通過全部測試。CI 每次 push 都會檢查，包含 `DawLab 8`、`DawLab 15`、`DawLab 16`、`DawLab 17`、`DawLab 18` 與 `DawLab 19` 的 smoke test 與 snapshot，第 15 到 19 章的 ThreadSanitizer，以及所有純 C++ 章節的 AddressSanitizer + UndefinedBehaviorSanitizer。
 
 1. 安裝編譯器與 CMake：
    ```bash
    sudo apt install build-essential cmake git
    ```
-2. 第 13–18 章的 JUCE 部分需要 JUCE 的系統相依套件（ALSA / JACK、X11、freetype、fontconfig、OpenGL、webkit2gtk、curl；見 `third_party/JUCE/docs/Linux Dependencies.md`）：
+2. 第 13–19 章的 JUCE 部分需要 JUCE 的系統相依套件（ALSA / JACK、X11、freetype、fontconfig、OpenGL、webkit2gtk、curl；見 `third_party/JUCE/docs/Linux Dependencies.md`）：
    ```bash
    sudo apt install libasound2-dev libjack-jackd2-dev ladspa-sdk libfreetype-dev libfontconfig1-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libglu1-mesa-dev mesa-common-dev libcurl4-openssl-dev libwebkit2gtk-4.1-dev
    ```
@@ -56,7 +56,7 @@
 
 ### macOS（純 C++ 章節已由 CI 驗證）
 
-安裝 command-line tools 與 CMake（`xcode-select --install`、`brew install cmake`），然後跟 Linux 一樣使用 `./scripts/build.sh`。純 C++ 的章節（00–12，以及第 14 到 18 章的 engine 部分）每次 push 都會在 GitHub 的 `macos-latest` runner 上用 Apple Clang 以 Debug 和 Release 建置，並通過所有測試（見上方的 CI badge）。第 13–18 章的 JUCE 部分也會在那裡建置，但還沒有驗證：在穩定之前，這個 CI job 允許失敗。
+安裝 command-line tools 與 CMake（`xcode-select --install`、`brew install cmake`），然後跟 Linux 一樣使用 `./scripts/build.sh`。純 C++ 的章節（00–12，以及第 14 到 18 章的 engine 部分）每次 push 都會在 GitHub 的 `macos-latest` runner 上用 Apple Clang 以 Debug 和 Release 建置，並通過所有測試（見上方的 CI badge）。第 13–19 章的 JUCE 部分也會在那裡建置，但還沒有驗證：在穩定之前，這個 CI job 允許失敗。
 
 ## 建置、執行、測試
 
@@ -66,7 +66,7 @@
 .\scripts\build.ps1                                   # 全部純 C++ 部分（00–12、第 14 到 17 章的 engine 和 step），Debug，並跑所有測試
 .\scripts\build.ps1 -Only 02-filter                   # 只建第 02 章
 .\scripts\build.ps1 -Only 02-filter,03-eq             # 多章以逗號分隔
-.\scripts\build.ps1 -Juce                             # 連同第 13–18 章的 JUCE 部分一起建置
+.\scripts\build.ps1 -Juce                             # 連同第 13–19 章的 JUCE 部分一起建置
 .\scripts\build.ps1 -Only 14-daw-8track -Juce         # 只建第 14 章
 .\scripts\build.ps1 -Only 15-daw-growing -Juce        # 只建第 15 章，連同它的 app
 .\scripts\build.ps1 -Config Release                   # Release 組態（另有 RelWithDebInfo）
@@ -106,7 +106,8 @@ PowerShell 說「無法載入指令碼」時，改用 `powershell -ExecutionPoli
 | 第 16 章的 DAW | `build\bin\Debug\DawLab 16.exe` |
 | 第 17 章的 DAW | `build\bin\Debug\DawLab 17.exe` |
 | 第 18 章的 DAW | `build\bin\Debug\DawLab 18.exe` |
-| 在 Linux / macOS 上 | `build/bin/lNN_*`、`build/bin/DawLab 8`、`build/bin/DawLab 15`、`build/bin/DawLab 16`、`build/bin/DawLab 17` 與 `build/bin/DawLab 18`（沒有 `Debug/` 子資料夾，也沒有 `.exe`）；VST3 bundle 在 `build/lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/VST3/DawLabCompressor.vst3` |
+| 第 19 章的 DAW | `build\bin\Debug\DawLab 19.exe` |
+| 在 Linux / macOS 上 | `build/bin/lNN_*`、`build/bin/DawLab 8`、`build/bin/DawLab 15`、`build/bin/DawLab 16`、`build/bin/DawLab 17`、`build/bin/DawLab 18` 與 `build/bin/DawLab 19`（沒有 `Debug/` 子資料夾，也沒有 `.exe`）；VST3 bundle 在 `build/lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/VST3/DawLabCompressor.vst3` |
 
 </div>
 
@@ -121,6 +122,7 @@ cd build
 & ".\bin\Debug\DawLab 16.exe"                         # 第 16 章：畫出和錄製 automation
 & ".\bin\Debug\DawLab 17.exe"                         # 第 17 章：從音訊 input 錄音
 & ".\bin\Debug\DawLab 18.exe"                         # 第 18 章：樂器、MIDI clip、鍵盤
+& ".\bin\Debug\DawLab 19.exe"                         # 第 19 章：tempo lane、MIDI 檔
 ```
 
 **ctest 的 label**：`example`（範例，不帶參數就能跑完）、`solution`（練習解答，以數字自我檢查）、`test`（元件與 engine 的回歸測試）。`exercises/starter/` 的起始碼只建置、不登記成測試——它們留有 `// TODO`，執行時印出 FAIL 是預期的。
@@ -145,7 +147,7 @@ cd build
 | `lessons/NN-name/exercises/` | 練習題（README.md）與起始碼（starter/） |
 | `lessons/NN-name/solutions/` | 所有題目的解答與解說，以及實作題的完整程式 |
 | `lessons/NN-name/tests/` | （部分章節）元件回歸測試 |
-| `third_party/JUCE/` | JUCE 9.0.4（第 13–18 章） |
+| `third_party/JUCE/` | JUCE 9.0.4（第 13–19 章） |
 
 </div>
 
@@ -178,7 +180,7 @@ cd build
 | [16](lessons/16-automation/README.zh-TW.md) | Automation | 時間軸上值為 normalized 的點、精準到 sample 的播放、Read / Touch / Latch / Write 與錄製和精簡、撐得過移動、undo 和專案檔的對象、會等待延遲音訊的 fader | **DawLab 16**：track 下方的 lane、可以畫和拖動的點、模式切換 |
 | [17](lessons/17-recording/README.zh-TW.md) | Recording | 從音訊 input 到 clip：硬碟卡住時保持時間位置的 ring、校正 latency 的擺放、撐得過當機的 take、punch 與 loop、input monitoring | **DawLab 17**：錄音鍵、armed track、變成 clip 的 take、punch、loop 的 take、當機後復原的 take |
 | [18](lessons/18-midi/README.zh-TW.md) | MIDI | 音樂時間裡的音符、sample 精確的事件、不留卡住音符的 MIDI clip、複音樂器、經 lock-free FIFO 送來的鍵盤輸入、錄音與 quantize | **DawLab 18**：instrument track、MIDI clip、piano roll、鍵盤、MIDI 錄音、quantize |
-| [19](lessons/19-instruments-tempo/README.zh-TW.md) | 樂器與 tempo（進行中） | 由跳躍和 ramp 組成的 tempo map、跨 tempo 變化的 block、樂器 latency 的補償 | **DawLab 19**：規劃中 |
+| [19](lessons/19-instruments-tempo/README.zh-TW.md) | 樂器與 tempo（進行中） | 由跳躍和 ramp 組成的 tempo map、跨 tempo 變化的 block、樂器 latency 的補償 | **DawLab 19**：tempo lane、帶 tempo 變化的 MIDI 檔（樂器：進行中） |
 
 </div>
 

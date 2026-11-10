@@ -1,5 +1,7 @@
 #include "MainComponent.h"
 
+#include "MidiFileIO.h"
+
 #include "EffectMenu.h"
 #include "VstInsert.h"
 
@@ -820,6 +822,64 @@ void MainComponent::finishClipConversion(double from, double to, const Converted
 
 // ---- export -------------------------------------------------------------------------------------------
 
+bool MainComponent::importMidi(const juce::File& file) {
+    if (refuseWhileRecording("The import"))
+        return false;
+    const MidiImport r = importMidiFile(session_, file);
+    if (!r.ok) {
+        setStatus("MIDI import failed: " + r.error);
+        return false;
+    }
+    juce::String text = "Imported " + file.getFileName() + ": " + juce::String(static_cast<int>(r.tracks.size())) +
+                        (r.tracks.size() == 1 ? " track, " : " tracks, ") + juce::String(r.notes) + " notes, " + juce::String(r.tempos) +
+                        (r.tempos == 1 ? " tempo" : " tempos");
+    if (r.thinned)
+        text << " (the file had more than the tempo map holds)";
+    if (r.dropped > 0)
+        text << "; " << r.dropped << " other events (pitch bend, program changes) left out";
+    setStatus(text);
+    return true;
+}
+
+bool MainComponent::exportMidi(const juce::File& file) {
+    const MidiExport e = songOf(session_);
+    if (e.song.tracks.empty()) {
+        setStatus("Nothing to export: no instrument track has notes");
+        return false;
+    }
+    if (!exportMidiFile(session_, file)) {
+        setStatus("Cannot write " + file.getFullPathName());
+        return false;
+    }
+    setStatus("Exported " + juce::String(static_cast<int>(e.song.tracks.size())) + (e.song.tracks.size() == 1 ? " track, " : " tracks, ") +
+              juce::String(e.notes) + " notes to " + file.getFileName());
+    return true;
+}
+
+void MainComponent::importMidiInteractive() {
+    fileChooser_ = std::make_unique<juce::FileChooser>("Import MIDI file", juce::File::getSpecialLocation(juce::File::userMusicDirectory),
+                                                       "*.mid;*.midi");
+    juce::Component::SafePointer<MainComponent> safe(this);
+    fileChooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                              [safe](const juce::FileChooser& chooser) {
+                                  if (safe != nullptr && chooser.getResult() != juce::File())
+                                      safe->importMidi(chooser.getResult());
+                              });
+}
+
+void MainComponent::exportMidiInteractive() {
+    fileChooser_ = std::make_unique<juce::FileChooser>(
+        "Export MIDI file", juce::File::getSpecialLocation(juce::File::userMusicDirectory).getChildFile(session_.getProjectName() + ".mid"),
+        "*.mid");
+    juce::Component::SafePointer<MainComponent> safe(this);
+    fileChooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles |
+                                  juce::FileBrowserComponent::warnAboutOverwriting,
+                              [safe](const juce::FileChooser& chooser) {
+                                  if (safe != nullptr && chooser.getResult() != juce::File())
+                                      safe->exportMidi(chooser.getResult().withFileExtension("mid"));
+                              });
+}
+
 void MainComponent::exportMixdownInteractive() {
     fileChooser_ = std::make_unique<juce::FileChooser>(
         "Export mixdown", juce::File::getSpecialLocation(juce::File::userMusicDirectory).getChildFile("DawLab mixdown.wav"),
@@ -1193,6 +1253,7 @@ void MainComponent::resized() {
 void MainComponent::getAllCommands(juce::Array<juce::CommandID>& c) {
     const juce::CommandID ids[] = {CommandIDs::newProject, CommandIDs::openProject, CommandIDs::saveProject,
                 CommandIDs::saveProjectAs, CommandIDs::undo, CommandIDs::redo, CommandIDs::loadDemoSong, CommandIDs::loadAudioIntoTrack, CommandIDs::exportMixdown,
+                CommandIDs::importMidi, CommandIDs::exportMidi,
                 CommandIDs::showAudioSettings, juce::StandardApplicationCommandIDs::quit, CommandIDs::playStop,
                 CommandIDs::returnToStart, CommandIDs::toggleLoop, CommandIDs::seekBackOneBar, CommandIDs::seekForwardOneBar,
                 CommandIDs::toggleRecord, CommandIDs::togglePunch, CommandIDs::setRecordingTrim, CommandIDs::toggleMidiReplace, CommandIDs::toggleArmSelected, CommandIDs::cycleMonitorSelected,
@@ -1258,6 +1319,14 @@ void MainComponent::getCommandInfo(juce::CommandID id, juce::ApplicationCommandI
     case CommandIDs::exportMixdown:
         info.setInfo("Export mixdown...", "Bounce the song to a WAV file", CommandCategories::file, 0);
         info.addDefaultKeypress('e', cmd);
+        info.setActive(idle);
+        break;
+    case CommandIDs::importMidi:
+        info.setInfo("Import MIDI file...", "A Standard MIDI File as new instrument tracks, with its tempos", CommandCategories::file, 0);
+        info.setActive(idle);
+        break;
+    case CommandIDs::exportMidi:
+        info.setInfo("Export MIDI file...", "The instrument tracks' notes and the tempo map as a Standard MIDI File", CommandCategories::file, 0);
         info.setActive(idle);
         break;
     case CommandIDs::showAudioSettings:
@@ -1404,6 +1473,8 @@ bool MainComponent::perform(const InvocationInfo& info) {
     case CommandIDs::saveProject: saveProjectInteractive(false); break;
     case CommandIDs::saveProjectAs: saveProjectInteractive(true); break;
     case CommandIDs::exportMixdown: exportMixdownInteractive(); break;
+    case CommandIDs::importMidi: importMidiInteractive(); break;
+    case CommandIDs::exportMidi: exportMidiInteractive(); break;
     case CommandIDs::showAudioSettings: showAudioSettings(); break;
     case juce::StandardApplicationCommandIDs::quit:
         if (auto* app = juce::JUCEApplicationBase::getInstance())
@@ -1473,6 +1544,9 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
         m.addCommandItem(cm, CommandIDs::loadAudioIntoTrack);
         m.addSeparator();
         m.addCommandItem(cm, CommandIDs::exportMixdown);
+        m.addSeparator();
+        m.addCommandItem(cm, CommandIDs::importMidi);
+        m.addCommandItem(cm, CommandIDs::exportMidi);
         m.addSeparator();
         m.addCommandItem(cm, CommandIDs::showAudioSettings);
         m.addSeparator();

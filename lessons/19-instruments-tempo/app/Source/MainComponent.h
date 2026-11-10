@@ -139,6 +139,11 @@ public:
     // Deletes the selected track with its clips and inserts (their editors close first); the
     // track that takes its place becomes the selection. False if nothing was deleted.
     bool deleteSelectedTrack();
+    // Chapter 19: MIDI files (MidiFileIO.h). They say on the status line what they did.
+    bool importMidi(const juce::File& file);
+    bool exportMidi(const juce::File& file);
+    void importMidiInteractive();
+    void exportMidiInteractive();
     void exportMixdownInteractive(); // file chooser, then exportMixdown()
     void exportMixdown(const juce::File& file);
     void showAudioSettings();

@@ -1350,6 +1350,9 @@ void testTempoMap() {
     // The grid and the loop (in bars: ticks) follow the map.
     DAWLAB_CHECK(tr.isLoopInTicks() && tr.getLoopStart() == 0 && tr.getLoopEnd() == session.sampleOfTick(4 * 3840));
     DAWLAB_CHECK(tr.getLoopEnd() == 96000 + 3 * 192000);
+    // Snapping goes to the nearest BEAT, wherever the map puts it: 24000 samples apart in bar 1, 48000 in bar 2.
+    DAWLAB_CHECK(main.getArrangement().snapToBeat(20000.0, true) == 24000 && main.getArrangement().snapToBeat(96000.0 + 30000.0, true) == 144000);
+    DAWLAB_CHECK(main.getArrangement().snapToBeat(20000.0, false) == 20000);
 
     // An instrument track's notes follow it: a note at bar 2 beat 2 (tick 4800) sounds from 96000 + 48000.
     const TrackId synth = main.addTrack(TrackFormat::Mono, true);
@@ -1434,10 +1437,89 @@ void testTempoMap() {
         same = map.point(i).tick == before[static_cast<size_t>(i)].tick && map.point(i).bpm == before[static_cast<size_t>(i)].bpm &&
                map.point(i).rampToNext == before[static_cast<size_t>(i)].rampToNext;
     DAWLAB_CHECK(same && tr.isLoopInTicks() && tr.getLoopStart() == session.sampleOfTick(3840) && tr.getLoopEnd() == session.sampleOfTick(3 * 3840));
+    // Another sample rate: a loop in ticks is not a number of samples to scale. It stays in ticks, on its bars.
+    session.handleSampleRateChange(48000.0, 24000.0);
+    DAWLAB_CHECK(tr.isLoopInTicks() && tr.getLoopStartValue() == 3840 && tr.getLoopEndValue() == 3 * 3840);
     // A new project has one tempo again.
     session.newProject();
     DAWLAB_CHECK(session.getTempoMap().size() == 1 && tr.getTempo() == 120.0);
     engine.applyPendingCommandsOffline();
+    engine.collectGarbage();
+}
+
+// Chapter 19: MIDI files in and out, with the tempo map.
+void testMidiFiles() {
+    std::printf("MIDI files\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    Session& session = main.getSession();
+    Engine& engine = main.getEngine();
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    TakesFolder folder;
+    const juce::File file = folder.get().getChildFile("song.mid");
+    DAWLAB_CHECK(!main.exportMidi(file) && main.getStatus().contains("Nothing to export"));
+
+    // Two instrument tracks, a quantized clip with an offset, a muted one, and a map with a ramp.
+    const TrackId bass = main.addTrack(TrackFormat::Mono, true);
+    const TrackId lead = main.addTrack(TrackFormat::Mono, true);
+    session.setStripName(session.trackRef(bass), "Bass");
+    MidiClipModel a = midiClip(3840, {{0, 240, 30, 90, 0}, {500, 480, 36, 100, 0}, {2000, 400, 40, 80, 1}, {4000, 960, 43, 70, 0}});
+    a.offset = 480;
+    a.quantize = {480, 1.0, 0.0};
+    a.controllers = {{100, 64, 127, 0}, {1000, 64, 0, 0}};
+    MidiClipModel muted = midiClip(0, {{0, 100, 99, 100, 0}});
+    muted.muted = true;
+    session.setMidiClips(bass, {muted, a});
+    session.setMidiClips(lead, {midiClip(0, {{0, 960, 72, 64, 0}})});
+    DAWLAB_CHECK(session.setTempoPoints({{0, 120.0, true}, {960, 60.0, false}, {7680, 100.0, false}}, "Tempo"));
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(main.exportMidi(file) && main.getStatus().startsWith("Exported 2 tracks, 4 notes"));
+
+    // Into a new project: the notes as they played, the tempos as steps.
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    const int tracksBefore = session.getNumTracks();
+    const size_t undoBefore = session.getHistory().undoCount();
+    DAWLAB_CHECK(main.importMidi(file));
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(session.getNumTracks() == tracksBefore + 2 && session.getHistory().undoCount() == undoBefore + 1);
+    const TrackId in0 = session.getTrackId(tracksBefore), in1 = session.getTrackId(tracksBefore + 1);
+    DAWLAB_CHECK(session.isInstrument(in0) && session.getStripName(session.trackRef(in0)) == "Bass" && session.getMidiClips(in0).size() == 1);
+    if (session.getMidiClips(in0).size() == 1 && session.getMidiClips(in1).size() == 1) {
+        const MidiClipModel& c = session.getMidiClips(in0)[0];
+        // 36 quantized to 480 = the window's start: at 3840; 40 at 3840 + 1440; 43 cut at the clip's end.
+        const std::vector<engine::Note> want = {{3840, 480, 36, 100, 0}, {3840 + 1440, 400, 40, 80, 1}, {3840 + 3360, 480, 43, 70, 0}};
+        DAWLAB_CHECK(c.played == want && c.start == 0 && c.length == 2 * 3840 && c.name == "Bass");
+        DAWLAB_CHECK(c.controllers.size() == 1 && c.controllers[0].tick == 3840 + 520 && c.controllers[0].value == 0);
+        DAWLAB_CHECK(session.getMidiClips(in1)[0].played.size() == 1 && session.getMidiClips(in1)[0].played[0].pitch == 72);
+    }
+    // The ramp from 120 to 60 over a beat came as 4 steps of a sixteenth, then 60 and 100.
+    const engine::TempoMap& map = session.getTempoMap();
+    DAWLAB_CHECK(map.size() == 6 && map.point(1).tick == 240 && map.point(4).tick == 960 && map.point(5).tick == 7680);
+    DAWLAB_CHECK(map.point(0).bpm < 120.0 && map.point(0).bpm > map.point(1).bpm && map.point(3).bpm > 60.0 &&
+                 std::abs(map.point(4).bpm - 60.0) < 1e-9 && std::abs(map.point(5).bpm - 100.0) < 1e-9);
+    // The steps keep the time: every sixteenth of the ramp, and bar 3, are where the ramp put them (a file's tempo
+    // is a whole number of microseconds a beat: that is all that is lost).
+    engine::TempoMap original;
+    original.set({{0, 120.0, true}, {960, 60.0, false}, {7680, 100.0, false}});
+    double off = 0.0;
+    for (const double tick : {240.0, 480.0, 720.0, 960.0, 7680.0})
+        off = std::max(off, std::abs(map.secondsAt(tick) - original.secondsAt(tick)));
+    std::printf("  2 tracks and a map with a ramp out and in again: %d tempo points, the ramp's sixteenths and bar 3 off by at most %.4f ms\n",
+                map.size(), off * 1e3);
+    DAWLAB_CHECK(off < 0.00002);
+    // One undo step takes the tracks and the tempos back.
+    DAWLAB_CHECK(main.undo() && session.getNumTracks() == tracksBefore && session.getTempoMap().size() == 1);
+    DAWLAB_CHECK(main.redo() && session.getNumTracks() == tracksBefore + 2 && session.getTempoMap().size() == 6);
+    engine.applyPendingCommandsOffline();
+
+    // Not a MIDI file, and no file.
+    const juce::File bad = folder.get().getChildFile("bad.mid");
+    bad.replaceWithText("RIFF....WAVE");
+    DAWLAB_CHECK(!main.importMidi(bad) && main.getStatus().contains("not a MIDI file"));
+    DAWLAB_CHECK(!main.importMidi(folder.get().getChildFile("none.mid")) && main.getStatus().contains("cannot read"));
+    DAWLAB_CHECK(session.getNumTracks() == tracksBefore + 2);
     engine.collectGarbage();
 }
 
@@ -1530,6 +1612,33 @@ void testMidiRecording() {
     }
     DAWLAB_CHECK(main.undo() && session.getMidiClips(synth)[0].played.size() == 1); // the old note back
 
+    // Chapter 19: a loop of bar 1 at 120 BPM, and 60 BPM from bar 2. A key in the second pass, at beat 2, is at beat 2:
+    // its time must be wrapped into the loop before the map is asked, or it would be read at the tempo after the loop.
+    DAWLAB_CHECK(session.setTempoMap({{0, 120.0, false}, {3840, 60.0, false}}));
+    tr.setLoopRangeBars(1, 1);
+    tr.setLoopEnabled(true);
+    tr.setPosition(0);
+    main.setMidiRecordMode(MidiRecordMode::Overdub);
+    {
+        Keyboard kb(main);
+        kb.note(3840 + 960, 240, 70);
+        DAWLAB_CHECK(main.toggleRecord());
+        kb.play(0, 300); // 1.6 passes
+        tr.stop();
+        kb.play(300, 1);
+        main.tick();
+    }
+    tr.setLoopEnabled(false);
+    std::int64_t at = -1;
+    for (const MidiClipModel& c : session.getMidiClips(synth))
+        for (const engine::Note& n : c.played)
+            if (n.pitch == 70)
+                at = c.start + n.start - c.offset;
+    std::printf("  a loop of bar 1 before a tempo change, a key in the second pass at beat 2: recorded at tick %lld\n", static_cast<long long>(at));
+    DAWLAB_CHECK(at == 960);
+    DAWLAB_CHECK(main.undo());
+    DAWLAB_CHECK(session.setTempoMap({{0, 120.0, false}}));
+
     // Nothing armed: nothing starts. An armed instrument track and an armed audio track: both record.
     DAWLAB_CHECK(main.setArmed(synth, false));
     DAWLAB_CHECK(!main.toggleRecord() && !main.getMidiRecording().isRecording());
@@ -1547,6 +1656,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testMidiEditing();
     testMidiRecording();
     testTempoMap();
+    testMidiFiles();
     testAutomation();
     testRecording();
 

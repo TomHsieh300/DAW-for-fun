@@ -56,6 +56,10 @@ set(L19_APP_SOURCES
     Source/PianoRoll.cpp
     Source/TempoLane.h
     Source/TempoLane.cpp
+    Source/MidiFile.h
+    Source/MidiFile.cpp
+    Source/MidiFileIO.h
+    Source/MidiFileIO.cpp
     Source/ProjectFormat.h
     Source/ProjectFormat.cpp
     Source/ProjectIO.h

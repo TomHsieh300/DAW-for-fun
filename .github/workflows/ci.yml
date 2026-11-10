@@ -7,8 +7,8 @@
 #   tsan  chapters 15-19 under ThreadSanitizer: their checks run a real audio thread next to the
 #         UI thread, and TSan fails the run on any data race between them
 #   asan  every pure C++ chapter under AddressSanitizer and UndefinedBehaviorSanitizer
-#   juce  chapters 13-18 with JUCE, including the smoke tests and snapshots of DawLab 8, 15, 16, 17 and
-#         18, on Windows, Linux (x64 and ARM64) and macOS
+#   juce  chapters 13-19 with JUCE, including the smoke tests and snapshots of DawLab 8 and 15 to
+#         19, on Windows, Linux (x64 and ARM64) and macOS
 #
 # Linux ARM64 (ubuntu-24.04-arm) stands in for embedded aarch64 boards with NXP's i.MX 95. Like macOS
 # it was allowed to fail at first; every job of every platform must pass since it passed for weeks.
@@ -132,19 +132,19 @@ jobs:
       - name: Build and test (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: .\scripts\build.ps1 -Only 13-vst-hosting,14-daw-8track,15-daw-growing,16-automation,17-recording,18-midi -Juce -Config Release
+        run: .\scripts\build.ps1 -Only 13-vst-hosting,14-daw-8track,15-daw-growing,16-automation,17-recording,18-midi,19-instruments-tempo -Juce -Config Release
 
       # The apps' smoke tests and snapshots create real windows, so give them a virtual X display
       - name: Build and test (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run -a ./scripts/build.sh --only 13-vst-hosting,14-daw-8track,15-daw-growing,16-automation,17-recording,18-midi --juce --config Release
+        run: xvfb-run -a ./scripts/build.sh --only 13-vst-hosting,14-daw-8track,15-daw-growing,16-automation,17-recording,18-midi,19-instruments-tempo --juce --config Release
 
       # macOS runners have a desktop session, so the GUI tests need no virtual display
       - name: Build and test (macOS)
         if: runner.os == 'macOS'
-        run: ./scripts/build.sh --only 13-vst-hosting,14-daw-8track,15-daw-growing,16-automation,17-recording,18-midi --juce --config Release
+        run: ./scripts/build.sh --only 13-vst-hosting,14-daw-8track,15-daw-growing,16-automation,17-recording,18-midi,19-instruments-tempo --juce --config Release
 
-      - name: Upload the snapshots of DawLab 8, 15, 16 and 17
+      - name: Upload the snapshots of DawLab 8 and 15 to 19
         if: always()
         uses: actions/upload-artifact@v7
         with:
@@ -154,4 +154,6 @@ jobs:
             build/dawlab_output/l15_app_snapshot*.png
             build/dawlab_output/l16_app_snapshot*.png
             build/dawlab_output/l17_app_snapshot*.png
+            build/dawlab_output/l18_app_snapshot*.png
+            build/dawlab_output/l19_app_snapshot*.png
           if-no-files-found: ignore

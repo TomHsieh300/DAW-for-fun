@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](README.zh-TW.md)
 
-> **Status: in progress.** Steps 1-4 of 6.
+> **Status: in progress.** Steps 1-5 of 6.
 
 DawLab 18 (chapter 18) plays notes at one tempo, on its own synth, and its engine already lets another instrument
 take the synth's place - but only its exercises use that. This chapter finishes what chapter 18 left: a tempo that
@@ -43,7 +43,7 @@ After this chapter you can
 | 2 | [A transport on a tempo map](docs/step-02-transport.md) | segments that carry their ticks, a loop in ticks with exact edges, a new map while it plays keeps the musical place, a metronome; what moves with the tempo and what does not | done |
 | 3 | [Instrument latency](docs/step-03-latency.md) | an instrument's latency in its track's, chapter 14's compensation, what a key played now costs, low-latency monitoring, recording that does not move | done |
 | 4 | [The engine](docs/step-04-engine.md) | a copy of chapter 18's engine: a tempo map passed between threads in a triple buffer, segments with ticks, a MIDI player that keeps notes through tempo changes, instrument latency in the plan, low-latency monitoring | done |
-| 5 | The app: tempo | a copy of chapter 18's app: a tempo lane, undo, the project file, MIDI files with tempo changes | planned |
+| 5 | [The app: tempo](docs/step-05-app-tempo.md) | a copy of chapter 18's app: the map in the session and one edit for it, a ruler, a grid and a loop that follow it, project format 7, a tempo lane, MIDI files in and out with their tempo changes | done |
 | 6 | The app: instruments | a synth panel that undo and the project file know, VST3 instruments on tracks | planned |
 
 </div>

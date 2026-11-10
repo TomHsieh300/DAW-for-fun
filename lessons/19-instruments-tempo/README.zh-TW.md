@@ -2,7 +2,7 @@
 
 [English](README.md) | **繁體中文**
 
-> **狀態：進行中。** 6 個 step 中的第 1-4 個。
+> **狀態：進行中。** 6 個 step 中的第 1-5 個。
 
 DawLab 18（第 18 章）以單一 tempo、用它自己的 synth 播放音符，而它的 engine 已經可以讓另一個樂器取代 synth——但只有練習用到這一點。本章完成第 18 章留下的事：會改變的 tempo，有跳躍也有 ramp，音符跟著它走；latency 有補償的樂器；以及 app 這一側——tempo lane、帶 tempo 變化的 MIDI 檔、undo 和專案檔都認得的 synth 設定面板，以及 track 上的 VST3 樂器。
 
@@ -36,7 +36,7 @@ DawLab 18（第 18 章）以單一 tempo、用它自己的 synth 播放音符，
 | 2 | [Tempo map 上的 transport](docs/step-02-transport.zh-TW.md) | 帶著 tick 的 segment、以 tick 表示且邊界精確的 loop、播放時換 map 仍保留音樂上的位置、節拍器；什麼跟著 tempo 動、什麼不動 | 完成 |
 | 3 | [樂器的 latency](docs/step-03-latency.zh-TW.md) | 樂器的 latency 算進 track 的、第 14 章的補償、現在彈的鍵的代價、low-latency monitoring、不會移動的錄音 | 完成 |
 | 4 | [Engine](docs/step-04-engine.zh-TW.md) | 第 18 章 engine 的複本：以 triple buffer 跨 thread 傳遞的 tempo map、帶 tick 的 segment、tempo 改變時不切斷音符的 MIDI player、計入補償的樂器 latency、low-latency monitoring | 完成 |
-| 5 | App：tempo | 第 18 章 app 的複本：tempo lane、undo、專案檔、帶 tempo 變化的 MIDI 檔 | 規劃中 |
+| 5 | [App：tempo](docs/step-05-app-tempo.zh-TW.md) | 第 18 章 app 的複本：session 裡的 map 和它的一個 edit、跟著它走的 ruler、grid 和 loop、專案檔格式 7、tempo lane、帶 tempo 變化進出的 MIDI 檔 | 完成 |
 | 6 | App：樂器 | undo 和專案檔都認得的 synth 面板、track 上的 VST3 樂器 | 規劃中 |
 
 </div>

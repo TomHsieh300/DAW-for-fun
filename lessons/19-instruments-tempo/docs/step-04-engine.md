@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-04-engine.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 3 - Instrument latency](step-03-latency.md) | Next: Step 5 - The app: tempo (coming)
+[Overview](../README.md) | Previous: [Step 3 - Instrument latency](step-03-latency.md) | Next: [Step 5 - The app: tempo](step-05-app-tempo.md)
 
 ## Goal
 

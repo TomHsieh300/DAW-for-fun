@@ -2,7 +2,7 @@
 
 [English](step-04-engine.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 3 - 樂器的 latency](step-03-latency.zh-TW.md) | 下一步：Step 5 - App：tempo（即將推出）
+[總覽](../README.zh-TW.md) | 上一步：[Step 3 - 樂器的 latency](step-03-latency.zh-TW.md) | 下一步：[Step 5 - App：tempo](step-05-app-tempo.zh-TW.md)
 
 ## 目標
 

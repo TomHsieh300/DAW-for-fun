@@ -24,6 +24,8 @@ enum : juce::CommandID {
     saveProjectAs,
     exportMixdown,
     showAudioSettings,
+    importMidi = 0x2051,  // chapter 19: a Standard MIDI File as new instrument tracks, with its tempos
+    exportMidi,
     // (quit is juce::StandardApplicationCommandIDs::quit)
 
     // Transport

@@ -49,6 +49,9 @@ l19_add_test(l19_test_tempo             tests/test_tempo.cpp)
 # every build, not only with -Juce.
 l19_add_test(l19_test_project_format    tests/test_project_format.cpp app/Source/ProjectFormat.cpp)
 target_include_directories(l19_test_project_format PRIVATE app/Source)
+# The same for Standard MIDI Files (chapter 19, Step 5).
+l19_add_test(l19_test_midi_file         tests/test_midi_file.cpp app/Source/MidiFile.cpp)
+target_include_directories(l19_test_midi_file PRIVATE app/Source)
 
 # ---- Steps 5 and 6: the JUCE application "DawLab 19" ---------------------------------------------
 # Needs -DDAWLAB_WITH_JUCE=ON (build.ps1 -Juce). Without JUCE the chapter stops here.

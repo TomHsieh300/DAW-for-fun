@@ -42,13 +42,13 @@ The course is **bilingual (English / Traditional Chinese)**. English is the prim
 
 ### Linux (verified on Ubuntu 24.04)
 
-Every chapter, including the JUCE parts of chapters 13–18, builds and passes all its tests on **Ubuntu 24.04 LTS with GCC 13.3 and CMake 3.28**. CI checks this on every push, including the smoke tests and snapshots of `DawLab 8`, `DawLab 15`, `DawLab 16`, `DawLab 17` and `DawLab 18`, the ThreadSanitizer run of chapters 15 to 19, and an AddressSanitizer + UndefinedBehaviorSanitizer run of every pure C++ chapter.
+Every chapter, including the JUCE parts of chapters 13–19, builds and passes all its tests on **Ubuntu 24.04 LTS with GCC 13.3 and CMake 3.28**. CI checks this on every push, including the smoke tests and snapshots of `DawLab 8`, `DawLab 15`, `DawLab 16`, `DawLab 17`, `DawLab 18` and `DawLab 19`, the ThreadSanitizer run of chapters 15 to 19, and an AddressSanitizer + UndefinedBehaviorSanitizer run of every pure C++ chapter.
 
 1. Install the compiler and CMake:
    ```bash
    sudo apt install build-essential cmake git
    ```
-2. The JUCE parts of chapters 13–18 need JUCE's system dependencies (ALSA / JACK, X11, freetype, fontconfig, OpenGL, webkit2gtk, curl; see `third_party/JUCE/docs/Linux Dependencies.md`):
+2. The JUCE parts of chapters 13–19 need JUCE's system dependencies (ALSA / JACK, X11, freetype, fontconfig, OpenGL, webkit2gtk, curl; see `third_party/JUCE/docs/Linux Dependencies.md`):
    ```bash
    sudo apt install libasound2-dev libjack-jackd2-dev ladspa-sdk libfreetype-dev libfontconfig1-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libglu1-mesa-dev mesa-common-dev libcurl4-openssl-dev libwebkit2gtk-4.1-dev
    ```
@@ -58,7 +58,7 @@ Every chapter, including the JUCE parts of chapters 13–18, builds and passes a
 
 ### macOS (pure C++ chapters verified in CI)
 
-Install the command-line tools and CMake (`xcode-select --install`, `brew install cmake`), then use `./scripts/build.sh` as on Linux. The pure C++ chapters (00–12, and the engine parts of 14 to 18) build and pass all their tests with Apple Clang on GitHub's `macos-latest` runner, in Debug and Release, on every push (see the CI badge above). The JUCE parts of chapters 13–18 are built there too, but not yet verified: the CI job is allowed to fail while it settles.
+Install the command-line tools and CMake (`xcode-select --install`, `brew install cmake`), then use `./scripts/build.sh` as on Linux. The pure C++ chapters (00–12, and the engine parts of 14 to 18) build and pass all their tests with Apple Clang on GitHub's `macos-latest` runner, in Debug and Release, on every push (see the CI badge above). The JUCE parts of chapters 13–19 are built there too, but not yet verified: the CI job is allowed to fail while it settles.
 
 ## Building, running and testing
 
@@ -68,7 +68,7 @@ Run all commands in PowerShell from the project root (`scripts/build.ps1` runs c
 .\scripts\build.ps1                                   # all pure C++ parts (00–12, the engines and steps of 14 to 17), Debug, and run all tests
 .\scripts\build.ps1 -Only 02-filter                   # build only chapter 02
 .\scripts\build.ps1 -Only 02-filter,03-eq             # several chapters, comma-separated
-.\scripts\build.ps1 -Juce                             # also build the JUCE parts of chapters 13–18
+.\scripts\build.ps1 -Juce                             # also build the JUCE parts of chapters 13–19
 .\scripts\build.ps1 -Only 14-daw-8track -Juce         # build only chapter 14
 .\scripts\build.ps1 -Only 15-daw-growing -Juce        # build only chapter 15, with its app
 .\scripts\build.ps1 -Config Release                   # Release configuration (RelWithDebInfo is also available)
@@ -108,7 +108,8 @@ It uses a single-config generator (Ninja if installed, otherwise Makefiles), so 
 | Chapter 16 DAW | `build\bin\Debug\DawLab 16.exe` |
 | Chapter 17 DAW | `build\bin\Debug\DawLab 17.exe` |
 | Chapter 18 DAW | `build\bin\Debug\DawLab 18.exe` |
-| On Linux / macOS | `build/bin/lNN_*`, `build/bin/DawLab 8`, `build/bin/DawLab 15`, `build/bin/DawLab 16`, `build/bin/DawLab 17` and `build/bin/DawLab 18` (no `Debug/` subfolder, no `.exe`); the VST3 bundles are at `build/lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/VST3/DawLabCompressor.vst3` |
+| Chapter 19 DAW | `build\bin\Debug\DawLab 19.exe` |
+| On Linux / macOS | `build/bin/lNN_*`, `build/bin/DawLab 8`, `build/bin/DawLab 15`, `build/bin/DawLab 16`, `build/bin/DawLab 17`, `build/bin/DawLab 18` and `build/bin/DawLab 19` (no `Debug/` subfolder, no `.exe`); the VST3 bundles are at `build/lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/VST3/DawLabCompressor.vst3` |
 
 </div>
 
@@ -123,6 +124,7 @@ cd build
 & ".\bin\Debug\DawLab 16.exe"                         # chapter 16: draw and record automation
 & ".\bin\Debug\DawLab 17.exe"                         # chapter 17: record from the audio input
 & ".\bin\Debug\DawLab 18.exe"                         # chapter 18: instruments, MIDI clips, a keyboard
+& ".\bin\Debug\DawLab 19.exe"                         # chapter 19: a tempo lane, MIDI files
 ```
 
 **ctest labels**: `example` (examples, which run to completion with no arguments), `solution` (exercise solutions, which check themselves numerically) and `test` (regression tests for components and the engine). The starter code in `exercises/starter/` is only built, not registered as tests: it contains `// TODO`s, and printing FAIL when you run it is expected.
@@ -147,7 +149,7 @@ cd build
 | `lessons/NN-name/exercises/` | exercises (README.md) and starter code (starter/) |
 | `lessons/NN-name/solutions/` | answers and explanations for all exercises, plus complete programs for the programming ones |
 | `lessons/NN-name/tests/` | (some chapters) component regression tests |
-| `third_party/JUCE/` | JUCE 9.0.4 (chapters 13–18) |
+| `third_party/JUCE/` | JUCE 9.0.4 (chapters 13–19) |
 
 </div>
 
@@ -180,7 +182,7 @@ The chapters go in numeric order, and every chapter uses components from the ear
 | [16](lessons/16-automation/README.md) | Automation | points on the timeline with normalized values, sample-accurate playback, Read / Touch / Latch / Write with recording and thinning, targets that survive moves, undo and the project file, faders that wait for delayed audio | **DawLab 16**: lanes under the tracks, points to draw and drag, the mode switch |
 | [17](lessons/17-recording/README.md) | Recording | from the audio input to a clip: a ring that keeps the time when the disk stalls, latency-corrected placement, a take that survives a crash, punch and loop, input monitoring | **DawLab 17**: a record button, armed tracks, takes that become clips, punch, takes of a loop, takes recovered after a crash |
 | [18](lessons/18-midi/README.md) | MIDI | notes in musical time, sample-accurate events, MIDI clips without hanging notes, a polyphonic instrument, a keyboard through a lock-free FIFO, recording and quantize | **DawLab 18**: instrument tracks, MIDI clips, a piano roll, a keyboard, MIDI recording, quantize |
-| [19](lessons/19-instruments-tempo/README.md) | Instruments and tempo (in progress) | a tempo map of jumps and ramps, blocks across tempo changes, instrument latency compensation | **DawLab 19**: planned |
+| [19](lessons/19-instruments-tempo/README.md) | Instruments and tempo (in progress) | a tempo map of jumps and ramps, blocks across tempo changes, instrument latency compensation | **DawLab 19**: a tempo lane, MIDI files with tempo changes (instruments: in progress) |
 
 </div>
 
