@@ -83,6 +83,19 @@ struct InsertSnapshot {
     std::vector<OwnedLane> lanes;                       // its automation (chapter 16)
 };
 
+// What a track plays its notes with, as values (chapter 19, Step 6): the built-in synth's sound, and - if one is
+// in the synth's place - a plugin instrument by its file and its own state.
+struct InstrumentSnapshot {
+    engine::VoiceSettings synth;
+    juce::String pluginFile; // empty: the built-in synth
+    juce::MemoryBlock pluginState;
+};
+
+inline bool sameSound(const engine::VoiceSettings& a, const engine::VoiceSettings& b) noexcept {
+    return a.cutoffHz == b.cutoffHz && a.resonance == b.resonance && a.attack == b.attack && a.decay == b.decay &&
+           a.sustain == b.sustain && a.release == b.release && a.level == b.level;
+}
+
 struct SendSnapshot {
     float levelDb = kMinusInfinityDb;
     bool preFader = false;
@@ -103,6 +116,7 @@ struct TrackSnapshot {
     std::vector<OwnedLane> lanes;    // of its fader and pan; its effects' are in `inserts`
     bool instrument = false;                // chapter 18
     std::vector<MidiClipModel> midiClips;   // chapter 18
+    InstrumentSnapshot sound;               // chapter 19
 };
 
 namespace edit {
@@ -165,6 +179,11 @@ struct SetBypass {
 struct SetTempo {
     double bpm = 120.0;
 };
+// Chapter 19: a track's instrument - the synth's settings changed, a plugin put in its place or taken out.
+struct SetInstrumentSound {
+    engine::TrackId track;
+    InstrumentSnapshot sound;
+};
 // Chapter 19: the whole tempo map - a point added, moved, deleted, a ramp switched, an imported MIDI file.
 struct SetTempoMap {
     std::vector<engine::TempoPoint> points;
@@ -179,7 +198,7 @@ struct SetLane {
 
 using Edit = std::variant<edit::AddTrack, edit::RemoveTrack, edit::SetValue, edit::Rename, edit::SetFormat, edit::SetClips,
                           edit::SetInsert, edit::SetParameter, edit::SetBypass, edit::SetTempo, edit::SetLane, edit::SetMidiClips,
-                          edit::SetInstrument, edit::SetTempoMap>;
+                          edit::SetInstrument, edit::SetTempoMap, edit::SetInstrumentSound>;
 
 // What the History applies edits to (the Session). Returns the inverse, or nothing when the edit
 // does not apply (its track is gone, its slot is empty...) - then nothing changed.

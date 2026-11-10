@@ -60,6 +60,10 @@ set(L19_APP_SOURCES
     Source/MidiFile.cpp
     Source/MidiFileIO.h
     Source/MidiFileIO.cpp
+    Source/PluginInstrument.h
+    Source/PluginInstrument.cpp
+    Source/SynthPanel.h
+    Source/SynthPanel.cpp
     Source/ProjectFormat.h
     Source/ProjectFormat.cpp
     Source/ProjectIO.h

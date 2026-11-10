@@ -1,6 +1,7 @@
 #include "MainComponent.h"
 
 #include "MidiFileIO.h"
+#include "PluginInstrument.h"
 
 #include "EffectMenu.h"
 #include "VstInsert.h"
@@ -78,6 +79,19 @@ MainComponent::MainComponent(Mode mode) : mode_(mode) {
             vst = std::make_unique<VstInsert>(std::move(hosted));
         }
         return vst;
+    };
+    // Chapter 19: a plugin instrument for a track, the same way - and only what can be an instrument.
+    session_.createPluginInstrument = [this](const juce::File& file, const juce::MemoryBlock& state, juce::String& error) {
+        std::unique_ptr<PluginInstrument> plugin;
+        if (auto instance = pluginHost_.loadFromFile(file, engine_.getSampleRate(), engine_.getMaxBlockSize(), error)) {
+            if (!PluginInstrument::isInstrument(*instance)) {
+                error = instance->getName() + " is not an instrument: it takes no MIDI or makes no sound";
+                return plugin;
+            }
+            plugin = std::make_unique<PluginInstrument>(std::move(instance));
+            plugin->setState(state);
+        }
+        return plugin;
     };
     session_.onInsertWillBeRemoved = [this](engine::InsertEffect* fx) {
         parameterWindows_.erase(fx);
@@ -172,6 +186,8 @@ MainComponent::~MainComponent() {
     removeKeyListener(commandManager_.getKeyMappings());
     session_.onInsertWillBeRemoved = nullptr;
     session_.createVst3 = nullptr;
+    session_.createPluginInstrument = nullptr;
+    synthPanel_.reset();
     setLookAndFeel(nullptr);
 }
 
@@ -185,6 +201,9 @@ void MainComponent::tick() {
     if (!isExporting())
         engine_.collectGarbage();
     session_.collectAutomation();
+    // Chapter 19: the synth panel shows the selected track.
+    if (synthPanel_ != nullptr && synthPanel_->isVisible() && synthPanel_->getPanel().getTrack() != arrangement_.getSelectedTrack())
+        synthPanel_->getPanel().showTrack(arrangement_.getSelectedTrack());
     // Chapter 19: the tempo lane shares the arrangement's time axis, and follows its scrolling and zooming.
     if (arrangement_.getViewStart() != laneViewStart_ || arrangement_.getSamplesPerPixel() != laneSamplesPerPixel_) {
         laneViewStart_ = arrangement_.getViewStart();
@@ -822,6 +841,56 @@ void MainComponent::finishClipConversion(double from, double to, const Converted
 
 // ---- export -------------------------------------------------------------------------------------------
 
+SynthPanelWindow* MainComponent::showSynthPanel() {
+    if (mode_ == Mode::Offline)
+        return nullptr;
+    if (synthPanel_ == nullptr) {
+        synthPanel_ = std::make_unique<SynthPanelWindow>(session_, &lookAndFeel_);
+        synthPanel_->centreWithSize(synthPanel_->getWidth(), synthPanel_->getHeight());
+    }
+    synthPanel_->getPanel().showTrack(arrangement_.getSelectedTrack());
+    synthPanel_->setVisible(true);
+    synthPanel_->toFront(true);
+    return synthPanel_.get();
+}
+
+bool MainComponent::loadPluginInstrument(engine::TrackId track, const juce::File& file) {
+    if (!session_.isInstrument(track)) {
+        setStatus("A plugin instrument needs an instrument track (Track > Add instrument track)");
+        return false;
+    }
+    juce::String why;
+    if (!session_.setPluginInstrument(track, file, &why)) {
+        setStatus("Plugin instrument not loaded: " + (why.isNotEmpty() ? why : juce::String("refused")));
+        return false;
+    }
+    const PluginInstrument* plugin = session_.getPluginInstrument(track);
+    setStatus(session_.getStripName(session_.trackRef(track)) + " plays " + (plugin != nullptr ? plugin->getName() : file.getFileName()) +
+              (plugin != nullptr && plugin->getLatencySamples() > 0 ? " (latency " + juce::String(plugin->getLatencySamples()) + " samples, compensated)" : ""));
+    return true;
+}
+
+bool MainComponent::useBuiltinSynth(engine::TrackId track) {
+    if (session_.getPluginInstrument(track) == nullptr)
+        return false;
+    const bool done = session_.setPluginInstrument(track, juce::File());
+    if (done)
+        setStatus(session_.getStripName(session_.trackRef(track)) + " plays the built-in synth again");
+    return done;
+}
+
+void MainComponent::loadPluginInstrumentInteractive() {
+    const engine::TrackId track = arrangement_.getSelectedTrack();
+    fileChooser_ = std::make_unique<juce::FileChooser>("Load a VST3 instrument", juce::File(), "*.vst3");
+    juce::Component::SafePointer<MainComponent> safe(this);
+    fileChooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles |
+                                  juce::FileBrowserComponent::canSelectDirectories, // a .vst3 is a folder on some systems
+                              [safe, track](const juce::FileChooser& chooser) {
+                                  if (safe != nullptr && chooser.getResult() != juce::File())
+                                      safe->loadPluginInstrument(track, chooser.getResult());
+                              });
+}
+
 bool MainComponent::importMidi(const juce::File& file) {
     if (refuseWhileRecording("The import"))
         return false;
@@ -1259,6 +1328,7 @@ void MainComponent::getAllCommands(juce::Array<juce::CommandID>& c) {
                 CommandIDs::toggleRecord, CommandIDs::togglePunch, CommandIDs::setRecordingTrim, CommandIDs::toggleMidiReplace, CommandIDs::toggleArmSelected, CommandIDs::cycleMonitorSelected,
                 CommandIDs::selectNextTrack, CommandIDs::selectPreviousTrack, CommandIDs::toggleMuteSelected,
                 CommandIDs::toggleSoloSelected, CommandIDs::addMonoTrack, CommandIDs::addStereoTrack, CommandIDs::addInstrumentTrack,
+                CommandIDs::showSynthPanel, CommandIDs::loadPluginInstrument, CommandIDs::useBuiltinSynth,
                 CommandIDs::deleteSelectedTrack, CommandIDs::toggleAutomationLane, CommandIDs::zoomIn, CommandIDs::zoomOut, CommandIDs::showKeyboardShortcuts};
     c.addArray(ids, static_cast<int>(sizeof(ids) / sizeof(ids[0])));
 }
@@ -1425,6 +1495,18 @@ void MainComponent::getCommandInfo(juce::CommandID id, juce::ApplicationCommandI
         info.addDefaultKeypress('t', cmd);
         info.setActive(idle && session_.getNumTracks() < engine::kMaxTracks);
         break;
+    case CommandIDs::showSynthPanel:
+        info.setInfo("Synth settings...", "The built-in synth's sound for the selected track", CommandCategories::track, 0);
+        info.setActive(session_.isInstrument(arrangement_.getSelectedTrack()));
+        break;
+    case CommandIDs::loadPluginInstrument:
+        info.setInfo("Load VST3 instrument...", "A plugin instrument in the synth's place on the selected track", CommandCategories::track, 0);
+        info.setActive(idle && session_.isInstrument(arrangement_.getSelectedTrack()));
+        break;
+    case CommandIDs::useBuiltinSynth:
+        info.setInfo("Use the built-in synth", "Take the plugin instrument off the selected track", CommandCategories::track, 0);
+        info.setActive(idle && session_.getPluginInstrument(arrangement_.getSelectedTrack()) != nullptr);
+        break;
     case CommandIDs::addInstrumentTrack:
         info.setInfo("Add instrument track", "Add a synth track for MIDI below the selected one", CommandCategories::track, 0);
         info.addDefaultKeypress('t', cmd | ModifierKeys::altModifier);
@@ -1516,6 +1598,9 @@ bool MainComponent::perform(const InvocationInfo& info) {
     case CommandIDs::addMonoTrack: addTrack(engine::TrackFormat::Mono); break;
     case CommandIDs::addStereoTrack: addTrack(engine::TrackFormat::Stereo); break;
     case CommandIDs::addInstrumentTrack: addTrack(engine::TrackFormat::Mono, true); break;
+    case CommandIDs::showSynthPanel: showSynthPanel(); break;
+    case CommandIDs::loadPluginInstrument: loadPluginInstrumentInteractive(); break;
+    case CommandIDs::useBuiltinSynth: useBuiltinSynth(arrangement_.getSelectedTrack()); break;
     case CommandIDs::deleteSelectedTrack: deleteSelectedTrack(); break;
     case CommandIDs::toggleAutomationLane: arrangement_.toggleAutomation(arrangement_.getSelectedTrack()); break;
     case CommandIDs::zoomIn: arrangement_.zoom(1.5, ArrangementView::kHeaderWidth + 0.5f * (arrangement_.getWidth() - ArrangementView::kHeaderWidth)); break;
@@ -1580,6 +1665,10 @@ juce::PopupMenu MainComponent::getMenuForIndex(int index, const juce::String&) {
         m.addCommandItem(cm, CommandIDs::addStereoTrack);
         m.addCommandItem(cm, CommandIDs::addInstrumentTrack);
         m.addCommandItem(cm, CommandIDs::deleteSelectedTrack);
+        m.addSeparator();
+        m.addCommandItem(cm, CommandIDs::showSynthPanel);
+        m.addCommandItem(cm, CommandIDs::loadPluginInstrument);
+        m.addCommandItem(cm, CommandIDs::useBuiltinSynth);
         m.addSeparator();
         m.addCommandItem(cm, CommandIDs::toggleAutomationLane);
         m.addSeparator();

@@ -464,6 +464,48 @@ void testTempoMap() {
     DAWLAB_CHECK(readProject("DawLabProject 6\nsampleRate 48000\nloop 0 3840 1\n").ok);
 }
 
+// Chapter 19, Step 6: the synth's sound and a plugin instrument (format 7).
+void testInstrumentSound() {
+    ProjectState p;
+    TrackState a, b;
+    a.id = engine::TrackId{1};
+    a.strip.name = "Lead";
+    a.instrument = true;
+    a.synth = {8000.0, 2.5, 0.25, 0.123456789012345, 0.5, 1.5, 0.75};
+    a.instrumentFile = "C:/Plugins/My Synth.vst3";
+    a.instrumentState = "4....f9.";
+    b.id = engine::TrackId{2};
+    b.strip.name = "Bass";
+    b.instrument = true; // the default sound: no line
+    p.tracks = {a, b};
+    p.nextTrackId = 3;
+    const std::string text = writeProject(p);
+    DAWLAB_CHECK(text.find("synth 1 8000 2.5 0.25 0.123456789012345") != std::string::npos && text.find(" 0.5 1.5 0.75\n") != std::string::npos);
+    DAWLAB_CHECK(text.find("plugininstrument 1 \"C:/Plugins/My Synth.vst3\" \"4....f9.\"") != std::string::npos);
+    DAWLAB_CHECK(text.find("synth 2") == std::string::npos && text.find("plugininstrument 2") == std::string::npos);
+    const ReadResult back = readProject(text);
+    DAWLAB_CHECK(back.ok && back.project == p && writeProject(back.project) == text);
+    std::printf("the instrument's sound: a synth's settings and a plugin written and read back exactly\n");
+
+    const std::string head = "DawLabProject 7\nsampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\n";
+    const auto reads = [&head](const std::string& lines) { return readProject(head + lines + "\n").ok; };
+    DAWLAB_CHECK(reads("synth 1 4000 0.9 0.005 0.2 0.6 0.3 0.25"));
+    DAWLAB_CHECK(!reads("synth 2 4000 0.9 0.005 0.2 0.6 0.3 0.25"));  // no such track
+    DAWLAB_CHECK(!reads("synth 1 4000 0.9 0.005 0.2 0.6 0.3"));       // a number short
+    DAWLAB_CHECK(!reads("synth 1 10 0.9 0.005 0.2 0.6 0.3 0.25"));    // cutoff below
+    DAWLAB_CHECK(!reads("synth 1 4000 0.9 0 0.2 0.6 0.3 0.25"));      // an attack of 0
+    DAWLAB_CHECK(!reads("synth 1 4000 0.9 0.005 0.2 1.1 0.3 0.25"));  // sustain above 1
+    DAWLAB_CHECK(!reads("synth 1 4000 0.9 0.005 0.2 0.6 0.3 nan"));
+    DAWLAB_CHECK(!reads("synth 1 4000 0.9 0.005 0.2 0.6 0.3 0.25\nsynth 1 4000 0.9 0.005 0.2 0.6 0.3 0.25")); // twice
+    DAWLAB_CHECK(reads("plugininstrument 1 \"a.vst3\" \"\""));
+    DAWLAB_CHECK(!reads("plugininstrument 1 a.vst3 \"\""));           // the file not in quotes
+    DAWLAB_CHECK(!reads("plugininstrument 1 \"\" \"\""));              // no file
+    DAWLAB_CHECK(!reads("plugininstrument 1 \"a.vst3\""));            // no state
+    DAWLAB_CHECK(!reads("plugininstrument 3 \"a.vst3\" \"\""));       // no such track
+    DAWLAB_CHECK(reads("plugininstrument 1 \"a.vst3\" \"\"\nsynth 1 4000 0.9 0.005 0.2 0.6 0.3 0.25")); // both: the synth's sound is kept
+    DAWLAB_CHECK(!readProject("DawLabProject 6\nsampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\nsynth 1 4000 0.9 0.005 0.2 0.6 0.3 0.25\n").ok);
+}
+
 int main() {
     std::printf("l19_test_project_format: the application's project file, format %d\n", kFormatVersion);
     testMidi();
@@ -476,5 +518,6 @@ int main() {
     testTextVariants();
     testLocale();
     testTempoMap();
+    testInstrumentSound();
     return dawlab::test::summary("l19_test_project_format");
 }

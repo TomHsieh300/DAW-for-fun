@@ -22,6 +22,7 @@
 
 #include "AppCommands.h"
 #include "ArrangementView.h"
+#include "SynthPanel.h"
 #include "TempoLane.h"
 #include "AudioHost.h"
 #include "DawLookAndFeel.h"
@@ -139,6 +140,11 @@ public:
     // Deletes the selected track with its clips and inserts (their editors close first); the
     // track that takes its place becomes the selection. False if nothing was deleted.
     bool deleteSelectedTrack();
+    // Chapter 19, Step 6: the selected track's instrument.
+    SynthPanelWindow* showSynthPanel(); // nullptr in offline mode (no windows)
+    bool loadPluginInstrument(engine::TrackId track, const juce::File& file); // says on the status line what it did
+    bool useBuiltinSynth(engine::TrackId track);
+    void loadPluginInstrumentInteractive();
     // Chapter 19: MIDI files (MidiFileIO.h). They say on the status line what they did.
     bool importMidi(const juce::File& file);
     bool exportMidi(const juce::File& file);
@@ -228,6 +234,7 @@ private:
     std::unique_ptr<juce::FileChooser> fileChooser_;
     std::map<engine::InsertEffect*, std::unique_ptr<ParameterWindow>> parameterWindows_;
     std::map<int, std::unique_ptr<PianoRollWindow>> pianoRolls_; // by clip id (chapter 18)
+    std::unique_ptr<SynthPanelWindow> synthPanel_;               // chapter 19: follows the selected track
     AudioBuffer offlineScratch_;
     juce::ApplicationCommandTarget* extraCommandTarget_ = nullptr;
     bool conversionRunning_ = false;                 // message thread only

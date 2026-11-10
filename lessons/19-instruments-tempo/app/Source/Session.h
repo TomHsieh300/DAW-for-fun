@@ -67,6 +67,7 @@
 namespace dawlab::app {
 
 class VstInsert;
+class PluginInstrument;
 
 constexpr int kNewProjectTracks = 8; // what File > New starts with
 
@@ -190,6 +191,24 @@ public:
     int64_t sampleOfTick(int64_t tick) const noexcept;
     int64_t tickOfSample(int64_t sample) const noexcept; // the nearest tick
     double exactTickOfSample(double sample) const noexcept; // with its fraction
+
+    // ---- a track's instrument (chapter 19, Step 6) --------------------------------------------------
+    // The synth's settings and the plugin in its place, as values (the plugin's state as it is now).
+    InstrumentSnapshot getInstrumentSound(engine::TrackId track) const;
+    // WITHOUT recording. The synth's settings go to the engine at once; another plugin file builds that plugin
+    // (createPluginInstrument) and puts it in the synth's place; the same file only takes the state. False, with
+    // the reason in *error, if the track is not here or the plugin cannot be built - then nothing changed.
+    bool setInstrumentSound(engine::TrackId track, const InstrumentSnapshot& sound, juce::String* error = nullptr);
+    // Undoable (an edit::SetInstrumentSound): only the synth's settings; a slider's steps share a merge key.
+    bool setSynthSettings(engine::TrackId track, const engine::VoiceSettings& settings, std::uint32_t mergeKey = 0);
+    // Undoable: a plugin in the synth's place (an empty file: the synth again).
+    bool setPluginInstrument(engine::TrackId track, const juce::File& file, juce::String* error = nullptr);
+    // The plugin in the synth's place, or nullptr.
+    PluginInstrument* getPluginInstrument(engine::TrackId track) const noexcept;
+    // Builds a plugin instrument from its file and state. MainComponent sets it with chapter 13's PluginHost; a
+    // test may set its own. Without it no plugin can be put on a track.
+    std::function<std::unique_ptr<PluginInstrument>(const juce::File& file, const juce::MemoryBlock& state, juce::String& error)>
+        createPluginInstrument;
 
     // ---- the tempo map (chapter 19, Step 5) --------------------------------------------------------
     const engine::TempoMap& getTempoMap() const noexcept { return engine_.getTransport().getTempoMap(); }
@@ -326,6 +345,9 @@ private:
         StripModel strip;
         bool instrument = false;               // chapter 18
         std::vector<MidiClipModel> midiClips;  // chapter 18, by start
+        engine::VoiceSettings synth;           // chapter 19: the built-in synth's sound
+        juce::String pluginFile;               // chapter 19: the plugin in its place (empty: none) ...
+        PluginInstrument* plugin = nullptr;    // ... the engine's object, as long as it is there
     };
 
     TrackModel* findTrack(engine::TrackId id) noexcept;
@@ -346,6 +368,7 @@ private:
     std::optional<Edit> apply(const edit::SetBypass&);
     std::optional<Edit> apply(const edit::SetTempo&);
     std::optional<Edit> apply(const edit::SetTempoMap&);
+    std::optional<Edit> apply(const edit::SetInstrumentSound&);
     std::optional<Edit> apply(const edit::SetLane&);
     std::optional<Edit> apply(const edit::SetMidiClips&);
     std::optional<Edit> apply(const edit::SetInstrument&);

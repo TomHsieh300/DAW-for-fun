@@ -51,6 +51,9 @@ enum : juce::CommandID {
     toggleArmSelected,    // chapter 17
     cycleMonitorSelected,
     addInstrumentTrack,   // chapter 18
+    showSynthPanel,       // chapter 19: the built-in synth's settings for the selected track
+    loadPluginInstrument, // chapter 19: a VST3 instrument in the synth's place
+    useBuiltinSynth,      // chapter 19: ... and the synth again
 
     // Edit (chapter 15, Step 9)
     undo = 0x2401,

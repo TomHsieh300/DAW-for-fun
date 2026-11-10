@@ -18,6 +18,10 @@
 //   tempo 120 4 4                                  BPM, time signature
 //   loop 0 384000 0                                start, end (samples), enabled 0/1
 //   loop 0 15360 0 ticks                           (format 7) a loop set in bars: start, end in TICKS
+//   synth 17 4000 0.9 0.005 0.2 0.6 0.3 0.25       (format 7) the built-in synth of track 17: cutoff (Hz),
+//                                                  resonance, attack, decay, sustain, release (s), level. Only
+//                                                  written when it is not the default sound
+//   plugininstrument 17 "C:/.../Synth.vst3" "<base64>"  (format 7) a plugin in the synth's place: file, state
 //   tempopoint 7680 140 1                          (format 7) a point of the tempo map: tick, BPM, 1 = ramps to
 //                                                  the next point. All points of a map that has more than one,
 //                                                  the first at tick 0 (its BPM is the tempo line's)
@@ -129,11 +133,24 @@ struct StripState {
     std::vector<LaneState> lanes;     // format 4
 };
 
+// The built-in synth's sound (format 7): engine::VoiceSettings as values.
+struct SynthState {
+    double cutoffHz = 4000.0, resonance = 0.9, attack = 0.005, decay = 0.2, sustain = 0.6, release = 0.3, level = 0.25;
+    bool isDefault() const noexcept { return *this == SynthState{}; }
+    friend bool operator==(const SynthState& a, const SynthState& b) noexcept {
+        return a.cutoffHz == b.cutoffHz && a.resonance == b.resonance && a.attack == b.attack && a.decay == b.decay &&
+               a.sustain == b.sustain && a.release == b.release && a.level == b.level;
+    }
+};
+
 struct TrackState {
     engine::TrackId id;
     engine::TrackFormat format = engine::TrackFormat::Mono;
     StripState strip;
-    bool instrument = false; // format 6
+    bool instrument = false;      // format 6
+    SynthState synth;             // format 7
+    std::string instrumentFile;   // format 7: a plugin in the synth's place (empty: none) ...
+    std::string instrumentState;  // ... and its state, base64
 };
 
 // A MIDI clip (format 6): the engine's clip as values, its played notes, and how they are quantized.

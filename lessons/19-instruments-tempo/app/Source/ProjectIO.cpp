@@ -178,6 +178,11 @@ ProjectIO::Captured ProjectIO::capture(const Session& session, const juce::Strin
         t.format = session.getTrackFormat(id);
         t.strip = captureStrip(session, session.trackRef(id));
         t.instrument = session.isInstrument(id);
+        const InstrumentSnapshot sound = session.getInstrumentSound(id); // chapter 19
+        t.synth = {sound.synth.cutoffHz, sound.synth.resonance, sound.synth.attack, sound.synth.decay,
+                   sound.synth.sustain,  sound.synth.release,   static_cast<double>(sound.synth.level)};
+        t.instrumentFile = sound.pluginFile.toStdString();
+        t.instrumentState = sound.pluginState.toBase64Encoding().toStdString();
         p.tracks.push_back(std::move(t));
         for (const MidiClipModel& m : session.getMidiClips(id)) { // chapter 18: in ticks, saved as played
             project::MidiClipState ms;
@@ -472,6 +477,28 @@ ProjectIO::OpenResult ProjectIO::open(Session& session, host::PluginHost* plugin
     for (const TrackState& t : p.tracks)
         if (t.instrument && ids.count(t.id.value) != 0)
             session.setInstrument(ids[t.id.value], true);
+    // Chapter 19: the synth's sound, and a plugin in its place. A plugin that cannot be loaded leaves the synth.
+    for (const TrackState& t : p.tracks) {
+        if (ids.count(t.id.value) == 0)
+            continue;
+        InstrumentSnapshot sound;
+        sound.synth.cutoffHz = t.synth.cutoffHz;
+        sound.synth.resonance = t.synth.resonance;
+        sound.synth.attack = t.synth.attack;
+        sound.synth.decay = t.synth.decay;
+        sound.synth.sustain = t.synth.sustain;
+        sound.synth.release = t.synth.release;
+        sound.synth.level = static_cast<float>(t.synth.level);
+        session.setInstrumentSound(ids[t.id.value], sound);
+        if (!t.instrumentFile.empty()) {
+            sound.pluginFile = juce::String::fromUTF8(t.instrumentFile.c_str());
+            sound.pluginState.fromBase64Encoding(juce::String(t.instrumentState));
+            juce::String why;
+            if (!session.setInstrumentSound(ids[t.id.value], sound, &why))
+                r.warnings.add("track \"" + juce::String::fromUTF8(t.strip.name.c_str()) + "\": plugin instrument " +
+                               juce::File(sound.pluginFile).getFileName() + " not loaded (" + why + "); it plays the built-in synth");
+        }
+    }
     std::map<std::uint32_t, std::vector<MidiClipModel>> midi;
     for (const project::MidiClipState& ms : p.midiClips) {
         if (ids.count(ms.track.value) == 0)

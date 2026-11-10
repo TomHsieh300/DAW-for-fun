@@ -1,6 +1,7 @@
 #include "Session.h"
 
 #include "MediaLoader.h"
+#include "PluginInstrument.h"
 #include "VstInsert.h"
 
 #include <algorithm>
@@ -398,6 +399,102 @@ int64_t Session::tickOfSample(int64_t sample) const noexcept {
 
 double Session::exactTickOfSample(double sample) const noexcept {
     return getTempoMap().tickAtSample(sample, getClipSampleRate());
+}
+
+// ---- a track's instrument (chapter 19, Step 6) -------------------------------------------------------
+
+InstrumentSnapshot Session::getInstrumentSound(TrackId track) const {
+    InstrumentSnapshot s;
+    if (const TrackModel* t = findTrack(track)) {
+        s.synth = t->synth;
+        s.pluginFile = t->pluginFile;
+        if (t->plugin != nullptr)
+            s.pluginState = t->plugin->getState();
+    }
+    return s;
+}
+
+PluginInstrument* Session::getPluginInstrument(TrackId track) const noexcept {
+    const TrackModel* t = findTrack(track);
+    return t != nullptr ? t->plugin : nullptr;
+}
+
+bool Session::setInstrumentSound(TrackId track, const InstrumentSnapshot& sound, juce::String* error) {
+    juce::String why;
+    TrackModel* t = findTrack(track);
+    if (t == nullptr)
+        why = "the track is gone";
+    else if (sound.pluginFile != t->pluginFile) {
+        if (sound.pluginFile.isEmpty()) {
+            engine_.setTrackInstrument(track, nullptr); // the synth again; the plugin comes back as garbage
+            t->plugin = nullptr;
+        } else {
+            std::unique_ptr<PluginInstrument> plugin;
+            if (!createPluginInstrument)
+                why = "no plugin host";
+            else
+                plugin = createPluginInstrument(juce::File(sound.pluginFile), sound.pluginState, why);
+            PluginInstrument* observer = plugin.get();
+            if (plugin != nullptr && engine_.setTrackInstrument(track, std::move(plugin)) == nullptr) {
+                observer = nullptr;
+                why = "the engine is busy";
+            }
+            if (observer != nullptr)
+                t->plugin = observer;
+            else if (why.isEmpty())
+                why = "the plugin could not be loaded";
+        }
+        if (why.isEmpty())
+            t->pluginFile = sound.pluginFile;
+    } else if (t->plugin != nullptr) {
+        t->plugin->setState(sound.pluginState); // the same plugin: only its state (an undo)
+    }
+    if (why.isNotEmpty()) {
+        if (error != nullptr)
+            *error = why;
+        return false;
+    }
+    t->synth = sound.synth;
+    if (engine::SynthInstrument* synth = engine_.getTrackSynth(track))
+        synth->setSettings(sound.synth);
+    sendChangeMessage();
+    return true;
+}
+
+bool Session::setSynthSettings(TrackId track, const engine::VoiceSettings& settings, std::uint32_t mergeKey) {
+    if (!hasTrack(track))
+        return false;
+    InstrumentSnapshot sound = getInstrumentSound(track);
+    sound.synth = settings;
+    return perform(edit::SetInstrumentSound{track, std::move(sound)}, "Synth settings", mergeKey);
+}
+
+bool Session::setPluginInstrument(TrackId track, const juce::File& file, juce::String* error) {
+    if (!hasTrack(track))
+        return false;
+    // perform() only says yes or no: try the plugin first, for the reason.
+    InstrumentSnapshot sound = getInstrumentSound(track);
+    sound.pluginFile = file == juce::File() ? juce::String() : file.getFullPathName();
+    sound.pluginState.reset();
+    if (sound.pluginFile.isNotEmpty()) {
+        juce::String why;
+        if (!createPluginInstrument || createPluginInstrument(file, {}, why) == nullptr) {
+            if (error != nullptr)
+                *error = why.isNotEmpty() ? why : juce::String("no plugin host");
+            return false;
+        }
+    }
+    const juce::String name = sound.pluginFile.isEmpty() ? "Built-in synth" : "Plugin instrument";
+    return perform(edit::SetInstrumentSound{track, std::move(sound)}, name);
+}
+
+std::optional<Edit> Session::apply(const edit::SetInstrumentSound& e) {
+    if (!hasTrack(e.track))
+        return std::nullopt;
+    edit::SetInstrumentSound inverse{e.track, getInstrumentSound(e.track)};
+    if (!setInstrumentSound(e.track, e.sound))
+        return std::nullopt;
+    return inverse;
 }
 
 bool Session::setTempoMap(const std::vector<engine::TempoPoint>& points) {
@@ -905,6 +1002,7 @@ TrackSnapshot Session::snapshotTrack(TrackId id) const {
     s.lanes = ownedLanes(StripTarget::ofTrack(id), EffectId{});
     s.instrument = isInstrument(id);
     s.midiClips = getMidiClips(id);
+    s.sound = getInstrumentSound(id);
     return s;
 }
 
@@ -963,6 +1061,11 @@ std::optional<Edit> Session::apply(const edit::AddTrack& e) {
         setInstrument(id, true);
     if (!s.midiClips.empty())
         setMidiClips(id, s.midiClips);
+    if (!setInstrumentSound(id, s.sound)) { // a plugin that is gone stays out: the synth, with its settings
+        InstrumentSnapshot synthOnly;
+        synthOnly.synth = s.sound.synth;
+        setInstrumentSound(id, synthOnly);
+    }
     return edit::RemoveTrack{id};
 }
 

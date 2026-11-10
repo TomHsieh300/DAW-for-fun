@@ -30,7 +30,8 @@ bool operator==(const StripState& a, const StripState& b) {
            a.sends == b.sends && a.inserts == b.inserts && a.lanes == b.lanes;
 }
 bool operator==(const TrackState& a, const TrackState& b) {
-    return a.id == b.id && a.format == b.format && a.strip == b.strip && a.instrument == b.instrument;
+    return a.id == b.id && a.format == b.format && a.strip == b.strip && a.instrument == b.instrument && a.synth == b.synth &&
+           a.instrumentFile == b.instrumentFile && a.instrumentState == b.instrumentState;
 }
 bool operator==(const MidiClipState& a, const MidiClipState& b) {
     auto sameControllers = [](const std::vector<engine::ControllerPoint>& x, const std::vector<engine::ControllerPoint>& y) {
@@ -304,6 +305,17 @@ std::string writeProject(const ProjectState& p) {
     for (const TrackState& t : p.tracks)
         if (t.instrument)
             out << "instrument " << t.id.value << '\n';
+    {
+        const auto digits = out.precision(std::numeric_limits<double>::max_digits10);
+        for (const TrackState& t : p.tracks) {
+            if (!t.synth.isDefault())
+                out << "synth " << t.id.value << ' ' << t.synth.cutoffHz << ' ' << t.synth.resonance << ' ' << t.synth.attack << ' '
+                    << t.synth.decay << ' ' << t.synth.sustain << ' ' << t.synth.release << ' ' << t.synth.level << '\n';
+            if (!t.instrumentFile.empty())
+                out << "plugininstrument " << t.id.value << ' ' << quote(t.instrumentFile) << ' ' << quote(t.instrumentState) << '\n';
+        }
+        out.precision(digits);
+    }
     int clipNumber = 0;
     for (const MidiClipState& c : p.midiClips) {
         ++clipNumber;
@@ -382,6 +394,14 @@ ReadResult readProject(std::string_view text) {
     std::vector<PendingNote> notes;
     std::vector<PendingCc> ccs;
     std::vector<std::pair<int, engine::TrackId>> instruments; // line, track
+    struct SoundLine {
+        int line;
+        engine::TrackId track;
+        bool plugin;
+        SynthState synth;
+        std::string file, state;
+    };
+    std::vector<SoundLine> sounds;
 
     std::vector<Token> tok;
     std::string error;
@@ -582,6 +602,33 @@ ReadResult readProject(std::string_view text) {
                 s.takes.push_back(t);
             }
             p.takeSets.push_back(std::move(s));
+        } else if (kw == "synth" || kw == "plugininstrument") {
+            if (version < 7)
+                return fail(lineNo, "\"" + kw + "\" needs format 7 (this file is format " + std::to_string(version) + ")");
+            SoundLine s;
+            s.line = lineNo;
+            s.plugin = kw == "plugininstrument";
+            if (tok.size() < 2 || !parseNumber(tok[1], s.track.value) || !s.track.isValid())
+                return fail(lineNo, kw + " needs a track id");
+            if (s.plugin) {
+                if (tok.size() != 4 || !tok[2].quoted || tok[2].text.empty() || !tok[3].quoted)
+                    return fail(lineNo, "plugininstrument needs a track id, a file and a state, both in quotes");
+                s.file = tok[2].text;
+                s.state = tok[3].text;
+            } else {
+                SynthState& y = s.synth;
+                if (tok.size() != 9 || !parseNumber(tok[2], y.cutoffHz) || !parseNumber(tok[3], y.resonance) || !parseNumber(tok[4], y.attack) ||
+                    !parseNumber(tok[5], y.decay) || !parseNumber(tok[6], y.sustain) || !parseNumber(tok[7], y.release) || !parseNumber(tok[8], y.level))
+                    return fail(lineNo, "synth needs a track id and 7 numbers");
+                const auto in = [](double v, double lo, double hi) { return v >= lo && v <= hi; };
+                if (!in(y.cutoffHz, 20.0, 20000.0) || !in(y.resonance, 0.1, 20.0) || !in(y.attack, 0.001, 10.0) || !in(y.decay, 0.001, 10.0) ||
+                    !in(y.sustain, 0.0, 1.0) || !in(y.release, 0.001, 10.0) || !in(y.level, 0.0, 1.0))
+                    return fail(lineNo, "synth: cutoff 20 .. 20000, resonance 0.1 .. 20, times 0.001 .. 10, sustain and level 0 .. 1");
+            }
+            for (const SoundLine& other : sounds)
+                if (other.track == s.track && other.plugin == s.plugin)
+                    return fail(lineNo, kw + " twice for track " + std::to_string(s.track.value));
+            sounds.push_back(std::move(s));
         } else if (kw == "instrument" || kw == "midiclip" || kw == "note" || kw == "cc") {
             if (version < 6)
                 return fail(lineNo, "\"" + kw + "\" needs format 6 (this file is format " + std::to_string(version) + ")");
@@ -768,6 +815,19 @@ ReadResult readProject(std::string_view text) {
         for (TrackState& t : p.tracks)
             if (t.id == id)
                 t.instrument = true;
+    }
+    for (const SoundLine& s : sounds) {
+        if (!hasTrack(s.track))
+            return fail(s.line, "the instrument of track " + std::to_string(s.track.value) + ", which does not exist");
+        for (TrackState& t : p.tracks)
+            if (t.id == s.track) {
+                if (s.plugin) {
+                    t.instrumentFile = s.file;
+                    t.instrumentState = s.state;
+                } else {
+                    t.synth = s.synth;
+                }
+            }
     }
     for (size_t i = 0; i < p.midiClips.size(); ++i)
         if (!hasTrack(p.midiClips[i].track))

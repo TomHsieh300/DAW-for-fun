@@ -1,5 +1,8 @@
 #include "SmokeTest.h"
 
+#include "PluginInstrument.h"
+#include "SynthPanel.h"
+
 #include "AudioHost.h"
 #include "EffectMenu.h"
 #include "Exporter.h"
@@ -1447,6 +1450,222 @@ void testTempoMap() {
     engine.collectGarbage();
 }
 
+// Chapter 19, Step 6: an instrument for the tests - what a VST3 instrument is to the app, a juce::AudioProcessor.
+// A sine for the note that is held, 256 samples late (it reports that latency); its state is its gain.
+class TestSynthProcessor final : public juce::AudioProcessor {
+public:
+    TestSynthProcessor() : juce::AudioProcessor(BusesProperties().withOutput("Out", juce::AudioChannelSet::stereo(), true)) {
+        setLatencySamples(256);
+    }
+    float gain = 0.25f;
+    int noteOns = 0;
+
+    const juce::String getName() const override { return "Test Synth"; }
+    void prepareToPlay(double sampleRate, int) override { rate_ = sampleRate; }
+    void releaseResources() override {}
+    void reset() override { note_ = -1; }
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) override {
+        for (const juce::MidiMessageMetadata m : midi) {
+            const juce::MidiMessage message = m.getMessage();
+            if (message.isNoteOn()) {
+                note_ = message.getNoteNumber();
+                ++noteOns;
+            } else if (message.isNoteOff() && message.getNoteNumber() == note_) {
+                note_ = -1;
+            }
+        }
+        for (int i = 0; i < buffer.getNumSamples(); ++i) {
+            const float v = note_ < 0 ? 0.0f : gain * static_cast<float>(std::sin(phase_));
+            phase_ += 2.0 * 3.14159265358979 * 440.0 / rate_;
+            for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+                buffer.addSample(ch, i, v);
+        }
+    }
+    double getTailLengthSeconds() const override { return 0.0; }
+    bool acceptsMidi() const override { return true; }
+    bool producesMidi() const override { return false; }
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    bool hasEditor() const override { return false; }
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram(int) override {}
+    const juce::String getProgramName(int) override { return {}; }
+    void changeProgramName(int, const juce::String&) override {}
+    void getStateInformation(juce::MemoryBlock& data) override { data.replaceAll(&gain, sizeof gain); }
+    void setStateInformation(const void* data, int size) override {
+        if (size == sizeof gain)
+            std::memcpy(&gain, data, sizeof gain);
+    }
+
+private:
+    double rate_ = 48000.0, phase_ = 0.0;
+    int note_ = -1;
+};
+
+TestSynthProcessor* processorOf(Session& session, TrackId track) {
+    PluginInstrument* plugin = session.getPluginInstrument(track);
+    return plugin != nullptr ? dynamic_cast<TestSynthProcessor*>(&plugin->getProcessor()) : nullptr;
+}
+
+void testInstrumentSound() {
+    std::printf("instruments: the synth's sound and plugin instruments\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    Session& session = main.getSession();
+    Engine& engine = main.getEngine();
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    const TrackId audio = session.getTrackId(0);
+    const TrackId synth = main.addTrack(TrackFormat::Mono, true);
+    engine.applyPendingCommandsOffline();
+    const engine::VoiceSettings defaults;
+
+    // ---- the synth panel: one drag is one undo step, and the engine's synth follows at once.
+    SynthPanel panel(session);
+    panel.showTrack(synth);
+    DAWLAB_CHECK(panel.isEnabledForTrack() && panel.getKnob(SynthPanel::Cutoff) == defaults.cutoffHz);
+    const size_t undo0 = session.getHistory().undoCount();
+    panel.beginGesture();
+    panel.setKnob(SynthPanel::Cutoff, 9000.0);
+    panel.setKnob(SynthPanel::Cutoff, 300.0);
+    panel.setKnob(SynthPanel::Cutoff, 300.0); // no change: nothing
+    panel.endGesture();
+    panel.beginGesture();
+    panel.setKnob(SynthPanel::Level, 5.0); // clamped to the knob's range
+    panel.endGesture();
+    DAWLAB_CHECK(session.getHistory().undoCount() == undo0 + 2);
+    DAWLAB_CHECK(engine.getTrackSynth(synth)->getSettings().cutoffHz == 300.0 && engine.getTrackSynth(synth)->getSettings().level == 1.0f);
+    DAWLAB_CHECK(session.getInstrumentSound(synth).synth.cutoffHz == 300.0 && session.getHistory().getUndoName() == "Synth settings");
+    // Undo: the engine and the panel follow, and showing sends nothing.
+    DAWLAB_CHECK(main.undo() && main.undo());
+    session.dispatchPendingMessages();
+    DAWLAB_CHECK(sameSound(engine.getTrackSynth(synth)->getSettings(), defaults) && panel.getKnob(SynthPanel::Cutoff) == defaults.cutoffHz);
+    DAWLAB_CHECK(session.getHistory().undoCount() == undo0);
+    DAWLAB_CHECK(main.redo() && engine.getTrackSynth(synth)->getSettings().cutoffHz == 300.0);
+    // An audio track, no track: the sliders are off, and a knob does nothing.
+    panel.showTrack(audio);
+    DAWLAB_CHECK(!panel.isEnabledForTrack() && panel.getMessage().contains("not an instrument"));
+    const size_t undo1 = session.getHistory().undoCount();
+    panel.setKnob(SynthPanel::Cutoff, 1234.0);
+    DAWLAB_CHECK(session.getHistory().undoCount() == undo1 && sameSound(session.getInstrumentSound(audio).synth, defaults));
+    panel.showTrack(TrackId{});
+    DAWLAB_CHECK(!panel.isEnabledForTrack() && panel.getMessage().contains("No track"));
+    // The track deleted and brought back: its sound with it. A new track in its slot starts with the default.
+    main.getArrangement().setSelectedTrack(synth);
+    DAWLAB_CHECK(main.deleteSelectedTrack());
+    engine.applyPendingCommandsOffline();
+    const TrackId other = main.addTrack(TrackFormat::Mono, true);
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(sameSound(engine.getTrackSynth(other)->getSettings(), defaults));
+    DAWLAB_CHECK(main.undo() && main.undo() && session.hasTrack(synth));
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(engine.getTrackSynth(synth)->getSettings().cutoffHz == 300.0 && session.getInstrumentSound(synth).synth.cutoffHz == 300.0);
+    std::printf("  the synth panel: a drag is one undo step, the engine follows, a deleted track comes back with its sound\n");
+
+    // ---- a plugin instrument. The test's own factory stands in for chapter 13's host.
+    const auto realFactory = session.createPluginInstrument;
+    int built = 0;
+    bool refuse = false;
+    session.createPluginInstrument = [&](const juce::File& file, const juce::MemoryBlock& state, juce::String& error) {
+        std::unique_ptr<PluginInstrument> plugin;
+        if (refuse || file.getFileName() != "Test Synth.vst3") {
+            error = "no such plugin";
+            return plugin;
+        }
+        ++built;
+        plugin = std::make_unique<PluginInstrument>(std::make_unique<TestSynthProcessor>());
+        plugin->setState(state);
+        return plugin;
+    };
+    TakesFolder folder;
+    const juce::File pluginFile = folder.get().getChildFile("Test Synth.vst3");
+    DAWLAB_CHECK(session.perform(edit::SetMidiClips{synth, {midiClip(0, {{960, 960, 69, 100, 0}})}}, "Add MIDI clip"));
+    DAWLAB_CHECK(!main.loadPluginInstrument(audio, pluginFile) && main.getStatus().contains("needs an instrument track"));
+    DAWLAB_CHECK(!main.loadPluginInstrument(synth, folder.get().getChildFile("Other.vst3")) && main.getStatus().contains("no such plugin"));
+    DAWLAB_CHECK(session.getPluginInstrument(synth) == nullptr);
+    const size_t undo2 = session.getHistory().undoCount();
+    main.simulatePlayback(512);
+    const int latencyBefore = engine.getLatencySamples(); // the new project's own (the effects of its strips)
+    DAWLAB_CHECK(main.loadPluginInstrument(synth, pluginFile) && main.getStatus().contains("plays Test Synth") &&
+                 main.getStatus().contains("latency 256"));
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(session.getHistory().undoCount() == undo2 + 1 && processorOf(session, synth) != nullptr);
+    DAWLAB_CHECK(engineTrack(main, synth)->getReplacementInstrument() == session.getPluginInstrument(synth));
+    // It plays the track's notes, the built-in synth does not, and its latency is the mix's.
+    engine.getTransport().setPosition(0);
+    engine.getTransport().play();
+    main.simulatePlayback(48000);
+    DAWLAB_CHECK(processorOf(session, synth)->noteOns == 1 && engineTrack(main, synth)->getSynth()->activeVoices() == 0);
+    DAWLAB_CHECK(engine.getLatencySamples() == latencyBefore + 256);
+    engine.getTransport().stop();
+    main.simulatePlayback(512);
+    // The panel: these are the synth's settings, and it is not what plays.
+    panel.showTrack(synth);
+    DAWLAB_CHECK(!panel.isEnabledForTrack() && panel.getMessage().contains("plays a plugin"));
+    std::printf("  a plugin in the synth's place: %d note on, mix latency %d -> %d, the built-in synth silent\n", processorOf(session, synth)->noteOns,
+                latencyBefore, engine.getLatencySamples());
+
+    // Its state: saved with the project and back when it is opened; the synth's own sound is kept beside it.
+    processorOf(session, synth)->gain = 0.5f;
+    const juce::File file = folder.get().getChildFile("Instruments.dawlab");
+    DAWLAB_CHECK(main.saveProject(file));
+    const juce::String text = file.loadFileAsString();
+    DAWLAB_CHECK(text.contains("plugininstrument") && text.contains("Test Synth.vst3") && text.contains("synth ") && text.contains(" 300 "));
+    // Undo takes the plugin off, redo builds it again with the state it had.
+    DAWLAB_CHECK(main.undo() && session.getPluginInstrument(synth) == nullptr);
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(engineTrack(main, synth)->getReplacementInstrument() == nullptr);
+    DAWLAB_CHECK(main.redo() && processorOf(session, synth) != nullptr && processorOf(session, synth)->gain == 0.5f);
+    engine.applyPendingCommandsOffline();
+    // The built-in synth again, as an undo step.
+    DAWLAB_CHECK(main.useBuiltinSynth(synth) && session.getPluginInstrument(synth) == nullptr && !main.useBuiltinSynth(synth));
+    DAWLAB_CHECK(main.undo() && processorOf(session, synth) != nullptr && processorOf(session, synth)->gain == 0.5f);
+    engine.applyPendingCommandsOffline();
+    // The track deleted and brought back: the plugin with it.
+    main.getArrangement().setSelectedTrack(synth);
+    DAWLAB_CHECK(main.deleteSelectedTrack());
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(main.undo() && processorOf(session, synth) != nullptr && processorOf(session, synth)->gain == 0.5f);
+    engine.applyPendingCommandsOffline();
+
+    // Opened: the plugin, its state and the synth's sound.
+    ProjectIO::OpenResult opened = main.openProject(file);
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(opened.ok && opened.warnings.isEmpty());
+    TrackId reopened;
+    for (int i = 0; i < session.getNumTracks(); ++i)
+        if (session.isInstrument(session.getTrackId(i)))
+            reopened = session.getTrackId(i);
+    DAWLAB_CHECK(reopened.isValid() && processorOf(session, reopened) != nullptr);
+    if (reopened.isValid() && processorOf(session, reopened) != nullptr)
+        DAWLAB_CHECK(processorOf(session, reopened)->gain == 0.5f && session.getInstrumentSound(reopened).synth.cutoffHz == 300.0);
+    // Opened where the plugin is not installed: a warning, and the track plays the synth with its sound.
+    refuse = true;
+    opened = main.openProject(file);
+    engine.applyPendingCommandsOffline();
+    reopened = TrackId{};
+    for (int i = 0; i < session.getNumTracks(); ++i)
+        if (session.isInstrument(session.getTrackId(i)))
+            reopened = session.getTrackId(i);
+    DAWLAB_CHECK(opened.ok && opened.warnings.size() == 1 && opened.warnings[0].contains("Test Synth.vst3") && opened.warnings[0].contains("built-in synth"));
+    DAWLAB_CHECK(reopened.isValid() && session.getPluginInstrument(reopened) == nullptr && session.getInstrumentSound(reopened).synth.cutoffHz == 300.0);
+    std::printf("  its state saved, undone, redone, deleted with its track and opened again: gain 0.5 each time (%d plugins built);\n"
+                "    where it is not installed: \"%s\"\n",
+                built, opened.warnings.isEmpty() ? "" : opened.warnings[0].toRawUTF8());
+
+    // The real factory: chapter 13's compressor is an effect, not an instrument.
+    session.createPluginInstrument = realFactory;
+#ifdef DAWLAB_L13_COMPRESSOR_VST3
+    if (reopened.isValid()) {
+        DAWLAB_CHECK(!main.loadPluginInstrument(reopened, juce::File(DAWLAB_L13_COMPRESSOR_VST3)) && main.getStatus().contains("not an instrument"));
+        std::printf("  chapter 13's compressor as an instrument: %s\n", main.getStatus().toRawUTF8());
+    }
+#endif
+    engine.applyPendingCommandsOffline();
+    engine.collectGarbage();
+    DAWLAB_CHECK(engine.getGarbageLeaked() == 0);
+}
+
 // Chapter 19: MIDI files in and out, with the tempo map.
 void testMidiFiles() {
     std::printf("MIDI files\n");
@@ -1657,6 +1876,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testMidiRecording();
     testTempoMap();
     testMidiFiles();
+    testInstrumentSound();
     testAutomation();
     testRecording();
 
