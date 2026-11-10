@@ -74,3 +74,76 @@ Exercise 4 - a tempo map
 2000 個變化之後，取整的起點早了 480 個 sample——不是因為某次取整很大，而是因為每次都一樣：1001 個 tick 的一段在 97 BPM 時是 28 443.36 sample，在 131 BPM 時是 21 061.12，兩者都被向下取整——每對差 0.48，1000 對之後就是 480。不會互相抵消的誤差會累積起來。
 
 要把 map 帶進 engine，`Transport` 會保存它而不是一個 BPM，所有呼叫 `sampleOfTick()` 的地方——clip player、recorder、grid——都改問 map。音符完全不用變：這正是它們存成 tick 的原因。
+
+## 練習 5 - Arpeggiator
+
+[`solutions/ex5_arpeggiator.cpp`](ex5_arpeggiator.cpp)
+
+`process()` 一步一步走過 block。各步是 $`[firstTickAtOrAfter(s_0), firstTickAtOrAfter(s_1))`$ 裡 `rate` 的倍數——Step 1 的半開區間，所以每一步恰好屬於一個 block。每一步依序：
+
+1. 如果我們的音的 off tick 到了就結束它（`offTick <= step`：gate 為 1 時正好在這一步結束，在下一個音之前）；
+2. 取到這一步的 offset（含）為止的輸入：鍵按下和放開，其他的直接通過；
+3. 播放這一步：沒有按住的鍵時 pattern 從頭開始，否則播 pattern 的下一個音。
+
+最後一步之後，如果 note off 落在 block 裡就送出，再處理剩下的輸入。輸出靠從後面插入來保持順序——note off 會移到同一個 offset 的其他事件之前——只花幾次交換，不配置記憶體；`std::stable_sort` 會需要一個 buffer。
+
+```text
+Exercise 5 - an arpeggiator
+  Up, C E G held, 1/16 at half gate:                   yes
+  Down:                                                yes
+  UpDown:                                              yes
+  UpDown, one key:                                     yes
+  UpDown, two keys:                                    yes
+  AsPlayed, G C E:                                     yes
+  AsPlayed, C pressed twice, then E:                   yes
+  Up, two octaves of C E:                              yes
+  UpDown, two octaves of C E:                          yes
+  Down, three octaves of 110 (134 is no note):         yes
+  Up, two octaves of 115 (127 is the top note):        yes
+  17 keys: the oldest is pushed out:                   yes
+  keys at a step and a sample after it:                yes
+  all keys up, then a new chord at a step:             yes
+  gate 1: the note off first at the next step:         yes
+  a tiny gate is still one tick long:                  yes
+  1/8 at 97 BPM, 44.1 kHz, blocks of 333: 44 events, every one on its exact sample: yes
+  a controller and a bend pass through:                yes
+  a controller after a note off, in one block:         yes
+  a controller before a note off, in one block:        yes
+  a jump: the note ends, the pattern starts again:     yes
+  400 random songs (keys at and between steps, every mode, rate and gate) in blocks of 1 to 700 samples:
+    0 differ from one block, 0 leave a note hanging, 0 play two notes at once, 0 made `out` grow,
+    0 put an event out of its block or out of order
+[PASS] l18_ex5 (26 checks passed)
+```
+
+Block 測試找到的錯最多：第一步用 `from / rate`（向下取整）而不是向上取整來算，或是在 block 裡後面沒有下一步時忘了送 note off。這些錯在某些 block 裡能運作，在另一些 block 裡就失敗。
+
+## 練習 6 - Mono、legato 與 glide
+
+[`solutions/ex6_mono_synth.cpp`](ex6_mono_synth.cpp)
+
+鍵存在一個陣列裡，最舊的在前：新的鍵放到最後，放開的鍵不論在哪裡都取出，只有它是最後一個時聲音才會改變。`sound()` 做每個新音都要做的事：目標和 gain，然後滑音（當這個音和另一個重疊時）或直接跳過去，然後是 envelope——從無聲開始時起 attack，或 legato 關掉時；legato 開著時什麼都不做。
+
+滑音是一個 sample 數和每個 sample 的一步，$`(target - pitch) / samples`$。把步長一直加上去會留下取整誤差，所以最後一步把音高精確地設成目標。以半音為單位的滑音在 hertz 上是一條曲線：鋸齒波的頻率每個 sample 都從音高算出，$`440 \cdot 2^{(p - 69)/12}`$。
+
+```text
+Exercise 6 - mono, legato and glide
+  one note: starts at its pitch with an attack, sounds (peak 0.25), releases to silence
+  legato: E over a held C keeps the envelope and slides 4 semitones in exactly 2400 samples
+  back to the key still down, a new slide from mid-slide, an octave as long as a semitone: done
+  last-note priority: C E G, E up changes nothing, G up returns to C, C up releases
+  legato off: every new note restarts the attack from the level it is at, and still glides
+  the sound: 55 cycles in a quarter second at A3, 110 at A4
+[PASS] l18_ex6 (36 checks passed)
+```
+
+固定*時間*的 glide（這裡的做法）對每個音程聽起來都一樣。許多 synth 改用固定*速率*的 glide——每秒若干個半音——讓八度比一步花更久。只要把 sample 數改成 $`|target - pitch| \cdot samplesPerSemitone`$ 就行了。
+
+## 練習 7 - Track 上的 VST3 樂器
+
+1. **事件。** JUCE 的 plugin 拿到一個 `juce::MidiBuffer`：在呼叫內部 sample 位置上的訊息。每個 chunk 的 track 已經有它的 `MidiBlock`——clip 的事件、chase 過的 controller、即時鍵盤——所以 host 把它們複製進一個在 `prepare()` 準備好的 `MidiBuffer`（先 `ensureSize`，之後只 `clear()` 和 `addEvent()`：不配置記憶體）。JUCE 的 VST3 wrapper 把音符變成 VST3 的 note event，把 controller 和 pitch bend 經由 plugin 的 `IMidiMapping` 變成同一個 sample 上的*參數變化*。沒有把任何參數對應到 controller 64 的 plugin 就沒有延音踏板；host 修不了，只能顯示出來。
+2. **卡住的音。** 那個表仍然需要——比以前更需要：plugin 不可能知道 transport 跳了，只有 host 知道。停止、seek 或繞回時，host 在 chunk 的 offset 為表裡的每個音送出 note off，音會照常 release。要硬停止（panic 按鈕）時，它呼叫 plugin 的 `reset()`，切掉它的 voice 和尾巴。Track 取消 arm 時仍按著的即時鍵盤按鍵，也會收到它們的 note off。
+3. **Latency。** Plugin 的 latency $`L`$ 是 track latency 的一部分，第 14 章的補償會把其他每個 track 都延遲這麼多，讓歌保持整齊。從鍵盤來的音不能提早送——它還沒發生——所以演奏者會比用內建 synth 晚 $`L`$ 聽到。錄下的音符依演奏者聽到的來擺放，而 Step 6 的 mix latency 已經包含補償，所以只要 anchor 用 engine 的總 latency，結果就是對的。
+4. **尾巴。** 不論停止與否，engine 每個 block 都繼續呼叫 plugin，沒有事件時就給空的 buffer——release、reverb、delay 都繼續。Mute 的 track 仍然會被處理（它的 note off 必須送到），只是輸出不混音。Bypass 的樂器輸出無聲（`processBlockBypassed`），但仍然收到 note off。Offline render 在歌曲結尾之後繼續 `getTailLengthSeconds()` 那麼久，或者——當它說「無限」時——直到輸出低於 -90 dB 持續一秒。
+5. **狀態。** 專案保存 plugin 的身分（格式、檔案、unique id）和 `getStateInformation()` 的 blob，以 base64 寫在一行文字裡。開啟專案時在 message thread 上建立 instance、在那裡呼叫 `setStateInformation()`，之後才透過 command queue 交給 engine，就像任何 insert 一樣（第 15 章）。沒有安裝的 plugin 會把它的 blob 保留在一個無聲的佔位裡，這樣存檔時才不會遺失。
+6. **信任。** 什麼都證明不了：plugin 可能配置記憶體、上鎖、寫 log 到檔案，或當掉。Host 改為量測——每次呼叫的時間對照 block 的期限、dropout、每個 plugin 的 CPU 表——謹慎的 host 會把 plugin 放在另一個 process 裡跑，讓當掉只損失 plugin 而不是整首歌。DawLab 的 engine 測試繼續用內建的 synth；plugin 則用第 13 章自己的那個來測，它的行為是已知的。

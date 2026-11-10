@@ -144,3 +144,117 @@ and both are rounded down - by 0.48 a pair, 480 after 1000 pairs. Errors that do
 To bring the map into the engine, `Transport` would keep it instead of one BPM, and everything that calls
 `sampleOfTick()` - the clip player, the recorder, the grid - would ask the map. The notes would not change
 at all: that is why they are in ticks.
+
+## Exercise 5 - An arpeggiator
+
+[`solutions/ex5_arpeggiator.cpp`](ex5_arpeggiator.cpp)
+
+`process()` walks the block step by step. The steps are the multiples of `rate` in
+$`[firstTickAtOrAfter(s_0), firstTickAtOrAfter(s_1))`$ - Step 1's half-open range, so every step belongs to
+exactly one block. At each step, in this order:
+
+1. our note ends if its off tick has come (`offTick <= step`: at gate 1 it ends right at this step, before the
+   next note);
+2. the input up to and including the step's offset is taken: keys go down and up, everything else passes;
+3. the step plays: with no key held the pattern starts over, otherwise the next note of the pattern.
+
+After the last step, the note off if it falls in the block, and the rest of the input. The output is kept in
+order by inserting from the back - a note off moves before everything else at its offset - which costs a few
+swaps and no allocation; `std::stable_sort` would need a buffer.
+
+```text
+Exercise 5 - an arpeggiator
+  Up, C E G held, 1/16 at half gate:                   yes
+  Down:                                                yes
+  UpDown:                                              yes
+  UpDown, one key:                                     yes
+  UpDown, two keys:                                    yes
+  AsPlayed, G C E:                                     yes
+  AsPlayed, C pressed twice, then E:                   yes
+  Up, two octaves of C E:                              yes
+  UpDown, two octaves of C E:                          yes
+  Down, three octaves of 110 (134 is no note):         yes
+  Up, two octaves of 115 (127 is the top note):        yes
+  17 keys: the oldest is pushed out:                   yes
+  keys at a step and a sample after it:                yes
+  all keys up, then a new chord at a step:             yes
+  gate 1: the note off first at the next step:         yes
+  a tiny gate is still one tick long:                  yes
+  1/8 at 97 BPM, 44.1 kHz, blocks of 333: 44 events, every one on its exact sample: yes
+  a controller and a bend pass through:                yes
+  a controller after a note off, in one block:         yes
+  a controller before a note off, in one block:        yes
+  a jump: the note ends, the pattern starts again:     yes
+  400 random songs (keys at and between steps, every mode, rate and gate) in blocks of 1 to 700 samples:
+    0 differ from one block, 0 leave a note hanging, 0 play two notes at once, 0 made `out` grow,
+    0 put an event out of its block or out of order
+[PASS] l18_ex5 (26 checks passed)
+```
+
+The block test is the one that finds most mistakes: the first step computed as `from / rate` (rounded down)
+instead of up, or the note off forgotten when no step follows it in the block. Each of these works in some
+blocks and fails in others.
+
+## Exercise 6 - Mono, legato and glide
+
+[`solutions/ex6_mono_synth.cpp`](ex6_mono_synth.cpp)
+
+The keys are an array, oldest first: a new key goes at the end, a key that goes up is taken out wherever it
+is, and only when it was the last one does the sound change. `sound()` does what every new note does: the
+target and the gain, then either a slide (when the note overlaps another) or a jump, then the envelope - an
+attack from silence, or with legato off; nothing with legato on.
+
+The slide is a number of samples and a step per sample, $`(target - pitch) / samples`$. Adding the step up
+leaves a rounding error, so the last step sets the pitch to the target exactly. A slide in semitones is a
+curve in hertz: the saw's frequency is computed from the pitch every sample, $`440 \cdot 2^{(p - 69)/12}`$.
+
+```text
+Exercise 6 - mono, legato and glide
+  one note: starts at its pitch with an attack, sounds (peak 0.25), releases to silence
+  legato: E over a held C keeps the envelope and slides 4 semitones in exactly 2400 samples
+  back to the key still down, a new slide from mid-slide, an octave as long as a semitone: done
+  last-note priority: C E G, E up changes nothing, G up returns to C, C up releases
+  legato off: every new note restarts the attack from the level it is at, and still glides
+  the sound: 55 cycles in a quarter second at A3, 110 at A4
+[PASS] l18_ex6 (36 checks passed)
+```
+
+A glide of constant *time* (here) sounds the same for every interval. Many synths glide at a constant *rate*
+instead - a number of semitones a second - so that an octave takes longer than a step. Changing the number of
+samples to $`|target - pitch| \cdot samplesPerSemitone`$ is all it takes.
+
+## Exercise 7 - A VST3 instrument on a track
+
+1. **Events.** A JUCE plugin gets a `juce::MidiBuffer`: messages at sample positions inside the call. For
+   each chunk the track already has its `MidiBlock` - the clip's events, the chased controllers, the live
+   keyboard - so the host copies them into a `MidiBuffer` prepared in `prepare()` (`ensureSize`, then only
+   `clear()` and `addEvent()`: no allocation). JUCE's VST3 wrapper turns notes into VST3 note events, and
+   controllers and pitch bend into *parameter changes* at the same sample, through the plugin's
+   `IMidiMapping`. A plugin that maps no parameter to controller 64 has no sustain pedal; the host cannot fix
+   that, only show it.
+2. **Hanging notes.** The table is still needed - more than before: the plugin cannot know that the transport
+   jumped, only the host can. On a stop, a seek or a wrap the host sends a note off for every note in the
+   table, at the chunk's offset, and the notes release as they would. For a hard stop (a panic button) it
+   calls the plugin's `reset()`, which cuts its voices and tails. Keys of the live keyboard that are still
+   down when the track is disarmed get their note offs too.
+3. **Latency.** The plugin's latency $`L`$ is part of the track's latency, and chapter 14's compensation
+   delays every other track by it, so the song stays together. A note from the keyboard cannot be sent
+   earlier - it has not happened yet - so the player hears it $`L`$ later than with the built-in synth. A
+   recorded note is placed by what the player heard, and the mix latency of Step 6 already includes the
+   compensation, so it comes out right as long as the anchor uses the engine's total latency.
+4. **The tail.** The engine keeps calling the plugin every block, stopped or not, with an empty buffer when
+   there are no events - the release, a reverb, a delay go on. A muted track is still processed (its note offs
+   must arrive); only its output is not mixed. A bypassed instrument outputs silence (`processBlockBypassed`)
+   but still gets its note offs. An offline render goes on after the song's end for
+   `getTailLengthSeconds()`, or - when that says "infinite" - until the output has been below -90 dB for a
+   second.
+5. **State.** The project keeps the plugin's identity (format, file, unique id) and the blob of
+   `getStateInformation()`, base64 in a text line. Opening the project creates the instance on the message
+   thread, calls `setStateInformation()` there, and only then hands it to the engine through the command
+   queue, like any insert (chapter 15). A plugin that is not installed keeps its blob in a silent placeholder,
+   so saving the project does not lose it.
+6. **Trust.** Nothing can be proved: a plugin may allocate, lock, log to a file or crash. The host measures
+   instead - the time of every call against the block's deadline, the dropouts, a CPU meter per plugin - and a
+   careful one runs plugins in another process, so that a crash costs the plugin and not the song. DawLab's
+   engine tests keep using the built-in synth; a plugin is tested with chapter 13's own, which is known to
+   behave.

@@ -12,7 +12,7 @@
 
 **練習 1-7** 是本章的練習，關於各個 step（不需要 JUCE）。**練習 8-12 是選做專題**，延伸 DawLab 18（需要 JUCE 建置）；它們之後才會加上。
 
-練習 2 和 3 建立在 Step 1 的 model 上（`exercises/model.h`：Step 1 的 `minidaw.h`，函式都已解好）。練習 4 是獨立的。請先完成各個 step。
+練習 2、3 和 5 建立在 Step 1 的 model 上（`exercises/model.h`：Step 1 的 `minidaw.h`，函式都已解好），練習 6 建立在 Step 4 已解好的 voice 元件（`Saw`、`Adsr`）上。練習 4 是獨立的。請先完成各個 step。
 
 ---
 
@@ -58,3 +58,34 @@
 DawLab 18 只有一個 tempo。給它一個 tempo map——一串變化，每個是一個 tick 和一個 tempo——並寫出 audio thread 需要的兩個轉換：`sampleOfTick()` 和它的精確反函數 `firstTickAtOrAfter()`，和 Step 1 一樣，但要跨過 tempo 變化。`prepare()` 算出每個變化從哪個 sample 開始。
 
 Self-check 會用 300 個隨機 map 和參考答案比對，要求一首每拍都漸慢的歌的每一個 tick 都恰好落在一個隨機大小的 block 裡，還會查出你有沒有把變化的起點取整：2000 個變化之後，那會差 480 個 sample（11 ms）。
+
+## 練習 5 - Arpeggiator ★★★（實作）
+
+[`l18_ex5_starter`，檔案 `exercises/starter/ex5_arpeggiator.cpp`]
+
+Arpeggiator 是鍵盤和樂器之間的 MIDI effect：它把按住的和弦一次一個音地播出來，落在音樂時間的 grid 上——Up、Down、UpDown 或依按鍵的順序，跨最多四個八度，每個音長是它那一步的 `gate`。寫出 `process()`，把一個 block 的鍵盤事件變成這個 block 的音符，以及給停止或跳躍用的 `reset()`（header 寫了每一條規則）。
+
+這是換了形狀的 Step 1 和 Step 2。每一步在任何 tempo 下都落在它精確的 sample 上；在某一步自己的 sample 上按下的鍵屬於那一步；一個音即使它的鍵已經放開，也在它的 gate 結束，gate 為 1 時在下一個音之前結束；controller 直接通過。而且它跑在 audio thread 上：輸出在寫入時就保持順序，不用會配置記憶體的排序。Self-check 會把 400 首隨機的歌各播兩次，一次用單一 block，一次用 1 到 700 sample 的 block：輸出不能改變，也不能有音卡住。
+
+## 練習 6 - Mono、legato 與 glide ★★☆（實作）
+
+[`l18_ex6_starter`，檔案 `exercises/starter/ex6_mono_synth.cpp`]
+
+Bass line 或 lead 常常用一個 voice 來彈。用 Step 3 的鋸齒波和 envelope 寫出 `MonoSynth`：
+
+- **最後一個音優先：** 最新的鍵發聲；它放開時，仍按著的鍵裡最新的那個再次發聲。
+- **Legato：** 和另一個音重疊的音不會重新開始 envelope（關掉 legato 時會，從它當下的音量開始）。
+- **Glide：** 音高以半音為單位直線滑到新的音，不論音程多大都花一樣的時間——但只在重疊的音之間。
+
+Self-check 會逐個 sample 追蹤音高：4 個半音的 glide 走到一半時，必須正好高了 2 個半音，而且必須正好在 2400 個 sample 時到達，一個都不能早。
+
+## 練習 7 - Track 上的 VST3 樂器 ★★☆（設計）
+
+DawLab 18 的樂器是它自己的 synth（Step 7）。第 13 章掛載 VST3 *effect*；練習 12 會把 VST3 *樂器* 放到 synth 的位置。在那之前，先用文字設計它。涵蓋：
+
+1. **事件。** Step 7 交給 synth 一個逐 chunk 切開的 `MidiBlock`。Plugin 拿到的是什麼，clip 的音符、chase 過的 controller 和即時的鍵盤又怎麼進到裡面？在沒有 controller 事件的 VST3 裡，controller 或 pitch bend 會變成什麼？
+2. **不留卡住的音。** Step 2 記著它啟動過的音符。Plugin 有自己的 voice 時還需要它嗎？既然 VST3 沒有「all notes off」，在停止、seek 或 loop 繞回時，host 要送什麼？
+3. **Latency。** 預先讀取的 sampler，或有 look-ahead 的 synth，會回報 latency。它在第 14 章的延遲補償裡放在哪裡？它對鍵盤的延遲（Step 5）以及錄下的音符擺放的位置（Step 6）有什麼影響？
+4. **尾巴。** Transport 停了，plugin 還在 release 一個音。Engine 要繼續呼叫它嗎？Mute 的 track、bypass 的 track，以及 offline render 的結尾呢？
+5. **狀態。** 專案檔要保存什麼，怎麼在第一個音之前還原，哪個 thread 可以呼叫 `setStateInformation()`？
+6. **信任。** Step 7 的測試證明 synth 絕不在 audio thread 上配置記憶體。Host 能對 plugin 證明什麼，又改做什麼？

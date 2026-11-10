@@ -15,8 +15,9 @@ Difficulty: ★☆☆ easy, ★★☆ medium, ★★★ hard. Implementation exe
 **Exercises 1-7** are the chapter's exercise set, about the steps (no JUCE). **Exercises 8-12 are
 optional projects** that extend DawLab 18 (they need a JUCE build); they are still to come.
 
-Exercises 2 and 3 build on Step 1's model (`exercises/model.h`: Step 1's `minidaw.h` with its functions
-solved). Exercise 4 stands alone. Do the steps first.
+Exercises 2, 3 and 5 build on Step 1's model (`exercises/model.h`: Step 1's `minidaw.h` with its functions
+solved), Exercise 6 on Step 4's solved voice parts (`Saw`, `Adsr`). Exercise 4 stands alone. Do the steps
+first.
 
 ---
 
@@ -90,3 +91,54 @@ Step 1, but across changes. `prepare()` computes where each change starts in sam
 The self-check compares with a reference for 300 random maps, requires that every tick of a song with a
 ritardando into every beat falls into exactly one block of random size, and finds out whether you rounded
 where a change starts: after 2000 changes, that is 480 samples (11 ms) off.
+
+## Exercise 5 - An arpeggiator ★★★ (implementation)
+
+[`l18_ex5_starter`, file `exercises/starter/ex5_arpeggiator.cpp`]
+
+An arpeggiator is a MIDI effect between the keyboard and the instrument: it plays the held chord one note
+at a time, on a grid in musical time - Up, Down, UpDown or in the order the keys were played, over up to
+four octaves, each note a `gate` of its step long. Write `process()`, which turns a block of keyboard events
+into the block's notes, and `reset()` for a stop or a jump (the header has every rule).
+
+It is Steps 1 and 2 again in a new shape. Every step lands on its exact sample at any tempo; a key pressed
+at a step's own sample is in that step; a note ends at its gate even when its key is already up, and before
+the next note when the gate is 1; controllers pass through. And it runs on the audio thread: the output is
+kept in order as it is written, without a sort that allocates. The self-check plays 400 random songs once
+in a single block and once in blocks of 1 to 700 samples: the output must not change, and no note may hang.
+
+## Exercise 6 - Mono, legato and glide ★★☆ (implementation)
+
+[`l18_ex6_starter`, file `exercises/starter/ex6_mono_synth.cpp`]
+
+A bass line or a lead is often played on one voice. Write `MonoSynth`, built from Step 3's saw and envelope:
+
+- **Last-note priority:** the newest key sounds; when it goes up, the newest key still down sounds again.
+- **Legato:** a note that overlaps another does not restart the envelope (with legato off it does, from the
+  level it is at).
+- **Glide:** the pitch slides to the new note in a straight line in semitones, in the same time whatever
+  the interval - but only between overlapping notes.
+
+The self-check follows the pitch sample by sample: half way through a glide of 4 semitones it must be
+exactly 2 semitones up, and it must reach the note in exactly 2400 samples, not one sooner.
+
+## Exercise 7 - A VST3 instrument on a track ★★☆ (design)
+
+DawLab 18's instrument is its own synth (Step 7). Chapter 13 hosts VST3 *effects*; Exercise 12 will put a
+VST3 *instrument* where the synth is. Before that, design it in writing. Cover:
+
+1. **Events.** Step 7 hands the synth a `MidiBlock`, sliced per chunk. What does a plugin get instead, and
+   how do the clip's notes, the chased controllers and the live keyboard get into it? What becomes of a
+   controller or a pitch bend in VST3, which has no controller events?
+2. **No hanging notes.** Step 2 keeps a table of the notes it started. Is it still needed when the plugin
+   has its own voices? What does the host send on a stop, a seek or a loop wrap, given that VST3 has no
+   "all notes off"?
+3. **Latency.** A sampler that reads ahead, or a synth with look-ahead, reports a latency. Where does it go
+   in chapter 14's delay compensation, and what does it do to the keyboard's delay (Step 5) and to where a
+   recorded note is placed (Step 6)?
+4. **The tail.** The transport stops and the plugin is still releasing a note. Does the engine keep calling
+   it? What about a muted track, a bypassed one, and the end of an offline render?
+5. **State.** What does the project file keep, how is it restored before the first note, and which thread
+   may call `setStateInformation()`?
+6. **Trust.** Step 7's tests prove the synth never allocates on the audio thread. What can the host prove
+   about a plugin, and what does it do instead?
