@@ -2,7 +2,7 @@
 
 [English](step-03-varispeed.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 2 - 起點跟著 tempo 的 clip](step-02-follow-start.zh-TW.md)
+[總覽](../README.zh-TW.md) | 上一步：[Step 2 - 起點跟著 tempo 的 clip](step-02-follow-start.zh-TW.md) | 下一步：[Step 4 - Time-stretcher](step-04-stretch.zh-TW.md)
 
 ## 目標
 

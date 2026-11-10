@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-03-varispeed.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 2 - A clip whose start follows the tempo](step-02-follow-start.md)
+[Overview](../README.md) | Previous: [Step 2 - A clip whose start follows the tempo](step-02-follow-start.md) | Next: [Step 4 - A time-stretcher](step-04-stretch.md)
 
 ## Goal
 

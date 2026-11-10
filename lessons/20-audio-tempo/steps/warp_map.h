@@ -1,5 +1,5 @@
 #pragma once
-// Step 1's warp map, solved: Steps 3 and 4 start from it. (Do Step 1 first: this file gives it away.)
+// Step 1's warp map, solved: Step 3 starts from it. (Do Step 1 first: this file gives it away.)
 //
 // Markers tie a sample of the file to a tick of the song, with straight lines between them and beyond them.
 

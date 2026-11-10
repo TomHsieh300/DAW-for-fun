@@ -14,6 +14,7 @@ write the step's functions in `starter/`, the self-check tells you when they wor
 | 1 | `step01-warp-map` | `WarpMap::sourceAt`, `tickAt`, `sourceAtSample`, `songSecondsOf`, `speedAt`, `markersForLoop`, `markersForTake` | `l20_step01_starter` |
 | 2 | `step02-follow-start` | `setFollow`, `startUnder`, `retime`, `moveTo`, `moveToTick`, `endTick`, `gaps`, `jumpInClip` | `l20_step02_starter` |
 | 3 | `step03-varispeed` | `semitonesOf`, `readAt`, `positionsFor`, `firstSample`, `endSample`, `renderWarped` | `l20_step03_starter` |
+| 4 | `step04-stretch` | `bestOffset`, `stretch` | `l20_step04_starter` |
 
 </div>
 
@@ -29,7 +30,7 @@ Every folder has the same four files:
   (label `solution`).
 
 `tempo_map.h`, next to the folders, is chapter 19's tempo map, solved: every step starts from it. `warp_map.h`
-is Step 1, solved, for Steps 3 and 4.
+is Step 1, solved, for Step 3.
 
 Build with `.\scripts\build.ps1 -Only 20-audio-tempo` from the repository root (no JUCE needed) and
 run the programs from the `build` folder, e.g. `.\bin\Debug\l20_step01_starter.exe`. The "Your
