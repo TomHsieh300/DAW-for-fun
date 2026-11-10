@@ -35,10 +35,12 @@ Bytes cat(std::initializer_list<Bytes> parts) {
 }
 
 Bytes chunkOf(const char* type, const Bytes& data) {
-    Bytes b(type, type + 4);
+    Bytes b;
+    b.reserve(8 + data.size()); // the type, the length, the data
+    b.insert(b.end(), type, type + 4);
     const auto n = static_cast<std::uint32_t>(data.size());
-    b.insert(b.end(), {static_cast<std::uint8_t>(n >> 24), static_cast<std::uint8_t>(n >> 16), static_cast<std::uint8_t>(n >> 8),
-                       static_cast<std::uint8_t>(n)});
+    for (int shift = 24; shift >= 0; shift -= 8)
+        b.push_back(static_cast<std::uint8_t>(n >> shift));
     b.insert(b.end(), data.begin(), data.end());
     return b;
 }

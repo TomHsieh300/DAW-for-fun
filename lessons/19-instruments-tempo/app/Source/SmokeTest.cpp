@@ -27,6 +27,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <random>
 #include <set>
@@ -39,6 +40,17 @@ using namespace dawlab::engine;
 // ---- the test plugin -------------------------------------------------------------------------------
 
 namespace {
+
+// The engine's track of a project track. The tests ask only for tracks that must be there; if one is not, the run
+// stops here with a message instead of reading through a null pointer.
+engine::Track& trackOf(Engine& engine, TrackId id) {
+    engine::Track* track = engine.getTrack(id);
+    if (track == nullptr) {
+        std::fprintf(stderr, "smoke test: the engine has no track with id %u\n", static_cast<unsigned>(id.value));
+        std::abort();
+    }
+    return *track;
+}
 
 std::atomic<int> gTestPluginInstances{0};
 std::atomic<long long> gTestPluginProcessCalls{0};
@@ -376,7 +388,7 @@ void testRecordingBasics() {
     const TrackId a = session.getTrackId(0), b = session.getTrackId(1);
     DAWLAB_CHECK(main.setArmed(a, true));
     DAWLAB_CHECK(main.setArmed(b, true));
-    engine.getTrack(b)->setInputChannel(1);
+    trackOf(engine, b).setInputChannel(1);
     engine.getTransport().setPosition(48000);
     DAWLAB_CHECK(main.toggleRecord());
     // Longer than a device block: simulatePlayback() has to hand each block its own part of the input.
@@ -408,16 +420,16 @@ void testRecordingBasics() {
 
     // Disarming also turns the monitor off.
     main.cycleMonitor(a);
-    DAWLAB_CHECK(engine.getTrack(a)->getMonitor().mode() == MonitorMode::Auto);
+    DAWLAB_CHECK(trackOf(engine, a).getMonitor().mode() == MonitorMode::Auto);
     DAWLAB_CHECK(main.getStatus().contains("late"));
     main.cycleMonitor(a);
-    DAWLAB_CHECK(engine.getTrack(a)->getMonitor().mode() == MonitorMode::Always);
+    DAWLAB_CHECK(trackOf(engine, a).getMonitor().mode() == MonitorMode::Always);
     DAWLAB_CHECK(main.setArmed(a, false));
-    DAWLAB_CHECK(engine.getTrack(a)->getMonitor().mode() == MonitorMode::Off);
+    DAWLAB_CHECK(trackOf(engine, a).getMonitor().mode() == MonitorMode::Off);
     // A monitor needs an armed track, and arms it.
     const TrackId c = session.getTrackId(2);
     main.cycleMonitor(c);
-    DAWLAB_CHECK(engine.getTrack(c)->isArmed());
+    DAWLAB_CHECK(trackOf(engine, c).isArmed());
 }
 
 void testRecordingLoop() {
@@ -477,7 +489,7 @@ void testRecordingLoop() {
         DAWLAB_CHECK(session.getTakesOf(clip) != nullptr && session.getTakesOf(clip)->size() == 4);
         DAWLAB_CHECK(session.chooseTake(reopened, 0, 2));
         // An armed track is about now, not about the song.
-        DAWLAB_CHECK(!engine.getTrack(reopened)->isArmed());
+        DAWLAB_CHECK(!trackOf(engine, reopened).isArmed());
 
         // A device at another rate: the takes follow.
         session.handleSampleRateChange(48000.0, 24000.0);
@@ -686,7 +698,7 @@ void testRecordingWhenThingsGoWrong() {
             other.addTrack(id);
             other.prepare(48000.0, 512);
             other.applyPendingCommandsOffline();
-            other.getTrack(id)->setArmed(true);
+            trackOf(other, id).setArmed(true);
             other.getTransport().setPosition(10000);
             RecordingSession dying;
             DAWLAB_CHECK(dying.begin(other, std::filesystem::u8path(rig.folder.get().getFullPathName().toStdString()), "crashed", device) == 1);
@@ -837,7 +849,7 @@ void testAutomation() {
     DAWLAB_CHECK(session.undo() && session.getLane(pan) == nullptr);
 
     // c. The hand: Touch mode, a recording is one undo step, and moving the fader adds no other.
-    engine.getTrack(first)->setGainDb(-6.0f);
+    trackOf(engine, first).setGainDb(-6.0f);
     DAWLAB_CHECK(session.setLaneMode(gain, AutomationMode::Touch));
     AudioBuffer block(kNumChannels, 512);
     engine.getTransport().setPosition(0);
@@ -867,7 +879,7 @@ void testAutomation() {
     engine.applyPendingCommandsOffline();
     engine.getTransport().setPosition(0);
     DAWLAB_CHECK(session.setLaneMode(secondGain, AutomationMode::Write));
-    engine.getTrack(second)->setGainDb(-12.0f);
+    trackOf(engine, second).setGainDb(-12.0f);
     engine.getTransport().play();
     for (int b = 0; b < 4; ++b)
         engine.processBlock(block.toBlock());
@@ -944,7 +956,7 @@ void testAutomation() {
     DAWLAB_CHECK(session.getLane(gain) != nullptr && session.getLane(gain)->curve == lane.curve);
     DAWLAB_CHECK(session.getLane(gain) != nullptr && session.getLane(gain)->mode == AutomationMode::Touch);
     engine.applyPendingCommandsOffline();
-    DAWLAB_CHECK(engine.getTrack(first) != nullptr && engine.getTrack(first)->getOwnLane(engine::kLaneGain)->getCurve() != nullptr);
+    DAWLAB_CHECK(engine.getTrack(first) != nullptr && trackOf(engine, first).getOwnLane(engine::kLaneGain)->getCurve() != nullptr);
 
     // e. The file: everything comes back, under new ids, also in a project opened again.
     const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("l19_automation", "");
@@ -977,7 +989,7 @@ void testAutomation() {
         DAWLAB_CHECK(project::writeProject(ProjectIO::capture(opened, "Song_media").state) == saved);
         second2->getEngine().applyPendingCommandsOffline();
         // The engine has them too.
-        DAWLAB_CHECK(second2->getEngine().getTrack(newFirst)->getOwnLane(engine::kLaneGain)->getCurve() != nullptr);
+        DAWLAB_CHECK(trackOf(second2->getEngine(), newFirst).getOwnLane(engine::kLaneGain)->getCurve() != nullptr);
         DAWLAB_CHECK(!slot.isEmpty() && slot.effect->getLane(0)->getCurve() != nullptr);
     }
     {
@@ -1080,7 +1092,7 @@ void testAutomation() {
 
 // ---- instruments and MIDI clips (chapter 18, Step 8) --------------------------------------------------
 
-engine::Track* engineTrack(MainComponent& main, TrackId id) { return main.getEngine().getTrack(id); }
+engine::Track& engineTrack(MainComponent& main, TrackId id) { return trackOf(main.getEngine(), id); }
 
 MidiClipModel midiClip(std::int64_t start, std::vector<engine::Note> played) {
     MidiClipModel c;
@@ -1103,7 +1115,7 @@ void testMidiModel() {
     // An instrument track, as one undo step.
     const TrackId synth = main.addTrack(TrackFormat::Mono, true);
     engine.applyPendingCommandsOffline();
-    DAWLAB_CHECK(synth.isValid() && session.isInstrument(synth) && engineTrack(main, synth)->isInstrument());
+    DAWLAB_CHECK(synth.isValid() && session.isInstrument(synth) && engineTrack(main, synth).isInstrument());
     DAWLAB_CHECK(session.getStripName(session.trackRef(synth)).startsWith("Synth"));
     DAWLAB_CHECK(main.undo() && !session.hasTrack(synth));
     DAWLAB_CHECK(main.redo() && session.isInstrument(synth));
@@ -1114,14 +1126,14 @@ void testMidiModel() {
     engine.applyPendingCommandsOffline();
     const auto& clips = session.getMidiClips(synth);
     DAWLAB_CHECK(clips.size() == 1 && clips[0].id > 0);
-    const std::vector<engine::MidiClip>* playing = engineTrack(main, synth)->getMidiClips();
+    const std::vector<engine::MidiClip>* playing = engineTrack(main, synth).getMidiClips();
     DAWLAB_CHECK(playing != nullptr && playing->size() == 1 && (*playing)[0].notes.size() == 2);
     engine.getTransport().setPosition(0);
     engine.getTransport().play();
     main.simulatePlayback(4800);
-    DAWLAB_CHECK(engineTrack(main, synth)->getSynth()->activeVoices() == 1); // the note at tick 250 is at 6250
+    DAWLAB_CHECK(engineTrack(main, synth).getSynth()->activeVoices() == 1); // the note at tick 250 is at 6250
     main.simulatePlayback(4800);
-    DAWLAB_CHECK(engineTrack(main, synth)->getSynth()->activeVoices() == 2);
+    DAWLAB_CHECK(engineTrack(main, synth).getSynth()->activeVoices() == 2);
     engine.getTransport().stop();
     main.simulatePlayback(512);
 
@@ -1130,19 +1142,19 @@ void testMidiModel() {
     quantized[0].quantize = {240, 1.0, 0.0};
     DAWLAB_CHECK(session.perform(edit::SetMidiClips{synth, quantized}, "Quantize"));
     engine.applyPendingCommandsOffline();
-    playing = engineTrack(main, synth)->getMidiClips();
+    playing = engineTrack(main, synth).getMidiClips();
     DAWLAB_CHECK(playing != nullptr && (*playing)[0].notes[1].start == 240 && session.getMidiClips(synth)[0].played[1].start == 250);
     const int clipId = session.getMidiClips(synth)[0].id;
     DAWLAB_CHECK((*playing)[0].id == clipId); // the same clip for the player, through the edit
     DAWLAB_CHECK(main.undo());
     engine.applyPendingCommandsOffline();
-    DAWLAB_CHECK(session.getMidiClips(synth)[0].quantize.strength == 0.0 && (*engineTrack(main, synth)->getMidiClips())[0].notes[1].start == 250);
+    DAWLAB_CHECK(session.getMidiClips(synth)[0].quantize.strength == 0.0 && (*engineTrack(main, synth).getMidiClips())[0].notes[1].start == 250);
     DAWLAB_CHECK(main.redo());
 
     // Not an instrument any more, and back, as undo steps.
     DAWLAB_CHECK(session.perform(edit::SetInstrument{synth, false}, "Audio track"));
-    DAWLAB_CHECK(!session.isInstrument(synth) && !engineTrack(main, synth)->isInstrument());
-    DAWLAB_CHECK(main.undo() && session.isInstrument(synth) && engineTrack(main, synth)->isInstrument());
+    DAWLAB_CHECK(!session.isInstrument(synth) && !engineTrack(main, synth).isInstrument());
+    DAWLAB_CHECK(main.undo() && session.isInstrument(synth) && engineTrack(main, synth).isInstrument());
 
     // Deleted and brought back: the instrument and its clips, with the same clip ids.
     const std::vector<MidiClipModel> before = session.getMidiClips(synth);
@@ -1151,8 +1163,8 @@ void testMidiModel() {
     engine.applyPendingCommandsOffline();
     DAWLAB_CHECK(main.undo() && session.hasTrack(synth) && session.isInstrument(synth));
     engine.applyPendingCommandsOffline();
-    DAWLAB_CHECK(session.getMidiClips(synth) == before && engineTrack(main, synth)->isInstrument());
-    DAWLAB_CHECK(engineTrack(main, synth)->getMidiClips() != nullptr && engineTrack(main, synth)->getMidiClips()->size() == 1);
+    DAWLAB_CHECK(session.getMidiClips(synth) == before && engineTrack(main, synth).isInstrument());
+    DAWLAB_CHECK(engineTrack(main, synth).getMidiClips() != nullptr && engineTrack(main, synth).getMidiClips()->size() == 1);
 
     // Saved and opened: the same, with the played notes and the quantize; new clip ids are fine.
     TakesFolder folder;
@@ -1170,7 +1182,7 @@ void testMidiModel() {
         MidiClipModel a = session.getMidiClips(reopened)[0], b = before[0];
         a.id = b.id = 0;
         DAWLAB_CHECK(a == b && a.quantize.strength == 1.0 && a.played[1].start == 250);
-        DAWLAB_CHECK(engineTrack(main, reopened)->isInstrument());
+        DAWLAB_CHECK(engineTrack(main, reopened).isInstrument());
     }
     engine.collectGarbage();
     DAWLAB_CHECK(engine.getGarbageLeaked() == 0);
@@ -1272,7 +1284,7 @@ void testMidiEditing() {
     DAWLAB_CHECK(session.getMidiClips(synth)[0].played[0].start == 1920 && session.getMidiClips(synth)[0].notes()[0].start == 1920);
     DAWLAB_CHECK(main.setMidiClipMuted(synth, 0, true) && session.getMidiClips(synth)[0].muted);
     engine.applyPendingCommandsOffline();
-    DAWLAB_CHECK((*engine.getTrack(synth)->getMidiClips())[0].muted);
+    DAWLAB_CHECK((*trackOf(engine, synth).getMidiClips())[0].muted);
     const juce::Image rollImage = roll.createComponentSnapshot(roll.getLocalBounds());
     const juce::Image mainImage = main.createComponentSnapshot(main.getLocalBounds());
     DAWLAB_CHECK(rollImage.isValid() && mainImage.isValid());
@@ -1364,9 +1376,9 @@ void testTempoMap() {
     tr.setPosition(0);
     tr.play();
     main.simulatePlayback(143872); // 281 blocks: just before 144000
-    DAWLAB_CHECK(engineTrack(main, synth)->getSynth()->activeVoices() == 0);
+    DAWLAB_CHECK(engineTrack(main, synth).getSynth()->activeVoices() == 0);
     main.simulatePlayback(512);
-    DAWLAB_CHECK(engineTrack(main, synth)->getSynth()->activeVoices() == 1);
+    DAWLAB_CHECK(engineTrack(main, synth).getSynth()->activeVoices() == 1);
     tr.stop();
     main.simulatePlayback(512);
     std::printf("  120 then 60 BPM from bar 2: bar 3 at sample %lld, a note at bar 2 beat 2 sounds from 144000\n",
@@ -1590,12 +1602,12 @@ void testInstrumentSound() {
                  main.getStatus().contains("latency 256"));
     engine.applyPendingCommandsOffline();
     DAWLAB_CHECK(session.getHistory().undoCount() == undo2 + 1 && processorOf(session, synth) != nullptr);
-    DAWLAB_CHECK(engineTrack(main, synth)->getReplacementInstrument() == session.getPluginInstrument(synth));
+    DAWLAB_CHECK(engineTrack(main, synth).getReplacementInstrument() == session.getPluginInstrument(synth));
     // It plays the track's notes, the built-in synth does not, and its latency is the mix's.
     engine.getTransport().setPosition(0);
     engine.getTransport().play();
     main.simulatePlayback(48000);
-    DAWLAB_CHECK(processorOf(session, synth)->noteOns == 1 && engineTrack(main, synth)->getSynth()->activeVoices() == 0);
+    DAWLAB_CHECK(processorOf(session, synth)->noteOns == 1 && engineTrack(main, synth).getSynth()->activeVoices() == 0);
     DAWLAB_CHECK(engine.getLatencySamples() == latencyBefore + 256);
     engine.getTransport().stop();
     main.simulatePlayback(512);
@@ -1614,7 +1626,7 @@ void testInstrumentSound() {
     // Undo takes the plugin off, redo builds it again with the state it had.
     DAWLAB_CHECK(main.undo() && session.getPluginInstrument(synth) == nullptr);
     engine.applyPendingCommandsOffline();
-    DAWLAB_CHECK(engineTrack(main, synth)->getReplacementInstrument() == nullptr);
+    DAWLAB_CHECK(engineTrack(main, synth).getReplacementInstrument() == nullptr);
     DAWLAB_CHECK(main.redo() && processorOf(session, synth) != nullptr && processorOf(session, synth)->gain == 0.5f);
     engine.applyPendingCommandsOffline();
     // A change inside the plugin as an edit: the same file with another state. The same object takes it - no plugin
@@ -1788,7 +1800,7 @@ void testMidiRecording() {
         tr.setPosition(0);
         DAWLAB_CHECK(main.toggleRecord() && main.getMidiRecording().isRecording() && tr.isPlaying());
         kb.play(0, 20);
-        DAWLAB_CHECK(engine.getTrack(synth)->getSynth()->activeVoices() == 1); // the key heard while recording
+        DAWLAB_CHECK(trackOf(engine, synth).getSynth()->activeVoices() == 1); // the key heard while recording
         kb.play(20, 355);                                                         // to 2 bars
         DAWLAB_CHECK(main.toggleRecord() && !main.getMidiRecording().isRecording());
     }
@@ -2193,7 +2205,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         } else {
             // The track with the largest insert latency (in the demo song: track 8, convolution reverb).
             int track = 0;
-            const auto insertLatency = [&](int lane) { return engine.getTrack(session.getTrackId(lane))->getInsertLatencySamples(); };
+            const auto insertLatency = [&](int lane) { return trackOf(engine, session.getTrackId(lane)).getInsertLatencySamples(); };
             for (int t = 1; t < session.getNumTracks(); ++t)
                 if (insertLatency(t) > insertLatency(track))
                     track = t;
@@ -2298,12 +2310,12 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         // fader -> ChannelStrip::setGainDb
         auto& strip0 = main.getMixer().getStrip(0);
         strip0.getFader().setValue(FaderLaw::dbToPosition(-6.0f), juce::sendNotificationSync);
-        DAWLAB_CHECK_NEAR(e.getTrack(id0)->getGainDb(), -6.0, 0.01);
+        DAWLAB_CHECK_NEAR(trackOf(e, id0).getGainDb(), -6.0, 0.01);
         // A click on S: Button::triggerClick() would be asynchronous, so do what it does directly.
         strip0.getSoloButton().setToggleState(true, juce::dontSendNotification);
         strip0.getSoloButton().onClick();
-        DAWLAB_CHECK(e.getTrack(id0)->isSoloed());
-        e.getTrack(id0)->setSolo(false);
+        DAWLAB_CHECK(trackOf(e, id0).isSoloed());
+        trackOf(e, id0).setSolo(false);
 
         // auto-generated panel -> InsertEffect::setParameter
         InsertEffect* comp = s6.getSlot(s6.trackRef(id0), 1).effect;
@@ -2493,9 +2505,9 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         Engine& ea = a.getEngine();
         const TrackId bass = sa.getTrackId(1), lead = sa.getTrackId(5);
         sa.setStripName(sa.trackRef(bass), "Bass \"DI\"");
-        ea.getTrack(lead)->setMute(true);
-        ea.getTrack(bass)->setSendLevelDb(0, -12.5f);
-        ea.getTrack(bass)->setSendPreFader(0, true);
+        trackOf(ea, lead).setMute(true);
+        trackOf(ea, bass).setSendLevelDb(0, -12.5f);
+        trackOf(ea, bass).setSendPreFader(0, true);
         sa.setInsertBypassed(sa.trackRef(sa.getTrackId(0)), 0, true);
         ea.getTransport().setTempo(118.0);
         ea.getTransport().setLoopRangeBars(2, 5);
@@ -2643,7 +2655,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         DAWLAB_CHECK(bassStrip != nullptr);
         if (bassStrip != nullptr) {
             juce::Slider& fader = bassStrip->getFader();
-            const float gain0 = e.getTrack(bass)->getGainDb();
+            const float gain0 = trackOf(e, bass).getGainDb();
             const size_t entries0 = s.getHistory().undoCount();
             const auto drag = [&fader](std::initializer_list<float> dbs) { // what a mouse drag does
                 if (fader.onDragStart)
@@ -2657,9 +2669,9 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
             drag({-3.0f, -1.0f});
             const size_t entries = s.getHistory().undoCount() - entries0;
             m.undo();
-            const float afterOne = e.getTrack(bass)->getGainDb();
+            const float afterOne = trackOf(e, bass).getGainDb();
             m.undo();
-            const float afterTwo = e.getTrack(bass)->getGainDb();
+            const float afterTwo = trackOf(e, bass).getGainDb();
             std::printf("    two fader drags (3 and 2 moves): %zu undo entries; undo -> %.1f dB, undo -> %.1f dB (was %.1f)\n",
                         entries, static_cast<double>(afterOne), static_cast<double>(afterTwo), static_cast<double>(gain0));
             DAWLAB_CHECK(entries == 2);
@@ -2692,9 +2704,9 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         const bool cleanAfterSave = dirtyBeforeSave && !m.getWindowTitle().endsWith("*");
         m.getArrangement().setSelectedTrack(bass);
         cm.invokeDirectly(CommandIDs::toggleMuteSelected, false);
-        const bool dirtyAfterMute = m.getWindowTitle().endsWith(" *") && e.getTrack(bass)->isMuted();
+        const bool dirtyAfterMute = m.getWindowTitle().endsWith(" *") && trackOf(e, bass).isMuted();
         m.undo();
-        const bool cleanAfterUndo = !m.getWindowTitle().endsWith("*") && !e.getTrack(bass)->isMuted();
+        const bool cleanAfterUndo = !m.getWindowTitle().endsWith("*") && !trackOf(e, bass).isMuted();
         m.redo();
         const bool dirtyAfterRedo = m.getWindowTitle().endsWith(" *");
         std::printf("    title after save \"%s\"; mute -> \"*\" %s, undo -> clean %s, redo -> \"*\" %s\n",
@@ -2760,7 +2772,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
             slotsBefore.emplace_back(s.getTrackId(lane), s.trackRef(s.getTrackId(lane)).index);
         constexpr int kSteps = 150;
         int performed = 0;
-        int kinds[14] = {};
+        std::set<int> kinds; // the kinds of edit that were applied at least once
         for (int step = 0; step < kSteps; ++step) {
             const int kind = pick(0, 13);
             bool ok = false;
@@ -2815,7 +2827,8 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
             default: break;
             }
             performed += ok ? 1 : 0;
-            kinds[kind] += ok ? 1 : 0;
+            if (ok)
+                kinds.insert(kind);
             if (step % 8 == 0)
                 settle();
         }
@@ -2842,9 +2855,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         const bool sameEnd = stateText() == end;
         const AudioBuffer soundRedone = renderSeconds(e, 1.0);
         const float redoneDiff = maxAbsDiff(soundEnd, 0, soundRedone, 0, soundEnd.getNumSamples());
-        int kindsUsed = 0;
-        for (int k : kinds)
-            kindsUsed += k > 0 ? 1 : 0;
+        const int kindsUsed = static_cast<int>(kinds.size());
         std::printf("6f. random walk: %d of %d edits applied (%d of 14 kinds), %zu undo entries; undo all (%d): project %s,\n"
                     "    sound max |diff| %.3g (%d of %zu tracks back in another engine slot); redo all (%d): project %s,\n"
                     "    sound max |diff| %.3g; %d tracks, leaked %llu\n",
@@ -3104,7 +3115,7 @@ int runSnapshot(const juce::File& pngFile) {
         engine.applyPendingCommandsOffline();
         session.dispatchPendingMessages();
         main.setArmed(armed, true);
-        engine.getTrack(armed)->getMonitor().setMode(MonitorMode::Auto);
+        trackOf(engine, armed).getMonitor().setMode(MonitorMode::Auto);
         main.getArrangement().hideAutomation(session.getTrackId(0));
         main.getArrangement().hideAutomation(session.getTrackId(1));
         main.getArrangement().setSelectedTrack(armed);
