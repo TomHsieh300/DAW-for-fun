@@ -31,7 +31,7 @@
 17 18 19 app/Source/TransportBar.h
 14 15 16 17 18 19 app/Source/VstInsert.cpp
 14 15 16 17 18 19 app/Source/VstInsert.h
-18 19 20 engine/include/dawlab/engine/All.h
+18 19 engine/include/dawlab/engine/All.h
 16 17 18 19 20 engine/include/dawlab/engine/Automation.h
 14 15 engine/include/dawlab/engine/ChannelStrip.h
 16 17 18 19 20 engine/include/dawlab/engine/ChannelStrip.h

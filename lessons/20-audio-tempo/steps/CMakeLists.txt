@@ -19,3 +19,6 @@ l20_add_step(step01 step01-warp-map)
 l20_add_step(step02 step02-follow-start)
 l20_add_step(step03 step03-varispeed)
 l20_add_step(step04 step04-stretch)
+
+# Step 4's check stretches a minute of audio: seconds in a normal build, a minute under ThreadSanitizer.
+set_tests_properties(l20_step04_solution PROPERTIES TIMEOUT 600)

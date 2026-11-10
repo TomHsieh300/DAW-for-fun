@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-04-stretch.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 3 - Varispeed](step-03-varispeed.md)
+[Overview](../README.md) | Previous: [Step 3 - Varispeed](step-03-varispeed.md) | Next: [Step 5 - The engine](step-05-engine.md)
 
 ## Goal
 

@@ -2,9 +2,9 @@
 #
 #   docs  every relative link and image in the Markdown files, and the files chapters copy from
 #         each other (scripts/copied_files.txt)
-#   core  every pure C++ chapter (00-12 and the engine parts of 14-19), Debug and Release, on
+#   core  every pure C++ chapter (00-12 and the engine parts of 14-20), Debug and Release, on
 #         Windows, Linux (x64 and ARM64) and macOS
-#   tsan  chapters 15-19 under ThreadSanitizer: their checks run a real audio thread next to the
+#   tsan  chapters 15-20 under ThreadSanitizer: their checks run a real audio thread next to the
 #         UI thread, and TSan fails the run on any data race between them
 #   asan  every pure C++ chapter under AddressSanitizer and UndefinedBehaviorSanitizer
 #   juce  chapters 13-19 with JUCE, including the smoke tests and snapshots of DawLab 8 and 15 to
@@ -66,7 +66,7 @@ jobs:
         run: ./scripts/build.sh --config ${{ matrix.config }}
 
   tsan:
-    name: tsan (ubuntu-24.04, chapters 15-19)
+    name: tsan (ubuntu-24.04, chapters 15-20)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -79,7 +79,7 @@ jobs:
       - name: Build and test under ThreadSanitizer
         env:
           TSAN_OPTIONS: halt_on_error=1 second_deadlock_stack=1
-        run: ./scripts/build.sh --only 15-daw-growing,16-automation,17-recording,18-midi,19-instruments-tempo --sanitize thread --build-dir build-tsan
+        run: ./scripts/build.sh --only 15-daw-growing,16-automation,17-recording,18-midi,19-instruments-tempo,20-audio-tempo --sanitize thread --build-dir build-tsan
 
   asan:
     name: asan + ubsan (ubuntu-24.04)

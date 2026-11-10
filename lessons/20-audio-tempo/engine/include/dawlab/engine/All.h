@@ -14,6 +14,7 @@
 #include "EffectBase.h"
 #include "Effects.h"
 #include "Engine.h"
+#include "FollowRenderer.h"
 #include "InsertEffect.h"
 #include "LatencyCompensator.h"
 #include "Midi.h"
@@ -24,3 +25,4 @@
 #include "SpscQueue.h"
 #include "Track.h"
 #include "Transport.h"
+#include "Warp.h"
