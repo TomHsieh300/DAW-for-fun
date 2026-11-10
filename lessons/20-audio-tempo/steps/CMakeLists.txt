@@ -15,3 +15,4 @@ function(l20_add_step id dir)
 endfunction()
 
 l20_add_step(step01 step01-warp-map)
+l20_add_step(step02 step02-follow-start)

@@ -12,6 +12,7 @@ write the step's functions in `starter/`, the self-check tells you when they wor
 | Step | Folder | You write | Run |
 |---|---|---|---|
 | 1 | `step01-warp-map` | `WarpMap::sourceAt`, `tickAt`, `sourceAtSample`, `songSecondsOf`, `speedAt`, `markersForLoop`, `markersForTake` | `l20_step01_starter` |
+| 2 | `step02-follow-start` | `setFollow`, `startUnder`, `retime`, `moveTo`, `moveToTick`, `endTick`, `gaps`, `jumpInClip` | `l20_step02_starter` |
 
 </div>
 

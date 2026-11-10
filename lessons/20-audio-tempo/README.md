@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](README.zh-TW.md)
 
-> **Status: in progress.** Step 1 of 7 is done.
+> **Status: in progress.** Steps 1 and 2 of 7 are done.
 
 In DawLab 19 (chapter 19) the tempo can change, and the notes follow: they are in ticks. An audio clip is in
 samples and stays where it is - drag a tempo point, and the recorded guitar is no longer with the drums. Chapter
@@ -39,7 +39,7 @@ After this chapter you can
 | Step | Document | What it adds | Status |
 |---|---|---|---|
 | 1 | [A warp map](docs/step-01-warp-map.md) | markers that tie a sample of the file to a tick of the song, both ways; the speed a tempo asks for; the markers of a loop and of a take, and how many a ramp needs | done |
-| 2 | A clip whose start follows the tempo | a clip's start in ticks | planned |
+| 2 | [A clip whose start follows the tempo](docs/step-02-follow-start.md) | a start kept as a tick and derived as a sample, a drag to a sample and a drag to the grid, what the length does, seams that open or overlap, a tempo change while it plays | done |
 | 3 | Varispeed | another speed by resampling, the position from ticks in every block | planned |
 | 4 | A time-stretcher | WSOLA: another speed at the same pitch | planned |
 | 5 | The engine | a copy of chapter 19's engine: clips rendered ahead of time and handed over | planned |

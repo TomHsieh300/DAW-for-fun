@@ -2,7 +2,7 @@
 
 [English](step-01-warp-map.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md)
+[總覽](../README.zh-TW.md) | 下一步：[Step 2 - 起點跟著 tempo 的 clip](step-02-follow-start.zh-TW.md)
 
 ## 目標
 

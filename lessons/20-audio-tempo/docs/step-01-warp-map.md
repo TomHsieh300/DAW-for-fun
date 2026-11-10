@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-01-warp-map.zh-TW.md)
 
-[Overview](../README.md)
+[Overview](../README.md) | Next: [Step 2 - A clip whose start follows the tempo](step-02-follow-start.md)
 
 ## Goal
 
