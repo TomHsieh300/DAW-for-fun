@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-02-transport.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 1 - A tempo map](step-01-tempo-map.md) | Next: Step 3 - Instrument latency (coming)
+[Overview](../README.md) | Previous: [Step 1 - A tempo map](step-01-tempo-map.md) | Next: [Step 3 - Instrument latency](step-03-latency.md)
 
 ## Goal
 

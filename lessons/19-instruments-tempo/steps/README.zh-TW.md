@@ -12,6 +12,7 @@
 |---|---|---|---|
 | 1 | `step01-tempo-map` | `TempoMap::prepare`、`bpmAt`、`secondsAt`、`tickAt`、`sampleOfTick`、`firstTickAtOrAfter` | `l19_step01_starter` |
 | 2 | `step02-transport` | `Transport::setMap`、`advance`、`clicksIn` | `l19_step02_starter` |
+| 3 | `step03-latency` | `planLatency`、`heardLive`、`placeRecorded`、`Mix::setTracks`、`render` | `l19_step03_starter` |
 
 </div>
 

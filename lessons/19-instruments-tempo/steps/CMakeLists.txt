@@ -18,3 +18,4 @@ endfunction()
 
 l19_add_step(step01 step01-tempo-map)
 l19_add_step(step02 step02-transport)
+l19_add_step(step03 step03-latency)

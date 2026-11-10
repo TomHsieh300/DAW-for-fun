@@ -2,7 +2,7 @@
 
 [English](step-02-transport.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 1 - Tempo map](step-01-tempo-map.zh-TW.md) | 下一步：Step 3 - 樂器的 latency（即將推出）
+[總覽](../README.zh-TW.md) | 上一步：[Step 1 - Tempo map](step-01-tempo-map.zh-TW.md) | 下一步：[Step 3 - 樂器的 latency](step-03-latency.zh-TW.md)
 
 ## 目標
 
