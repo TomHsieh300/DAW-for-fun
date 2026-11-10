@@ -2,7 +2,7 @@
 
 [English](step-05-app-tempo.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 4 - Engine](step-04-engine.zh-TW.md) | 下一步：Step 6 - App：樂器（即將推出）
+[總覽](../README.zh-TW.md) | 上一步：[Step 4 - Engine](step-04-engine.zh-TW.md) | 下一步：[Step 6 - App：樂器](step-06-app-instruments.zh-TW.md)
 
 ## 目標
 

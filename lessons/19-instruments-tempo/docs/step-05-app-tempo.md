@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-05-app-tempo.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 4 - The engine](step-04-engine.md) | Next: Step 6 - The app: instruments (coming)
+[Overview](../README.md) | Previous: [Step 4 - The engine](step-04-engine.md) | Next: [Step 6 - The app: instruments](step-06-app-instruments.md)
 
 ## Goal
 

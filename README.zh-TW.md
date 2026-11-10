@@ -122,7 +122,7 @@ cd build
 & ".\bin\Debug\DawLab 16.exe"                         # 第 16 章：畫出和錄製 automation
 & ".\bin\Debug\DawLab 17.exe"                         # 第 17 章：從音訊 input 錄音
 & ".\bin\Debug\DawLab 18.exe"                         # 第 18 章：樂器、MIDI clip、鍵盤
-& ".\bin\Debug\DawLab 19.exe"                         # 第 19 章：tempo lane、MIDI 檔
+& ".\bin\Debug\DawLab 19.exe"                         # 第 19 章：tempo lane、MIDI 檔、plugin 樂器
 ```
 
 **ctest 的 label**：`example`（範例，不帶參數就能跑完）、`solution`（練習解答，以數字自我檢查）、`test`（元件與 engine 的回歸測試）。`exercises/starter/` 的起始碼只建置、不登記成測試——它們留有 `// TODO`，執行時印出 FAIL 是預期的。
@@ -180,7 +180,7 @@ cd build
 | [16](lessons/16-automation/README.zh-TW.md) | Automation | 時間軸上值為 normalized 的點、精準到 sample 的播放、Read / Touch / Latch / Write 與錄製和精簡、撐得過移動、undo 和專案檔的對象、會等待延遲音訊的 fader | **DawLab 16**：track 下方的 lane、可以畫和拖動的點、模式切換 |
 | [17](lessons/17-recording/README.zh-TW.md) | Recording | 從音訊 input 到 clip：硬碟卡住時保持時間位置的 ring、校正 latency 的擺放、撐得過當機的 take、punch 與 loop、input monitoring | **DawLab 17**：錄音鍵、armed track、變成 clip 的 take、punch、loop 的 take、當機後復原的 take |
 | [18](lessons/18-midi/README.zh-TW.md) | MIDI | 音樂時間裡的音符、sample 精確的事件、不留卡住音符的 MIDI clip、複音樂器、經 lock-free FIFO 送來的鍵盤輸入、錄音與 quantize | **DawLab 18**：instrument track、MIDI clip、piano roll、鍵盤、MIDI 錄音、quantize |
-| [19](lessons/19-instruments-tempo/README.zh-TW.md) | 樂器與 tempo（進行中） | 由跳躍和 ramp 組成的 tempo map、跨 tempo 變化的 block、樂器 latency 的補償 | **DawLab 19**：tempo lane、帶 tempo 變化的 MIDI 檔（樂器：進行中） |
+| [19](lessons/19-instruments-tempo/README.zh-TW.md) | 樂器與 tempo | 由跳躍和 ramp 組成的 tempo map、跨 tempo 變化的 block、樂器 latency 的補償 | **DawLab 19**：tempo lane、帶 tempo 變化的 MIDI 檔、synth 面板、track 上的 VST3 樂器 |
 
 </div>
 

@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](README.zh-TW.md)
 
-> **Status: in progress.** Steps 1-5 of 6.
+> **Status: done.** All 6 steps. A tempo you draw, a MIDI file from somewhere else and a real VST3 instrument still have to be tried by hand: see Steps 5 and 6, "What you have to try yourself".
 
 DawLab 18 (chapter 18) plays notes at one tempo, on its own synth, and its engine already lets another instrument
 take the synth's place - but only its exercises use that. This chapter finishes what chapter 18 left: a tempo that
@@ -44,7 +44,7 @@ After this chapter you can
 | 3 | [Instrument latency](docs/step-03-latency.md) | an instrument's latency in its track's, chapter 14's compensation, what a key played now costs, low-latency monitoring, recording that does not move | done |
 | 4 | [The engine](docs/step-04-engine.md) | a copy of chapter 18's engine: a tempo map passed between threads in a triple buffer, segments with ticks, a MIDI player that keeps notes through tempo changes, instrument latency in the plan, low-latency monitoring | done |
 | 5 | [The app: tempo](docs/step-05-app-tempo.md) | a copy of chapter 18's app: the map in the session and one edit for it, a ruler, a grid and a loop that follow it, project format 7, a tempo lane, MIDI files in and out with their tempo changes | done |
-| 6 | The app: instruments | a synth panel that undo and the project file know, VST3 instruments on tracks | planned |
+| 6 | [The app: instruments](docs/step-06-app-instruments.md) | one snapshot and one edit for a track's instrument, a synth panel that changes the sound while it plays, VST3 instruments in the synth's place with their latency compensated, saved and undone | done |
 
 </div>
 

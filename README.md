@@ -124,7 +124,7 @@ cd build
 & ".\bin\Debug\DawLab 16.exe"                         # chapter 16: draw and record automation
 & ".\bin\Debug\DawLab 17.exe"                         # chapter 17: record from the audio input
 & ".\bin\Debug\DawLab 18.exe"                         # chapter 18: instruments, MIDI clips, a keyboard
-& ".\bin\Debug\DawLab 19.exe"                         # chapter 19: a tempo lane, MIDI files
+& ".\bin\Debug\DawLab 19.exe"                         # chapter 19: a tempo lane, MIDI files, plugin instruments
 ```
 
 **ctest labels**: `example` (examples, which run to completion with no arguments), `solution` (exercise solutions, which check themselves numerically) and `test` (regression tests for components and the engine). The starter code in `exercises/starter/` is only built, not registered as tests: it contains `// TODO`s, and printing FAIL when you run it is expected.
@@ -182,7 +182,7 @@ The chapters go in numeric order, and every chapter uses components from the ear
 | [16](lessons/16-automation/README.md) | Automation | points on the timeline with normalized values, sample-accurate playback, Read / Touch / Latch / Write with recording and thinning, targets that survive moves, undo and the project file, faders that wait for delayed audio | **DawLab 16**: lanes under the tracks, points to draw and drag, the mode switch |
 | [17](lessons/17-recording/README.md) | Recording | from the audio input to a clip: a ring that keeps the time when the disk stalls, latency-corrected placement, a take that survives a crash, punch and loop, input monitoring | **DawLab 17**: a record button, armed tracks, takes that become clips, punch, takes of a loop, takes recovered after a crash |
 | [18](lessons/18-midi/README.md) | MIDI | notes in musical time, sample-accurate events, MIDI clips without hanging notes, a polyphonic instrument, a keyboard through a lock-free FIFO, recording and quantize | **DawLab 18**: instrument tracks, MIDI clips, a piano roll, a keyboard, MIDI recording, quantize |
-| [19](lessons/19-instruments-tempo/README.md) | Instruments and tempo (in progress) | a tempo map of jumps and ramps, blocks across tempo changes, instrument latency compensation | **DawLab 19**: a tempo lane, MIDI files with tempo changes (instruments: in progress) |
+| [19](lessons/19-instruments-tempo/README.md) | Instruments and tempo | a tempo map of jumps and ramps, blocks across tempo changes, instrument latency compensation | **DawLab 19**: a tempo lane, MIDI files with tempo changes, a synth panel, VST3 instruments on tracks |
 
 </div>
 

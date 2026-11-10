@@ -1617,6 +1617,18 @@ void testInstrumentSound() {
     DAWLAB_CHECK(engineTrack(main, synth)->getReplacementInstrument() == nullptr);
     DAWLAB_CHECK(main.redo() && processorOf(session, synth) != nullptr && processorOf(session, synth)->gain == 0.5f);
     engine.applyPendingCommandsOffline();
+    // A change inside the plugin as an edit: the same file with another state. The same object takes it - no plugin
+    // is built - and undo gives the old state back.
+    {
+        TestSynthProcessor* same = processorOf(session, synth);
+        InstrumentSnapshot louder = session.getInstrumentSound(synth);
+        const float gain = 0.75f;
+        louder.pluginState.replaceAll(&gain, sizeof gain);
+        const int builtBefore = built;
+        DAWLAB_CHECK(session.perform(edit::SetInstrumentSound{synth, louder}, "Plugin setting"));
+        DAWLAB_CHECK(processorOf(session, synth) == same && same->gain == 0.75f && built == builtBefore);
+        DAWLAB_CHECK(main.undo() && processorOf(session, synth) == same && same->gain == 0.5f);
+    }
     // The built-in synth again, as an undo step.
     DAWLAB_CHECK(main.useBuiltinSynth(synth) && session.getPluginInstrument(synth) == nullptr && !main.useBuiltinSynth(synth));
     DAWLAB_CHECK(main.undo() && processorOf(session, synth) != nullptr && processorOf(session, synth)->gain == 0.5f);
@@ -1627,6 +1639,16 @@ void testInstrumentSound() {
     engine.applyPendingCommandsOffline();
     DAWLAB_CHECK(main.undo() && processorOf(session, synth) != nullptr && processorOf(session, synth)->gain == 0.5f);
     engine.applyPendingCommandsOffline();
+
+    // ...and brought back where the plugin can no longer be built: the track is there, with the synth and its sound.
+    main.getArrangement().setSelectedTrack(synth);
+    DAWLAB_CHECK(main.deleteSelectedTrack());
+    engine.applyPendingCommandsOffline();
+    refuse = true;
+    DAWLAB_CHECK(main.undo() && session.hasTrack(synth) && session.getPluginInstrument(synth) == nullptr);
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(session.getInstrumentSound(synth).synth.cutoffHz == 300.0 && engine.getTrackSynth(synth)->getSettings().cutoffHz == 300.0);
+    refuse = false;
 
     // Opened: the plugin, its state and the synth's sound.
     ProjectIO::OpenResult opened = main.openProject(file);
