@@ -1,0 +1,52 @@
+# 第 20 章：跟著 tempo 走的 audio - warp marker、varispeed 和 time-stretcher
+
+[English](README.md) | **繁體中文**
+
+> **狀態：進行中。** 7 個 step 完成了 Step 1。
+
+在 DawLab 19（第 19 章）裡 tempo 可以改變，音符會跟著走：它們是以 tick 存的。Audio clip 則是以 sample 存的，留在原地——拖一下 tempo 點，錄好的吉他就和鼓對不上了。第 19 章的練習 6 在紙上設計了解法。本章把它做出來：一個知道自己的 audio 屬於音樂哪個位置的 clip，依 tempo 的要求播得快一點或慢一點——像磁帶那樣，或是不改變音高。
+
+## 如何使用本章
+
+和第 15 到 19 章一樣，每個 step 都是 `steps/stepNN-*/` 裡一個小而完整的 snapshot：你在 `starter/` 裡寫出該 step 的函式，self-check 會告訴你它們何時能正常運作。見 [steps/README.zh-TW.md](steps/README.zh-TW.md)。
+
+```powershell
+.\scripts\build.ps1 -Only 20-audio-tempo          # 不需要 JUCE
+.\build\bin\Debug\l20_step01_starter.exe
+```
+
+在 Linux / macOS 上：`./scripts/build.sh --only 20-audio-tempo`，然後執行 `./build/bin/l20_step01_starter`。
+
+## 1. 目標
+
+完成本章後，你可以
+
+- 用 warp marker 說明 clip 的 audio 屬於音樂的哪個位置，並為 loop 和 take 做出 marker；
+- 讓 clip 只用起點跟著 tempo，或是讓裡面的每樣東西都跟著；
+- 用 resampling 以另一個速度播放 audio，而且位置永遠不漂移；
+- 用 time-stretcher 改變速度而不改變音高，並量出它的代價；
+- 事先算好這樣的 audio，再交給負責播放的 engine。
+
+## 2. 各個 step
+
+<div align="center">
+
+| Step | 文件 | 新增的內容 | 狀態 |
+|---|---|---|---|
+| 1 | [Warp map](docs/step-01-warp-map.zh-TW.md) | 把檔案的 sample 綁到歌的 tick 的 marker，雙向換算；tempo 要求的速度；loop 和 take 的 marker，以及 ramp 需要幾個 | 完成 |
+| 2 | 起點跟著 tempo 的 clip | clip 的起點以 tick 存 | 計畫中 |
+| 3 | Varispeed | 用 resampling 改變速度，每個 block 的位置都從 tick 算 | 計畫中 |
+| 4 | Time-stretcher | WSOLA：另一個速度、同樣的音高 | 計畫中 |
+| 5 | Engine | 第 19 章 engine 的複本：clip 事先算好再交接 | 計畫中 |
+| 6 | App | 第 19 章 app 的複本：每個 clip 的模式、錄音帶來的 marker、專案檔、undo | 計畫中 |
+| 7 | 本章的結尾 | 做了什麼、留下什麼沒做 | 計畫中 |
+
+</div>
+
+## 3. 本章從哪裡開始
+
+DawLab 19 的 tempo map 把 tick 換成秒、再換回來，經過跳躍和 ramp 都是精確的（`steps/tempo_map.h` 裡有解好的版本）。它的 transport 會給每個 block 它的 tick。它的 audio clip 有以 sample 計的起點和長度，一個 sample 一個 sample 地播放。
+
+## 4. 接下來
+
+從 [Step 1 - Warp map](docs/step-01-warp-map.zh-TW.md) 開始。
