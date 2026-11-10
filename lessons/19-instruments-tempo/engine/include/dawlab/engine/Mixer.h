@@ -51,6 +51,7 @@
 #include <dawlab/AudioBuffer.h>
 
 #include <algorithm>
+#include <memory>
 #include <array>
 #include <atomic>
 #include <cassert>
@@ -227,6 +228,10 @@ public:
 
     // ---- PDC (any thread reads, the audio thread writes) -------------------------------------
     void setLatencyCompensationEnabled(bool enabled) noexcept { pdcEnabled_.store(enabled, std::memory_order_relaxed); }
+    // Chapter 19, Step 3: while it is on, an armed track skips the compensation - it waits for no other track, and
+    // no track waits for it - so a musician playing it hears it as early as it can be. Any thread.
+    void setLowLatencyMonitoring(bool on) noexcept { lowLatencyMonitoring_.store(on, std::memory_order_relaxed); }
+    bool isLowLatencyMonitoring() const noexcept { return lowLatencyMonitoring_.load(std::memory_order_relaxed); }
     bool isLatencyCompensationEnabled() const noexcept { return pdcEnabled_.load(std::memory_order_relaxed); }
     int getTotalLatencySamples() const noexcept { return totalLatency_.load(std::memory_order_relaxed); }
     int getMaxTrackLatencySamples() const noexcept { return maxTrackLatency_.load(std::memory_order_relaxed); }
@@ -249,9 +254,12 @@ public:
         master_.getInserts().applyPendingParameters();
 
         const bool enabled = pdcEnabled_.load(std::memory_order_relaxed);
+        const bool lowLatency = lowLatencyMonitoring_.load(std::memory_order_relaxed);
+        auto skipsThePlan = [lowLatency](const Track& t) { return lowLatency && t.isArmed(); };
         int maxTrack = 0;
         for (const auto& t : tracks_)
-            maxTrack = std::max(maxTrack, t.getInsertLatencySamples());
+            if (!skipsThePlan(t))
+                maxTrack = std::max(maxTrack, t.getLatencySamples());
         int maxBus = 0;
         for (const auto& b : buses_)
             maxBus = std::max(maxBus, b.getInsertLatencySamples());
@@ -263,7 +271,7 @@ public:
         pdcOverflow_.store(enabled && (maxTrack > targetTrack || maxBus > targetBus), std::memory_order_relaxed);
         // setDelaySamples() clamps a negative amount (a path slower than the target) to 0.
         for (auto& t : tracks_)
-            t.getCompensator().setDelaySamples(enabled ? targetTrack - t.getInsertLatencySamples() : 0);
+            t.getCompensator().setDelaySamples(enabled && !skipsThePlan(t) ? targetTrack - t.getLatencySamples() : 0);
         for (auto& b : buses_)
             b.getCompensator().setDelaySamples(enabled ? targetBus - b.getInsertLatencySamples() : 0);
         trackSumCompensator_.setDelaySamples(enabled ? targetBus : 0);
@@ -290,15 +298,21 @@ public:
     // `input` (chapter 17, Step 6): the device's input for these same frames.
     //
     // `midi` (chapter 18, Step 7): this block's live MIDI, for the armed instrument tracks.
+    // `map` (chapter 19): the tempo the segments' ticks were made with; nullptr: one tempo, `bpm`.
     void process(AudioBlock out, const TimelineSegment* segments, int numSegments, double bpm = 120.0,
-                 int64_t playhead = 0, InputBlock input = {}, MidiBlock midi = {}) noexcept {
+                 int64_t playhead = 0, InputBlock input = {}, MidiBlock midi = {}, const TempoMap* map = nullptr) noexcept {
         const int n = out.getNumSamples();
         assert(prepared_ && n <= maxBlockSize_);
         const bool anySolo = isAnyTrackSoloed();
         PlayHead playHead;
         playHead.segments = segments;
         playHead.numSegments = numSegments;
-        playHead.bpm = bpm;
+        if (map == nullptr) {
+            constantMap_->setConstant(bpm);
+            map = constantMap_.get();
+        }
+        const TempoMap& tempo = *map;
+        playHead.bpm = numSegments > 0 ? tempo.bpmAt(static_cast<double>(segments[0].tickFrom)) : bpm;
 
         LaneBlock lanes;
         lanes.segments = segments;
@@ -340,7 +354,7 @@ public:
                 continue; // a free slot costs little more than this
             tb.clear();
             track.renderClips(tb, segments, numSegments);
-            track.renderInstrument(tb, segments, numSegments, bpm, midi); // chapter 18: nothing unless an instrument
+            track.renderInstrument(tb, segments, numSegments, tempo, midi); // chapter 18: nothing unless an instrument
 
             Monitor& monitor = track.getMonitor();
             if (!monitor.isSilent() && numTrackInputs > 0) {
@@ -377,7 +391,7 @@ public:
             for (int b = 0; b < kNumBuses; ++b)
                 if (track.isSendPreFader(b))
                     track.addSend(b, bus[static_cast<size_t>(b)], tb);
-            lanes.shift = track.getInsertLatencySamples() + track.getCompensator().getDelaySamples();
+            lanes.shift = track.getLatencySamples() + track.getCompensator().getDelaySamples();
             track.applyFaderAndPan(tb, lanes, self, laneGains, lanePans);
             for (int b = 0; b < kNumBuses; ++b)
                 if (!track.isSendPreFader(b))
@@ -443,6 +457,8 @@ private:
 
     std::atomic<bool> pdcEnabled_{true};
     std::atomic<int> totalLatency_{0};
+    std::atomic<bool> lowLatencyMonitoring_{false};
+    std::unique_ptr<TempoMap> constantMap_ = std::make_unique<TempoMap>(); // audio thread: the map of process() given a bpm only
     std::atomic<int> maxTrackLatency_{0};
     std::atomic<int> maxBusLatency_{0};
     std::atomic<bool> pdcOverflow_{false};

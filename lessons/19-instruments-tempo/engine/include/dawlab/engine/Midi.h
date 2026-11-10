@@ -146,24 +146,25 @@ public:
 
     // Audio thread. Appends the events of this block to `out` (not cleared), offsets in the block, in order
     // within each segment. No segments: the transport stopped - every sounding note ends at offset 0.
-    void process(const std::vector<MidiClip>* clips, const TimelineSegment* segments, int numSegments, double sampleRate, double bpm,
-                 std::vector<BlockEvent>& out) noexcept {
+    // Chapter 19: a segment's ticks are its own (Transport::advance()), and its ticksJump says whether they go
+    // on from the last segment's: a tempo change that moves the samples keeps the notes sounding.
+    void process(const std::vector<MidiClip>* clips, const TimelineSegment* segments, int numSegments, const TempoMap& map,
+                 double sampleRate, std::vector<BlockEvent>& out) noexcept {
         if (numSegments == 0) {
             allNotesOff(0, out);
-            next_ = -1;
+            fresh_ = true;
             return;
         }
         static const std::vector<MidiClip> none;
         const std::vector<MidiClip>& list = clips != nullptr ? *clips : none;
-        const double spt = samplesPerTick(sampleRate, bpm);
         for (int s = 0; s < numSegments; ++s) {
             const TimelineSegment& seg = segments[s];
-            if (seg.timelineStart != next_) { // a jump: play, seek, loop wrap
+            if (seg.ticksJump || fresh_) { // a jump: play, seek, loop wrap - or the first segment it sees
                 allNotesOff(seg.blockOffset, out);
-                chase(list, firstTickAtOrAfter(seg.timelineStart, spt), seg.blockOffset, out);
+                chase(list, seg.tickFrom, seg.blockOffset, out);
             }
-            next_ = seg.timelineStart + seg.numSamples;
-            processSegment(list, seg, spt, out);
+            fresh_ = false;
+            processSegment(list, seg, map, sampleRate, out);
         }
     }
 
@@ -176,7 +177,7 @@ public:
     // Forget everything (the track is gone, or prepare()). No events.
     void reset() noexcept {
         numSounding_ = 0;
-        next_ = -1;
+        fresh_ = true;
     }
 
     int soundingCount() const noexcept { return numSounding_; }
@@ -217,7 +218,8 @@ private:
         }
     }
 
-    void processSegment(const std::vector<MidiClip>& clips, const TimelineSegment& seg, double spt, std::vector<BlockEvent>& out) noexcept {
+    void processSegment(const std::vector<MidiClip>& clips, const TimelineSegment& seg, const TempoMap& map, double sampleRate,
+                        std::vector<BlockEvent>& out) noexcept {
         // Notes whose clip has gone or been muted end now.
         for (int i = 0; i < numSounding_;) {
             const Sounding& n = sounding_[static_cast<size_t>(i)];
@@ -229,8 +231,8 @@ private:
                 ++i;
             }
         }
-        const int64_t t0 = firstTickAtOrAfter(seg.timelineStart, spt);
-        const int64_t t1 = firstTickAtOrAfter(seg.timelineStart + seg.numSamples, spt);
+        const int64_t t0 = seg.tickFrom;
+        const int64_t t1 = seg.tickTo;
         scratch_.clear();
         int seq = 0;
         auto room = [this] { return scratch_.size() + kMaxSounding < scratch_.capacity(); };
@@ -273,13 +275,16 @@ private:
                 return a.rank < b.rank;
             return a.seq < b.seq;
         });
-        for (const Pending& p : scratch_)
-            pushEvent(out, {static_cast<int>(sampleOfTick(p.tick, spt) - seg.timelineStart) + seg.blockOffset, p.message});
+        // At a loop's edge rounding may put a tick one sample outside its segment: keep it inside.
+        for (const Pending& p : scratch_) {
+            const int64_t at = std::clamp<int64_t>(map.sampleOfTick(p.tick, sampleRate) - seg.timelineStart, 0, seg.numSamples - 1);
+            pushEvent(out, {static_cast<int>(at) + seg.blockOffset, p.message});
+        }
     }
 
     std::array<Sounding, kMaxSounding> sounding_{};
     int numSounding_ = 0;
-    int64_t next_ = -1; // the timeline sample the next segment continues at; -1: none
+    bool fresh_ = true; // nothing played since reset() or a stop: the next segment starts with a chase
     long dropped_ = 0;
     std::vector<Pending> scratch_;
 };
@@ -628,6 +633,9 @@ public:
     virtual void reset() noexcept = 0;
     // The block's events (sorted by offset) through the instrument; its sound ADDED to out[0 .. numChannels).
     virtual void render(const BlockEvent* events, int numEvents, float* const* out, int numChannels, int numSamples) noexcept = 0;
+    // Chapter 19: how many samples after a note its sound comes (a sampler that reads ahead). Audio thread; the
+    // track's latency includes it, and the delay compensation waits for it (Step 3).
+    virtual int getLatencySamples() const noexcept { return 0; }
 };
 
 // The built-in synth as an Instrument. Its settings can change while it plays: setSettings() may be called on

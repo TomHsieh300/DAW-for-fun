@@ -478,8 +478,9 @@ private:
             const float* inputs[kMaxInputChannels];
             for (int ch = 0; ch < numInputs; ++ch)
                 inputs[ch] = input.channels[ch] != nullptr ? input.channels[ch] + inputOffset + done : nullptr;
-            mixer_.process(out.getSubBlock(done, covered), segments, numSegments, transport_.getTempo(), transport_.getPosition(),
-                           InputBlock{inputs, numInputs}, sliceMidi(midi, inputOffset + done, covered));
+            const TempoMap& map = transport_.getAudioTempoMap();
+            mixer_.process(out.getSubBlock(done, covered), segments, numSegments, map.point(0).bpm, transport_.getPosition(),
+                           InputBlock{inputs, numInputs}, sliceMidi(midi, inputOffset + done, covered), &map);
             done += covered;
         }
         blocksProcessed_.fetch_add(1, std::memory_order_relaxed);

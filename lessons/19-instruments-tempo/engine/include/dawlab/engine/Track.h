@@ -171,7 +171,7 @@ public:
 
     // Audio thread: the clips' events and (when armed) the live ones, merged in order of offset, through the
     // synth, ADDED to both channels of dest.
-    void renderInstrument(AudioBlock dest, const TimelineSegment* segments, int numSegments, double bpm, MidiBlock live) noexcept {
+    void renderInstrument(AudioBlock dest, const TimelineSegment* segments, int numSegments, const TempoMap& map, MidiBlock live) noexcept {
         if (state_ == nullptr)
             return; // not prepared
         InstrumentState& in = *state_;
@@ -183,7 +183,7 @@ public:
         in.wasOn = true;
         const int n = dest.getNumSamples();
         in.events.clear();
-        in.player.process(getMidiClips(), segments, numSegments, in.sampleRate, bpm, in.events);
+        in.player.process(getMidiClips(), segments, numSegments, map, in.sampleRate, in.events);
         // The clips' events are in order within each segment, and the segments follow each other; the live
         // ones are in order. Merge: at one offset the clips' first.
         in.merged.clear();
@@ -203,6 +203,14 @@ public:
         Instrument& instrument = in.replacement != nullptr ? *in.replacement : static_cast<Instrument&>(in.builtin);
         instrument.render(in.merged.data(), static_cast<int>(in.merged.size()), channels, numChannels, n);
     }
+    // Chapter 19: the track's latency - its inserts', and its instrument's while it is one. Audio thread (the
+    // instrument is the audio thread's); setup code with no audio thread running may call it too.
+    int getLatencySamples() const noexcept {
+        int latency = getInsertLatencySamples();
+        if (state_ != nullptr && isInstrument())
+            latency += state_->replacement != nullptr ? state_->replacement->getLatencySamples() : state_->builtin.getLatencySamples();
+        return latency;
+    }
     // For tests and meters; nullptr before prepare().
     const Synth* getSynth() const noexcept { return state_ != nullptr ? &state_->builtin.synth() : nullptr; }
     const ClipPlayer* getClipPlayer() const noexcept { return state_ != nullptr ? &state_->player : nullptr; }
@@ -216,6 +224,12 @@ private:
         std::vector<BlockEvent> events, merged;
         double sampleRate = 48000.0;
         bool wasOn = false; // audio thread only
+
+        InstrumentState() = default;
+        InstrumentState(const InstrumentState&) = delete;
+        InstrumentState& operator=(const InstrumentState&) = delete;
+        // The engine is going away, and with it the audio thread: an instrument still in the synth's place goes too.
+        ~InstrumentState() { delete replacement; }
     };
     std::atomic<bool> instrument_{false};
     std::atomic<const std::vector<MidiClip>*> midiClips_{nullptr};

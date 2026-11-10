@@ -1,0 +1,357 @@
+// test_tempo: a tempo map and instrument latency in the real engine (chapter 19, Step 4).
+//
+//   1. Notes follow a map of jumps and ramps: every note on at its tick's sample, in any block size.
+//   2. A loop set in ticks plays exactly its ticks every pass, also where two ticks share a sample.
+//   3. A new map while a note is held: the playhead keeps its musical place, the note is not cut, and it ends at
+//      its tick under the new map.
+//   4. An instrument's latency is in its track's: the delay compensation lines the tracks up; low-latency
+//      monitoring takes an armed track out of it.
+//   5. Changing the map while it plays allocates nothing on the audio thread (this file replaces operator new).
+//   6. A UI thread that changes the map while the audio thread plays: the audio thread never sees half a map
+//      (ThreadSanitizer).
+
+#include "TestHelpers.h"
+#include "TestTracks.h"
+
+#include <atomic>
+#include <cstdio>
+#include <cstdlib>
+#include <new>
+#include <random>
+#include <thread>
+
+// ---- allocation counting (as in test_midi.cpp) -------------------------------------------------------------
+namespace {
+thread_local bool tCounting = false;
+std::atomic<long> gAllocs{0};
+void* countedAlloc(std::size_t n) {
+    if (tCounting)
+        gAllocs.fetch_add(1, std::memory_order_relaxed);
+    void* p = std::malloc(n == 0 ? 1 : n);
+    if (p == nullptr)
+        throw std::bad_alloc();
+    return p;
+}
+void countedFree(void* p) noexcept {
+    if (p != nullptr && tCounting)
+        gAllocs.fetch_add(1, std::memory_order_relaxed);
+    std::free(p);
+}
+struct CountScope {
+    CountScope() noexcept { tCounting = true; }
+    ~CountScope() { tCounting = false; }
+    CountScope(const CountScope&) = delete;
+    CountScope& operator=(const CountScope&) = delete;
+};
+} // namespace
+
+void* operator new(std::size_t n) { return countedAlloc(n); }
+void* operator new[](std::size_t n) { return countedAlloc(n); }
+void operator delete(void* p) noexcept { countedFree(p); }
+void operator delete[](void* p) noexcept { countedFree(p); }
+void operator delete(void* p, std::size_t) noexcept { countedFree(p); }
+void operator delete[](void* p, std::size_t) noexcept { countedFree(p); }
+
+using namespace l15test;
+using namespace dawlab::engine::test;
+
+namespace {
+
+constexpr int64_t kBar = 4 * kTicksPerQuarter;
+
+// An instrument that writes down when each event came (in samples since it was put in) and answers every note on
+// with an impulse `latency` samples later.
+class Logger final : public Instrument {
+public:
+    struct Logged {
+        int64_t sample;
+        MidiMessage message;
+    };
+    explicit Logger(int latency = 0) : latency_(latency) { log.reserve(4096); }
+    std::vector<Logged> log;
+
+    void prepare(double, int) override {}
+    void reset() noexcept override { numDue_ = 0; }
+    int getLatencySamples() const noexcept override { return latency_; }
+    void render(const BlockEvent* events, int numEvents, float* const* out, int numChannels, int numSamples) noexcept override {
+        for (int k = 0; k < numEvents; ++k) {
+            if (log.size() < log.capacity())
+                log.push_back({rendered_ + events[k].offset, events[k].message});
+            if (events[k].message.kind() == MidiKind::NoteOn && numDue_ < static_cast<int>(due_.size()))
+                due_[static_cast<size_t>(numDue_++)] = rendered_ + events[k].offset + latency_;
+        }
+        for (int d = 0; d < numDue_;) {
+            const int64_t at = due_[static_cast<size_t>(d)] - rendered_;
+            if (at < numSamples) {
+                for (int ch = 0; ch < numChannels; ++ch)
+                    out[ch][at] += 1.0f;
+                due_[static_cast<size_t>(d)] = due_[static_cast<size_t>(--numDue_)];
+            } else {
+                ++d;
+            }
+        }
+        rendered_ += numSamples;
+    }
+    std::vector<int64_t> noteOns() const {
+        std::vector<int64_t> at;
+        for (const Logged& l : log)
+            if (l.message.kind() == MidiKind::NoteOn)
+                at.push_back(l.sample);
+        return at;
+    }
+
+private:
+    int latency_ = 0;
+    int64_t rendered_ = 0;
+    std::array<int64_t, 256> due_{};
+    int numDue_ = 0;
+};
+
+MidiClip clipOf(int id, int64_t start, int64_t length, std::vector<Note> notes) {
+    MidiClip c;
+    c.id = id;
+    c.start = start;
+    c.length = length;
+    c.notes = std::move(notes);
+    return c;
+}
+
+TempoMap mapOf(std::vector<TempoPoint> points) {
+    TempoMap m;
+    m.set(points);
+    return m;
+}
+
+// An engine at `rate` with 8 tracks, track 0 an instrument track with a Logger.
+Logger* setUp(Engine& e, double rate = kSampleRate, int latency = 0) {
+    e.prepare(rate, kBlockSize);
+    addTestTracks(e);
+    e.getMixer().getTrack(0).setInstrument(true);
+    auto logger = std::make_unique<Logger>(latency);
+    Logger* observer = logger.get();
+    e.setTrackInstrument(testId(0), std::move(logger));
+    e.applyPendingCommandsOffline();
+    return observer;
+}
+
+// Plays `numSamples` in blocks of `block` (0: random 1..1200), counting allocations on this thread while processing.
+AudioBuffer play(Engine& e, int64_t numSamples, int block, long* allocs = nullptr, unsigned seed = 1,
+                 const std::function<void(int64_t)>& beforeBlock = {}) {
+    AudioBuffer out(kNumChannels, static_cast<int>(numSamples));
+    std::mt19937 rng(seed);
+    for (int64_t done = 0; done < numSamples;) {
+        if (beforeBlock)
+            beforeBlock(done);
+        const int n = static_cast<int>(std::min<int64_t>(block > 0 ? block : std::uniform_int_distribution<int>(1, 1200)(rng), numSamples - done));
+        const long before = gAllocs.load();
+        {
+            CountScope count;
+            e.processBlock(out.toBlock().getSubBlock(static_cast<int>(done), n));
+        }
+        if (allocs != nullptr)
+            *allocs += gAllocs.load() - before;
+        done += n;
+    }
+    return out;
+}
+
+// Speeds up over bars 1-2, holds, jumps down at bar 4, slows down over bars 5-6.
+TempoMap song() {
+    return mapOf({{0, 90.0, true}, {2 * kBar, 150.0, false}, {3 * kBar, 100.0, true}, {5 * kBar, 70.0, false}});
+}
+
+void testNotesFollowTheMap() {
+    std::vector<Note> beats;
+    for (int64_t t = 0; t < 8 * kBar; t += kTicksPerQuarter)
+        beats.push_back({t, 480, 60, 100, 0});
+    const TempoMap map = song();
+    std::vector<int64_t> want;
+    for (const Note& n : beats)
+        want.push_back(map.sampleOfTick(n.start, kSampleRate));
+    bool same = true;
+    for (const int block : {512, 0, 7}) {
+        Engine e;
+        Logger* log = setUp(e);
+        e.setTrackMidiClips(testId(0), {clipOf(1, 0, 8 * kBar, beats)});
+        e.getTransport().setTempoMap(map);
+        e.getTransport().play();
+        play(e, map.sampleOfTick(8 * kBar, kSampleRate), block, nullptr, 3);
+        same = same && log->noteOns() == want;
+    }
+    std::printf("  32 beats over a map that speeds up, jumps and slows down: every note on at its sample in blocks of 512, random and 7: %s\n",
+                same ? "yes" : "NO");
+    DAWLAB_CHECK(same);
+    // The conversions the UI uses follow the map too.
+    Engine e;
+    e.prepare(kSampleRate, kBlockSize);
+    e.getTransport().setTempoMap(map);
+    const BarsBeats bar4 = e.getTransport().samplesToBarsBeats(map.sampleOfTick(3 * kBar, kSampleRate));
+    DAWLAB_CHECK(bar4.bar == 4 && bar4.beat == 1 && bar4.tick == 0);
+    DAWLAB_CHECK(e.getTransport().barsBeatsToSamples({6, 1, 0}) == map.sampleOfTick(5 * kBar, kSampleRate));
+    DAWLAB_CHECK(e.getTransport().getTempo() == 90.0);
+}
+
+void testLoopInTicks() {
+    // 999 BPM at 8 kHz: two ticks a sample. The loop's edges sit on shared samples; every pass plays both notes.
+    Engine e;
+    Logger* log = setUp(e, 8000.0);
+    e.setTrackMidiClips(testId(0), {clipOf(1, 0, 4 * kBar, {{960, 1, 60, 100, 0}, {1920, 1, 62, 100, 0}})});
+    Transport& tr = e.getTransport();
+    tr.setTempo(999.0);
+    tr.setLoopRangeTicks(960, 1921);
+    tr.setLoopEnabled(true);
+    tr.play();
+    const TempoMap& map = tr.getTempoMap();
+    const int64_t first = map.sampleOfTick(960, 8000.0), len = map.sampleOfTick(1921, 8000.0) - first;
+    play(e, first + 7 * len, 0, nullptr, 5);
+    int c60 = 0, c62 = 0;
+    for (const Logger::Logged& l : log->log)
+        if (l.message.kind() == MidiKind::NoteOn)
+            (l.message.note() == 60 ? c60 : c62)++;
+    std::printf("  a loop of ticks 960-1920 where two ticks share a sample, 7 passes in random blocks: %d and %d note ons\n", c60, c62);
+    DAWLAB_CHECK(c60 == 7 && c62 == 7);
+    DAWLAB_CHECK(tr.isLoopInTicks() && tr.getLoopStart() == first && tr.getLoopEnd() == first + len);
+    // Bars are ticks: they move with the tempo.
+    tr.setLoopRangeBars(2, 1);
+    DAWLAB_CHECK(tr.getLoopStart() == map.sampleOfTick(kBar, 8000.0));
+    tr.setLoopRange(1000, 2000); // samples: as before
+    DAWLAB_CHECK(!tr.isLoopInTicks() && tr.getLoopStart() == 1000);
+}
+
+void testNewMapWhileANoteSounds() {
+    // A note of two bars from bar 1 at 120 BPM. At beat 3 the map becomes 60 BPM: the note keeps sounding and
+    // ends at its tick under the new map.
+    Engine e;
+    Logger* log = setUp(e);
+    e.setTrackMidiClips(testId(0), {clipOf(1, 0, 4 * kBar, {{0, 2 * kBar, 60, 100, 0}})});
+    Transport& tr = e.getTransport();
+    tr.play();
+    const TempoMap before = tr.getTempoMap(), after = TempoMap::constant(60.0);
+    int64_t changedAt = -1;
+    play(e, 400000, 512, nullptr, 1, [&](int64_t done) {
+        if (changedAt < 0 && done >= 48000) {
+            changedAt = done;
+            tr.setTempoMap(after);
+        }
+    });
+    // The block that took the map started at changedAt, where the old map's playhead was; the new one is at the
+    // same tick.
+    const int64_t newPosition = std::llround(after.secondsAt(before.tickAtSample(static_cast<double>(changedAt), kSampleRate)) * kSampleRate);
+    const int64_t wantOff = changedAt + after.sampleOfTick(2 * kBar, kSampleRate) - newPosition;
+    int ons = 0, offs = 0;
+    int64_t off = -1;
+    for (const Logger::Logged& l : log->log) {
+        ons += l.message.kind() == MidiKind::NoteOn ? 1 : 0;
+        if (l.message.kind() == MidiKind::NoteOff) {
+            ++offs;
+            off = l.sample;
+        }
+    }
+    std::printf("  a tempo change half way through a held note: %d note on, %d note off, at %lld (wanted %lld)\n", ons, offs,
+                static_cast<long long>(off), static_cast<long long>(wantOff));
+    DAWLAB_CHECK(ons == 1 && offs == 1 && off == wantOff);
+    DAWLAB_CHECK(tr.getTempo() == 60.0);
+}
+
+void testInstrumentLatency() {
+    // Track 0 a sampler that answers 1000 samples late, track 1 an instrument that answers at once; a note each at
+    // tick 960 (sample 24000).
+    for (const bool lowLatency : {false, true}) {
+        Engine e;
+        setUp(e, kSampleRate, 1000);
+        e.getMixer().getTrack(1).setInstrument(true);
+        e.setTrackInstrument(testId(1), std::make_unique<Logger>(0));
+        const MidiClip clip = clipOf(1, 0, kBar, {{960, 480, 60, 100, 0}});
+        e.setTrackMidiClips(testId(0), {clip});
+        e.setTrackMidiClips(testId(1), {clipOf(2, 0, kBar, {{960, 480, 60, 100, 0}})});
+        e.getMixer().setLatencyCompensationEnabled(true);
+        e.getMixer().setLowLatencyMonitoring(lowLatency);
+        e.getMixer().getTrack(0).setArmed(true);
+        e.applyPendingCommandsOffline();
+        e.getTransport().play();
+        const AudioBuffer out = play(e, 48000, 512);
+        std::vector<int> at;
+        for (int i = 0; i < out.getNumSamples(); ++i)
+            if (out.getSample(0, i) != 0.0f)
+                at.push_back(i);
+        if (!lowLatency) {
+            DAWLAB_CHECK(e.getLatencySamples() == 1000 && at == std::vector<int>({25000}));
+            std::printf("  a sampler 1000 samples late next to an instant synth: mix latency %d, both heard at %d\n", e.getLatencySamples(),
+                        at.empty() ? -1 : at[0]);
+        } else {
+            DAWLAB_CHECK(e.getLatencySamples() == 0 && at == std::vector<int>({24000, 25000}));
+            std::printf("  the sampler armed, low-latency monitoring: mix latency %d, the synth at %d, the sampler on its own at %d\n",
+                        e.getLatencySamples(), at.empty() ? -1 : at[0], at.size() < 2 ? -1 : at[1]);
+        }
+    }
+}
+
+void testNoAllocation() {
+    Engine e;
+    setUp(e);
+    std::vector<Note> notes;
+    for (int64_t t = 0; t < 16 * kBar; t += 240)
+        notes.push_back({t, 200, 48 + static_cast<int>(t / 240 % 24), 100, 0});
+    e.setTrackMidiClips(testId(0), {clipOf(1, 0, 16 * kBar, notes)});
+    e.getTransport().setLoopRangeBars(2, 2);
+    e.getTransport().setLoopEnabled(true);
+    e.getTransport().play();
+    long allocs = 0;
+    int changes = 0;
+    play(e, 600000, 0, &allocs, 9, [&](int64_t done) {
+        if (done / 20000 > changes) {
+            ++changes;
+            e.getTransport().setTempoMap(changes % 2 == 0 ? song() : TempoMap::constant(60.0 + changes));
+        }
+    });
+    std::printf("  %d new maps while a loop plays: %ld allocations on the audio thread\n", changes, allocs);
+    DAWLAB_CHECK(allocs == 0 && changes > 20);
+}
+
+void testThreads() {
+    // The UI thread publishes maps whose points all have one tempo, a different one each time; the audio thread
+    // must only ever see whole maps.
+    Engine e;
+    setUp(e);
+    e.getTransport().play();
+    std::atomic<bool> done{false};
+    std::atomic<int> torn{0}, seen{0};
+    std::thread audio([&] {
+        AudioBuffer block(kNumChannels, kBlockSize);
+        while (!done.load()) {
+            e.processBlock(block.toBlock());
+            const TempoMap& m = e.getTransport().getAudioTempoMap();
+            const double bpm = m.point(0).bpm;
+            for (int i = 1; i < m.size(); ++i)
+                if (m.point(i).bpm != bpm)
+                    torn.fetch_add(1);
+            seen.fetch_add(1);
+        }
+    });
+    int maps = 0;
+    for (; maps < 2000 || seen.load() < 2000; ++maps) {
+        std::vector<TempoPoint> points;
+        const int n = 1 + maps % 200;
+        for (int i = 0; i < n; ++i)
+            points.push_back({i * 960LL, 60.0 + maps % 300, false});
+        e.getTransport().setTempoMap(mapOf(points));
+    }
+    done = true;
+    audio.join();
+    std::printf("  %d maps of up to 200 points from the UI thread while the audio thread plays %d blocks: %d torn\n", maps, seen.load(),
+                torn.load());
+    DAWLAB_CHECK(torn.load() == 0);
+}
+
+} // namespace
+
+int main() {
+    std::printf("l19_test_tempo: a tempo map and instrument latency in the engine\n");
+    testNotesFollowTheMap();
+    testLoopInTicks();
+    testNewMapWhileANoteSounds();
+    testInstrumentLatency();
+    testNoAllocation();
+    testThreads();
+    return dawlab::test::summary("l19_test_tempo");
+}
