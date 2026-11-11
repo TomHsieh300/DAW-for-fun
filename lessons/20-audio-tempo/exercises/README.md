@@ -13,7 +13,7 @@ Difficulty: ★☆☆ easy, ★★☆ medium, ★★★ hard. Implementation exe
 ```
 
 Exercise 3 builds on Step 1 (`steps/warp_map.h` has it solved), Exercise 4 on Step 4 (`exercises/wsola.h` has it
-solved). Do the steps first.
+solved), Exercise 5 on Steps 2 and 3. Do the steps first.
 
 ---
 
@@ -75,3 +75,29 @@ three of them (`refine()`), and read the pieces at their fraction (`readHermite(
 
 The self-check stretches tones of 220 and 440 Hz at four speeds and compares with Step 4 - and a tone of 1 kHz,
 whose period is a whole number of samples.
+
+## Exercise 5 - A fade over a jump ★★☆ (implementation)
+
+[`l20_ex5_starter`, file `exercises/starter/ex5_declick.cpp`]
+
+When the tempo changes while the song plays, a clip that reads by the sample - one that does not follow, or follows
+with its start only - jumps to another place in its audio (Step 2), and the step in the wave is a click. A clip that
+follows by varispeed or stretch reads by the tick, which the playhead keeps, and does not jump. Write a
+`Declicker`: it remembers where the reading would have gone on, and when a block starts somewhere else it fades
+that old path out and the new one in, over a few milliseconds, with equal-power curves.
+
+The self-check changes the tempo under a 440 Hz clip whose start follows, and measures the largest step from one
+output sample to the next, with and without the fade; it also reads the old path back out of the output.
+
+## Exercise 6 - Transients ★★★ (design)
+
+No code. Step 4's WSOLA doubles a drum hit when it stretches and can lose one when it squeezes. Design a stretcher
+that keeps every hit once, on its beat, in a page:
+
+1. How does the program find the hits in a clip? What goes wrong with a fixed threshold, and what do you do about
+   it?
+2. A hit should be in exactly one piece, played at speed 1. What does that do to where the pieces are cut, and to
+   the steady part between two hits?
+3. Stretched to twice the length, what fills the time between two hits? Squeezed to half, what is given up?
+4. A drum kit recorded with several microphones is several clips. What must they share so that a hit stays one hit?
+5. Where does the detection run, how often, and what does it cost? How do the hits relate to Exercise 3's markers?

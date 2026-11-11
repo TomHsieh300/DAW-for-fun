@@ -136,3 +136,59 @@ was fitted *exactly* by whole offsets; the parabola's top is a hair off a whole 
 samples begins, and the result is 83 dB: still far below hearing, and worse than before. Reading with Step 3's
 sinc instead of Hermite would take it back up, for the sinc's price. Most real audio is not a tone of a whole
 number of samples, and the fit to a fraction wins.
+
+## Exercise 5 - A fade over a jump
+
+[`solutions/ex5_declick.cpp`](ex5_declick.cpp)
+
+The class keeps two numbers between calls - where the reading would go on, and the speed it had - and, during a
+fade, the same two for the old path. A jump is a first position too far from the first number. Then for
+`fadeSamples` output samples both paths are read; the new one is weighted by $`\sin(t\pi/2)`$ and the old one by
+$`\cos(t\pi/2)`$, which add up in power, $`\sin^2 + \cos^2 = 1`$, the right sum for two parts of a recording that
+are not related. The fade may run over several calls, so its progress is a member, not a loop variable.
+
+```text
+Exercise 5 - a fade over a jump
+  120 to 90 BPM while a 440 Hz clip whose start follows plays: the largest step from one sample to the next 0.953 without a fade, 0.029 with one
+    (the tone's own: 0.029)
+[PASS] l20_ex5 (16 checks passed)
+```
+
+Without the fade the wave steps by almost its whole peak-to-peak (0.95 of 1.0) from one sample to the next: a click. With
+10 ms of fade no step is larger than the tone's own.
+
+Two things are worth seeing:
+
+- **Who jumps.** A clip that follows by varispeed or stretch does not: its position is a function of the tick, and
+  the playhead keeps its tick. The check proves it in one line before it makes the jump with a clip whose start
+  follows. Of Step 2's two clips, the one that does not follow at all jumps even further.
+- **Where it belongs.** In DawLab the audio thread reads clips sample for sample (`renderClip()`), and a jump
+  happens between blocks there - on a seek, at a loop's wrap, at a tempo change. A Declicker per clip on the
+  audio thread is what a DAW does; it costs two readings for 10 ms after a jump, and the state is a handful of
+  numbers, no allocation. Chapter 14's engine does not do it, which is why Step 2 said "a seek still clicks".
+
+## Exercise 6 - Transients
+
+1. **Finding the hits.** In short windows (5-10 ms), how much *new* energy appears - the rise of the energy, or
+   better the spectral flux: the sum over frequency bands of the increase in each band, so that a hit under a loud
+   bass is still seen. An onset is a peak of that curve above a threshold. A fixed threshold finds every hit of a
+   loud part and none of a quiet one: make it adaptive (a multiple of the curve's running median), and add a
+   minimum distance between onsets (30-50 ms) so that one hit with a rattle is not three.
+2. **One piece per hit.** Cut the pieces at the onsets, not every half window. From each onset copy the attack
+   (the first 10-30 ms) at speed 1 and put it exactly where the onset's tick is now - so the hit is on its beat
+   and is heard once. All the stretching happens in the rest of the segment, up to the next onset: WSOLA there,
+   with a stronger ratio, because the attack took none.
+3. **Stretch and squeeze.** Stretched, the segment's decay is longer - WSOLA repeats pieces of the sustain, or, if
+   there is none (a dry snare), there is silence before the next hit, which is what a drummer playing slower
+   would do. Squeezed, the decay is cut: the segment may become shorter than its attack, and the attack is then
+   faded out where the next one begins. Nothing is dropped, and each hit stays whole; the tail of a cymbal is the
+   price.
+4. **Several microphones.** They must share the onsets - found once, on the sum of the clips (or the loudest), and
+   applied to all - and the cuts: otherwise the kick in the close microphone and in the overheads are moved by a
+   few milliseconds against each other, and the kit sounds hollow (comb filtering). That is the same reason both
+   channels of a stereo clip slide together in Step 5.
+5. **Where and when.** Once per clip, ahead of time, when the clip is made to follow: the audio does not change,
+   only the tempo does. It is O(n) in the clip's length with an FFT per window - cheaper than the stretch - and its
+   result is stored with the clip: a list of source samples. Each onset is a natural warp marker, because a hit
+   should land on a beat: with the onsets as candidates, Exercise 3 would choose the markers and Exercise 8 (to
+   come) quantizes them.

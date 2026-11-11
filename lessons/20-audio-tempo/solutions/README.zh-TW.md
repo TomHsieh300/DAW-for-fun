@@ -81,3 +81,31 @@ Exercise 4 - a fit to a fraction of a sample
 從 31–43 dB 到 90–97 dB：Step 4 所說的「它的」誤差，幾乎全是那半個 sample。現在剩下的是用三次曲線讀 sample 之間的值的誤差——Step 3 量到 5 kHz 時是 49 dB，頻率越低誤差越小，所以 220 Hz 比 440 Hz 好。
 
 最後一行是代價。週期剛好是整數 sample 的音——48 kHz 下的 1 kHz 是 48 個——用整數偏移就能*精確*對準；拋物線的頂點和整數差了一點點，開始在 sample 之間讀取，結果是 83 dB：仍然遠低於聽得到的程度，但比原本差。改用 Step 3 的 sinc 來讀而不是 Hermite，可以拉回來，代價是 sinc 的成本。大多數真實的 audio 不是週期剛好整數 sample 的單音，所以對準到小數位置還是贏。
+
+## 練習 5 - 跳動時的 fade
+
+[`solutions/ex5_declick.cpp`](ex5_declick.cpp)
+
+這個 class 在呼叫之間保留兩個數——讀取原本會往哪裡走，以及它原本的速度——fade 期間再為舊路徑保留同樣的兩個數。第一個位置離第一個數太遠就是跳動。接下來的 `fadeSamples` 個 output sample 兩條路徑都要讀；新的乘上 $`\sin(t\pi/2)`$、舊的乘上 $`\cos(t\pi/2)`$，兩者的功率相加是 $`\sin^2 + \cos^2 = 1`$，這對錄音裡兩段互不相關的部分是正確的總和。Fade 可能跨好幾次呼叫，所以它的進度是 member，而不是迴圈變數。
+
+```text
+Exercise 5 - a fade over a jump
+  120 to 90 BPM while a 440 Hz clip whose start follows plays: the largest step from one sample to the next 0.953 without a fade, 0.029 with one
+    (the tone's own: 0.029)
+[PASS] l20_ex5 (16 checks passed)
+```
+
+沒有 fade 時，波形從一個 sample 到下一個跳了將近整個峰對峰值（1.0 裡的 0.95）：這就是 click。有 10 ms 的 fade 時，沒有任何一步比單音本身的更大。
+
+有兩件事值得一看：
+
+- **誰會跳。** 用 varispeed 或 stretch 跟著的 clip 不會：它的位置是 tick 的函數，而播放頭保住了 tick。檢查在用「起點跟著」的 clip 製造跳動之前，先用一行證明了這點。Step 2 的兩個 clip 裡，完全不跟著的那個跳得更遠。
+- **它該放在哪裡。** 在 DawLab 裡，audio thread 一個 sample 一個 sample 地讀 clip（`renderClip()`），跳動發生在 block 之間——seek、loop 繞回、tempo 改變時。在 audio thread 上為每個 clip 放一個 Declicker，正是 DAW 的做法；跳動後的 10 ms 要讀兩次，狀態只有幾個數，不需要配置記憶體。第 14 章的 engine 沒有這樣做，所以 Step 2 說「seek 仍然會有 click」。
+
+## 練習 6 - Transient
+
+1. **找到敲擊。** 在很短的 window（5-10 ms）裡，看出現了多少*新的*能量——能量的上升，或者更好的 spectral flux：各頻帶增加量的總和，這樣即使敲擊被很大聲的貝斯蓋住也看得到。Onset 就是這條曲線超過門檻的峰值。固定的門檻會找到大聲段落的每一下，卻找不到小聲段落的任何一下：改用自適應的門檻（曲線移動中位數的某個倍數），並加上 onset 之間的最小距離（30-50 ms），這樣一下帶有嘎嘎聲的敲擊不會變成三下。
+2. **一下敲擊一個小段。** 在 onset 處切小段，而不是每半個 window 切一次。從每個 onset 起，把 attack（最初 10-30 ms）以速度 1 複製，並準確放在 onset 的 tick 現在所在的位置——這樣敲擊就在拍子上，而且只聽到一次。所有的伸縮都發生在這一段剩下的部分，直到下一個 onset：在那裡用 WSOLA，比例更大，因為 attack 沒有分擔任何伸縮。
+3. **拉長和壓縮。** 拉長時，這一段的 decay 變長——WSOLA 會重複持續部分的小段；如果沒有持續部分（很乾的小鼓），下一下之前就是安靜，這正是鼓手打慢一點時會發生的事。壓縮時，decay 被截短：這一段可能比它的 attack 還短，那麼 attack 就在下一下開始處淡出。沒有任何一下被丟掉，每一下都完整；代價是 cymbal 的尾巴。
+4. **好幾支麥克風。** 它們必須共用 onset——在 clip 的總和（或最大聲的那個）上找一次，套用到全部——以及切點：否則近距離麥克風和 overhead 裡的大鼓會被彼此錯開幾毫秒，鼓組聽起來會變空（comb filtering）。這和 Step 5 裡 stereo clip 的兩個 channel 一起滑動是同一個理由。
+5. **在哪裡、什麼時候。** 每個 clip 一次、事先進行，在 clip 被設成跟著 tempo 的時候：audio 不會變，會變的只有 tempo。它對 clip 長度是 O(n)，每個 window 一次 FFT——比 stretch 便宜——結果和 clip 存在一起：一串 source sample。每個 onset 都是天生的 warp marker，因為敲擊應該落在拍子上：把 onset 當成候選點，練習 3 就能選出 marker，練習 8（之後會做）則把它們 quantize。

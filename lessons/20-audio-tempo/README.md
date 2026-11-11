@@ -57,8 +57,9 @@ a length in samples and are played sample for sample.
 ## 4. Exercises
 
 See [exercises/README.md](exercises/README.md), with the answers in [solutions/README.md](solutions/README.md).
-Four exercises so far, none needs JUCE: why the chapter does it this way (concept), audio and tempo by the numbers
-(calculation), the fewest markers for a take, and a time-stretcher that fits to a fraction of a sample.
+Six exercises, none needs JUCE: why the chapter does it this way (concept), audio and tempo by the numbers
+(calculation), the fewest markers for a take, a time-stretcher that fits to a fraction of a sample, a fade over a
+jump of the playhead, and a stretcher that keeps drum hits (design).
 
 ## 5. Next
 

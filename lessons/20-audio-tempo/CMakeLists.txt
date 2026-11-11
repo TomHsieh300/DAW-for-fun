@@ -14,6 +14,8 @@ dawlab_add_starter(l20_ex3_starter   exercises/starter/ex3_fewest_markers.cpp)
 dawlab_add_solution(l20_ex3_solution solutions/ex3_fewest_markers.cpp)
 dawlab_add_starter(l20_ex4_starter   exercises/starter/ex4_fine_fit.cpp)
 dawlab_add_solution(l20_ex4_solution solutions/ex4_fine_fit.cpp)
+dawlab_add_starter(l20_ex5_starter   exercises/starter/ex5_declick.cpp)
+dawlab_add_solution(l20_ex5_solution solutions/ex5_declick.cpp)
 
 # ---- the chapter-20 engine (header-only, namespace dawlab::engine; Step 5) ------------------
 # A copy of chapter 19's engine with audio clips that follow the tempo (Step 5). It uses the same include paths

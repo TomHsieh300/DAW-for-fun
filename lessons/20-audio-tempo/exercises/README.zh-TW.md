@@ -10,7 +10,7 @@
 .\build\bin\Debug\l20_ex3_starter.exe
 ```
 
-練習 3 建立在 Step 1 上（`steps/warp_map.h` 裡有解好的版本），練習 4 建立在 Step 4 上（`exercises/wsola.h` 裡有解好的版本）。請先完成各個 step。
+練習 3 建立在 Step 1 上（`steps/warp_map.h` 裡有解好的版本），練習 4 建立在 Step 4 上（`exercises/wsola.h` 裡有解好的版本），練習 5 建立在 Step 2 和 3 上。請先完成各個 step。
 
 ---
 
@@ -52,3 +52,21 @@ Self-check 會對 150 個小的 take 和所有可能的選法比對，並在兩�
 Step 4 的小段以整數 sample 滑動，只能對準到半個 sample 以內：stretch 後的單音和其餘部分之間只有 31 到 40 dB，就是這樣來的。用通過三個整數偏移的拋物線找出分數在它們之間的頂點（`refine()`），並在小數位置讀取小段（`readHermite()`、`stretchFine()`）。
 
 Self-check 會在四個速度下 stretch 220 和 440 Hz 的單音，並和 Step 4 比較——還有一個週期剛好是整數 sample 的 1 kHz 單音。
+
+## 練習 5 - 跳動時的 fade ★★☆（實作）
+
+[`l20_ex5_starter`，檔案 `exercises/starter/ex5_declick.cpp`]
+
+歌在播放時 tempo 改變，以 sample 讀取的 clip——不跟著 tempo 的，或只有起點跟著的——會跳到它 audio 裡的另一個位置（Step 2），波形上的那一步就是 click。用 varispeed 或 stretch 跟著的 clip 是以 tick 讀取的，而播放頭保住了 tick，所以不會跳。寫出 `Declicker`：它記住讀取原本會往哪裡走，當某個 block 從別的地方開始時，就在幾毫秒內用 equal-power 曲線把舊路徑淡出、新路徑淡入。
+
+Self-check 會在一個起點跟著 tempo、播放 440 Hz 的 clip 底下改變 tempo，量出有和沒有 fade 時，相鄰 output sample 之間最大的跳動；它也會從 output 裡把舊路徑讀回來。
+
+## 練習 6 - Transient ★★★（設計）
+
+不寫程式。Step 4 的 WSOLA 在拉長時會把鼓擊變成兩下，壓縮時可能弄丟一下。用一頁的篇幅設計一個讓每一下敲擊都只出現一次、而且落在拍子上的 stretcher：
+
+1. 程式怎麼在 clip 裡找到敲擊？固定的門檻會出什麼問題，你怎麼處理？
+2. 一下敲擊應該剛好在一個小段裡，以速度 1 播放。這對小段從哪裡切、對兩下敲擊之間的持續部分有什麼影響？
+3. 拉長到兩倍時，兩下敲擊之間的時間用什麼填？壓縮到一半時，放棄了什麼？
+4. 用好幾支麥克風錄的鼓組是好幾個 clip。它們必須共用什麼，一下敲擊才會仍然是一下？
+5. 偵測在哪裡跑、多久跑一次、代價是什麼？這些敲擊和練習 3 的 marker 有什麼關係？
