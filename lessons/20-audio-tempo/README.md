@@ -56,7 +56,9 @@ a length in samples and are played sample for sample.
 
 ## 4. Exercises
 
-None yet. [Step 7](docs/step-07-the-end.md) lists what the steps leave open.
+See [exercises/README.md](exercises/README.md), with the answers in [solutions/README.md](solutions/README.md).
+Four exercises so far, none needs JUCE: why the chapter does it this way (concept), audio and tempo by the numbers
+(calculation), the fewest markers for a take, and a time-stretcher that fits to a fraction of a sample.
 
 ## 5. Next
 

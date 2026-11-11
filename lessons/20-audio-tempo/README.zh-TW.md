@@ -49,7 +49,7 @@ DawLab 19 的 tempo map 把 tick 換成秒、再換回來，經過跳躍和 ramp
 
 ## 4. 練習
 
-還沒有。[Step 7](docs/step-07-the-end.zh-TW.md) 列出了各個 step 留下的題目。
+見 [exercises/README.zh-TW.md](exercises/README.zh-TW.md)，解答在 [solutions/README.zh-TW.md](solutions/README.zh-TW.md)。目前有四題，都不需要 JUCE：為什麼本章這樣做（概念）、用數字看 audio 和 tempo（計算）、take 用最少的 marker，以及對準到 sample 小數位置的 time-stretcher。
 
 ## 5. 接下來
 

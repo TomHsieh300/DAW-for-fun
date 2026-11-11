@@ -75,4 +75,4 @@ Audio thread 沒有得到任何新工作。`Track.h`、`Transport.h`、`Mixer.h`
 
 ## 接下來
 
-本章還沒有練習。各個 step 留下了很明顯的題目：ramp 用最少的 marker（把第 19 章的練習 5 用在 Step 1）、Step 4 對準到 sample 的小數位置、tempo 改變時的 fade，以及用 take 錄音當時的 map 做 marker。
+[練習](../exercises/README.zh-TW.md)處理了其中一部分。各個 step 留下了很明顯的題目：ramp 用最少的 marker（把第 19 章的練習 5 用在 Step 1）、Step 4 對準到 sample 的小數位置、tempo 改變時的 fade，以及用 take 錄音當時的 map 做 marker。

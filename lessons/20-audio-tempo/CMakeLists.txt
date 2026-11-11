@@ -6,6 +6,15 @@
 
 add_subdirectory(steps)
 
+# ---- exercises: starters (build only) and solutions (ctest label: solution) -------------------
+# Exercises 3 to 5 build on the steps' models (steps/warp_map.h, exercises/wsola.h); Exercise 2 checks its
+# numbers in a program. Exercises 1 and 6 are answered in solutions/README.md.
+dawlab_add_solution(l20_ex2_solution solutions/ex2_numbers.cpp)
+dawlab_add_starter(l20_ex3_starter   exercises/starter/ex3_fewest_markers.cpp)
+dawlab_add_solution(l20_ex3_solution solutions/ex3_fewest_markers.cpp)
+dawlab_add_starter(l20_ex4_starter   exercises/starter/ex4_fine_fit.cpp)
+dawlab_add_solution(l20_ex4_solution solutions/ex4_fine_fit.cpp)
+
 # ---- the chapter-20 engine (header-only, namespace dawlab::engine; Step 5) ------------------
 # A copy of chapter 19's engine with audio clips that follow the tempo (Step 5). It uses the same include paths
 # (<dawlab/engine/...>), so it must not be linked together with another chapter's engine; the chapters never

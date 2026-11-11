@@ -92,6 +92,6 @@ Said in the steps where it belongs, and once more here in one place:
 
 ## Next
 
-The chapter has no exercises yet. The steps leave obvious ones: the fewest markers for a ramp (chapter 19's
+The [exercises](../exercises/README.md) take up some of this. The steps leave obvious ones: the fewest markers for a ramp (chapter 19's
 Exercise 5 applied to Step 1), a fit to a fraction of a sample for Step 4, a fade over a tempo change, and
 markers made from the map a take was recorded over.
