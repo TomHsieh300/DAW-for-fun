@@ -221,6 +221,12 @@ ProjectIO::Captured ProjectIO::capture(const Session& session, const juce::Strin
             cs.gainDb = c.gainDb;
             cs.muted = c.muted;
             cs.name = c.name;
+            if (c.follow != nullptr) { // chapter 20
+                cs.follow = c.follow->mode;
+                cs.startTick = c.follow->startTick;
+                cs.sourceLength = c.follow->sourceLength;
+                cs.markers = c.follow->markers;
+            }
             p.clips.push_back(std::move(cs));
         }
     }
@@ -465,7 +471,19 @@ ProjectIO::OpenResult ProjectIO::open(Session& session, host::PluginHost* plugin
             r.warnings.add("clip \"" + juce::String(cs.name) + "\" starts after the end of " + juce::String(cs.file) + ": left out");
             continue;
         }
-        if (c.length > available) {
+        if (cs.follow != engine::FollowMode::Off) {
+            // Chapter 20: what the clip is, is its follow data; the session places it under the tempo map. A warped
+            // clip's length is its place in the song, not in the file - it is its range of the source that must fit.
+            auto follow = std::make_shared<engine::ClipFollow>();
+            follow->mode = cs.follow;
+            follow->startTick = cs.startTick;
+            follow->sourceLength = std::min<std::int64_t>(cs.sourceLength, available);
+            follow->markers = cs.markers;
+            if (cs.follow != engine::FollowMode::Start && cs.sourceLength > available)
+                r.warnings.add("clip \"" + juce::String(cs.name) + "\" was longer than " + juce::String(cs.file) + ": shortened");
+            c.follow = std::move(follow);
+        }
+        if (c.length > available && (cs.follow == engine::FollowMode::Off || cs.follow == engine::FollowMode::Start)) {
             r.warnings.add("clip \"" + juce::String(cs.name) + "\" was longer than " + juce::String(cs.file) + ": shortened");
             c.length = available;
         }

@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](README.zh-TW.md)
 
-> **Status: in progress.** Steps 1 to 5 of 7 are done.
+> **Status: in progress.** Steps 1 to 6 of 7 are done. Dragging a tempo under a loop still has to be tried by hand: see Step 6, "What you have to try yourself".
 
 In DawLab 19 (chapter 19) the tempo can change, and the notes follow: they are in ticks. An audio clip is in
 samples and stays where it is - drag a tempo point, and the recorded guitar is no longer with the drums. Chapter
@@ -43,7 +43,7 @@ After this chapter you can
 | 3 | [Varispeed](docs/step-03-varispeed.md) | speed and pitch; the position in the file from the song's sample in every block, exact at knots and on a grid; linear, Hermite and windowed-sinc reading, measured; aliasing when reading faster; clips as ranges of a source that meet at every tempo | done |
 | 4 | [A time-stretcher](docs/step-04-stretch.md) | overlap-add in Hann windows, why the pieces do not fit, WSOLA's search for the natural continuation and its score; measured on tones, noise and clicks: what it keeps and what it costs | done |
 | 5 | [The engine](docs/step-05-engine.md) | a copy of chapter 19's engine with two new headers: a clip and how it follows, its render to a plain clip, a worker thread that renders ahead of time, generations and cancelling for stale requests, placeholders until a render is ready | done |
-| 6 | The app | a copy of chapter 19's app: a mode per clip, markers from recording, the project file, undo | planned |
+| 6 | [The app](docs/step-06-app.md) | a copy of chapter 19's app: the follow data carried by the clip, start and length derived in two places, renders and placeholders through the session, a mode per clip in its menu, moving and cutting, project format 8 | done |
 | 7 | The end of the chapter | what was built and what was left out | planned |
 
 </div>

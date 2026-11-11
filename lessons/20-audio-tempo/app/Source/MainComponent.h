@@ -97,6 +97,8 @@ public:
     void setMidiRecordMode(MidiRecordMode mode) noexcept { midiMode_ = mode; }
     MidiRecordMode getMidiRecordMode() const noexcept { return midiMode_; }
     void showClipMenu(engine::TrackId track, int clipIndex);
+    // Chapter 20: how the clip follows the tempo (one undo step). The status line says what it does now.
+    bool setClipFollow(engine::TrackId track, int clipIndex, engine::FollowMode mode);
     // ---- MIDI clips (chapter 18, Step 8) ---------------------------------------------------------------
     // Opens (or brings to the front) the piano roll of a clip. Offline (tests) there are no windows: nullptr.
     PianoRollWindow* openPianoRoll(engine::TrackId track, int clipIndex);

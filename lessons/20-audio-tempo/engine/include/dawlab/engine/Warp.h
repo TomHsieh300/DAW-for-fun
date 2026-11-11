@@ -158,6 +158,44 @@ struct FollowClip {
     bool isWarped() const noexcept { return (mode == FollowMode::Varispeed || mode == FollowMode::Stretch) && areWarpMarkers(markers); }
 };
 
+// Step 6: the same, carried BY a Clip (Clip::follow), for a model that keeps plain lists of clips - the app's
+// session, its edits and its undo history all do. A clip that follows keeps its `start` and `length` as the song
+// samples it covers under the tempo map of the moment (so that everything that draws and drags clips goes on
+// working in samples); what it IS, is here: the tick of its start, or its markers and how much of its source it
+// plays. placeUnder() brings start and length up to date after the map has changed.
+struct ClipFollow {
+    FollowMode mode = FollowMode::Off;
+    double startTick = 0.0;          // Start
+    std::int64_t sourceLength = 0;   // Varispeed, Stretch: the clip plays [sourceOffset, sourceOffset + sourceLength)
+    std::vector<WarpMarker> markers; // Varispeed, Stretch
+
+    friend bool operator==(const ClipFollow& a, const ClipFollow& b) noexcept {
+        return a.mode == b.mode && a.startTick == b.startTick && a.sourceLength == b.sourceLength && a.markers == b.markers;
+    }
+    friend bool operator!=(const ClipFollow& a, const ClipFollow& b) noexcept { return !(a == b); }
+};
+
+inline FollowMode followModeOf(const Clip& clip) noexcept {
+    return clip.follow != nullptr ? clip.follow->mode : FollowMode::Off;
+}
+
+// The clip as a FollowClip: its `follow` taken apart, and for a warped clip the length of its source range.
+inline FollowClip followClipOf(const Clip& clip) {
+    FollowClip f;
+    f.clip = clip;
+    f.clip.follow.reset();
+    if (clip.follow != nullptr) {
+        f.mode = clip.follow->mode;
+        f.startTick = clip.follow->startTick;
+        f.markers = clip.follow->markers;
+        if (f.isWarped())
+            f.clip.length = clip.follow->sourceLength;
+        else if (f.mode != FollowMode::Start)
+            f.mode = FollowMode::Off;
+    }
+    return f;
+}
+
 // The tick of a timeline sample (a fraction), and the sample of a tick.
 inline double tickOfSample(const TempoMap& map, double sampleRate, std::int64_t sample) noexcept {
     return map.tickAt(static_cast<double>(sample) / sampleRate);
@@ -198,6 +236,102 @@ inline std::pair<std::int64_t, std::int64_t> songRangeOf(const FollowClip& clip,
     }
     const std::int64_t first = clip.mode == FollowMode::Start ? sampleOfTick(map, sampleRate, clip.startTick) : clip.clip.start;
     return {first, first + clip.clip.length};
+}
+
+// Brings a clip's start and length up to date: the song samples it covers under `map`. A clip that does not
+// follow is not touched.
+inline void placeUnder(Clip& clip, const TempoMap& map, double sampleRate) {
+    if (followModeOf(clip) == FollowMode::Off)
+        return;
+    const auto range = songRangeOf(followClipOf(clip), map, sampleRate);
+    clip.start = range.first;
+    clip.length = range.second - range.first;
+}
+
+// The clip in another mode, without moving it: it keeps the place and the sound it has now under `map`.
+//   Off        its start stays a sample; a warped clip plays its range of the source at its own speed again.
+//   Start      startTick is the tick of where it starts now.
+//   Varispeed, Stretch   a clip that was warped keeps its markers; another one gets those of a take recorded
+//              over `map` where the clip is now: "as it plays now, it is in time".
+inline Clip withFollowMode(Clip clip, FollowMode mode, const TempoMap& map, double sampleRate) {
+    const FollowClip before = followClipOf(clip);
+    const std::int64_t sourceLength = before.isWarped() ? before.clip.length : clip.length;
+    if (mode == FollowMode::Off) {
+        clip.follow.reset();
+        clip.length = sourceLength;
+        return clip;
+    }
+    auto follow = std::make_shared<ClipFollow>();
+    follow->mode = mode;
+    if (mode == FollowMode::Start) {
+        follow->startTick = tickOfSample(map, sampleRate, clip.start);
+        clip.length = sourceLength;
+    } else {
+        follow->sourceLength = sourceLength;
+        follow->markers = before.isWarped() ? before.markers : markersForTake(map, sampleRate, clip.start, clip.sourceOffset, sourceLength);
+        if (!areWarpMarkers(follow->markers)) { // a clip of no length: nothing to follow with
+            clip.follow.reset();
+            return clip;
+        }
+    }
+    clip.follow = std::move(follow);
+    placeUnder(clip, map, sampleRate);
+    return clip;
+}
+
+// The clip moved so that it starts at song sample `newStart` under `map`: a start in ticks is found again, and
+// markers move by as many ticks as the start does.
+inline Clip movedTo(Clip clip, std::int64_t newStart, const TempoMap& map, double sampleRate) {
+    const FollowClip f = followClipOf(clip);
+    if (clip.follow == nullptr || f.mode == FollowMode::Off) {
+        clip.start = newStart;
+        return clip;
+    }
+    auto follow = std::make_shared<ClipFollow>(*clip.follow);
+    if (f.isWarped()) {
+        WarpMap warp;
+        warp.set(f.markers);
+        const double by = tickOfSample(map, sampleRate, newStart) - warp.tickAt(static_cast<double>(clip.sourceOffset));
+        for (WarpMarker& m : follow->markers)
+            m.tick += by;
+    } else {
+        follow->startTick = tickOfSample(map, sampleRate, newStart);
+    }
+    clip.follow = std::move(follow);
+    placeUnder(clip, map, sampleRate);
+    return clip;
+}
+
+// The part of the clip that covers the song samples [from, to) under `map` (inside the clip's own range): what
+// is left of it when another clip is put over the rest. A warped clip keeps its markers and plays less of its
+// source; the others are cut as chapter 14 cuts a clip, and a start in ticks is found again.
+inline Clip cutToSongRange(Clip clip, std::int64_t from, std::int64_t to, const TempoMap& map, double sampleRate) {
+    const FollowClip f = followClipOf(clip);
+    if (f.isWarped()) {
+        WarpMap warp;
+        warp.set(f.markers);
+        const std::int64_t end = clip.sourceOffset + clip.follow->sourceLength;
+        const auto sourceAt = [&](std::int64_t songSample) {
+            return std::clamp<std::int64_t>(std::llround(sourcePositionAt(warp, map, sampleRate, static_cast<double>(songSample))), clip.sourceOffset, end);
+        };
+        const std::int64_t a = from <= clip.start ? clip.sourceOffset : sourceAt(from), b = to >= clip.end() ? end : sourceAt(to);
+        auto follow = std::make_shared<ClipFollow>(*clip.follow);
+        follow->sourceLength = std::max<std::int64_t>(b - a, 0);
+        clip.sourceOffset = a;
+        clip.follow = std::move(follow);
+        placeUnder(clip, map, sampleRate);
+        return clip;
+    }
+    const std::int64_t cut = from - clip.start;
+    clip.sourceOffset += cut;
+    clip.start = from;
+    clip.length = to - from;
+    if (f.mode == FollowMode::Start && cut != 0) {
+        auto follow = std::make_shared<ClipFollow>(*clip.follow);
+        follow->startTick = tickOfSample(map, sampleRate, from);
+        clip.follow = std::move(follow);
+    }
+    return clip;
 }
 
 // ---- Step 3: reading between samples --------------------------------------------------------------------------

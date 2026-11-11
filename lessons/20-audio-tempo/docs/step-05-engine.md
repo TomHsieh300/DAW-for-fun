@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-05-engine.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 4 - A time-stretcher](step-04-stretch.md)
+[Overview](../README.md) | Previous: [Step 4 - A time-stretcher](step-04-stretch.md) | Next: [Step 6 - The app](step-06-app.md)
 
 ## Goal
 

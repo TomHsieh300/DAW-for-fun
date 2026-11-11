@@ -73,6 +73,7 @@
 #include <dawlab/engine/Automation.h>
 #include <dawlab/engine/Constants.h>
 #include <dawlab/engine/Track.h>
+#include <dawlab/engine/Warp.h>
 
 #include <array>
 #include <cstdint>
@@ -86,8 +87,9 @@ constexpr int kInsertSlotsPerStrip = 4; // GUI insert slots per strip (Session, 
 
 namespace project {
 
-constexpr int kFormatVersion = 7; // 1: Step 4 without pan; 2: Step 4; 3: the whole app project; 4: automation; 5: takes;
-                                  // 6: instruments and MIDI clips
+constexpr int kFormatVersion = 8; // 1: Step 4 without pan; 2: Step 4; 3: the whole app project; 4: automation; 5: takes;
+                                  // 6: instruments and MIDI clips; 7: a tempo map, instrument sounds;
+                                  // 8: clips that follow the tempo
 
 struct SendState {
     float levelDb = kMinusInfinityDb;
@@ -178,6 +180,12 @@ struct ClipState {
     float gainDb = 0.0f;
     bool muted = false;
     std::string name;
+    // Chapter 20 (format 8): how the clip follows the tempo. For a clip that follows, `start` and `length` above
+    // are where it was when the file was written; what counts is here.
+    engine::FollowMode follow = engine::FollowMode::Off;
+    double startTick = 0.0;                  // Start
+    std::int64_t sourceLength = 0;           // Varispeed, Stretch: > 0
+    std::vector<engine::WarpMarker> markers; // Varispeed, Stretch: at least two, sources and ticks rising
 };
 
 // Which parts of an audio file are the takes of one recording. The clip says which one plays.

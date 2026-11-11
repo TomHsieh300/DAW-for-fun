@@ -201,6 +201,9 @@ void MainComponent::tick() {
     if (!isExporting())
         engine_.collectGarbage();
     session_.collectAutomation();
+    // Chapter 20: renders of clips that follow the tempo arrive from the worker thread.
+    if (!isExporting())
+        session_.pollRenders();
     // Chapter 19: the synth panel shows the selected track.
     if (synthPanel_ != nullptr && synthPanel_->isVisible() && synthPanel_->getPanel().getTrack() != arrangement_.getSelectedTrack())
         synthPanel_->getPanel().showTrack(arrangement_.getSelectedTrack());
@@ -409,17 +412,48 @@ void MainComponent::showClipMenu(engine::TrackId track, int clipIndex) {
         return;
     const engine::Clip& clip = clips[static_cast<size_t>(clipIndex)];
     const std::vector<engine::Placement>* takes = session_.getTakesOf(clip);
-    if (takes == nullptr || takes->size() < 2 || session_.getCurrentTake(clip) < 0)
-        return;
+    const engine::FollowMode mode = engine::followModeOf(clip);
     juce::PopupMenu menu;
-    menu.addSectionHeader("Takes");
-    for (int i = 0; i < static_cast<int>(takes->size()); ++i)
-        menu.addItem(i + 1, "Take " + juce::String(i + 1), true, session_.getCurrentTake(clip) == i);
+    // Chapter 20: how the clip follows the tempo.
+    constexpr int kFollowBase = 1000;
+    menu.addSectionHeader("When the tempo changes");
+    menu.addItem(kFollowBase + 0, "Stay where it is", true, mode == engine::FollowMode::Off);
+    menu.addItem(kFollowBase + 1, "Keep its start on the beat", true, mode == engine::FollowMode::Start);
+    menu.addItem(kFollowBase + 2, "Follow, pitch changes (varispeed)", true, mode == engine::FollowMode::Varispeed);
+    menu.addItem(kFollowBase + 3, "Follow, pitch stays (stretch)", true, mode == engine::FollowMode::Stretch);
+    // A take is chosen before the clip follows (Session::chooseTake).
+    if (takes != nullptr && takes->size() >= 2 && session_.getCurrentTake(clip) >= 0 && mode == engine::FollowMode::Off) {
+        menu.addSectionHeader("Takes");
+        for (int i = 0; i < static_cast<int>(takes->size()); ++i)
+            menu.addItem(i + 1, "Take " + juce::String(i + 1), true, session_.getCurrentTake(clip) == i);
+    }
     juce::Component::SafePointer<MainComponent> safe(this);
     menu.showMenuAsync(juce::PopupMenu::Options{}, [safe, track, clipIndex](int result) {
-        if (safe != nullptr && result > 0)
+        if (safe == nullptr || result <= 0)
+            return;
+        if (result >= kFollowBase)
+            safe->setClipFollow(track, clipIndex, static_cast<engine::FollowMode>(result - kFollowBase));
+        else
             safe->session_.chooseTake(track, clipIndex, result - 1);
     });
+}
+
+bool MainComponent::setClipFollow(engine::TrackId track, int clipIndex, engine::FollowMode mode) {
+    if (refuseWhileRecording("Changing how a clip follows the tempo"))
+        return false;
+    if (session_.getClipFollow(track, clipIndex) == mode)
+        return true;
+    if (!session_.setClipFollow(track, clipIndex, mode)) {
+        setStatus("This clip cannot follow the tempo");
+        return false;
+    }
+    switch (session_.getClipFollow(track, clipIndex)) {
+    case engine::FollowMode::Off: setStatus("The clip stays where it is when the tempo changes"); break;
+    case engine::FollowMode::Start: setStatus("The clip's start stays on its beat when the tempo changes"); break;
+    case engine::FollowMode::Varispeed: setStatus("The clip follows the tempo: faster is higher (varispeed)"); break;
+    case engine::FollowMode::Stretch: setStatus("The clip follows the tempo and keeps its pitch (stretch)"); break;
+    }
+    return session_.getClipFollow(track, clipIndex) == mode;
 }
 
 void MainComponent::askForTrim() {
@@ -973,6 +1007,9 @@ void MainComponent::exportMixdown(const juce::File& file) {
         setStatus("Nothing to export: the project has no clips");
         return;
     }
+    // Chapter 20: an export must not go out with placeholders. Wait for the renders (it blocks, for as long as
+    // the slowest stretch takes).
+    session_.finishRenders();
     // Rule 1 (Exporter.h): detach the engine from the device. After this call no audio callback
     // touches the engine; the transport state is restored by the renderer afterwards.
     audioHost_.setEngineAttached(false);

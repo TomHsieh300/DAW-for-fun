@@ -38,6 +38,8 @@ namespace dawlab::engine {
 
 enum class FadeShape { Linear, EqualPower };
 
+struct ClipFollow; // Warp.h (chapter 20): how a clip follows the tempo
+
 struct Clip {
     std::shared_ptr<const AudioBuffer> source; // immutable audio data (mono or stereo)
     int64_t start = 0;                         // timeline position of the first clip sample
@@ -49,6 +51,9 @@ struct Clip {
     FadeShape fadeShape = FadeShape::Linear;
     bool muted = false;
     std::string name; // UI only; the audio thread never reads it
+    // UI only, chapter 20: how the clip follows the tempo; null if it does not. The clips the audio thread plays
+    // never have it - what plays for such a clip is made from it ahead of time (Warp.h, FollowRenderer.h).
+    std::shared_ptr<const ClipFollow> follow;
 
     int64_t end() const noexcept { return start + length; }
 

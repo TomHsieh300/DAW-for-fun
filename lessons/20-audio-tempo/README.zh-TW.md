@@ -2,7 +2,7 @@
 
 [English](README.md) | **繁體中文**
 
-> **狀態：進行中。** 7 個 step 完成了 Step 1 到 5。
+> **狀態：進行中。** 7 個 step 完成了 Step 1 到 6。在 loop 底下拖動 tempo 仍然要親手試過：見 Step 6 的「你要自己試的」。
 
 在 DawLab 19（第 19 章）裡 tempo 可以改變，音符會跟著走：它們是以 tick 存的。Audio clip 則是以 sample 存的，留在原地——拖一下 tempo 點，錄好的吉他就和鼓對不上了。第 19 章的練習 6 在紙上設計了解法。本章把它做出來：一個知道自己的 audio 屬於音樂哪個位置的 clip，依 tempo 的要求播得快一點或慢一點——像磁帶那樣，或是不改變音高。
 
@@ -38,7 +38,7 @@
 | 3 | [Varispeed](docs/step-03-varispeed.zh-TW.md) | 速度和音高；每個 block 都從歌的 sample 算檔案裡的位置，在 knot 和 grid 上精確；linear、Hermite 和 windowed sinc 的讀法與量測；讀得比較快時的 aliasing；clip 是 source 的範圍，在任何 tempo 下都相接 | 完成 |
 | 4 | [Time-stretcher](docs/step-04-stretch.zh-TW.md) | Hann window 的 overlap-add、小段為什麼接不起來、WSOLA 對 natural continuation 的搜尋和它的分數；在單音、noise 和 click 上量測：保住了什麼、代價是什麼 | 完成 |
 | 5 | [Engine](docs/step-05-engine.zh-TW.md) | 第 19 章 engine 的複本加上兩個新 header：clip 和它跟著 tempo 的方式、算成一般 clip、事先運算的 worker thread、用 generation 和取消處理過期的 request、結果算好之前的 placeholder | 完成 |
-| 6 | App | 第 19 章 app 的複本：每個 clip 的模式、錄音帶來的 marker、專案檔、undo | 計畫中 |
+| 6 | [App](docs/step-06-app.zh-TW.md) | 第 19 章 app 的複本：由 clip 自己帶著 follow 資料、start 和 length 在兩個地方推導、經由 session 的運算結果和 placeholder、clip 選單裡的模式、移動和裁切、專案檔第 8 版 | 完成 |
 | 7 | 本章的結尾 | 做了什麼、留下什麼沒做 | 計畫中 |
 
 </div>

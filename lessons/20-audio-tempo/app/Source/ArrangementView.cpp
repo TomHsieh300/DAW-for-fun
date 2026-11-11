@@ -42,6 +42,10 @@ void WaveformCache::prune(const Session& session) {
     for (int lane = 0; lane < session.getNumTracks(); ++lane)
         for (const Clip& c : session.getClips(session.getTrackId(lane)))
             used.insert(c.source.get());
+    // Chapter 20: what is drawn for a clip that follows the tempo is its render.
+    for (int lane = 0; lane < session.getNumTracks(); ++lane)
+        for (const Clip& c : session.getPlayedClips(session.getTrackId(lane)))
+            used.insert(c.source.get());
     for (auto it = cache_.begin(); it != cache_.end();)
         it = used.count(it->first) ? std::next(it) : cache_.erase(it);
 }
@@ -458,6 +462,9 @@ void ArrangementView::paintLane(juce::Graphics& g, int lane, juce::Rectangle<int
 
     // clips
     const auto& clips = session_.getClips(track);
+    // Chapter 20: a clip that follows the tempo is drawn as it sounds - what the engine plays for it (a render,
+    // or for a moment a placeholder) - with a word that says how it follows.
+    const auto& played = session_.getPlayedClips(track);
     {
         juce::Graphics::ScopedSaveState save(g);
         g.reduceClipRegion(area.withTrimmedLeft(kHeaderWidth));
@@ -465,8 +472,15 @@ void ArrangementView::paintLane(juce::Graphics& g, int lane, juce::Rectangle<int
             const auto bounds = getClipBounds(lane, i);
             if (bounds.getRight() < kHeaderWidth || bounds.getX() > getWidth())
                 continue;
-            paintClip(g, track, clips[static_cast<size_t>(i)], bounds,
-                      drag_ == Drag::Clip && dragTrack_ == track && dragClip_ == i);
+            const Clip& model = clips[static_cast<size_t>(i)];
+            const engine::FollowMode mode = engine::followModeOf(model);
+            if (mode == engine::FollowMode::Off || played.size() != clips.size()) {
+                paintClip(g, track, model, bounds, drag_ == Drag::Clip && dragTrack_ == track && dragClip_ == i);
+                continue;
+            }
+            Clip shown = played[static_cast<size_t>(i)];
+            shown.name = model.name + (mode == engine::FollowMode::Start ? "  [start]" : mode == engine::FollowMode::Varispeed ? "  [varispeed]" : "  [stretch]");
+            paintClip(g, track, shown, bounds, drag_ == Drag::Clip && dragTrack_ == track && dragClip_ == i);
         }
         const auto& midi = session_.getMidiClips(track); // chapter 18
         for (int i = 0; i < static_cast<int>(midi.size()); ++i) {

@@ -49,7 +49,8 @@ bool operator==(const MidiClipState& a, const MidiClipState& b) {
 bool operator==(const ClipState& a, const ClipState& b) {
     return a.track == b.track && a.start == b.start && a.length == b.length && a.file == b.file &&
            a.sourceOffset == b.sourceOffset && a.fadeIn == b.fadeIn && a.fadeOut == b.fadeOut &&
-           a.equalPowerFades == b.equalPowerFades && a.gainDb == b.gainDb && a.muted == b.muted && a.name == b.name;
+           a.equalPowerFades == b.equalPowerFades && a.gainDb == b.gainDb && a.muted == b.muted && a.name == b.name && a.follow == b.follow && a.startTick == b.startTick && a.sourceLength == b.sourceLength &&
+           a.markers == b.markers;
 }
 bool operator==(const TakeState& a, const TakeState& b) {
     return a.start == b.start && a.sourceOffset == b.sourceOffset && a.length == b.length;
@@ -292,10 +293,24 @@ std::string writeProject(const ProjectState& p) {
     for (int b = 0; b < engine::kNumBuses; ++b)
         writeStripDetails(out, {ChannelName::Kind::Bus, static_cast<std::uint32_t>(b)}, p.buses[static_cast<size_t>(b)]);
     writeStripDetails(out, {ChannelName::Kind::Master, 0}, p.master);
-    for (const ClipState& c : p.clips)
+    for (const ClipState& c : p.clips) {
         out << "clip " << c.track.value << ' ' << c.start << ' ' << c.length << ' ' << quote(c.file) << ' ' << c.sourceOffset
             << ' ' << c.fadeIn << ' ' << c.fadeOut << ' ' << (c.equalPowerFades ? "equalPower" : "linear") << ' ' << c.gainDb
             << ' ' << c.muted << ' ' << quote(c.name) << '\n';
+        // Format 8: how the clip above follows the tempo, and for a warped one its markers. Ticks and positions
+        // in the source are doubles: 17 digits read back as the same number.
+        if (c.follow == engine::FollowMode::Off)
+            continue;
+        const auto digits = out.precision(std::numeric_limits<double>::max_digits10);
+        if (c.follow == engine::FollowMode::Start) {
+            out << "follow start " << c.startTick << '\n';
+        } else {
+            out << "follow " << (c.follow == engine::FollowMode::Varispeed ? "varispeed" : "stretch") << ' ' << c.sourceLength << '\n';
+            for (const engine::WarpMarker& m : c.markers)
+                out << "marker " << m.source << ' ' << m.tick << '\n';
+        }
+        out.precision(digits);
+    }
     for (const TakeSetState& s : p.takeSets) {
         out << "takes " << quote(s.file);
         for (const TakeState& t : s.takes)
@@ -587,6 +602,39 @@ ReadResult readProject(std::string_view text) {
             }
             p.clips.push_back(std::move(c));
             clipLines.push_back(lineNo);
+        } else if (kw == "follow" || kw == "marker") {
+            // Format 8: both belong to the clip above them.
+            if (version < 8)
+                return fail(lineNo, "\"" + kw + "\" needs format 8 (this file is format " + std::to_string(version) + ")");
+            if (p.clips.empty())
+                return fail(lineNo, "\"" + kw + "\" needs a clip above it");
+            ClipState& c = p.clips.back();
+            if (kw == "follow") {
+                if (c.follow != engine::FollowMode::Off)
+                    return fail(lineNo, "the clip above already has a \"follow\"");
+                if (tok.size() != 3 || tok[1].quoted)
+                    return fail(lineNo, "follow needs start and a tick, or varispeed / stretch and a length in the source");
+                if (tok[1].text == "start") {
+                    if (!parseNumber(tok[2], c.startTick) || !std::isfinite(c.startTick))
+                        return fail(lineNo, "follow start needs a tick");
+                    c.follow = engine::FollowMode::Start;
+                } else if (tok[1].text == "varispeed" || tok[1].text == "stretch") {
+                    if (!parseNumber(tok[2], c.sourceLength) || c.sourceLength <= 0)
+                        return fail(lineNo, "follow " + tok[1].text + " needs a length in the source of at least 1 sample");
+                    c.follow = tok[1].text == "varispeed" ? engine::FollowMode::Varispeed : engine::FollowMode::Stretch;
+                } else {
+                    return fail(lineNo, "follow needs start, varispeed or stretch");
+                }
+            } else {
+                if (c.follow != engine::FollowMode::Varispeed && c.follow != engine::FollowMode::Stretch)
+                    return fail(lineNo, "a marker needs a clip above it that follows by varispeed or stretch");
+                engine::WarpMarker m;
+                if (tok.size() != 3 || !parseNumber(tok[1], m.source) || !parseNumber(tok[2], m.tick) || !std::isfinite(m.source) || !std::isfinite(m.tick))
+                    return fail(lineNo, "marker needs a position in the source and a tick");
+                if (!c.markers.empty() && (m.source <= c.markers.back().source || m.tick <= c.markers.back().tick))
+                    return fail(lineNo, "a marker must be after the one before it, in the source and in ticks");
+                c.markers.push_back(m);
+            }
         } else if (kw == "takes") {
             if (version < 5)
                 return fail(lineNo, "\"takes\" needs format 5 (this file is format " + std::to_string(version) + ")");
@@ -805,6 +853,9 @@ ReadResult readProject(std::string_view text) {
         const TrackId owner = p.clips[i].track;
         if (std::none_of(p.tracks.begin(), p.tracks.end(), [owner](const TrackState& t) { return t.id == owner; }))
             return fail(clipLines[i], "clip on track " + std::to_string(owner.value) + ", which does not exist");
+        const ClipState& c = p.clips[i];
+        if ((c.follow == engine::FollowMode::Varispeed || c.follow == engine::FollowMode::Stretch) && c.markers.size() < 2)
+            return fail(clipLines[i], "a clip that follows by varispeed or stretch needs at least two markers");
     }
     auto hasTrack = [&p](engine::TrackId id) {
         return std::any_of(p.tracks.begin(), p.tracks.end(), [id](const TrackState& t) { return t.id == id; });

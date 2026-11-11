@@ -164,7 +164,7 @@ void testErrors() {
         const char* expected; // the error must start with this
     } cases[] = {
         {"", "line 1: not a DawLab project"},
-        {"DawLabProject 8\n", "line 1: made by a newer DawLab"},
+        {"DawLabProject 9\n", "line 1: made by a newer DawLab"},
         {"DawLabProject 3\ntrack 1 \"A\" 0 0 mono 0 0\n", "line 2: sampleRate must come"},
         {head + "volume 1\n", "line 4: unknown keyword"},
         {head + "track 2 \"B\" 0 0\n", "line 4: track needs 7 values"},
@@ -506,8 +506,82 @@ void testInstrumentSound() {
     DAWLAB_CHECK(!readProject("DawLabProject 6\nsampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\nsynth 1 4000 0.9 0.005 0.2 0.6 0.3 0.25\n").ok);
 }
 
+// Chapter 20: clips that follow the tempo (format 8).
+void testFollow() {
+    ProjectState p;
+    TrackState t;
+    t.id = TrackId{1};
+    t.strip.name = "A";
+    p.tracks = {t};
+    p.nextTrackId = 2;
+    ClipState plain;
+    plain.track = TrackId{1};
+    plain.length = 96000;
+    plain.file = "a.wav";
+    plain.name = "plain";
+    ClipState start = plain;
+    start.name = "start";
+    start.follow = dawlab::engine::FollowMode::Start;
+    start.startTick = 3840.0 + 1.0 / 3.0; // a fraction that 6 digits would lose
+    ClipState tape = plain;
+    tape.name = "tape";
+    tape.follow = dawlab::engine::FollowMode::Varispeed;
+    tape.sourceLength = 96000;
+    tape.markers = {{0.0, 0.0}, {48000.125, 1920.0 + 1.0 / 7.0}, {96000.0, 3840.0}};
+    ClipState kept = tape;
+    kept.name = "kept";
+    kept.follow = dawlab::engine::FollowMode::Stretch;
+    kept.sourceOffset = 100;
+    kept.markers = {{-50.5, -960.0}, {123456.75, 7680.0}};
+    p.clips = {plain, start, tape, kept};
+
+    const std::string text = writeProject(p);
+    DAWLAB_CHECK(text.rfind("DawLabProject 8\n", 0) == 0);
+    DAWLAB_CHECK(text.find("follow start 3840.3333333333335\n") != std::string::npos && text.find("follow varispeed 96000\n") != std::string::npos &&
+                 text.find("follow stretch 96000\n") != std::string::npos && text.find("marker 48000.125 1920.1428571428571\n") != std::string::npos);
+    const ReadResult back = readProject(text);
+    DAWLAB_CHECK(back.ok && back.project == p && writeProject(back.project) == text);
+    DAWLAB_CHECK(back.ok && back.project.clips.size() == 4 && back.project.clips[0].follow == dawlab::engine::FollowMode::Off &&
+                 back.project.clips[0].markers.empty() && back.project.clips[1].startTick == start.startTick && back.project.clips[3].markers == kept.markers);
+    std::printf("clips that follow: a start in ticks, varispeed and stretch with their markers written and read back exactly\n");
+
+    // A project where nothing follows has none of these lines: it reads as it always did.
+    ProjectState old = p;
+    old.clips = {plain};
+    DAWLAB_CHECK(writeProject(old).find("follow") == std::string::npos && writeProject(old).find("marker") == std::string::npos);
+    // The data is part of what a clip is.
+    ClipState other = tape;
+    other.markers[1].tick += 1.0;
+    DAWLAB_CHECK(!(other == tape) && !(start == plain));
+
+    const std::string head = "DawLabProject 8\nsampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\n";
+    const std::string clip = "clip 1 0 100 \"a.wav\"\n";
+    const auto reads = [&head](const std::string& lines) { return readProject(head + lines + "\n").ok; };
+    DAWLAB_CHECK(reads(clip + "follow start 960.5"));
+    DAWLAB_CHECK(reads(clip + "follow varispeed 100\nmarker 0 0\nmarker 100 480"));
+    DAWLAB_CHECK(reads(clip + "follow stretch 100\nmarker 0 0\nmarker 50 100\nmarker 100 480\n" + clip + "follow start 0"));
+    DAWLAB_CHECK(!reads("follow start 0"));                                            // no clip above it
+    DAWLAB_CHECK(!reads(clip + "follow start 0\nfollow start 5"));                     // twice
+    DAWLAB_CHECK(!reads(clip + "follow start") && !reads(clip + "follow start x") && !reads(clip + "follow start nan"));
+    DAWLAB_CHECK(!reads(clip + "follow tape 100") && !reads(clip + "follow \"start\" 0"));
+    DAWLAB_CHECK(!reads(clip + "follow varispeed 0\nmarker 0 0\nmarker 100 480"));     // no length in the source
+    DAWLAB_CHECK(!reads(clip + "follow varispeed 100"));                               // no markers
+    DAWLAB_CHECK(!reads(clip + "follow varispeed 100\nmarker 0 0"));                   // one marker
+    DAWLAB_CHECK(!reads(clip + "follow varispeed 100\nmarker 0 0\nmarker 0 480"));     // the source does not rise
+    DAWLAB_CHECK(!reads(clip + "follow varispeed 100\nmarker 0 0\nmarker 100 0"));     // the tick does not rise
+    DAWLAB_CHECK(!reads(clip + "follow varispeed 100\nmarker 0 0\nmarker 100"));       // half a marker
+    DAWLAB_CHECK(!reads(clip + "marker 0 0\nmarker 100 480"));                         // markers of a clip that does not follow
+    DAWLAB_CHECK(!reads(clip + "follow start 0\nmarker 0 0"));                         // or that follows with its start
+    // The error names the line of the clip that lacks its markers.
+    const ReadResult lacking = readProject(head + clip + "follow stretch 100\nmarker 0 0\n");
+    DAWLAB_CHECK(!lacking.ok && lacking.error.find("line 4") != std::string::npos && lacking.error.find("two markers") != std::string::npos);
+    // An older file cannot have them.
+    DAWLAB_CHECK(!readProject("DawLabProject 7\nsampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\n" + clip + "follow start 0\n").ok);
+    DAWLAB_CHECK(readProject("DawLabProject 7\nsampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\n" + clip).ok);
+}
+
 int main() {
-    std::printf("l19_test_project_format: the application's project file, format %d\n", kFormatVersion);
+    std::printf("l20_test_project_format: the application's project file, format %d\n", kFormatVersion);
     testMidi();
     testTakes();
     testLanes();
@@ -519,5 +593,6 @@ int main() {
     testLocale();
     testTempoMap();
     testInstrumentSound();
-    return dawlab::test::summary("l19_test_project_format");
+    testFollow();
+    return dawlab::test::summary("l20_test_project_format");
 }

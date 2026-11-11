@@ -134,6 +134,24 @@ public:
     const std::vector<engine::Clip>& getClips(engine::TrackId track) const; // empty for an unknown id
     void setClips(engine::TrackId track, std::vector<engine::Clip> clips);
 
+    // ---- clips that follow the tempo (chapter 20, Step 6) -------------------------------------
+    // A clip of getClips() may carry how it follows the tempo (Clip::follow). Its start and length are then the
+    // song samples it covers under the tempo map of now: setClips() and every change of the map bring them up to
+    // date. What the ENGINE plays for the clips of a track - renders, or placeholders while a render is on its
+    // way - is getPlayedClips(): the same number of clips in the same order, plain ones, with the audio as it
+    // sounds. The arrangement draws those.
+    engine::FollowMode getClipFollow(engine::TrackId track, int clipIndex) const;
+    // One undo step, "Clip follows the tempo" (or "Clip does not follow the tempo"). The clip keeps its place and
+    // its sound; from now on a change of the tempo map moves or stretches it. False for a clip that is not there.
+    bool setClipFollow(engine::TrackId track, int clipIndex, engine::FollowMode mode);
+    const std::vector<engine::Clip>& getPlayedClips(engine::TrackId track) const;
+    // Takes the renders that are ready and hands them to the engine. True if something changed. The window's
+    // timer calls it; nothing blocks.
+    bool pollRenders();
+    // Waits for every render and takes it: before an export, and in tests. Blocks.
+    void finishRenders();
+    bool hasPendingRenders() const;
+
     // One clip that plays `audio` from timeline sample `start`, with 5 ms fades. The audio must
     // already be at getClipSampleRate() (MediaLoader resamples it).
     engine::Clip makeAudioClip(std::shared_ptr<const AudioBuffer> audio, const juce::String& clipName,
@@ -342,6 +360,8 @@ private:
     struct TrackModel {
         engine::TrackId id;
         std::vector<engine::Clip> clips;
+        std::shared_ptr<engine::FollowTrack> follow; // chapter 20: what the engine plays for `clips` ...
+        std::vector<engine::Clip> played;            // ... and a copy of it for the arrangement
         StripModel strip;
         bool instrument = false;               // chapter 18
         std::vector<MidiClipModel> midiClips;  // chapter 18, by start
@@ -385,9 +405,12 @@ private:
     LaneContent contentOrNew(const LaneAddress& address) const;
     void removeBusAndMasterInserts();
     void resetBusAndMasterSettings();
-    void pushClips(const TrackModel& track);
+    void pushClips(TrackModel& track);
+    void placeClips(TrackModel& track); // chapter 20: the clips that follow, to where they are under the map of now
+    void retimeClips();                 // every track: placeClips() and pushClips()
 
     engine::Engine& engine_;
+    engine::FollowRenderer renderer_;                         // chapter 20: before tracks_, which use it until they are gone
     std::vector<TrackModel> tracks_;                          // display order
     std::array<StripModel, engine::kNumBuses + 1> fixedStrips_; // the buses, then the master
     std::uint32_t nextTrackId_ = 1;                           // only counts up (see the top)

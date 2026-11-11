@@ -1,6 +1,5 @@
 # Files that are the same in several chapters, written by scripts/check_copies.py --write.
 # Every line: the chapters, then the path inside each chapter.
-19 20 app/Source/ArrangementView.cpp
 18 19 20 app/Source/ArrangementView.h
 15 16 app/Source/AudioHost.cpp
 18 19 20 app/Source/AudioHost.cpp
@@ -34,12 +33,7 @@
 18 19 20 app/Source/PianoRoll.h
 19 20 app/Source/PluginInstrument.cpp
 19 20 app/Source/PluginInstrument.h
-19 20 app/Source/ProjectFormat.cpp
-19 20 app/Source/ProjectFormat.h
-19 20 app/Source/ProjectIO.cpp
 15 16 17 18 19 20 app/Source/ProjectIO.h
-19 20 app/Source/Session.cpp
-19 20 app/Source/Session.h
 19 20 app/Source/SynthPanel.cpp
 19 20 app/Source/SynthPanel.h
 19 20 app/Source/TempoLane.cpp
@@ -55,7 +49,7 @@
 16 17 18 19 20 engine/include/dawlab/engine/Automation.h
 14 15 engine/include/dawlab/engine/ChannelStrip.h
 16 17 18 19 20 engine/include/dawlab/engine/ChannelStrip.h
-14 15 16 17 18 19 20 engine/include/dawlab/engine/Clip.h
+14 15 16 17 18 19 engine/include/dawlab/engine/Clip.h
 16 17 engine/include/dawlab/engine/Commands.h
 18 19 20 engine/include/dawlab/engine/Commands.h
 16 17 engine/include/dawlab/engine/Constants.h
@@ -92,7 +86,6 @@
 19 20 tests/test_midi_file.cpp
 15 16 17 18 19 20 tests/test_mixer.cpp
 15 16 17 18 19 20 tests/test_pdc.cpp
-19 20 tests/test_project_format.cpp
 15 16 17 18 19 20 tests/test_realtime_safety.cpp
 17 18 19 20 tests/test_recording.cpp
 17 18 19 20 tests/test_recording_threads.cpp

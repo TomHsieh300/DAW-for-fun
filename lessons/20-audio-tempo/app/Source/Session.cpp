@@ -502,6 +502,7 @@ bool Session::setTempoMap(const std::vector<engine::TempoPoint>& points) {
     if (!map.set(points))
         return false;
     engine_.getTransport().setTempoMap(map);
+    retimeClips(); // chapter 20: the clips that follow go where the new map puts them
     sendChangeMessage();
     return true;
 }
@@ -517,17 +518,92 @@ const std::vector<Clip>& Session::getClips(TrackId track) const {
     return t ? t->clips : kNoClips;
 }
 
-void Session::pushClips(const TrackModel& track) {
+void Session::pushClips(TrackModel& track) {
+    // Chapter 20: the engine does not get the clips, but what plays for them (FollowTrack) - the clips themselves
+    // where they do not follow, a render or a placeholder where they do. Renders that are not ready come later,
+    // through pollRenders().
+    if (track.follow == nullptr)
+        track.follow = std::make_shared<engine::FollowTrack>(renderer_);
+    std::vector<engine::FollowClip> clips;
+    clips.reserve(track.clips.size());
+    for (const Clip& c : track.clips)
+        clips.push_back(engine::followClipOf(c));
+    track.follow->update(std::move(clips), getTempoMap(), getClipSampleRate());
+    track.played = track.follow->playable();
     // setTrackClips() copies the vector into a new heap object for the audio thread.
-    engine_.setTrackClips(track.id, track.clips);
+    engine_.setTrackClips(track.id, track.played);
+}
+
+void Session::placeClips(TrackModel& track) {
+    for (Clip& c : track.clips)
+        engine::placeUnder(c, getTempoMap(), getClipSampleRate());
+    sortByStart(track.clips);
+}
+
+void Session::retimeClips() {
+    for (TrackModel& t : tracks_) {
+        if (t.clips.empty())
+            continue;
+        placeClips(t);
+        pushClips(t);
+    }
+}
+
+engine::FollowMode Session::getClipFollow(TrackId track, int clipIndex) const {
+    const TrackModel* t = findTrack(track);
+    if (t == nullptr || clipIndex < 0 || clipIndex >= static_cast<int>(t->clips.size()))
+        return engine::FollowMode::Off;
+    return engine::followModeOf(t->clips[static_cast<size_t>(clipIndex)]);
+}
+
+bool Session::setClipFollow(TrackId track, int clipIndex, engine::FollowMode mode) {
+    const TrackModel* t = findTrack(track);
+    if (t == nullptr || clipIndex < 0 || clipIndex >= static_cast<int>(t->clips.size()))
+        return false;
+    std::vector<Clip> list = t->clips;
+    list[static_cast<size_t>(clipIndex)] = engine::withFollowMode(list[static_cast<size_t>(clipIndex)], mode, getTempoMap(), getClipSampleRate());
+    return perform(edit::SetClips{track, std::move(list)}, mode == engine::FollowMode::Off ? "Clip does not follow the tempo" : "Clip follows the tempo");
+}
+
+const std::vector<Clip>& Session::getPlayedClips(TrackId track) const {
+    const TrackModel* t = findTrack(track);
+    return t ? t->played : kNoClips;
+}
+
+bool Session::pollRenders() {
+    const std::vector<engine::FollowRenderer::Result> results = renderer_.collect();
+    if (results.empty())
+        return false;
+    bool changed = false;
+    for (TrackModel& t : tracks_)
+        if (t.follow != nullptr && t.follow->take(results)) {
+            t.played = t.follow->playable();
+            engine_.setTrackClips(t.id, t.played);
+            changed = true;
+        }
+    if (changed)
+        sendChangeMessage();
+    return changed;
+}
+
+void Session::finishRenders() {
+    renderer_.waitUntilIdle();
+    pollRenders();
+}
+
+bool Session::hasPendingRenders() const {
+    for (const TrackModel& t : tracks_)
+        if (t.follow != nullptr && !t.follow->isUpToDate())
+            return true;
+    return false;
 }
 
 void Session::setClips(TrackId track, std::vector<Clip> clips) {
     TrackModel* t = findTrack(track);
     if (t == nullptr)
         return;
-    sortByStart(clips);
     t->clips = std::move(clips);
+    placeClips(*t); // chapter 20: a clip that follows is where the map of now puts it, whatever the list said
     pushClips(*t);
     sendChangeMessage();
 }
@@ -549,19 +625,14 @@ std::vector<Clip> Session::withClipOnTop(std::vector<Clip> clips, const Clip& cl
             result.push_back(old);
             continue;
         }
-        if (old.start < clip.start) { // the part before
-            Clip before = old;
-            before.length = clip.start - old.start;
+        if (old.start < clip.start) { // the part before (chapter 20: a clip that follows is cut in its own terms)
+            Clip before = engine::cutToSongRange(old, old.start, clip.start, getTempoMap(), getClipSampleRate());
             before.fadeInSamples = static_cast<int>(std::min<int64_t>(old.fadeInSamples, before.length / 2));
             before.fadeOutSamples = static_cast<int>(std::min<int64_t>(fade, before.length / 2));
             result.push_back(before);
         }
         if (old.end() > clip.end()) { // the part after
-            Clip after = old;
-            const int64_t cut = clip.end() - old.start;
-            after.start = clip.end();
-            after.sourceOffset = old.sourceOffset + cut;
-            after.length = old.length - cut;
+            Clip after = engine::cutToSongRange(old, clip.end(), old.end(), getTempoMap(), getClipSampleRate());
             after.fadeInSamples = static_cast<int>(std::min<int64_t>(fade, after.length / 2));
             after.fadeOutSamples = static_cast<int>(std::min<int64_t>(old.fadeOutSamples, after.length / 2));
             result.push_back(after);
@@ -614,6 +685,8 @@ bool Session::chooseTake(TrackId track, int clipIndex, int takeIndex) {
     const std::vector<engine::Placement>* takes = getTakesOf(clip);
     if (takes == nullptr || takeIndex < 0 || takeIndex >= static_cast<int>(takes->size()) || getCurrentTake(clip) < 0)
         return false;
+    if (engine::followModeOf(clip) != engine::FollowMode::Off)
+        return false; // chapter 20: choose the take first, then let it follow
     // Another pass of the same place. A shorter last pass makes the clip shorter.
     const engine::Placement& take = (*takes)[static_cast<size_t>(takeIndex)];
     clip.sourceOffset = take.skipFrames;
@@ -629,8 +702,8 @@ int Session::moveClip(TrackId track, int clipIndex, int64_t newStart) {
     std::vector<Clip> list = t->clips;
     if (clipIndex < 0 || clipIndex >= static_cast<int>(list.size()))
         return -1;
-    Clip moved = list[static_cast<size_t>(clipIndex)];
-    moved.start = std::max<int64_t>(0, newStart);
+    // Chapter 20: a clip that follows takes its tick, or its markers, along.
+    Clip moved = engine::movedTo(list[static_cast<size_t>(clipIndex)], std::max<int64_t>(0, newStart), getTempoMap(), getClipSampleRate());
     list.erase(list.begin() + clipIndex);
     // Keep the list sorted: insert after every clip that starts at or before the new start.
     auto pos = std::upper_bound(list.begin(), list.end(), moved.start,
@@ -888,8 +961,16 @@ void Session::applySampleRateConversion(double newRate, const ConvertedBuffers& 
                 c.length = std::min<int64_t>(c.length, c.source->getNumSamples() - c.sourceOffset);
             c.fadeInSamples = static_cast<int>(scale(c.fadeInSamples));
             c.fadeOutSamples = static_cast<int>(scale(c.fadeOutSamples));
+            if (c.follow != nullptr) { // chapter 20: positions in the source are samples too; ticks are not
+                auto follow = std::make_shared<engine::ClipFollow>(*c.follow);
+                follow->sourceLength = scale(follow->sourceLength);
+                if (c.source)
+                    follow->sourceLength = std::min<int64_t>(follow->sourceLength, c.source->getNumSamples() - c.sourceOffset);
+                for (engine::WarpMarker& m : follow->markers)
+                    m.source *= ratio;
+                c.follow = std::move(follow);
+            }
         }
-        pushClips(t);
     }
     // The takes follow their audio. A recording no clip plays any more has no new buffer, and no undo
     // can bring it back (the history ends here).
@@ -918,6 +999,11 @@ void Session::applySampleRateConversion(double newRate, const ConvertedBuffers& 
         pushLane(address);
     }
     clipSampleRate_ = newRate;
+    for (TrackModel& t : tracks_) // at the new rate now: the clips that follow are placed and rendered by it
+        if (!t.clips.empty()) {
+            placeClips(t);
+            pushClips(t);
+        }
     history_.clear(); // its clip lists and positions are at the old rate
     sendChangeMessage();
 }

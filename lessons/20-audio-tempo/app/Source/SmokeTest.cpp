@@ -1814,6 +1814,218 @@ void testMidiFiles() {
     engine.collectGarbage();
 }
 
+// ---- chapter 20: audio clips that follow the tempo ---------------------------------------------------------
+
+void testFollowingClips() {
+    std::printf("audio clips that follow the tempo\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    main.setSize(MainComponent::kDefaultWidth, MainComponent::kDefaultHeight);
+    Session& session = main.getSession();
+    Engine& engine = main.getEngine();
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    const double rate = session.getClipSampleRate();
+    const std::int64_t beat = std::llround(rate * 0.5); // at 120 BPM
+    const auto atTempo = [&](double bpm) {
+        const bool ok = session.setTempoPoints({{0, bpm, false}}, "Tempo");
+        engine.applyPendingCommandsOffline();
+        return ok;
+    };
+    // The samples of the clicks in what plays for clip 0, counted from the clip's start.
+    const auto clicksPlayed = [&](TrackId track) {
+        std::vector<std::int64_t> at;
+        const auto& played = session.getPlayedClips(track);
+        if (played.empty() || played[0].source == nullptr)
+            return at;
+        const Clip& c = played[0];
+        for (std::int64_t i = 0; i < c.length; ++i) {
+            const std::int64_t s = c.sourceOffset + i;
+            if (s < 0 || s >= c.source->getNumSamples())
+                break;
+            const float v = std::abs(c.source->getSample(0, static_cast<int>(s)));
+            const float before = s > 0 ? std::abs(c.source->getSample(0, static_cast<int>(s - 1))) : 0.0f;
+            const float after = s + 1 < c.source->getNumSamples() ? std::abs(c.source->getSample(0, static_cast<int>(s + 1))) : 0.0f;
+            if (v > 0.15f && v >= before && v > after && (at.empty() || i - at.back() > 200))
+                at.push_back(i);
+        }
+        return at;
+    };
+
+    // What the engine has for the track's one clip.
+    const auto enginePlays = [&](TrackId id) -> const Clip* {
+        const std::vector<Clip>* list = trackOf(engine, id).getClips();
+        return list != nullptr && list->size() == 1 ? &(*list)[0] : nullptr;
+    };
+
+    // A take of two bars with a click on every beat, on bar 2.
+    const TrackId track = main.addTrack(TrackFormat::Mono, false);
+    auto audio = std::make_shared<AudioBuffer>(1, static_cast<int>(8 * beat));
+    for (int k = 0; k < 8; ++k)
+        audio->setSample(0, static_cast<int>(k * beat), 0.5f);
+    const std::shared_ptr<const AudioBuffer> clicks = audio;
+    Clip take = session.makeAudioClip(clicks, "clicks", 4 * beat);
+    take.fadeInSamples = take.fadeOutSamples = 0;
+    DAWLAB_CHECK(session.perform(edit::SetClips{track, {take}}, "Add clip"));
+    engine.applyPendingCommandsOffline();
+    const size_t undo0 = session.getHistory().undoCount();
+    const std::vector<std::int64_t> beats8 = {0, beat, 2 * beat, 3 * beat, 4 * beat, 5 * beat, 6 * beat, 7 * beat};
+    DAWLAB_CHECK(session.getClipFollow(track, 0) == engine::FollowMode::Off && !session.hasPendingRenders() && clicksPlayed(track) == beats8);
+
+    // 1. Its start follows: one undo step, nothing moves. At 60 BPM bar 2 is at 4 s; the clip is as long as it was.
+    DAWLAB_CHECK(main.setClipFollow(track, 0, engine::FollowMode::Start) && main.getStatus().contains("start stays on its beat"));
+    DAWLAB_CHECK(session.getHistory().undoCount() == undo0 + 1 && session.getHistory().getUndoName() == "Clip follows the tempo");
+    DAWLAB_CHECK(session.getClipFollow(track, 0) == engine::FollowMode::Start && session.getClips(track)[0].start == 4 * beat);
+    DAWLAB_CHECK(main.setClipFollow(track, 0, engine::FollowMode::Start) && session.getHistory().undoCount() == undo0 + 1); // already so: no step
+    DAWLAB_CHECK(atTempo(60.0) && session.getClips(track)[0].start == 8 * beat && session.getClips(track)[0].length == 8 * beat);
+    DAWLAB_CHECK(session.getPlayedClips(track).size() == 1 && session.getPlayedClips(track)[0].start == 8 * beat &&
+                 session.getPlayedClips(track)[0].source == clicks && !session.hasPendingRenders());
+    // The engine plays a plain clip there: it is never given the follow data.
+    DAWLAB_CHECK(enginePlays(track) != nullptr && enginePlays(track)->start == 8 * beat && enginePlays(track)->follow == nullptr &&
+                 enginePlays(track)->source == clicks);
+    DAWLAB_CHECK(main.undo() && session.getClips(track)[0].start == 4 * beat); // the tempo back: the clip back
+    engine.applyPendingCommandsOffline();
+
+    // 2. Everything follows, as a tape: the markers of the map of now. At its own tempo it plays as it is.
+    DAWLAB_CHECK(main.setClipFollow(track, 0, engine::FollowMode::Varispeed) && main.getStatus().contains("varispeed"));
+    DAWLAB_CHECK(session.getClips(track)[0].start == 4 * beat && session.getClips(track)[0].length == 8 * beat &&
+                 session.getClips(track)[0].follow != nullptr && session.getClips(track)[0].follow->markers.size() == 2);
+    session.finishRenders();
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(!session.hasPendingRenders() && session.getPlayedClips(track)[0].source != clicks && clicksPlayed(track) == beats8);
+    // The engine has the render, not the clip: a plain clip that knows nothing of tempo.
+    DAWLAB_CHECK(enginePlays(track) != nullptr && enginePlays(track)->source == session.getPlayedClips(track)[0].source &&
+                 enginePlays(track)->follow == nullptr && enginePlays(track)->source != clicks);
+
+    // 60 BPM. At once: the clip covers twice the samples, and what plays is the old render where the clip starts
+    // now. When the render is there: every click on its beat, a second apart.
+    const std::shared_ptr<const AudioBuffer> oldRender = session.getPlayedClips(track)[0].source;
+    DAWLAB_CHECK(atTempo(60.0) && session.getClips(track)[0].start == 8 * beat && session.getClips(track)[0].length == 16 * beat);
+    DAWLAB_CHECK(session.hasPendingRenders() && session.getPlayedClips(track)[0].source == oldRender && session.getPlayedClips(track)[0].start == 8 * beat);
+    // The window's timer takes the render when it is ready (nobody calls finishRenders() here).
+    for (int waited = 0; session.hasPendingRenders() && waited < 20000; ++waited) {
+        main.tick();
+        juce::Thread::sleep(1);
+    }
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(!session.hasPendingRenders() && enginePlays(track) != nullptr && enginePlays(track)->length == 16 * beat &&
+                 enginePlays(track)->source == session.getPlayedClips(track)[0].source && enginePlays(track)->source != oldRender);
+    const std::vector<std::int64_t> slow = clicksPlayed(track);
+    bool onBeats = slow.size() == 8;
+    for (size_t k = 0; onBeats && k < 8; ++k)
+        onBeats = std::llabs(slow[k] - static_cast<std::int64_t>(k) * 2 * beat) <= 1;
+    DAWLAB_CHECK(!session.hasPendingRenders() && session.getPlayedClips(track)[0].length == 16 * beat && onBeats);
+    std::printf("  a take of 8 clicks made at 120 BPM, by varispeed at 60: %zu clicks, on their beats %s, the clip %.0f s long\n", slow.size(),
+                onBeats ? "yes" : "NO", static_cast<double>(session.getClips(track)[0].length) / rate);
+
+    // A list that says another place than its clips' ticks and markers (an undo step from another tempo is one):
+    // the session puts the clips where they belong, not where the list said.
+    {
+        std::vector<Clip> stale = session.getClips(track);
+        const Clip right = stale[0];
+        stale[0].start = 123;
+        stale[0].length = 456;
+        session.setClips(track, stale);
+        engine.applyPendingCommandsOffline();
+        DAWLAB_CHECK(session.getClips(track)[0].start == right.start && session.getClips(track)[0].length == right.length);
+        session.finishRenders();
+        engine.applyPendingCommandsOffline();
+    }
+
+    // 3. Dragged to bar 4 (at 60 BPM: 12 s). Its markers go with it: back at 120 it is on bar 4 there too.
+    const std::int64_t bar4At60 = session.sampleOfTick(3 * 3840);
+    DAWLAB_CHECK(session.moveClip(track, 0, bar4At60) == 0 && session.getClips(track)[0].start == bar4At60);
+    session.getHistory().endMerge();
+    DAWLAB_CHECK(atTempo(120.0) && session.getClips(track)[0].start == 12 * beat && session.getClips(track)[0].length == 8 * beat);
+
+    // 4. The same clip stretched instead: the same markers, the same place, the pitch kept.
+    const std::vector<engine::WarpMarker> markers = session.getClips(track)[0].follow->markers;
+    DAWLAB_CHECK(main.setClipFollow(track, 0, engine::FollowMode::Stretch) && main.getStatus().contains("stretch"));
+    DAWLAB_CHECK(session.getClips(track)[0].follow->markers == markers && session.getClips(track)[0].start == 12 * beat);
+    DAWLAB_CHECK(atTempo(90.0));
+    session.finishRenders();
+    engine.applyPendingCommandsOffline();
+    const std::int64_t at90 = std::llround(8 * beat * 120.0 / 90.0);
+    DAWLAB_CHECK(std::llabs(session.getClips(track)[0].length - at90) <= 1 && session.getPlayedClips(track)[0].length == session.getClips(track)[0].length);
+
+    // 5. A new clip put over its middle (a recording does this): what is left of it before and after still
+    //    follows, each with less of the source - and the two pieces are where the gap's edges are.
+    const Clip whole = session.getClips(track)[0];
+    Clip over = session.makeAudioClip(clicks, "over", whole.start + whole.length / 4);
+    over.length = whole.length / 2;
+    const std::vector<Clip> cut = session.withClipOnTop(session.getClips(track), over);
+    DAWLAB_CHECK(cut.size() == 3);
+    if (cut.size() == 3) {
+        const Clip &a = cut[0], &b = cut[2];
+        DAWLAB_CHECK(engine::followModeOf(a) == engine::FollowMode::Stretch && engine::followModeOf(b) == engine::FollowMode::Stretch && cut[1].follow == nullptr);
+        DAWLAB_CHECK(a.start == whole.start && std::llabs(a.end() - over.start) <= 1 && std::llabs(b.start - over.end()) <= 1 && std::llabs(b.end() - whole.end()) <= 1);
+        DAWLAB_CHECK(a.sourceOffset == whole.sourceOffset && b.sourceOffset + b.follow->sourceLength == whole.sourceOffset + whole.follow->sourceLength &&
+                     a.follow->sourceLength + b.follow->sourceLength < whole.follow->sourceLength && a.follow->markers == whole.follow->markers);
+    }
+
+    // 6. Saved and opened: the mode, the markers, and the place under the map. A second clip, whose start follows
+    //    from a tick that is not a whole one, goes with it.
+    {
+        Clip second = session.makeAudioClip(clicks, "second", 1001);
+        std::vector<Clip> two = session.getClips(track);
+        two.push_back(engine::withFollowMode(second, engine::FollowMode::Start, session.getTempoMap(), rate));
+        session.setClips(track, two);
+        engine.applyPendingCommandsOffline();
+    }
+    const double secondTick = session.getClips(track)[0].follow != nullptr ? session.getClips(track)[0].follow->startTick : -1.0;
+    DAWLAB_CHECK(session.getClips(track).size() == 2 && session.getClips(track)[0].name == "second" && secondTick > 0.0 && secondTick != std::floor(secondTick));
+    TakesFolder folder;
+    const juce::File file = folder.get().getChildFile("Follow.dawlab");
+    DAWLAB_CHECK(main.saveProject(file));
+    const juce::String text = file.loadFileAsString();
+    DAWLAB_CHECK(text.startsWith("DawLabProject 8") && text.contains("follow stretch " + juce::String(8 * beat)) && text.contains("marker "));
+    const Clip saved = session.getClips(track)[1];
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    const ProjectIO::OpenResult opened = main.openProject(file);
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(opened.ok && opened.warnings.isEmpty() && session.getNumTracks() >= 1);
+    const TrackId again = session.getNumTracks() > 0 ? session.getTrackId(session.getNumTracks() - 1) : TrackId{};
+    const bool back = session.getClips(again).size() == 2 && session.getClips(again)[0].follow != nullptr && session.getClips(again)[1].follow != nullptr;
+    DAWLAB_CHECK(back);
+    if (back) {
+        DAWLAB_CHECK(engine::followModeOf(session.getClips(again)[0]) == engine::FollowMode::Start && session.getClips(again)[0].follow->startTick == secondTick &&
+                     session.getClips(again)[0].start == 1001);
+        session.setClips(again, {session.getClips(again)[1]}); // the stretched clip alone again
+        engine.applyPendingCommandsOffline();
+        const Clip& c = session.getClips(again)[0];
+        DAWLAB_CHECK(*c.follow == *saved.follow && c.start == saved.start && c.length == saved.length && c.sourceOffset == saved.sourceOffset);
+        session.finishRenders();
+        engine.applyPendingCommandsOffline();
+        DAWLAB_CHECK(!session.hasPendingRenders() && session.getPlayedClips(again)[0].length == saved.length);
+
+        // 7. Another sample rate: positions in the source are samples, ticks are not. The clip is on its bar, half
+        //    as many samples long.
+        const double seconds = static_cast<double>(c.start) / rate;
+        session.handleSampleRateChange(rate, rate / 2.0);
+        engine.applyPendingCommandsOffline();
+        const Clip& h = session.getClips(again)[0];
+        DAWLAB_CHECK(h.follow != nullptr && h.follow->sourceLength == saved.follow->sourceLength / 2 &&
+                     std::abs(h.follow->markers.back().source - saved.follow->markers.back().source / 2.0) < 1e-6 &&
+                     h.follow->markers.back().tick == saved.follow->markers.back().tick);
+        DAWLAB_CHECK(std::abs(static_cast<double>(h.start) / (rate / 2.0) - seconds) < 2.0 / rate && std::llabs(h.length - saved.length / 2) <= 1);
+        session.handleSampleRateChange(rate / 2.0, rate);
+        engine.applyPendingCommandsOffline();
+
+        // 8. Off again: it stays where it is, and plays its own audio at its own speed.
+        const std::int64_t where = session.getClips(again)[0].start;
+        DAWLAB_CHECK(main.setClipFollow(again, 0, engine::FollowMode::Off) && main.getStatus().contains("stays where it is"));
+        DAWLAB_CHECK(session.getClips(again)[0].follow == nullptr && session.getClips(again)[0].start == where && session.getClips(again)[0].length == 8 * beat);
+        DAWLAB_CHECK(session.getHistory().getUndoName() == "Clip does not follow the tempo" && !session.hasPendingRenders());
+        DAWLAB_CHECK(atTempo(150.0) && session.getClips(again)[0].start == where);
+    }
+    DAWLAB_CHECK(!main.setClipFollow(TrackId{9999}, 0, engine::FollowMode::Start) && !session.setClipFollow(again, 5, engine::FollowMode::Start));
+    std::printf("  start, varispeed and stretch: set, moved, cut, saved (format 8), opened, at another sample rate, and off again\n");
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    engine.collectGarbage();
+}
+
 void testMidiRecording() {
     std::printf("instruments and MIDI clips: recording the keyboard\n");
     auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
@@ -1947,6 +2159,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testMidiEditing();
     testMidiRecording();
     testTempoMap();
+    testFollowingClips();
     testMidiFiles();
     testInstrumentSound();
     testAutomation();

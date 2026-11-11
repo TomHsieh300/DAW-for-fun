@@ -1,0 +1,124 @@
+# Step 6 - App
+
+[English](step-06-app.md) | **繁體中文**
+
+[總覽](../README.zh-TW.md) | 上一步：[Step 5 - Engine](step-05-engine.zh-TW.md)
+
+## 目標
+
+DawLab 20：在 audio clip 上按右鍵，指定 tempo 改變時它要怎麼做——留在原地、起點留在拍子上、像磁帶那樣跟著走，或是跟著走而且保持音高。要有 undo、要存進專案檔，而且不必為了它把整個 app 重寫一遍。
+
+## 設計
+
+### 先複製，而且已經能動
+
+`app/` 一開始是第 19 章的原樣複本，只把名稱改成 DawLab 20（一個 commit）。接在第 20 章的 engine 上可以建置，smoke test 也原樣通過：還沒有任何 clip 會跟著 tempo。
+
+### 資料放在哪裡
+
+App 的 model 是一串串單純的 `engine::Clip`：session 每個 track 存一串，一個 edit（`SetClips`）帶著一整串，undo history 就是這些東西疊起來。Arrangement、take、錄音、專案檔和 sample rate 轉換，全都以 sample 讀 clip 的 `start` 和 `length`。
+
+Step 5 的 `FollowClip` 是把 clip 包起來。如果把 app 裡的每個 clip 都包起來，上面那些全都得改。所以資料反過來放——**由 clip 自己帶著**：
+
+```cpp
+struct Clip {
+    ...
+    std::string name;                         // UI only; the audio thread never reads it
+    std::shared_ptr<const ClipFollow> follow; // UI only: how the clip follows the tempo; null if it does not
+};
+
+struct ClipFollow {
+    FollowMode mode;
+    double startTick;                // Start
+    std::int64_t sourceLength;       // Varispeed, Stretch: the clip plays [sourceOffset, sourceOffset + sourceLength)
+    std::vector<WarpMarker> markers; // Varispeed, Stretch
+};
+```
+
+這是本章在第 14 章的 `Clip.h` 裡加的唯一一行，就放在 `name` 旁邊——`name` 從那時起就是「只給 UI 用」的。現在每一串 clip、每個 edit、每個 undo 步驟都帶著 follow 資料，而它們自己並不知道。
+
+### Clip 的 start 和 length 是推導出來的
+
+對跟著 tempo 的 clip 來說，`start` 和 `length` 是**它在目前的 tempo map 下涵蓋的歌的 sample**——所以所有繪製、點選、拖曳 clip 的程式都繼續以 sample 運作。Clip *本身是什麼*，則在 `follow` 裡。Session 只在兩個地方讓兩者保持一致：
+
+- `setClips()` 會把 list 裡的每個 clip 重新擺放（`placeUnder()`），不管 list 原本寫什麼。Undo 步驟保存的是另一個時間點的 list，那時 tempo 可能不同；它回來的時候，裡面的 clip 會被放到目前的 map 所決定的位置。
+- `setTempoMap()` 會重新擺放並送出每個 track 的 clip。
+
+這又是 Step 2 的規則——tick 才是事實，sample 是推導出來的——也是 undo 不需要任何新東西的原因：`SetTempoMap` 還原 map，clip 就跟著回去。
+
+### Engine 拿到的是什麼
+
+`Session::pushClips()` 以前把 track 的 clip 交給 engine。現在它交給該 track 的 `FollowTrack`（Step 5），再把拿回來的東西給 engine：不跟著 tempo 的就是 clip 本身，跟著的則是運算結果或 placeholder。視窗的 timer 會呼叫 `Session::pollRenders()`，把算完的結果接過來再交出去。`getPlayedClips()` 是 engine 手上那份的複本——arrangement 畫的就是它，所以被 stretch 的 clip 顯示的是它實際播放的波形。
+
+匯出會先呼叫 `finishRenders()` 並等待：bounce 不能帶著 placeholder 出去。
+
+### 打開它
+
+`setClipFollow(track, clip, mode)` 是一個 undo 步驟，而且不移動任何東西（`withFollowMode()`）：
+
+- **Start**：`startTick` 是 clip 目前起點的 tick。
+- **Varispeed、Stretch**：clip 拿到的 marker，是「在目前的 map 上、在 clip 目前的位置錄下的 take」的 marker。用白話說：*它此刻播放的樣子就是對拍的*。這對剛錄好的 take 是對的，對用它原本的 tempo 放進來的 loop 也是對的。
+- 已經 warp 過的 clip 在 varispeed 和 stretch 之間切換時，保留原本的 marker。
+- **Off**：clip 留在原地，並再次以自己的速度播放它的 source。
+
+### 移動和裁切
+
+被拖曳的 clip 會帶著它的 tick 或 marker 一起走（`movedTo()`）：marker 移動的 tick 數和起點移動的一樣多。
+
+錄音落在某個 clip 上時，第 17 章會把舊的 clip 沿著新的 clip 切開。對 warp 過的 clip，這一刀是用它自己的方式切的（`cutToSongRange()`）：切出來的片段保留 marker，只是播放的 source 變少。前一段的結尾和後一段的開頭，都落在新 clip 邊緣的一個 sample 以內。
+
+### 專案檔，第 8 版
+
+跟著 tempo 的 clip 在它的 `clip` 行底下有幾行：
+
+```text
+clip 1 384000 256000 "Follow_media/000.wav" 0 0 0 linear 0 0 "clicks"
+follow stretch 192000
+marker 0 11520
+marker 192000 19200
+```
+
+（在 120 BPM 做的兩小節 audio，放在第 4 小節，歌是 90 BPM。）起點模式是 `follow start <tick>`；其他模式是 `follow varispeed|stretch <source 裡的長度>` 加上至少兩行 `marker <source> <tick>`。Tick 和 source 位置以 17 位數字寫出：它們是小數，讀回來必須是同一個數。`clip` 行的 `start` 和 `length` 是存檔當時 clip 所在的位置；開檔時會依檔案的 tempo map 重新擺放。第 1 到 7 版的檔案沒有這些行，照舊開啟。
+
+### 它沒有做的事
+
+- **錄音不會讓 take 自動跟著 tempo。** Take 錄下來是不跟著 tempo 的 clip；之後你再打開，它會拿到當下那個 map 的 marker。請在改 tempo 之前打開。
+- **要先選好 take，clip 才跟著 tempo。** Clip 選單只在 clip 不跟著 tempo 時列出 take。
+- **Marker 不能編輯。** 沒有 beat detection，也沒有可以拖曳的 marker：打開「跟著」的那一刻，clip 播放的樣子就被當成是對拍的。
+- **運算結果不在專案檔裡。** 開檔之後，跟著 tempo 的 clip 會在運算所需的那一小段時間內播放 placeholder。
+- 很長的 clip 做 stretch 需要時間（Step 4：每秒 audio 約五千萬次乘法），而匯出前的 `finishRenders()` 會讓視窗卡住這麼久。
+
+## 檢查
+
+Smoke test 多了一個部分，格式測試多了一節：
+
+```text
+audio clips that follow the tempo
+  a take of 8 clicks made at 120 BPM, by varispeed at 60: 8 clicks, on their beats yes, the clip 8 s long
+  start, varispeed and stretch: set, moved, cut, saved (format 8), opened, at another sample rate, and off again
+```
+
+```text
+clips that follow: a start in ticks, varispeed and stretch with their markers written and read back exactly
+[PASS] l20_test_project_format (176 checks passed)
+```
+
+`tests/test_warp.cpp` 多了第七部分，測試 clip 的輔助函式，不需要 JUCE：
+
+```text
+  a clip that carries how it follows: its mode changed, placed, moved and cut - the pieces of 200 cuts tile its source
+```
+
+## 你要自己試的
+
+1. **Loop。** 把一個鼓的 loop 以它自己的 tempo 放到 track 上。按右鍵：*Follow, pitch changes (varispeed)*。播放時上下拖動第一個 tempo 點：loop 馬上移動（placeholder），片刻之後就對上拍子。
+2. **換成 stretch。** 對同一個 loop 選 *Follow, pitch stays (stretch)*：聽聽 tempo 減半時鼓擊變成什麼樣子。再用一個持續音試試。
+3. **Cymbal。** 對第 5 小節的單一敲擊選 *Keep its start on the beat*；改它前面的 tempo。
+4. **Undo。** 先 undo tempo 的改變，再 undo 模式：clip 兩次都會回去。
+
+## 你學到了什麼
+
+- Model 的每個部分都得帶著的資料，放在 model 本來就在傳遞的東西裡面最便宜。
+- 從事實推導出來的值，只要在事實或情境改變的少數幾個地方重算——這裡是兩個。
+- 以完整狀態組成的 undo history，對於隨狀態一起移動的資料不需要新的 edit。
+- 背景運算在 app 裡只剩一個問題：算完之前，使用者看到和聽到的是什麼？

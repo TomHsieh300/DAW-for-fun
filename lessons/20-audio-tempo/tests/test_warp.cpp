@@ -9,6 +9,8 @@
 //   5. Many maps in a row: what plays in the end is the render of the last one.
 //   6. An audio thread that plays while the UI thread changes the map and hands renders over: nothing is
 //      allocated on the audio thread (this file replaces operator new), and ThreadSanitizer sees no race.
+//   7. Step 6: a Clip that carries how it follows - another mode without moving it, placed under a new map,
+//      moved, and cut where another clip is put over it.
 
 #include "TestHelpers.h"
 #include "TestTracks.h"
@@ -629,6 +631,111 @@ void testThreads() {
     DAWLAB_CHECK(handed > 0 && track.isUpToDate() && audioAllocs.load() == 0);
 }
 
+// ---- 7 -------------------------------------------------------------------------------------------------------
+
+void testClipsThatCarryIt() {
+    const TempoMap at120 = mapOf({{0, 120.0, false}}), at60 = mapOf({{0, 60.0, false}});
+    const TempoMap bends = mapOf({{0, 100.0, false}, {kBar, 150.0, false}, {2 * kBar, 75.0, true}, {4 * kBar, 130.0, false}});
+    const auto tone = sineBuffer({440.0}, 96000, 0.25);
+    Clip plain = Clip::fromBuffer(tone, 96000, "one bar on bar 2");
+    plain.sourceOffset = 1000;
+    plain.length = 90000;
+    plain.gainDb = -2.0f;
+
+    // Off is no data at all.
+    DAWLAB_CHECK(followModeOf(plain) == FollowMode::Off && !followClipOf(plain).isWarped() && followClipOf(plain).clip.length == 90000);
+    Clip same = plain;
+    placeUnder(same, at60, kSampleRate);
+    DAWLAB_CHECK(same.start == 96000 && same.length == 90000 && withFollowMode(plain, FollowMode::Off, at120, kSampleRate).follow == nullptr);
+
+    // Start: the tick of where it is. Under another map it is on that tick, as long as it was.
+    Clip start = withFollowMode(plain, FollowMode::Start, at120, kSampleRate);
+    DAWLAB_CHECK(followModeOf(start) == FollowMode::Start && start.start == 96000 && start.length == 90000 && std::fabs(start.follow->startTick - 3840.0) < 1e-6);
+    DAWLAB_CHECK(start.gainDb == -2.0f && start.sourceOffset == 1000 && start.source == tone);
+    placeUnder(start, at60, kSampleRate);
+    DAWLAB_CHECK(start.start == 192000 && start.length == 90000);
+    const FollowClip asStart = followClipOf(start);
+    DAWLAB_CHECK(asStart.mode == FollowMode::Start && asStart.startTick == start.follow->startTick && asStart.clip.follow == nullptr && asStart.clip.length == 90000);
+
+    // Varispeed: the markers of a take recorded where the clip is. Nothing moves; under 60 BPM it is twice as long.
+    Clip tape = withFollowMode(plain, FollowMode::Varispeed, at120, kSampleRate);
+    DAWLAB_CHECK(followModeOf(tape) == FollowMode::Varispeed && tape.start == 96000 && tape.length == 90000 && tape.follow->sourceLength == 90000 &&
+                 tape.follow->markers.size() == 2 && tape.follow->markers[0].source == 1000.0 && tape.follow->markers[1].source == 91000.0);
+    const FollowClip asTape = followClipOf(tape);
+    DAWLAB_CHECK(asTape.isWarped() && asTape.clip.length == 90000 && asTape.clip.sourceOffset == 1000 && asTape.clip.follow == nullptr && asTape.markers == tape.follow->markers);
+    Clip slow = tape;
+    placeUnder(slow, at60, kSampleRate);
+    DAWLAB_CHECK(slow.start == 192000 && slow.length == 180000 && slow.follow == tape.follow);
+    // The length it has in the song is not the length of its source: the FollowClip of it says the source's.
+    DAWLAB_CHECK(followClipOf(slow).clip.length == 90000);
+
+    // Another warped mode keeps the markers, whatever the map is now; Start and Off give the source's length back.
+    const Clip kept = withFollowMode(slow, FollowMode::Stretch, at60, kSampleRate);
+    DAWLAB_CHECK(followModeOf(kept) == FollowMode::Stretch && kept.follow->markers == tape.follow->markers && kept.start == 192000 && kept.length == 180000);
+    const Clip off = withFollowMode(slow, FollowMode::Off, at60, kSampleRate);
+    DAWLAB_CHECK(off.follow == nullptr && off.start == 192000 && off.length == 90000 && off.sourceOffset == 1000);
+    const Clip toStart = withFollowMode(slow, FollowMode::Start, at60, kSampleRate);
+    DAWLAB_CHECK(followModeOf(toStart) == FollowMode::Start && toStart.start == 192000 && toStart.length == 90000 && std::fabs(toStart.follow->startTick - 3840.0) < 1e-6);
+    // Nothing to follow with: a clip of no length stays as it is.
+    Clip nothing = plain;
+    nothing.length = 0;
+    DAWLAB_CHECK(withFollowMode(nothing, FollowMode::Varispeed, at120, kSampleRate).follow == nullptr);
+    // Markers that are not markers: the clip plays as one that does not follow.
+    Clip broken = tape;
+    auto bad = std::make_shared<ClipFollow>(*tape.follow);
+    bad->markers.pop_back();
+    broken.follow = bad;
+    DAWLAB_CHECK(followClipOf(broken).mode == FollowMode::Off && !followClipOf(broken).isWarped());
+
+    // Moved to a sample: a plain clip to the sample, a start to its tick, a warped clip with all its markers.
+    DAWLAB_CHECK(movedTo(plain, 5000, bends, kSampleRate).start == 5000 && movedTo(plain, 5000, bends, kSampleRate).follow == nullptr);
+    const std::int64_t bar3 = sampleOfTick(bends, kSampleRate, 2.0 * kBar);
+    const Clip startMoved = movedTo(start, bar3, bends, kSampleRate);
+    DAWLAB_CHECK(startMoved.start == bar3 && std::fabs(startMoved.follow->startTick - 2.0 * kBar) < 1e-6 && startMoved.length == 90000);
+    const Clip tapeMoved = movedTo(tape, bar3, bends, kSampleRate);
+    DAWLAB_CHECK(std::llabs(tapeMoved.start - bar3) <= 1 && tapeMoved.follow->markers.size() == 2 && tapeMoved.follow->sourceLength == 90000);
+    DAWLAB_CHECK(std::fabs(tapeMoved.follow->markers[0].tick - 2.0 * kBar) < 1e-6 && std::fabs(tapeMoved.follow->markers[1].tick - tapeMoved.follow->markers[0].tick -
+                                                                                              (tape.follow->markers[1].tick - tape.follow->markers[0].tick)) < 1e-9);
+    DAWLAB_CHECK(tape.follow->markers[0].tick != tapeMoved.follow->markers[0].tick && followModeOf(tapeMoved) == FollowMode::Varispeed);
+    Clip there = tapeMoved; // on bar 3 under any map
+    placeUnder(there, at60, kSampleRate);
+    DAWLAB_CHECK(std::llabs(there.start - sampleOfTick(at60, kSampleRate, 2.0 * kBar)) <= 1);
+
+    // Cut to a part of the song. A plain clip as chapter 14 cuts it; a start is found again when the front goes.
+    const Clip plainCut = cutToSongRange(plain, 100000, 150000, at120, kSampleRate);
+    DAWLAB_CHECK(plainCut.start == 100000 && plainCut.length == 50000 && plainCut.sourceOffset == 5000 && plainCut.follow == nullptr);
+    Clip startAt120 = withFollowMode(plain, FollowMode::Start, at120, kSampleRate);
+    const Clip startBack = cutToSongRange(startAt120, 96000, 120000, at120, kSampleRate);
+    DAWLAB_CHECK(startBack.follow == startAt120.follow && startBack.start == 96000 && startBack.length == 24000 && startBack.sourceOffset == 1000);
+    const Clip startFront = cutToSongRange(startAt120, 120000, 186000, at120, kSampleRate);
+    DAWLAB_CHECK(startFront.start == 120000 && startFront.length == 66000 && startFront.sourceOffset == 25000 && std::fabs(startFront.follow->startTick - 4800.0) < 1e-6);
+
+    // A warped clip under 60 BPM, cut where another clip covers its middle: the two pieces keep the markers,
+    // play the source's two ends, and lie against the gap.
+    const Clip before = cutToSongRange(slow, slow.start, 240000, at60, kSampleRate), after = cutToSongRange(slow, 300000, slow.end(), at60, kSampleRate);
+    DAWLAB_CHECK(before.follow->markers == tape.follow->markers && after.follow->markers == tape.follow->markers && followModeOf(after) == FollowMode::Varispeed);
+    DAWLAB_CHECK(before.sourceOffset == 1000 && before.follow->sourceLength == 24000 && before.start == 192000 && std::llabs(before.end() - 240000) <= 1);
+    DAWLAB_CHECK(after.sourceOffset == 55000 && after.follow->sourceLength == 36000 && std::llabs(after.start - 300000) <= 1 && std::llabs(after.end() - slow.end()) <= 1);
+    // A piece that does not start at the first marker is moved by its own start, not by the marker's.
+    const Clip pieceMoved = movedTo(after, 500000, at60, kSampleRate);
+    DAWLAB_CHECK(std::llabs(pieceMoved.start - 500000) <= 1 && pieceMoved.length == after.length && pieceMoved.sourceOffset == 55000);
+    const Clip all = cutToSongRange(slow, slow.start, slow.end(), at60, kSampleRate);
+    DAWLAB_CHECK(all.sourceOffset == 1000 && all.follow->sourceLength == 90000 && all.start == slow.start && all.length == slow.length);
+    // Over a map that bends: the pieces of 200 random cuts tile the clip's source, and are within a sample of the cut.
+    std::mt19937 rng(63);
+    Clip bent = tape;
+    placeUnder(bent, bends, kSampleRate);
+    int wrong = 0;
+    for (int c = 0; c < 200; ++c) {
+        const std::int64_t at = bent.start + std::uniform_int_distribution<std::int64_t>(1, bent.length - 1)(rng);
+        const Clip a = cutToSongRange(bent, bent.start, at, bends, kSampleRate), b = cutToSongRange(bent, at, bent.end(), bends, kSampleRate);
+        wrong += a.sourceOffset == 1000 && a.sourceOffset + a.follow->sourceLength == b.sourceOffset && b.sourceOffset + b.follow->sourceLength == 91000 ? 0 : 1;
+        wrong += std::llabs(a.end() - at) <= 1 && std::llabs(b.start - at) <= 1 && a.end() == b.start ? 0 : 1;
+    }
+    DAWLAB_CHECK(wrong == 0);
+    std::printf("  a clip that carries how it follows: its mode changed, placed, moved and cut - the pieces of 200 cuts tile its source\n");
+}
+
 } // namespace
 
 int main() {
@@ -639,5 +746,6 @@ int main() {
     testThroughTheEngine();
     testManyMaps();
     testThreads();
+    testClipsThatCarryIt();
     return dawlab::test::summary("l20_test_warp");
 }
