@@ -213,14 +213,21 @@ int main() {
                 continue;
             }
             // One unbroken stream on channel 0: each frame is the one after the last, unless the ring
-            // dropped it. The input channel can be 0 or 1, and channel 1 is negative.
+            // dropped it (then it is 0, which no frame of the input is). The input channel can be 0 or 1, and
+            // channel 1 is negative. The input counts in a cycle of kCycle frames, and a take may cross its end -
+            // on a busy machine the audio thread gets far enough for that - so what is expected wraps as
+            // valueOf() does. The first frame that was not dropped says where in the cycle the take starts.
             const int n = wav.buffer.getNumSamples();
-            const int firstReal = n > 0 ? 0 : -1;
-            if (firstReal >= 0) {
-                const float base = std::abs(wav.buffer.getSample(0, 0));
-                for (int i = 1; i < n; ++i) {
+            int anchor = 0;
+            while (anchor < n && wav.buffer.getSample(0, anchor) == 0.0f)
+                ++anchor;
+            if (anchor > 0 && result.droppedFrames == 0)
+                ++wrong; // silence that nothing explains
+            if (anchor < n) {
+                const std::int64_t start = static_cast<std::int64_t>(std::abs(wav.buffer.getSample(0, anchor))) - 1 - anchor;
+                for (int i = 0; i < n; ++i) {
                     const float got = std::abs(wav.buffer.getSample(0, i));
-                    const float want = base + static_cast<float>(i);
+                    const float want = valueOf(((start + i) % kCycle + kCycle) % kCycle);
                     wrong += got == want || (result.droppedFrames > 0 && got == 0.0f) ? 0 : 1;
                 }
             }
