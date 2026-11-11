@@ -172,7 +172,7 @@ because a point that stays keeps its own tempo for the beats of the ones that we
    and the engine gets it in a command, as it gets everything else; the audio thread plays a plain clip, with no
    latency and no extra cost. The price: after a tempo edit the clip is stale until the render is done (play the
    old render moved to its new start, or the clip muted, and swap when ready), and memory for a second copy. For
-   DawLab ahead of time is the fit: `ClipPlayer` does not change, and the hand-over is the one the engine
+   DawLab ahead of time is the fit: `renderClip()` does not change, and the hand-over is the one the engine
    already has. A DAW that lets you drag the tempo while listening needs the real-time one, usually with a
    cache of the rendered result.
 4. **No drift.** A segment carries its ticks (Step 2). For a block the player asks the markers which file

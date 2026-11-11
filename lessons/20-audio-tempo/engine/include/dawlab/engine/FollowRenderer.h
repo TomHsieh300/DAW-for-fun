@@ -5,7 +5,7 @@
 // pieces of 20 ms. On the audio thread that would be latency to report and a cost to pay in every block, for
 // every clip, in the one thread that must never be late. So it is done before: a WORKER thread turns a
 // FollowClip into a plain Clip (Warp.h), and the UI thread hands that clip to the engine like any other. The
-// audio thread and ClipPlayer do not change at all.
+// audio thread and renderClip() do not change at all.
 //
 //   UI thread                         worker thread                    audio thread
 //   ---------                         -------------                    ------------

@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](step-06-app.zh-TW.md)
 
-[Overview](../README.md) | Previous: [Step 5 - The engine](step-05-engine.md)
+[Overview](../README.md) | Previous: [Step 5 - The engine](step-05-engine.md) | Next: [Step 7 - The end of the chapter](step-07-the-end.md)
 
 ## Goal
 

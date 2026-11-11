@@ -20,7 +20,7 @@ Stretcher 有兩個地方可以放。
 
 **在 audio thread 上**，新的 tempo 馬上聽得到。但 WSOLA 是以 20 ms 的小段工作的，所以有 latency，track 得像樂器那樣回報它（第 19 章 Step 3）。它的搜尋在 output 每秒要花約五千萬次乘法——每個 clip、每個 block 都要，而且是在那個絕對不能遲到的 thread 上。
 
-**事先算好**，由 worker thread 做出新的 buffer，engine 像收其他東西一樣用 command 收到它。Audio thread 播的是一般的 clip：沒有 latency、沒有額外成本，`ClipPlayer` 也不用改。代價是算的那段時間——算好之前要播什麼？——以及多一份 audio 的記憶體。
+**事先算好**，由 worker thread 做出新的 buffer，engine 像收其他東西一樣用 command 收到它。Audio thread 播的是一般的 clip：沒有 latency、沒有額外成本，`renderClip()` 也不用改。代價是算的那段時間——算好之前要播什麼？——以及多一份 audio 的記憶體。
 
 DawLab 選擇事先算好。這正是 engine 已經有的交接方式（`setTrackClips()`、command queue、給舊 list 用的 garbage queue），而且讓運算可以用 Step 3 的 sinc 和 Step 4 的搜尋，品質不打折。如果是那種邊聽邊拖 tempo、手一動就聽到它跟著伸縮的 DAW，就需要另一種做法，通常背後還有這一種當 cache。
 

@@ -56,7 +56,7 @@ target_link_libraries(dawlab_dsp INTERFACE dawlab_common)
 # Tests for the shared utilities themselves
 _dawlab_add_program(common_selftest common common/tests/test_common.cpp)
 
-# ---- JUCE (only chapters 13-16 need it) ----------------------------------
+# ---- JUCE (only chapters 13-20 need it) ----------------------------------
 if(DAWLAB_WITH_JUCE)
     if(DAWLAB_JUCE_DIR)
         add_subdirectory(${DAWLAB_JUCE_DIR} ${CMAKE_BINARY_DIR}/JUCE)

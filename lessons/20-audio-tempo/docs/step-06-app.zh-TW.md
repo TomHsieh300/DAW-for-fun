@@ -2,7 +2,7 @@
 
 [English](step-06-app.md) | **繁體中文**
 
-[總覽](../README.zh-TW.md) | 上一步：[Step 5 - Engine](step-05-engine.zh-TW.md)
+[總覽](../README.zh-TW.md) | 上一步：[Step 5 - Engine](step-05-engine.zh-TW.md) | 下一步：[Step 7 - 本章的結尾](step-07-the-end.zh-TW.md)
 
 ## 目標
 

@@ -27,7 +27,7 @@ which the track would have to report as an instrument does (chapter 19, Step 3).
 multiplications a second of output - for every clip, in every block, in the one thread that must never be late.
 
 **Ahead of time**, a worker thread makes a new buffer, and the engine gets it in a command like everything else.
-The audio thread plays a plain clip: no latency, no extra cost, and `ClipPlayer` does not change. The price is
+The audio thread plays a plain clip: no latency, no extra cost, and `renderClip()` does not change. The price is
 the time the render takes - what plays until it is ready? - and memory for a second copy of the audio.
 
 DawLab renders ahead of time. It is the hand-over the engine already has (`setTrackClips()`, the command queue,

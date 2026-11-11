@@ -5,7 +5,7 @@
 .EXAMPLE
   .\scripts\build.ps1                         # Build all pure C++ chapters and run every test
   .\scripts\build.ps1 -Only 02-filter         # Build only chapter 02
-  .\scripts\build.ps1 -Juce                   # Also build the JUCE programs of chapters 13-16
+  .\scripts\build.ps1 -Juce                   # Also build the JUCE programs of chapters 13-20
   .\scripts\build.ps1 -Only 13-vst-hosting,14-daw-8track -Juce   # Separate multiple chapters with commas
   .\scripts\build.ps1 -Config Release -NoTest
 #>

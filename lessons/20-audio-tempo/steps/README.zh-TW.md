@@ -26,4 +26,6 @@
 
 資料夾旁邊的 `tempo_map.h` 是第 19 章解好的 tempo map：每個 step 都從它開始。`warp_map.h` 是解好的 Step 1，給 Step 3 用。
 
+Step 5 和 6 在這裡沒有資料夾：它們是本章的 engine（`../engine/`）和 application（`../app/`）。
+
 在 repository 根目錄用 `.\scripts\build.ps1 -Only 20-audio-tempo` 建置（不需要 JUCE），並從 `build` 資料夾執行程式，例如 `.\bin\Debug\l20_step01_starter.exe`。每個 step 文件（`../docs/step-NN-*.zh-TW.md`）的「換你了」一節會說明任務並列出預期的輸出。

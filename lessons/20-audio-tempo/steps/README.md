@@ -32,6 +32,8 @@ Every folder has the same four files:
 `tempo_map.h`, next to the folders, is chapter 19's tempo map, solved: every step starts from it. `warp_map.h`
 is Step 1, solved, for Step 3.
 
+Steps 5 and 6 have no folder here: they are the chapter's engine (`../engine/`) and application (`../app/`).
+
 Build with `.\scripts\build.ps1 -Only 20-audio-tempo` from the repository root (no JUCE needed) and
 run the programs from the `build` folder, e.g. `.\bin\Debug\l20_step01_starter.exe`. The "Your
 turn" section of each step document (`../docs/step-NN-*.md`) explains the task and shows the

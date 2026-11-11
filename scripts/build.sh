@@ -4,7 +4,7 @@
 # Examples:
 #   ./scripts/build.sh                                  # Build all pure C++ chapters and run every test
 #   ./scripts/build.sh --only 02-filter                 # Build only chapter 02
-#   ./scripts/build.sh --juce                           # Also build the JUCE programs of chapters 13-16
+#   ./scripts/build.sh --juce                           # Also build the JUCE programs of chapters 13-20
 #   ./scripts/build.sh --only 13-vst-hosting,14-daw-8track --juce   # Separate multiple chapters with commas
 #   ./scripts/build.sh --config Release --no-test
 #   ./scripts/build.sh --only 15-daw-growing --sanitize thread --build-dir build-tsan
@@ -28,7 +28,7 @@ Options:
   --only <a,b,...>     build only these chapters (folder names, comma-separated)
   --build-dir <dir>    build folder (default: build)
   --config <cfg>       Debug | Release | RelWithDebInfo (default: Debug)
-  --juce               also build the JUCE programs of chapters 13-16
+  --juce               also build the JUCE programs of chapters 13-20
   --no-test            build only, do not run ctest
   --test-label <lbl>   run only tests with this label (example, solution, test)
   --sanitize <kind>    build with -fsanitize=<kind>: thread, address, undefined or address,undefined

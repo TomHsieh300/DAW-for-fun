@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](README.zh-TW.md)
 
-> **Status: in progress.** Steps 1 to 6 of 7 are done. Dragging a tempo under a loop still has to be tried by hand: see Step 6, "What you have to try yourself".
+> **Status: done.** All 7 steps. Dragging a tempo under a loop still has to be tried by hand: see Step 6, "What you have to try yourself".
 
 In DawLab 19 (chapter 19) the tempo can change, and the notes follow: they are in ticks. An audio clip is in
 samples and stays where it is - drag a tempo point, and the recorded guitar is no longer with the drums. Chapter
@@ -44,7 +44,7 @@ After this chapter you can
 | 4 | [A time-stretcher](docs/step-04-stretch.md) | overlap-add in Hann windows, why the pieces do not fit, WSOLA's search for the natural continuation and its score; measured on tones, noise and clicks: what it keeps and what it costs | done |
 | 5 | [The engine](docs/step-05-engine.md) | a copy of chapter 19's engine with two new headers: a clip and how it follows, its render to a plain clip, a worker thread that renders ahead of time, generations and cancelling for stale requests, placeholders until a render is ready | done |
 | 6 | [The app](docs/step-06-app.md) | a copy of chapter 19's app: the follow data carried by the clip, start and length derived in two places, renders and placeholders through the session, a mode per clip in its menu, moving and cutting, project format 8 | done |
-| 7 | The end of the chapter | what was built and what was left out | planned |
+| 7 | [The end of the chapter](docs/step-07-the-end.md) | the four things a clip can do, where each piece is, the numbers the checks measured, and what was left out | done |
 
 </div>
 
@@ -54,6 +54,10 @@ DawLab 19's tempo map turns ticks into seconds and back, exactly, through jumps 
 (`steps/tempo_map.h` has it, solved). Its transport gives every block its ticks. Its audio clips have a start and
 a length in samples and are played sample for sample.
 
-## 4. Next
+## 4. Exercises
+
+None yet. [Step 7](docs/step-07-the-end.md) lists what the steps leave open.
+
+## 5. Next
 
 Start with [Step 1 - A warp map](docs/step-01-warp-map.md).

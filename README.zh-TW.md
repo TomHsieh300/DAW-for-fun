@@ -30,7 +30,7 @@
 
 1. 安裝 [Visual Studio 2022](https://visualstudio.microsoft.com/)：**Build Tools**（純命令列、體積小）或 **Community**（含 IDE、免費）都可以。
 2. 安裝時勾選工作負載 **「使用 C++ 的桌面開發」（Desktop development with C++）**。它會一起裝好 MSVC、Windows SDK 與 CMake；本專案的腳本會自動找到 VS 內附的 CMake，系統 PATH 上不需要有 `cmake`。
-3. 第 13、14 章，以及第 15、16 章的應用程式，需要 JUCE：
+3. 第 13、14 章，以及第 15 到 20 章的應用程式，需要 JUCE：
    - 完整的專案資料夾已在 `third_party/JUCE` 附上 JUCE **9.0.4**。**若你是用 git 取得本專案，`third_party/` 不在版本控制內**（列在 `.gitignore`），需要自己 clone JUCE 9.0.4 到 `third_party/JUCE`，或直接跳到下一點讓 CMake 用 FetchContent 下載：
      ```powershell
      git clone --depth 1 --branch 9.0.4 https://github.com/juce-framework/JUCE.git third_party/JUCE
@@ -40,13 +40,13 @@
 
 ### Linux（已在 Ubuntu 24.04 驗證）
 
-所有章節，包括第 13–19 章的 JUCE 部分，都已在 **Ubuntu 24.04 LTS、GCC 13.3、CMake 3.28** 上建置成功並通過全部測試。CI 每次 push 都會檢查，包含 `DawLab 8`、`DawLab 15`、`DawLab 16`、`DawLab 17`、`DawLab 18` 與 `DawLab 19` 的 smoke test 與 snapshot，第 15 到 19 章的 ThreadSanitizer，以及所有純 C++ 章節的 AddressSanitizer + UndefinedBehaviorSanitizer。
+所有章節，包括第 13–20 章的 JUCE 部分，都已在 **Ubuntu 24.04 LTS、GCC 13.3、CMake 3.28** 上建置成功並通過全部測試。CI 每次 push 都會檢查，包含 `DawLab 8`、`DawLab 15`、`DawLab 16`、`DawLab 17`、`DawLab 18`、`DawLab 19` 與 `DawLab 20` 的 smoke test 與 snapshot，第 15 到 20 章的 ThreadSanitizer，以及所有純 C++ 章節的 AddressSanitizer + UndefinedBehaviorSanitizer。
 
 1. 安裝編譯器與 CMake：
    ```bash
    sudo apt install build-essential cmake git
    ```
-2. 第 13–19 章的 JUCE 部分需要 JUCE 的系統相依套件（ALSA / JACK、X11、freetype、fontconfig、OpenGL、webkit2gtk、curl；見 `third_party/JUCE/docs/Linux Dependencies.md`）：
+2. 第 13–20 章的 JUCE 部分需要 JUCE 的系統相依套件（ALSA / JACK、X11、freetype、fontconfig、OpenGL、webkit2gtk、curl；見 `third_party/JUCE/docs/Linux Dependencies.md`）：
    ```bash
    sudo apt install libasound2-dev libjack-jackd2-dev ladspa-sdk libfreetype-dev libfontconfig1-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libglu1-mesa-dev mesa-common-dev libcurl4-openssl-dev libwebkit2gtk-4.1-dev
    ```
@@ -56,17 +56,17 @@
 
 ### macOS（純 C++ 章節已由 CI 驗證）
 
-安裝 command-line tools 與 CMake（`xcode-select --install`、`brew install cmake`），然後跟 Linux 一樣使用 `./scripts/build.sh`。純 C++ 的章節（00–12，以及第 14 到 18 章的 engine 部分）每次 push 都會在 GitHub 的 `macos-latest` runner 上用 Apple Clang 以 Debug 和 Release 建置，並通過所有測試（見上方的 CI badge）。第 13–19 章的 JUCE 部分也會在那裡建置，但還沒有驗證：在穩定之前，這個 CI job 允許失敗。
+安裝 command-line tools 與 CMake（`xcode-select --install`、`brew install cmake`），然後跟 Linux 一樣使用 `./scripts/build.sh`。純 C++ 的章節（00–12，以及第 14 到 20 章的 engine 部分）每次 push 都會在 GitHub 的 `macos-latest` runner 上用 Apple Clang 以 Debug 和 Release 建置，並通過所有測試（見上方的 CI badge）。第 13–20 章的 JUCE 部分也會在那裡建置，但還沒有驗證：在穩定之前，這個 CI job 允許失敗。
 
 ## 建置、執行、測試
 
 所有指令都在專案根目錄的 PowerShell 執行（`scripts/build.ps1` 會依序 configure → build → ctest）：
 
 ```powershell
-.\scripts\build.ps1                                   # 全部純 C++ 部分（00–12、第 14 到 17 章的 engine 和 step），Debug，並跑所有測試
+.\scripts\build.ps1                                   # 全部純 C++ 部分（00–12、第 14 到 20 章的 engine 和 step），Debug，並跑所有測試
 .\scripts\build.ps1 -Only 02-filter                   # 只建第 02 章
 .\scripts\build.ps1 -Only 02-filter,03-eq             # 多章以逗號分隔
-.\scripts\build.ps1 -Juce                             # 連同第 13–19 章的 JUCE 部分一起建置
+.\scripts\build.ps1 -Juce                             # 連同第 13–20 章的 JUCE 部分一起建置
 .\scripts\build.ps1 -Only 14-daw-8track -Juce         # 只建第 14 章
 .\scripts\build.ps1 -Only 15-daw-growing -Juce        # 只建第 15 章，連同它的 app
 .\scripts\build.ps1 -Config Release                   # Release 組態（另有 RelWithDebInfo）
@@ -80,7 +80,7 @@ PowerShell 說「無法載入指令碼」時，改用 `powershell -ExecutionPoli
 在 **Linux / macOS** 上，於終端機的專案根目錄執行 `scripts/build.sh`，選項相同：
 
 ```bash
-./scripts/build.sh                                    # 全部純 C++ 部分（00–12、第 14 到 17 章的 engine 和 step），Debug，並跑所有測試
+./scripts/build.sh                                    # 全部純 C++ 部分（00–12、第 14 到 20 章的 engine 和 step），Debug，並跑所有測試
 ./scripts/build.sh --only 02-filter,03-eq             # 多章以逗號分隔
 ./scripts/build.sh --only 14-daw-8track --juce        # 只建第 14 章，連同 JUCE 應用程式
 ./scripts/build.sh --config Release --no-test         # Release，只建置
@@ -107,7 +107,8 @@ PowerShell 說「無法載入指令碼」時，改用 `powershell -ExecutionPoli
 | 第 17 章的 DAW | `build\bin\Debug\DawLab 17.exe` |
 | 第 18 章的 DAW | `build\bin\Debug\DawLab 18.exe` |
 | 第 19 章的 DAW | `build\bin\Debug\DawLab 19.exe` |
-| 在 Linux / macOS 上 | `build/bin/lNN_*`、`build/bin/DawLab 8`、`build/bin/DawLab 15`、`build/bin/DawLab 16`、`build/bin/DawLab 17`、`build/bin/DawLab 18` 與 `build/bin/DawLab 19`（沒有 `Debug/` 子資料夾，也沒有 `.exe`）；VST3 bundle 在 `build/lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/VST3/DawLabCompressor.vst3` |
+| 第 20 章的 DAW | `build\bin\Debug\DawLab 20.exe` |
+| 在 Linux / macOS 上 | `build/bin/lNN_*`、`build/bin/DawLab 8`、`build/bin/DawLab 15`、`build/bin/DawLab 16`、`build/bin/DawLab 17`、`build/bin/DawLab 18`、`build/bin/DawLab 19` 與 `build/bin/DawLab 20`（沒有 `Debug/` 子資料夾，也沒有 `.exe`）；VST3 bundle 在 `build/lessons/13-vst-hosting/plugin/DawLabCompressor_artefacts/VST3/DawLabCompressor.vst3` |
 
 </div>
 
@@ -123,6 +124,7 @@ cd build
 & ".\bin\Debug\DawLab 17.exe"                         # 第 17 章：從音訊 input 錄音
 & ".\bin\Debug\DawLab 18.exe"                         # 第 18 章：樂器、MIDI clip、鍵盤
 & ".\bin\Debug\DawLab 19.exe"                         # 第 19 章：tempo lane、MIDI 檔、plugin 樂器
+& ".\bin\Debug\DawLab 20.exe"                         # 第 20 章：跟著 tempo 的 audio clip
 ```
 
 **ctest 的 label**：`example`（範例，不帶參數就能跑完）、`solution`（練習解答，以數字自我檢查）、`test`（元件與 engine 的回歸測試）。`exercises/starter/` 的起始碼只建置、不登記成測試——它們留有 `// TODO`，執行時印出 FAIL 是預期的。
@@ -147,7 +149,7 @@ cd build
 | `lessons/NN-name/exercises/` | 練習題（README.md）與起始碼（starter/） |
 | `lessons/NN-name/solutions/` | 所有題目的解答與解說，以及實作題的完整程式 |
 | `lessons/NN-name/tests/` | （部分章節）元件回歸測試 |
-| `third_party/JUCE/` | JUCE 9.0.4（第 13–19 章） |
+| `third_party/JUCE/` | JUCE 9.0.4（第 13–20 章） |
 
 </div>
 
@@ -181,6 +183,7 @@ cd build
 | [17](lessons/17-recording/README.zh-TW.md) | Recording | 從音訊 input 到 clip：硬碟卡住時保持時間位置的 ring、校正 latency 的擺放、撐得過當機的 take、punch 與 loop、input monitoring | **DawLab 17**：錄音鍵、armed track、變成 clip 的 take、punch、loop 的 take、當機後復原的 take |
 | [18](lessons/18-midi/README.zh-TW.md) | MIDI | 音樂時間裡的音符、sample 精確的事件、不留卡住音符的 MIDI clip、複音樂器、經 lock-free FIFO 送來的鍵盤輸入、錄音與 quantize | **DawLab 18**：instrument track、MIDI clip、piano roll、鍵盤、MIDI 錄音、quantize |
 | [19](lessons/19-instruments-tempo/README.zh-TW.md) | 樂器與 tempo | 由跳躍和 ramp 組成的 tempo map、跨 tempo 變化的 block、樂器 latency 的補償 | **DawLab 19**：tempo lane、帶 tempo 變化的 MIDI 檔、synth 面板、track 上的 VST3 樂器 |
+| [20](lessons/20-audio-tempo/README.zh-TW.md) | 跟著 tempo 的 audio | warp marker、以 tick 存的 clip 起點、經過 windowed sinc 的 varispeed、WSOLA time-stretcher、在 worker thread 上事先運算 | **DawLab 20**：audio clip 可以留在原地、起點留在拍子上，或以 varispeed 或 stretch 跟著 tempo |
 
 </div>
 
@@ -204,7 +207,7 @@ cd build
 
 - **程式碼**（`*.cpp`、`*.h`、`CMakeLists.txt`、`*.cmake`、腳本）：[MIT License](LICENSE)。
 - **教材文字與圖片**（所有語言的 `*.md`、`docs/images/`、`lessons/*/docs/images/`）：[CC BY 4.0](LICENSE-docs)；重用教材文字時須標示出處。
-- **JUCE**（只有第 13、14 章與第 15、16 章的應用程式需要，不包含在本 repository 內）：採雙授權，[AGPLv3](https://www.gnu.org/licenses/agpl-3.0.en.html) 或商業的 JUCE EULA。以 AGPLv3 使用 JUCE 並散佈你做出來的 plugin 或 app 時，整個原始碼也必須以 AGPLv3 公開；不想公開就要依 JUCE EULA 取得授權。VST3 SDK（內含於 JUCE）為 MIT License，使用「VST」商標或 logo 須遵守 Steinberg 的使用規範。
-- 只用到第 00–12 章與第 14、15 章的純 C++ engine（`common/`、`dsp/` 與這些章節的程式）時不會連結 JUCE，不受 JUCE 授權影響。
+- **JUCE**（只有第 13、14 章與第 15 到 20 章的應用程式需要，不包含在本 repository 內）：採雙授權，[AGPLv3](https://www.gnu.org/licenses/agpl-3.0.en.html) 或商業的 JUCE EULA。以 AGPLv3 使用 JUCE 並散佈你做出來的 plugin 或 app 時，整個原始碼也必須以 AGPLv3 公開；不想公開就要依 JUCE EULA 取得授權。VST3 SDK（內含於 JUCE）為 MIT License，使用「VST」商標或 logo 須遵守 Steinberg 的使用規範。
+- 只用到第 00–12 章與第 14 到 20 章的純 C++ engine 和 step（`common/`、`dsp/` 與這些章節的程式）時不會連結 JUCE，不受 JUCE 授權影響。
 
 這些摘要僅供參考，不是法律意見；第 13 章 3.7 節有更完整的說明。打算散佈用本教材程式碼做出的 plugin 或 app 前，請自行閱讀授權條款，必要時諮詢法律意見。
