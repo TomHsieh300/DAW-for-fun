@@ -112,6 +112,11 @@ public:
         return waiting_.empty() && !busy_;
     }
 
+    // How many renders the worker has begun, and how many of them it finished (the others were cancelled).
+    // What a user would notice as a fan that does not come on: for tests.
+    int getNumRendersStarted() const noexcept { return started_.load(std::memory_order_relaxed); }
+    int getNumRendersFinished() const noexcept { return completed_.load(std::memory_order_relaxed); }
+
     // Blocks until isIdle(): for tests, and for an export that must not go out with placeholders.
     void waitUntilIdle() {
         std::unique_lock<std::mutex> lock(mutex_);
@@ -138,6 +143,7 @@ private:
             busy_ = true;
             current_ = job.key;
             cancel_.store(false, std::memory_order_relaxed);
+            started_.fetch_add(1, std::memory_order_relaxed);
             lock.unlock();
 
             Result result{job.key, job.generation, {}};
@@ -146,6 +152,8 @@ private:
 
             lock.lock();
             busy_ = false;
+            if (done)
+                completed_.fetch_add(1, std::memory_order_relaxed);
             if (done && !stop_)
                 finished_.push_back(std::move(result));
             if (waiting_.empty())
@@ -163,6 +171,7 @@ private:
     Key current_ = 0;
     std::atomic<bool> cancel_{false};
     std::atomic<Key> nextKey_{1};
+    std::atomic<int> started_{0}, completed_{0};
     std::thread worker_; // last: it starts in the constructor, when everything above exists
 };
 

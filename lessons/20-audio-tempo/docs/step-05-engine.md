@@ -86,7 +86,8 @@ that. Three rules keep this in order.
 1. **Every request has a generation**, counted per clip. `collect()` gives back a result only if it is the
    newest generation asked for; a render of an older map is dropped even if it was already finished.
 2. **A request that waits is replaced** by a newer one of the same clip, and one the worker is at is
-   **cancelled**: the render looks at a flag once a piece and gives up.
+   **cancelled**: the render looks at a flag once a piece and gives up. The test asks 23 times and 4 renders
+   are begun.
 3. **What has not changed is not rendered**. A new gain, fade, name or mute needs no new buffer, and a clip that
    is the same under the same map keeps its render.
 
@@ -120,14 +121,16 @@ l20_test_warp: audio clips that follow the tempo
   150 takes over random maps: 0 refused, the worst sample 0.488 ms from where it was recorded (7005 markers)
   varispeed, a 440 Hz loop at half and at twice its tempo: 220 Hz (the rest 109 dB below) and 880 Hz (151 dB)
   stretch, the same loop: 440 Hz at both tempos (+0.72 and +0.25 cents, the rest 31 and 40 dB below)
+  varispeed, 15 kHz at twice its tempo: what is left is 75 dB below the tone it was
+  23 requests, 20 of them overtaken: 4 renders begun, 3 finished
   12 clicks recorded at 120 BPM, through the engine over 100, 150 and 75 BPM: 12 heard, 0 off their beats (the last at 6.400 s)
   120 maps in a row: 1 renders taken on the way, the render at the end is the last map's (392505 samples, wanted 392504)
-  an audio thread next to a UI thread that changes the map and a worker that renders: 27 renders handed over in 30527 blocks,
+  an audio thread next to a UI thread that changes the map and a worker that renders: 16 renders handed over in 16034 blocks,
     0 allocations on the audio thread
-[PASS] l20_test_warp (71 checks passed)
+[PASS] l20_test_warp (87 checks passed)
 ```
 
-The numbers of the last two lines depend on how fast the machine is; the checks do not.
+The numbers of renders and blocks depend on how fast the machine is; the checks do not.
 
 Its last part runs a real audio thread next to the UI thread and the worker: the audio thread allocates nothing
 while renders arrive (the file replaces `operator new` and counts), and ThreadSanitizer sees no race. The old

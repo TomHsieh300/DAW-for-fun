@@ -68,7 +68,7 @@ FollowTrack::take()
 使用者拖動一個 tempo 點：每幾毫秒就有一個新的 map，每一個都要求一次比這更久的運算。三條規則讓這件事保持有序。
 
 1. **每個 request 都有 generation**，每個 clip 各自計數。`collect()` 只交回最新要求的那個 generation 的結果；舊 map 的結果即使已經算完也會被丟掉。
-2. **還在等的 request 會被**同一個 clip 較新的 request **取代**，worker 正在算的那個則會被**取消**：運算每算一段就看一次旗標，然後放棄。
+2. **還在等的 request 會被**同一個 clip 較新的 request **取代**，worker 正在算的那個則會被**取消**：運算每算一段就看一次旗標，然後放棄。測試要求了 23 次，只開始了 4 次運算。
 3. **沒有變的東西不重算**。新的 gain、fade、名稱或 mute 不需要新的 buffer，而在同一個 map 下沒有改變的 clip 會保留它的結果。
 
 測試連續送出 120 個 map：途中只有一兩個結果算完，而最後播放的是最後一個 map 的結果。
@@ -95,14 +95,16 @@ l20_test_warp: audio clips that follow the tempo
   150 takes over random maps: 0 refused, the worst sample 0.488 ms from where it was recorded (7005 markers)
   varispeed, a 440 Hz loop at half and at twice its tempo: 220 Hz (the rest 109 dB below) and 880 Hz (151 dB)
   stretch, the same loop: 440 Hz at both tempos (+0.72 and +0.25 cents, the rest 31 and 40 dB below)
+  varispeed, 15 kHz at twice its tempo: what is left is 75 dB below the tone it was
+  23 requests, 20 of them overtaken: 4 renders begun, 3 finished
   12 clicks recorded at 120 BPM, through the engine over 100, 150 and 75 BPM: 12 heard, 0 off their beats (the last at 6.400 s)
   120 maps in a row: 1 renders taken on the way, the render at the end is the last map's (392505 samples, wanted 392504)
-  an audio thread next to a UI thread that changes the map and a worker that renders: 27 renders handed over in 30527 blocks,
+  an audio thread next to a UI thread that changes the map and a worker that renders: 16 renders handed over in 16034 blocks,
     0 allocations on the audio thread
-[PASS] l20_test_warp (71 checks passed)
+[PASS] l20_test_warp (87 checks passed)
 ```
 
-最後兩行的數字取決於機器的速度；檢查本身不受影響。
+運算次數和 block 數取決於機器的速度；檢查本身不受影響。
 
 它的最後一部分讓真正的 audio thread 和 UI thread、worker 同時執行：結果送達時 audio thread 沒有任何配置（這個檔案替換了 `operator new` 並計數），ThreadSanitizer 也沒有看到 race。舊的 buffer 在第 14 章安排的地方釋放：跟著舊的 clip list，在 UI thread 的 `collectGarbage()` 裡。
 

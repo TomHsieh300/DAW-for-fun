@@ -254,6 +254,44 @@ void testRender() {
     part.clip.length = 48000;
     Clip partOut;
     DAWLAB_CHECK(renderFollowClip(part, at60, kSampleRate, partOut) && partOut.start == 240000 && partOut.length == 96000);
+    // The render is a buffer of its own: it is played from its first sample, and it holds beats 2 and 3 only.
+    DAWLAB_CHECK(partOut.sourceOffset == 0 && partOut.source && partOut.source->getNumSamples() == 96000);
+    if (partOut.source && slow.source && partOut.source->getNumSamples() == 96000 && slow.source->getNumSamples() == 192000) {
+        float apart = 0.0f;
+        for (int i = 0; i < 96000; ++i)
+            apart = std::max(apart, std::fabs(partOut.source->getSample(0, i) - slow.source->getSample(0, 48000 + i)));
+        DAWLAB_CHECK(apart < 1e-6f);
+    }
+
+    // Reading between samples keeps a steady level steady: the sinc's weights are divided by their sum. Read
+    // faster than 1 the sinc is wider, and without that its weights would add up to the speed.
+    auto steady = std::make_shared<AudioBuffer>(1, 96000);
+    for (int i = 0; i < 96000; ++i)
+        steady->setSample(0, i, 0.25f);
+    for (const double bpm : {84.0, 204.0}) {
+        Clip level;
+        DAWLAB_CHECK((renderFollowClip(loopClip(steady, FollowMode::Varispeed, 0.0), mapOf({{0, bpm, false}}), kSampleRate, level) && level.source));
+        float off = 1.0f;
+        if (level.source) {
+            off = 0.0f;
+            for (int i = 2000; i < level.source->getNumSamples() - 2000; ++i)
+                off = std::max(off, std::fabs(level.source->getSample(0, i) - 0.25f));
+        }
+        DAWLAB_CHECK(off < 1e-6f);
+    }
+    // ... and reading twice as fast does not bring 15 kHz back as an alias at 18 kHz: the sinc gets the speed.
+    Clip folded;
+    DAWLAB_CHECK(renderFollowClip(loopClip(sineBuffer({15000.0}, 96000, 0.25), FollowMode::Varispeed, 0.0), at240, kSampleRate, folded) && folded.source);
+    if (folded.source) {
+        // Away from the loop's two ends, where the tone starts and stops (that is not a tone, and may stay).
+        double squares = 0.0;
+        const int from = 2000, to = folded.source->getNumSamples() - 2000;
+        for (int i = from; i < to; ++i)
+            squares += static_cast<double>(folded.source->getSample(0, i)) * folded.source->getSample(0, i);
+        const double below = -10.0 * std::log10(std::max(squares / std::max(to - from, 1), 1e-30) / (0.25 * 0.25 / 2.0));
+        std::printf("  varispeed, 15 kHz at twice its tempo: what is left is %.0f dB below the tone it was\n", below);
+        DAWLAB_CHECK(below > 60.0);
+    }
 
     // A take cut in two: the halves meet at any tempo, and together they are the uncut take, sample for sample.
     FollowClip whole;
@@ -334,6 +372,16 @@ void testRenderer() {
     for (const FollowRenderer::Result& r : done)
         DAWLAB_CHECK((r.key == key && r.generation == newer && r.clip.length == 48000) || (r.key == other && r.generation == others && r.clip.length == 192000));
 
+    // Also when the older one was FINISHED and waited to be collected: it is stale, and is not given.
+    renderer.request(key, tape, at60, kSampleRate);
+    renderer.waitUntilIdle();
+    const std::uint64_t latest = renderer.request(key, tape, at240, kSampleRate);
+    renderer.waitUntilIdle();
+    done = renderer.collect();
+    DAWLAB_CHECK(done.size() == 1);
+    if (done.size() == 1)
+        DAWLAB_CHECK(done[0].generation == latest && done[0].clip.length == 48000);
+
     // A key that is forgotten gives nothing, also if its render was already done.
     renderer.request(key, tape, at60, kSampleRate);
     renderer.waitUntilIdle();
@@ -343,6 +391,27 @@ void testRenderer() {
     renderer.forget(other);
     renderer.waitUntilIdle();
     DAWLAB_CHECK(renderer.collect().empty() && renderer.isIdle());
+
+    // Work that nobody wants is not done. A long stretch is asked for, and once the worker is at it, asked for
+    // again: the first is cancelled. Then twenty more in a row: only the last of them is rendered.
+    {
+        FollowRenderer lazy;
+        const FollowClip longOne = loopClip(sineBuffer({440.0}, 15 * 48000, 0.25), FollowMode::Stretch, 0.0);
+        const FollowRenderer::Key k = lazy.newKey();
+        lazy.request(k, longOne, at60, kSampleRate);
+        while (lazy.getNumRendersStarted() < 1)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        lazy.request(k, longOne, at240, kSampleRate);
+        lazy.waitUntilIdle();
+        DAWLAB_CHECK(lazy.getNumRendersStarted() == 2 && lazy.getNumRendersFinished() == 1);
+        const FollowClip shortOne = loopClip(sineBuffer({440.0}, 48000, 0.25), FollowMode::Varispeed, 0.0);
+        lazy.request(lazy.newKey(), longOne, at240, kSampleRate); // keeps the worker busy while the others queue up
+        for (int i = 0; i < 20; ++i)
+            lazy.request(k, shortOne, i % 2 == 0 ? at60 : at240, kSampleRate);
+        lazy.waitUntilIdle();
+        std::printf("  23 requests, 20 of them overtaken: %d renders begun, %d finished\n", lazy.getNumRendersStarted(), lazy.getNumRendersFinished());
+        DAWLAB_CHECK(lazy.getNumRendersStarted() <= 5 && lazy.getNumRendersFinished() <= 4 && lazy.collect().size() == 2);
+    }
 
     // A renderer that is destroyed while it works stops, and does not hang (a long stretch is waiting here).
     {
@@ -433,6 +502,23 @@ void testThroughTheEngine() {
     DAWLAB_CHECK(track.isUpToDate() && renderer.isIdle() && renderer.collect().empty());
     DAWLAB_CHECK(track.playable()[0].source == before.source && track.playable()[0].gainDb == -6.0f && track.playable()[0].name == "quieter" &&
                  track.playable()[0].fadeInSamples == 100 && track.playable()[0].start == before.start && track.playable()[0].length == before.length);
+
+    // Results that were collected before the map changed again are stale: the track does not take them.
+    track.update({take}, at120, kSampleRate);
+    renderer.waitUntilIdle();
+    const std::vector<FollowRenderer::Result> early = renderer.collect();
+    track.update({take}, bends, kSampleRate);
+    DAWLAB_CHECK(early.size() == 1 && !track.take(early) && !track.isUpToDate());
+    renderer.waitUntilIdle();
+    DAWLAB_CHECK(track.take(renderer.collect()) && track.isUpToDate() && track.playable()[0].length == end);
+
+    // New markers under the same map are another render: the same audio is now said to be half as many beats.
+    FollowClip faster = take;
+    faster.markers = markersForLoop(0, clicks->getNumSamples(), 6.0, 0.0);
+    track.update({faster}, bends, kSampleRate);
+    DAWLAB_CHECK(!track.isUpToDate());
+    renderer.waitUntilIdle();
+    DAWLAB_CHECK(track.take(renderer.collect()) && track.isUpToDate() && track.playable()[0].length == std::llround(bends.secondsAt(6.0 * kBeat) * kSampleRate));
 
     // Back to a clip that does not follow, and a second clip: placed at once.
     FollowClip second;

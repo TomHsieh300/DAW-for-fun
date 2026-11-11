@@ -45,3 +45,5 @@ l20_add_test(l20_test_recording_threads tests/test_recording_threads.cpp)
 l20_add_test(l20_test_midi              tests/test_midi.cpp)
 l20_add_test(l20_test_tempo             tests/test_tempo.cpp)
 l20_add_test(l20_test_warp              tests/test_warp.cpp)
+# test_warp stretches audio on a worker thread: seconds in a normal build, a minute or two under ThreadSanitizer.
+set_tests_properties(l20_test_warp PROPERTIES TIMEOUT 900)
