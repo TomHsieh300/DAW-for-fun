@@ -47,3 +47,23 @@ l20_add_test(l20_test_tempo             tests/test_tempo.cpp)
 l20_add_test(l20_test_warp              tests/test_warp.cpp)
 # test_warp stretches audio on a worker thread: seconds in a normal build, a minute or two under ThreadSanitizer.
 set_tests_properties(l20_test_warp PROPERTIES TIMEOUT 900)
+
+# The application's project file: text in, text out, no JUCE, so it is tested here and runs in
+# every build, not only with -Juce.
+l20_add_test(l20_test_project_format    tests/test_project_format.cpp app/Source/ProjectFormat.cpp)
+target_include_directories(l20_test_project_format PRIVATE app/Source)
+# The same for Standard MIDI Files.
+l20_add_test(l20_test_midi_file         tests/test_midi_file.cpp app/Source/MidiFile.cpp)
+target_include_directories(l20_test_midi_file PRIVATE app/Source)
+# And for the tempos of an imported file: the fewest points within a tolerance.
+l20_add_test(l20_test_tempo_thinning    tests/test_tempo_thinning.cpp)
+target_include_directories(l20_test_tempo_thinning PRIVATE app/Source)
+
+# ---- Step 6: the JUCE application "DawLab 20" ---------------------------------------------
+# Needs -DDAWLAB_WITH_JUCE=ON (build.ps1 -Juce). Without JUCE the chapter stops here.
+if(NOT DAWLAB_WITH_JUCE)
+    message(STATUS "20-audio-tempo: the JUCE app (DawLab20) is skipped (use -Juce)")
+    return()
+endif()
+
+add_subdirectory(app)   # targets: l20_daw_app (static library), DawLab20 (the application)
