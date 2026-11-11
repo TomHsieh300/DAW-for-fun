@@ -78,3 +78,30 @@ if(NOT DAWLAB_WITH_JUCE)
 endif()
 
 add_subdirectory(app)   # targets: l20_daw_app (static library), DawLab20 (the application)
+
+# ---- optional exercises 7-9 (the application): starters build only, solutions are ctests ------
+# JUCE console programs linked against the app library: they build the real MainComponent in its
+# offline mode, so they need no audio device and no clicking (chapter 19's l19_add_juce_program).
+function(l20_add_juce_program target label)
+    juce_add_console_app(${target} PRODUCT_NAME ${target})
+    target_sources(${target} PRIVATE ${ARGN})
+    target_link_libraries(${target} PRIVATE l20_daw_app)
+    set_target_properties(${target} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        FOLDER "20-audio-tempo")
+    dawlab_set_warnings(${target})
+    if(label)
+        add_test(NAME ${target} COMMAND ${target})
+        set_tests_properties(${target} PROPERTIES
+            LABELS "${label}"
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            TIMEOUT 300)
+    endif()
+endfunction()
+
+l20_add_juce_program(l20_ex7_starter   ""       exercises/starter/ex7_follow_as_recorded.cpp)
+l20_add_juce_program(l20_ex7_solution  solution solutions/ex7_follow_as_recorded.cpp)
+l20_add_juce_program(l20_ex8_starter   ""       exercises/starter/ex8_quantize_audio.cpp)
+l20_add_juce_program(l20_ex8_solution  solution solutions/ex8_quantize_audio.cpp)
+l20_add_juce_program(l20_ex9_starter   ""       exercises/starter/ex9_loop_fits.cpp)
+l20_add_juce_program(l20_ex9_solution  solution solutions/ex9_loop_fits.cpp)

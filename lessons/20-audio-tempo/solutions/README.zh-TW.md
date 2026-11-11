@@ -3,7 +3,7 @@
 
 [回到本章](../README.zh-TW.md) | [練習](../exercises/README.zh-TW.md)
 
-用 `.\scripts\build.ps1 -Only 20-audio-tempo -TestLabel solution` 執行所有解答程式。每一個都以 `[PASS] l20_exN (... checks passed)` 結束。
+用 `.\scripts\build.ps1 -Only 20-audio-tempo -TestLabel solution` 執行所有解答程式（練習 7-9 要加 `-Juce`）。每一個都以 `[PASS] l20_exN (... checks passed)` 結束。
 
 ---
 
@@ -15,7 +15,7 @@
 4. **Natural continuation，除以候選段。** 上一段已經在 output 裡了；新的一段要接上的是 input 裡*緊接在它後面*的東西，因為如果什麼都沒切，播出來的就是那個——拿上一段本身來比，會找到早了一個 hop 的起點，也就是把那一段重複一次。除以候選段的大小，分數就是候選段的形狀和 continuation 之間的 cosine 乘上一個常數：大聲的候選段不會因為大聲而贏。如果改成除以候選段的能量（而不是它的平方根），小聲的那段會因為小聲而贏。
 5. **各個 channel 各自對準。** 兩個 channel 會在不同的地方被切，相差幾個 sample，而左右之間的延遲會在每一段跳動。左右之間的延遲是我們聽出聲音方向的依據：stereo image 會每秒晃 94 次，或是糊成一片很寬、有相位感的聲音。
 6. **每個算完的結果都依序交回。** 舊 tempo 的慢運算可能比最新 tempo 的快運算更晚完成。依序交回的話，它會取代較新的那個：歌已經是新的 tempo，clip 卻以舊的 tempo 播放，直到下一次改變——沒對上拍，而且沒有任何東西會修正它。
-7. **目前這個 map 的 marker。** 它們說的是「它此刻播放的樣子就是對拍的」。對於此刻*沒有*對拍的 audio，這就是錯的：以另一個 tempo 放進來的 loop，或是在改 tempo 之前錄的 take。使用者應該先讓它對上：把 tempo 改回它製作時的樣子、打開「跟著」、再把 tempo 改回來——或者，長度已知的 loop 可以用練習 9（下一批會做）。
+7. **目前這個 map 的 marker。** 它們說的是「它此刻播放的樣子就是對拍的」。對於此刻*沒有*對拍的 audio，這就是錯的：以另一個 tempo 放進來的 loop，或是在改 tempo 之前錄的 take。使用者應該先讓它對上：把 tempo 改回它製作時的樣子、打開「跟著」、再把 tempo 改回來——或者，知道舊 tempo 的 take 用練習 7，loop 用練習 9。
 
 ## 練習 2 - 用數字看
 
@@ -108,4 +108,57 @@ Exercise 5 - a fade over a jump
 2. **一下敲擊一個小段。** 在 onset 處切小段，而不是每半個 window 切一次。從每個 onset 起，把 attack（最初 10-30 ms）以速度 1 複製，並準確放在 onset 的 tick 現在所在的位置——這樣敲擊就在拍子上，而且只聽到一次。所有的伸縮都發生在這一段剩下的部分，直到下一個 onset：在那裡用 WSOLA，比例更大，因為 attack 沒有分擔任何伸縮。
 3. **拉長和壓縮。** 拉長時，這一段的 decay 變長——WSOLA 會重複持續部分的小段；如果沒有持續部分（很乾的小鼓），下一下之前就是安靜，這正是鼓手打慢一點時會發生的事。壓縮時，decay 被截短：這一段可能比它的 attack 還短，那麼 attack 就在下一下開始處淡出。沒有任何一下被丟掉，每一下都完整；代價是 cymbal 的尾巴。
 4. **好幾支麥克風。** 它們必須共用 onset——在 clip 的總和（或最大聲的那個）上找一次，套用到全部——以及切點：否則近距離麥克風和 overhead 裡的大鼓會被彼此錯開幾毫秒，鼓組聽起來會變空（comb filtering）。這和 Step 5 裡 stereo clip 的兩個 channel 一起滑動是同一個理由。
-5. **在哪裡、什麼時候。** 每個 clip 一次、事先進行，在 clip 被設成跟著 tempo 的時候：audio 不會變，會變的只有 tempo。它對 clip 長度是 O(n)，每個 window 一次 FFT——比 stretch 便宜——結果和 clip 存在一起：一串 source sample。每個 onset 都是天生的 warp marker，因為敲擊應該落在拍子上：把 onset 當成候選點，練習 3 就能選出 marker，練習 8（之後會做）則把它們 quantize。
+5. **在哪裡、什麼時候。** 每個 clip 一次、事先進行，在 clip 被設成跟著 tempo 的時候：audio 不會變，會變的只有 tempo。它對 clip 長度是 O(n)，每個 window 一次 FFT——比 stretch 便宜——結果和 clip 存在一起：一串 source sample。每個 onset 都是天生的 warp marker，因為敲擊應該落在拍子上：把 onset 當成候選點，練習 3 就能選出 marker，練習 8 則把它們 quantize。
+
+---
+
+## 練習 7 - 照錄音時的樣子跟著 tempo 的 take
+
+[`solutions/ex7_follow_as_recorded.cpp`](ex7_follow_as_recorded.cpp)
+
+和 app 自己的「跟著」相比，差別只有一個參數：傳給 `markersForTake()` 的 map。留在原地的 clip 以 sample 保存起點，所以 take 錄音所在的 sample 仍然是它的起點；給它當時的 map，marker 就說明了它的每個 sample 是在哪個 tick 被聽到的——然後 session 再依目前的 map 擺放 clip。整個 list 一起修改、只 perform 一次：track 上所有 take 是一個 undo 步驟。
+
+```text
+Exercise 7 - takes that follow as they were recorded
+  recorded at 120, the tempo set to 90, then the app's "follow": 16 clicks, up to 3167 ms off the beats of 90
+  the same take following as it was recorded (over 120): 16 clicks, at most 1 samples off the beats of 90
+[PASS] l20_ex7 (25 checks passed)
+```
+
+用 app 的 marker，take 播放起來和 tempo 改變之前完全一樣，停在舊的 sample 上，第 16 拍偏了三秒。用 120 BPM 的 marker，每一拍都落在 90 的拍子上。
+
+它顯示的是 app 應該把 map 留下來。Take 知道自己是什麼時候錄的；當時的 tempo map 最多 256 個點。和 take 存在一起（`Session::registerTakes()` 已經為每個 take 留了紀錄），clip 選單就能自己提供「照錄音時的樣子跟著」。這題是從外面做，map 由參數傳進來。
+
+## 練習 8 - Audio quantize
+
+[`solutions/ex8_quantize_audio.cpp`](ex8_quantize_audio.cpp)
+
+`findOnsets()` 是對乾淨的敲擊有效的最簡單偵測器：相對於範圍內峰值的門檻，以及新的一下之前要有一段安靜。練習 6 說明了真正的偵測器為什麼要看頻譜。
+
+`quantizeClip()` 只需要一個想法：*source 的某個 sample 現在在哪裡被聽到？* 已經靠 marker 跟著 tempo 的 clip，就是 marker 給的 tick；其他 clip 就是它在歌裡那個 sample 的 tick。然後每個 onset 的 tick 依 `strength` 往最近的線移動，正如第 18 章移動音符的 tick——只是現在移動的是 marker，而它們之間的 audio 讀得快一點或慢一點。
+
+```text
+Exercise 8 - audio quantize
+  16 hits played by hand at 120 BPM, up to 24.3 ms off the beats; quantized onto quarter notes: 0 samples off
+[PASS] l20_ex8 (27 checks passed)
+```
+
+會落在同一條線上的兩下，保留第一下：marker 的 tick 不能和前一個相同。在很粗的 grid 下，大部分敲擊就這樣被略過——把鼓的 take quantize 到整小節不是任何人想要的，結果也顯示了這點。
+
+Varispeed 會依兩下之間移動的比例，改變它們之間的音高。一下晚了 25 ms、一拍 500 ms，就是 5%，將近一個半音，持續一瞬間：在 tom 上聽得到，在 hi-hat 上聽不到。Stretch 保住音高。它會不會把一下變成兩下（Step 4），取決於拉長了多少；這裡只有幾個百分點，而檢查並沒有去聽有沒有變成兩下。
+
+## 練習 9 - 對拍的 loop
+
+[`solutions/ex9_loop_fits.cpp`](ex9_loop_fits.cpp)
+
+猜測用對數比較，因為以 0.8 倍速度播放的 loop 和以 1.25 倍播放的偏得一樣多：4 拍和 8 拍的中間是 $`\sqrt{32} = 5.66`$，不是 6。接下來的放置就是 Step 1 的兩個 marker，加上 session 自己的 `withClipOnTop()`，它會切開 loop 底下的東西——對跟著 tempo 的 clip，用它自己的方式切（Step 6）。
+
+```text
+Exercise 9 - a loop that fits
+  a loop of 7.5 s (4 bars at 128 BPM) dropped on bar 2 at 120 BPM: taken as 16 beats, 16 clicks, at most 0 samples off the beats
+[PASS] l20_ex9 (23 checks passed)
+```
+
+Loop 沒有 fade in。檔案很少剛好從 zero crossing 開始，所以 app 對它做的每個 clip 都加 5 ms 的 fade——但 loop 從它的 downbeat 開始，fade 會吞掉第一下，也就是最重要的那一下。
+
+**Double time。** 170 BPM 的四小節 loop 和 85 BPM 的兩小節一樣長，在 120 的歌裡會被猜成後者：速度是對的，但它的小節只有應有長度的一半。長度本身無法分辨兩者；app 會顯示猜測結果（「8 拍」）並提供加倍或減半——或是去聽大鼓在哪裡。

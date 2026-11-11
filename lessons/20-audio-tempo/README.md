@@ -59,7 +59,8 @@ a length in samples and are played sample for sample.
 See [exercises/README.md](exercises/README.md), with the answers in [solutions/README.md](solutions/README.md).
 Six exercises, none needs JUCE: why the chapter does it this way (concept), audio and tempo by the numbers
 (calculation), the fewest markers for a take, a time-stretcher that fits to a fraction of a sample, a fade over a
-jump of the playhead, and a stretcher that keeps drum hits (design).
+jump of the playhead, and a stretcher that keeps drum hits (design). Three optional projects extend DawLab 20 (they
+need `-Juce`): takes that follow as they were recorded, audio quantize, and a loop of unknown tempo that fits.
 
 ## 5. Next
 

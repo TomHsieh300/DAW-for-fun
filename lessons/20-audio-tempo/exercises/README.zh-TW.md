@@ -3,12 +3,14 @@
 
 [回到本章](../README.zh-TW.md) | [解答](../solutions/README.zh-TW.md)
 
-難度：★☆☆ 簡單、★★☆ 中等、★★★ 困難。實作題在 `exercises/starter/` 裡有一個可以編譯執行的 starter 檔；完成之前，它的 self-check 會印出 `FAIL`（這是預期的）。建置 target 名稱寫在方括號裡。這些練習都不需要 JUCE：
+難度：★☆☆ 簡單、★★☆ 中等、★★★ 困難。實作題在 `exercises/starter/` 裡有一個可以編譯執行的 starter 檔；完成之前，它的 self-check 會印出 `FAIL`（這是預期的）。建置 target 名稱寫在方括號裡。練習 1-6 不需要 JUCE：
 
 ```powershell
 .\scripts\build.ps1 -Only 20-audio-tempo
 .\build\bin\Debug\l20_ex3_starter.exe
 ```
+
+**練習 1-6** 是本章的練習，關於各個 step（不需要 JUCE）。**練習 7-9 是選做專題**，延伸 DawLab 20。它們需要 JUCE 建置（`.\scripts\build.ps1 -Only 20-audio-tempo -Juce`）；和第 19 章的一樣，它們是在 offline 模式下建立真正 `MainComponent` 的 console 程式（`exercises/app_rig.h`），都不會修改 app。
 
 練習 3 建立在 Step 1 上（`steps/warp_map.h` 裡有解好的版本），練習 4 建立在 Step 4 上（`exercises/wsola.h` 裡有解好的版本），練習 5 建立在 Step 2 和 3 上。請先完成各個 step。
 
@@ -70,3 +72,29 @@ Self-check 會在一個起點跟著 tempo、播放 440 Hz 的 clip 底下改變 
 3. 拉長到兩倍時，兩下敲擊之間的時間用什麼填？壓縮到一半時，放棄了什麼？
 4. 用好幾支麥克風錄的鼓組是好幾個 clip。它們必須共用什麼，一下敲擊才會仍然是一下？
 5. 偵測在哪裡跑、多久跑一次、代價是什麼？這些敲擊和練習 3 的 marker 有什麼關係？
+
+---
+
+## 練習 7 - 照錄音時的樣子跟著 tempo 的 take ★★☆（選做專題，JUCE）
+
+[`l20_ex7_starter`，檔案 `exercises/starter/ex7_follow_as_recorded.cpp`]
+
+DawLab 20 把 take 錄成留在原地的 clip，之後打開「跟著」時，它拿到的是*目前*這個 map 的 marker。如果中間 tempo 改過，那就是錯的 map。寫出 `followAsRecorded()`：track 上每一個錄音，都用它*當時*錄音所在的那個 map 的 marker 來跟著 tempo——全部是一個 undo 步驟。
+
+Self-check 會在 120 BPM 錄一個 take、把 tempo 設成 90，再用兩種方式播放：app 的 marker 和你的。
+
+## 練習 8 - Audio quantize ★★★（選做專題，JUCE）
+
+[`l20_ex8_starter`，檔案 `exercises/starter/ex8_quantize_audio.cpp`]
+
+第 18 章靠移動 tick 來 quantize MIDI 音符。對 audio 也這樣做：找出 clip 裡的敲擊（`findOnsets()`），在每一下放一個 warp marker，位置是它現在被聽到的 tick，再把這個 tick 往最近的 grid 線移動（`quantizeClip()`）。
+
+Self-check 會手打 16 下，每下最多早或晚 25 ms，把它們 quantize 到四分音符、移動一半、以及用 stretch 對到八分音符——之後再改變 tempo。
+
+## 練習 9 - 對拍的 loop ★★☆（選做專題，JUCE）
+
+[`l20_ex9_starter`，檔案 `exercises/starter/ex9_loop_fits.cpp`]
+
+音色庫裡的鼓 loop 既不說它的 tempo，也不說它有幾小節。從它在歌的 tempo 下的長度猜出拍數——2 的次方，以比例來說最接近的那個（`guessBeats()`）——再用這麼多拍的 loop marker 把它放到某個小節上（`dropLoop()`）：馬上就對拍，之後每次改 tempo 也一樣。
+
+Self-check 會猜七個不同 tempo 做的 loop、把一個 128 BPM 的 loop 放進 120 BPM 的歌裡播放，並把 loop 放在一個已經在那裡的 clip 上。

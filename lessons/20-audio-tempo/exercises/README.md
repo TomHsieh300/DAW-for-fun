@@ -5,12 +5,17 @@
 
 Difficulty: ★☆☆ easy, ★★☆ medium, ★★★ hard. Implementation exercises have a starter file in
 `exercises/starter/` that compiles and runs; until you complete it, its self-check prints `FAIL`
-(that is expected). Build target names are given in brackets. None of these exercises needs JUCE:
+(that is expected). Build target names are given in brackets. Exercises 1-6 need no JUCE:
 
 ```powershell
 .\scripts\build.ps1 -Only 20-audio-tempo
 .\build\bin\Debug\l20_ex3_starter.exe
 ```
+
+**Exercises 1-6** are the chapter's exercise set, about the steps (no JUCE). **Exercises 7-9 are optional
+projects** that extend DawLab 20. They need a JUCE build (`.\scripts\build.ps1 -Only 20-audio-tempo -Juce`); like
+chapter 19's they are console programs that build the real `MainComponent` in its offline mode
+(`exercises/app_rig.h`), and none of them changes the app.
 
 Exercise 3 builds on Step 1 (`steps/warp_map.h` has it solved), Exercise 4 on Step 4 (`exercises/wsola.h` has it
 solved), Exercise 5 on Steps 2 and 3. Do the steps first.
@@ -101,3 +106,38 @@ that keeps every hit once, on its beat, in a page:
 3. Stretched to twice the length, what fills the time between two hits? Squeezed to half, what is given up?
 4. A drum kit recorded with several microphones is several clips. What must they share so that a hit stays one hit?
 5. Where does the detection run, how often, and what does it cost? How do the hits relate to Exercise 3's markers?
+
+---
+
+## Exercise 7 - Takes that follow as they were recorded ★★☆ (optional project, JUCE)
+
+[`l20_ex7_starter`, file `exercises/starter/ex7_follow_as_recorded.cpp`]
+
+DawLab 20 records a take as a clip that stays, and turning following on later gives it the markers of the map of
+*now*. If the tempo was changed in between, that is the wrong map. Write `followAsRecorded()`: every recording on a
+track follows the tempo with the markers of the map it *was* recorded over - all in one undo step.
+
+The self-check records a take at 120 BPM, sets the tempo to 90, and plays it both ways: with the app's markers and
+with yours.
+
+## Exercise 8 - Audio quantize ★★★ (optional project, JUCE)
+
+[`l20_ex8_starter`, file `exercises/starter/ex8_quantize_audio.cpp`]
+
+Chapter 18 quantized MIDI notes by moving their ticks. Do it to audio: find the hits in a clip (`findOnsets()`),
+put a warp marker on each at the tick where it is heard now, and move that tick towards the nearest line of the
+grid (`quantizeClip()`).
+
+The self-check plays 16 hits by hand, each up to 25 ms early or late, quantizes them onto quarter notes, half way,
+and onto eighths with a stretch - and changes the tempo afterwards.
+
+## Exercise 9 - A loop that fits ★★☆ (optional project, JUCE)
+
+[`l20_ex9_starter`, file `exercises/starter/ex9_loop_fits.cpp`]
+
+A drum loop from a library says neither its tempo nor its bars. Guess its beats from its length at the song's
+tempo - a power of two, the closest as a ratio (`guessBeats()`) - and drop it on a bar with the markers of a loop
+of that many beats (`dropLoop()`): in time at once, and after every tempo change.
+
+The self-check guesses loops made at seven tempos, drops a 128 BPM loop into a 120 BPM song and plays it, and puts
+a loop over a clip that is already there.

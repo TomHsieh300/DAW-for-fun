@@ -3,8 +3,8 @@
 
 [Back to the chapter](../README.md) | [Exercises](../exercises/README.md)
 
-Run all solution programs with `.\scripts\build.ps1 -Only 20-audio-tempo -TestLabel solution`. Every one ends with
-`[PASS] l20_exN (... checks passed)`.
+Run all solution programs with `.\scripts\build.ps1 -Only 20-audio-tempo -TestLabel solution` (add `-Juce` for
+Exercises 7-9). Every one ends with `[PASS] l20_exN (... checks passed)`.
 
 ---
 
@@ -40,7 +40,7 @@ Run all solution programs with `.\scripts\build.ps1 -Only 20-audio-tempo -TestLa
 7. **Markers of the map of now.** They say "as it plays at this moment, it is in time". That is wrong for audio
    that does not play in time right now: a loop dropped in at another tempo, or a take recorded before the tempo
    was changed. The user should first make it fit: change the tempo back to what it was made at, turn following
-   on, and change the tempo again - or, for a loop of known length, use Exercise 9 (coming in a later batch).
+   on, and change the tempo again - or, for a take whose old tempo is known, Exercise 7; for a loop, Exercise 9.
 
 ## Exercise 2 - By the numbers
 
@@ -190,5 +190,80 @@ Two things are worth seeing:
 5. **Where and when.** Once per clip, ahead of time, when the clip is made to follow: the audio does not change,
    only the tempo does. It is O(n) in the clip's length with an FFT per window - cheaper than the stretch - and its
    result is stored with the clip: a list of source samples. Each onset is a natural warp marker, because a hit
-   should land on a beat: with the onsets as candidates, Exercise 3 would choose the markers and Exercise 8 (to
-   come) quantizes them.
+   should land on a beat: with the onsets as candidates, Exercise 3 would choose the markers and Exercise 8
+   quantizes them.
+
+---
+
+## Exercise 7 - Takes that follow as they were recorded
+
+[`solutions/ex7_follow_as_recorded.cpp`](ex7_follow_as_recorded.cpp)
+
+The whole difference to the app's own "follow" is one argument: the map passed to `markersForTake()`. A clip that
+stays keeps its start in samples, so the sample where the take was recorded is still its start; given the map of
+that moment, the markers say which tick each of its samples was heard on - and the session places the clip under
+the map of now. The list is changed as a whole and performed once: one undo step for every take on the track.
+
+```text
+Exercise 7 - takes that follow as they were recorded
+  recorded at 120, the tempo set to 90, then the app's "follow": 16 clicks, up to 3167 ms off the beats of 90
+  the same take following as it was recorded (over 120): 16 clicks, at most 1 samples off the beats of 90
+[PASS] l20_ex7 (25 checks passed)
+```
+
+With the app's markers the take plays exactly as before the tempo change, at its old samples, and the 16th beat is
+three seconds off. With the markers of 120 BPM every beat is on a beat of 90.
+
+What it shows is that the app should have kept the map. A take knows when it was recorded; the tempo map of that
+moment is 256 points at most. Stored with the take (`Session::registerTakes()` already keeps a record of each),
+the clip menu could offer "follow as recorded" by itself. The exercise does it from outside, with the map passed
+in.
+
+## Exercise 8 - Audio quantize
+
+[`solutions/ex8_quantize_audio.cpp`](ex8_quantize_audio.cpp)
+
+`findOnsets()` is the simplest detector that works on clean hits: a level relative to the range's peak, and a
+quiet stretch before a new hit. Exercise 6 says why a real one looks at the spectrum.
+
+`quantizeClip()` needs one idea: *where is a source sample heard now?* For a clip that already follows by its
+markers it is their tick; for any other clip it is the tick of its song sample. Then each onset's tick moves
+towards the nearest line by `strength`, exactly as chapter 18 moved a note's tick - only now the markers move,
+and the audio between them is read faster or slower.
+
+```text
+Exercise 8 - audio quantize
+  16 hits played by hand at 120 BPM, up to 24.3 ms off the beats; quantized onto quarter notes: 0 samples off
+[PASS] l20_ex8 (27 checks passed)
+```
+
+Two hits that would land on one line keep the first: a marker cannot have the tick of the one before it. Under a
+coarse grid most hits are left out that way - quantizing to whole bars is not what anybody wants of a drum take,
+and the result shows it.
+
+Varispeed changes the pitch of what is between two hits by the ratio of how far they moved. For a hit 25 ms late
+over a beat of 500 ms that is 5 %, almost a semitone, for a moment: audible on a tom, not on a hi-hat. Stretch
+keeps the pitch. Whether it doubles a hit (Step 4) depends on how far a stretch goes; here it is a few percent, and
+the check does not listen for doubled hits.
+
+## Exercise 9 - A loop that fits
+
+[`solutions/ex9_loop_fits.cpp`](ex9_loop_fits.cpp)
+
+The guess compares in logarithms because a loop played at 0.8 of its speed is as far off as one at 1.25: the
+middle between 4 and 8 beats is $`\sqrt{32} = 5.66`$, not 6. The drop then is Step 1's two markers and the session's
+own `withClipOnTop()`, which cuts what is under the loop - for a clip that follows, in its own terms (Step 6).
+
+```text
+Exercise 9 - a loop that fits
+  a loop of 7.5 s (4 bars at 128 BPM) dropped on bar 2 at 120 BPM: taken as 16 beats, 16 clicks, at most 0 samples off the beats
+[PASS] l20_ex9 (23 checks passed)
+```
+
+The loop has no fade in. A file rarely starts at a zero crossing, which is why the app fades every clip it makes
+by 5 ms - but a loop starts on its downbeat, and a fade would swallow the first hit, the most important one.
+
+**Double time.** A loop of four bars at 170 BPM lasts as long as two bars at 85, and at a song tempo of 120 it is
+guessed as the second: played at the right speed, but with its bars half as long as they should be. Nothing in
+the length can tell the two apart; an app shows the guess ("8 beats") and offers to double or halve it - or
+listens for where the kick drum is.
