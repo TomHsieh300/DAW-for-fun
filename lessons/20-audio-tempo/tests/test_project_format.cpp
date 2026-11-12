@@ -575,6 +575,20 @@ void testFollow() {
     // The error names the line of the clip that lacks its markers.
     const ReadResult lacking = readProject(head + clip + "follow stretch 100\nmarker 0 0\n");
     DAWLAB_CHECK(!lacking.ok && lacking.error.find("line 4") != std::string::npos && lacking.error.find("two markers") != std::string::npos);
+    // Numbers that would put the clip outside the song, or that no tempo makes: the file is refused where it is
+    // read, not later, when placing the clip would cast an enormous number to a sample or never end.
+    DAWLAB_CHECK(!reads(clip + "follow start -96000"));                                // a start before the song's
+    DAWLAB_CHECK(!reads(clip + "follow start 1e300"));                                 // a start no sample count reaches
+    DAWLAB_CHECK(!reads(clip + "follow varispeed 100\nmarker 0 0\nmarker 1 1e300"));   // a tick no sample count reaches
+    DAWLAB_CHECK(!reads(clip + "follow varispeed 100\nmarker 0 0\nmarker 1e300 480")); // a position no source has
+    DAWLAB_CHECK(!reads(clip + "follow varispeed 100\nmarker 0 0\nmarker 1e-9 480"));  // a pair no tempo makes
+    DAWLAB_CHECK(!reads(clip + "follow varispeed 100\nmarker 0 0\nmarker 100 1e-9"));  // the other way
+    DAWLAB_CHECK(!reads(clip + "follow varispeed 100\nmarker 0 0\nmarker 50 480"));    // the clip plays past its markers
+    DAWLAB_CHECK(!reads("clip 1 0 100 \"a.wav\" 40 0 0 linear 0 0 \"x\"\nfollow varispeed 100\nmarker 50 0\nmarker 140 480")); // or before them
+    // Up to a sample outside them is a rounding (a change of sample rate scales the markers, not the samples).
+    DAWLAB_CHECK(reads(clip + "follow varispeed 100\nmarker 0.5 0\nmarker 99.5 480"));
+    const ReadResult far = readProject(head + clip + "follow varispeed 100\nmarker 0 0\nmarker 1 1e300\n");
+    DAWLAB_CHECK(!far.ok && far.error.find("line 4") != std::string::npos);
     // An older file cannot have them.
     DAWLAB_CHECK(!readProject("DawLabProject 7\nsampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\n" + clip + "follow start 0\n").ok);
     DAWLAB_CHECK(readProject("DawLabProject 7\nsampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\n" + clip).ok);

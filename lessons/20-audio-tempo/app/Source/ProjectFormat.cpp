@@ -227,6 +227,40 @@ bool parseMode(const std::string& text, engine::AutomationMode& out) noexcept {
     return false;
 }
 
+// Chapter 20: what a clip's follow lines may say, checked once, here, where they come in. The session places a
+// clip that follows by its tick or by its markers; numbers that DawLab never writes would put it before the song,
+// beyond any sample count, or play it where no marker says (and placing it would cast an enormous number to a
+// sample, or step towards it for ever). The limits are far beyond what a recording makes.
+constexpr double kMaxFollowValue = 1099511627776.0;                         // 2^40 ticks or samples
+constexpr double kMinTicksPerSample = 1.0 / 1048576.0, kMaxTicksPerSample = 1048576.0; // 2^-20 .. 2^20 between two markers
+
+std::string followProblem(const ClipState& c) {
+    if (c.follow == engine::FollowMode::Off)
+        return c.length > 0 ? "" : "clip length must be at least 1 sample";
+    if (c.follow == engine::FollowMode::Start) {
+        if (c.length <= 0)
+            return "clip length must be at least 1 sample";
+        return c.startTick >= 0.0 && c.startTick <= kMaxFollowValue ? "" : "a clip's start in ticks must be 0 or more (and at most 2^40)";
+    }
+    if (c.markers.size() < 2)
+        return "a clip that follows by varispeed or stretch needs at least two markers";
+    for (size_t i = 0; i < c.markers.size(); ++i) {
+        const engine::WarpMarker& m = c.markers[i];
+        if (std::fabs(m.source) > kMaxFollowValue || std::fabs(m.tick) > kMaxFollowValue)
+            return "a marker's position in the source and its tick must be at most 2^40";
+        if (i == 0)
+            continue;
+        const double ticksPerSample = (m.tick - c.markers[i - 1].tick) / (m.source - c.markers[i - 1].source);
+        if (!(ticksPerSample >= kMinTicksPerSample && ticksPerSample <= kMaxTicksPerSample))
+            return "between two markers there must be 2^-20 to 2^20 ticks per sample of the source";
+    }
+    // Up to a sample outside them is a rounding: a change of sample rate scales the markers, and rounds the samples.
+    const double from = static_cast<double>(c.sourceOffset), to = from + static_cast<double>(c.sourceLength);
+    if (from < c.markers.front().source - 1.0 || to > c.markers.back().source + 1.0)
+        return "the markers must cover the part of the source that the clip plays";
+    return "";
+}
+
 // ---- writing --------------------------------------------------------------------------------------
 
 // `number` counts the lanes through the file: a lane's number means something only inside it.
@@ -584,7 +618,8 @@ ReadResult readProject(std::string_view text) {
                 return fail(lineNo, "bad track id \"" + tok[1].text + "\"");
             if (!parseNumber(tok[2], c.start) || c.start < 0)
                 return fail(lineNo, "clip start must be 0 or more samples");
-            if (!parseNumber(tok[3], c.length) || c.length <= 0)
+            // At least 1, checked below: a warped clip (format 8) may cover no sample of the song at its tempo.
+            if (!parseNumber(tok[3], c.length) || c.length < 0)
                 return fail(lineNo, "clip length must be at least 1 sample");
             if (!tok[4].quoted)
                 return fail(lineNo, "the file name must be in quotes");
@@ -853,9 +888,9 @@ ReadResult readProject(std::string_view text) {
         const TrackId owner = p.clips[i].track;
         if (std::none_of(p.tracks.begin(), p.tracks.end(), [owner](const TrackState& t) { return t.id == owner; }))
             return fail(clipLines[i], "clip on track " + std::to_string(owner.value) + ", which does not exist");
-        const ClipState& c = p.clips[i];
-        if ((c.follow == engine::FollowMode::Varispeed || c.follow == engine::FollowMode::Stretch) && c.markers.size() < 2)
-            return fail(clipLines[i], "a clip that follows by varispeed or stretch needs at least two markers");
+        const std::string problem = followProblem(p.clips[i]);
+        if (!problem.empty())
+            return fail(clipLines[i], problem);
     }
     auto hasTrack = [&p](engine::TrackId id) {
         return std::any_of(p.tracks.begin(), p.tracks.end(), [id](const TrackState& t) { return t.id == id; });
