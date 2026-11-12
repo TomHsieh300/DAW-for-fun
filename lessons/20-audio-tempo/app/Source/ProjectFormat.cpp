@@ -387,567 +387,917 @@ std::string writeProject(const ProjectState& p) {
 
 // ---- reading ------------------------------------------------------------------------------------------
 
-ReadResult readProject(std::string_view text) {
-    auto fail = [](int line, const std::string& message) {
+namespace {
+
+// readProject's own helpers. Every number they check comes from parseNumber, which refuses NaN and infinity.
+
+// From lo to hi, both included.
+template <typename T>
+bool inRange(T value, T lo, T hi) {
+    return value >= lo && value <= hi;
+}
+
+// A word, not in quotes, that is one of the two.
+bool isEither(const Token& token, const char* a, const char* b) { return !token.quoted && (token.text == a || token.text == b); }
+
+bool parseTrackId(const Token& token, TrackId& out) { return parseNumber(token, out.value) && out.isValid(); }
+bool parsePan(const Token& token, float& out) { return parseNumber(token, out) && inRange(out, -1.0f, 1.0f); }
+bool parseBus(const Token& token, int& out) { return parseNumber(token, out) && out >= 0 && out < engine::kNumBuses; }
+bool parseSlot(const Token& token, int& out) { return parseNumber(token, out) && out >= 0 && out < kInsertSlotsPerStrip; }
+
+std::string busIndexProblem() { return "bus index must be 0 .. " + std::to_string(engine::kNumBuses - 1); }
+
+// A synth line's seven numbers, after its track id.
+bool parseSynth(const std::vector<Token>& tok, SynthState& y) {
+    return tok.size() == 9 && parseNumber(tok[2], y.cutoffHz) && parseNumber(tok[3], y.resonance) && parseNumber(tok[4], y.attack) &&
+           parseNumber(tok[5], y.decay) && parseNumber(tok[6], y.sustain) && parseNumber(tok[7], y.release) && parseNumber(tok[8], y.level);
+}
+
+bool synthInRange(const SynthState& y) {
+    return inRange(y.cutoffHz, 20.0, 20000.0) && inRange(y.resonance, 0.1, 20.0) && inRange(y.attack, 0.001, 10.0) &&
+           inRange(y.decay, 0.001, 10.0) && inRange(y.sustain, 0.0, 1.0) && inRange(y.release, 0.001, 10.0) && inRange(y.level, 0.0, 1.0);
+}
+
+bool noteInRange(const engine::Note& n) {
+    return n.start >= 0 && n.length > 0 && inRange(n.pitch, 0, 127) && inRange(n.velocity, 1, 127) && inRange(n.channel, 0, 15);
+}
+
+bool controllerInRange(const engine::ControllerPoint& c) {
+    return c.tick >= 0 && inRange(c.number, 0, 127) && inRange(c.value, 0, 127) && inRange(c.channel, 0, 15);
+}
+
+// Lines that refer to a channel are resolved after the last line (any order is fine).
+struct Pending {
+    int line = 0;
+    ChannelName channel;
+    SendState send;
+    int bus = 0;
+    InsertState insert;
+    ParamState param;
+};
+struct PendingLane {
+    int line = 0;
+    int number = 0;
+    ChannelName channel;
+    LaneState lane;
+};
+struct PendingPoint {
+    int line = 0;
+    int number = 0;
+    PointState point;
+};
+// Format 6: notes and controller points refer to their MIDI clip by its number in the file.
+struct PendingNote {
+    int line = 0, clip = 0;
+    engine::Note note;
+};
+struct PendingCc {
+    int line = 0, clip = 0;
+    engine::ControllerPoint cc;
+};
+// Format 7: a track's built-in synth sound, or the plugin in the synth's place.
+struct SoundLine {
+    int line = 0;
+    engine::TrackId track;
+    bool plugin = false;
+    SynthState synth;
+    std::string file, state;
+};
+
+// Two lanes on one channel, for one parameter of one slot.
+bool sameParameter(const PendingLane& a, const PendingLane& b) {
+    return a.channel.kind == b.channel.kind && a.channel.index == b.channel.index && a.lane.slot == b.lane.slot &&
+           a.lane.parameter == b.lane.parameter;
+}
+
+// What is wrong with a file, and on which line. An empty message: nothing.
+struct Problem {
+    int line = 0;
+    std::string message;
+};
+
+ReadResult failure(int line, const std::string& message) {
+    ReadResult r;
+    r.error = "line " + std::to_string(line > 0 ? line : 1) + ": " + message;
+    return r;
+}
+
+// The work of readProject, for one file. The file is read line by line: one member function per keyword reads
+// its line and says what is wrong with it ("": nothing). After the last line, what the lines refer to is
+// resolved, one step after the other.
+class ProjectReader {
+public:
+    ReadResult read(std::string_view text) {
+        if (text.substr(0, 3) == "\xEF\xBB\xBF")
+            text.remove_prefix(3); // a UTF-8 byte order mark (Notepad)
+        p_.sampleRate = 0.0;
+        p_.nextTrackId = 0;
+        size_t pos = 0;
+        while (pos < text.size()) {
+            size_t end = text.find('\n', pos);
+            if (end == std::string_view::npos)
+                end = text.size();
+            std::string_view line = text.substr(pos, end - pos);
+            pos = end + 1;
+            ++lineNo_;
+            if (!line.empty() && line.back() == '\r')
+                line.remove_suffix(1); // CRLF
+            const std::string problem = readLine(line);
+            if (!problem.empty())
+                return failure(lineNo_, problem);
+        }
+        const Problem problem = finish();
+        if (!problem.message.empty())
+            return failure(problem.line, problem.message);
         ReadResult r;
-        r.error = "line " + std::to_string(line > 0 ? line : 1) + ": " + message;
+        r.ok = true;
+        r.project = std::move(p_);
+        r.formatVersion = version_;
         return r;
-    };
-    int lineNo = 0;
-
-    if (text.substr(0, 3) == "\xEF\xBB\xBF")
-        text.remove_prefix(3); // a UTF-8 byte order mark (Notepad)
-
-    ProjectState p;
-    p.sampleRate = 0.0;
-    p.nextTrackId = 0;
-    int version = 0;
-    bool haveRate = false;
-    std::array<bool, engine::kNumBuses> haveBus{};
-    bool haveMaster = false;
-
-    // Lines that refer to a channel are resolved after the last line (any order is fine).
-    struct Pending {
-        int line = 0;
-        ChannelName channel;
-        SendState send;
-        int bus = 0;
-        InsertState insert;
-        ParamState param;
-    };
-    std::vector<Pending> sends, inserts, params;
-    struct PendingLane {
-        int line = 0;
-        int number = 0;
-        ChannelName channel;
-        LaneState lane;
-    };
-    struct PendingPoint {
-        int line = 0;
-        int number = 0;
-        PointState point;
-    };
-    std::vector<PendingLane> lanes;
-    std::vector<PendingPoint> points;
-    std::vector<int> clipLines;
-    // Format 6: MIDI clips by their number in the file, and what refers to them.
-    std::vector<int> midiClipNumbers, midiClipLines;
-    struct PendingNote {
-        int line = 0, clip = 0;
-        engine::Note note;
-    };
-    struct PendingCc {
-        int line = 0, clip = 0;
-        engine::ControllerPoint cc;
-    };
-    std::vector<PendingNote> notes;
-    std::vector<PendingCc> ccs;
-    std::vector<std::pair<int, engine::TrackId>> instruments; // line, track
-    struct SoundLine {
-        int line;
-        engine::TrackId track;
-        bool plugin;
-        SynthState synth;
-        std::string file, state;
-    };
-    std::vector<SoundLine> sounds;
-
-    std::vector<Token> tok;
-    std::string error;
-    size_t pos = 0;
-    while (pos < text.size()) {
-        size_t end = text.find('\n', pos);
-        if (end == std::string_view::npos)
-            end = text.size();
-        std::string_view line = text.substr(pos, end - pos);
-        pos = end + 1;
-        ++lineNo;
-        if (!line.empty() && line.back() == '\r')
-            line.remove_suffix(1); // CRLF
-        if (!splitLine(line, tok, error))
-            return fail(lineNo, error);
-        if (tok.empty())
-            continue; // blank or comment
-        const std::string& kw = tok[0].text;
-        if (tok[0].quoted)
-            return fail(lineNo, "a line must start with a keyword");
-
-        if (version == 0) { // the first item must be the header
-            if (kw != "DawLabProject" || tok.size() != 2)
-                return fail(lineNo, "not a DawLab project (no \"DawLabProject <version>\" header)");
-            if (!parseNumber(tok[1], version) || version < 1)
-                return fail(lineNo, "bad format version \"" + tok[1].text + "\"");
-            if (version > kFormatVersion)
-                return fail(lineNo, "made by a newer DawLab (format " + std::to_string(version) + ", this one reads up to " +
-                                        std::to_string(kFormatVersion) + ")");
-            continue;
-        }
-        if (!haveRate && kw != "sampleRate")
-            return fail(lineNo, "sampleRate must come right after the header");
-        if (version < 3 && kw != "sampleRate" && kw != "nextTrackId" && kw != "track" && kw != "clip")
-            return fail(lineNo, "\"" + kw + "\" needs format 3 (this file is format " + std::to_string(version) + ")");
-
-        if (kw == "sampleRate") {
-            if (haveRate)
-                return fail(lineNo, "sampleRate given twice");
-            if (tok.size() != 2 || !parseNumber(tok[1], p.sampleRate) || p.sampleRate <= 0.0)
-                return fail(lineNo, "sampleRate needs one positive number");
-            haveRate = true;
-        } else if (kw == "nextTrackId") {
-            if (tok.size() != 2 || !parseNumber(tok[1], p.nextTrackId))
-                return fail(lineNo, "nextTrackId needs one whole number");
-        } else if (kw == "tempo") {
-            if (tok.size() != 4 || !parseNumber(tok[1], p.tempo) || p.tempo < 20.0 || p.tempo > 999.0)
-                return fail(lineNo, "tempo needs BPM (20 .. 999), beats per bar and beat unit");
-            if (!parseNumber(tok[2], p.beatsPerBar) || p.beatsPerBar < 1 || p.beatsPerBar > 32)
-                return fail(lineNo, "beats per bar must be 1 .. 32");
-            if (!parseNumber(tok[3], p.beatUnit) || p.beatUnit < 1 || p.beatUnit > 32 || (p.beatUnit & (p.beatUnit - 1)) != 0)
-                return fail(lineNo, "the beat unit must be 1, 2, 4, 8, 16 or 32");
-        } else if (kw == "loop") {
-            const bool ticks = version >= 7 && tok.size() == 5 && tok[4].text == "ticks";
-            if ((tok.size() != 4 && !ticks) || !parseNumber(tok[1], p.loopStart) || !parseNumber(tok[2], p.loopEnd) ||
-                !parseFlag(tok[3], p.loopEnabled) || p.loopStart < 0 || p.loopEnd < p.loopStart)
-                return fail(lineNo, version >= 7 ? "loop needs start >= 0, end >= start, 0/1 and, for a loop in ticks, \"ticks\""
-                                                 : "loop needs start >= 0, end >= start (samples) and 0/1");
-            p.loopInTicks = ticks;
-        } else if (kw == "tempopoint") {
-            TempoPointState t;
-            if (version < 7)
-                return fail(lineNo, "tempopoint needs format 7");
-            if (tok.size() != 4 || !parseNumber(tok[1], t.tick) || !parseNumber(tok[2], t.bpm) || !parseFlag(tok[3], t.ramp) ||
-                t.bpm < 20.0 || t.bpm > 999.0)
-                return fail(lineNo, "tempopoint needs a tick, BPM (20 .. 999) and 0/1");
-            if (p.tempoPoints.empty() ? t.tick != 0 : t.tick <= p.tempoPoints.back().tick)
-                return fail(lineNo, "tempo points start at tick 0, each after the one before");
-            if (static_cast<int>(p.tempoPoints.size()) == kMaxTempoPoints)
-                return fail(lineNo, "more than " + std::to_string(kMaxTempoPoints) + " tempo points");
-            p.tempoPoints.push_back(t);
-        } else if (kw == "track") {
-            const size_t expected = version >= 3 ? 8 : version == 2 ? 5 : 4; // 1: no pan; 3: format, mute, solo
-            if (tok.size() != expected)
-                return fail(lineNo, "track needs " + std::to_string(expected - 1) + " values in format " + std::to_string(version));
-            TrackState t;
-            if (!parseNumber(tok[1], t.id.value) || !t.id.isValid())
-                return fail(lineNo, "bad track id \"" + tok[1].text + "\"");
-            if (!tok[2].quoted)
-                return fail(lineNo, "the track name must be in quotes");
-            t.strip.name = tok[2].text;
-            if (!parseNumber(tok[3], t.strip.gainDb))
-                return fail(lineNo, "bad gain \"" + tok[3].text + "\"");
-            if (version >= 2 && (!parseNumber(tok[4], t.strip.pan) || t.strip.pan < -1.0f || t.strip.pan > 1.0f))
-                return fail(lineNo, "pan must be a number from -1 to 1");
-            if (version >= 3) {
-                if (tok[5].quoted || (tok[5].text != "mono" && tok[5].text != "stereo"))
-                    return fail(lineNo, "the track format must be mono or stereo");
-                t.format = tok[5].text == "mono" ? engine::TrackFormat::Mono : engine::TrackFormat::Stereo;
-                if (!parseFlag(tok[6], t.strip.mute) || !parseFlag(tok[7], t.strip.solo))
-                    return fail(lineNo, "mute and solo must be 0 or 1");
-            }
-            for (const TrackState& other : p.tracks)
-                if (other.id == t.id)
-                    return fail(lineNo, "track id " + tok[1].text + " used twice");
-            p.tracks.push_back(std::move(t));
-        } else if (kw == "bus" || kw == "master") {
-            const bool master = kw == "master";
-            const size_t first = master ? 1 : 2; // where the name is
-            if (tok.size() != first + 4)
-                return fail(lineNo, kw + " needs " + std::to_string(first + 3) + " values");
-            int b = 0;
-            if (!master && (!parseNumber(tok[1], b) || b < 0 || b >= engine::kNumBuses))
-                return fail(lineNo, "bus index must be 0 .. " + std::to_string(engine::kNumBuses - 1));
-            bool& seen = master ? haveMaster : haveBus[static_cast<size_t>(b)];
-            if (seen)
-                return fail(lineNo, master ? std::string("master given twice") : "bus " + tok[1].text + " given twice");
-            seen = true;
-            StripState& s = master ? p.master : p.buses[static_cast<size_t>(b)];
-            if (!tok[first].quoted)
-                return fail(lineNo, "the name must be in quotes");
-            s.name = tok[first].text;
-            if (!parseNumber(tok[first + 1], s.gainDb) || !parseNumber(tok[first + 2], s.pan) || s.pan < -1.0f || s.pan > 1.0f)
-                return fail(lineNo, "bad gain or pan");
-            if (!parseFlag(tok[first + 3], s.mute))
-                return fail(lineNo, "mute must be 0 or 1");
-        } else if (kw == "send") {
-            Pending s;
-            s.line = lineNo;
-            if (tok.size() != 5 || !parseChannel(tok[1], s.channel))
-                return fail(lineNo, "send needs a channel, a bus, a level and 0/1 for pre-fader");
-            if (!parseNumber(tok[2], s.bus) || s.bus < 0 || s.bus >= engine::kNumBuses)
-                return fail(lineNo, "bus index must be 0 .. " + std::to_string(engine::kNumBuses - 1));
-            if (!parseNumber(tok[3], s.send.levelDb) || !parseFlag(tok[4], s.send.preFader))
-                return fail(lineNo, "bad send level or pre-fader flag");
-            sends.push_back(s);
-        } else if (kw == "insert") {
-            Pending s;
-            s.line = lineNo;
-            if (tok.size() < 6 || !parseChannel(tok[1], s.channel))
-                return fail(lineNo, "insert needs a channel, a slot, a kind, an effect and 0/1 for bypassed");
-            if (!parseNumber(tok[2], s.insert.slot) || s.insert.slot < 0 || s.insert.slot >= kInsertSlotsPerStrip)
-                return fail(lineNo, "slot must be 0 .. " + std::to_string(kInsertSlotsPerStrip - 1));
-            if (tok[3].quoted || (tok[3].text != "builtin" && tok[3].text != "vst3"))
-                return fail(lineNo, "the kind must be builtin or vst3");
-            s.insert.vst3 = tok[3].text == "vst3";
-            if (tok.size() != (s.insert.vst3 ? 7u : 6u))
-                return fail(lineNo, s.insert.vst3 ? "a vst3 insert needs a file, 0/1 and its state in quotes"
-                                                  : "a builtin insert needs an effect name and 0/1");
-            if (!tok[4].quoted || tok[4].text.empty())
-                return fail(lineNo, "the effect must be in quotes");
-            s.insert.type = tok[4].text;
-            if (!parseFlag(tok[5], s.insert.bypassed))
-                return fail(lineNo, "bypassed must be 0 or 1");
-            if (s.insert.vst3) {
-                if (!tok[6].quoted)
-                    return fail(lineNo, "the plugin state must be in quotes");
-                s.insert.state = tok[6].text;
-            }
-            inserts.push_back(s);
-        } else if (kw == "param") {
-            Pending s;
-            s.line = lineNo;
-            if (tok.size() != 5 || !parseChannel(tok[1], s.channel) || !parseNumber(tok[2], s.insert.slot) ||
-                !tok[3].quoted || !parseNumber(tok[4], s.param.value))
-                return fail(lineNo, "param needs a channel, a slot, a name in quotes and a value");
-            s.param.name = tok[3].text;
-            params.push_back(s);
-        } else if (kw == "clip") {
-            const bool full = tok.size() == 12;
-            if (tok.size() != 5 && !(version >= 3 && full))
-                return fail(lineNo, version >= 3 ? "clip needs 4 or 11 values" : "clip needs 4 values");
-            ClipState c;
-            if (!parseNumber(tok[1], c.track.value) || !c.track.isValid())
-                return fail(lineNo, "bad track id \"" + tok[1].text + "\"");
-            if (!parseNumber(tok[2], c.start) || c.start < 0)
-                return fail(lineNo, "clip start must be 0 or more samples");
-            // At least 1, checked below: a warped clip (format 8) may cover no sample of the song at its tempo.
-            if (!parseNumber(tok[3], c.length) || c.length < 0)
-                return fail(lineNo, "clip length must be at least 1 sample");
-            if (!tok[4].quoted)
-                return fail(lineNo, "the file name must be in quotes");
-            c.file = tok[4].text;
-            if (full) {
-                if (!parseNumber(tok[5], c.sourceOffset) || c.sourceOffset < 0 || !parseNumber(tok[6], c.fadeIn) ||
-                    !parseNumber(tok[7], c.fadeOut) || c.fadeIn < 0 || c.fadeOut < 0)
-                    return fail(lineNo, "source offset and fades must be 0 or more samples");
-                if (tok[8].quoted || (tok[8].text != "linear" && tok[8].text != "equalPower"))
-                    return fail(lineNo, "the fade shape must be linear or equalPower");
-                c.equalPowerFades = tok[8].text == "equalPower";
-                if (!parseNumber(tok[9], c.gainDb) || !parseFlag(tok[10], c.muted) || !tok[11].quoted)
-                    return fail(lineNo, "clip needs a gain, 0/1 for muted and a name in quotes");
-                c.name = tok[11].text;
-            }
-            p.clips.push_back(std::move(c));
-            clipLines.push_back(lineNo);
-        } else if (kw == "follow" || kw == "marker") {
-            // Format 8: both belong to the clip above them.
-            if (version < 8)
-                return fail(lineNo, "\"" + kw + "\" needs format 8 (this file is format " + std::to_string(version) + ")");
-            if (p.clips.empty())
-                return fail(lineNo, "\"" + kw + "\" needs a clip above it");
-            ClipState& c = p.clips.back();
-            if (kw == "follow") {
-                if (c.follow != engine::FollowMode::Off)
-                    return fail(lineNo, "the clip above already has a \"follow\"");
-                if (tok.size() != 3 || tok[1].quoted)
-                    return fail(lineNo, "follow needs start and a tick, or varispeed / stretch and a length in the source");
-                if (tok[1].text == "start") {
-                    if (!parseNumber(tok[2], c.startTick) || !std::isfinite(c.startTick))
-                        return fail(lineNo, "follow start needs a tick");
-                    c.follow = engine::FollowMode::Start;
-                } else if (tok[1].text == "varispeed" || tok[1].text == "stretch") {
-                    if (!parseNumber(tok[2], c.sourceLength) || c.sourceLength <= 0)
-                        return fail(lineNo, "follow " + tok[1].text + " needs a length in the source of at least 1 sample");
-                    c.follow = tok[1].text == "varispeed" ? engine::FollowMode::Varispeed : engine::FollowMode::Stretch;
-                } else {
-                    return fail(lineNo, "follow needs start, varispeed or stretch");
-                }
-            } else {
-                if (c.follow != engine::FollowMode::Varispeed && c.follow != engine::FollowMode::Stretch)
-                    return fail(lineNo, "a marker needs a clip above it that follows by varispeed or stretch");
-                engine::WarpMarker m;
-                if (tok.size() != 3 || !parseNumber(tok[1], m.source) || !parseNumber(tok[2], m.tick) || !std::isfinite(m.source) || !std::isfinite(m.tick))
-                    return fail(lineNo, "marker needs a position in the source and a tick");
-                if (!c.markers.empty() && (m.source <= c.markers.back().source || m.tick <= c.markers.back().tick))
-                    return fail(lineNo, "a marker must be after the one before it, in the source and in ticks");
-                c.markers.push_back(m);
-            }
-        } else if (kw == "takes") {
-            if (version < 5)
-                return fail(lineNo, "\"takes\" needs format 5 (this file is format " + std::to_string(version) + ")");
-            if (tok.size() < 5 || (tok.size() - 2) % 3 != 0 || !tok[1].quoted)
-                return fail(lineNo, "takes needs a file name in quotes, then a start, a source offset and a length per take");
-            TakeSetState s;
-            s.file = tok[1].text;
-            for (size_t i = 2; i < tok.size(); i += 3) {
-                TakeState t;
-                if (!parseNumber(tok[i], t.start) || t.start < 0 || !parseNumber(tok[i + 1], t.sourceOffset) || t.sourceOffset < 0 ||
-                    !parseNumber(tok[i + 2], t.length) || t.length <= 0)
-                    return fail(lineNo, "a take needs a start and a source offset of 0 or more, and a length of at least 1");
-                s.takes.push_back(t);
-            }
-            p.takeSets.push_back(std::move(s));
-        } else if (kw == "synth" || kw == "plugininstrument") {
-            if (version < 7)
-                return fail(lineNo, "\"" + kw + "\" needs format 7 (this file is format " + std::to_string(version) + ")");
-            SoundLine s;
-            s.line = lineNo;
-            s.plugin = kw == "plugininstrument";
-            if (tok.size() < 2 || !parseNumber(tok[1], s.track.value) || !s.track.isValid())
-                return fail(lineNo, kw + " needs a track id");
-            if (s.plugin) {
-                if (tok.size() != 4 || !tok[2].quoted || tok[2].text.empty() || !tok[3].quoted)
-                    return fail(lineNo, "plugininstrument needs a track id, a file and a state, both in quotes");
-                s.file = tok[2].text;
-                s.state = tok[3].text;
-            } else {
-                SynthState& y = s.synth;
-                if (tok.size() != 9 || !parseNumber(tok[2], y.cutoffHz) || !parseNumber(tok[3], y.resonance) || !parseNumber(tok[4], y.attack) ||
-                    !parseNumber(tok[5], y.decay) || !parseNumber(tok[6], y.sustain) || !parseNumber(tok[7], y.release) || !parseNumber(tok[8], y.level))
-                    return fail(lineNo, "synth needs a track id and 7 numbers");
-                const auto in = [](double v, double lo, double hi) { return v >= lo && v <= hi; };
-                if (!in(y.cutoffHz, 20.0, 20000.0) || !in(y.resonance, 0.1, 20.0) || !in(y.attack, 0.001, 10.0) || !in(y.decay, 0.001, 10.0) ||
-                    !in(y.sustain, 0.0, 1.0) || !in(y.release, 0.001, 10.0) || !in(y.level, 0.0, 1.0))
-                    return fail(lineNo, "synth: cutoff 20 .. 20000, resonance 0.1 .. 20, times 0.001 .. 10, sustain and level 0 .. 1");
-            }
-            for (const SoundLine& other : sounds)
-                if (other.track == s.track && other.plugin == s.plugin)
-                    return fail(lineNo, kw + " twice for track " + std::to_string(s.track.value));
-            sounds.push_back(std::move(s));
-        } else if (kw == "instrument" || kw == "midiclip" || kw == "note" || kw == "cc") {
-            if (version < 6)
-                return fail(lineNo, "\"" + kw + "\" needs format 6 (this file is format " + std::to_string(version) + ")");
-            if (kw == "instrument") {
-                engine::TrackId id;
-                if (tok.size() != 2 || !parseNumber(tok[1], id.value) || !id.isValid())
-                    return fail(lineNo, "instrument needs a track id");
-                instruments.push_back({lineNo, id});
-            } else if (kw == "midiclip") {
-                MidiClipState c;
-                int number = 0;
-                if (tok.size() != 11 || !parseNumber(tok[1], c.track.value) || !c.track.isValid() || !parseNumber(tok[2], number))
-                    return fail(lineNo, "midiclip needs a track id, a clip number, start, length, offset, muted, a name, grid, strength, swing");
-                if (!parseNumber(tok[3], c.start) || c.start < 0 || !parseNumber(tok[4], c.length) || c.length <= 0 ||
-                    !parseNumber(tok[5], c.offset) || c.offset < 0)
-                    return fail(lineNo, "a MIDI clip needs a start and an offset of 0 or more ticks, and a length of at least 1");
-                if (!parseFlag(tok[6], c.muted) || !tok[7].quoted)
-                    return fail(lineNo, "a MIDI clip needs 0/1 for muted and a name in quotes");
-                c.name = tok[7].text;
-                if (!parseNumber(tok[8], c.grid) || c.grid <= 0 || !parseNumber(tok[9], c.strength) || c.strength < 0.0f ||
-                    c.strength > 1.0f || !parseNumber(tok[10], c.swing) || c.swing < 0.0f || c.swing > 0.5f)
-                    return fail(lineNo, "quantize needs a grid of at least 1 tick, a strength from 0 to 1 and a swing from 0 to 0.5");
-                if (std::find(midiClipNumbers.begin(), midiClipNumbers.end(), number) != midiClipNumbers.end())
-                    return fail(lineNo, "MIDI clip number " + std::to_string(number) + " used twice");
-                midiClipNumbers.push_back(number);
-                midiClipLines.push_back(lineNo);
-                p.midiClips.push_back(std::move(c));
-            } else if (kw == "note") {
-                PendingNote e;
-                e.line = lineNo;
-                engine::Note& n = e.note;
-                if (tok.size() != 7 || !parseNumber(tok[1], e.clip) || !parseNumber(tok[2], n.start) || !parseNumber(tok[3], n.length) ||
-                    !parseNumber(tok[4], n.pitch) || !parseNumber(tok[5], n.velocity) || !parseNumber(tok[6], n.channel))
-                    return fail(lineNo, "note needs a clip number, start, length, pitch, velocity and channel");
-                if (n.start < 0 || n.length <= 0 || n.pitch < 0 || n.pitch > 127 || n.velocity < 1 || n.velocity > 127 || n.channel < 0 ||
-                    n.channel > 15)
-                    return fail(lineNo, "a note needs a start of 0 or more, a length of at least 1, a pitch 0-127, a velocity 1-127 "
-                                        "and a channel 0-15");
-                notes.push_back(e);
-            } else {
-                PendingCc e;
-                e.line = lineNo;
-                engine::ControllerPoint& c = e.cc;
-                if (tok.size() != 6 || !parseNumber(tok[1], e.clip) || !parseNumber(tok[2], c.tick) || !parseNumber(tok[3], c.number) ||
-                    !parseNumber(tok[4], c.value) || !parseNumber(tok[5], c.channel))
-                    return fail(lineNo, "cc needs a clip number, a tick, a controller, a value and a channel");
-                if (c.tick < 0 || c.number < 0 || c.number > 127 || c.value < 0 || c.value > 127 || c.channel < 0 || c.channel > 15)
-                    return fail(lineNo, "a controller point needs a tick of 0 or more, a controller and a value 0-127 and a channel 0-15");
-                ccs.push_back(e);
-            }
-        } else if (kw == "lane") {
-            if (version < 4)
-                return fail(lineNo, "\"lane\" needs format 4 (this file is format " + std::to_string(version) + ")");
-            PendingLane l;
-            l.line = lineNo;
-            if (tok.size() != 7 || !parseNumber(tok[1], l.number) || l.number <= 0 || !parseChannel(tok[2], l.channel) || !tok[4].quoted ||
-                tok[5].quoted)
-                return fail(lineNo, "lane needs a number, a channel, a slot or -, a parameter in quotes, a mode and a default");
-            if (tok[3].text != "-" && (!parseNumber(tok[3], l.lane.slot) || l.lane.slot < 0 || l.lane.slot >= kInsertSlotsPerStrip))
-                return fail(lineNo, "slot must be - or 0 .. " + std::to_string(kInsertSlotsPerStrip - 1));
-            l.lane.parameter = tok[4].text;
-            if (!parseMode(tok[5].text, l.lane.mode))
-                return fail(lineNo, "unknown mode \"" + tok[5].text + "\"");
-            if (!parseNumber(tok[6], l.lane.defaultValue) || l.lane.defaultValue < 0.0f || l.lane.defaultValue > 1.0f)
-                return fail(lineNo, "the default must be a number from 0 to 1");
-            lanes.push_back(std::move(l));
-        } else if (kw == "point") {
-            if (version < 4)
-                return fail(lineNo, "\"point\" needs format 4 (this file is format " + std::to_string(version) + ")");
-            PendingPoint e;
-            e.line = lineNo;
-            if (tok.size() != 5 || !parseNumber(tok[1], e.number) || tok[4].quoted)
-                return fail(lineNo, "point needs a lane number, a position, a value and a shape");
-            if (!parseNumber(tok[2], e.point.position) || e.point.position < 0)
-                return fail(lineNo, "a point's position must be 0 or more samples");
-            if (!parseNumber(tok[3], e.point.value) || e.point.value < 0.0f || e.point.value > 1.0f)
-                return fail(lineNo, "a point's value must be a number from 0 to 1");
-            if (tok[4].text != "linear" && tok[4].text != "hold")
-                return fail(lineNo, "unknown shape \"" + tok[4].text + "\"");
-            e.point.hold = tok[4].text == "hold";
-            points.push_back(e);
-        } else {
-            return fail(lineNo, "unknown keyword \"" + kw + "\"");
-        }
     }
 
-    if (version == 0)
-        return fail(lineNo, "not a DawLab project (empty file)");
-    if (!haveRate)
-        return fail(lineNo, "no sampleRate");
+private:
+    using LineReader = std::string (ProjectReader::*)();
+    using Step = Problem (ProjectReader::*)();
 
-    // ---- references, now that everything is read ----
-    auto stripOf = [&p](ChannelName c) -> StripState* {
+    // ---- one line ----
+
+    const std::string& keyword() const { return tok_[0].text; }
+
+    std::string readLine(std::string_view line) {
+        std::string error;
+        if (!splitLine(line, tok_, error))
+            return error;
+        if (tok_.empty())
+            return ""; // blank or comment
+        if (tok_[0].quoted)
+            return "a line must start with a keyword";
+        if (version_ == 0) // the first item must be the header
+            return readHeader();
+        const std::string problem = checkOrder();
+        if (!problem.empty())
+            return problem;
+        return readItem();
+    }
+
+    std::string readHeader() {
+        if (keyword() != "DawLabProject" || tok_.size() != 2)
+            return "not a DawLab project (no \"DawLabProject <version>\" header)";
+        if (!parseNumber(tok_[1], version_) || version_ < 1)
+            return "bad format version \"" + tok_[1].text + "\"";
+        if (version_ > kFormatVersion)
+            return "made by a newer DawLab (format " + std::to_string(version_) + ", this one reads up to " +
+                   std::to_string(kFormatVersion) + ")";
+        return "";
+    }
+
+    // sampleRate comes right after the header, and formats 1 and 2 know only four keywords.
+    std::string checkOrder() const {
+        const std::string& kw = keyword();
+        if (!haveRate_ && kw != "sampleRate")
+            return "sampleRate must come right after the header";
+        if (version_ < 3 && kw != "sampleRate" && kw != "nextTrackId" && kw != "track" && kw != "clip")
+            return needsFormat(3);
+        return "";
+    }
+
+    std::string needsFormat(int format) const {
+        return "\"" + keyword() + "\" needs format " + std::to_string(format) + " (this file is format " + std::to_string(version_) + ")";
+    }
+
+    // From the keyword to the member function that reads its line.
+    std::string readItem() {
+        static const std::pair<const char*, LineReader> kReaders[] = {
+            {"sampleRate", &ProjectReader::readSampleRate},
+            {"nextTrackId", &ProjectReader::readNextTrackId},
+            {"tempo", &ProjectReader::readTempo},
+            {"loop", &ProjectReader::readLoop},
+            {"tempopoint", &ProjectReader::readTempoPoint},
+            {"track", &ProjectReader::readTrack},
+            {"bus", &ProjectReader::readBus},
+            {"master", &ProjectReader::readMaster},
+            {"send", &ProjectReader::readSend},
+            {"insert", &ProjectReader::readInsert},
+            {"param", &ProjectReader::readParam},
+            {"clip", &ProjectReader::readClip},
+            {"follow", &ProjectReader::readFollow},
+            {"marker", &ProjectReader::readMarker},
+            {"takes", &ProjectReader::readTakes},
+            {"synth", &ProjectReader::readSynth},
+            {"plugininstrument", &ProjectReader::readPluginInstrument},
+            {"instrument", &ProjectReader::readInstrument},
+            {"midiclip", &ProjectReader::readMidiClip},
+            {"note", &ProjectReader::readNote},
+            {"cc", &ProjectReader::readCc},
+            {"lane", &ProjectReader::readLane},
+            {"point", &ProjectReader::readPoint},
+        };
+        for (const auto& [name, reader] : kReaders)
+            if (keyword() == name)
+                return (this->*reader)();
+        return "unknown keyword \"" + keyword() + "\"";
+    }
+
+    // ---- the song: rate, tempo, loop ----
+
+    std::string readSampleRate() {
+        if (haveRate_)
+            return "sampleRate given twice";
+        if (tok_.size() != 2 || !parseNumber(tok_[1], p_.sampleRate) || p_.sampleRate <= 0.0)
+            return "sampleRate needs one positive number";
+        haveRate_ = true;
+        return "";
+    }
+
+    std::string readNextTrackId() {
+        if (tok_.size() != 2 || !parseNumber(tok_[1], p_.nextTrackId))
+            return "nextTrackId needs one whole number";
+        return "";
+    }
+
+    std::string readTempo() {
+        if (tok_.size() != 4 || !parseNumber(tok_[1], p_.tempo) || !inRange(p_.tempo, 20.0, 999.0))
+            return "tempo needs BPM (20 .. 999), beats per bar and beat unit";
+        if (!parseNumber(tok_[2], p_.beatsPerBar) || !inRange(p_.beatsPerBar, 1, 32))
+            return "beats per bar must be 1 .. 32";
+        if (!parseNumber(tok_[3], p_.beatUnit) || !inRange(p_.beatUnit, 1, 32) || (p_.beatUnit & (p_.beatUnit - 1)) != 0)
+            return "the beat unit must be 1, 2, 4, 8, 16 or 32";
+        return "";
+    }
+
+    std::string readLoop() {
+        const bool ticks = version_ >= 7 && tok_.size() == 5 && tok_[4].text == "ticks";
+        if ((tok_.size() != 4 && !ticks) || !parseNumber(tok_[1], p_.loopStart) || !parseNumber(tok_[2], p_.loopEnd) ||
+            !parseFlag(tok_[3], p_.loopEnabled) || p_.loopStart < 0 || p_.loopEnd < p_.loopStart)
+            return version_ >= 7 ? "loop needs start >= 0, end >= start, 0/1 and, for a loop in ticks, \"ticks\""
+                                 : "loop needs start >= 0, end >= start (samples) and 0/1";
+        p_.loopInTicks = ticks;
+        return "";
+    }
+
+    std::string readTempoPoint() {
+        if (version_ < 7)
+            return "tempopoint needs format 7";
+        TempoPointState t;
+        if (tok_.size() != 4 || !parseNumber(tok_[1], t.tick) || !parseNumber(tok_[2], t.bpm) || !parseFlag(tok_[3], t.ramp) ||
+            !inRange(t.bpm, 20.0, 999.0))
+            return "tempopoint needs a tick, BPM (20 .. 999) and 0/1";
+        if (p_.tempoPoints.empty() ? t.tick != 0 : t.tick <= p_.tempoPoints.back().tick)
+            return "tempo points start at tick 0, each after the one before";
+        if (static_cast<int>(p_.tempoPoints.size()) == kMaxTempoPoints)
+            return "more than " + std::to_string(kMaxTempoPoints) + " tempo points";
+        p_.tempoPoints.push_back(t);
+        return "";
+    }
+
+    // ---- channels: tracks, buses, the master, and what is on them ----
+
+    std::string readTrack() {
+        const size_t expected = version_ >= 3 ? 8 : version_ == 2 ? 5 : 4; // 1: no pan; 3: format, mute, solo
+        if (tok_.size() != expected)
+            return "track needs " + std::to_string(expected - 1) + " values in format " + std::to_string(version_);
+        TrackState t;
+        if (!parseTrackId(tok_[1], t.id))
+            return "bad track id \"" + tok_[1].text + "\"";
+        if (!tok_[2].quoted)
+            return "the track name must be in quotes";
+        t.strip.name = tok_[2].text;
+        if (!parseNumber(tok_[3], t.strip.gainDb))
+            return "bad gain \"" + tok_[3].text + "\"";
+        if (version_ >= 2 && !parsePan(tok_[4], t.strip.pan))
+            return "pan must be a number from -1 to 1";
+        if (version_ >= 3) {
+            const std::string problem = readTrackSwitches(t);
+            if (!problem.empty())
+                return problem;
+        }
+        if (hasTrack(t.id))
+            return "track id " + tok_[1].text + " used twice";
+        p_.tracks.push_back(std::move(t));
+        return "";
+    }
+
+    // Format 3: the track's format, mute and solo.
+    std::string readTrackSwitches(TrackState& t) {
+        if (!isEither(tok_[5], "mono", "stereo"))
+            return "the track format must be mono or stereo";
+        t.format = tok_[5].text == "mono" ? engine::TrackFormat::Mono : engine::TrackFormat::Stereo;
+        if (!parseFlag(tok_[6], t.strip.mute) || !parseFlag(tok_[7], t.strip.solo))
+            return "mute and solo must be 0 or 1";
+        return "";
+    }
+
+    std::string readBus() {
+        if (tok_.size() != 6)
+            return "bus needs 5 values";
+        int b = 0;
+        if (!parseBus(tok_[1], b))
+            return busIndexProblem();
+        if (haveBus_[static_cast<size_t>(b)])
+            return "bus " + tok_[1].text + " given twice";
+        haveBus_[static_cast<size_t>(b)] = true;
+        return readStripValues(p_.buses[static_cast<size_t>(b)], 2);
+    }
+
+    std::string readMaster() {
+        if (tok_.size() != 5)
+            return "master needs 4 values";
+        if (haveMaster_)
+            return "master given twice";
+        haveMaster_ = true;
+        return readStripValues(p_.master, 1);
+    }
+
+    // A bus's or the master's name, gain, pan and mute; `first` is where the name is.
+    std::string readStripValues(StripState& s, size_t first) {
+        if (!tok_[first].quoted)
+            return "the name must be in quotes";
+        s.name = tok_[first].text;
+        if (!parseNumber(tok_[first + 1], s.gainDb) || !parsePan(tok_[first + 2], s.pan))
+            return "bad gain or pan";
+        if (!parseFlag(tok_[first + 3], s.mute))
+            return "mute must be 0 or 1";
+        return "";
+    }
+
+    std::string readSend() {
+        Pending s;
+        s.line = lineNo_;
+        if (tok_.size() != 5 || !parseChannel(tok_[1], s.channel))
+            return "send needs a channel, a bus, a level and 0/1 for pre-fader";
+        if (!parseBus(tok_[2], s.bus))
+            return busIndexProblem();
+        if (!parseNumber(tok_[3], s.send.levelDb) || !parseFlag(tok_[4], s.send.preFader))
+            return "bad send level or pre-fader flag";
+        sends_.push_back(s);
+        return "";
+    }
+
+    std::string readInsert() {
+        Pending s;
+        s.line = lineNo_;
+        if (tok_.size() < 6 || !parseChannel(tok_[1], s.channel))
+            return "insert needs a channel, a slot, a kind, an effect and 0/1 for bypassed";
+        if (!parseSlot(tok_[2], s.insert.slot))
+            return "slot must be 0 .. " + std::to_string(kInsertSlotsPerStrip - 1);
+        if (!isEither(tok_[3], "builtin", "vst3"))
+            return "the kind must be builtin or vst3";
+        s.insert.vst3 = tok_[3].text == "vst3";
+        if (tok_.size() != (s.insert.vst3 ? 7u : 6u))
+            return s.insert.vst3 ? "a vst3 insert needs a file, 0/1 and its state in quotes" : "a builtin insert needs an effect name and 0/1";
+        const std::string problem = readEffect(s.insert);
+        if (!problem.empty())
+            return problem;
+        inserts_.push_back(s);
+        return "";
+    }
+
+    // An insert's effect (a built-in one's name, or a plugin file), bypassed and, for a plugin, its state.
+    std::string readEffect(InsertState& insert) {
+        if (!tok_[4].quoted || tok_[4].text.empty())
+            return "the effect must be in quotes";
+        insert.type = tok_[4].text;
+        if (!parseFlag(tok_[5], insert.bypassed))
+            return "bypassed must be 0 or 1";
+        if (insert.vst3) {
+            if (!tok_[6].quoted)
+                return "the plugin state must be in quotes";
+            insert.state = tok_[6].text;
+        }
+        return "";
+    }
+
+    std::string readParam() {
+        Pending s;
+        s.line = lineNo_;
+        if (tok_.size() != 5 || !parseChannel(tok_[1], s.channel) || !parseNumber(tok_[2], s.insert.slot) || !tok_[3].quoted ||
+            !parseNumber(tok_[4], s.param.value))
+            return "param needs a channel, a slot, a name in quotes and a value";
+        s.param.name = tok_[3].text;
+        params_.push_back(s);
+        return "";
+    }
+
+    // ---- audio clips and takes ----
+
+    std::string readClip() {
+        const bool full = tok_.size() == 12;
+        if (tok_.size() != 5 && !(version_ >= 3 && full))
+            return version_ >= 3 ? "clip needs 4 or 11 values" : "clip needs 4 values";
+        ClipState c;
+        if (!parseTrackId(tok_[1], c.track))
+            return "bad track id \"" + tok_[1].text + "\"";
+        if (!parseNumber(tok_[2], c.start) || c.start < 0)
+            return "clip start must be 0 or more samples";
+        // At least 1, checked after the last line: a warped clip (format 8) may cover no sample of the song at its tempo.
+        if (!parseNumber(tok_[3], c.length) || c.length < 0)
+            return "clip length must be at least 1 sample";
+        if (!tok_[4].quoted)
+            return "the file name must be in quotes";
+        c.file = tok_[4].text;
+        if (full) {
+            const std::string problem = readClipDetails(c);
+            if (!problem.empty())
+                return problem;
+        }
+        p_.clips.push_back(std::move(c));
+        clipLines_.push_back(lineNo_);
+        return "";
+    }
+
+    // Format 3: a clip's source offset, fades, gain, muted and name.
+    std::string readClipDetails(ClipState& c) {
+        if (!parseNumber(tok_[5], c.sourceOffset) || c.sourceOffset < 0 || !parseNumber(tok_[6], c.fadeIn) ||
+            !parseNumber(tok_[7], c.fadeOut) || c.fadeIn < 0 || c.fadeOut < 0)
+            return "source offset and fades must be 0 or more samples";
+        if (!isEither(tok_[8], "linear", "equalPower"))
+            return "the fade shape must be linear or equalPower";
+        c.equalPowerFades = tok_[8].text == "equalPower";
+        if (!parseNumber(tok_[9], c.gainDb) || !parseFlag(tok_[10], c.muted) || !tok_[11].quoted)
+            return "clip needs a gain, 0/1 for muted and a name in quotes";
+        c.name = tok_[11].text;
+        return "";
+    }
+
+    // Format 8: "follow" and "marker" belong to the clip above them.
+    std::string checkClipAbove() const {
+        if (version_ < 8)
+            return needsFormat(8);
+        if (p_.clips.empty())
+            return "\"" + keyword() + "\" needs a clip above it";
+        return "";
+    }
+
+    std::string readFollow() {
+        const std::string problem = checkClipAbove();
+        if (!problem.empty())
+            return problem;
+        ClipState& c = p_.clips.back();
+        if (c.follow != engine::FollowMode::Off)
+            return "the clip above already has a \"follow\"";
+        if (tok_.size() != 3 || tok_[1].quoted)
+            return "follow needs start and a tick, or varispeed / stretch and a length in the source";
+        if (tok_[1].text == "start")
+            return readFollowStart(c);
+        if (tok_[1].text == "varispeed" || tok_[1].text == "stretch")
+            return readFollowWarped(c);
+        return "follow needs start, varispeed or stretch";
+    }
+
+    std::string readFollowStart(ClipState& c) {
+        if (!parseNumber(tok_[2], c.startTick) || !std::isfinite(c.startTick))
+            return "follow start needs a tick";
+        c.follow = engine::FollowMode::Start;
+        return "";
+    }
+
+    // "follow varispeed" or "follow stretch": the length in the source. The markers follow on their own lines.
+    std::string readFollowWarped(ClipState& c) {
+        if (!parseNumber(tok_[2], c.sourceLength) || c.sourceLength <= 0)
+            return "follow " + tok_[1].text + " needs a length in the source of at least 1 sample";
+        c.follow = tok_[1].text == "varispeed" ? engine::FollowMode::Varispeed : engine::FollowMode::Stretch;
+        return "";
+    }
+
+    std::string readMarker() {
+        const std::string problem = checkClipAbove();
+        if (!problem.empty())
+            return problem;
+        ClipState& c = p_.clips.back();
+        if (c.follow != engine::FollowMode::Varispeed && c.follow != engine::FollowMode::Stretch)
+            return "a marker needs a clip above it that follows by varispeed or stretch";
+        engine::WarpMarker m;
+        if (tok_.size() != 3 || !parseNumber(tok_[1], m.source) || !parseNumber(tok_[2], m.tick) || !std::isfinite(m.source) ||
+            !std::isfinite(m.tick))
+            return "marker needs a position in the source and a tick";
+        if (!c.markers.empty() && (m.source <= c.markers.back().source || m.tick <= c.markers.back().tick))
+            return "a marker must be after the one before it, in the source and in ticks";
+        c.markers.push_back(m);
+        return "";
+    }
+
+    std::string readTakes() {
+        if (version_ < 5)
+            return needsFormat(5);
+        if (tok_.size() < 5 || (tok_.size() - 2) % 3 != 0 || !tok_[1].quoted)
+            return "takes needs a file name in quotes, then a start, a source offset and a length per take";
+        TakeSetState s;
+        s.file = tok_[1].text;
+        for (size_t i = 2; i < tok_.size(); i += 3) {
+            TakeState t;
+            if (!parseNumber(tok_[i], t.start) || t.start < 0 || !parseNumber(tok_[i + 1], t.sourceOffset) || t.sourceOffset < 0 ||
+                !parseNumber(tok_[i + 2], t.length) || t.length <= 0)
+                return "a take needs a start and a source offset of 0 or more, and a length of at least 1";
+            s.takes.push_back(t);
+        }
+        p_.takeSets.push_back(std::move(s));
+        return "";
+    }
+
+    // ---- instruments and MIDI clips ----
+
+    // Format 7: the track of a synth or plugininstrument line.
+    std::string readSoundTrack(SoundLine& s) const {
+        if (version_ < 7)
+            return needsFormat(7);
+        s.line = lineNo_;
+        if (tok_.size() < 2 || !parseTrackId(tok_[1], s.track))
+            return keyword() + " needs a track id";
+        return "";
+    }
+
+    std::string readSynth() {
+        SoundLine s;
+        const std::string problem = readSoundTrack(s);
+        if (!problem.empty())
+            return problem;
+        if (!parseSynth(tok_, s.synth))
+            return "synth needs a track id and 7 numbers";
+        if (!synthInRange(s.synth))
+            return "synth: cutoff 20 .. 20000, resonance 0.1 .. 20, times 0.001 .. 10, sustain and level 0 .. 1";
+        return addSound(std::move(s));
+    }
+
+    std::string readPluginInstrument() {
+        SoundLine s;
+        s.plugin = true;
+        const std::string problem = readSoundTrack(s);
+        if (!problem.empty())
+            return problem;
+        if (tok_.size() != 4 || !tok_[2].quoted || tok_[2].text.empty() || !tok_[3].quoted)
+            return "plugininstrument needs a track id, a file and a state, both in quotes";
+        s.file = tok_[2].text;
+        s.state = tok_[3].text;
+        return addSound(std::move(s));
+    }
+
+    // A track has at most one synth line and one plugininstrument line.
+    std::string addSound(SoundLine s) {
+        for (const SoundLine& other : sounds_)
+            if (other.track == s.track && other.plugin == s.plugin)
+                return keyword() + " twice for track " + std::to_string(s.track.value);
+        sounds_.push_back(std::move(s));
+        return "";
+    }
+
+    std::string readInstrument() {
+        if (version_ < 6)
+            return needsFormat(6);
+        engine::TrackId id;
+        if (tok_.size() != 2 || !parseTrackId(tok_[1], id))
+            return "instrument needs a track id";
+        instruments_.push_back({lineNo_, id});
+        return "";
+    }
+
+    std::string readMidiClip() {
+        if (version_ < 6)
+            return needsFormat(6);
+        MidiClipState c;
+        int number = 0;
+        if (tok_.size() != 11 || !parseTrackId(tok_[1], c.track) || !parseNumber(tok_[2], number))
+            return "midiclip needs a track id, a clip number, start, length, offset, muted, a name, grid, strength, swing";
+        const std::string problem = readMidiClipValues(c);
+        if (!problem.empty())
+            return problem;
+        if (std::find(midiClipNumbers_.begin(), midiClipNumbers_.end(), number) != midiClipNumbers_.end())
+            return "MIDI clip number " + std::to_string(number) + " used twice";
+        midiClipNumbers_.push_back(number);
+        midiClipLines_.push_back(lineNo_);
+        p_.midiClips.push_back(std::move(c));
+        return "";
+    }
+
+    // A MIDI clip's start, length, offset, muted and name, then its quantize.
+    std::string readMidiClipValues(MidiClipState& c) {
+        if (!parseNumber(tok_[3], c.start) || c.start < 0 || !parseNumber(tok_[4], c.length) || c.length <= 0 ||
+            !parseNumber(tok_[5], c.offset) || c.offset < 0)
+            return "a MIDI clip needs a start and an offset of 0 or more ticks, and a length of at least 1";
+        if (!parseFlag(tok_[6], c.muted) || !tok_[7].quoted)
+            return "a MIDI clip needs 0/1 for muted and a name in quotes";
+        c.name = tok_[7].text;
+        return readQuantize(c);
+    }
+
+    std::string readQuantize(MidiClipState& c) {
+        if (!parseNumber(tok_[8], c.grid) || c.grid <= 0 || !parseNumber(tok_[9], c.strength) || !inRange(c.strength, 0.0f, 1.0f) ||
+            !parseNumber(tok_[10], c.swing) || !inRange(c.swing, 0.0f, 0.5f))
+            return "quantize needs a grid of at least 1 tick, a strength from 0 to 1 and a swing from 0 to 0.5";
+        return "";
+    }
+
+    std::string readNote() {
+        if (version_ < 6)
+            return needsFormat(6);
+        PendingNote e;
+        e.line = lineNo_;
+        engine::Note& n = e.note;
+        if (tok_.size() != 7 || !parseNumber(tok_[1], e.clip) || !parseNumber(tok_[2], n.start) || !parseNumber(tok_[3], n.length) ||
+            !parseNumber(tok_[4], n.pitch) || !parseNumber(tok_[5], n.velocity) || !parseNumber(tok_[6], n.channel))
+            return "note needs a clip number, start, length, pitch, velocity and channel";
+        if (!noteInRange(n))
+            return "a note needs a start of 0 or more, a length of at least 1, a pitch 0-127, a velocity 1-127 and a channel 0-15";
+        notes_.push_back(e);
+        return "";
+    }
+
+    std::string readCc() {
+        if (version_ < 6)
+            return needsFormat(6);
+        PendingCc e;
+        e.line = lineNo_;
+        engine::ControllerPoint& c = e.cc;
+        if (tok_.size() != 6 || !parseNumber(tok_[1], e.clip) || !parseNumber(tok_[2], c.tick) || !parseNumber(tok_[3], c.number) ||
+            !parseNumber(tok_[4], c.value) || !parseNumber(tok_[5], c.channel))
+            return "cc needs a clip number, a tick, a controller, a value and a channel";
+        if (!controllerInRange(c))
+            return "a controller point needs a tick of 0 or more, a controller and a value 0-127 and a channel 0-15";
+        ccs_.push_back(e);
+        return "";
+    }
+
+    // ---- automation (format 4) ----
+
+    std::string readLane() {
+        if (version_ < 4)
+            return needsFormat(4);
+        PendingLane l;
+        l.line = lineNo_;
+        if (tok_.size() != 7 || !parseNumber(tok_[1], l.number) || l.number <= 0 || !parseChannel(tok_[2], l.channel) || !tok_[4].quoted ||
+            tok_[5].quoted)
+            return "lane needs a number, a channel, a slot or -, a parameter in quotes, a mode and a default";
+        if (tok_[3].text != "-" && !parseSlot(tok_[3], l.lane.slot))
+            return "slot must be - or 0 .. " + std::to_string(kInsertSlotsPerStrip - 1);
+        l.lane.parameter = tok_[4].text;
+        if (!parseMode(tok_[5].text, l.lane.mode))
+            return "unknown mode \"" + tok_[5].text + "\"";
+        if (!parseNumber(tok_[6], l.lane.defaultValue) || !inRange(l.lane.defaultValue, 0.0f, 1.0f))
+            return "the default must be a number from 0 to 1";
+        lanes_.push_back(std::move(l));
+        return "";
+    }
+
+    std::string readPoint() {
+        if (version_ < 4)
+            return needsFormat(4);
+        PendingPoint e;
+        e.line = lineNo_;
+        if (tok_.size() != 5 || !parseNumber(tok_[1], e.number) || tok_[4].quoted)
+            return "point needs a lane number, a position, a value and a shape";
+        if (!parseNumber(tok_[2], e.point.position) || e.point.position < 0)
+            return "a point's position must be 0 or more samples";
+        if (!parseNumber(tok_[3], e.point.value) || !inRange(e.point.value, 0.0f, 1.0f))
+            return "a point's value must be a number from 0 to 1";
+        if (tok_[4].text != "linear" && tok_[4].text != "hold")
+            return "unknown shape \"" + tok_[4].text + "\"";
+        e.point.hold = tok_[4].text == "hold";
+        points_.push_back(e);
+        return "";
+    }
+
+    // ---- after the last line: references, now that everything is read ----
+
+    Problem finish() {
+        if (version_ == 0)
+            return {lineNo_, "not a DawLab project (empty file)"};
+        if (!haveRate_)
+            return {lineNo_, "no sampleRate"};
+        // One step after the other, in this order: of several problems, the first one found is the one reported.
+        for (const Step step : {&ProjectReader::resolveSends, &ProjectReader::resolveInserts, &ProjectReader::resolveParams,
+                                &ProjectReader::checkLanes, &ProjectReader::resolvePoints, &ProjectReader::checkClips,
+                                &ProjectReader::resolveInstruments, &ProjectReader::resolveSounds, &ProjectReader::checkMidiClips,
+                                &ProjectReader::resolveNotes, &ProjectReader::resolveCcs, &ProjectReader::checkTrackIds}) {
+            Problem problem = (this->*step)();
+            if (!problem.message.empty())
+                return problem;
+        }
+        placeLanes();
+        sortInserts();
+        sortMidiClips();
+        p_.nextTrackId = std::max(p_.nextTrackId, maxTrackId() + 1); // never hand out an id that is in the file
+        return {};
+    }
+
+    StripState* stripOf(ChannelName c) {
         switch (c.kind) {
         case ChannelName::Kind::Track:
-            for (TrackState& t : p.tracks)
+            for (TrackState& t : p_.tracks)
                 if (t.id.value == c.index)
                     return &t.strip;
             return nullptr;
-        case ChannelName::Kind::Bus: return &p.buses[c.index];
-        case ChannelName::Kind::Master: return &p.master;
+        case ChannelName::Kind::Bus: return &p_.buses[c.index];
+        case ChannelName::Kind::Master: return &p_.master;
         }
         return nullptr;
-    };
-    const auto noSuchTrack = [](const Pending& s) { return "there is no " + channelText(s.channel); };
-    for (const Pending& s : sends) {
-        StripState* strip = stripOf(s.channel);
-        if (strip == nullptr)
-            return fail(s.line, noSuchTrack(s));
-        strip->sends[static_cast<size_t>(s.bus)] = s.send;
     }
-    for (const Pending& s : inserts) {
-        StripState* strip = stripOf(s.channel);
-        if (strip == nullptr)
-            return fail(s.line, noSuchTrack(s));
-        for (const InsertState& other : strip->inserts)
-            if (other.slot == s.insert.slot)
-                return fail(s.line, "slot " + std::to_string(s.insert.slot) + " of " + channelText(s.channel) + " used twice");
-        strip->inserts.push_back(s.insert);
+
+    bool hasTrack(engine::TrackId id) const {
+        return std::any_of(p_.tracks.begin(), p_.tracks.end(), [id](const TrackState& t) { return t.id == id; });
     }
-    for (const Pending& s : params) {
-        StripState* strip = stripOf(s.channel);
-        InsertState* target = nullptr;
-        if (strip != nullptr)
-            for (InsertState& ins : strip->inserts)
-                if (ins.slot == s.insert.slot)
-                    target = &ins;
-        if (target == nullptr || target->vst3)
-            return fail(s.line, "param for slot " + std::to_string(s.insert.slot) + " of " + channelText(s.channel) +
-                                    ", which has no built-in insert");
-        target->params.push_back(s.param);
+
+    std::uint32_t maxTrackId() const {
+        std::uint32_t maxId = 0;
+        for (const TrackState& t : p_.tracks)
+            maxId = std::max(maxId, t.id.value);
+        return maxId;
     }
+
+    Problem resolveSends() {
+        for (const Pending& s : sends_) {
+            StripState* strip = stripOf(s.channel);
+            if (strip == nullptr)
+                return {s.line, "there is no " + channelText(s.channel)};
+            strip->sends[static_cast<size_t>(s.bus)] = s.send;
+        }
+        return {};
+    }
+
+    Problem resolveInserts() {
+        for (const Pending& s : inserts_) {
+            StripState* strip = stripOf(s.channel);
+            if (strip == nullptr)
+                return {s.line, "there is no " + channelText(s.channel)};
+            for (const InsertState& other : strip->inserts)
+                if (other.slot == s.insert.slot)
+                    return {s.line, "slot " + std::to_string(s.insert.slot) + " of " + channelText(s.channel) + " used twice"};
+            strip->inserts.push_back(s.insert);
+        }
+        return {};
+    }
+
+    Problem resolveParams() {
+        for (const Pending& s : params_) {
+            StripState* strip = stripOf(s.channel);
+            InsertState* target = nullptr;
+            if (strip != nullptr)
+                for (InsertState& ins : strip->inserts)
+                    if (ins.slot == s.insert.slot)
+                        target = &ins;
+            if (target == nullptr || target->vst3)
+                return {s.line, "param for slot " + std::to_string(s.insert.slot) + " of " + channelText(s.channel) +
+                                    ", which has no built-in insert"};
+            target->params.push_back(s.param);
+        }
+        return {};
+    }
+
     // Lanes: what they refer to must exist. A parameter the effect does not know is NOT checked: that
     // is for the program that knows the effect, and such a lane stays (see ProjectFormat.h).
-    for (size_t i = 0; i < lanes.size(); ++i) {
-        PendingLane& l = lanes[i];
-        const StripState* strip = stripOf(l.channel);
-        if (strip == nullptr)
-            return fail(l.line, "lane on " + channelText(l.channel) + ", which does not exist");
-        if (l.lane.slot >= 0 && std::none_of(strip->inserts.begin(), strip->inserts.end(),
-                                             [&l](const InsertState& ins) { return ins.slot == l.lane.slot; }))
-            return fail(l.line, "lane for slot " + std::to_string(l.lane.slot) + " of " + channelText(l.channel) + ", which has no insert");
-        for (size_t j = 0; j < i; ++j) {
-            if (lanes[j].number == l.number)
-                return fail(l.line, "lane number " + std::to_string(l.number) + " used twice");
-            if (lanes[j].channel.kind == l.channel.kind && lanes[j].channel.index == l.channel.index && lanes[j].lane.slot == l.lane.slot &&
-                lanes[j].lane.parameter == l.lane.parameter)
-                return fail(l.line, "two lanes for one parameter");
+    Problem checkLanes() {
+        for (size_t i = 0; i < lanes_.size(); ++i) {
+            const PendingLane& l = lanes_[i];
+            const StripState* strip = stripOf(l.channel);
+            if (strip == nullptr)
+                return {l.line, "lane on " + channelText(l.channel) + ", which does not exist"};
+            if (l.lane.slot >= 0 && std::none_of(strip->inserts.begin(), strip->inserts.end(),
+                                                 [&l](const InsertState& ins) { return ins.slot == l.lane.slot; }))
+                return {l.line, "lane for slot " + std::to_string(l.lane.slot) + " of " + channelText(l.channel) + ", which has no insert"};
+            for (size_t j = 0; j < i; ++j) {
+                if (lanes_[j].number == l.number)
+                    return {l.line, "lane number " + std::to_string(l.number) + " used twice"};
+                if (sameParameter(lanes_[j], l))
+                    return {l.line, "two lanes for one parameter"};
+            }
+        }
+        return {};
+    }
+
+    Problem resolvePoints() {
+        for (const PendingPoint& e : points_) {
+            const auto owner = std::find_if(lanes_.begin(), lanes_.end(), [&e](const PendingLane& l) { return l.number == e.number; });
+            if (owner == lanes_.end())
+                return {e.line, "point for lane " + std::to_string(e.number) + ", which does not exist"};
+            owner->lane.points.push_back(e.point);
+        }
+        return {};
+    }
+
+    Problem checkClips() {
+        for (size_t i = 0; i < p_.clips.size(); ++i) {
+            const TrackId owner = p_.clips[i].track;
+            if (!hasTrack(owner))
+                return {clipLines_[i], "clip on track " + std::to_string(owner.value) + ", which does not exist"};
+            const std::string problem = followProblem(p_.clips[i]);
+            if (!problem.empty())
+                return {clipLines_[i], problem};
+        }
+        return {};
+    }
+
+    Problem resolveInstruments() {
+        for (const auto& [line, id] : instruments_) {
+            if (!hasTrack(id))
+                return {line, "instrument track " + std::to_string(id.value) + ", which does not exist"};
+            for (TrackState& t : p_.tracks)
+                if (t.id == id)
+                    t.instrument = true;
+        }
+        return {};
+    }
+
+    Problem resolveSounds() {
+        for (const SoundLine& s : sounds_) {
+            if (!hasTrack(s.track))
+                return {s.line, "the instrument of track " + std::to_string(s.track.value) + ", which does not exist"};
+            for (TrackState& t : p_.tracks)
+                if (t.id == s.track) {
+                    if (s.plugin) {
+                        t.instrumentFile = s.file;
+                        t.instrumentState = s.state;
+                    } else {
+                        t.synth = s.synth;
+                    }
+                }
+        }
+        return {};
+    }
+
+    Problem checkMidiClips() {
+        for (size_t i = 0; i < p_.midiClips.size(); ++i)
+            if (!hasTrack(p_.midiClips[i].track))
+                return {midiClipLines_[i], "MIDI clip on track " + std::to_string(p_.midiClips[i].track.value) + ", which does not exist"};
+        return {};
+    }
+
+    MidiClipState* midiClipNumbered(int number) {
+        const auto it = std::find(midiClipNumbers_.begin(), midiClipNumbers_.end(), number);
+        return it == midiClipNumbers_.end() ? nullptr : &p_.midiClips[static_cast<size_t>(it - midiClipNumbers_.begin())];
+    }
+
+    Problem resolveNotes() {
+        for (const PendingNote& e : notes_) {
+            MidiClipState* c = midiClipNumbered(e.clip);
+            if (c == nullptr)
+                return {e.line, "note for MIDI clip " + std::to_string(e.clip) + ", which does not exist"};
+            c->notes.push_back(e.note);
+        }
+        return {};
+    }
+
+    Problem resolveCcs() {
+        for (const PendingCc& e : ccs_) {
+            MidiClipState* c = midiClipNumbered(e.clip);
+            if (c == nullptr)
+                return {e.line, "cc for MIDI clip " + std::to_string(e.clip) + ", which does not exist"};
+            c->controllers.push_back(e.cc);
+        }
+        return {};
+    }
+
+    Problem checkTrackIds() {
+        if (maxTrackId() == std::numeric_limits<std::uint32_t>::max())
+            return {lineNo_, "no track ids left"};
+        return {};
+    }
+
+    // Each lane onto its channel, its points by position (at one position in the order of their lines).
+    void placeLanes() {
+        for (PendingLane& l : lanes_) {
+            std::stable_sort(l.lane.points.begin(), l.lane.points.end(),
+                             [](const PointState& a, const PointState& b) { return a.position < b.position; });
+            stripOf(l.channel)->lanes.push_back(std::move(l.lane));
         }
     }
-    for (const PendingPoint& e : points) {
-        const auto owner = std::find_if(lanes.begin(), lanes.end(), [&e](const PendingLane& l) { return l.number == e.number; });
-        if (owner == lanes.end())
-            return fail(e.line, "point for lane " + std::to_string(e.number) + ", which does not exist");
-        owner->lane.points.push_back(e.point);
-    }
-    for (PendingLane& l : lanes) {
-        std::stable_sort(l.lane.points.begin(), l.lane.points.end(),
-                         [](const PointState& a, const PointState& b) { return a.position < b.position; });
-        stripOf(l.channel)->lanes.push_back(std::move(l.lane));
+
+    void sortInserts() {
+        auto bySlot = [](const InsertState& a, const InsertState& b) { return a.slot < b.slot; };
+        for (TrackState& t : p_.tracks)
+            std::sort(t.strip.inserts.begin(), t.strip.inserts.end(), bySlot);
+        for (StripState& b : p_.buses)
+            std::sort(b.inserts.begin(), b.inserts.end(), bySlot);
+        std::sort(p_.master.inserts.begin(), p_.master.inserts.end(), bySlot);
     }
 
-    auto bySlot = [](const InsertState& a, const InsertState& b) { return a.slot < b.slot; };
-    for (TrackState& t : p.tracks)
-        std::sort(t.strip.inserts.begin(), t.strip.inserts.end(), bySlot);
-    for (StripState& b : p.buses)
-        std::sort(b.inserts.begin(), b.inserts.end(), bySlot);
-    std::sort(p.master.inserts.begin(), p.master.inserts.end(), bySlot);
+    void sortMidiClips() {
+        for (MidiClipState& c : p_.midiClips) {
+            std::stable_sort(c.notes.begin(), c.notes.end(), [](const engine::Note& a, const engine::Note& b) { return a.start < b.start; });
+            std::stable_sort(c.controllers.begin(), c.controllers.end(),
+                             [](const engine::ControllerPoint& a, const engine::ControllerPoint& b) { return a.tick < b.tick; });
+        }
+    }
 
-    std::uint32_t maxId = 0;
-    for (const TrackState& t : p.tracks)
-        maxId = std::max(maxId, t.id.value);
-    for (size_t i = 0; i < p.clips.size(); ++i) {
-        const TrackId owner = p.clips[i].track;
-        if (std::none_of(p.tracks.begin(), p.tracks.end(), [owner](const TrackState& t) { return t.id == owner; }))
-            return fail(clipLines[i], "clip on track " + std::to_string(owner.value) + ", which does not exist");
-        const std::string problem = followProblem(p.clips[i]);
-        if (!problem.empty())
-            return fail(clipLines[i], problem);
-    }
-    auto hasTrack = [&p](engine::TrackId id) {
-        return std::any_of(p.tracks.begin(), p.tracks.end(), [id](const TrackState& t) { return t.id == id; });
-    };
-    for (const auto& [line, id] : instruments) {
-        if (!hasTrack(id))
-            return fail(line, "instrument track " + std::to_string(id.value) + ", which does not exist");
-        for (TrackState& t : p.tracks)
-            if (t.id == id)
-                t.instrument = true;
-    }
-    for (const SoundLine& s : sounds) {
-        if (!hasTrack(s.track))
-            return fail(s.line, "the instrument of track " + std::to_string(s.track.value) + ", which does not exist");
-        for (TrackState& t : p.tracks)
-            if (t.id == s.track) {
-                if (s.plugin) {
-                    t.instrumentFile = s.file;
-                    t.instrumentState = s.state;
-                } else {
-                    t.synth = s.synth;
-                }
-            }
-    }
-    for (size_t i = 0; i < p.midiClips.size(); ++i)
-        if (!hasTrack(p.midiClips[i].track))
-            return fail(midiClipLines[i], "MIDI clip on track " + std::to_string(p.midiClips[i].track.value) + ", which does not exist");
-    auto clipNumbered = [&](int number) -> MidiClipState* {
-        const auto it = std::find(midiClipNumbers.begin(), midiClipNumbers.end(), number);
-        return it == midiClipNumbers.end() ? nullptr : &p.midiClips[static_cast<size_t>(it - midiClipNumbers.begin())];
-    };
-    for (const PendingNote& e : notes) {
-        MidiClipState* c = clipNumbered(e.clip);
-        if (c == nullptr)
-            return fail(e.line, "note for MIDI clip " + std::to_string(e.clip) + ", which does not exist");
-        c->notes.push_back(e.note);
-    }
-    for (const PendingCc& e : ccs) {
-        MidiClipState* c = clipNumbered(e.clip);
-        if (c == nullptr)
-            return fail(e.line, "cc for MIDI clip " + std::to_string(e.clip) + ", which does not exist");
-        c->controllers.push_back(e.cc);
-    }
-    for (MidiClipState& c : p.midiClips) {
-        std::stable_sort(c.notes.begin(), c.notes.end(), [](const engine::Note& a, const engine::Note& b) { return a.start < b.start; });
-        std::stable_sort(c.controllers.begin(), c.controllers.end(),
-                         [](const engine::ControllerPoint& a, const engine::ControllerPoint& b) { return a.tick < b.tick; });
-    }
-    if (maxId == std::numeric_limits<std::uint32_t>::max())
-        return fail(lineNo, "no track ids left");
-    p.nextTrackId = std::max(p.nextTrackId, maxId + 1); // never hand out an id that is in the file
+    ProjectState p_;
+    int version_ = 0;
+    int lineNo_ = 0;
+    bool haveRate_ = false;
+    std::array<bool, engine::kNumBuses> haveBus_{};
+    bool haveMaster_ = false;
+    std::vector<Token> tok_; // the line being read
 
-    ReadResult r;
-    r.ok = true;
-    r.project = std::move(p);
-    r.formatVersion = version;
-    return r;
-}
+    std::vector<Pending> sends_, inserts_, params_;
+    std::vector<PendingLane> lanes_;
+    std::vector<PendingPoint> points_;
+    std::vector<int> clipLines_;
+    // Format 6: MIDI clips by their number in the file, and what refers to them.
+    std::vector<int> midiClipNumbers_, midiClipLines_;
+    std::vector<PendingNote> notes_;
+    std::vector<PendingCc> ccs_;
+    std::vector<std::pair<int, engine::TrackId>> instruments_; // line, track
+    std::vector<SoundLine> sounds_;
+};
+
+} // namespace
+
+ReadResult readProject(std::string_view text) { return ProjectReader().read(text); }
 
 } // namespace dawlab::app::project
