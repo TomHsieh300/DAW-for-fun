@@ -330,18 +330,18 @@ void testRender() {
     DAWLAB_CHECK(stretchSettingsFor(48000.0).window == 1024 && stretchSettingsFor(48000.0).search == 256);
     DAWLAB_CHECK(stretchSettingsFor(96000.0).window == 2048 && stretchSettingsFor(96000.0).search == 512 && stretchSettingsFor(44100.0).window % 2 == 0);
     {
-        // The pitch of a 55 Hz tone of 4 s (8 beats at 120 BPM), stretched to 60 BPM at `rate`, from the crossings
+        // The pitch of a 55 Hz tone of 2 s (4 beats at 120 BPM), stretched to 60 BPM at `rate`, from the crossings
         // of zero in its middle half.
         const auto stretched55 = [&at60](double rate) {
-            auto low = std::make_shared<AudioBuffer>(1, static_cast<int>(4 * rate));
+            auto low = std::make_shared<AudioBuffer>(1, static_cast<int>(2 * rate));
             for (int i = 0; i < low->getNumSamples(); ++i)
                 low->setSample(0, i, static_cast<float>(0.5 * std::sin(kTwoPi * 55.0 * i / rate)));
             FollowClip bass;
             bass.clip = Clip::fromBuffer(low, 0, "bass");
             bass.mode = FollowMode::Stretch;
-            bass.markers = markersForLoop(0, low->getNumSamples(), 8.0, 0.0);
+            bass.markers = markersForLoop(0, low->getNumSamples(), 4.0, 0.0);
             Clip out;
-            if (!renderFollowClip(bass, at60, rate, out) || !out.source || out.length != static_cast<std::int64_t>(8 * rate))
+            if (!renderFollowClip(bass, at60, rate, out) || !out.source || out.length != static_cast<std::int64_t>(4 * rate))
                 return 0.0;
             const float* y = out.source->getReadPointer(0);
             const int from = static_cast<int>(out.length / 4), to = static_cast<int>(3 * out.length / 4);
@@ -621,7 +621,8 @@ void testThroughTheEngine() {
     take.mode = FollowMode::Off;
     track.update({take, second}, at120, kSampleRate);
     DAWLAB_CHECK(track.isUpToDate() && track.getNumClips() == 2 && track.playable()[0].source == clicks && track.playable()[0].start == 0);
-    DAWLAB_CHECK(track.playable()[1].start == sampleOfTick(at120, kSampleRate, second.startTick) && track.getClip(1).mode == FollowMode::Start);
+    // Anchored at sample 5000 under 100 BPM, at 120 BPM it starts at 5000 * 100 / 120 samples.
+    DAWLAB_CHECK(track.playable()[1].start == std::llround(5000.0 * 100.0 / 120.0) && track.getClip(1).mode == FollowMode::Start);
     track.update({}, at120, kSampleRate);
     DAWLAB_CHECK(track.getNumClips() == 0 && track.playable().empty() && track.isUpToDate());
     send(at120, track);
@@ -848,6 +849,127 @@ void testClipsThatCarryIt() {
     std::printf("  a clip that carries how it follows: its mode changed, placed, moved and cut - the pieces of 200 cuts tile its source\n");
 }
 
+// ---- 8 -------------------------------------------------------------------------------------------------------
+
+// The edges that the tests above go past without looking: what the mutants of these headers showed untested.
+void testEdges() {
+    // A warp map of many markers, looked up both ways, also exactly on a marker: as the plain walk along them.
+    std::mt19937 rng(80);
+    std::vector<WarpMarker> many{{0.0, 0.0}};
+    for (int i = 1; i < 40; ++i)
+        many.push_back({many.back().source + std::uniform_int_distribution<int>(100, 5000)(rng), many.back().tick + std::uniform_int_distribution<int>(10, 900)(rng)});
+    WarpMap warp;
+    DAWLAB_CHECK(warp.set(many));
+    const auto walk = [&many](double x, bool byTick) {
+        size_t i = 0;
+        while (i + 2 < many.size() && (byTick ? many[i + 1].tick : many[i + 1].source) <= x)
+            ++i;
+        const WarpMarker &a = many[i], &b = many[i + 1];
+        return byTick ? a.source + (x - a.tick) * (b.source - a.source) / (b.tick - a.tick) : a.tick + (x - a.source) * (b.tick - a.tick) / (b.source - a.source);
+    };
+    int wrong = 0;
+    for (size_t i = 0; i < many.size(); ++i)
+        for (const double nudge : {-0.5, 0.0, 0.5}) {
+            wrong += std::fabs(warp.sourceAt(many[i].tick + nudge) - walk(many[i].tick + nudge, true)) < 1e-6 ? 0 : 1;
+            wrong += std::fabs(warp.tickAt(many[i].source + nudge) - walk(many[i].source + nudge, false)) < 1e-6 ? 0 : 1;
+        }
+    DAWLAB_CHECK(wrong == 0);
+
+    // How many markers a ramp gets, from the two bounds of Step 1: a ramp from 60 to 120 BPM over bars 2 to 5,
+    // after a bar of 120. With 1 ms and a speed that may be a whole semitone off, the place decides (46 pieces);
+    // with 1 cent the speed does (866). Each piece is a marker, and there is one at the take's start.
+    const TempoMap ramp = mapOf({{0, 120.0, false}, {kBar, 60.0, true}, {5 * kBar, 120.0, false}});
+    const std::int64_t rampStart = 4 * kBeatAt120, rampEnd = rampStart + std::llround(16.0 * std::log(2.0) * kSampleRate);
+    const std::size_t byPlace = markersForTake(ramp, kSampleRate, rampStart, 0, rampEnd - rampStart, 0.001, 100.0).size();
+    const std::size_t bySpeed = markersForTake(ramp, kSampleRate, rampStart, 0, rampEnd - rampStart, 0.001, 1.0).size();
+    std::printf("  a ramp from 60 to 120 BPM over four bars: %zu markers for 1 ms, %zu for 1 cent too\n", byPlace, bySpeed);
+    DAWLAB_CHECK(byPlace >= 46 && byPlace <= 48 && bySpeed >= 866 && bySpeed <= 868);
+    DAWLAB_CHECK(markersForTake(ramp, kSampleRate, 0, 0, 1000, 0.001, 0.0).empty());
+
+    // A warped clip covers exactly the song samples whose position is in its range of the source: the first one
+    // at or after its start in the source, and not one before.
+    int edgesWrong = 0;
+    for (int c = 0; c < 40; ++c) {
+        Clip clip = Clip::fromBuffer(sineBuffer({440.0}, 48000, 0.1), std::uniform_int_distribution<std::int64_t>(0, 200000)(rng), "c");
+        clip.sourceOffset = std::uniform_int_distribution<std::int64_t>(0, 1000)(rng);
+        clip.length = 40000;
+        clip = withFollowMode(clip, FollowMode::Varispeed, ramp, kSampleRate);
+        const FollowClip f = followClipOf(clip);
+        WarpMap w;
+        w.set(f.markers);
+        const TempoMap other = mapOf({{0, 70.0 + c, c % 2 == 0}, {2 * kBar, 140.0 - c, false}});
+        placeUnder(clip, other, kSampleRate);
+        const auto at = [&](std::int64_t s) { return sourcePositionAt(w, other, kSampleRate, static_cast<double>(s)); };
+        const double from = static_cast<double>(f.clip.sourceOffset), to = from + static_cast<double>(f.clip.length);
+        edgesWrong += at(clip.start) >= from && at(clip.start - 1) < from && at(clip.end()) >= to && at(clip.end() - 1) < to ? 0 : 1;
+    }
+    DAWLAB_CHECK(edgesWrong == 0);
+    // "At or after": a sample whose position is the one asked for, to the last bit, is that first sample itself.
+    {
+        WarpMap w;
+        w.set(many);
+        int notItself = 0;
+        for (const std::int64_t s : {std::int64_t{96000}, std::int64_t{123457}, std::int64_t{700001}}) {
+            const double v = sourcePositionAt(w, ramp, kSampleRate, static_cast<double>(s));
+            notItself += firstSongSampleAtOrAfter(w, ramp, kSampleRate, v) == s ? 0 : 1;
+        }
+        DAWLAB_CHECK(notItself == 0);
+    }
+
+    // WSOLA's search: a piece slides back as well as forward, to where it continues the last one best - by the
+    // shape, not by the loudness. Here the natural continuation of the piece at 3000 is the same audio again 40
+    // samples before the candidate, and 5 samples after it there is a louder copy with a little noise in it.
+    std::vector<float> x(6000);
+    for (float& v : x)
+        v = std::uniform_real_distribution<float>(-1.0f, 1.0f)(rng);
+    for (int i = 0; i < 32; ++i)
+        x[static_cast<size_t>(3045 + i)] = 2.0f * x[static_cast<size_t>(3000 + i)] + 0.2f * std::uniform_real_distribution<float>(-1.0f, 1.0f)(rng);
+    const StretchSettings small{64, 60};
+    DAWLAB_CHECK(bestStretchOffset(x, 3040, 3000, small) == -40);
+    DAWLAB_CHECK(bestStretchOffset(x, 3000, 3000, small) == 0 && bestStretchOffset(x, 3040, 3000, StretchSettings{64, 0}) == 0);
+
+    // At speed 1 the stretcher hands the source back as it is, to the last sample (whose positions are past the
+    // end of the list), also from an offset into it. Settings it cannot use, or no positions: an empty buffer.
+    const auto tone = sineBuffer({440.0, 660.0}, 20000, 0.5);
+    std::vector<double> straight(9000);
+    for (size_t n = 0; n < straight.size(); ++n)
+        straight[n] = 3000.0 + static_cast<double>(n);
+    const AudioBuffer same = stretchAlong(*tone, straight);
+    float worstDiff = same.getNumSamples() == 9000 ? 0.0f : 1.0f;
+    for (int ch = 0; ch < 2 && same.getNumSamples() == 9000; ++ch)
+        for (int n = 0; n < 9000; ++n)
+            worstDiff = std::max(worstDiff, std::fabs(same.getSample(ch, n) - tone->getSample(ch, 3000 + n)));
+    DAWLAB_CHECK(worstDiff < 1e-5f);
+    DAWLAB_CHECK(stretchAlong(*tone, std::vector<double>{3000.0}).getNumSamples() == 1);
+    DAWLAB_CHECK(stretchAlong(*tone, {}).getNumSamples() == 0 && stretchAlong(*tone, straight, StretchSettings{2, 1}).getNumSamples() == 0 &&
+                 stretchAlong(*tone, straight, StretchSettings{63, 1}).getNumSamples() == 0 && stretchAlong(*tone, straight, StretchSettings{64, -1}).getNumSamples() == 0);
+    DAWLAB_CHECK(stretchAlong(AudioBuffer{}, straight).getNumSamples() == 0);
+
+    // A key that is forgotten or asked for again cancels its own render only, not one of another key the worker is
+    // at. And a track that loses a clip forgets its render.
+    {
+        FollowRenderer r;
+        const TempoMap at60 = mapOf({{0, 60.0, false}});
+        const FollowClip longOne = loopClip(sineBuffer({440.0}, 10 * 48000, 0.25), FollowMode::Stretch, 0.0);
+        const FollowClip shortOne = loopClip(sineBuffer({440.0}, 4800, 0.25), FollowMode::Stretch, 0.0);
+        const FollowRenderer::Key a = r.newKey(), b = r.newKey();
+        r.request(a, longOne, at60, kSampleRate);
+        while (r.getNumRendersStarted() < 1)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        r.forget(b);
+        r.request(b, shortOne, at60, kSampleRate);
+        r.waitUntilIdle();
+        const std::vector<FollowRenderer::Result> done = r.collect();
+        DAWLAB_CHECK(r.getNumRendersFinished() == 2 && done.size() == 2);
+        FollowTrack track(r);
+        track.update({longOne}, at60, kSampleRate);
+        track.update({}, at60, kSampleRate);
+        r.waitUntilIdle();
+        DAWLAB_CHECK(r.collect().empty() && track.getNumClips() == 0);
+    }
+    std::printf("  the edges: many markers, the two counts of a ramp, a clip's first and last sample, a piece that slides back, speed 1, keys\n");
+}
+
 } // namespace
 
 int main() {
@@ -859,5 +981,6 @@ int main() {
     testManyMaps();
     testThreads();
     testClipsThatCarryIt();
+    testEdges();
     return dawlab::test::summary("l20_test_warp");
 }
