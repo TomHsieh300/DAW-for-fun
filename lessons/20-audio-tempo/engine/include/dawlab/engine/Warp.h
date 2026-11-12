@@ -106,13 +106,18 @@ inline std::vector<WarpMarker> markersForLoop(std::int64_t sourceFrom, std::int6
 
 // A take: the source samples [sourceFrom, sourceFrom + lengthSamples) were recorded over `map`, the first of them
 // at song sample `startSample` (>= 0). Over the same map no sample then plays more than `toleranceSeconds` from
-// where it was recorded: a marker at the take's start, at every tempo point under it and at its end, and on a
-// ramp as many equal pieces as the chord bound h^2/8 max|f''| asks for (Step 1).
-// Empty unless the rate, the length and the tolerance are above 0 and the start is not negative.
+// where it was recorded, nor more than `toleranceCents` off its speed: a marker at the take's start, at every
+// tempo point under it and at its end, and on a ramp as many equal pieces as the two bounds ask for (Step 1).
+// The place is the chord bound h^2/8 max|f''|. The speed: a piece plays at the mean of its seconds per tick, and
+// on a ramp the seconds per tick at its ends are about h |k| / (2 bpm) from that mean (k: the ramp's bpm per tick) -
+// in tune within the place's tolerance, a piece can still be a quarter tone sharp in its first half and flat in
+// its second, which a held note makes heard.
+// Empty unless the rate, the length and the tolerances are above 0 and the start is not negative.
 inline std::vector<WarpMarker> markersForTake(const TempoMap& map, double sampleRate, std::int64_t startSample, std::int64_t sourceFrom,
-                                              std::int64_t lengthSamples, double toleranceSeconds = 0.0005) {
-    if (!(sampleRate > 0.0) || startSample < 0 || lengthSamples <= 0 || !(toleranceSeconds > 0.0))
+                                              std::int64_t lengthSamples, double toleranceSeconds = 0.0005, double toleranceCents = 1.0) {
+    if (!(sampleRate > 0.0) || startSample < 0 || lengthSamples <= 0 || !(toleranceSeconds > 0.0) || !(toleranceCents > 0.0))
         return {};
+    const double speedRatio = std::exp2(toleranceCents / 1200.0) - 1.0; // 1 cent: 0.058 %
     const double startTick = map.tickAt(static_cast<double>(startSample) / sampleRate);
     const double endTick = map.tickAt(static_cast<double>(startSample + lengthSamples) / sampleRate);
     std::vector<double> edges{startTick};
@@ -133,7 +138,9 @@ inline std::vector<WarpMarker> markersForTake(const TempoMap& map, double sample
         int pieces = 1;
         if (tempoA != tempoB) {
             const double k = (tempoB - tempoA) / (b - a), slow = std::min(tempoA, tempoB);
-            pieces = std::max(1, static_cast<int>(std::ceil((b - a) * std::sqrt(secondsPerTickAt1Bpm * std::fabs(k) / (slow * slow) / (8.0 * toleranceSeconds)))));
+            const double forPlace = std::ceil((b - a) * std::sqrt(secondsPerTickAt1Bpm * std::fabs(k) / (slow * slow) / (8.0 * toleranceSeconds)));
+            const double forSpeed = std::ceil((b - a) * std::fabs(k) / (2.0 * speedRatio * slow));
+            pieces = std::max(1, static_cast<int>(std::max(forPlace, forSpeed)));
         }
         for (int j = 1; j <= pieces; ++j) {
             const double tick = j == pieces ? b : a + (b - a) * j / pieces;

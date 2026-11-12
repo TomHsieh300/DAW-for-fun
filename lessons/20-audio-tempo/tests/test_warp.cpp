@@ -165,7 +165,7 @@ void testMarkers() {
 
     // Over random maps with ramps: with its markers and the same map a take plays where it was recorded.
     std::mt19937 rng(60);
-    double worst = 0.0;
+    double worst = 0.0, worstCents = 0.0;
     size_t markers = 0;
     int refused = 0;
     for (int c = 0; c < 150; ++c) {
@@ -188,10 +188,16 @@ void testMarkers() {
         for (int k = 0; k <= 400; ++k) {
             const double n = static_cast<double>(length) * k / 400.0;
             worst = std::max(worst, std::fabs(map.secondsAt(w.tickAt(static_cast<double>(offset) + n)) - (static_cast<double>(start) + n) / kSampleRate));
+            // And at its own speed: the source read per song sample there, against 1. A piece that is in the right
+            // place at both ends but too fast in one half and too slow in the other is out of tune.
+            const double song = static_cast<double>(start) + std::min(n, static_cast<double>(length) - 1.0);
+            const double speed = w.sourceAt(map.tickAt((song + 1.0) / kSampleRate)) - w.sourceAt(map.tickAt(song / kSampleRate));
+            worstCents = std::max(worstCents, std::fabs(1200.0 * std::log2(speed)));
         }
     }
-    std::printf("  150 takes over random maps: %d refused, the worst sample %.3f ms from where it was recorded (%zu markers)\n", refused, worst * 1e3, markers);
-    DAWLAB_CHECK(refused == 0 && worst <= 0.0005);
+    std::printf("  150 takes over random maps: %d refused, the worst sample %.3f ms from where it was recorded and %.3f cents off its speed (%zu markers)\n",
+                refused, worst * 1e3, worstCents, markers);
+    DAWLAB_CHECK(refused == 0 && worst <= 0.0005 && worstCents <= 1.0);
 }
 
 // ---- 2 -------------------------------------------------------------------------------------------------------

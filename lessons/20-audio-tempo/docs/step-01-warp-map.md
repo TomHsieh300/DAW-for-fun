@@ -104,6 +104,19 @@ from 60 to 120 BPM over four bars needs 46 markers to stay within 1 ms, and 143 
 A marker's error does not add up along the take: every marker is computed from the tempo map itself, not from
 the marker before it.
 
+The place is not all. A piece plays at one speed, the mean of its seconds per tick, and on a ramp the ends of the
+piece are $`h |k| / (2B)`$ away from that mean: a piece can be in the right place at both ends and still a
+quarter tone sharp in its first half and flat in its second, which a held note makes heard. So the engine's
+`markersForTake()` (Step 5) also cuts a ramp into enough pieces that none is more than a tolerance in cents off
+its speed - 1 cent by default, with $`r = 2^{1/1200} - 1`$:
+
+```math
+n_{speed} = \left\lceil \frac{T \, |k|}{2 \, r \, B_{min}} \right\rceil
+```
+
+It takes the larger of the two counts. The same ramp from 60 to 120 BPM over four bars then needs about 865
+markers, not 46: they are cheap, a binary search finds the pair around a tick.
+
 ## Your turn
 
 Write `WarpMap::sourceAt()` and `tickAt()`, `sourceAtSample()`, `songSecondsOf()`, `speedAt()`,

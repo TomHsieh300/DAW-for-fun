@@ -80,6 +80,14 @@ n = \left\lceil T \sqrt{\frac{\max |f''|}{8 \, \varepsilon}} \right\rceil
 
 Marker 的誤差不會沿著 take 累加：每個 marker 都是直接從 tempo map 算出來的，不是從前一個 marker 算的。
 
+位置對了還不夠。一段以單一速度播放，也就是它每個 tick 秒數的平均值；在 ramp 上，這一段兩端的值和平均值差了 $`h |k| / (2B)`$：一段可能兩端的位置都對，前半段卻高了四分之一個半音、後半段低了四分之一個半音，持續的長音會讓人聽出來。所以 engine 的 `markersForTake()`（Step 5）還會把 ramp 切成足夠多段，讓每一段的速度誤差都不超過一個以 cents 計的容許值——預設 1 cent，其中 $`r = 2^{1/1200} - 1`$：
+
+```math
+n_{speed} = \left\lceil \frac{T \, |k|}{2 \, r \, B_{min}} \right\rceil
+```
+
+兩種段數取較大的那個。同樣四小節從 60 到 120 BPM 的 ramp，這樣需要大約 865 個 marker，而不是 46 個：marker 很便宜，用 binary search 就能找到某個 tick 前後的那一對。
+
 ## 換你了
 
 在 `steps/step01-warp-map/starter/step01.cpp` 裡寫出 `WarpMap::sourceAt()` 和 `tickAt()`、`sourceAtSample()`、`songSecondsOf()`、`speedAt()`、`markersForLoop()` 和 `markersForTake()`。建置並執行：
