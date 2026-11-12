@@ -22,7 +22,7 @@
 //                     at its start, at the old speed after it - Step 2's behaviour, for the moment it takes.
 //
 // Offline the position of EVERY song sample is computed exactly (Step 3's lines between knots are for a player
-// that has to be fast); a second of audio costs a few milliseconds.
+// that has to be fast); a second of varispeed costs some 40 ms, on a worker thread.
 
 #include "Clip.h"
 #include "TempoMap.h"
@@ -378,6 +378,16 @@ struct StretchSettings {
     int search = 256;  // how far a piece may slide either way
 };
 
+// The defaults are lengths at 48 kHz. A piece is a time: a stretcher that keeps a tone's cycles together needs
+// as many milliseconds at any rate (with 1024 samples at 96 kHz a 55 Hz tone came out an octave low).
+inline StretchSettings stretchSettingsFor(double sampleRate) {
+    const double scale = sampleRate > 0.0 ? sampleRate / 48000.0 : 1.0;
+    StretchSettings s;
+    s.window = 2 * std::max(2, static_cast<int>(std::lround(s.window / 2 * scale)));
+    s.search = static_cast<int>(std::lround(s.search * scale));
+    return s;
+}
+
 // How far the piece that wants to start at `candidate` slides to fit the natural continuation at `natural`:
 // the best of sum(a b) / sqrt(sum(a a)) over the first half window, the nearest of equal scores.
 inline int bestStretchOffset(const std::vector<float>& x, std::int64_t candidate, std::int64_t natural, const StretchSettings& settings) noexcept {
@@ -418,12 +428,6 @@ inline AudioBuffer stretchAlong(const AudioBuffer& source, const std::vector<dou
     if (channels <= 0 || length <= 0 || length > INT32_MAX || settings.window < 4 || settings.window % 2 != 0 || settings.search < 0)
         return {};
     const std::int64_t sourceLength = source.getNumSamples();
-    std::vector<float> mean(static_cast<size_t>(sourceLength), 0.0f);
-    for (int ch = 0; ch < channels; ++ch) {
-        const float* s = source.getReadPointer(ch);
-        for (std::int64_t i = 0; i < sourceLength; ++i)
-            mean[static_cast<size_t>(i)] += s[i] / static_cast<float>(channels);
-    }
     const auto positionAt = [&](std::int64_t n) { // beyond the ends the line of the last two values goes on
         if (length == 1)
             return positions[0] + static_cast<double>(n);
@@ -435,8 +439,20 @@ inline AudioBuffer stretchAlong(const AudioBuffer& source, const std::vector<dou
         return positions[static_cast<size_t>(n)];
     };
 
-    AudioBuffer out(channels, static_cast<int>(length));
     const int half = settings.window / 2;
+    // The mean of the channels, only where the pieces are looked for: a clip of a second from an hour-long take
+    // must not cost the hour. Every piece starts within `search` of where the positions say, and is a window long.
+    const double ends[] = {positionAt(0), positionAt(length + half)};
+    const std::int64_t meanFrom = std::clamp<std::int64_t>(std::llround(std::min(ends[0], ends[1])) - half - settings.search, 0, sourceLength);
+    const std::int64_t meanTo = std::clamp<std::int64_t>(std::llround(std::max(ends[0], ends[1])) + settings.window + settings.search, meanFrom, sourceLength);
+    std::vector<float> mean(static_cast<size_t>(meanTo - meanFrom), 0.0f); // mean[i] is the source's sample meanFrom + i
+    for (int ch = 0; ch < channels; ++ch) {
+        const float* s = source.getReadPointer(ch) + meanFrom;
+        for (std::int64_t i = 0; i < meanTo - meanFrom; ++i)
+            mean[static_cast<size_t>(i)] += s[i] / static_cast<float>(channels);
+    }
+
+    AudioBuffer out(channels, static_cast<int>(length));
     std::vector<float> hann(static_cast<size_t>(settings.window));
     for (int i = 0; i < settings.window; ++i)
         hann[static_cast<size_t>(i)] = static_cast<float>(0.5 - 0.5 * std::cos(kTwoPi * i / settings.window));
@@ -447,7 +463,7 @@ inline AudioBuffer stretchAlong(const AudioBuffer& source, const std::vector<dou
         if (cancel != nullptr && cancel->load(std::memory_order_relaxed))
             return {};
         const std::int64_t candidate = std::llround(positionAt(at + half)) - half;
-        const std::int64_t start = first ? candidate : candidate + bestStretchOffset(mean, candidate, before + half, settings);
+        const std::int64_t start = first ? candidate : candidate + bestStretchOffset(mean, candidate - meanFrom, before + half - meanFrom, settings);
         const int i0 = static_cast<int>(std::max<std::int64_t>({0, -at, -start}));
         const int i1 = static_cast<int>(std::min<std::int64_t>({settings.window, length - at, sourceLength - start}));
         for (int ch = 0; ch < channels; ++ch) {
@@ -487,14 +503,18 @@ inline bool renderFollowClip(const FollowClip& clip, const TempoMap& map, double
     warp.set(clip.markers);
     const AudioBuffer& source = *clip.clip.source;
     // The exact position of every song sample, and of one more: the speed of the last one.
+    // A newer request cancels this one also here: for a long clip this alone takes a while.
     std::vector<double> positions(static_cast<size_t>(length) + 1);
-    for (std::int64_t n = 0; n <= length; ++n)
+    for (std::int64_t n = 0; n <= length; ++n) {
+        if ((n & 4095) == 0 && cancel != nullptr && cancel->load(std::memory_order_relaxed))
+            return false;
         positions[static_cast<size_t>(n)] = sourcePositionAt(warp, map, sampleRate, static_cast<double>(first + n));
+    }
 
     auto rendered = std::make_shared<AudioBuffer>();
     if (clip.mode == FollowMode::Stretch) {
         positions.pop_back();
-        *rendered = stretchAlong(source, positions, {}, cancel);
+        *rendered = stretchAlong(source, positions, stretchSettingsFor(sampleRate), cancel);
         if (length > 0 && rendered->getNumSamples() != length)
             return false; // cancelled
     } else {

@@ -56,7 +56,8 @@ struct FollowClip {
   its source, `[sourceOffset, sourceOffset + length)` - so two halves of a cut take still meet at every tempo.
 
 Offline the position of **every** song sample is computed exactly. Step 3's lines between knots are for a player
-that has to be fast; here a second of audio costs a few milliseconds of `tickAt()`, and nothing bends.
+that has to be fast; here a second of varispeed costs some 40 ms (a `tickAt()` and a windowed sinc for every
+sample), and nothing bends.
 
 Two channels slide together in a stretch: the search runs on their mean and every channel is cut at the same
 place. If left and right each found their own best fit, the stereo image would wobble.

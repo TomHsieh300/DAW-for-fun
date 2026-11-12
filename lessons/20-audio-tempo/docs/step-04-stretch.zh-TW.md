@@ -61,6 +61,8 @@ WSOLA 裡沒有任何東西知道 transient 是什麼。真正的 stretcher 會�
 
 搜尋要花時間：每一段要試 513 個偏移、每個 512 次乘法，output 每秒約五千萬次。事先算好的話這不算什麼，但要在 audio thread 上為每個 clip 做就太多了——這是 Step 5 的事。
 
+Window 和 search 是 48 kHz 下的長度。但一段代表的是一段時間：同樣 1024 個 sample 在 96 kHz 下只有一半長，裝不下低音的週期，55 Hz 的音出來低了一個八度。Engine 的 stretcher（`stretchSettingsFor()`，Step 5）會依 sample rate 等比放大它們，讓同一個音在任何 sample rate 下聽起來都一樣——而且在任何 sample rate 下，都能保住約 60 Hz 以上的音的完整週期。更低的 bass 需要更長的 window 和 search：花更多時間，鼓也會更糊。
+
 ## 換你了
 
 在 `steps/step04-stretch/starter/step04.cpp` 裡寫出 `bestOffset()` 和 `stretch()`。建置並執行：

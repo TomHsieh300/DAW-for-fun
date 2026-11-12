@@ -324,6 +324,37 @@ void testRender() {
     }
     DAWLAB_CHECK(seam == 0.0f);
 
+    // The stretcher's pieces are a time, not a number of samples: at 96 kHz they are twice as many samples, and a
+    // 55 Hz tone stretched there sounds as it does at 48 kHz (with the 48 kHz lengths in samples it came out an
+    // octave low). How low a tone the pieces keep whole is the same at every rate: about 60 Hz.
+    DAWLAB_CHECK(stretchSettingsFor(48000.0).window == 1024 && stretchSettingsFor(48000.0).search == 256);
+    DAWLAB_CHECK(stretchSettingsFor(96000.0).window == 2048 && stretchSettingsFor(96000.0).search == 512 && stretchSettingsFor(44100.0).window % 2 == 0);
+    {
+        // The pitch of a 55 Hz tone of 4 s (8 beats at 120 BPM), stretched to 60 BPM at `rate`, from the crossings
+        // of zero in its middle half.
+        const auto stretched55 = [&at60](double rate) {
+            auto low = std::make_shared<AudioBuffer>(1, static_cast<int>(4 * rate));
+            for (int i = 0; i < low->getNumSamples(); ++i)
+                low->setSample(0, i, static_cast<float>(0.5 * std::sin(kTwoPi * 55.0 * i / rate)));
+            FollowClip bass;
+            bass.clip = Clip::fromBuffer(low, 0, "bass");
+            bass.mode = FollowMode::Stretch;
+            bass.markers = markersForLoop(0, low->getNumSamples(), 8.0, 0.0);
+            Clip out;
+            if (!renderFollowClip(bass, at60, rate, out) || !out.source || out.length != static_cast<std::int64_t>(8 * rate))
+                return 0.0;
+            const float* y = out.source->getReadPointer(0);
+            const int from = static_cast<int>(out.length / 4), to = static_cast<int>(3 * out.length / 4);
+            int rises = 0;
+            for (int i = from; i < to; ++i)
+                rises += y[i - 1] < 0.0f && y[i] >= 0.0f ? 1 : 0;
+            return rises / ((to - from) / rate);
+        };
+        const double at48 = stretched55(48000.0), at96 = stretched55(96000.0);
+        std::printf("  a 55 Hz tone stretched: %.1f Hz at 48 kHz, %.1f Hz at 96 kHz\n", at48, at96);
+        DAWLAB_CHECK(at48 > 0.0 && at96 > 0.0 && std::fabs(1200.0 * std::log2(at96 / at48)) < 50.0 && std::fabs(1200.0 * std::log2(at96 / 55.0)) < 300.0);
+    }
+
     // Refused: longer than the engine will render (a clip of 2^27 samples at an eighth of its tempo), and a
     // render that is cancelled. `out` is not touched.
     FollowClip huge = tape;

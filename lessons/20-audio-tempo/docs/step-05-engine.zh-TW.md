@@ -43,7 +43,7 @@ struct FollowClip {
 - **Start**：clip 放在它的 tick 所在的 sample。
 - **Varispeed**、**Stretch**：一個新的 buffer，正好涵蓋位置落在 clip 的 source 範圍 `[sourceOffset, sourceOffset + length)` 內的那些歌的 sample——所以切開的 take 的兩半在任何 tempo 下仍然相接。
 
-離線運算時，**每一個**歌的 sample 的位置都精確算出來。Step 3 那種 knot 之間畫直線的做法是給必須很快的 player 用的；在這裡，一秒的 audio 只花幾毫秒的 `tickAt()`，而且沒有任何東西會彎。
+離線運算時，**每一個**歌的 sample 的位置都精確算出來。Step 3 那種 knot 之間畫直線的做法是給必須很快的 player 用的；在這裡，一秒的 varispeed 大約花 40 ms（每個 sample 一次 `tickAt()` 加一次加窗的 sinc），而且沒有任何東西會彎。
 
 Stretch 時兩個 channel 一起滑動：搜尋在它們的平均值上進行，每個 channel 都在同一個地方切。如果左右各自找最適合的位置，stereo image 會晃動。
 

@@ -89,6 +89,12 @@ pitch. Both follow the tempo exactly as far as Step 1's markers go.
 The search costs time: 513 offsets of 512 multiplications for every piece, some 50 million a second of output.
 That is nothing for a render ahead of time, and too much to do on the audio thread for every clip - Step 5.
 
+The window and the search are lengths at 48 kHz. A piece is a time, though: the same 1024 samples at 96 kHz are
+half as long, too short for a low tone's cycles, and a 55 Hz tone came out an octave low. The engine's stretcher
+(`stretchSettingsFor()`, Step 5) scales them with the sample rate, so that a tone sounds the same at every rate -
+and keeps whole, at every rate, the cycles of tones down to about 60 Hz. Lower bass needs a longer window and
+search: more time, and drums that smear more.
+
 ## Your turn
 
 Write `bestOffset()` and `stretch()` in `steps/step04-stretch/starter/step04.cpp`. Build and run:
