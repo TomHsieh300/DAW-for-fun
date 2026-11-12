@@ -803,8 +803,9 @@ void endDeviceStops() {
     play(e, &session, 1000, 128, steady);
     DAWLAB_CHECK(!e.isRecordingOver());
     e.prepare(44100.0, kMaxBlock);
-    DAWLAB_CHECK(e.isRecordingOver());
+    DAWLAB_CHECK(!e.isRecordingOver()); // the audio side is over; the disk thread still has frames to read
     DAWLAB_CHECK(session.pump());
+    DAWLAB_CHECK(e.isRecordingOver());
     const auto results = session.results();
     DAWLAB_CHECK(results[0].take.ok);
     DAWLAB_CHECK(results[0].take.info.sampleRate == 48000);
@@ -885,6 +886,36 @@ void endNothingStartsMeanwhile() {
     DAWLAB_CHECK(e.getTrack(b)->getRecorder().isIdle());
 }
 
+// The audio thread has confirmed the stop, but the disk thread has not read the take's last frames yet: the ring
+// is still the disk thread's. A new recording waits for it - also where the track has two channels by now - and
+// the first take keeps every frame of its own.
+void endNothingStartsBeforeTheDisk() {
+    TempFolder folder;
+    Engine e;
+    const TrackId id{1};
+    e.addTrack(id);
+    e.prepare(kSampleRate, kMaxBlock);
+    e.applyPendingCommandsOffline();
+    e.getTrack(id)->setArmed(true);
+    RecordingSession first;
+    DAWLAB_CHECK(first.begin(e, folder.path(), "first", Latencies{}) == 1);
+    e.getTransport().play();
+    play(e, nullptr, 1280, 128, steady); // the disk thread does not run
+    e.stopRecording();
+    play(e, nullptr, 128, 128, steady); // the audio thread confirms the stop
+    e.getTrack(id)->setFormat(TrackFormat::Stereo);
+    RecordingSession second;
+    DAWLAB_CHECK(!e.isRecordingOver() && second.begin(e, folder.path(), "second", Latencies{}) == 0);
+    DAWLAB_CHECK(first.pump() && e.isRecordingOver());
+    const auto results = first.results();
+    DAWLAB_CHECK(results.size() == 1 && results[0].take.ok && results[0].take.numFrames == 1280 && results[0].take.info.numChannels == 1);
+    if (results.size() == 1 && results[0].take.ok) {
+        const auto take = readTake(results[0].take.path);
+        DAWLAB_CHECK(take.size() == 1 && take[0].size() == 1280 && std::all_of(take[0].begin(), take[0].end(), [](float v) { return v == 0.5f; }));
+    }
+    DAWLAB_CHECK(second.begin(e, folder.path(), "second", Latencies{}) == 1);
+}
+
 // A slot whose track has gone is not armed, whatever its values say.
 void endFreeSlotIsNotArmed() {
     Engine e;
@@ -925,6 +956,7 @@ void checkEnds() {
     endProgramDies();
     endSessionIsOnce();
     endNothingStartsMeanwhile();
+    endNothingStartsBeforeTheDisk();
     endFreeSlotIsNotArmed();
     endBounce();
 }

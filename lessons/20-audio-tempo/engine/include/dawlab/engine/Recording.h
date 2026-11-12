@@ -265,7 +265,9 @@ struct RecordRange {
 //                       '-------------------stop()------------+----------------------'
 //                                                             '---transport stopped or jumped---> Idle
 //
-// Everything except the state belongs to the UI in Idle and to the audio thread in all other states.
+// Everything except the state belongs to the audio thread in all states but Idle. In Idle it belongs to the UI -
+// except the ring, which a TakeWriter reads until it has the take's last frame: isIdle() waits for that too, so
+// that a new start() never prepares a ring that the disk thread is still reading.
 class Recorder {
 public:
     enum class State { Idle, Armed, Recording, Stopping };
@@ -300,7 +302,9 @@ public:
     // ONLY while no audio thread is running: nobody is left to confirm a stop, and nobody can be
     // writing any more, so this thread may say that it is over. See Engine::prepare().
     void finishWithoutAudio() noexcept { state_.store(State::Idle, std::memory_order_release); }
-    bool isIdle() const noexcept { return state_.load(std::memory_order_acquire) == State::Idle; }
+    // Idle, and no TakeWriter reads the ring any more: a new start() may begin.
+    bool isIdle() const noexcept { return state_.load(std::memory_order_acquire) == State::Idle && !beingRead_.load(std::memory_order_acquire); }
+    // The audio thread's side alone: Idle once it has confirmed a stop, while a TakeWriter may still be reading.
     State state() const noexcept { return state_.load(std::memory_order_acquire); }
 
     // Valid once isIdle() is true after a start(). wasStarted() is false if the transport never played.
@@ -363,9 +367,14 @@ public:
 
     // ---- disk thread --------------------------------------------------------------------------
     InputRing& ring() noexcept { return ring_; }
+    // A TakeWriter holds the ring from when it is made (UI thread, after start()) until it has read the take's
+    // last frame or is destroyed (endReading(), whose release hands everything it read back to the UI).
+    void beginReading() noexcept { beingRead_.store(true, std::memory_order_relaxed); }
+    void endReading() noexcept { beingRead_.store(false, std::memory_order_release); }
 
 private:
     std::atomic<State> state_{State::Idle};
+    std::atomic<bool> beingRead_{false};
     InputRing ring_;
     Latencies latencies_;              // the audio thread fills in the mix when the recording begins
     RecordRange range_;
@@ -658,7 +667,14 @@ public:
         scratch_.assign(numChannels, std::vector<float>(kChunkFrames));
         for (auto& channel : scratch_)
             pointers_.push_back(channel.data());
+        recorder_.beginReading();
     }
+    ~TakeWriter() {
+        if (!done_)
+            recorder_.endReading(); // nobody reads the ring any more
+    }
+    TakeWriter(const TakeWriter&) = delete;
+    TakeWriter& operator=(const TakeWriter&) = delete;
 
     // Moves what is in the ring to the file. True once the take is over and sealed.
     bool pump();
@@ -759,8 +775,8 @@ inline SealedTake TakeFile::finish() {
 inline bool TakeWriter::pump() {
     if (done_)
         return true;
-    // Before the pops: if it is Idle now, all the take's frames are in the ring by now.
-    const bool over = recorder_.isIdle();
+    // Before the pops: if the audio thread is done now, all the take's frames are in the ring by now.
+    const bool over = recorder_.state() == Recorder::State::Idle;
     while (const int n = recorder_.ring().pop(pointers_.data(), kChunkFrames)) {
         // No frame, no file: a take that never began leaves nothing behind. And the first frame is
         // what makes the stamp safe to read.
@@ -780,6 +796,7 @@ inline bool TakeWriter::pump() {
     if (over) {
         result_ = file_.finish();
         done_ = true;
+        recorder_.endReading(); // the ring is the UI's again
     }
     return done_;
 }
