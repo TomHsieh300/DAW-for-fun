@@ -791,17 +791,18 @@ void testClipsThatCarryIt() {
 
     // Moved to a sample: a plain clip to the sample, a start to its tick, a warped clip with all its markers.
     DAWLAB_CHECK(movedTo(plain, 5000, bends, kSampleRate).start == 5000 && movedTo(plain, 5000, bends, kSampleRate).follow == nullptr);
-    const std::int64_t bar3 = sampleOfTick(bends, kSampleRate, 2.0 * kBar);
+    const std::int64_t bar3 = 4 * kBeatAt120 * 120 / 100 + 4 * kBeatAt120 * 120 / 150; // a bar at 100 BPM, one at 150: 4 s
     const Clip startMoved = movedTo(start, bar3, bends, kSampleRate);
     DAWLAB_CHECK(startMoved.start == bar3 && std::fabs(startMoved.follow->startTick - 2.0 * kBar) < 1e-6 && startMoved.length == 90000);
     const Clip tapeMoved = movedTo(tape, bar3, bends, kSampleRate);
-    DAWLAB_CHECK(std::llabs(tapeMoved.start - bar3) <= 1 && tapeMoved.follow->markers.size() == 2 && tapeMoved.follow->sourceLength == 90000);
-    DAWLAB_CHECK(std::fabs(tapeMoved.follow->markers[0].tick - 2.0 * kBar) < 1e-6 && std::fabs(tapeMoved.follow->markers[1].tick - tapeMoved.follow->markers[0].tick -
+    DAWLAB_CHECK(tapeMoved.start == bar3 && tapeMoved.follow->markers.size() == 2 && tapeMoved.follow->sourceLength == 90000);
+    // Its first marker a ten-thousandth of a sample before bar 3 (5e-6 ticks at 150 BPM), so that bar 3's sample is its first.
+    DAWLAB_CHECK(std::fabs(tapeMoved.follow->markers[0].tick - 2.0 * kBar) < 1e-5 && std::fabs(tapeMoved.follow->markers[1].tick - tapeMoved.follow->markers[0].tick -
                                                                                               (tape.follow->markers[1].tick - tape.follow->markers[0].tick)) < 1e-9);
     DAWLAB_CHECK(tape.follow->markers[0].tick != tapeMoved.follow->markers[0].tick && followModeOf(tapeMoved) == FollowMode::Varispeed);
     Clip there = tapeMoved; // on bar 3 under any map
     placeUnder(there, at60, kSampleRate);
-    DAWLAB_CHECK(std::llabs(there.start - sampleOfTick(at60, kSampleRate, 2.0 * kBar)) <= 1);
+    DAWLAB_CHECK(std::llabs(there.start - 8 * 48000) <= 1); // bar 3 at 60 BPM: 8 s
 
     // Cut to a part of the song. A plain clip as chapter 14 cuts it; a start is found again when the front goes.
     const Clip plainCut = cutToSongRange(plain, 100000, 150000, at120, kSampleRate);
@@ -818,6 +819,15 @@ void testClipsThatCarryIt() {
     DAWLAB_CHECK(before.follow->markers == tape.follow->markers && after.follow->markers == tape.follow->markers && followModeOf(after) == FollowMode::Varispeed);
     DAWLAB_CHECK(before.sourceOffset == 1000 && before.follow->sourceLength == 24000 && before.start == 192000 && std::llabs(before.end() - 240000) <= 1);
     DAWLAB_CHECK(after.sourceOffset == 55000 && after.follow->sourceLength == 36000 && std::llabs(after.start - 300000) <= 1 && std::llabs(after.end() - slow.end()) <= 1);
+    // Moved to a sample, a warped clip starts there: not a sample before or after, whatever the map (the tick of
+    // the sample, found again through two maps, can round either way).
+    std::mt19937 rngMoves(64);
+    int movedOff = 0;
+    for (int i = 0; i < 2000; ++i) {
+        const std::int64_t want = std::uniform_int_distribution<std::int64_t>(0, 1000000)(rngMoves);
+        movedOff += movedTo(tape, want, bends, kSampleRate).start == want ? 0 : 1;
+    }
+    DAWLAB_CHECK(movedOff == 0);
     // A piece that does not start at the first marker is moved by its own start, not by the marker's.
     const Clip pieceMoved = movedTo(after, 500000, at60, kSampleRate);
     DAWLAB_CHECK(std::llabs(pieceMoved.start - 500000) <= 1 && pieceMoved.length == after.length && pieceMoved.sourceOffset == 55000);

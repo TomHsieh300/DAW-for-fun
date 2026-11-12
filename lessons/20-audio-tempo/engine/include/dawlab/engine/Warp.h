@@ -302,7 +302,11 @@ inline Clip movedTo(Clip clip, std::int64_t newStart, const TempoMap& map, doubl
     if (f.isWarped()) {
         WarpMap warp;
         warp.set(f.markers);
-        const double by = tickOfSample(map, sampleRate, newStart) - warp.tickAt(static_cast<double>(clip.sourceOffset));
+        // The clip's first sample of the source goes a ten-thousandth of a sample before `newStart`: placed again,
+        // it is not found a sample later when the round trip through the two maps rounds the other way (it did
+        // for about one move in fifty).
+        const double target = map.tickAt((static_cast<double>(newStart) - 1e-4) / sampleRate);
+        const double by = target - warp.tickAt(static_cast<double>(clip.sourceOffset));
         for (WarpMarker& m : follow->markers)
             m.tick += by;
     } else {
