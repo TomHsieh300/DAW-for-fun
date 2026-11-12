@@ -65,7 +65,17 @@ renders or placeholders where they do. The window's timer calls `Session::pollRe
 renders and hands those over. `getPlayedClips()` is a copy of what the engine has - the arrangement draws that,
 so a stretched clip shows the waveform it plays.
 
-An export calls `finishRenders()` first and waits: a bounce must not go out with placeholders.
+An export calls `finishRenders()` first and waits: a bounce must not go out with placeholders. While it renders,
+the session takes no edit (`holdEdits()`): one would be in the file from wherever the render had got to.
+
+Every change of the map pushes new lists for many tracks at once, and the engine's command queue can be full
+(no device takes from it, or the audio thread is late). What the session sends is always a whole state - a
+track's clips, its MIDI clips, a lane's curve - so a list that was dropped is just sent again, the newest of it:
+`catchUpEngine()`, from the window's timer. With no device the timer applies the commands itself.
+
+`FollowTrack` knows a clip by its audio, not by its place in the list: a clip that another one is dragged in
+front of keeps its render, and a clip that is moved plays its last render at its new start until the new one is
+ready.
 
 ### Turning it on
 
@@ -77,6 +87,11 @@ An export calls `finishRenders()` first and waits: a bounce must not go out with
   and for a loop that was dropped in at the tempo it was made for.
 - A clip that was already warped keeps its markers when it changes between varispeed and stretch.
 - **Off**: the clip stays where it is and plays its source at its own speed again.
+- The mode a clip already has changes nothing, and is no undo step: a start's tick is not found again from its
+  sample, which would move it by a rounding each time.
+
+The clip menu keeps the clip it was opened for, not its index (`chooseFromClipMenu()`): if the list changed
+while it was open, the item still acts on that clip, or on nothing if the clip itself changed.
 
 ### Moving and cutting
 

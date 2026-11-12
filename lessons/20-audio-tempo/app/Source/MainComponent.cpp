@@ -193,6 +193,19 @@ MainComponent::~MainComponent() {
 
 // ---- the UI tick ------------------------------------------------------------------------------------
 
+// While no device callback runs - none is open, or the engine is not attached to it - nobody else takes the
+// engine's commands, and the queue would fill up and drop them. The UI thread is then the only one that touches
+// the engine, so it applies them itself, as a device would at its next block. Not during an export: the
+// engine is the render thread's.
+void MainComponent::applyCommandsWithoutDevice() {
+    if (isExporting() || (audioHost_.isEngineAttached() && audioHost_.isDeviceOpen()))
+        return;
+    for (int i = 0; i < 8 && engine_.getPendingCommands() > 0; ++i) {
+        engine_.applyPendingCommandsOffline();
+        engine_.collectGarbage(); // applying stops while the garbage queue is full
+    }
+}
+
 // Chapter 20: what the status line says about clips whose render could not be made.
 static juce::String failedRendersText(int clips) {
     const bool one = clips == 1;
@@ -212,6 +225,12 @@ void MainComponent::tick() {
     // Chapter 20: renders of clips that follow the tempo arrive from the worker thread.
     if (!isExporting() && session_.pollRenders() && session_.getNumFailedRenders() > 0)
         setStatus(failedRendersText(session_.getNumFailedRenders()));
+    // What a full command queue dropped is sent again; with no device, the commands are applied here.
+    if (!isExporting()) {
+        applyCommandsWithoutDevice();
+        if (session_.isEngineBehind() && session_.catchUpEngine())
+            applyCommandsWithoutDevice();
+    }
     // Chapter 19: the synth panel shows the selected track.
     if (synthPanel_ != nullptr && synthPanel_->isVisible() && synthPanel_->getPanel().getTrack() != arrangement_.getSelectedTrack())
         synthPanel_->getPanel().showTrack(arrangement_.getSelectedTrack());
@@ -423,7 +442,7 @@ void MainComponent::showClipMenu(engine::TrackId track, int clipIndex) {
     const engine::FollowMode mode = engine::followModeOf(clip);
     juce::PopupMenu menu;
     // Chapter 20: how the clip follows the tempo.
-    constexpr int kFollowBase = 1000;
+    constexpr int kFollowBase = kClipMenuFollow;
     menu.addSectionHeader("When the tempo changes");
     menu.addItem(kFollowBase + 0, "Stay where it is", true, mode == engine::FollowMode::Off);
     menu.addItem(kFollowBase + 1, "Keep its start on the beat", true, mode == engine::FollowMode::Start);
@@ -435,22 +454,32 @@ void MainComponent::showClipMenu(engine::TrackId track, int clipIndex) {
         for (int i = 0; i < static_cast<int>(takes->size()); ++i)
             menu.addItem(i + 1, "Take " + juce::String(i + 1), true, session_.getCurrentTake(clip) == i);
     }
+    // The menu stays open while the list can change (another drag, an undo): it keeps the clip, not its index.
     juce::Component::SafePointer<MainComponent> safe(this);
-    menu.showMenuAsync(juce::PopupMenu::Options{}, [safe, track, clipIndex](int result) {
-        if (safe == nullptr || result <= 0)
-            return;
-        if (result >= kFollowBase)
-            safe->setClipFollow(track, clipIndex, static_cast<engine::FollowMode>(result - kFollowBase));
-        else
-            safe->session_.chooseTake(track, clipIndex, result - 1);
+    menu.showMenuAsync(juce::PopupMenu::Options{}, [safe, track, shown = clip](int result) {
+        if (safe != nullptr && result > 0)
+            safe->chooseFromClipMenu(track, shown, result);
     });
+}
+
+bool MainComponent::chooseFromClipMenu(engine::TrackId track, const engine::Clip& shown, int item) {
+    const int clipIndex = session_.findClip(track, shown);
+    if (clipIndex < 0) {
+        setStatus("The clip has changed since its menu was opened: nothing done");
+        return false;
+    }
+    if (item >= kClipMenuFollow)
+        return setClipFollow(track, clipIndex, static_cast<engine::FollowMode>(item - kClipMenuFollow));
+    return session_.chooseTake(track, clipIndex, item - 1);
 }
 
 bool MainComponent::setClipFollow(engine::TrackId track, int clipIndex, engine::FollowMode mode) {
     if (refuseWhileRecording("Changing how a clip follows the tempo"))
         return false;
-    if (session_.getClipFollow(track, clipIndex) == mode)
-        return true;
+    if (session_.areEditsHeld()) {
+        setStatus("Not now: the project is being exported");
+        return false;
+    }
     if (!session_.setClipFollow(track, clipIndex, mode)) {
         setStatus("This clip cannot follow the tempo");
         return false;
@@ -1025,7 +1054,10 @@ void MainComponent::exportMixdown(const juce::File& file) {
     // Rule 1 (Exporter.h): detach the engine from the device. After this call no audio callback
     // touches the engine; the transport state is restored by the renderer afterwards.
     audioHost_.setEngineAttached(false);
+    applyCommandsWithoutDevice(); // the render gets everything the session said, also what a full queue dropped
+    session_.catchUpEngine();
     closeAllEditors();
+    session_.holdEdits(true); // until finishExport()
     exportOverlay_ = std::make_unique<ExportOverlay>("Exporting " + file.getFileName() + "...");
     addAndMakeVisible(*exportOverlay_);
     exportOverlay_->setBounds(getLocalBounds());
@@ -1043,6 +1075,7 @@ void MainComponent::exportMixdown(const juce::File& file) {
 
 void MainComponent::finishExport(const ExportResult& result) {
     exportJob_.reset();
+    session_.holdEdits(false);
     exportOverlay_.reset();
     transportBar_.forgetCpuHistory(); // the render's blocks were not played in real time
     if (mode_ == Mode::Live && audioHost_.isDeviceOpen())

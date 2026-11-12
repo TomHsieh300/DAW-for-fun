@@ -143,7 +143,11 @@ public:
     engine::FollowMode getClipFollow(engine::TrackId track, int clipIndex) const;
     // One undo step, "Clip follows the tempo" (or "Clip does not follow the tempo"). The clip keeps its place and
     // its sound; from now on a change of the tempo map moves or stretches it. False for a clip that is not there.
+    // A mode the clip already has: true, and nothing changes (no undo step).
     bool setClipFollow(engine::TrackId track, int clipIndex, engine::FollowMode mode);
+    // Where `clip` - a copy taken earlier, for a menu that stays open, say - is in the track's list now; -1 if no
+    // clip there is that one any more (it was moved, cut, changed or deleted since).
+    int findClip(engine::TrackId track, const engine::Clip& clip) const;
     const std::vector<engine::Clip>& getPlayedClips(engine::TrackId track) const;
     // Takes the renders that are ready and hands them to the engine. True if something changed. The window's
     // timer calls it; nothing blocks.
@@ -338,6 +342,16 @@ public:
     bool perform(Edit edit, const juce::String& name, std::uint32_t mergeKey = 0);
     bool undo();
     bool redo();
+    // While an export renders, the engine is the render's: an edit would be in the file from wherever the render
+    // is by then. perform(), undo() and redo() take none (they return false) while the edits are held.
+    // The engine's command queue can be full: no device takes from it, or a burst of edits came faster than the
+    // audio thread. What the session tells it there is a whole state - a track's clips, its MIDI clips, a lane's
+    // curve - so what was dropped is simply sent again, the newest of it, by catchUpEngine() (the window's timer
+    // calls it). True if the engine has everything now.
+    bool catchUpEngine();
+    bool isEngineBehind() const;
+    void holdEdits(bool held) noexcept { editsHeld_ = held; }
+    bool areEditsHeld() const noexcept { return editsHeld_; }
     History& getHistory() noexcept { return history_; }
     const History& getHistory() const noexcept { return history_; }
 
@@ -371,6 +385,8 @@ private:
         engine::VoiceSettings synth;           // chapter 19: the built-in synth's sound
         juce::String pluginFile;               // chapter 19: the plugin in its place (empty: none) ...
         PluginInstrument* plugin = nullptr;    // ... the engine's object, as long as it is there
+        bool clipsMissed = false;              // the engine's queue was full for the newest `played` ...
+        bool midiMissed = false;               // ... or MIDI clips: catchUpEngine() sends them again
     };
 
     TrackModel* findTrack(engine::TrackId id) noexcept;
@@ -395,7 +411,7 @@ private:
     std::optional<Edit> apply(const edit::SetLane&);
     std::optional<Edit> apply(const edit::SetMidiClips&);
     std::optional<Edit> apply(const edit::SetInstrument&);
-    void pushMidiClips(const TrackModel& track);
+    void pushMidiClips(TrackModel& track);
     engine::InsertEffect* effectOf(const LaneAddress& address) const noexcept;
     engine::AutomationLane* laneOf(const LaneAddress& address) const noexcept;
     int parameterIndexOf(const LaneAddress& address) const noexcept; // -1: not known
@@ -421,6 +437,8 @@ private:
     double clipSampleRate_ = 0.0; // 0 = not set yet: follow the engine
     juce::String projectName_ = "Untitled";
     History history_;
+    bool editsHeld_ = false;               // holdEdits()
+    std::vector<LaneAddress> lanesMissed_; // lanes whose newest curve the engine's full queue dropped
     std::vector<std::pair<LaneAddress, LaneContent>> lanes_; // the GUI copy of every lane
     std::vector<std::pair<std::shared_ptr<const AudioBuffer>, std::vector<engine::Placement>>> takeSets_;
     engine::AutomationRecorder recorder_;

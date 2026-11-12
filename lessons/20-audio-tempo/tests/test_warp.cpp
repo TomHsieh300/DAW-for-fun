@@ -741,6 +741,17 @@ void testClipsThatCarryIt() {
     broken.follow = bad;
     DAWLAB_CHECK(followClipOf(broken).mode == FollowMode::Off && !followClipOf(broken).isWarped());
 
+    // A mode the clip already has changes nothing: the tick of a start is not found again from its sample (which
+    // would move it by a rounding every time), the markers stay.
+    for (const FollowMode m : {FollowMode::Start, FollowMode::Varispeed, FollowMode::Stretch}) {
+        Clip at1001 = plain;
+        at1001.start = 1001;
+        const Clip once = withFollowMode(at1001, m, bends, kSampleRate);
+        const Clip twice = withFollowMode(once, m, bends, kSampleRate);
+        DAWLAB_CHECK(twice.follow == once.follow && twice.start == once.start && twice.length == once.length);
+    }
+    DAWLAB_CHECK(withFollowMode(plain, FollowMode::Off, bends, kSampleRate).start == plain.start);
+
     // Moved to a sample: a plain clip to the sample, a start to its tick, a warped clip with all its markers.
     DAWLAB_CHECK(movedTo(plain, 5000, bends, kSampleRate).start == 5000 && movedTo(plain, 5000, bends, kSampleRate).follow == nullptr);
     const std::int64_t bar3 = sampleOfTick(bends, kSampleRate, 2.0 * kBar);

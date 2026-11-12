@@ -50,7 +50,11 @@ struct ClipFollow {
 
 `Session::pushClips()` 以前把 track 的 clip 交給 engine。現在它交給該 track 的 `FollowTrack`（Step 5），再把拿回來的東西給 engine：不跟著 tempo 的就是 clip 本身，跟著的則是運算結果或 placeholder。視窗的 timer 會呼叫 `Session::pollRenders()`，把算完的結果接過來再交出去。`getPlayedClips()` 是 engine 手上那份的複本——arrangement 畫的就是它，所以被 stretch 的 clip 顯示的是它實際播放的波形。
 
-匯出會先呼叫 `finishRenders()` 並等待：bounce 不能帶著 placeholder 出去。
+匯出會先呼叫 `finishRenders()` 並等待：bounce 不能帶著 placeholder 出去。匯出運算期間，session 不接受任何編輯（`holdEdits()`）：否則那個編輯會從運算當時進行到的位置開始出現在檔案裡。
+
+每次改 map 都會一口氣替很多 track 送出新的 clip 清單，而 engine 的 command queue 可能是滿的（沒有 device 在取，或 audio thread 落後了）。Session 送出的永遠是一整份狀態——一個 track 的 clip、它的 MIDI clip、一條 lane 的曲線——所以被丟掉的清單只要重送最新的那份就好：視窗的 timer 會呼叫 `catchUpEngine()`。沒有 device 時，timer 會自己套用這些 command。
+
+`FollowTrack` 是靠 clip 的 audio 認出它，不是靠它在清單裡的位置：別的 clip 被拖到它前面時，它保留自己的運算結果；被移動的 clip 在新的結果算好之前，會在新的起點播放上一次的結果。
 
 ### 打開它
 
@@ -60,6 +64,9 @@ struct ClipFollow {
 - **Varispeed、Stretch**：clip 拿到的 marker，是「在目前的 map 上、在 clip 目前的位置錄下的 take」的 marker。用白話說：*它此刻播放的樣子就是對拍的*。這對剛錄好的 take 是對的，對用它原本的 tempo 放進來的 loop 也是對的。
 - 已經 warp 過的 clip 在 varispeed 和 stretch 之間切換時，保留原本的 marker。
 - **Off**：clip 留在原地，並再次以自己的速度播放它的 source。
+- 對 clip 設定它原本就有的模式，不會改變任何東西，也不算一個 undo 步驟：起點的 tick 不會再從 sample 反推一次，否則每次都會因捨入誤差移動一點。
+
+Clip 選單記住的是打開它時的那個 clip，不是它的 index（`chooseFromClipMenu()`）：選單開著時如果清單變了，選項仍然作用在那個 clip 上；如果那個 clip 本身變了，就什麼都不做。
 
 ### 移動和裁切
 

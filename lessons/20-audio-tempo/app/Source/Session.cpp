@@ -310,12 +310,30 @@ const std::vector<MidiClipModel>& Session::getMidiClips(TrackId track) const {
     return t ? t->midiClips : kNoMidiClips;
 }
 
-void Session::pushMidiClips(const TrackModel& track) {
+void Session::pushMidiClips(TrackModel& track) {
     std::vector<engine::MidiClip> clips;
     clips.reserve(track.midiClips.size());
     for (const MidiClipModel& c : track.midiClips)
         clips.push_back(c.toEngine());
-    engine_.setTrackMidiClips(track.id, std::move(clips));
+    track.midiMissed = !engine_.setTrackMidiClips(track.id, std::move(clips));
+}
+
+bool Session::catchUpEngine() {
+    for (TrackModel& t : tracks_) {
+        if (t.clipsMissed)
+            t.clipsMissed = !engine_.setTrackClips(t.id, t.played);
+        if (t.midiMissed)
+            pushMidiClips(t);
+    }
+    const std::vector<LaneAddress> lanes = std::move(lanesMissed_);
+    lanesMissed_.clear();
+    for (const LaneAddress& address : lanes)
+        pushLane(address); // a lane that is gone by now is not pushed, and not missed
+    return !isEngineBehind();
+}
+
+bool Session::isEngineBehind() const {
+    return !lanesMissed_.empty() || std::any_of(tracks_.begin(), tracks_.end(), [](const TrackModel& t) { return t.clipsMissed || t.midiMissed; });
 }
 
 void Session::setMidiClips(TrackId track, std::vector<MidiClipModel> clips) {
@@ -531,7 +549,7 @@ void Session::pushClips(TrackModel& track) {
     track.follow->update(std::move(clips), getTempoMap(), getClipSampleRate());
     track.played = track.follow->playable();
     // setTrackClips() copies the vector into a new heap object for the audio thread.
-    engine_.setTrackClips(track.id, track.played);
+    track.clipsMissed = !engine_.setTrackClips(track.id, track.played);
 }
 
 void Session::placeClips(TrackModel& track) {
@@ -560,9 +578,24 @@ bool Session::setClipFollow(TrackId track, int clipIndex, engine::FollowMode mod
     const TrackModel* t = findTrack(track);
     if (t == nullptr || clipIndex < 0 || clipIndex >= static_cast<int>(t->clips.size()))
         return false;
+    const Clip& old = t->clips[static_cast<size_t>(clipIndex)];
+    const Clip changed = engine::withFollowMode(old, mode, getTempoMap(), getClipSampleRate());
+    if (changed.follow == old.follow && changed.start == old.start && changed.length == old.length)
+        return true; // the mode it already has: no undo step
     std::vector<Clip> list = t->clips;
-    list[static_cast<size_t>(clipIndex)] = engine::withFollowMode(list[static_cast<size_t>(clipIndex)], mode, getTempoMap(), getClipSampleRate());
+    list[static_cast<size_t>(clipIndex)] = changed;
     return perform(edit::SetClips{track, std::move(list)}, mode == engine::FollowMode::Off ? "Clip does not follow the tempo" : "Clip follows the tempo");
+}
+
+int Session::findClip(TrackId track, const Clip& clip) const {
+    const std::vector<Clip>& clips = getClips(track);
+    for (size_t i = 0; i < clips.size(); ++i) {
+        const Clip& c = clips[i];
+        if (c.source == clip.source && c.sourceOffset == clip.sourceOffset && c.start == clip.start && c.length == clip.length &&
+            c.follow == clip.follow && c.name == clip.name)
+            return static_cast<int>(i);
+    }
+    return -1;
 }
 
 const std::vector<Clip>& Session::getPlayedClips(TrackId track) const {
@@ -571,6 +604,7 @@ const std::vector<Clip>& Session::getPlayedClips(TrackId track) const {
 }
 
 bool Session::pollRenders() {
+    catchUpEngine(); // what a full queue dropped before, first
     const std::vector<engine::FollowRenderer::Result> results = renderer_.collect();
     if (results.empty())
         return false;
@@ -578,7 +612,7 @@ bool Session::pollRenders() {
     for (TrackModel& t : tracks_)
         if (t.follow != nullptr && t.follow->take(results)) {
             t.played = t.follow->playable();
-            engine_.setTrackClips(t.id, t.played);
+            t.clipsMissed = !engine_.setTrackClips(t.id, t.played);
             changed = true;
         }
     if (changed)
@@ -1023,7 +1057,7 @@ void Session::applySampleRateConversion(double newRate, const ConvertedBuffers& 
 // ---- undo and redo (chapter 15, Step 9) ------------------------------------------------------------
 
 bool Session::perform(std::vector<Edit> edits, const juce::String& name, std::uint32_t mergeKey) {
-    return history_.perform(*this, std::move(edits), name, mergeKey);
+    return !editsHeld_ && history_.perform(*this, std::move(edits), name, mergeKey);
 }
 
 bool Session::perform(Edit edit, const juce::String& name, std::uint32_t mergeKey) {
@@ -1032,8 +1066,8 @@ bool Session::perform(Edit edit, const juce::String& name, std::uint32_t mergeKe
     return perform(std::move(edits), name, mergeKey);
 }
 
-bool Session::undo() { return history_.undo(*this); }
-bool Session::redo() { return history_.redo(*this); }
+bool Session::undo() { return !editsHeld_ && history_.undo(*this); }
+bool Session::redo() { return !editsHeld_ && history_.redo(*this); }
 
 std::optional<Edit> Session::applyEdit(const Edit& e) {
     return std::visit([this](const auto& kind) { return apply(kind); }, e);
@@ -1370,10 +1404,10 @@ void Session::pushLane(const LaneAddress& address) {
     const engine::LaneTarget target{refOf(address.strip), address.effect, parameter};
     const LaneContent* content = getLane(address);
     lane->setMode(content != nullptr ? content->mode : engine::AutomationMode::Read);
-    if (content != nullptr && content->curve.size() > 0)
-        engine_.setLaneCurve(target, content->curve);
-    else
-        engine_.clearLaneCurve(target);
+    const bool sent = content != nullptr && content->curve.size() > 0 ? engine_.setLaneCurve(target, content->curve) : engine_.clearLaneCurve(target);
+    lanesMissed_.erase(std::remove(lanesMissed_.begin(), lanesMissed_.end(), address), lanesMissed_.end());
+    if (!sent)
+        lanesMissed_.push_back(address); // catchUpEngine() sends it again
 }
 
 bool Session::setLane(const LaneAddress& address, std::optional<LaneContent> content) {

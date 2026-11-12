@@ -2141,6 +2141,144 @@ void testFollowingClipTooLong() {
     engine.collectGarbage();
 }
 
+// The engine's command queue is full now and then: nobody takes from it while no device runs, and a burst of
+// edits can fill it faster than the audio thread empties it. What it missed is sent again, and the engine ends
+// up playing what the session says.
+void testEngineCatchesUp() {
+    std::printf("the engine catches up with what a full command queue missed\n");
+    // 1. No device: the window's timer applies the commands itself. 3000 drags of a clip, a timer tick every 30.
+    {
+        auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+        MainComponent& main = *mainPtr;
+        Session& session = main.getSession();
+        Engine& engine = main.getEngine();
+        session.newProject();
+        engine.applyPendingCommandsOffline();
+        const TrackId t = session.getTrackId(0);
+        session.setClips(t, {session.makeAudioClip(std::make_shared<AudioBuffer>(1, 48000), "dc", 0)});
+        main.tick();
+        const std::uint64_t dropped = engine.getCommandsDropped();
+        for (int i = 1; i <= 3000; ++i) {
+            session.moveClip(t, 0, static_cast<std::int64_t>(i) * 100);
+            if (i % 30 == 0)
+                main.tick();
+        }
+        main.tick();
+        const std::vector<Clip>* playing = trackOf(engine, t).getClips();
+        DAWLAB_CHECK(engine.getCommandsDropped() == dropped && engine.getPendingCommands() == 0);
+        DAWLAB_CHECK(playing != nullptr && playing->size() == 1 && (*playing)[0].start == 300000);
+        std::printf("  no device, 3000 drags: %llu commands dropped, the engine's clip at %lld\n",
+                    static_cast<unsigned long long>(engine.getCommandsDropped() - dropped),
+                    static_cast<long long>(playing != nullptr && !playing->empty() ? (*playing)[0].start : -1));
+    }
+
+    // 2. A queue of 64 that is nearly full (a device that is late): a tempo change moves the clips of 8 tracks, and
+    //    later a render arrives into a full queue. What was dropped is sent again.
+    Engine small(64);
+    small.prepare(48000.0, 512);
+    Session s(small);
+    s.newProject();
+    const auto drain = [&small] {
+        for (int i = 0; i < 100 && small.getPendingCommands() > 0; ++i) {
+            small.applyPendingCommandsOffline();
+            small.collectGarbage();
+        }
+    };
+    drain();
+    const auto clicks = std::make_shared<const AudioBuffer>(1, 96000);
+    for (int i = 0; i < s.getNumTracks(); ++i) {
+        s.setClips(s.getTrackId(i), {engine::withFollowMode(s.makeAudioClip(clicks, "c", 96000 + i * 1000), engine::FollowMode::Start, s.getTempoMap(), 48000.0)});
+        drain();
+    }
+    const TrackId last = s.getTrackId(s.getNumTracks() - 1);
+    DAWLAB_CHECK(s.setClipFollow(last, 0, engine::FollowMode::Varispeed));
+    s.finishRenders();
+    drain();
+    const auto agrees = [&] {
+        for (int i = 0; i < s.getNumTracks(); ++i) {
+            const std::vector<Clip>* playing = trackOf(small, s.getTrackId(i)).getClips();
+            const std::vector<Clip>& played = s.getPlayedClips(s.getTrackId(i));
+            if (playing == nullptr || playing->size() != played.size())
+                return false;
+            for (size_t k = 0; k < played.size(); ++k)
+                if ((*playing)[k].start != played[k].start || (*playing)[k].length != played[k].length || (*playing)[k].source != played[k].source)
+                    return false;
+        }
+        return true;
+    };
+    const TrackId first = s.getTrackId(0);
+    const auto fill = [&](std::size_t leaveFree) {
+        while (small.getPendingCommands() + leaveFree < 64)
+            small.setTrackClips(first, s.getPlayedClips(first));
+    };
+    DAWLAB_CHECK(s.getNumTracks() == 8 && agrees() && !s.isEngineBehind());
+    fill(3);
+    DAWLAB_CHECK(s.setTempoPoints({{0, 60.0, false}}, "Tempo") && s.isEngineBehind());
+    drain();
+    DAWLAB_CHECK(!agrees()); // the lists that were dropped are not there yet
+    DAWLAB_CHECK(s.catchUpEngine() && !s.isEngineBehind());
+    drain();
+    s.finishRenders();
+    drain();
+    DAWLAB_CHECK(agrees());
+    // The render of the varispeed clip at 90 BPM, handed over when the queue is full.
+    DAWLAB_CHECK(s.setTempoPoints({{0, 90.0, false}}, "Tempo"));
+    drain();
+    fill(0);
+    s.finishRenders();
+    DAWLAB_CHECK(s.isEngineBehind());
+    drain();
+    DAWLAB_CHECK(s.catchUpEngine());
+    drain();
+    DAWLAB_CHECK(!s.isEngineBehind() && agrees());
+    std::printf("  a queue of 64, nearly full: a tempo change and a render that were dropped, sent again; the engine plays what the session says\n");
+}
+
+// The clip menu acts on the clip it was opened for, wherever that clip is in the list by the time an item is
+// chosen; and asking a clip for the mode it already has changes nothing.
+void testClipMenuAndModes() {
+    std::printf("the clip menu: the clip it was opened for; a mode a clip already has\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    main.setSize(MainComponent::kDefaultWidth, MainComponent::kDefaultHeight);
+    Session& session = main.getSession();
+    Engine& engine = main.getEngine();
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    const TrackId track = main.addTrack(TrackFormat::Mono, false);
+    auto audio = std::make_shared<AudioBuffer>(1, 24000);
+    const std::shared_ptr<const AudioBuffer> take = audio;
+    DAWLAB_CHECK(session.perform(edit::SetClips{track, {session.makeAudioClip(take, "a", 50000), session.makeAudioClip(take, "b", 100000)}}, "Add clips"));
+    engine.applyPendingCommandsOffline();
+
+    // The menu is opened for "a" (clip 0). Before an item is chosen, "b" is dragged in front of it: "a" is clip 1.
+    const Clip shownA = session.getClips(track)[0], shownB = session.getClips(track)[1];
+    DAWLAB_CHECK(session.moveClip(track, 1, 0) == 0);
+    session.getHistory().endMerge();
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(session.getClips(track)[1].name == "a");
+    DAWLAB_CHECK(main.chooseFromClipMenu(track, shownA, MainComponent::kClipMenuFollow + static_cast<int>(engine::FollowMode::Varispeed)));
+    DAWLAB_CHECK(session.getClips(track)[1].name == "a" && session.getClipFollow(track, 1) == engine::FollowMode::Varispeed &&
+                 session.getClipFollow(track, 0) == engine::FollowMode::Off);
+    // The menu of "b", which has moved since: nothing is done, and the status line says why.
+    DAWLAB_CHECK(!main.chooseFromClipMenu(track, shownB, MainComponent::kClipMenuFollow + static_cast<int>(engine::FollowMode::Start)));
+    DAWLAB_CHECK(session.getClipFollow(track, 0) == engine::FollowMode::Off && main.getStatus().contains("changed"));
+
+    // A start that follows, asked for again through the session: no undo step, and the tick stays (it is not
+    // found again from the sample, which would move it by a rounding each time).
+    DAWLAB_CHECK(session.setTempoPoints({{0, 97.0, false}}, "Tempo"));
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(session.setClipFollow(track, 0, engine::FollowMode::Start));
+    const double tick = session.getClips(track)[0].follow->startTick;
+    const std::size_t steps = session.getHistory().undoCount();
+    DAWLAB_CHECK(session.setClipFollow(track, 0, engine::FollowMode::Start) && session.setClipFollow(track, 1, engine::FollowMode::Varispeed));
+    DAWLAB_CHECK(session.getHistory().undoCount() == steps && session.getClips(track)[0].follow->startTick == tick);
+    std::printf("  a menu for a clip that another drag moved acts on that clip; Start and Varispeed asked again: no step, tick %.6f kept\n", tick);
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    engine.collectGarbage();
+}
+
 void testMidiRecording() {
     std::printf("instruments and MIDI clips: recording the keyboard\n");
     auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
@@ -2277,6 +2415,8 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testFollowingClips();
     testFollowingClipsReopen();
     testFollowingClipTooLong();
+    testClipMenuAndModes();
+    testEngineCatchesUp();
     testMidiFiles();
     testInstrumentSound();
     testAutomation();
@@ -3375,6 +3515,16 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     main->getCommandInfo(CommandIDs::playStop, playInfo);
     DAWLAB_CHECK(main->isExporting());                                                  // the job runs ...
     DAWLAB_CHECK((playInfo.flags & juce::ApplicationCommandInfo::isDisabled) != 0); // ... and editing is off
+    // Also for what does not come through a command (a clip menu opened before, a script): the session takes no
+    // edit while the engine renders the file, or it would be in the file from where the render is by then.
+    {
+        Session& s = main->getSession();
+        const TrackId bass = s.getTrackId(1);
+        const std::size_t steps = s.getHistory().undoCount();
+        DAWLAB_CHECK(!s.setTempoPoints({{0, 100.0, false}}, "Tempo") && s.getTempoMap().bpmAt(0.0) == 120.0);
+        DAWLAB_CHECK(!main->setClipFollow(bass, 0, engine::FollowMode::Start) && main->getStatus().startsWith("Not now"));
+        DAWLAB_CHECK(!s.undo() && s.getHistory().undoCount() == steps && s.getClipFollow(bass, 0) == engine::FollowMode::Off);
+    }
     if (!main->isExporting()) { // nothing will call back: finish now
         main->onExportFinished = nullptr;
         main.reset();

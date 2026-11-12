@@ -97,6 +97,11 @@ public:
     void setMidiRecordMode(MidiRecordMode mode) noexcept { midiMode_ = mode; }
     MidiRecordMode getMidiRecordMode() const noexcept { return midiMode_; }
     void showClipMenu(engine::TrackId track, int clipIndex);
+    // What the clip menu does with the item chosen (an item id of the menu: a take, or kClipMenuFollow + a
+    // FollowMode). `shown` is the clip as it was when the menu opened: the item acts on that clip wherever it is in
+    // the list by now. False, and the status line says so, if it is not there any more.
+    static constexpr int kClipMenuFollow = 1000;
+    bool chooseFromClipMenu(engine::TrackId track, const engine::Clip& shown, int item);
     // Chapter 20: how the clip follows the tempo (one undo step). The status line says what it does now.
     bool setClipFollow(engine::TrackId track, int clipIndex, engine::FollowMode mode);
     // ---- MIDI clips (chapter 18, Step 8) ---------------------------------------------------------------
@@ -109,6 +114,7 @@ public:
     void askForTrim();
     // True, and it says so on the status line, while a recording prevents `what`.
     bool refuseWhileRecording(const juce::String& what);
+    void applyCommandsWithoutDevice(); // tick(): the engine's commands, while no device callback takes them
     void newProject();
     // Project files (chapter 15, Step 8). openProject() and saveProject() work synchronously and
     // report on the status line (and, in Live mode, in a message box); the *Interactive versions

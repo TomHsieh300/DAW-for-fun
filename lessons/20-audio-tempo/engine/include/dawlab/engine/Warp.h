@@ -253,8 +253,12 @@ inline void placeUnder(Clip& clip, const TempoMap& map, double sampleRate) {
 //   Start      startTick is the tick of where it starts now.
 //   Varispeed, Stretch   a clip that was warped keeps its markers; another one gets those of a take recorded
 //              over `map` where the clip is now: "as it plays now, it is in time".
+// A mode the clip already has: the clip as it is (finding a start's tick again from its sample would move it by a
+// rounding every time).
 inline Clip withFollowMode(Clip clip, FollowMode mode, const TempoMap& map, double sampleRate) {
     const FollowClip before = followClipOf(clip);
+    if (before.mode == mode && (mode != FollowMode::Off || clip.follow == nullptr))
+        return clip;
     const std::int64_t sourceLength = before.isWarped() ? before.clip.length : clip.length;
     if (mode == FollowMode::Off) {
         clip.follow.reset();
