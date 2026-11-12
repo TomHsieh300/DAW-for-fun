@@ -199,19 +199,23 @@ public:
     FollowTrack& operator=(const FollowTrack&) = delete;
 
     // The track's clips, or a new tempo map (or both): Off and Start clips are placed at once; a warped clip
-    // gets its placeholder and a request for its render. A warped clip that is the same as before (the same
-    // source, range, mode and markers, in the same place of the list) keeps its last render as the placeholder -
-    // and if the map is the same too, nothing is rendered again: a new gain or fade costs nothing.
+    // gets its placeholder and a request for its render. A clip is known by its audio, wherever it is in the
+    // list: one with the same source, range and mode as before keeps its last render as the placeholder (moved
+    // to where it starts now); if its markers and the map are the same too, nothing is rendered again - a new
+    // gain or fade, or another clip dragged in front of it, costs nothing.
     void update(std::vector<FollowClip> clips, const TempoMap& map, double sampleRate) {
         const bool mapIsTheSame = hasMap_ && sampleRate == sampleRate_ && sameMap(map, map_);
         std::vector<Entry> next;
         next.reserve(clips.size());
         for (size_t i = 0; i < clips.size(); ++i) {
             Entry e;
-            const bool same = i < entries_.size() && sameAudio(entries_[i].clip, clips[i]);
-            if (same) {
-                e = std::move(entries_[i]);
-                entries_[i].key = 0; // taken over
+            int found = takeOver(clips[i], true);
+            const bool same = found >= 0;
+            if (!same)
+                found = takeOver(clips[i], false); // the same audio somewhere else: a move
+            if (found >= 0) {
+                e = std::move(entries_[static_cast<size_t>(found)]);
+                entries_[static_cast<size_t>(found)].key = 0; // taken over
             } else {
                 e.key = renderer_.newKey();
             }
@@ -305,10 +309,18 @@ private:
         Clip playing;
     };
 
-    // The same audio, read the same way: a render of one is a fair placeholder for the other.
-    static bool sameAudio(const FollowClip& a, const FollowClip& b) noexcept {
+    // The same audio, read the same way: a render of one is a fair placeholder for the other. With the same
+    // markers too, it is the same render under the same map.
+    static bool sameAudio(const FollowClip& a, const FollowClip& b, bool markersToo) noexcept {
         return a.clip.source == b.clip.source && a.clip.sourceOffset == b.clip.sourceOffset && a.clip.length == b.clip.length && a.mode == b.mode &&
-               a.markers == b.markers;
+               (!markersToo || a.markers == b.markers);
+    }
+    // The first entry of the last update() that is not taken over yet and has the clip's audio; -1 if none.
+    int takeOver(const FollowClip& clip, bool markersToo) const noexcept {
+        for (size_t j = 0; j < entries_.size(); ++j)
+            if (entries_[j].key != 0 && sameAudio(entries_[j].clip, clip, markersToo))
+                return static_cast<int>(j);
+        return -1;
     }
     static bool sameMap(const TempoMap& a, const TempoMap& b) noexcept {
         if (a.size() != b.size())

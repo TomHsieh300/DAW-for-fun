@@ -421,6 +421,33 @@ void testRenderer() {
         DAWLAB_CHECK(track.isUpToDate() && track.getNumFailed() == 0 && track.playable()[0].length == 192000 && track.playable()[0].source != tape.clip.source);
     }
 
+    // A clip is known by its audio, not by its place in the list. Two clips swap places under the same map:
+    // nothing is rendered again. One of them moved: until its new render is there, it plays its last one, at its
+    // new start - not its raw audio at the old speed.
+    {
+        FollowRenderer r2;
+        FollowTrack track(r2);
+        const FollowClip a = loopClip(sineBuffer({440.0}, 48000, 0.25), FollowMode::Varispeed, 0.0);
+        const FollowClip b = loopClip(sineBuffer({220.0}, 48000, 0.25), FollowMode::Varispeed, 7680.0);
+        track.update({a, b}, at60, kSampleRate);
+        r2.waitUntilIdle();
+        track.take(r2.collect());
+        const auto renderA = track.playable()[0].source, renderB = track.playable()[1].source;
+        const int started = r2.getNumRendersStarted();
+        track.update({b, a}, at60, kSampleRate);
+        DAWLAB_CHECK(track.isUpToDate() && track.playable()[0].source == renderB && track.playable()[1].source == renderA);
+        r2.waitUntilIdle();
+        DAWLAB_CHECK(r2.getNumRendersStarted() == started);
+        FollowClip later = a;
+        for (WarpMarker& m : later.markers)
+            m.tick += 15360.0;
+        track.update({b, later}, at60, kSampleRate);
+        DAWLAB_CHECK(!track.isUpToDate() && track.playable()[1].source == renderA && track.playable()[1].start == songRangeOf(later, at60, kSampleRate).first);
+        r2.waitUntilIdle();
+        track.take(r2.collect());
+        DAWLAB_CHECK(track.isUpToDate() && r2.getNumRendersStarted() == started + 1 && track.playable()[1].source != a.clip.source);
+    }
+
     // Work that nobody wants is not done. A long stretch is asked for, and once the worker is at it, asked for
     // again: the first is cancelled. Then twenty more in a row: only the last of them is rendered.
     {
