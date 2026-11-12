@@ -2026,6 +2026,121 @@ void testFollowingClips() {
     engine.collectGarbage();
 }
 
+// What a cut leaves of a clip that follows, at any tempo, saves into a file that opens again: a project that
+// saves is never one that cannot be opened.
+void testFollowingClipsReopen() {
+    std::printf("audio clips that follow the tempo: what a cut leaves saves into a file that opens\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    main.setSize(MainComponent::kDefaultWidth, MainComponent::kDefaultHeight);
+    Session& session = main.getSession();
+    Engine& engine = main.getEngine();
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    const double rate = session.getClipSampleRate();
+    const auto atTempo = [&](double bpm) {
+        const bool ok = session.setTempoPoints({{0, bpm, false}}, "Tempo");
+        engine.applyPendingCommandsOffline();
+        session.finishRenders();
+        engine.applyPendingCommandsOffline();
+        return ok;
+    };
+    TakesFolder folder;
+    const auto reopens = [&](const char* name) {
+        const juce::File file = folder.get().getChildFile(name);
+        if (!main.saveProject(file))
+            return false;
+        auto other = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+        other->setSize(MainComponent::kDefaultWidth, MainComponent::kDefaultHeight);
+        const ProjectIO::OpenResult opened = other->openProject(file);
+        if (!opened.ok)
+            std::printf("  %s does not open: %s\n", name, opened.error.toRawUTF8());
+        return opened.ok;
+    };
+
+    // Two seconds of a take made at 120 BPM, by varispeed; at 30 BPM a sample of it covers four of the song.
+    const TrackId track = main.addTrack(TrackFormat::Mono, false);
+    auto audio = std::make_shared<AudioBuffer>(1, static_cast<int>(2 * rate));
+    for (int i = 0; i < audio->getNumSamples(); i += static_cast<int>(rate / 4))
+        audio->setSample(0, i, 0.5f);
+    const std::shared_ptr<const AudioBuffer> clicks = audio;
+    DAWLAB_CHECK(session.perform(edit::SetClips{track, {session.makeAudioClip(clicks, "clicks", static_cast<std::int64_t>(rate))}}, "Add clip"));
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(main.setClipFollow(track, 0, engine::FollowMode::Varispeed) && atTempo(30.0));
+
+    // A clip put 1 to 8 samples after its start: what is left before it is less than a sample of the source, or
+    // a sample or two. A piece with nothing of the source in it is not kept.
+    const Clip whole = session.getClips(track)[0];
+    int empty = 0, kept = 0;
+    for (int d = 1; d <= 8; ++d) {
+        Clip over = session.makeAudioClip(clicks, "over", whole.start + d);
+        over.length = 1000;
+        for (const Clip& c : session.withClipOnTop({whole}, over)) {
+            empty += engine::followModeOf(c) != engine::FollowMode::Off && c.follow->sourceLength <= 0 ? 1 : 0;
+            kept += c.start == whole.start ? 1 : 0;
+        }
+    }
+    DAWLAB_CHECK(empty == 0 && kept > 0 && kept < 8);
+    for (int d = 1; d <= 3; ++d) {
+        Clip over = session.makeAudioClip(clicks, "over", whole.start + d);
+        over.length = 1000;
+        DAWLAB_CHECK(session.perform(edit::SetClips{track, session.withClipOnTop({whole}, over)}, "Overdub"));
+        engine.applyPendingCommandsOffline();
+        session.finishRenders();
+        DAWLAB_CHECK(reopens("Cut.dawlab"));
+        // At the fastest tempo a piece of a sample or two covers less than a sample of the song: still a clip.
+        DAWLAB_CHECK(atTempo(999.0) && reopens("Fast.dawlab") && atTempo(30.0));
+    }
+    std::printf("  a varispeed clip at 30 BPM cut 1 to 8 samples after its start: no empty piece; saved and opened, at 30 and 999 BPM\n");
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    engine.collectGarbage();
+}
+
+// A clip that the map makes longer than the engine renders: the window says so, and an export does not go out
+// with what plays in its place.
+void testFollowingClipTooLong() {
+    std::printf("an audio clip that follows the tempo further than the engine renders\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    main.setSize(MainComponent::kDefaultWidth, MainComponent::kDefaultHeight);
+    Session& session = main.getSession();
+    Engine& engine = main.getEngine();
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    const auto atTempo = [&](double bpm) {
+        const bool ok = session.setTempoPoints({{0, bpm, false}}, "Tempo");
+        engine.applyPendingCommandsOffline();
+        return ok;
+    };
+    // A take made at 999 BPM; at 20 BPM it plays 49.95 times as long: more than kMaxRenderSamples.
+    const TrackId track = main.addTrack(TrackFormat::Mono, false);
+    auto audio = std::make_shared<AudioBuffer>(1, static_cast<int>(engine::kMaxRenderSamples / 49 + 1));
+    audio->setSample(0, 0, 0.5f);
+    const std::shared_ptr<const AudioBuffer> take = audio;
+    DAWLAB_CHECK(atTempo(999.0));
+    DAWLAB_CHECK(session.perform(edit::SetClips{track, {session.makeAudioClip(take, "long", 0)}}, "Add clip"));
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(main.setClipFollow(track, 0, engine::FollowMode::Varispeed) && atTempo(20.0)); // the render at 999 is overtaken
+    for (int waited = 0; session.hasPendingRenders() && waited < 20000; ++waited) {
+        main.tick();
+        juce::Thread::sleep(1);
+    }
+    DAWLAB_CHECK(!session.hasPendingRenders() && session.getNumFailedRenders() == 1 && main.getStatus().contains("could not be rendered"));
+    DAWLAB_CHECK(session.getPlayedClips(track).size() == 1 && session.getPlayedClips(track)[0].source == take); // its placeholder
+    // The export is not started: the file would have the placeholder in it, at the speed of 999 BPM.
+    TakesFolder folder;
+    const juce::File file = folder.get().getChildFile("Long.wav");
+    main.exportMixdown(file);
+    DAWLAB_CHECK(main.getStatus().startsWith("Export not started") && main.getStatus().contains("could not be rendered") && !file.existsAsFile());
+    // Off again: nothing to render, nothing failed.
+    DAWLAB_CHECK(main.setClipFollow(track, 0, engine::FollowMode::Off) && session.getNumFailedRenders() == 0);
+    std::printf("  a take made at 999 BPM, at 20: said in the status line, not exported\n");
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    engine.collectGarbage();
+}
+
 void testMidiRecording() {
     std::printf("instruments and MIDI clips: recording the keyboard\n");
     auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
@@ -2160,6 +2275,8 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testMidiRecording();
     testTempoMap();
     testFollowingClips();
+    testFollowingClipsReopen();
+    testFollowingClipTooLong();
     testMidiFiles();
     testInstrumentSound();
     testAutomation();

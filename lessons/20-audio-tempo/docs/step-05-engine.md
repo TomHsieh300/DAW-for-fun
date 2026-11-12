@@ -106,7 +106,9 @@ done. Step 6 calls it before a bounce.
 ### What it does not do
 
 - The renders are not saved. They are a cache: the source, the markers and the map make them again.
-- A render longer than 93 minutes at 48 kHz is refused, and the clip plays as it is.
+- A render longer than 93 minutes at 48 kHz is refused, and so is one there is no memory for. It comes back as a
+  `Result` that is not `ok` (a cancel never does: a newer request always follows one), the clip goes on playing
+  its placeholder, and `FollowTrack::getNumFailed()` counts it. The app says so, and does not export.
 - In a stretch, two halves of a cut take are stretched separately: each may slide up to 5 ms, so their seam is
   not sample-exact as it is in varispeed. A short crossfade at the cut hides it.
 - A piece of a stretch reads up to 5 ms beyond the clip's range of its source: audio just outside a trimmed edge

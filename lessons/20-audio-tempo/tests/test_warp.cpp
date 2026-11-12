@@ -394,6 +394,33 @@ void testRenderer() {
     renderer.waitUntilIdle();
     DAWLAB_CHECK(renderer.collect().empty() && renderer.isIdle());
 
+    // A render that cannot be made - 2 s said to be 2000 beats, 6000 s at 20 BPM, longer than the engine renders -
+    // comes back once as one that failed. It is not a cancel, which a newer request always follows: nothing would.
+    {
+        const TempoMap at20 = mapOf({{0, 20.0, false}});
+        FollowClip huge = tape;
+        huge.markers = markersForLoop(0, tape.clip.length, 2000.0, 0.0);
+        const std::uint64_t g = renderer.request(key, huge, at20, kSampleRate);
+        renderer.waitUntilIdle();
+        done = renderer.collect();
+        DAWLAB_CHECK(done.size() == 1 && renderer.collect().empty());
+        if (done.size() == 1)
+            DAWLAB_CHECK(done[0].key == key && done[0].generation == g && !done[0].ok && !done[0].clip.source);
+        // A track does not wait for it for ever: it keeps playing the placeholder, and says that a render failed.
+        FollowTrack track(renderer);
+        track.update({huge}, at20, kSampleRate);
+        renderer.waitUntilIdle();
+        track.take(renderer.collect());
+        DAWLAB_CHECK(track.isUpToDate() && track.getNumFailed() == 1 && track.playable().size() == 1 && track.playable()[0].source == tape.clip.source);
+        // Asked for again under the same map (a new gain), it is not tried again; a clip that fits renders.
+        track.update({huge}, at20, kSampleRate);
+        DAWLAB_CHECK(track.isUpToDate() && track.getNumFailed() == 1 && renderer.isIdle());
+        track.update({tape}, at60, kSampleRate);
+        renderer.waitUntilIdle();
+        track.take(renderer.collect());
+        DAWLAB_CHECK(track.isUpToDate() && track.getNumFailed() == 0 && track.playable()[0].length == 192000 && track.playable()[0].source != tape.clip.source);
+    }
+
     // Work that nobody wants is not done. A long stretch is asked for, and once the worker is at it, asked for
     // again: the first is cancelled. Then twenty more in a row: only the last of them is rendered.
     {

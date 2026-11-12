@@ -21,7 +21,8 @@
 // The price is the time in between. Until its render is ready a clip plays its PLACEHOLDER: the last render,
 // moved to where the clip now starts. A request that a newer one overtakes is dropped - cancelled if the worker
 // is at it - and its result, should it still arrive, is not taken: every request has a generation, and only the
-// newest of a key counts.
+// newest of a key counts. A render that cannot be made (longer than kMaxRenderSamples, or no memory for it) comes
+// back as a Result that is not ok: its clip goes on playing the placeholder, and the UI can say so.
 //
 // The two classes here are not for the audio thread. FollowRenderer is safe to use from one thread at a time
 // next to its own worker; FollowTrack belongs to the UI thread alone.
@@ -33,6 +34,7 @@
 #include <cstdint>
 #include <deque>
 #include <mutex>
+#include <new>
 #include <thread>
 #include <unordered_map>
 #include <utility>
@@ -48,6 +50,7 @@ public:
         Key key = 0;
         std::uint64_t generation = 0;
         Clip clip;
+        bool ok = true; // false: the render could not be made (longer than kMaxRenderSamples, or no memory for it)
     };
 
     FollowRenderer() : worker_([this] { run(); }) {}
@@ -146,15 +149,24 @@ private:
             started_.fetch_add(1, std::memory_order_relaxed);
             lock.unlock();
 
+            // A render that is not done was cancelled - a newer request follows, or nobody wants it - or it cannot
+            // be made: that comes back too, as one that failed, or its track would wait for it for ever. An
+            // exception must not leave this thread: it would end the program.
             Result result{job.key, job.generation, {}};
-            const bool done = renderFollowClip(job.clip, job.map, job.sampleRate, result.clip, &cancel_);
+            bool done = false;
+            try {
+                done = renderFollowClip(job.clip, job.map, job.sampleRate, result.clip, &cancel_);
+                result.ok = done || cancel_.load(std::memory_order_relaxed);
+            } catch (const std::bad_alloc&) {
+                result.ok = false;
+            }
             job = Job{}; // the clip's buffers are let go outside the lock
 
             lock.lock();
             busy_ = false;
             if (done)
                 completed_.fetch_add(1, std::memory_order_relaxed);
-            if (done && !stop_)
+            if ((done || !result.ok) && !stop_)
                 finished_.push_back(std::move(result));
             if (waiting_.empty())
                 idle_.notify_all();
@@ -205,18 +217,20 @@ public:
             }
             e.clip = std::move(clips[i]);
             if (e.clip.isWarped() && e.clip.clip.source) {
-                if (same && mapIsTheSame && (e.waiting || e.hasRender)) {
-                    carryOver(e.clip.clip, e.playing); // the render, or the request on its way, still holds
+                if (same && mapIsTheSame && (e.waiting || e.hasRender || e.failed)) {
+                    carryOver(e.clip.clip, e.playing); // the render, the request on its way, or the failure still holds
                 } else {
                     e.playing = placeholderFor(e.clip, e.hasRender ? &e.rendered : nullptr, map, sampleRate);
                     carryOver(e.clip.clip, e.playing);
                     e.generation = renderer_.request(e.key, e.clip, map, sampleRate);
                     e.waiting = true;
+                    e.failed = false;
                 }
             } else {
                 renderFollowClip(e.clip, map, sampleRate, e.playing); // Off, Start: no buffer to make
                 e.waiting = false;
                 e.hasRender = false;
+                e.failed = false;
             }
             next.push_back(std::move(e));
         }
@@ -230,19 +244,24 @@ public:
     }
 
     // Results of FollowRenderer::collect(): takes those that are this track's and still wanted. True if what the
-    // engine should play has changed - then hand playable() to Engine::setTrackClips().
+    // engine should play has changed - then hand playable() to Engine::setTrackClips() - or a render failed: the
+    // clip then goes on playing its placeholder, and getNumFailed() counts it.
     bool take(const std::vector<FollowRenderer::Result>& results) {
         bool changed = false;
         for (const FollowRenderer::Result& r : results)
-            for (Entry& e : entries_)
-                if (e.key == r.key && e.waiting && e.generation == r.generation) {
-                    e.rendered = r.clip;
-                    e.hasRender = true;
-                    e.playing = r.clip;
-                    carryOver(e.clip.clip, e.playing);
-                    e.waiting = false;
-                    changed = true;
-                }
+            for (Entry& e : entries_) {
+                if (e.key != r.key || !e.waiting || e.generation != r.generation)
+                    continue;
+                e.waiting = false;
+                e.failed = !r.ok;
+                changed = true;
+                if (!r.ok)
+                    continue;
+                e.rendered = r.clip;
+                e.hasRender = true;
+                e.playing = r.clip;
+                carryOver(e.clip.clip, e.playing);
+            }
         return changed;
     }
 
@@ -263,6 +282,14 @@ public:
         return true;
     }
 
+    // Clips whose render under the map of now could not be made: they play their placeholder.
+    int getNumFailed() const noexcept {
+        int failed = 0;
+        for (const Entry& e : entries_)
+            failed += e.failed ? 1 : 0;
+        return failed;
+    }
+
     int getNumClips() const noexcept { return static_cast<int>(entries_.size()); }
     const FollowClip& getClip(int i) const noexcept { return entries_[static_cast<size_t>(i)].clip; }
 
@@ -273,6 +300,7 @@ private:
         std::uint64_t generation = 0;
         bool waiting = false;   // a render is on its way; `playing` is a placeholder
         bool hasRender = false; // `rendered` is a render of this clip under some map
+        bool failed = false;    // its render under the map of now could not be made; `playing` is a placeholder
         Clip rendered;
         Clip playing;
     };

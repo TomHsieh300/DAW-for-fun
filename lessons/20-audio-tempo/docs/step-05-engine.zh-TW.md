@@ -82,7 +82,7 @@ FollowTrack::take()
 ### 它沒有做的事
 
 - 運算結果不會存檔。它們是 cache：source、marker 和 map 可以重新做出它們。
-- 在 48 kHz 下超過 93 分鐘的結果會被拒絕，clip 照原樣播放。
+- 在 48 kHz 下超過 93 分鐘的 render 會被拒絕，記憶體不夠時也一樣。它會以一個 `ok` 為 false 的 `Result` 回來（cancel 永遠不會這樣回來：cancel 之後一定還有更新的 request），clip 繼續播放它的 placeholder，`FollowTrack::getNumFailed()` 會把它算進去。App 會在狀態列說明，而且不會 export。
 - Stretch 時，切開的 take 的兩半是分開處理的：各自最多可以滑動 5 ms，所以它們的接縫不像 varispeed 那樣每個 sample 都精確。在切點做一小段 crossfade 可以蓋掉。
 - Stretch 的一段最多會讀到 clip 的 source 範圍之外 5 ms：被修剪掉的邊緣外面的 audio，在邊緣處可能聽得到。在邊緣做 fade 同樣可以蓋掉。
 

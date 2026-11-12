@@ -598,6 +598,13 @@ bool Session::hasPendingRenders() const {
     return false;
 }
 
+int Session::getNumFailedRenders() const {
+    int failed = 0;
+    for (const TrackModel& t : tracks_)
+        failed += t.follow != nullptr ? t.follow->getNumFailed() : 0;
+    return failed;
+}
+
 void Session::setClips(TrackId track, std::vector<Clip> clips) {
     TrackModel* t = findTrack(track);
     if (t == nullptr)
@@ -619,6 +626,9 @@ Clip Session::makeAudioClip(std::shared_ptr<const AudioBuffer> audio, const juce
 
 std::vector<Clip> Session::withClipOnTop(std::vector<Clip> clips, const Clip& clip) const {
     const int fade = static_cast<int>(std::lround(0.005 * getClipSampleRate()));
+    // Chapter 20: a warped clip is cut in its source, and where a sample of the source covers several of the song
+    // the part left can hold none of it. That part is nothing, not a clip.
+    const auto holdsAudio = [](const Clip& piece) { return engine::followClipOf(piece).clip.length > 0; };
     std::vector<Clip> result;
     for (const Clip& old : clips) {
         if (old.end() <= clip.start || old.start >= clip.end()) {
@@ -629,13 +639,15 @@ std::vector<Clip> Session::withClipOnTop(std::vector<Clip> clips, const Clip& cl
             Clip before = engine::cutToSongRange(old, old.start, clip.start, getTempoMap(), getClipSampleRate());
             before.fadeInSamples = static_cast<int>(std::min<int64_t>(old.fadeInSamples, before.length / 2));
             before.fadeOutSamples = static_cast<int>(std::min<int64_t>(fade, before.length / 2));
-            result.push_back(before);
+            if (holdsAudio(before))
+                result.push_back(before);
         }
         if (old.end() > clip.end()) { // the part after
             Clip after = engine::cutToSongRange(old, clip.end(), old.end(), getTempoMap(), getClipSampleRate());
             after.fadeInSamples = static_cast<int>(std::min<int64_t>(fade, after.length / 2));
             after.fadeOutSamples = static_cast<int>(std::min<int64_t>(old.fadeOutSamples, after.length / 2));
-            result.push_back(after);
+            if (holdsAudio(after))
+                result.push_back(after);
         }
     }
     result.push_back(clip);

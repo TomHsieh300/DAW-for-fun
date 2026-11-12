@@ -151,6 +151,9 @@ public:
     // Waits for every render and takes it: before an export, and in tests. Blocks.
     void finishRenders();
     bool hasPendingRenders() const;
+    // Clips whose render under the map of now could not be made (longer than the engine renders, or no memory
+    // for it): they play their placeholder, so an export would not sound as the project says.
+    int getNumFailedRenders() const;
 
     // One clip that plays `audio` from timeline sample `start`, with 5 ms fades. The audio must
     // already be at getClipSampleRate() (MediaLoader resamples it).

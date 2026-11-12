@@ -193,6 +193,14 @@ MainComponent::~MainComponent() {
 
 // ---- the UI tick ------------------------------------------------------------------------------------
 
+// Chapter 20: what the status line says about clips whose render could not be made.
+static juce::String failedRendersText(int clips) {
+    const bool one = clips == 1;
+    return juce::String(clips) + (one ? " clip that follows" : " clips that follow") +
+           " the tempo could not be rendered (longer than the engine renders, or out of memory): " + (one ? "it plays at its" : "they play at their") +
+           " old speed";
+}
+
 void MainComponent::tick() {
     // Session's change messages are asynchronous; deliver pending ones now, so that a tick always
     // shows the current structure (this matters for the snapshot, which has no running message loop).
@@ -202,8 +210,8 @@ void MainComponent::tick() {
         engine_.collectGarbage();
     session_.collectAutomation();
     // Chapter 20: renders of clips that follow the tempo arrive from the worker thread.
-    if (!isExporting())
-        session_.pollRenders();
+    if (!isExporting() && session_.pollRenders() && session_.getNumFailedRenders() > 0)
+        setStatus(failedRendersText(session_.getNumFailedRenders()));
     // Chapter 19: the synth panel shows the selected track.
     if (synthPanel_ != nullptr && synthPanel_->isVisible() && synthPanel_->getPanel().getTrack() != arrangement_.getSelectedTrack())
         synthPanel_->getPanel().showTrack(arrangement_.getSelectedTrack());
@@ -1010,6 +1018,10 @@ void MainComponent::exportMixdown(const juce::File& file) {
     // Chapter 20: an export must not go out with placeholders. Wait for the renders (it blocks, for as long as
     // the slowest stretch takes).
     session_.finishRenders();
+    if (session_.getNumFailedRenders() > 0) { // the file would have their placeholders in it
+        setStatus("Export not started: " + failedRendersText(session_.getNumFailedRenders()));
+        return;
+    }
     // Rule 1 (Exporter.h): detach the engine from the device. After this call no audio callback
     // touches the engine; the transport state is restored by the renderer afterwards.
     audioHost_.setEngineAttached(false);

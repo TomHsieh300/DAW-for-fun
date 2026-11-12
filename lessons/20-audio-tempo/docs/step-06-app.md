@@ -104,6 +104,13 @@ fractions, and they must read back as the same numbers. The `start` and `length`
 clip was when the file was saved; on opening it is placed again under the file's tempo map. Files of formats 1
 to 7 have no such lines and open as before.
 
+These lines come from outside, so they are checked where they are read (`followProblem()` in ProjectFormat.cpp),
+and a file that would place a clip where DawLab never puts one is refused with its line: a start tick below 0,
+a tick or position beyond 2^40, two markers between which no tempo goes (outside 2^-20 to 2^20 ticks per sample),
+or markers that do not cover the part of the source the clip plays (a sample of rounding allowed). A warped clip
+may have a `length` of 0: at a fast tempo a piece of a sample or two covers no sample of the song. And a cut that
+leaves a piece with nothing of the source in it does not keep that piece (`Session::withClipOnTop()`).
+
 ### What it does not do
 
 - **Recording does not make a take follow.** A take is recorded as a clip that stays; you turn following on

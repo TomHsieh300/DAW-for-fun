@@ -80,6 +80,8 @@ marker 192000 19200
 
 （在 120 BPM 做的兩小節 audio，放在第 4 小節，歌是 90 BPM。）起點模式是 `follow start <tick>`；其他模式是 `follow varispeed|stretch <source 裡的長度>` 加上至少兩行 `marker <source> <tick>`。Tick 和 source 位置以 17 位數字寫出：它們是小數，讀回來必須是同一個數。`clip` 行的 `start` 和 `length` 是存檔當時 clip 所在的位置；開檔時會依檔案的 tempo map 重新擺放。第 1 到 7 版的檔案沒有這些行，照舊開啟。
 
+這些行來自外部，所以在讀進來的地方就檢查（ProjectFormat.cpp 的 `followProblem()`）。一個檔案如果會把 clip 放到 DawLab 從來不會放的位置，就會連同行號一起被拒絕：起點 tick 小於 0；tick 或位置超過 2^40；兩個 marker 之間的關係不是任何 tempo 做得出來的（每個 source sample 對應的 tick 數不在 2^-20 到 2^20 之間）；或 markers 沒有涵蓋 clip 播放的那段 source（容許一個 sample 的捨入誤差）。Warped clip 的 `length` 可以是 0：在很快的 tempo 下，一兩個 sample 長的片段蓋不到歌曲的任何一個 sample。另外，切 clip 時如果某個片段裡完全沒有 source 的內容，那個片段就不保留（`Session::withClipOnTop()`）。
+
 ### 它沒有做的事
 
 - **錄音不會讓 take 自動跟著 tempo。** Take 錄下來是不跟著 tempo 的 clip；之後你再打開，它會拿到當下那個 map 的 marker。請在改 tempo 之前打開。
