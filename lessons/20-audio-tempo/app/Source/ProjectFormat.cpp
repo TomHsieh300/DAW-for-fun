@@ -227,11 +227,21 @@ bool parseMode(const std::string& text, engine::AutomationMode& out) noexcept {
     return false;
 }
 
+// The largest position or length a file may give, in samples or ticks: 2^40, some 260 days at 48 kHz. DawLab writes
+// nothing near it, and the sum of two of them (a start and a length) is far from overflowing. And the sample rates
+// that a device has. A file beyond them is refused where it is read: 1e-9 Hz made the conversion of the clips
+// cast an enormous size, and a start of 2^63 - 1 overflowed when its length was added.
+constexpr std::int64_t kMaxPosition = std::int64_t{1} << 40;
+constexpr double kMinSampleRate = 8000.0, kMaxSampleRate = 768000.0;
+
+// A position or a length: from `least` to kMaxPosition.
+inline bool isPosition(std::int64_t value, std::int64_t least = 0) noexcept { return value >= least && value <= kMaxPosition; }
+
 // Chapter 20: what a clip's follow lines may say, checked once, here, where they come in. The session places a
 // clip that follows by its tick or by its markers; numbers that DawLab never writes would put it before the song,
 // beyond any sample count, or play it where no marker says (and placing it would cast an enormous number to a
 // sample, or step towards it for ever). The limits are far beyond what a recording makes.
-constexpr double kMaxFollowValue = 1099511627776.0;                         // 2^40 ticks or samples
+constexpr double kMaxFollowValue = static_cast<double>(kMaxPosition);      // 2^40 ticks or samples
 constexpr double kMinTicksPerSample = 1.0 / 1048576.0, kMaxTicksPerSample = 1048576.0; // 2^-20 .. 2^20 between two markers
 
 std::string followProblem(const ClipState& c) {
@@ -419,11 +429,11 @@ bool synthInRange(const SynthState& y) {
 }
 
 bool noteInRange(const engine::Note& n) {
-    return n.start >= 0 && n.length > 0 && inRange(n.pitch, 0, 127) && inRange(n.velocity, 1, 127) && inRange(n.channel, 0, 15);
+    return isPosition(n.start) && isPosition(n.length, 1) && inRange(n.pitch, 0, 127) && inRange(n.velocity, 1, 127) && inRange(n.channel, 0, 15);
 }
 
 bool controllerInRange(const engine::ControllerPoint& c) {
-    return c.tick >= 0 && inRange(c.number, 0, 127) && inRange(c.value, 0, 127) && inRange(c.channel, 0, 15);
+    return isPosition(c.tick) && inRange(c.number, 0, 127) && inRange(c.value, 0, 127) && inRange(c.channel, 0, 15);
 }
 
 // Lines that refer to a channel are resolved after the last line (any order is fine).
@@ -603,8 +613,8 @@ private:
     std::string readSampleRate() {
         if (haveRate_)
             return "sampleRate given twice";
-        if (tok_.size() != 2 || !parseNumber(tok_[1], p_.sampleRate) || p_.sampleRate <= 0.0)
-            return "sampleRate needs one positive number";
+        if (tok_.size() != 2 || !parseNumber(tok_[1], p_.sampleRate) || !(p_.sampleRate >= kMinSampleRate && p_.sampleRate <= kMaxSampleRate))
+            return "sampleRate needs one number, 8000 to 768000";
         haveRate_ = true;
         return "";
     }
@@ -628,9 +638,9 @@ private:
     std::string readLoop() {
         const bool ticks = version_ >= 7 && tok_.size() == 5 && tok_[4].text == "ticks";
         if ((tok_.size() != 4 && !ticks) || !parseNumber(tok_[1], p_.loopStart) || !parseNumber(tok_[2], p_.loopEnd) ||
-            !parseFlag(tok_[3], p_.loopEnabled) || p_.loopStart < 0 || p_.loopEnd < p_.loopStart)
-            return version_ >= 7 ? "loop needs start >= 0, end >= start, 0/1 and, for a loop in ticks, \"ticks\""
-                                 : "loop needs start >= 0, end >= start (samples) and 0/1";
+            !parseFlag(tok_[3], p_.loopEnabled) || !isPosition(p_.loopStart) || !isPosition(p_.loopEnd, p_.loopStart))
+            return version_ >= 7 ? "loop needs start >= 0, end >= start (at most 2^40), 0/1 and, for a loop in ticks, \"ticks\""
+                                 : "loop needs start >= 0, end >= start (samples, at most 2^40) and 0/1";
         p_.loopInTicks = ticks;
         return "";
     }
@@ -640,8 +650,8 @@ private:
             return "tempopoint needs format 7";
         TempoPointState t;
         if (tok_.size() != 4 || !parseNumber(tok_[1], t.tick) || !parseNumber(tok_[2], t.bpm) || !parseFlag(tok_[3], t.ramp) ||
-            !inRange(t.bpm, 20.0, 999.0))
-            return "tempopoint needs a tick, BPM (20 .. 999) and 0/1";
+            !inRange(t.bpm, 20.0, 999.0) || !isPosition(t.tick))
+            return "tempopoint needs a tick (at most 2^40), BPM (20 .. 999) and 0/1";
         if (p_.tempoPoints.empty() ? t.tick != 0 : t.tick <= p_.tempoPoints.back().tick)
             return "tempo points start at tick 0, each after the one before";
         if (static_cast<int>(p_.tempoPoints.size()) == kMaxTempoPoints)
@@ -787,11 +797,11 @@ private:
         ClipState c;
         if (!parseTrackId(tok_[1], c.track))
             return "bad track id \"" + tok_[1].text + "\"";
-        if (!parseNumber(tok_[2], c.start) || c.start < 0)
-            return "clip start must be 0 or more samples";
+        if (!parseNumber(tok_[2], c.start) || !isPosition(c.start))
+            return "clip start must be 0 to 2^40 samples";
         // At least 1, checked after the last line: a warped clip (format 8) may cover no sample of the song at its tempo.
-        if (!parseNumber(tok_[3], c.length) || c.length < 0)
-            return "clip length must be at least 1 sample";
+        if (!parseNumber(tok_[3], c.length) || !isPosition(c.length))
+            return "clip length must be 1 to 2^40 samples";
         if (!tok_[4].quoted)
             return "the file name must be in quotes";
         c.file = tok_[4].text;
@@ -807,9 +817,9 @@ private:
 
     // Format 3: a clip's source offset, fades, gain, muted and name.
     std::string readClipDetails(ClipState& c) {
-        if (!parseNumber(tok_[5], c.sourceOffset) || c.sourceOffset < 0 || !parseNumber(tok_[6], c.fadeIn) ||
+        if (!parseNumber(tok_[5], c.sourceOffset) || !isPosition(c.sourceOffset) || !parseNumber(tok_[6], c.fadeIn) ||
             !parseNumber(tok_[7], c.fadeOut) || c.fadeIn < 0 || c.fadeOut < 0)
-            return "source offset and fades must be 0 or more samples";
+            return "source offset and fades must be 0 or more samples (the offset at most 2^40)";
         if (!isEither(tok_[8], "linear", "equalPower"))
             return "the fade shape must be linear or equalPower";
         c.equalPowerFades = tok_[8].text == "equalPower";
@@ -853,7 +863,7 @@ private:
 
     // "follow varispeed" or "follow stretch": the length in the source. The markers follow on their own lines.
     std::string readFollowWarped(ClipState& c) {
-        if (!parseNumber(tok_[2], c.sourceLength) || c.sourceLength <= 0)
+        if (!parseNumber(tok_[2], c.sourceLength) || !isPosition(c.sourceLength, 1))
             return "follow " + tok_[1].text + " needs a length in the source of at least 1 sample";
         c.follow = tok_[1].text == "varispeed" ? engine::FollowMode::Varispeed : engine::FollowMode::Stretch;
         return "";
@@ -885,9 +895,9 @@ private:
         s.file = tok_[1].text;
         for (size_t i = 2; i < tok_.size(); i += 3) {
             TakeState t;
-            if (!parseNumber(tok_[i], t.start) || t.start < 0 || !parseNumber(tok_[i + 1], t.sourceOffset) || t.sourceOffset < 0 ||
-                !parseNumber(tok_[i + 2], t.length) || t.length <= 0)
-                return "a take needs a start and a source offset of 0 or more, and a length of at least 1";
+            if (!parseNumber(tok_[i], t.start) || !isPosition(t.start) || !parseNumber(tok_[i + 1], t.sourceOffset) || !isPosition(t.sourceOffset) ||
+                !parseNumber(tok_[i + 2], t.length) || !isPosition(t.length, 1))
+                return "a take needs a start and a source offset of 0 or more, and a length of at least 1 (each at most 2^40)";
             s.takes.push_back(t);
         }
         p_.takeSets.push_back(std::move(s));
@@ -970,9 +980,9 @@ private:
 
     // A MIDI clip's start, length, offset, muted and name, then its quantize.
     std::string readMidiClipValues(MidiClipState& c) {
-        if (!parseNumber(tok_[3], c.start) || c.start < 0 || !parseNumber(tok_[4], c.length) || c.length <= 0 ||
-            !parseNumber(tok_[5], c.offset) || c.offset < 0)
-            return "a MIDI clip needs a start and an offset of 0 or more ticks, and a length of at least 1";
+        if (!parseNumber(tok_[3], c.start) || !isPosition(c.start) || !parseNumber(tok_[4], c.length) || !isPosition(c.length, 1) ||
+            !parseNumber(tok_[5], c.offset) || !isPosition(c.offset))
+            return "a MIDI clip needs a start and an offset of 0 or more ticks, and a length of at least 1 (each at most 2^40)";
         if (!parseFlag(tok_[6], c.muted) || !tok_[7].quoted)
             return "a MIDI clip needs 0/1 for muted and a name in quotes";
         c.name = tok_[7].text;
@@ -996,7 +1006,7 @@ private:
             !parseNumber(tok_[4], n.pitch) || !parseNumber(tok_[5], n.velocity) || !parseNumber(tok_[6], n.channel))
             return "note needs a clip number, start, length, pitch, velocity and channel";
         if (!noteInRange(n))
-            return "a note needs a start of 0 or more, a length of at least 1, a pitch 0-127, a velocity 1-127 and a channel 0-15";
+            return "a note needs a start of 0 or more, a length of at least 1 (both at most 2^40), a pitch 0-127, a velocity 1-127 and a channel 0-15";
         notes_.push_back(e);
         return "";
     }
@@ -1044,8 +1054,8 @@ private:
         e.line = lineNo_;
         if (tok_.size() != 5 || !parseNumber(tok_[1], e.number) || tok_[4].quoted)
             return "point needs a lane number, a position, a value and a shape";
-        if (!parseNumber(tok_[2], e.point.position) || e.point.position < 0)
-            return "a point's position must be 0 or more samples";
+        if (!parseNumber(tok_[2], e.point.position) || !isPosition(e.point.position))
+            return "a point's position must be 0 to 2^40 samples";
         if (!parseNumber(tok_[3], e.point.value) || !inRange(e.point.value, 0.0f, 1.0f))
             return "a point's value must be a number from 0 to 1";
         if (tok_[4].text != "linear" && tok_[4].text != "hold")

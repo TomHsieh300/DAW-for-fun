@@ -594,6 +594,36 @@ void testFollow() {
     DAWLAB_CHECK(readProject("DawLabProject 7\nsampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\n" + clip).ok);
 }
 
+// Numbers that pass for their sign but that DawLab never writes: a sample rate no device has (1e-9 made the
+// conversion of the clips cast an enormous size), and positions or lengths beyond 2^40 samples or ticks (260 days at
+// 48 kHz), where `start + length` would overflow. The file is refused where it is read.
+void testRanges() {
+    const auto opens = [](const std::string& rate) { return readProject("DawLabProject 8\nsampleRate " + rate + "\n").ok; };
+    DAWLAB_CHECK(opens("8000") && opens("44100") && opens("192000") && opens("768000"));
+    DAWLAB_CHECK(!opens("1e-9") && !opens("7999") && !opens("768001") && !opens("1e9"));
+
+    const std::string head = "DawLabProject 8\nsampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\n";
+    const auto reads = [&head](const std::string& lines) { return readProject(head + lines + "\n").ok; };
+    const std::string edge = "1099511627776", past = "1099511627777", huge = "9223372036854775807";
+    DAWLAB_CHECK(reads("clip 1 " + edge + " 100 \"a.wav\""));                        // 2^40: the last that is taken
+    DAWLAB_CHECK(!reads("clip 1 " + past + " 100 \"a.wav\"") && !reads("clip 1 " + huge + " " + huge + " \"a.wav\""));
+    DAWLAB_CHECK(!reads("clip 1 0 " + past + " \"a.wav\""));                         // a length
+    DAWLAB_CHECK(!reads("clip 1 0 100 \"a.wav\" " + past + " 0 0 linear 0 0 \"x\"")); // a source offset
+    DAWLAB_CHECK(!reads("clip 1 0 100 \"a.wav\" 0 " + past + " 0 linear 0 0 \"x\"")); // a fade
+    DAWLAB_CHECK(!reads("clip 1 0 100 \"a.wav\"\nfollow varispeed " + past + "\nmarker 0 0\nmarker 100 480"));
+    DAWLAB_CHECK(!reads("loop 0 " + past + " 1") && reads("loop 0 " + edge + " 1"));
+    DAWLAB_CHECK(!reads("takes \"a.wav\" " + past + " 0 1") && !reads("takes \"a.wav\" 0 " + huge + " 1") && !reads("takes \"a.wav\" 0 0 " + past));
+    DAWLAB_CHECK(!reads("tempopoint 0 120 0\ntempopoint " + past + " 100 0"));
+    const std::string lane = "lane 1 track:1 - \"Gain\" read 0.5\n";
+    DAWLAB_CHECK(reads(lane + "point 1 " + edge + " 0.5 linear") && !reads(lane + "point 1 " + past + " 0.5 linear"));
+    const std::string midi = "midiclip 1 7 0 960 0 0 \"c\" 240 0 0\n";
+    DAWLAB_CHECK(!reads("midiclip 1 7 " + past + " 960 0 0 \"c\" 240 0 0") && !reads("midiclip 1 7 0 " + past + " 0 0 \"c\" 240 0 0"));
+    DAWLAB_CHECK(!reads("midiclip 1 7 0 960 " + past + " 0 \"c\" 240 0 0"));
+    DAWLAB_CHECK(!reads(midi + "note 7 " + past + " 480 60 100 0") && !reads(midi + "note 7 0 " + past + " 60 100 0"));
+    DAWLAB_CHECK(!reads(midi + "cc 7 " + past + " 64 127 0"));
+    std::printf("ranges: a sample rate of 8000 to 768000 Hz, every position and length at most 2^40\n");
+}
+
 int main() {
     std::printf("l20_test_project_format: the application's project file, format %d\n", kFormatVersion);
     testMidi();
@@ -608,5 +638,6 @@ int main() {
     testTempoMap();
     testInstrumentSound();
     testFollow();
+    testRanges();
     return dawlab::test::summary("l20_test_project_format");
 }
