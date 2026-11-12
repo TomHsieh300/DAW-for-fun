@@ -7,11 +7,14 @@
 //   3. fitTempoPoints(): a list that fits is not touched; one that does not gets the smallest of 0.5 ms, 1 ms,
 //      2 ms ... that fits, and the engine's TempoMap takes the result.
 //   4. Next to "every k-th point", which the import did first.
+//   5. Long lists: the same points as the search over every run, and 20 000 tempos in seconds, not minutes.
 
 #include "TempoThinning.h"
 
 #include <dawlab/Check.h>
 
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <random>
@@ -232,6 +235,63 @@ void testFit() {
     DAWLAB_CHECK(taken == kLists);
 }
 
+// The search as it was first written, for comparison: for every j every i before it, and every point between
+// them checked again each time. The same choice, in a time that grows with the cube of the number of points.
+std::vector<TempoPoint> thinSlowly(const std::vector<TempoPoint>& points, double tolerance) {
+    const size_t n = points.size();
+    const std::vector<double> times = pointTimes(points); // the header's: the same roundings
+    const auto perTick = [&](size_t i, size_t j) { return (times[j] - times[i]) / static_cast<double>(points[j].tick - points[i].tick); };
+    const auto fits = [&](size_t i, size_t j) {
+        const double slope = perTick(i, j);
+        for (size_t p = i + 1; p < j; ++p)
+            if (std::fabs(times[i] + static_cast<double>(points[p].tick - points[i].tick) * slope - times[p]) > tolerance + kSlack)
+                return false;
+        return true;
+    };
+    std::vector<int> fewest(n, 0);
+    std::vector<size_t> from(n, 0);
+    for (size_t j = 1; j < n; ++j) {
+        fewest[j] = fewest[j - 1] + 1;
+        from[j] = j - 1;
+        for (size_t i = 0; i + 1 < j; ++i)
+            if (fewest[i] + 1 < fewest[j] && fits(i, j)) {
+                fewest[j] = fewest[i] + 1;
+                from[j] = i;
+            }
+    }
+    std::vector<TempoPoint> result{points.back()};
+    for (size_t j = n - 1; j > 0; j = from[j]) {
+        const size_t i = from[j];
+        const double bpm = i + 1 == j ? points[i].bpm : 60.0 / (static_cast<double>(TempoMap::kTicksPerBeat) * perTick(i, j));
+        result.push_back({points[i].tick, std::clamp(bpm, TempoMap::kMinBpm, TempoMap::kMaxBpm), false});
+    }
+    std::reverse(result.begin(), result.end());
+    return result;
+}
+
+void testLong() {
+    // Long lists: exactly the points of the search over every run.
+    int agreed = 0, lists = 0;
+    for (unsigned seed = 30; seed < 34; ++seed) {
+        const std::vector<TempoPoint> file = band(1000, seed);
+        for (const double tolerance : {0.0, 0.0005, 0.002, 0.008}) {
+            std::vector<TempoPoint> out;
+            agreed += thinTempo(file, tolerance, out) && same(out, thinSlowly(file, tolerance)) ? 1 : 0;
+            ++lists;
+        }
+    }
+    DAWLAB_CHECK(agreed == lists);
+    // A file with a tempo on every beat of 20 000, all different: fitted while the user waits, not for minutes.
+    const std::vector<TempoPoint> file = band(20000, 77);
+    const auto t0 = std::chrono::steady_clock::now();
+    const Fitted f = fitTempoPoints(file);
+    const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    std::printf("  1000 tempos: the same points as the plain search (%d of %d lists); 20 000 tempos into %zu points in %.2f s (within %.1f ms)\n", agreed,
+                lists, f.points.size(), seconds, 1000.0 * f.tolerance);
+    DAWLAB_CHECK(f.ok && f.points.size() <= 256 && worstPoint(file, f.points) <= f.tolerance + 2e-9);
+    DAWLAB_CHECK(seconds < 5.0);
+}
+
 } // namespace
 
 int main() {
@@ -239,5 +299,6 @@ int main() {
     testByHand();
     testFewest();
     testFit();
+    testLong();
     return dawlab::test::summary("l19_test_tempo_thinning");
 }

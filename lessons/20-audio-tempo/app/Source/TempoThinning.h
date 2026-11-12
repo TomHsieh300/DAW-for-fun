@@ -16,14 +16,15 @@
 //       still more than maxPoints points, with the smallest of 0.5 ms, 1 ms, 2 ms ... that fits.
 //
 // The lists are jumps (a file has no ramps): the first at tick 0, ticks rising, every tempo in the map's range.
-// The time this takes grows with the square of the number of points and more: a file with 5000 tempos that all
-// differ takes about half a second, one with 20 000 some ten seconds.
+// A run is looked at once, and only as far as runs from its first point can fit: a file with 20 000 tempos that
+// all differ takes a tenth of a second (looking at every point of every run again took over a minute).
 
 #include <dawlab/engine/TempoMap.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace dawlab::app::tempothin {
@@ -61,25 +62,37 @@ inline bool thinTempo(const std::vector<TempoPoint>& points, double toleranceSec
     const size_t n = points.size();
     const std::vector<double> times = pointTimes(points);
     const auto secondsPerTick = [&](size_t i, size_t j) { return (times[j] - times[i]) / static_cast<double>(points[j].tick - points[i].tick); };
-    // With no point between i and j: is every point that goes within the tolerance of its old time?
-    const auto fits = [&](size_t i, size_t j) {
-        const double slope = secondsPerTick(i, j);
-        for (size_t p = i + 1; p < j; ++p)
-            if (std::fabs(times[i] + static_cast<double>(points[p].tick - points[i].tick) * slope - times[p]) > toleranceSeconds + kSlack)
-                return false;
-        return true;
-    };
 
-    std::vector<int> fewest(n, 0); // the fewest points before j when j stays
-    std::vector<size_t> from(n, 0); // and the point that stays before j then
-    for (size_t j = 1; j < n; ++j) {
-        fewest[j] = fewest[j - 1] + 1;
-        from[j] = j - 1;
-        for (size_t i = 0; i + 1 < j; ++i)
-            if (fewest[i] + 1 < fewest[j] && fits(i, j)) {
-                fewest[j] = fewest[i] + 1;
-                from[j] = i;
+    // A run from i to j fits when every point between them stays within the tolerance of its old time on the
+    // line from i to j. Each such point allows the line only the slopes of an interval, so the slopes that fit a
+    // run from i are the intersection of its points' intervals: it narrows as j moves on, and once it is empty no
+    // longer run from i fits. Each i walks forward only as far as runs from it can fit, and looks at each j once,
+    // instead of checking every point between i and j again for every pair (20 000 tempos took over a minute).
+    // The choice is the same: the fewest points; of the runs that give them, the one from the point just before
+    // j, or else from the first point that does.
+    std::vector<int> fewest(n, 0);                                // the fewest points before j when j stays
+    std::vector<size_t> from(n, 0);                               // and the point that stays before j then
+    std::vector<int> overPoints(n, std::numeric_limits<int>::max()); // the same through a run with points between ...
+    std::vector<size_t> overFrom(n, 0);                           // ... from here
+    for (size_t i = 0; i < n; ++i) {
+        if (i > 0) { // all runs that end at i are known now
+            const bool fewer = overPoints[i] < fewest[i - 1] + 1;
+            fewest[i] = fewer ? overPoints[i] : fewest[i - 1] + 1;
+            from[i] = fewer ? overFrom[i] : i - 1;
+        }
+        double low = -HUGE_VAL, high = HUGE_VAL; // the slopes that keep every point between i and j in place
+        for (size_t j = i + 1; j < n; ++j) {
+            const double slope = secondsPerTick(i, j);
+            if (j > i + 1 && slope >= low && slope <= high && fewest[i] + 1 < overPoints[j]) {
+                overPoints[j] = fewest[i] + 1;
+                overFrom[j] = i;
             }
+            const double dt = static_cast<double>(points[j].tick - points[i].tick); // j is between i and what follows
+            low = std::max(low, (times[j] - times[i] - toleranceSeconds - kSlack) / dt);
+            high = std::min(high, (times[j] - times[i] + toleranceSeconds + kSlack) / dt);
+            if (low > high)
+                break;
+        }
     }
 
     std::vector<TempoPoint> result{points.back()};
