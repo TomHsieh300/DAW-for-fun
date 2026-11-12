@@ -4,8 +4,9 @@
 # Examples:
 #   ./scripts/build.sh                                  # Build all pure C++ chapters and run every test
 #   ./scripts/build.sh --only 02-filter                 # Build only chapter 02
-#   ./scripts/build.sh --juce                           # Also build the JUCE programs of chapters 13-20
+#   ./scripts/build.sh --juce                           # Also build the JUCE programs (chapters 13 and up)
 #   ./scripts/build.sh --only 13-vst-hosting,14-daw-8track --juce   # Separate multiple chapters with commas
+#   ./scripts/build.sh --only juce --juce               # Every chapter with JUCE programs ("engine": with an engine)
 #   ./scripts/build.sh --config Release --no-test
 #   ./scripts/build.sh --only 15-daw-growing --sanitize thread --build-dir build-tsan
 #
@@ -22,13 +23,14 @@ test_label=""
 sanitize=""
 
 usage() {
-    sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
     cat <<'EOF'
 Options:
-  --only <a,b,...>     build only these chapters (folder names, comma-separated)
+  --only <a,b,...>     build only these chapters (folder names, comma-separated), or the groups
+                       juce (chapters with JUCE programs) and engine (chapters with an engine/)
   --build-dir <dir>    build folder (default: build)
   --config <cfg>       Debug | Release | RelWithDebInfo (default: Debug)
-  --juce               also build the JUCE programs of chapters 13-20
+  --juce               also build the JUCE programs (chapters 13 and up)
   --no-test            build only, do not run ctest
   --test-label <lbl>   run only tests with this label (example, solution, test)
   --sanitize <kind>    build with -fsanitize=<kind>: thread, address, undefined or address,undefined

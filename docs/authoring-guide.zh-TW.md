@@ -114,7 +114,10 @@ dawlab_add_test(l03_test_parametric_eq  tests/parametric_eq_test.cpp)   # 可選
 .\scripts\build.ps1 -Only 02-filter                  # 只建第 02 章
 .\scripts\build.ps1 -Only 13-vst-hosting -Juce       # JUCE 章節
 .\scripts\build.ps1 -Only 13-vst-hosting,14-daw-8track -Juce   # 多個章節用逗號分隔
+.\scripts\build.ps1 -Only juce -Juce                 # 所有有 JUCE 程式的章節（engine：所有有 engine/ 的章節）
 ```
+
+章節清單不需要手動維護：build 會收進 `lessons/` 底下每個有 `CMakeLists.txt` 的資料夾，`juce` 和 `engine` 這兩個群組由章節本身有什麼東西決定，`scripts/check_copies.py` 會檢查每個同時有 `engine/` 和 `app/` 的章節。新增一章就是新增一個資料夾；CI 會透過群組自動納入它。
 
 警告等級是 MSVC `/W4`；新程式碼不應該產生 warning。
 
@@ -124,6 +127,7 @@ dawlab_add_test(l03_test_parametric_eq  tests/parametric_eq_test.cpp)   # 可選
 ./scripts/build.sh                                   # 全部純 C++ 章節
 ./scripts/build.sh --only 02-filter                  # 只建第 02 章
 ./scripts/build.sh --only 13-vst-hosting,14-daw-8track --juce   # JUCE 章節
+./scripts/build.sh --only juce --juce                  # 所有有 JUCE 程式的章節
 ```
 
 GCC / Clang 使用 `-Wall -Wextra -Wpedantic`；新程式碼在這些編譯器上同樣不應該產生 warning（唯一預期會出現的，是起始碼檔案裡未使用的輔助函式，那是留給學習者使用的）。本教材已在 Ubuntu 24.04 + GCC 13.3 上驗證；修改內容時，請確認在 MSVC 與 GCC 上都仍能建置並通過測試。

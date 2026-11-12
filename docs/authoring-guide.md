@@ -114,7 +114,12 @@ dawlab_add_test(l03_test_parametric_eq  tests/parametric_eq_test.cpp)   # option
 .\scripts\build.ps1 -Only 02-filter                  # only chapter 02
 .\scripts\build.ps1 -Only 13-vst-hosting -Juce       # a JUCE chapter
 .\scripts\build.ps1 -Only 13-vst-hosting,14-daw-8track -Juce   # several chapters, comma-separated
+.\scripts\build.ps1 -Only juce -Juce                 # every chapter with JUCE programs (engine: every one with an engine/)
 ```
+
+Nothing lists the chapters by hand: the build takes every folder of `lessons/` with a `CMakeLists.txt`, the groups
+`juce` and `engine` follow from what a chapter has, and `scripts/check_copies.py` checks every chapter with an
+`engine/` and an `app/`. A new chapter is a new folder; the CI picks it up through the groups.
 
 The warning level is MSVC `/W4`; new code should produce no warnings.
 
@@ -124,6 +129,7 @@ The warning level is MSVC `/W4`; new code should produce no warnings.
 ./scripts/build.sh                                   # all pure C++ chapters
 ./scripts/build.sh --only 02-filter                  # only chapter 02
 ./scripts/build.sh --only 13-vst-hosting,14-daw-8track --juce   # JUCE chapters
+./scripts/build.sh --only juce --juce                  # every chapter with JUCE programs
 ```
 
 GCC / Clang use `-Wall -Wextra -Wpedantic`; new code should produce no warnings there either (the only expected ones are unused helper functions in starter files, which the learner is meant to use). The course is verified on Ubuntu 24.04 + GCC 13.3; when you change something, check that it still builds and passes its tests on both MSVC and GCC.

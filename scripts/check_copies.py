@@ -17,7 +17,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LIST = ROOT / "scripts" / "copied_files.txt"
-CHAPTERS = ["14-daw-8track", "15-daw-growing", "16-automation", "17-recording", "18-midi", "19-instruments-tempo", "20-audio-tempo"]
+# The chapters with an engine and an app of their own: each starts from a copy of the one before. Found from the
+# folders, so that a new chapter is checked without anyone adding it here.
+CHAPTERS = sorted(p.name for p in (ROOT / "lessons").iterdir() if (p / "engine").is_dir() and (p / "app").is_dir())
 COPIED_FOLDERS = ["engine", "app", "tests"]
 HEADER = """\
 # Files that are the same in several chapters, written by scripts/check_copies.py --write.

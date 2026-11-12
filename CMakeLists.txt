@@ -25,7 +25,7 @@ else()
     set(_juce_default "")
 endif()
 set(DAWLAB_JUCE_DIR "${_juce_default}" CACHE PATH "Path to a local JUCE source tree; leave empty to download from GitHub with FetchContent")
-set(DAWLAB_ONLY "" CACHE STRING "Build only the listed chapters (semicolon-separated folder names, e.g. 02-filter;03-eq); empty = all")
+set(DAWLAB_ONLY "" CACHE STRING "Build only the listed chapters (semicolon-separated folder names, e.g. 02-filter;03-eq, or the groups juce and engine); empty = all")
 
 # A sanitizer for every target, e.g. "thread" (ThreadSanitizer: data races between the UI and the
 # audio thread), "address" or "undefined". GCC and Clang only: MSVC has no ThreadSanitizer.
@@ -71,36 +71,39 @@ if(DAWLAB_WITH_JUCE)
 endif()
 
 # ---- Chapters ------------------------------------------------------------
-set(DAWLAB_LESSONS
-    00-basics
-    01-gain
-    02-filter
-    03-eq
-    04-compressor
-    05-limiter
-    06-saturation
-    07-distortion
-    08-gate-expander
-    09-delay
-    10-modulation
-    11-metering-fft
-    12-reverb
-    13-vst-hosting
-    14-daw-8track
-    15-daw-growing
-    16-automation
-    17-recording
-    18-midi
-    19-instruments-tempo
-    20-audio-tempo)
+# Every folder of lessons/ with a CMakeLists.txt, in the order of their numbers. Nobody lists them by hand: a new
+# chapter is a new folder, and the build, the scripts and the CI take it from there.
+file(GLOB _lesson_lists RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/lessons ${CMAKE_CURRENT_SOURCE_DIR}/lessons/*/CMakeLists.txt)
+set(DAWLAB_LESSONS "")
+foreach(_list IN LISTS _lesson_lists)
+    get_filename_component(_lesson ${_list} DIRECTORY)
+    list(APPEND DAWLAB_LESSONS ${_lesson})
+endforeach()
+list(SORT DAWLAB_LESSONS)
 
+# DAWLAB_ONLY takes folder names, and the names of two groups that follow from what a chapter has:
+#   juce     the chapters whose CMakeLists.txt builds something with JUCE (13 and up)
+#   engine   the chapters with a DAW engine of their own, an engine/ folder (14 and up)
 foreach(lesson IN LISTS DAWLAB_LESSONS)
     set(_dir ${CMAKE_CURRENT_SOURCE_DIR}/lessons/${lesson})
-    if(NOT EXISTS ${_dir}/CMakeLists.txt)
-        continue()
-    endif()
-    if(DAWLAB_ONLY AND NOT lesson IN_LIST DAWLAB_ONLY)
-        continue()
+    if(DAWLAB_ONLY)
+        set(_names ${lesson})
+        file(READ ${_dir}/CMakeLists.txt _lesson_cmake)
+        if(_lesson_cmake MATCHES "DAWLAB_WITH_JUCE")
+            list(APPEND _names juce)
+        endif()
+        if(IS_DIRECTORY ${_dir}/engine)
+            list(APPEND _names engine)
+        endif()
+        set(_wanted FALSE)
+        foreach(_name IN LISTS _names)
+            if(_name IN_LIST DAWLAB_ONLY)
+                set(_wanted TRUE)
+            endif()
+        endforeach()
+        if(NOT _wanted)
+            continue()
+        endif()
     endif()
     add_subdirectory(${_dir})
 endforeach()
