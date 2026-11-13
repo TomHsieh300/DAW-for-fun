@@ -190,7 +190,17 @@ void MainComponent::seekBars(int deltaBars) {
 
 // ---- project ------------------------------------------------------------------------------------------
 
+// True, and it says so on the status line, while an export prevents replacing the project.
+bool MainComponent::refuseProjectChange(const juce::String& what) {
+    if (!isExporting())
+        return false;
+    setStatus(what + " has to wait: the project is being exported");
+    return true;
+}
+
 void MainComponent::newProject() {
+    if (refuseProjectChange("New project"))
+        return;
     closeAllEditors();
     resumeAfterConversion_.store(false); // a new project starts stopped, conversion or not
     session_.newProject();
@@ -199,6 +209,8 @@ void MainComponent::newProject() {
 }
 
 void MainComponent::loadDemoSongAsync() {
+    if (refuseProjectChange("Loading the demo song"))
+        return;
     setStatus("Generating the demo song...");
     const double sr = engine_.getSampleRate();
     juce::Component::SafePointer<MainComponent> safe(this);
@@ -209,6 +221,8 @@ void MainComponent::loadDemoSongAsync() {
             safe->loadDemoSongAsync();
             return;
         }
+        if (safe->refuseProjectChange("Loading the demo song")) // a recording or an export started meanwhile
+            return;
         safe->closeAllEditors();
         safe->resumeAfterConversion_.store(false);
         const int unknown = safe->session_.applyDemoSong(*song);
@@ -219,6 +233,8 @@ void MainComponent::loadDemoSongAsync() {
 }
 
 int MainComponent::loadDemoSongNow() {
+    if (refuseProjectChange("Loading the demo song"))
+        return -1;
     closeAllEditors();
     resumeAfterConversion_.store(false);
     const engine::DemoSong song = engine::makeDemoSong(engine_.getSampleRate());

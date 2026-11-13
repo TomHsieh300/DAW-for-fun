@@ -127,7 +127,7 @@ be heard.
 | the sample rate changes | the take is converted to the clips' rate, like every clip |
 | the track is deleted | the take stays in the takes folder; the status line says where |
 | the program crashes | the next start finds the `.recording` files and puts them on new tracks |
-| New, Open, Export, Delete while recording | refused until the recording is stopped |
+| New, Open, Export, Delete, Undo, Redo, the demo song while recording | refused until the recording is stopped (Undo of "Add track" would take away the track that records) |
 
 </div>
 

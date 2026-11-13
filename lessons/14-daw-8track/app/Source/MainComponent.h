@@ -74,9 +74,11 @@ public:
     void returnToStart();
     void toggleLoop();
     void seekBars(int deltaBars);
+    // True, and it says so on the status line, while an export prevents replacing the project (new, the demo song).
+    bool refuseProjectChange(const juce::String& what);
     void newProject();
     void loadDemoSongAsync();       // generates on the loader thread
-    int loadDemoSongNow();          // synchronous (snapshot, tests); returns unknown parameter count
+    int loadDemoSongNow();          // synchronous (snapshot, tests); returns unknown parameter count, -1 if refused
     void chooseAudioFileForTrack(int track);
     void loadAudioFile(int track, const juce::File& file); // asynchronous (loader thread)
     // Files dropped on a lane: the first loads into `track`, the next ones into the tracks below.

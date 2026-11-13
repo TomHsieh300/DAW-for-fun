@@ -313,6 +313,7 @@ void testRecordingBasics() {
     DAWLAB_CHECK(main.setArmed(rig.first, true));
     rig.recorder.setTrimSamples(100);
     engine.getTransport().setPosition(96000);
+    DAWLAB_CHECK(session.perform(edit::Rename{StripTarget::ofTrack(rig.second), "Renamed"}, "Rename"));
     DAWLAB_CHECK(main.toggleRecord());
     DAWLAB_CHECK(engine.getTransport().isPlaying());
     DAWLAB_CHECK(rig.recorder.getPhase() == TakeRecorder::Phase::Recording);
@@ -334,6 +335,11 @@ void testRecordingBasics() {
     DAWLAB_CHECK(!main.deleteSelectedTrack());
     DAWLAB_CHECK(session.hasTrack(rig.first));
     DAWLAB_CHECK(!main.openProject(rig.folder.get().getChildFile("none.dawlab")).ok);
+    // Undo and redo wait too - the undo of "Add track" would take away the track that records - and so does the
+    // demo song, which replaces the whole project.
+    DAWLAB_CHECK(!main.undo() && main.getStatus().contains("recording"));
+    DAWLAB_CHECK(session.getStripName(session.trackRef(rig.second)) == "Renamed" && session.getHistory().canUndo());
+    DAWLAB_CHECK(main.loadDemoSongNow() < 0 && session.hasTrack(rig.first) && main.getStatus().contains("recording"));
 
     stopTransport(main);
     DAWLAB_CHECK(waitForTakes(main));
@@ -2328,6 +2334,11 @@ void testMidiRecording() {
         DAWLAB_CHECK(main.toggleRecord() && main.getMidiRecording().isRecording() && tr.isPlaying());
         kb.play(0, 20);
         DAWLAB_CHECK(trackOf(engine, synth).getSynth()->activeVoices() == 1); // the key heard while recording
+        // A MIDI recording is a recording: no export, Undo (of "Add track": the synth) or demo song meanwhile.
+        main.exportMixdown(juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("midi_recording_export.wav"));
+        DAWLAB_CHECK(!main.isExporting() && main.getStatus().contains("recording"));
+        DAWLAB_CHECK(!main.undo() && session.hasTrack(synth));
+        DAWLAB_CHECK(main.loadDemoSongNow() < 0 && session.hasTrack(synth) && main.getMidiRecording().isRecording());
         kb.play(20, 355);                                                         // to 2 bars
         DAWLAB_CHECK(main.toggleRecord() && !main.getMidiRecording().isRecording());
     }
@@ -3590,6 +3601,8 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         DAWLAB_CHECK(!s.setTempoPoints({{0, 100.0, false}}, "Tempo") && s.getTempoMap().bpmAt(0.0) == 120.0);
         DAWLAB_CHECK(!main->setClipFollow(bass, 0, engine::FollowMode::Start) && main->getStatus().startsWith("Not now"));
         DAWLAB_CHECK(!s.undo() && s.getHistory().undoCount() == steps && s.getClipFollow(bass, 0) == engine::FollowMode::Off);
+        // The demo song (it may have been asked for before the export started) replaces nothing meanwhile.
+        DAWLAB_CHECK(main->loadDemoSongNow() < 0 && s.getTrackId(1) == bass && main->getStatus().contains("export"));
     }
     if (!main->isExporting()) { // nothing will call back: finish now
         main->onExportFinished = nullptr;

@@ -257,9 +257,18 @@ void MainComponent::simulatePlayback(int64_t numSamples, int blockSize, engine::
 // ---- recording (chapter 17, Step 7) ---------------------------------------------------------------------
 
 bool MainComponent::refuseWhileRecording(const juce::String& what) {
-    if (!takeRecorder_.isBusy())
+    if (!takeRecorder_.isBusy() && !midiRecording_.isRecording())
         return false;
     setStatus(what + " has to wait: a recording is running. Stop it first");
+    return true;
+}
+
+bool MainComponent::refuseProjectChange(const juce::String& what) {
+    if (refuseWhileRecording(what))
+        return true;
+    if (!isExporting())
+        return false;
+    setStatus(what + " has to wait: the project is being exported");
     return true;
 }
 
@@ -495,7 +504,7 @@ void MainComponent::seekBars(int deltaBars) {
 // ---- project ------------------------------------------------------------------------------------------
 
 void MainComponent::newProject() {
-    if (refuseWhileRecording("New project"))
+    if (refuseProjectChange("New project"))
         return;
     closeAllEditors();
     resumeAfterConversion_.store(false); // a new project starts stopped, conversion or not
@@ -623,6 +632,8 @@ void MainComponent::askToSaveChanges(std::function<void()> then) {
 }
 
 bool MainComponent::undo() {
+    if (refuseWhileRecording("Undo")) // it could take away the track that records
+        return false;
     const juce::String name = session_.getHistory().getUndoName();
     if (!session_.undo()) {
         setStatus(name.isEmpty() ? juce::String("Nothing to undo") : "Could not undo " + name + " (dropped)");
@@ -634,6 +645,8 @@ bool MainComponent::undo() {
 }
 
 bool MainComponent::redo() {
+    if (refuseWhileRecording("Redo"))
+        return false;
     const juce::String name = session_.getHistory().getRedoName();
     if (!session_.redo()) {
         setStatus(name.isEmpty() ? juce::String("Nothing to redo") : "Could not redo " + name + " (dropped)");
@@ -649,6 +662,8 @@ juce::String MainComponent::getWindowTitle() const {
 }
 
 void MainComponent::loadDemoSongAsync() {
+    if (refuseProjectChange("Loading the demo song"))
+        return;
     setStatus("Generating the demo song...");
     const double sr = engine_.getSampleRate();
     juce::Component::SafePointer<MainComponent> safe(this);
@@ -659,6 +674,8 @@ void MainComponent::loadDemoSongAsync() {
             safe->loadDemoSongAsync();
             return;
         }
+        if (safe->refuseProjectChange("Loading the demo song")) // a recording or an export started meanwhile
+            return;
         safe->closeAllEditors();
         safe->resumeAfterConversion_.store(false);
         const int unknown = safe->session_.applyDemoSong(*song);
@@ -670,6 +687,8 @@ void MainComponent::loadDemoSongAsync() {
 }
 
 int MainComponent::loadDemoSongNow() {
+    if (refuseProjectChange("Loading the demo song"))
+        return -1;
     closeAllEditors();
     resumeAfterConversion_.store(false);
     const engine::DemoSong song = engine::makeDemoSong(engine_.getSampleRate());

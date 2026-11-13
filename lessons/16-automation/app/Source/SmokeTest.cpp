@@ -1638,6 +1638,8 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     main->getCommandInfo(CommandIDs::playStop, playInfo);
     DAWLAB_CHECK(main->isExporting());                                                  // the job runs ...
     DAWLAB_CHECK((playInfo.flags & juce::ApplicationCommandInfo::isDisabled) != 0); // ... and editing is off
+    // The demo song (it may have been asked for before the export started) replaces nothing meanwhile.
+    DAWLAB_CHECK(main->loadDemoSongNow() < 0 && main->getStatus().contains("export"));
     if (!main->isExporting()) { // nothing will call back: finish now
         main->onExportFinished = nullptr;
         main.reset();

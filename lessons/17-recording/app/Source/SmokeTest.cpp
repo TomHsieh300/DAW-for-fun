@@ -297,6 +297,7 @@ void testRecordingBasics() {
     DAWLAB_CHECK(main.setArmed(rig.first, true));
     rig.recorder.setTrimSamples(100);
     engine.getTransport().setPosition(96000);
+    DAWLAB_CHECK(session.perform(edit::Rename{StripTarget::ofTrack(rig.second), "Renamed"}, "Rename"));
     DAWLAB_CHECK(main.toggleRecord());
     DAWLAB_CHECK(engine.getTransport().isPlaying());
     DAWLAB_CHECK(rig.recorder.getPhase() == TakeRecorder::Phase::Recording);
@@ -318,6 +319,11 @@ void testRecordingBasics() {
     DAWLAB_CHECK(!main.deleteSelectedTrack());
     DAWLAB_CHECK(session.hasTrack(rig.first));
     DAWLAB_CHECK(!main.openProject(rig.folder.get().getChildFile("none.dawlab")).ok);
+    // Undo and redo wait too - the undo of "Add track" would take away the track that records - and so does the
+    // demo song, which replaces the whole project.
+    DAWLAB_CHECK(!main.undo() && main.getStatus().contains("recording"));
+    DAWLAB_CHECK(session.getStripName(session.trackRef(rig.second)) == "Renamed" && session.getHistory().canUndo());
+    DAWLAB_CHECK(main.loadDemoSongNow() < 0 && session.hasTrack(rig.first) && main.getStatus().contains("recording"));
 
     stopTransport(main);
     DAWLAB_CHECK(waitForTakes(main));
@@ -2227,6 +2233,8 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     main->getCommandInfo(CommandIDs::playStop, playInfo);
     DAWLAB_CHECK(main->isExporting());                                                  // the job runs ...
     DAWLAB_CHECK((playInfo.flags & juce::ApplicationCommandInfo::isDisabled) != 0); // ... and editing is off
+    // The demo song (it may have been asked for before the export started) replaces nothing meanwhile.
+    DAWLAB_CHECK(main->loadDemoSongNow() < 0 && main->getStatus().contains("export"));
     if (!main->isExporting()) { // nothing will call back: finish now
         main->onExportFinished = nullptr;
         main.reset();

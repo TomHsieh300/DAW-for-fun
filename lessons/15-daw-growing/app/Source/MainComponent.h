@@ -75,6 +75,8 @@ public:
     void returnToStart();
     void toggleLoop();
     void seekBars(int deltaBars);
+    // True, and it says so on the status line, while an export prevents replacing the project (new, the demo song).
+    bool refuseProjectChange(const juce::String& what);
     void newProject();
     // Project files (chapter 15, Step 8). openProject() and saveProject() work synchronously and
     // report on the status line (and, in Live mode, in a message box); the *Interactive versions
@@ -97,7 +99,7 @@ public:
     juce::String getWindowTitle() const;
     std::function<void(const juce::String& title)> onTitleChanged;
     void loadDemoSongAsync();       // generates on the loader thread
-    int loadDemoSongNow();          // synchronous (snapshot, tests); returns unknown parameter count
+    int loadDemoSongNow();          // synchronous (snapshot, tests); returns unknown parameter count, -1 if refused
     void chooseAudioFileForTrack(engine::TrackId track);
     void loadAudioFile(engine::TrackId track, const juce::File& file); // asynchronous (loader thread)
     // Files dropped on a lane: the first loads into `track`, the next ones into the tracks below;

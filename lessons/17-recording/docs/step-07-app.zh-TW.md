@@ -104,7 +104,7 @@ Track 標頭的 `I` 讓 monitor 在 Off、Auto 和 Always 之間切換。在 `R`
 | 取樣率改變 | take 被轉換成 clip 的取樣率，和每個 clip 一樣 |
 | track 被刪除 | take 留在 takes 資料夾，狀態列說明在哪裡 |
 | 程式當機 | 下次啟動時找到 `.recording` 檔，把它們放到新的 track 上 |
-| 錄音中要 New、Open、Export、Delete | 拒絕，直到錄音停止 |
+| 錄音中要 New、Open、Export、Delete、Undo、Redo、demo song | 拒絕，直到錄音停止（Undo「Add track」會拿掉正在錄音的 track） |
 
 </div>
 
