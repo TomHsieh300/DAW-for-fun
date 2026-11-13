@@ -218,6 +218,19 @@ public:
     Mixer& getMixer() noexcept { return mixer_; }
     const Mixer& getMixer() const noexcept { return mixer_; }
 
+    // The song's end: the end of the last clip on any track, audio or MIDI (a MIDI clip's end tick at the tempo
+    // now). renderOffline() bounces up to here by default. UI thread, or offline while no tempo edit is in
+    // flight (the app holds its edits during an export).
+    int64_t getSongEndSample() const noexcept {
+        int64_t end = mixer_.getSongEndSample(); // the audio clips
+        const double spt = samplesPerTick(transport_.getSampleRate(), transport_.getTempo());
+        for (int slot = 0; slot < kMaxTracks; ++slot)
+            if (const std::vector<MidiClip>* clips = mixer_.getTrack(slot).getMidiClips())
+                for (const MidiClip& c : *clips)
+                    end = std::max(end, sampleOfTick(c.end(), spt));
+        return end;
+    }
+
     // Total output latency of the mix (PDC result), for the host / the render.
     int getLatencySamples() const noexcept { return mixer_.getTotalLatencySamples(); }
     // True when an insert latency exceeds the PDC limit (prepare's maxPdcSamples), so some path

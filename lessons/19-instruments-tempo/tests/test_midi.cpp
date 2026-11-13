@@ -11,6 +11,7 @@
 //   4b. Another instrument in the synth's place gets the track's events; the synth's settings change while it
 //       plays (the hook added after the chapter for exercises 8 and 12). An instrument still queued when the
 //       device changes is prepared for the new device.
+//   4c. The song's end counts the MIDI clips, so a bounce of the default length plays a song of notes only.
 //   5. The audio thread never allocates, with clips, loops, seeks and live MIDI (this file replaces operator new).
 //   6. Three threads at once - UI, audio, MIDI - for ThreadSanitizer.
 
@@ -624,6 +625,20 @@ void testQueuedThroughADeviceChange() {
     DAWLAB_CHECK(e.getLatencySamples() == 480); // the limiter's 5 ms lookahead at 96 kHz
 }
 
+void testSongEndCountsNotes() {
+    // A song of notes only: one bar from bar 2 ends at tick 7680, sample 192000 (25 samples a tick). The song's end
+    // counts it, so a bounce of the default length plays the whole clip.
+    Engine e;
+    setUp(e);
+    e.setTrackMidiClips(testId(0), {clipOf(1, kBar, kBar, {{0, 480, 60, 100, 0}})});
+    RenderOptions options; // numSamples 0: up to the song's end
+    const AudioBuffer out = renderOffline(e, options);
+    std::printf("  a song of notes only: it ends at %lld, a bounce of the default length has %d samples, peak %.2f\n",
+                static_cast<long long>(e.getSongEndSample()), out.getNumSamples(), static_cast<double>(peakAbs(out)));
+    DAWLAB_CHECK(e.getSongEndSample() == 2 * kBar * 25);
+    DAWLAB_CHECK(out.getNumSamples() == 2 * kBar * 25 && peakAbs(out) > 0.01f);
+}
+
 void testNoAllocation() {
     Engine e;
     setUp(e);
@@ -730,6 +745,7 @@ int main() {
     testGarbageOfAFullTrack();
     testAnotherInstrument();
     testQueuedThroughADeviceChange();
+    testSongEndCountsNotes();
     testNoAllocation();
     testThreads();
     return dawlab::test::summary("l18_test_midi");

@@ -112,6 +112,7 @@ l18_test_midi: instrument tracks in the engine
 - `SynthInstrument::setSettings()` 可以在任何 thread 呼叫：每個值都是一個 atomic，下一個 block 會把它們交給 voice，而不重設 voice（`Voice::setSettings()`）。Velocity 的 gain 和 level 現在分開保存，讓 level 也能作用在已經在響的音上。`Engine::getTrackSynth()` 找到 track 的 synth；`Engine::addTrack()` 會給新的 track 預設的音色，就像它重設樂器旗標一樣。
 - `Engine::setTrackInstrument(track, instrument)` 透過 command `ReplaceInstrument` 把另一個樂器放到 synth 的位置（nullptr：再換回 synth），就像 `replaceInsert()` 替換 effect 一樣：在呼叫的 thread 上 prepare，在 block 邊界換上，舊的經由 `collectGarbage()` 回來。移除 track 也會交回它的樂器，所以 `kMaxGarbagePerCommand` 現在是 `kMaxInserts + 5`。
 - `Engine::prepare()` 先套用 queue 裡的 command，再為新的 device prepare 每個 insert 和樂器。sample rate 或 block size 改變時還在 queue 裡的樂器也會重新 prepare；否則它會拿到比它 prepare 時更大的 block。
+- `Engine::getSongEndSample()` 是歌曲的結尾：任何 track 上最後一個 clip 的結尾，audio 或 MIDI 都算（MIDI clip 的結尾 tick 用現在的 tempo 換算；從第 19 章起經由 tempo map）。沒有指定長度的 `renderOffline()`，也就是 File > Export，會 render 到那裡。`Mixer::getSongEndSample()` 只知道 audio clip：mixer 沒有 tempo，無法把 tick 換成 sample。
 
 `tests/test_midi.cpp` 會檢查它（`testAnotherInstrument`、`testQueuedThroughADeviceChange`，以及完整 track 和不配置記憶體的測試）；app 還沒有用到它。
 

@@ -167,6 +167,10 @@ instrument other than the synth. So the engine got one hook more, after the chap
 - `Engine::prepare()` applies the queued commands first and then prepares every insert and instrument for the
   new device. An instrument still in the queue when the sample rate or block size changes is prepared again
   too; otherwise it would get blocks larger than it was prepared for.
+- `Engine::getSongEndSample()` is the song's end: the last clip on any track, audio or MIDI (a MIDI clip's end
+  tick at the tempo now; through the tempo map from chapter 19). `renderOffline()` without a length, and so
+  File > Export, renders up to there. `Mixer::getSongEndSample()` knows only the audio clips: the mixer has no
+  tempo to turn ticks into samples.
 
 `tests/test_midi.cpp` checks it (`testAnotherInstrument`, `testQueuedThroughADeviceChange`, and the full track
 and no-allocation tests); the app

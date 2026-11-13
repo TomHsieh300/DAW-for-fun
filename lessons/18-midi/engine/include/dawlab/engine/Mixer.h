@@ -217,7 +217,8 @@ public:
         return !tr.isMuted() && (!isAnyTrackSoloed() || tr.isSoloed());
     }
 
-    // Timeline end of the last clip on any track (UI thread / offline; see Track::getClips).
+    // Timeline end of the last AUDIO clip on any track (UI thread / offline; see Track::getClips). The song's
+    // end, with the MIDI clips, is Engine::getSongEndSample().
     int64_t getSongEndSample() const noexcept {
         int64_t end = 0;
         for (const auto& t : tracks_)

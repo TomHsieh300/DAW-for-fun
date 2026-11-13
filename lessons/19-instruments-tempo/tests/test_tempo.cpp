@@ -6,6 +6,7 @@
 //      its tick under the new map.
 //   4. An instrument's latency is in its track's: the delay compensation lines the tracks up; low-latency
 //      monitoring takes an armed track out of it.
+//   4b. The song's end (Engine::getSongEndSample, a bounce's default length) puts the MIDI clips through the map.
 //   5. Changing the map while it plays allocates nothing on the audio thread (this file replaces operator new).
 //   6. A UI thread that changes the map while the audio thread plays: the audio thread never sees half a map
 //      (ThreadSanitizer).
@@ -377,6 +378,21 @@ void testSwitchedOnWhilePlaying() {
     DAWLAB_CHECK(chased);
 }
 
+void testSongEndFollowsTheMap() {
+    // 120 BPM, then 60 from bar 2: a clip over bar 2 ends at 96000 + 192000 samples. The song's end and a bounce of
+    // the default length go through the map.
+    Engine e;
+    setUp(e);
+    e.setTrackMidiClips(testId(0), {clipOf(1, kBar, kBar, {{0, 480, 60, 100, 0}})});
+    e.getTransport().setTempoMap(mapOf({{0, 120.0, false}, {kBar, 60.0, false}}));
+    RenderOptions options; // numSamples 0: up to the song's end
+    const AudioBuffer out = renderOffline(e, options);
+    std::printf("  a clip over bar 2 at 60 BPM after a bar at 120: the song ends at %lld, a bounce has %d samples\n",
+                static_cast<long long>(e.getSongEndSample()), out.getNumSamples());
+    DAWLAB_CHECK(e.getSongEndSample() == 288000 && e.getSongEndSample() == e.getTransport().tickToSample(2 * kBar));
+    DAWLAB_CHECK(out.getNumSamples() == 288000);
+}
+
 void testNoAllocation() {
     Engine e;
     setUp(e);
@@ -445,6 +461,7 @@ int main() {
     testLowLatencyOnTheFasterTrack();
     testPlayHeadTempo();
     testSwitchedOnWhilePlaying();
+    testSongEndFollowsTheMap();
     testNoAllocation();
     testThreads();
     return dawlab::test::summary("l19_test_tempo");

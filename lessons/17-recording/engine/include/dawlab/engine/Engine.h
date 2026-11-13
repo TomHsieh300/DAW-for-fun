@@ -206,6 +206,9 @@ public:
     Mixer& getMixer() noexcept { return mixer_; }
     const Mixer& getMixer() const noexcept { return mixer_; }
 
+    // The song's end: the end of the last clip on any track. renderOffline() bounces up to here by default.
+    int64_t getSongEndSample() const noexcept { return mixer_.getSongEndSample(); }
+
     // Total output latency of the mix (PDC result), for the host / the render.
     int getLatencySamples() const noexcept { return mixer_.getTotalLatencySamples(); }
     // True when an insert latency exceeds the PDC limit (prepare's maxPdcSamples), so some path

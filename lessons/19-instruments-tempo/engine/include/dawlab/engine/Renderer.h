@@ -32,7 +32,7 @@ namespace dawlab::engine {
 
 struct RenderOptions {
     int64_t startSample = 0;        // timeline position to start from
-    int64_t numSamples = 0;         // length of the song part (0 = up to the end of the last clip)
+    int64_t numSamples = 0;         // length of the song part (0 = up to Engine::getSongEndSample())
     double tailSeconds = 0.0;       // extra time rendered with the transport stopped
     int blockSize = 512;            // processBlock() size used while rendering
     bool resetBeforeRender = true;  // clear tails / meters so the bounce starts from silence
@@ -51,7 +51,7 @@ inline AudioBuffer renderOffline(Engine& engine, const RenderOptions& options) {
 
     const int64_t songSamples =
         options.numSamples > 0 ? options.numSamples
-                               : std::max<int64_t>(0, engine.getMixer().getSongEndSample() - options.startSample);
+                               : std::max<int64_t>(0, engine.getSongEndSample() - options.startSample);
     const int64_t tailSamples = static_cast<int64_t>(std::llround(std::max(0.0, options.tailSeconds) * sr));
     const int64_t latency = options.compensateLatency ? engine.getLatencySamples() : 0;
     const int64_t outLength = songSamples + tailSamples;
