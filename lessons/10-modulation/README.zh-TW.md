@@ -641,7 +641,7 @@ public:
 - `getNextValue()` 先用「目前」相位算值、再前進——所以 `setPhase(0.25)` 之後的第一個值就是 $`\sin(\pi/2) = 1`$。
 - 相位累加器是 `double`（2.2 節）。
 - `shapeValue()` 是 static 純函式。`Chorus` 用它從同一個相位推出「右聲道再加 0.25 週期」的值，不必維護第二組 LFO。
-- 檔案裡還有一個 `detail::ModParamSmoother`（one-pole 參數平滑：$`y \mathrel{+}= k(\text{target} - y)`$，收斂到 $`10^{-6}`$ 內直接貼齊目標），本章五個元件共用。
+- 檔案裡還有一個 `detail::ModParamSmoother`（one-pole 參數平滑：$`y \mathrel{+}= k(\text{target} - y)`$，收斂到 $`10^{-6}`$ 內直接貼齊目標），本章五個元件共用。它自己沒有防護：每個 public float setter（`Lfo` 與四個效果的）都會忽略 NaN 與 ±inf、保留上一個有效值（`DspMath.h` 的 `acceptParameter()`，見[撰寫指南](../../docs/authoring-guide.zh-TW.md) 4.1 節），所以平滑器永遠收不到這種值。在這條規則之前，`setMix(NaN)` 會讓輸出永久變 NaN：平滑器的 `current += k·(NaN − current)` 一直是 NaN，連 `reset()` 也只是把 NaN 目標複製到目前值。
 
 ### 3.2 `Chorus.h`
 
@@ -905,6 +905,7 @@ bin\Debug\l10_tremolo.exe
 | Chorus 聽起來像走音很嚴重的 vibrato | depth × rate 太大，或 mix = 1 | 用 $`1200\log_2(1 \pm 2\pi r D)`$ 算 cents，> 30 cents 就很明顯 |
 | Flanger 的 notch 頻率和公式差一點 | feedback 時讀寫順序錯，延遲差一個 sample | LFO 停住、量 notch，對照 $`(2k+1)/(2d)`$（範例 3） |
 | Flanger feedback 開大就爆音 / NaN | $`|g| \ge 1`$，或 mix 0.5 時 peak 增益 $`0.5 + 0.5/(1-g)`$ 很大（$`g = 0.95`$ 時 +20 dB） | 限制 feedback 在 ±0.99；輸出加 limiter 或降 gain |
+| 自動化送來一個壞值之後輸出變 NaN（或變怪） | setter 把 NaN / ±inf 交給了平滑器或 LFO（`std::clamp(NaN, lo, hi)` 會回傳 NaN） | 每個 float setter 開頭都是 `if (!acceptParameter(x)) return;`；`dsp_selftest` 對每個 setter 檢查 |
 | Phaser 好像沒效果 | mix = 0 或 1（只有一條路徑就沒有干涉）；或 depth = 0 且 centre 在素材沒有能量的地方 | mix 0.5 最明顯；用白雜訊測試 |
 | Phaser 的 notch 數不對 | stages 是奇數；或拿錯公式（notch 數 = stages/2，不是 stages） | 範例 4 的掃描 |
 | 高頻在 chorus / flanger 裡變暗、還會「呼吸」 | linear 插值（$`\Delta`$ 掃過 0..1 時高頻起伏） | 改 cubic；量 12 kHz 正弦的 RMS（範例 2） |

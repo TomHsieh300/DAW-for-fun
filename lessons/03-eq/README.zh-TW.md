@@ -415,7 +415,7 @@ struct EqBand {
 |---|---|
 | `prepare(sr, maxBlock, nch)` | 唯一會 allocate 的地方：每顆 Biquad 配置 channel 狀態、平滑器設定 ramp 長度，然後 `reset()` |
 | `reset()` | 清 filter 記憶，平滑器直接跳到目標（不從舊值 ramp） |
-| `setBand(i, band)` | 設定目標（會 clamp：頻率 10 Hz..100 kHz、Q 0.05..40、gain ±36 dB；NaN / inf 的欄位忽略、保留舊值）；平滑器開始 ramp；必要時排隊做結構性切換。跟目前目標完全相同時什麼都不做（host 每個 block 重送參數也沒關係）。必須在 audio thread、block 之間呼叫 |
+| `setBand(i, band)` | 設定目標（會 clamp：頻率 10 Hz..100 kHz、Q 0.05..40、gain ±36 dB；NaN / ±inf 的欄位忽略、保留舊值，只有 −inf dB 的 gain 當成 −100 dB 再 clamp）；平滑器開始 ramp；必要時排隊做結構性切換。跟目前目標完全相同時什麼都不做（host 每個 block 重送參數也沒關係）。必須在 audio thread、block 之間呼叫 |
 | `getBand(i)` | 回傳**目標**參數（不是平滑中的值）。頻率是使用者設定的值：實際生效的頻率另外夾在 0.49·fs 以下（只在算係數時套用），所以在 `prepare()` 之前設定 30 kHz、之後 `prepare(96000)`，30 kHz 仍然有效 |
 | `getMagnitudeDb(f)` | 整條 EQ 的 dB：enabled band 的 `magnitudeDb` 相加（2.7 節） |
 | `processSample(ch, x)` | 逐 sample。每個 frame 要依序呼叫 channel 0、1…；平滑與係數更新在 channel 0 時推進 |

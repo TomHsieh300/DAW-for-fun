@@ -100,27 +100,27 @@ public:
     }
 
     // ---- Parameters (contract) -----------------------------------------------------
-    // Every float setter rejects NaN first: std::clamp(NaN, lo, hi) returns the NaN unchanged, so a single NaN parameter
-    // (e.g. a faulty host automation) would turn the output permanently into NaN, and even reset() could not recover it.
-    // On receiving a NaN the previous valid value is kept.
+    // Every float setter rejects NaN / ±inf first (acceptParameter in DspMath.h): std::clamp(NaN, lo, hi) returns the
+    // NaN unchanged, so a single NaN parameter (e.g. a faulty host automation) would turn the output permanently into
+    // NaN, and even reset() could not recover it. On receiving one, the previous valid value is kept.
 
     // RT60 (seconds): the time for the reverb to decay by 60 dB. 0.1 .. 60
     void setDecaySeconds(float seconds) noexcept {
-        if (std::isnan(seconds))
+        if (!acceptParameter(seconds))
             return;
         decaySeconds_ = std::clamp(seconds, 0.1f, 60.0f);
         updateDecayGains();
     }
     // Gap between the direct sound and the start of the reverb (0 .. 250 ms); changes are smoothed
     void setPreDelayMs(float ms) noexcept {
-        if (std::isnan(ms))
+        if (!acceptParameter(ms))
             return;
         preDelayMs_ = std::clamp(ms, 0.0f, kMaxPreDelayMs);
         targetPreDelay_ = static_cast<float>(preDelayMs_ * 0.001 * sampleRate_);
     }
     // Cutoff of the damping lowpass; >= 20000 means no damping
     void setDampingHz(float hz) noexcept {
-        if (std::isnan(hz))
+        if (!acceptParameter(hz))
             return;
         dampingHz_ = std::clamp(hz, 200.0f, 20000.0f);
         dampingBypassed_ = dampingHz_ >= 20000.0f;
@@ -128,7 +128,7 @@ public:
     }
     // 0..1: delay-line lengths x(0.5 .. 1.5); larger sounds like a bigger space (higher modal density, sparser early part)
     void setSize(float size) noexcept {
-        if (std::isnan(size))
+        if (!acceptParameter(size))
             return;
         size_ = std::clamp(size, 0.0f, 1.0f);
         updateDelayTargets();
@@ -136,13 +136,13 @@ public:
     }
     // 0 = mono (L=R), 1 = full stereo
     void setWidth(float width) noexcept {
-        if (std::isnan(width))
+        if (!acceptParameter(width))
             return;
         width_ = std::clamp(width, 0.0f, 1.0f);
     }
     // 0 = all dry, 1 = all wet (linear mix)
     void setMix(float mix) noexcept {
-        if (std::isnan(mix))
+        if (!acceptParameter(mix))
             return;
         mix_ = std::clamp(mix, 0.0f, 1.0f);
     }
@@ -157,13 +157,13 @@ public:
     // ---- Extra parameters ----------------------------------------------------------
     // Built-in delay-line modulation (depth in ms, rate in Hz); the default 0 = off. Exercise 4 discusses its effect on metallic ringing.
     void setModulationDepthMs(float ms) noexcept {
-        if (std::isnan(ms))
+        if (!acceptParameter(ms))
             return;
         modulationDepthMs_ = std::clamp(ms, 0.0f, kMaxModulationMs);
         modulationDepth_ = static_cast<float>(modulationDepthMs_ * 0.001 * sampleRate_);
     }
     void setModulationRateHz(float hz) noexcept {
-        if (std::isnan(hz))
+        if (!acceptParameter(hz))
             return;
         modulationRateHz_ = std::clamp(hz, 0.01f, 5.0f);
         lfoIncrement_ = static_cast<float>(kTwoPi * modulationRateHz_ / sampleRate_);

@@ -12,10 +12,38 @@ constexpr double kTwoPi = 2.0 * kPi;
 // Anything at or below this dB value is treated as silence (-inf dB)
 constexpr float kMinusInfinityDb = -100.0f;
 
+// value if it is finite, otherwise fallback. A stateless function (a coefficient factory, a delay-line read) has no
+// last value to keep, so a non-finite argument means a documented default.
+template <typename T>
+inline T finiteOr(T value, T fallback) noexcept {
+    return std::isfinite(value) ? value : fallback;
+}
+
 // The rule for an input sample that an object keeps in its memory (filter state, delay line, FIFO, analyzer ring):
 // a non-finite value (NaN, +-inf) is never kept. Every later operation on NaN gives NaN (even 0 * NaN), so one bad
 // sample would otherwise come back forever; a store writes 0 in its place, and the bad sample is forgotten.
-inline float finiteOrZero(float x) noexcept { return std::isfinite(x) ? x : 0.0f; }
+inline float finiteOrZero(float x) noexcept { return finiteOr(x, 0.0f); }
+
+// The rule for a value that a public setter in dsp/ receives. A finite value is used. NaN and +inf are ignored: the
+// setter returns and keeps its last valid value (std::clamp(NaN, lo, hi) returns the NaN, std::max(0, NaN) returns 0,
+// and a NaN in a smoother or a coefficient stays there). -inf is ignored too, except for a value in dB, where it
+// means silence: it becomes the floor kMinusInfinityDb (so Gain::setGainDb(-inf) still mutes). Every float / double
+// setter starts with
+//     if (!acceptParameter(hz)) return;
+//     if (!acceptParameter(db, ParameterUnit::Decibels)) return;
+// and dsp_selftest checks it for every setter.
+enum class ParameterUnit { Plain, Decibels };
+
+template <typename T>
+inline bool acceptParameter(T& value, ParameterUnit unit = ParameterUnit::Plain) noexcept {
+    if (std::isfinite(value))
+        return true;
+    if (unit == ParameterUnit::Decibels && value < T(0)) {
+        value = static_cast<T>(kMinusInfinityDb);
+        return true;
+    }
+    return false;
+}
 
 // dB -> linear gain: gain = 10^(dB/20)
 inline float dbToGain(float db, float minusInfinityDb = kMinusInfinityDb) noexcept {

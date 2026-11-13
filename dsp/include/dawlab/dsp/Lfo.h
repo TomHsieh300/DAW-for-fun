@@ -106,8 +106,11 @@ public:
     void setShape(LfoShape shape) noexcept { shape_ = shape; }
     LfoShape getShape() const noexcept { return shape_; }
 
-    // 0 Hz is legal: the LFO stays frozen at its current phase (handy when measuring a frequency response)
+    // 0 Hz is legal: the LFO stays frozen at its current phase (handy when measuring a frequency response).
+    // Every float setter ignores NaN / ±inf (acceptParameter in DspMath.h).
     void setRateHz(float hz) noexcept {
+        if (!acceptParameter(hz))
+            return;
         rateHz_ = std::max(0.0f, hz);
         updateIncrement();
     }
@@ -117,6 +120,8 @@ public:
     // The voices of a chorus and the left/right channels of an autopan are offset from each other
     // by using different start phases.
     void setPhase(float phase01) noexcept {
+        if (!acceptParameter(phase01))
+            return;
         startPhase_ = wrap(phase01);
         phase_ = startPhase_;
     }
@@ -124,6 +129,8 @@ public:
 
     // Smoothing time constant (ms) for the edges of Square / Saw / S&H. 0 = no smoothing (clicks; for demonstration)
     void setSmoothingMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
         smoothingMs_ = std::max(0.0f, ms);
         updateSmoothing();
     }

@@ -455,7 +455,7 @@ public:
     void prepare(double sampleRate, int maxBlockSize, int numChannels);
     void reset() noexcept;                       // snaps the ramp straight to the target value
     static constexpr float kMaxGainDb = 40.0f;   // upper limit of setGainDb
-    void setGainDb(float db) noexcept;           // the parameter is in dB (NaN is ignored, > +40 dB is clamped)
+    void setGainDb(float db) noexcept;           // the parameter is in dB (NaN / +inf ignored, -inf = mute, > +40 dB clamped)
     void setGainLinear(float linear) noexcept;
     float getGainDb() const noexcept;
     float getGainLinear() const noexcept;
@@ -470,7 +470,7 @@ public:
 };
 ```
 
-What `setGainDb()` does is "dB → linear → set as the SmoothedValue target"; `process()` is just `smoother_.applyGain(block)`. It looks thin, but this thin wrapper is what puts three things into practice: "the parameter is expressed in dB, the internals use a linear factor, and changes are smoothed". `kMinusInfinityDb` (−100 dB) is converted by `dbToGain` to exactly 0, so `setGainDb(kMinusInfinityDb)` is a mute. `setGainDb()` also guards against invalid values for you: NaN is ignored (the existing setting is kept) and anything above `Gain::kMaxGainDb` (+40 dB) is clamped -- neither +inf nor "a linear factor passed in by mistake as dB" can make the output become inf.
+What `setGainDb()` does is "dB → linear → set as the SmoothedValue target"; `process()` is just `smoother_.applyGain(block)`. It looks thin, but this thin wrapper is what puts three things into practice: "the parameter is expressed in dB, the internals use a linear factor, and changes are smoothed". `kMinusInfinityDb` (−100 dB) is converted by `dbToGain` to exactly 0, so `setGainDb(kMinusInfinityDb)` is a mute. `setGainDb()` also guards against invalid values for you: NaN and +inf are ignored (the existing setting is kept), −inf means silence (it counts as `kMinusInfinityDb`, so it mutes), and anything above `Gain::kMaxGainDb` (+40 dB) is clamped -- neither +inf nor "a linear factor passed in by mistake as dB" can make the output become inf. Every setter in `dsp/` follows the same rule, written once as `acceptParameter()` in `DspMath.h` (section 4.1 of the [authoring guide](../../docs/authoring-guide.md)).
 
 The convention of `processSample(channel, x)`: for every frame, call channel 0 first (which advances the ramp by one step), and the other channels reuse the same value. This is consistent with the behavior of `process()`.
 

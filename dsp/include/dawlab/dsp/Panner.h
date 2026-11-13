@@ -59,7 +59,7 @@ public:
     // Parameter setters must be called between blocks, from the same thread that calls process() (the components in this chapter are not thread-safe;
     // for passing parameters across threads see chapters 13 and 14). NaN / inf are not valid positions and are ignored (the previous value is kept).
     void setPan(float pan) noexcept {
-        if (!std::isfinite(pan))
+        if (!acceptParameter(pan))
             return;
         pan_ = std::clamp(pan, -1.0f, 1.0f);
         updateTargets();
@@ -73,6 +73,8 @@ public:
     PanLaw getPanLaw() const noexcept { return law_; }
 
     void setRampSeconds(double seconds) noexcept {
+        if (!acceptParameter(seconds))
+            return;
         rampSeconds_ = std::max(0.0, seconds);
         if (sampleRate_ > 0.0) {
             const int n = static_cast<int>(std::lround(rampSeconds_ * sampleRate_));
@@ -89,7 +91,7 @@ public:
     // Pure function: computes the left and right gains (linear factors) from pan and law. The pan law table in the example calls it directly.
     static void computeGains(float pan, PanLaw law, float& left, float& right) noexcept {
         // NaN / inf are treated as center, which guarantees the output gains are always finite
-        const float p = std::isfinite(pan) ? std::clamp(pan, -1.0f, 1.0f) : 0.0f;
+        const float p = std::clamp(finiteOr(pan, 0.0f), -1.0f, 1.0f);
         const float theta = 0.5f * (p + 1.0f); // 0 = hard left, 0.5 = center, 1 = hard right
         const float linL = 1.0f - theta;
         const float linR = theta;

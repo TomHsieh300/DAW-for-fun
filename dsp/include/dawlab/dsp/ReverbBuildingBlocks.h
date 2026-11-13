@@ -88,13 +88,21 @@ public:
     void setDelaySamples(int d) noexcept { delay_ = std::clamp(d, 1, ring_.capacity()); }
     int getDelaySamples() const noexcept { return delay_; }
 
-    // Feedback amount g (0..0.9999)
-    void setFeedback(float g) noexcept { feedback_ = std::clamp(g, 0.0f, 0.9999f); }
+    // Feedback amount g (0..0.9999). NaN / ±inf are ignored, as by every float setter here (acceptParameter).
+    void setFeedback(float g) noexcept {
+        if (!acceptParameter(g))
+            return;
+        feedback_ = std::clamp(g, 0.0f, 0.9999f);
+    }
     float getFeedback() const noexcept { return feedback_; }
 
     // damping 0..1: 0 = no filtering (a pure comb); the larger it is, the faster high frequencies decay in the loop.
     // Same as Freeverb: filtered = out*(1-damp) + filtered*damp
-    void setDamping(float d) noexcept { damping_ = std::clamp(d, 0.0f, 0.999f); }
+    void setDamping(float d) noexcept {
+        if (!acceptParameter(d))
+            return;
+        damping_ = std::clamp(d, 0.0f, 0.999f);
+    }
 
     float processSample(float x) noexcept {
         const float delayed = ring_.read(delay_ - 1); // read the value from D samples ago (the index only lines up after the push below)
@@ -148,7 +156,11 @@ public:
 
     void setDelaySamples(int d) noexcept { delay_ = std::clamp(d, 1, ring_.capacity()); }
     int getDelaySamples() const noexcept { return delay_; }
-    void setGain(float g) noexcept { gain_ = std::clamp(g, -0.999f, 0.999f); }
+    void setGain(float g) noexcept {
+        if (!acceptParameter(g))
+            return;
+        gain_ = std::clamp(g, -0.999f, 0.999f);
+    }
     float getGain() const noexcept { return gain_; }
 
     float processSample(float x) noexcept {
@@ -185,8 +197,12 @@ public:
     }
     void reset() noexcept { ring_.reset(); }
 
-    // May only be called during the prepare phase (not on the audio thread): it allocates
+    // May only be called during the prepare phase (not on the audio thread): it allocates.
+    // A tap gain that is NaN / ±inf makes the whole call ignored (the previous taps are kept).
     void setTaps(const std::vector<Tap>& taps) {
+        for (Tap t : taps)
+            if (!acceptParameter(t.gain))
+                return;
         taps_ = taps;
         for (Tap& t : taps_)
             t.delaySamples = std::clamp(t.delaySamples, 0, ring_.capacity());

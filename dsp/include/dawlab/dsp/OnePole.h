@@ -56,11 +56,10 @@ public:
     void setType(Type type) noexcept { type_ = type; }
     Type getType() const noexcept { return type_; }
 
-    // NaN is ignored (the last valid cutoff is kept): std::clamp(NaN, lo, hi) returns NaN
-    // unchanged, and once a coefficient becomes NaN even reset() cannot recover it.
-    // ±inf is handled by the clamp in updateCoefficients().
+    // NaN / ±inf are ignored (the last valid cutoff is kept, acceptParameter in DspMath.h): std::clamp(NaN, lo, hi)
+    // returns NaN unchanged, and once a coefficient becomes NaN even reset() cannot recover it.
     void setCutoff(float hz) noexcept {
-        if (std::isnan(hz))
+        if (!acceptParameter(hz))
             return;
         cutoffHz_ = hz;
         updateCoefficients();

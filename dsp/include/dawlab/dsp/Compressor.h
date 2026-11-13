@@ -67,18 +67,39 @@ public:
     }
 
     // ---- Parameters --------------------------------------------------------
-    void setThresholdDb(float db) noexcept { thresholdDb_ = db; }
-    void setRatio(float ratio) noexcept { ratio_ = std::max(1.0f, ratio); } // 1:1 = no compression
-    void setKneeDb(float kneeDb) noexcept { kneeDb_ = std::max(0.0f, kneeDb); } // 0 = hard knee
+    // Every float setter ignores NaN / ±inf (-inf dB = the floor kMinusInfinityDb; acceptParameter in DspMath.h)
+    void setThresholdDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
+        thresholdDb_ = db;
+    }
+    void setRatio(float ratio) noexcept { // 1:1 = no compression
+        if (!acceptParameter(ratio))
+            return;
+        ratio_ = std::max(1.0f, ratio);
+    }
+    void setKneeDb(float kneeDb) noexcept { // 0 = hard knee
+        if (!acceptParameter(kneeDb, ParameterUnit::Decibels))
+            return;
+        kneeDb_ = std::max(0.0f, kneeDb);
+    }
     void setAttackMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
         attackMs_ = std::max(0.0f, ms);
         updateTimeConstants();
     }
     void setReleaseMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
         releaseMs_ = std::max(0.0f, ms);
         updateTimeConstants();
     }
-    void setMakeupGainDb(float db) noexcept { makeupGainDb_ = db; }
+    void setMakeupGainDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
+        makeupGainDb_ = db;
+    }
     // Toggling the link is safe (no click): in linked mode every channel still runs its own GR smoother, they just
     // all take the "same" GR target. So at the moment of switching, every channel starts from its own current GR and
     // moves smoothly toward the new target at the attack / release speed (see the comments in process()).
@@ -86,6 +107,8 @@ public:
     void setDetectorMode(DetectorMode mode) noexcept { detectorMode_ = mode; }
     // Averaging window for RMS mode (attack = release = window)
     void setRmsWindowMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
         rmsWindowMs_ = std::max(0.0f, ms);
         updateTimeConstants();
     }

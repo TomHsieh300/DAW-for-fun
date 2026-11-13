@@ -65,11 +65,12 @@ public:
 
     // ---- Configuration (before prepare) --------------------------------------
     // Maximum delay time (determines the buffer length allocated in prepare). Default 2000 ms.
-    // NaN is ignored (std::clamp / std::max pass NaN straight through, and the read position
-    // computed from it later would be garbage).
+    // NaN / ±inf are ignored, as by every float setter here (acceptParameter in DspMath.h): std::clamp / std::max
+    // pass NaN straight through, and the read position computed from it later would be garbage.
     void setMaxDelayMs(float ms) noexcept {
-        if (!std::isnan(ms))
-            maxDelayMs_ = std::clamp(ms, 1.0f, 60000.0f);
+        if (!acceptParameter(ms))
+            return;
+        maxDelayMs_ = std::clamp(ms, 1.0f, 60000.0f);
     }
 
     // ---- Standard interface ---------------------------------------------------
@@ -113,7 +114,7 @@ public:
     // ---- Parameters -----------------------------------------------------------
     // Delay time (milliseconds), smoothed linearly to the new value over setDelayRampSeconds.
     void setDelayMs(float ms) noexcept {
-        if (std::isnan(ms))
+        if (!acceptParameter(ms))
             return;
         delayMs_ = std::clamp(ms, 0.0f, maxDelayMs_);
         if (prepared_)
@@ -123,7 +124,7 @@ public:
     // Length (seconds) of the ramp used when the delay time changes. The longer it is, the
     // smaller the pitch shift but the slower it reaches the new value. Default 0.05 s.
     void setDelayRampSeconds(double seconds) noexcept {
-        if (!std::isfinite(seconds))
+        if (!acceptParameter(seconds))
             return;
         delayRampSeconds_ = std::clamp(seconds, 0.0, 10.0);
         if (prepared_)
@@ -132,7 +133,7 @@ public:
 
     // Feedback 0..0.99 (the factor applied on every trip around the loop). >= 1 diverges, so it is clamped.
     void setFeedback(float feedback) noexcept {
-        if (std::isnan(feedback))
+        if (!acceptParameter(feedback))
             return;
         feedbackTarget_ = std::clamp(feedback, 0.0f, kMaxFeedback);
         if (prepared_)
@@ -141,7 +142,7 @@ public:
 
     // Dry/wet: 0 = dry only, 1 = delay only. y = (1-mix)·dry + mix·wet (linear crossfade).
     void setMix(float mix) noexcept {
-        if (std::isnan(mix))
+        if (!acceptParameter(mix))
             return;
         mixTarget_ = std::clamp(mix, 0.0f, 1.0f);
         if (prepared_)
@@ -152,7 +153,7 @@ public:
 
     // One-pole lowpass inside the feedback loop; >= 20000 Hz means off.
     void setLowpassHz(float hz) noexcept {
-        if (std::isnan(hz))
+        if (!acceptParameter(hz))
             return;
         lowpassHz_ = std::clamp(hz, 20.0f, 20000.0f);
         lowpassEnabled_ = lowpassHz_ < 20000.0f;
@@ -162,7 +163,7 @@ public:
 
     // One-pole highpass inside the feedback loop; <= 20 Hz means off.
     void setHighpassHz(float hz) noexcept {
-        if (std::isnan(hz))
+        if (!acceptParameter(hz))
             return;
         highpassHz_ = std::clamp(hz, 20.0f, 20000.0f);
         highpassEnabled_ = highpassHz_ > 20.0f;

@@ -455,7 +455,7 @@ public:
     void prepare(double sampleRate, int maxBlockSize, int numChannels);
     void reset() noexcept;                       // ramp 直接對齊目標值
     static constexpr float kMaxGainDb = 40.0f;   // setGainDb 的上限
-    void setGainDb(float db) noexcept;           // 參數用 dB（NaN 忽略、> +40 dB 夾住）
+    void setGainDb(float db) noexcept;           // 參數用 dB（NaN / +inf 忽略、-inf = mute、> +40 dB 夾住）
     void setGainLinear(float linear) noexcept;
     float getGainDb() const noexcept;
     float getGainLinear() const noexcept;
@@ -470,7 +470,7 @@ public:
 };
 ```
 
-`setGainDb()` 做的事是「dB → 線性 → 設成 SmoothedValue 的目標」；`process()` 只是 `smoother_.applyGain(block)`。看起來很薄，但這層薄薄的包裝就是「參數用 dB 表達、內部用線性倍率、改變時平滑」這三件事的落實。`kMinusInfinityDb`（−100 dB）會被 `dbToGain` 轉成剛好 0，所以 `setGainDb(kMinusInfinityDb)` 就是 mute。`setGainDb()` 也替你擋掉非法值：NaN 會被忽略（保持原本的設定）、超過 `Gain::kMaxGainDb`（+40 dB）會被夾住——+inf 或「把倍率誤當 dB 傳進來」都不會讓輸出變成 inf。
+`setGainDb()` 做的事是「dB → 線性 → 設成 SmoothedValue 的目標」；`process()` 只是 `smoother_.applyGain(block)`。看起來很薄，但這層薄薄的包裝就是「參數用 dB 表達、內部用線性倍率、改變時平滑」這三件事的落實。`kMinusInfinityDb`（−100 dB）會被 `dbToGain` 轉成剛好 0，所以 `setGainDb(kMinusInfinityDb)` 就是 mute。`setGainDb()` 也替你擋掉非法值：NaN 與 +inf 會被忽略（保持原本的設定）、−inf 代表靜音（當成 `kMinusInfinityDb`，所以是 mute）、超過 `Gain::kMaxGainDb`（+40 dB）會被夾住——+inf 或「把倍率誤當 dB 傳進來」都不會讓輸出變成 inf。`dsp/` 裡每個 setter 都遵守同一條規則，只寫在一個地方：`DspMath.h` 的 `acceptParameter()`（見[撰寫指南](../../docs/authoring-guide.zh-TW.md) 4.1 節）。
 
 `processSample(channel, x)` 的慣例：每個 frame 先呼叫 channel 0（推進 ramp 一步），其他 channel 沿用同一個值。這和 `process()` 的行為一致。
 

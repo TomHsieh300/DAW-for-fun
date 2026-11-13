@@ -102,16 +102,23 @@ public:
 
     // ---- Parameters -----------------------------------------------------------
     // Detection center frequency (Hz), default 7000; the crossover frequency follows = 0.72 x f
+    // Every float setter ignores NaN / ±inf (-inf dB = the floor kMinusInfinityDb; acceptParameter in DspMath.h)
     void setFrequency(float hz) noexcept {
+        if (!acceptParameter(hz))
+            return;
         frequencyHz_ = std::clamp(hz, 1000.0f, static_cast<float>(sampleRate_ * 0.45));
         updateFilters();
     }
     void setThresholdDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
         thresholdDb_ = db;
         setSmoothedTarget(thresholdSmoothed_, thresholdDb_);
     }
     // Maximum reduction (positive value, dB); either sign is treated as |db|
     void setRangeDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
         rangeDb_ = std::abs(db);
         setSmoothedTarget(rangeSmoothed_, rangeDb_);
     }
@@ -119,10 +126,14 @@ public:
     void setListen(bool enabled) noexcept { listen_ = enabled; }
     // Extra: detector ballistics (default attack 1 ms, release 40 ms)
     void setAttackMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
         attackMs_ = std::max(0.0f, ms);
         follower_.setAttackMs(attackMs_);
     }
     void setReleaseMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
         releaseMs_ = std::max(0.0f, ms);
         follower_.setReleaseMs(releaseMs_);
     }

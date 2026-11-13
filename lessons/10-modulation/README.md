@@ -641,7 +641,7 @@ Key points:
 - `getNextValue()` computes the value from the "current" phase first and then advances, so the first value after `setPhase(0.25)` is $`\sin(\pi/2) = 1`$.
 - The phase accumulator is a `double` (Section 2.2).
 - `shapeValue()` is a static pure function. `Chorus` uses it to derive the "right channel plus 0.25 cycles" value from the same phase, so there is no need to maintain a second set of LFOs.
-- The file also contains a `detail::ModParamSmoother` (a one-pole parameter smoother: $`y \mathrel{+}= k(\text{target} - y)`$, snapping to the target once it converges to within $`10^{-6}`$), shared by all five components in this chapter.
+- The file also contains a `detail::ModParamSmoother` (a one-pole parameter smoother: $`y \mathrel{+}= k(\text{target} - y)`$, snapping to the target once it converges to within $`10^{-6}`$), shared by all five components in this chapter. It has no guard of its own: every public float setter (of `Lfo` and of the four effects) ignores NaN and ±inf and keeps the last valid value (`acceptParameter()` in `DspMath.h`, section 4.1 of the [authoring guide](../../docs/authoring-guide.md)), so the smoother never receives one. Before that rule, `setMix(NaN)` made the output NaN for good: the smoother's `current += k·(NaN − current)` stays NaN, and even `reset()` only copied the NaN target into the current value.
 
 ### 3.2 `Chorus.h`
 
@@ -905,6 +905,7 @@ bin\Debug\l10_tremolo.exe
 | Chorus sounds like a badly detuned vibrato | depth × rate is too large, or mix = 1 | Compute the cents with $`1200\log_2(1 \pm 2\pi r D)`$; more than 30 cents is very noticeable |
 | Flanger notch frequencies are slightly off from the formula | Read/write order is wrong with feedback, the delay is off by one sample | Park the LFO, measure the notches, compare with $`(2k+1)/(2d)`$ (Example 3) |
 | Flanger blows up / NaN when feedback is turned up | $`|g| \ge 1`$, or at mix 0.5 the peak gain $`0.5 + 0.5/(1-g)`$ is very large (+20 dB at $`g = 0.95`$) | Limit feedback to ±0.99; add a limiter on the output or lower the gain |
+| The output turns NaN (or wrong) after an automation sent a bad value | A setter passed NaN / ±inf on to a smoother or the LFO (`std::clamp(NaN, lo, hi)` returns NaN) | Every float setter starts with `if (!acceptParameter(x)) return;`; `dsp_selftest` checks it for every setter |
 | Phaser seems to do nothing | mix = 0 or 1 (with only one path there is no interference); or depth = 0 and the centre sits where the material has no energy | mix 0.5 is the most obvious; test with white noise |
 | Wrong number of phaser notches | stages is odd; or the wrong formula (number of notches = stages/2, not stages) | The sweep in Example 4 |
 | The highs get dark and "breathe" in chorus / flanger | Linear interpolation (the highs fluctuate as $`\Delta`$ sweeps through 0..1) | Switch to cubic; measure the RMS of a 12 kHz sine (Example 2) |

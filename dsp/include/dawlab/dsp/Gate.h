@@ -91,12 +91,17 @@ public:
 
     // ---- Parameters (may be called between blocks) ----------------------------------------
     // Opening threshold (dBFS, compared against the peak envelope)
+    // Every float setter ignores NaN / ±inf (-inf dB = the floor kMinusInfinityDb; acceptParameter in DspMath.h)
     void setThresholdDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
         thresholdDb_ = db;
         closeDb_ = thresholdDb_ - hysteresisDb_;
     }
     // Closing threshold = threshold - hysteresis (hysteresis >= 0)
     void setHysteresisDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
         hysteresisDb_ = std::max(0.0f, db);
         closeDb_ = thresholdDb_ - hysteresisDb_;
     }
@@ -106,25 +111,35 @@ public:
     // Changing the range while the gate is closed does not jump instantly: the Closed state of nextGain() ramps
     // the gain to the new range.
     void setRangeDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
         rangeDb_ = -std::abs(db);
         rangeGain_ = dbToGain(rangeDb_);
         updateTimes();
     }
     void setAttackMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
         attackMs_ = std::max(0.0f, ms);
         updateTimes();
     }
     void setHoldMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
         holdMs_ = std::max(0.0f, ms);
         updateTimes();
     }
     void setReleaseMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
         releaseMs_ = std::max(0.0f, ms);
         updateTimes();
     }
     // Extra: the detector's release (default 20 ms). The shorter it is, the more sensitive the gate, but the larger the
     // envelope ripple on low-frequency signals (see README 5.3).
     void setDetectorReleaseMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
         detectorReleaseMs_ = std::max(0.1f, ms);
         detector_.setReleaseMs(detectorReleaseMs_);
     }

@@ -157,13 +157,12 @@ private:
     };
 
     static Angles angles(double sampleRate, double frequency, double q) noexcept {
-        // NaN must be blocked first: std::clamp(NaN, lo, hi) and std::max(NaN, lo) both return NaN
+        // NaN / ±inf must be blocked first: std::clamp(NaN, lo, hi) and std::max(NaN, lo) both return NaN
         // unchanged, and once a coefficient becomes NaN even reset() cannot recover it.
-        // A NaN frequency is treated as 1 kHz and a NaN Q as 1/√2.
-        if (std::isnan(frequency))
-            frequency = 1000.0;
-        if (std::isnan(q))
-            q = kButterworthQ;
+        // A stateless function has no last value to keep, so a non-finite frequency means 1 kHz and a
+        // non-finite Q means 1/√2 (finiteOr in DspMath.h).
+        frequency = finiteOr(frequency, 1000.0);
+        q = finiteOr(q, kButterworthQ);
         // Limit to (0, Nyquist); Q must not be 0
         const double f = std::clamp(frequency, 1.0e-3, sampleRate * 0.499);
         const double w0 = kTwoPi * f / sampleRate;
@@ -171,8 +170,8 @@ private:
         return {std::cos(w0), std::sin(w0) / (2.0 * safeQ)};
     }
 
-    // A = 10^(gainDb / 40); a NaN gainDb is treated as 0 dB (A = 1) so the coefficients never become NaN
-    static double gainToA(double gainDb) noexcept { return std::isnan(gainDb) ? 1.0 : std::pow(10.0, gainDb / 40.0); }
+    // A = 10^(gainDb / 40); a non-finite gainDb is treated as 0 dB (A = 1) so the coefficients stay finite
+    static double gainToA(double gainDb) noexcept { return std::pow(10.0, finiteOr(gainDb, 0.0) / 40.0); }
 
     // Divide out a0 so the difference equation needs no extra division
     static BiquadCoefficients normalize(double b0, double b1, double b2, double a0, double a1, double a2) noexcept {

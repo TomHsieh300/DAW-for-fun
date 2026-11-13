@@ -123,13 +123,14 @@ public:
         assert(index >= 0 && index < kNumBands);
         Band& b = bands_[static_cast<size_t>(index)];
         EqBand t = band;
-        // Ignore NaN / inf fields (keep the old value): std::clamp(NaN, lo, hi) returns NaN
-        // unchanged, and once a NaN gets into a smoother, the whole band is broken after log2 / exp2.
-        if (!std::isfinite(t.frequency))
+        // Ignore NaN / inf fields (keep the old value; acceptParameter in DspMath.h, -inf dB = the floor):
+        // std::clamp(NaN, lo, hi) returns NaN unchanged, and once a NaN gets into a smoother, the whole band is
+        // broken after log2 / exp2.
+        if (!acceptParameter(t.frequency))
             t.frequency = b.target.frequency;
-        if (!std::isfinite(t.q))
+        if (!acceptParameter(t.q))
             t.q = b.target.q;
-        if (!std::isfinite(t.gainDb))
+        if (!acceptParameter(t.gainDb, ParameterUnit::Decibels))
             t.gainDb = b.target.gainDb;
         // The target keeps the user's setting (clamped only to ranges that do not depend on the
         // sample rate); the 0.49·fs upper limit is applied later in targetLogFreq() /
@@ -209,7 +210,11 @@ public:
 
     // Smoothing time in seconds. Call before prepare(); the default is 20 ms. 0 = no smoothing
     // (parameters and the enable switch change instantly).
-    void setSmoothingSeconds(double seconds) noexcept { smoothingSeconds_ = std::max(0.0, seconds); }
+    void setSmoothingSeconds(double seconds) noexcept {
+        if (!acceptParameter(seconds))
+            return;
+        smoothingSeconds_ = std::max(0.0, seconds);
+    }
     double getSmoothingSeconds() const noexcept { return smoothingSeconds_; }
 
     // How many samples pass between coefficient recomputations while smoothing (1 = every sample:

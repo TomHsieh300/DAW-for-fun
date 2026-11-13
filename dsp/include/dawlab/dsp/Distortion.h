@@ -186,27 +186,42 @@ public:
     void setRectifyMode(RectifyMode mode) noexcept { rectifyMode_ = mode; }
 
     // Gain applied before the shaper (0..60 dB). The higher the drive, the more of the waveform hits the clipping region.
+    // Every float setter ignores NaN / ±inf (-inf dB = the floor kMinusInfinityDb; acceptParameter in DspMath.h)
     void setDriveDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
         driveDb_ = std::clamp(db, 0.0f, 60.0f);
         driveGain_.target = dbToGain(driveDb_);
     }
 
     // Post lowpass (the tone knob): trims the harsh high harmonics after distortion. >= 20 kHz = bypass.
-    void setToneHz(float hz) noexcept { toneHz_ = std::clamp(hz, 200.0f, kToneBypassHz); }
+    void setToneHz(float hz) noexcept {
+        if (!acceptParameter(hz))
+            return;
+        toneHz_ = std::clamp(hz, 200.0f, kToneBypassHz);
+    }
 
     void setMix(float mix) noexcept {
+        if (!acceptParameter(mix))
+            return;
         mix_ = std::clamp(mix, 0.0f, 1.0f);
         mixRamp_.target = mix_;
     }
 
     void setOutputGainDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
         outputGainDb_ = std::clamp(db, -60.0f, 24.0f);
         outputGain_.target = dbToGain(outputGainDb_);
     }
 
     // Bitcrush: quantizer bit depth (fractional values such as 5.5 bit are allowed) and the sample & hold factor (1 = no sample-rate reduction)
     // Note that for bits < 2 the only positive code left is 0 (see quantize()), so the output is asymmetric and carries DC.
-    void setBitDepth(float bits) noexcept { bitDepth_ = std::clamp(bits, 1.0f, 24.0f); }
+    void setBitDepth(float bits) noexcept {
+        if (!acceptParameter(bits))
+            return;
+        bitDepth_ = std::clamp(bits, 1.0f, 24.0f);
+    }
     void setDownsampleFactor(int factor) noexcept { downsampleFactor_ = std::clamp(factor, 1, 64); }
 
     DistortionType getType() const noexcept { return type_; }

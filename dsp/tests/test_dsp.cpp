@@ -6,6 +6,10 @@
 //   - a non-finite input sample (NaN, +-inf) is never kept: no filter state, delay line, FFT buffer or meter holds on
 //     to it, so the output is finite again from the next block on and soon sounds as if the bad sample had been 0
 //     (Biquad, the envelope followers and Compressor already did). The bad sample may pass once through a dry path.
+//   - a public setter ignores a non-finite value and keeps its last valid value; -inf given to a value in dB means
+//     the floor kMinusInfinityDb (acceptParameter in DspMath.h). One row per public float / double setter, in a
+//     configuration where a valid value changes the output. A stateless function maps a non-finite argument to a
+//     documented default (finiteOr).
 // The Limiter is the one exception to the first rule on purpose: before prepare() it clears the block (and asserts in
 // a Debug build), because a limiter that cannot look ahead cannot keep its ceiling.
 // Every check is table-driven: one row per class (and per variant that takes a different path). The objects live on
@@ -42,6 +46,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <vector>
@@ -376,6 +381,460 @@ void checkInputRule() {
     std::printf("non-finite input: %d cases, %d kept the bad value\n", inputRows, inputKept);
 }
 
+// ---- Rule: a public setter ignores a non-finite value ---------------------------------------------------------------
+
+// Every class's standard prepare(); the rigs below have the same signature
+template <typename Fx>
+void prepareFx(Fx& fx) {
+    fx.prepare(kSampleRate, kBlock, 2);
+}
+
+// The input level steps between loud (1) and quiet (0.1, -20 dB) every 10 blocks, so a gate closes and opens again,
+// an expander has something below its threshold, and a transient shaper sees attacks
+template <typename Fx>
+struct Stepped {
+    Fx fx;
+    int blocks = 0;
+    void prepare(double sr, int maxBlock, int numChannels) { fx.prepare(sr, maxBlock, numChannels); }
+    void process(AudioBlock b) noexcept {
+        if ((blocks++ / 10) % 2 == 1)
+            b.multiplyBy(0.1f);
+        fx.process(b);
+    }
+};
+
+template <typename Block>
+struct PreparedPair : StereoPair<Block> {
+    void prepare(double, int, int) {
+        for (Block& b : this->side)
+            b.prepare(4800);
+    }
+};
+
+struct EnvelopePair : StereoPair<EnvelopeFollower> {
+    void prepare(double sr, int, int) {
+        for (EnvelopeFollower& e : side)
+            e.prepare(sr);
+    }
+};
+
+// The attack / release filter alone: it smooths |x|
+struct AttackReleaseRig {
+    AttackReleaseFilter filter;
+    void prepare(double sr, int, int) { filter.prepare(sr); }
+    void process(AudioBlock b) noexcept {
+        for (int i = 0; i < b.getNumSamples(); ++i) {
+            const float y = filter.process(std::abs(b.getSample(0, i)));
+            b.setSample(0, i, y);
+            b.setSample(1, i, y);
+        }
+    }
+};
+
+// The LFO's value, scaled to 0.25
+struct LfoRig {
+    Lfo lfo;
+    void prepare(double sr, int, int) { lfo.prepare(sr); }
+    void process(AudioBlock b) noexcept {
+        for (int i = 0; i < b.getNumSamples(); ++i) {
+            const float v = 0.25f * lfo.getNextValue();
+            b.setSample(0, i, v);
+            b.setSample(1, i, v);
+        }
+    }
+};
+
+// SmoothedValue as a gain (starting at 1, ramp 50 ms)
+struct SmoothedRig {
+    SmoothedValue value{1.0f};
+    void prepare(double sr, int, int) { value.reset(sr, 0.05); }
+    void process(AudioBlock b) noexcept { value.applyGain(b); }
+};
+
+// The level meter, its input silent from block 12 on so hold, decay and the RMS window all show
+struct DecayingMeterRig : LevelMeterRig {
+    int blocks = 0;
+    void prepare(double sr, int, int) { meter.prepare(sr, 2); }
+    void process(AudioBlock b) noexcept {
+        if (blocks++ >= 12)
+            b.clear();
+        LevelMeterRig::process(b);
+    }
+};
+
+struct LoudnessRig : LoudnessMeterRig {
+    void prepare(double sr, int, int) { meter.prepare(sr, 2); }
+};
+
+struct SpectrumParamRig : SpectrumRig {
+    void prepare(double sr, int, int) { analyzer.prepare(sr); }
+};
+
+// 30 blocks of the sine; set(fx, value) is called before block 10 (if call). Returns every output sample.
+template <typename Fx, typename Setup, typename Set>
+std::vector<float> renderWithSetter(const Setup& setup, const Set& set, bool beforePrepare, bool call, float value) {
+    constexpr int kSetBlock = 10, kBlocks = 30;
+    const auto fx = std::make_unique<Fx>();
+    if (call && beforePrepare)
+        set(*fx, value);
+    prepareFx(*fx);
+    setup(*fx);
+    AudioBuffer buf(2, kBlock);
+    std::vector<float> out;
+    out.reserve(static_cast<size_t>(2 * kBlock * kBlocks));
+    for (int blk = 0; blk < kBlocks; ++blk) {
+        if (call && !beforePrepare && blk == kSetBlock)
+            set(*fx, value);
+        fillSine(buf, static_cast<long>(blk) * kBlock);
+        fx->process(AudioBlock(buf));
+        for (int ch = 0; ch < 2; ++ch)
+            out.insert(out.end(), buf.getReadPointer(ch), buf.getReadPointer(ch) + kBlock);
+    }
+    return out;
+}
+
+bool sameBits(const std::vector<float>& a, const std::vector<float>& b) {
+    return a.size() == b.size() && std::memcmp(a.data(), b.data(), a.size() * sizeof(float)) == 0;
+}
+
+enum class When { BetweenBlocks, BeforePrepare };
+
+int paramRows = 0, paramFailures = 0;
+
+// Fx is built on the heap, prepared and set up (setup) as a twin of an untouched object. set(fx, v) is the setter
+// under test. NaN and +inf leave the output bit-identical to the untouched twin (the setter kept its last valid
+// value); so does -inf, except for a value in dB (unit Decibels), where -inf means silence and acts exactly like
+// kMinusInfinityDb. So that a row cannot pass because the setter does nothing here, the valid value must change the
+// output. A setter documented as "call before prepare()" is called before prepare() (When::BeforePrepare).
+template <typename Fx, typename Setup, typename Set>
+void checkNonFiniteParameterIgnored(const char* name, Setup setup, Set set, float valid,
+                                    ParameterUnit unit = ParameterUnit::Plain, When when = When::BetweenBlocks) {
+    const bool early = when == When::BeforePrepare;
+    const std::vector<float> untouched = renderWithSetter<Fx>(setup, set, early, false, 0.0f);
+    const bool observable = !sameBits(untouched, renderWithSetter<Fx>(setup, set, early, true, valid));
+    ++paramRows;
+    if (!observable) {
+        ++paramFailures;
+        std::printf("  %-36s the valid value %g changes nothing: the row proves nothing\n", name,
+                    static_cast<double>(valid));
+    }
+    DAWLAB_CHECK(observable);
+    for (float bad : {kNaN, kInf, -kInf}) {
+        const bool floor = unit == ParameterUnit::Decibels && bad < 0.0f;
+        const std::vector<float> expected =
+            floor ? renderWithSetter<Fx>(setup, set, early, true, kMinusInfinityDb) : untouched;
+        const bool ok = sameBits(expected, renderWithSetter<Fx>(setup, set, early, true, bad));
+        if (!ok) {
+            ++paramFailures;
+            std::printf("  %-36s %-4s: output differs from %s\n", name,
+                        std::isnan(bad) ? "NaN" : bad > 0.0f ? "+inf" : "-inf",
+                        floor ? "the twin set to kMinusInfinityDb" : "the untouched twin");
+        }
+        DAWLAB_CHECK(ok);
+    }
+}
+
+template <typename Fx, typename Setup, typename Set>
+void row(const char* name, Setup setup, Set set, float valid, ParameterUnit unit = ParameterUnit::Plain,
+         When when = When::BetweenBlocks) {
+    checkNonFiniteParameterIgnored<Fx>(name, setup, set, valid, unit, when);
+}
+
+template <typename Fx, typename Set>
+void row(const char* name, Set set, float valid, ParameterUnit unit = ParameterUnit::Plain) {
+    checkNonFiniteParameterIgnored<Fx>(name, [](Fx&) {}, set, valid, unit);
+}
+
+constexpr ParameterUnit kDb = ParameterUnit::Decibels;
+constexpr ParameterUnit kPlain = ParameterUnit::Plain;
+
+void checkParameterRuleCh01to05() {
+    row<Gain>("Gain::setGainDb", [](Gain& g, float v) { g.setGainDb(v); }, -6.0f, kDb);
+    row<Gain>("Gain::setGainLinear", [](Gain& g, float v) { g.setGainLinear(v); }, 0.5f);
+    row<Gain>("Gain::setRampSeconds", [](Gain& g) { g.setRampSeconds(1.0); g.setGainDb(-12.0f); },
+              [](Gain& g, float v) { g.setRampSeconds(v); }, 0.1f);
+    row<Panner>("Panner::setPan", [](Panner& p, float v) { p.setPan(v); }, 0.5f);
+    row<Panner>("Panner::setRampSeconds", [](Panner& p) { p.setRampSeconds(1.0); p.setPan(0.8f); },
+                [](Panner& p, float v) { p.setRampSeconds(v); }, 0.1f);
+    row<SmoothedRig>("SmoothedValue::setTargetValue", [](SmoothedRig& r, float v) { r.value.setTargetValue(v); }, 0.5f);
+    row<SmoothedRig>("SmoothedValue::setCurrentAndTargetValue",
+                     [](SmoothedRig& r, float v) { r.value.setCurrentAndTargetValue(v); }, 0.5f);
+    row<OnePole>("OnePole::setCutoff", [](OnePole& f) { f.setCutoff(2000.0f); },
+                 [](OnePole& f, float v) { f.setCutoff(v); }, 500.0f);
+    row<StateVariableFilter>("StateVariableFilter::setCutoff", [](StateVariableFilter& f, float v) { f.setCutoff(v); },
+                             500.0f);
+    row<StateVariableFilter>("StateVariableFilter::setQ", [](StateVariableFilter& f, float v) { f.setQ(v); }, 4.0f);
+    const auto eqSetup = [](ParametricEq& eq) {
+        eq.setBandEnabled(2, true);
+        eq.setBandGainDb(2, 6.0f);
+    };
+    row<ParametricEq>("ParametricEq::setBandFrequency", eqSetup,
+                      [](ParametricEq& eq, float v) { eq.setBandFrequency(2, v); }, 1000.0f);
+    row<ParametricEq>("ParametricEq::setBandQ", eqSetup, [](ParametricEq& eq, float v) { eq.setBandQ(2, v); }, 3.0f);
+    row<ParametricEq>("ParametricEq::setBandGainDb", eqSetup,
+                      [](ParametricEq& eq, float v) { eq.setBandGainDb(2, v); }, -6.0f, kDb);
+    row<ParametricEq>("ParametricEq::setSmoothingSeconds", eqSetup,
+                      [](ParametricEq& eq, float v) { eq.setSmoothingSeconds(v); }, 0.2f, kPlain,
+                      When::BeforePrepare);
+    const auto compSetup = [](Compressor& c) {
+        c.setThresholdDb(-30.0f);
+        c.setRatio(4.0f);
+    };
+    row<Compressor>("Compressor::setThresholdDb", compSetup, [](Compressor& c, float v) { c.setThresholdDb(v); },
+                    -20.0f, kDb);
+    row<Compressor>("Compressor::setRatio", compSetup, [](Compressor& c, float v) { c.setRatio(v); }, 8.0f);
+    row<Compressor>("Compressor::setKneeDb", compSetup, [](Compressor& c, float v) { c.setKneeDb(v); }, 40.0f, kDb);
+    row<Compressor>("Compressor::setAttackMs", compSetup, [](Compressor& c, float v) { c.setAttackMs(v); }, 50.0f);
+    row<Compressor>("Compressor::setReleaseMs", compSetup, [](Compressor& c, float v) { c.setReleaseMs(v); }, 500.0f);
+    row<Compressor>("Compressor::setMakeupGainDb", compSetup, [](Compressor& c, float v) { c.setMakeupGainDb(v); },
+                    6.0f, kDb);
+    row<Compressor>("Compressor::setRmsWindowMs",
+                    [](Compressor& c) {
+                        c.setThresholdDb(-30.0f);
+                        c.setRatio(4.0f);
+                        c.setDetectorMode(DetectorMode::Rms);
+                    },
+                    [](Compressor& c, float v) { c.setRmsWindowMs(v); }, 50.0f);
+    const auto limSetup = [](Limiter& l) { l.setInputGainDb(12.0f); };
+    row<Limiter>("Limiter::setCeilingDb", limSetup, [](Limiter& l, float v) { l.setCeilingDb(v); }, -6.0f, kDb);
+    row<Limiter>("Limiter::setInputGainDb", limSetup, [](Limiter& l, float v) { l.setInputGainDb(v); }, 6.0f, kDb);
+    row<Limiter>("Limiter::setReleaseMs", limSetup, [](Limiter& l, float v) { l.setReleaseMs(v); }, 300.0f);
+    row<Limiter>("Limiter::setLookaheadMs", limSetup, [](Limiter& l, float v) { l.setLookaheadMs(v); }, 2.0f);
+    row<Limiter>("Limiter::setMaxLookaheadMs", limSetup, [](Limiter& l, float v) { l.setMaxLookaheadMs(v); }, 2.0f,
+                 kPlain, When::BeforePrepare);
+}
+
+void checkParameterRuleCh06to08() {
+    row<Saturation>("Saturation::setDriveDb", [](Saturation& s, float v) { s.setDriveDb(v); }, 12.0f, kDb);
+    row<Saturation>("Saturation::setMix", [](Saturation& s) { s.setDriveDb(12.0f); },
+                    [](Saturation& s, float v) { s.setMix(v); }, 0.5f);
+    row<Saturation>("Saturation::setOutputGainDb", [](Saturation& s, float v) { s.setOutputGainDb(v); }, -6.0f, kDb);
+    row<Saturation>("Saturation::setDcBlockerHz", [](Saturation& s, float v) { s.setDcBlockerHz(v); }, 200.0f);
+    row<Distortion>("Distortion::setDriveDb", [](Distortion& d, float v) { d.setDriveDb(v); }, 24.0f, kDb);
+    row<Distortion>("Distortion::setToneHz", [](Distortion& d) { d.setDriveDb(24.0f); },
+                    [](Distortion& d, float v) { d.setToneHz(v); }, 2000.0f);
+    row<Distortion>("Distortion::setMix", [](Distortion& d) { d.setDriveDb(24.0f); },
+                    [](Distortion& d, float v) { d.setMix(v); }, 0.5f);
+    row<Distortion>("Distortion::setOutputGainDb", [](Distortion& d, float v) { d.setOutputGainDb(v); }, -6.0f, kDb);
+    row<Distortion>("Distortion::setBitDepth", [](Distortion& d) { d.setType(DistortionType::Bitcrush); },
+                    [](Distortion& d, float v) { d.setBitDepth(v); }, 4.0f);
+    row<AmpChain>("AmpChain::setInputHighpassHz", [](AmpChain& a, float v) { a.setInputHighpassHz(v); }, 300.0f);
+    row<AmpChain>("AmpChain::setPreEqHz", [](AmpChain& a, float v) { a.setPreEqHz(v); }, 1500.0f);
+    row<AmpChain>("AmpChain::setPreEqGainDb", [](AmpChain& a, float v) { a.setPreEqGainDb(v); }, -6.0f, kDb);
+    row<AmpChain>("AmpChain::setPreampDriveDb", [](AmpChain& a, float v) { a.setPreampDriveDb(v); }, 20.0f, kDb);
+    row<AmpChain>("AmpChain::setPowerAmpDriveDb", [](AmpChain& a, float v) { a.setPowerAmpDriveDb(v); }, 20.0f, kDb);
+    row<AmpChain>("AmpChain::setBassDb", [](AmpChain& a, float v) { a.setBassDb(v); }, 6.0f, kDb);
+    row<AmpChain>("AmpChain::setMidDb", [](AmpChain& a, float v) { a.setMidDb(v); }, 6.0f, kDb);
+    row<AmpChain>("AmpChain::setTrebleDb", [](AmpChain& a, float v) { a.setTrebleDb(v); }, 6.0f, kDb);
+    row<AmpChain>("AmpChain::setCabinetCutoffHz", [](AmpChain& a, float v) { a.setCabinetCutoffHz(v); }, 3000.0f);
+    row<AmpChain>("AmpChain::setCabinetResonanceHz", [](AmpChain& a, float v) { a.setCabinetResonanceHz(v); },
+                  200.0f);
+    row<AmpChain>("AmpChain::setCabinetResonanceDb", [](AmpChain& a, float v) { a.setCabinetResonanceDb(v); }, 9.0f,
+                  kDb);
+    row<AmpChain>("AmpChain::setOutputGainDb", [](AmpChain& a, float v) { a.setOutputGainDb(v); }, -6.0f, kDb);
+    using SGate = Stepped<Gate>;
+    const auto gateSetup = [](SGate& g) { g.fx.setThresholdDb(-24.0f); };
+    row<SGate>("Gate::setThresholdDb", gateSetup, [](SGate& g, float v) { g.fx.setThresholdDb(v); }, -40.0f, kDb);
+    row<SGate>("Gate::setHysteresisDb", gateSetup, [](SGate& g, float v) { g.fx.setHysteresisDb(v); }, 12.0f, kDb);
+    row<SGate>("Gate::setRangeDb", gateSetup, [](SGate& g, float v) { g.fx.setRangeDb(v); }, -20.0f, kDb);
+    row<SGate>("Gate::setAttackMs", gateSetup, [](SGate& g, float v) { g.fx.setAttackMs(v); }, 20.0f);
+    row<SGate>("Gate::setHoldMs", gateSetup, [](SGate& g, float v) { g.fx.setHoldMs(v); }, 5.0f);
+    row<SGate>("Gate::setReleaseMs", gateSetup, [](SGate& g, float v) { g.fx.setReleaseMs(v); }, 20.0f);
+    row<SGate>("Gate::setDetectorReleaseMs", gateSetup, [](SGate& g, float v) { g.fx.setDetectorReleaseMs(v); },
+               100.0f);
+    using SExp = Stepped<Expander>;
+    const auto expSetup = [](SExp& e) {
+        e.fx.setThresholdDb(-20.0f);
+        e.fx.setReleaseMs(20.0f);
+    };
+    row<SExp>("Expander::setThresholdDb", expSetup, [](SExp& e, float v) { e.fx.setThresholdDb(v); }, -30.0f, kDb);
+    row<SExp>("Expander::setRatio", expSetup, [](SExp& e, float v) { e.fx.setRatio(v); }, 4.0f);
+    row<SExp>("Expander::setKneeDb", expSetup, [](SExp& e, float v) { e.fx.setKneeDb(v); }, 10.0f, kDb);
+    row<SExp>("Expander::setRangeDb", expSetup, [](SExp& e, float v) { e.fx.setRangeDb(v); }, -6.0f, kDb);
+    row<SExp>("Expander::setAttackMs", expSetup, [](SExp& e, float v) { e.fx.setAttackMs(v); }, 30.0f);
+    row<SExp>("Expander::setReleaseMs", expSetup, [](SExp& e, float v) { e.fx.setReleaseMs(v); }, 300.0f);
+    const auto deEssSetup = [](DeEsser& d) {
+        d.setThresholdDb(-50.0f);
+        d.setRangeDb(24.0f);
+    };
+    row<DeEsser>("DeEsser::setFrequency", deEssSetup, [](DeEsser& d, float v) { d.setFrequency(v); }, 3000.0f);
+    row<DeEsser>("DeEsser::setThresholdDb", deEssSetup, [](DeEsser& d, float v) { d.setThresholdDb(v); }, -45.0f, kDb);
+    row<DeEsser>("DeEsser::setRangeDb", deEssSetup, [](DeEsser& d, float v) { d.setRangeDb(v); }, 3.0f, kDb);
+    row<DeEsser>("DeEsser::setAttackMs", deEssSetup, [](DeEsser& d, float v) { d.setAttackMs(v); }, 20.0f);
+    row<DeEsser>("DeEsser::setReleaseMs", deEssSetup, [](DeEsser& d, float v) { d.setReleaseMs(v); }, 200.0f);
+    using STs = Stepped<TransientShaper>;
+    row<STs>("TransientShaper::setAttackDb", [](STs& t, float v) { t.fx.setAttackDb(v); }, 12.0f, kDb);
+    row<STs>("TransientShaper::setSustainDb", [](STs& t, float v) { t.fx.setSustainDb(v); }, -12.0f, kDb);
+    row<EnvelopePair>("EnvelopeFollower::setAttackMs", [](EnvelopePair& p, float v) {
+        for (EnvelopeFollower& e : p.side)
+            e.setAttackMs(v);
+    }, 30.0f);
+    row<EnvelopePair>("EnvelopeFollower::setReleaseMs", [](EnvelopePair& p, float v) {
+        for (EnvelopeFollower& e : p.side)
+            e.setReleaseMs(v);
+    }, 300.0f);
+    row<AttackReleaseRig>("AttackReleaseFilter::setCurrentValue",
+                          [](AttackReleaseRig& r, float v) { r.filter.setCurrentValue(v); }, 0.9f);
+}
+
+void checkParameterRuleCh09to12() {
+    const auto delaySetup = [](Delay& d) {
+        d.setDelayMs(30.0f);
+        d.reset();
+    };
+    row<Delay>("Delay::setDelayMs", delaySetup, [](Delay& d, float v) { d.setDelayMs(v); }, 50.0f);
+    row<Delay>("Delay::setDelayRampSeconds",
+               [](Delay& d) {
+                   d.setDelayMs(30.0f);
+                   d.reset();
+                   d.setDelayRampSeconds(1.0);
+                   d.setDelayMs(60.0f);
+               },
+               [](Delay& d, float v) { d.setDelayRampSeconds(v); }, 0.1f);
+    row<Delay>("Delay::setFeedback", delaySetup, [](Delay& d, float v) { d.setFeedback(v); }, 0.8f);
+    row<Delay>("Delay::setMix", delaySetup, [](Delay& d, float v) { d.setMix(v); }, 0.8f);
+    row<Delay>("Delay::setLowpassHz", delaySetup, [](Delay& d, float v) { d.setLowpassHz(v); }, 1000.0f);
+    row<Delay>("Delay::setHighpassHz", delaySetup, [](Delay& d, float v) { d.setHighpassHz(v); }, 2000.0f);
+    row<Delay>("Delay::setMaxDelayMs", [](Delay& d) { d.setDelayMs(500.0f); },
+               [](Delay& d, float v) { d.setMaxDelayMs(v); }, 100.0f, kPlain, When::BeforePrepare);
+    row<Chorus>("Chorus::setRateHz", [](Chorus& c, float v) { c.setRateHz(v); }, 3.0f);
+    row<Chorus>("Chorus::setDepthMs", [](Chorus& c, float v) { c.setDepthMs(v); }, 10.0f);
+    row<Chorus>("Chorus::setCentreDelayMs", [](Chorus& c, float v) { c.setCentreDelayMs(v); }, 10.0f);
+    row<Chorus>("Chorus::setMix", [](Chorus& c, float v) { c.setMix(v); }, 0.8f);
+    row<Chorus>("Chorus::setStereoSpread", [](Chorus& c, float v) { c.setStereoSpread(v); }, 0.2f);
+    row<Flanger>("Flanger::setRateHz", [](Flanger& f, float v) { f.setRateHz(v); }, 2.0f);
+    row<Flanger>("Flanger::setDepthMs", [](Flanger& f, float v) { f.setDepthMs(v); }, 1.0f);
+    row<Flanger>("Flanger::setDelayMs", [](Flanger& f, float v) { f.setDelayMs(v); }, 5.0f);
+    row<Flanger>("Flanger::setFeedback", [](Flanger& f, float v) { f.setFeedback(v); }, 0.8f);
+    row<Flanger>("Flanger::setMix", [](Flanger& f, float v) { f.setMix(v); }, 0.8f);
+    row<Flanger>("Flanger::setLfoPhase", [](Flanger& f, float v) { f.setLfoPhase(v); }, 0.3f);
+    row<Phaser>("Phaser::setRateHz", [](Phaser& p, float v) { p.setRateHz(v); }, 2.0f);
+    row<Phaser>("Phaser::setDepth", [](Phaser& p, float v) { p.setDepth(v); }, 0.2f);
+    row<Phaser>("Phaser::setCentreHz", [](Phaser& p, float v) { p.setCentreHz(v); }, 2000.0f);
+    row<Phaser>("Phaser::setFeedback", [](Phaser& p, float v) { p.setFeedback(v); }, 0.7f);
+    row<Phaser>("Phaser::setMix", [](Phaser& p, float v) { p.setMix(v); }, 0.8f);
+    row<Phaser>("Phaser::setLfoPhase", [](Phaser& p, float v) { p.setLfoPhase(v); }, 0.3f);
+    row<Phaser>("Phaser::setSweepOctaves", [](Phaser& p, float v) { p.setSweepOctaves(v); }, 4.0f);
+    row<Tremolo>("Tremolo::setRateHz", [](Tremolo& t, float v) { t.setRateHz(v); }, 8.0f);
+    row<Tremolo>("Tremolo::setDepth", [](Tremolo& t, float v) { t.setDepth(v); }, 0.2f);
+    row<Tremolo>("Tremolo::setLfoPhase", [](Tremolo& t, float v) { t.setLfoPhase(v); }, 0.3f);
+    row<Tremolo>("Tremolo::setSmoothingMs", [](Tremolo& t) { t.setShape(LfoShape::Square); t.setRateHz(20.0f); },
+                 [](Tremolo& t, float v) { t.setSmoothingMs(v); }, 10.0f);
+    const auto squareLfo = [](LfoRig& r) {
+        r.lfo.setShape(LfoShape::Square);
+        r.lfo.setRateHz(20.0f);
+    };
+    row<LfoRig>("Lfo::setRateHz", [](LfoRig& r, float v) { r.lfo.setRateHz(v); }, 3.0f);
+    row<LfoRig>("Lfo::setPhase", [](LfoRig& r, float v) { r.lfo.setPhase(v); }, 0.3f);
+    row<LfoRig>("Lfo::setSmoothingMs", squareLfo, [](LfoRig& r, float v) { r.lfo.setSmoothingMs(v); }, 10.0f);
+    row<DecayingMeterRig>("LevelMeter::setPeakHoldMs", [](DecayingMeterRig& r, float v) { r.meter.setPeakHoldMs(v); },
+                          10.0f);
+    row<DecayingMeterRig>("LevelMeter::setDecayDbPerSecond",
+                          [](DecayingMeterRig& r, float v) { r.meter.setDecayDbPerSecond(v); }, 60.0f);
+    row<DecayingMeterRig>("LevelMeter::setRmsWindowMs", [](DecayingMeterRig& r, float v) { r.meter.setRmsWindowMs(v); },
+                          50.0f);
+    row<LoudnessRig>("LoudnessMeter::setChannelWeight", [](LoudnessRig& r, float v) { r.meter.setChannelWeight(0, v); },
+                     0.5f);
+    row<SpectrumParamRig>("SpectrumAnalyzer::setSmoothing",
+                          [](SpectrumParamRig& r, float v) { r.analyzer.setSmoothing(v); }, 0.2f);
+    row<SpectrumParamRig>("SpectrumAnalyzer::setOverlap", [](SpectrumParamRig& r, float v) { r.analyzer.setOverlap(v); },
+                          0.75f);
+    row<Reverb>("Reverb::setDecaySeconds", [](Reverb& r, float v) { r.setDecaySeconds(v); }, 8.0f);
+    row<Reverb>("Reverb::setPreDelayMs", [](Reverb& r, float v) { r.setPreDelayMs(v); }, 50.0f);
+    row<Reverb>("Reverb::setDampingHz", [](Reverb& r, float v) { r.setDampingHz(v); }, 2000.0f);
+    row<Reverb>("Reverb::setSize", [](Reverb& r, float v) { r.setSize(v); }, 0.9f);
+    row<Reverb>("Reverb::setWidth", [](Reverb& r, float v) { r.setWidth(v); }, 0.2f);
+    row<Reverb>("Reverb::setMix", [](Reverb& r, float v) { r.setMix(v); }, 0.8f);
+    row<Reverb>("Reverb::setModulationDepthMs", [](Reverb& r, float v) { r.setModulationDepthMs(v); }, 2.0f);
+    row<Reverb>("Reverb::setModulationRateHz", [](Reverb& r) { r.setModulationDepthMs(2.0f); },
+                [](Reverb& r, float v) { r.setModulationRateHz(v); }, 3.0f);
+    row<ConvolutionReverb>("ConvolutionReverb::setMix",
+                           [](ConvolutionReverb& c) {
+                               c.setImpulseResponse(
+                                   ConvolutionReverb::makeSyntheticImpulseResponse(kSampleRate, 0.2, 2));
+                           },
+                           [](ConvolutionReverb& c, float v) { c.setMix(v); }, 0.2f);
+    const auto combSetup = [](PreparedPair<CombFilter>& p) {
+        for (CombFilter& c : p.side) {
+            c.setDelaySamples(700);
+            c.setFeedback(0.6f);
+        }
+    };
+    row<PreparedPair<CombFilter>>("CombFilter::setFeedback", combSetup, [](PreparedPair<CombFilter>& p, float v) {
+        for (CombFilter& c : p.side)
+            c.setFeedback(v);
+    }, 0.3f);
+    row<PreparedPair<CombFilter>>("CombFilter::setDamping", combSetup, [](PreparedPair<CombFilter>& p, float v) {
+        for (CombFilter& c : p.side)
+            c.setDamping(v);
+    }, 0.8f);
+    row<PreparedPair<AllpassDiffuser>>("AllpassDiffuser::setGain",
+                                       [](PreparedPair<AllpassDiffuser>& p) {
+                                           for (AllpassDiffuser& a : p.side)
+                                               a.setDelaySamples(700);
+                                       },
+                                       [](PreparedPair<AllpassDiffuser>& p, float v) {
+                                           for (AllpassDiffuser& a : p.side)
+                                               a.setGain(v);
+                                       },
+                                       -0.3f);
+    row<PreparedPair<TappedDelay>>("TappedDelay::setTaps", [](PreparedPair<TappedDelay>& p, float v) {
+        for (TappedDelay& t : p.side)
+            t.setTaps({{0, 1.0f}, {700, v}});
+    }, 0.25f);
+    std::printf("non-finite parameter: %d setters, %d failures\n", paramRows, paramFailures);
+}
+
+// Stateless functions have no last value to keep: a non-finite argument means a documented default
+void checkStatelessDefaults() {
+    int failures = 0;
+    const auto same = [](const BiquadCoefficients& a, const BiquadCoefficients& b) {
+        return a.b0 == b.b0 && a.b1 == b.b1 && a.b2 == b.b2 && a.a1 == b.a1 && a.a2 == b.a2;
+    };
+    using C = BiquadCoefficients;
+    for (float badF : {kNaN, kInf, -kInf}) {
+        const double bad = static_cast<double>(badF);
+        // frequency -> 1 kHz, Q -> 1/sqrt(2), gain -> 0 dB
+        const bool ok =
+            same(C::makeLowpass(kSampleRate, bad, 2.0), C::makeLowpass(kSampleRate, 1000.0, 2.0)) &&
+            same(C::makeHighpass(kSampleRate, 500.0, bad), C::makeHighpass(kSampleRate, 500.0, C::kButterworthQ)) &&
+            same(C::makeBandpass(kSampleRate, bad, bad), C::makeBandpass(kSampleRate, 1000.0, C::kButterworthQ)) &&
+            same(C::makeNotch(kSampleRate, bad, 2.0), C::makeNotch(kSampleRate, 1000.0, 2.0)) &&
+            same(C::makeAllpass(kSampleRate, 500.0, bad), C::makeAllpass(kSampleRate, 500.0, C::kButterworthQ)) &&
+            same(C::makePeak(kSampleRate, 500.0, 2.0, bad), C::makePeak(kSampleRate, 500.0, 2.0, 0.0)) &&
+            same(C::makeLowShelf(kSampleRate, bad, 0.7, bad), C::makeLowShelf(kSampleRate, 1000.0, 0.7, 0.0)) &&
+            same(C::makeHighShelf(kSampleRate, 500.0, bad, bad),
+                 C::makeHighShelf(kSampleRate, 500.0, C::kButterworthQ, 0.0));
+        if (!ok) {
+            ++failures;
+            std::printf("  BiquadCoefficients factories with %g: not the documented defaults\n", bad);
+        }
+        DAWLAB_CHECK(ok);
+
+        float l = 0.0f, r = 0.0f, l0 = 0.0f, r0 = 0.0f;
+        Panner::computeGains(badF, PanLaw::ConstantPower, l, r);
+        Panner::computeGains(0.0f, PanLaw::ConstantPower, l0, r0);
+        DAWLAB_CHECK(l == l0 && r == r0);
+    }
+    // A non-finite delay reads as the minimum delay (0 for linear, 1 for cubic and Lagrange). The old code cast a
+    // NaN to int: readLagrange then read out of bounds, and -fsanitize=float-cast-overflow stopped the others.
+    const auto line = std::make_unique<FractionalDelayLine>();
+    line->prepare(64, 1);
+    for (int i = 0; i < 64; ++i)
+        line->push(0, static_cast<float>(i));
+    bool reads = true;
+    for (float bad : {kNaN, kInf, -kInf})
+        reads = reads && line->readLinear(0, bad) == line->readLinear(0, 0.0f) &&
+                line->readCubic(0, bad) == line->readCubic(0, 1.0f) &&
+                line->readLagrange(0, bad) == line->readLagrange(0, 1.0f);
+    if (!reads) {
+        ++failures;
+        std::printf("  FractionalDelayLine reads of a NaN delay: not the minimum delay\n");
+    }
+    DAWLAB_CHECK(reads);
+    std::printf("non-finite argument of a stateless function: %d failures\n", failures);
+}
+
 } // namespace
 
 int main() {
@@ -409,6 +868,10 @@ int main() {
     checkShortSidechain("Expander", expander);
 
     checkInputRule();
+    checkParameterRuleCh01to05();
+    checkParameterRuleCh06to08();
+    checkParameterRuleCh09to12();
+    checkStatelessDefaults();
 
     return dawlab::test::summary("dsp");
 }

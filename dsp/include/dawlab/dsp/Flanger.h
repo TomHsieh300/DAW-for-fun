@@ -61,14 +61,35 @@ public:
     }
 
     // ---- Parameters ----------------------------------------------------------
-    void setRateHz(float hz) noexcept { lfo_.setRateHz(std::clamp(hz, 0.0f, 20.0f)); }
-    void setDepthMs(float ms) noexcept { depthSm_.setTarget(std::clamp(ms, 0.0f, kMaxDepthMs)); }
+    // Every float setter ignores NaN / ±inf (acceptParameter in DspMath.h), so a smoother never gets one
+    void setRateHz(float hz) noexcept {
+        if (!acceptParameter(hz))
+            return;
+        lfo_.setRateHz(std::clamp(hz, 0.0f, 20.0f));
+    }
+    void setDepthMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
+        depthSm_.setTarget(std::clamp(ms, 0.0f, kMaxDepthMs));
+    }
     // Base delay (the lower end of the sweep range)
-    void setDelayMs(float ms) noexcept { delaySm_.setTarget(std::clamp(ms, kMinDelayMs, kMaxDelayMs)); }
+    void setDelayMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
+        delaySm_.setTarget(std::clamp(ms, kMinDelayMs, kMaxDelayMs));
+    }
     // Positive: the peaks get sharper (a resonant feel at f = k/d); negative: the notches are filled in
     // and the peaks move to (2k+1)/(2d), giving a more "hollow" sound
-    void setFeedback(float fb) noexcept { feedbackSm_.setTarget(std::clamp(fb, -0.99f, 0.99f)); }
-    void setMix(float mix) noexcept { mixSm_.setTarget(std::clamp(mix, 0.0f, 1.0f)); }
+    void setFeedback(float fb) noexcept {
+        if (!acceptParameter(fb))
+            return;
+        feedbackSm_.setTarget(std::clamp(fb, -0.99f, 0.99f));
+    }
+    void setMix(float mix) noexcept {
+        if (!acceptParameter(mix))
+            return;
+        mixSm_.setTarget(std::clamp(mix, 0.0f, 1.0f));
+    }
     void setLfoShape(LfoShape shape) noexcept { lfo_.setShape(shape); }
     // Park the LFO at a given phase (use after setting rate to 0); for measuring the frequency response
     void setLfoPhase(float phase01) noexcept { lfo_.setPhase(phase01); }

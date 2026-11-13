@@ -56,14 +56,18 @@ public:
     void setType(Type type) noexcept { type_ = type; }
     Type getType() const noexcept { return type_; }
 
-    // Safe to call on every sample (costs one tan)
+    // Safe to call on every sample (costs one tan). NaN / ±inf are ignored, like every setter in dsp/.
     void setCutoff(float hz) noexcept {
+        if (!acceptParameter(hz))
+            return;
         cutoffHz_ = hz;
         updateCoefficients();
     }
     float getCutoff() const noexcept { return cutoffHz_; }
 
     void setQ(float q) noexcept {
+        if (!acceptParameter(q))
+            return;
         q_ = std::max(q, 0.025f);
         updateCoefficients();
     }

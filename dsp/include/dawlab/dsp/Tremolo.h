@@ -41,8 +41,17 @@ public:
     }
 
     // ---- Parameters ----------------------------------------------------------
-    void setRateHz(float hz) noexcept { lfo_.setRateHz(std::clamp(hz, 0.0f, 50.0f)); }
-    void setDepth(float depth) noexcept { depthSm_.setTarget(std::clamp(depth, 0.0f, 1.0f)); }
+    // Every float setter ignores NaN / ±inf (acceptParameter in DspMath.h; the LFO's own setters do the same)
+    void setRateHz(float hz) noexcept {
+        if (!acceptParameter(hz))
+            return;
+        lfo_.setRateHz(std::clamp(hz, 0.0f, 50.0f));
+    }
+    void setDepth(float depth) noexcept {
+        if (!acceptParameter(depth))
+            return;
+        depthSm_.setTarget(std::clamp(depth, 0.0f, 1.0f));
+    }
     void setShape(LfoShape shape) noexcept { lfo_.setShape(shape); }
     void setAutoPan(bool autoPan) noexcept { autoPan_ = autoPan; }
     void setLfoPhase(float phase01) noexcept { lfo_.setPhase(phase01); }

@@ -77,8 +77,17 @@ public:
 
     // ---- Parameters -----------------------------------------------------------
     // -24..+24 dB: positive values boost the transient, negative values reduce it
-    void setAttackDb(float db) noexcept { attackDb_ = std::clamp(db, -24.0f, 24.0f); }
-    void setSustainDb(float db) noexcept { sustainDb_ = std::clamp(db, -24.0f, 24.0f); }
+    // NaN / ±inf are ignored (-inf dB = the floor kMinusInfinityDb, then clamped; acceptParameter in DspMath.h)
+    void setAttackDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
+        attackDb_ = std::clamp(db, -24.0f, 24.0f);
+    }
+    void setSustainDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
+        sustainDb_ = std::clamp(db, -24.0f, 24.0f);
+    }
     float getAttackDb() const noexcept { return attackDb_; }
     float getSustainDb() const noexcept { return sustainDb_; }
     int getLatencySamples() const noexcept { return 0; }

@@ -115,7 +115,11 @@ private:
 class Limiter {
 public:
     // Upper bound on lookahead (it decides how much memory prepare allocates). Call it before prepare; it takes effect at the next prepare. Default 20 ms.
-    void setMaxLookaheadMs(float ms) noexcept { maxLookaheadMs_ = std::max(0.0f, ms); }
+    void setMaxLookaheadMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
+        maxLookaheadMs_ = std::max(0.0f, ms);
+    }
 
     void prepare(double sampleRate, int maxBlockSize, int numChannels) {
         assert(sampleRate > 0.0 && numChannels >= 1);
@@ -147,7 +151,10 @@ public:
     }
 
     // ---- Parameters (call between blocks) -------------------------------------------
+    // Every float setter ignores NaN / ±inf (-inf dB = the floor kMinusInfinityDb; acceptParameter in DspMath.h)
     void setCeilingDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
         ceilingDb_ = db;
         ceiling_ = dbToGain(db);
     }
@@ -157,6 +164,8 @@ public:
     // often re-sets the parameter every block, and if we recomputed the step from the "remaining
     // distance" each time, the ramp would get slower and slower and never finish.
     void setInputGainDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
         if (db == inputGainDb_)
             return;
         inputGainDb_ = db;
@@ -166,6 +175,8 @@ public:
     }
 
     void setReleaseMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
         ms = std::max(0.0f, ms);
         if (ms == releaseMs_)
             return; // unchanged: no need to recompute exp() (the host may call this every block)
@@ -180,6 +191,8 @@ public:
     // (for example, setLookaheadMs(30) followed by setMaxLookaheadMs(50) gives 30 ms after prepare).
     // Changing the lookahead resets the gain-smoothing state (the window length changed), so do it while playback is stopped.
     void setLookaheadMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
         requestedLookaheadMs_ = std::max(0.0f, ms);
         if (sampleRate_ <= 0.0)
             return; // not prepared yet: remember it and apply it in prepare

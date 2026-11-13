@@ -70,14 +70,25 @@ public:
     }
 
     // ---- Parameters ----------------------------------------------------------
+    // Every float setter ignores NaN / ±inf (acceptParameter in DspMath.h), so a smoother never gets one
     void setRateHz(float hz) noexcept {
+        if (!acceptParameter(hz))
+            return;
         rateHz_ = std::clamp(hz, 0.0f, 20.0f);
         for (auto& lfo : lfos_)
             lfo.setRateHz(rateHz_);
     }
     // Maximum deviation of the delay from centre (±depth).
-    void setDepthMs(float ms) noexcept { depthSm_.setTarget(std::clamp(ms, 0.0f, kMaxDepthMs)); }
-    void setCentreDelayMs(float ms) noexcept { centreSm_.setTarget(std::clamp(ms, 1.0f, kMaxCentreDelayMs)); }
+    void setDepthMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
+        depthSm_.setTarget(std::clamp(ms, 0.0f, kMaxDepthMs));
+    }
+    void setCentreDelayMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
+        centreSm_.setTarget(std::clamp(ms, 1.0f, kMaxCentreDelayMs));
+    }
     // A plugin / DAW often pushes every parameter once per block, so when the value has not changed
     // this must do nothing -- otherwise every block would pull the LFOs back to their start phase,
     // the delay would periodically jump back, and that becomes a nasty pitch glitch.
@@ -92,9 +103,17 @@ public:
         voices_ = voices;
         spreadVoicePhases(lfos_[0].getPhase());
     }
-    void setMix(float mix) noexcept { mixSm_.setTarget(std::clamp(mix, 0.0f, 1.0f)); }
+    void setMix(float mix) noexcept {
+        if (!acceptParameter(mix))
+            return;
+        mixSm_.setTarget(std::clamp(mix, 0.0f, 1.0f));
+    }
     // 0 = left and right identical; 1 = the right channel's LFO is 90° off the left (phase +0.25 cycle)
-    void setStereoSpread(float spread) noexcept { spreadSm_.setTarget(std::clamp(spread, 0.0f, 1.0f)); }
+    void setStereoSpread(float spread) noexcept {
+        if (!acceptParameter(spread))
+            return;
+        spreadSm_.setTarget(std::clamp(spread, 0.0f, 1.0f));
+    }
     // For demonstration: turn cubic off and use linear interpolation, to hear / measure the high-frequency loss
     void setUseCubicInterpolation(bool cubic) noexcept { useCubic_ = cubic; }
 

@@ -66,14 +66,19 @@ public:
         rmsSamples_ = pendingRmsSamples_.load(std::memory_order_relaxed);
     }
 
+    // Every float setter ignores NaN / ±inf (acceptParameter in DspMath.h)
     // Hold time; < 0 means infinite hold (until resetPeakHold()). Default 1000 ms.
     void setPeakHoldMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
         peakHoldMs_ = ms;
         updateCoefficients();
     }
 
     // Fall rate of peak / hold, default 24 dB/s
     void setDecayDbPerSecond(float dbPerSecond) noexcept {
+        if (!acceptParameter(dbPerSecond))
+            return;
         decayDbPerSecond_ = std::max(0.0f, dbPerSecond);
         updateCoefficients();
     }
@@ -81,6 +86,8 @@ public:
     // RMS sliding-window length (capped at kMaxRmsWindowMs), default 300 ms. Changing it clears the window
     // contents so they re-accumulate.
     void setRmsWindowMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
         rmsWindowMs_ = std::clamp(ms, 1.0f, kMaxRmsWindowMs);
         updateCoefficients();
     }

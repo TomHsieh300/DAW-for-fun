@@ -76,20 +76,69 @@ public:
     }
 
     // ---- Parameters (all can be called between blocks) -----------------------------------------
-    void setInputHighpassHz(float hz) noexcept { inputHpHz_ = std::clamp(hz, 20.0f, 500.0f); dirty_ = true; }
-    void setPreEqHz(float hz) noexcept { preEqHz_ = std::clamp(hz, 200.0f, 3000.0f); dirty_ = true; }
-    void setPreEqGainDb(float db) noexcept { preEqGainDb_ = std::clamp(db, -12.0f, 12.0f); dirty_ = true; }
+    // Every float setter ignores NaN / ±inf (-inf dB = the floor kMinusInfinityDb; acceptParameter in DspMath.h).
+    // The two drive setters pass the value on: Saturation / Distortion apply the same rule.
+    void setInputHighpassHz(float hz) noexcept {
+        if (!acceptParameter(hz))
+            return;
+        inputHpHz_ = std::clamp(hz, 20.0f, 500.0f);
+        dirty_ = true;
+    }
+    void setPreEqHz(float hz) noexcept {
+        if (!acceptParameter(hz))
+            return;
+        preEqHz_ = std::clamp(hz, 200.0f, 3000.0f);
+        dirty_ = true;
+    }
+    void setPreEqGainDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
+        preEqGainDb_ = std::clamp(db, -12.0f, 12.0f);
+        dirty_ = true;
+    }
     void setPreampDriveDb(float db) noexcept { preamp_.setDriveDb(db); }
     void setPowerAmpDriveDb(float db) noexcept { powerAmp_.setDriveDb(db); }
     void setPowerAmpType(DistortionType type) noexcept { powerAmp_.setType(type); }
-    void setBassDb(float db) noexcept { bassDb_ = std::clamp(db, -12.0f, 12.0f); dirty_ = true; }
-    void setMidDb(float db) noexcept { midDb_ = std::clamp(db, -12.0f, 12.0f); dirty_ = true; }
-    void setTrebleDb(float db) noexcept { trebleDb_ = std::clamp(db, -12.0f, 12.0f); dirty_ = true; }
+    void setBassDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
+        bassDb_ = std::clamp(db, -12.0f, 12.0f);
+        dirty_ = true;
+    }
+    void setMidDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
+        midDb_ = std::clamp(db, -12.0f, 12.0f);
+        dirty_ = true;
+    }
+    void setTrebleDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
+        trebleDb_ = std::clamp(db, -12.0f, 12.0f);
+        dirty_ = true;
+    }
     void setCabinetEnabled(bool enabled) noexcept { cabinetEnabled_ = enabled; }
-    void setCabinetCutoffHz(float hz) noexcept { cabHz_ = std::clamp(hz, 1000.0f, 12000.0f); dirty_ = true; }
-    void setCabinetResonanceHz(float hz) noexcept { cabResHz_ = std::clamp(hz, 50.0f, 400.0f); dirty_ = true; }
-    void setCabinetResonanceDb(float db) noexcept { cabResDb_ = std::clamp(db, 0.0f, 12.0f); dirty_ = true; }
+    void setCabinetCutoffHz(float hz) noexcept {
+        if (!acceptParameter(hz))
+            return;
+        cabHz_ = std::clamp(hz, 1000.0f, 12000.0f);
+        dirty_ = true;
+    }
+    void setCabinetResonanceHz(float hz) noexcept {
+        if (!acceptParameter(hz))
+            return;
+        cabResHz_ = std::clamp(hz, 50.0f, 400.0f);
+        dirty_ = true;
+    }
+    void setCabinetResonanceDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
+        cabResDb_ = std::clamp(db, 0.0f, 12.0f);
+        dirty_ = true;
+    }
     void setOutputGainDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
         outputGainDb_ = std::clamp(db, -60.0f, 24.0f);
         outputGain_.target = dbToGain(outputGainDb_);
     }

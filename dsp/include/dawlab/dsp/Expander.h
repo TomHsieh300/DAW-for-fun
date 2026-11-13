@@ -109,30 +109,43 @@ public:
     }
 
     // ---- Parameters (may be called between blocks; threshold / ratio / knee / range are smoothed over kParameterRampMs) --------
+    // Every float setter ignores NaN / ±inf (-inf dB = the floor kMinusInfinityDb; acceptParameter in DspMath.h)
     void setThresholdDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
         thresholdDb_ = db;
         setSmoothedTarget(thresholdSmoothed_, thresholdDb_);
     }
     // 2 means every 1 dB below the threshold becomes 2 dB
     void setRatio(float ratio) noexcept {
+        if (!acceptParameter(ratio))
+            return;
         ratio_ = std::max(1.0f, ratio);
         setSmoothedTarget(ratioSmoothed_, ratio_);
     }
     void setKneeDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
         kneeDb_ = std::max(0.0f, db);
         setSmoothedTarget(kneeSmoothed_, kneeDb_);
     }
     // Lower limit of the gain (dB). By convention the contract uses a negative value (for example -60); either sign is
     // treated as "attenuate by at most |db| dB".
     void setRangeDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
         rangeDb_ = -std::abs(db);
         setSmoothedTarget(rangeSmoothed_, rangeDb_);
     }
     void setAttackMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
         attackMs_ = std::max(0.0f, ms);
         detector_.setAttackMs(attackMs_);
     }
     void setReleaseMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
         releaseMs_ = std::max(0.0f, ms);
         detector_.setReleaseMs(releaseMs_);
     }

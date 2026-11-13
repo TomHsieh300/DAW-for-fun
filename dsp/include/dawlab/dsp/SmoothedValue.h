@@ -35,6 +35,7 @@
 //   implemented in exercise 3 of this chapter.
 
 #include <dawlab/AudioBuffer.h>
+#include <dawlab/DspMath.h>
 
 #include <algorithm>
 #include <cmath>
@@ -64,8 +65,10 @@ public:
     }
 
     // Sets the current value and the target at the same time (for example for initialization,
-    // or when a reset() should not produce a ramp)
+    // or when a reset() should not produce a ramp). NaN / inf are ignored (acceptParameter).
     void setCurrentAndTargetValue(float value) noexcept {
+        if (!acceptParameter(value))
+            return;
         current_ = target_ = value;
         countdown_ = 0;
         step_ = 0.0f;
@@ -73,6 +76,8 @@ public:
 
     // Sets a new target: starting from the *current* value, walks linearly to the target over rampSamples_ samples
     void setTargetValue(float value) noexcept {
+        if (!acceptParameter(value))
+            return;
         if (value == target_)
             return;
         target_ = value;

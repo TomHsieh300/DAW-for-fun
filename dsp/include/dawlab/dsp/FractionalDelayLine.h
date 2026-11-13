@@ -72,8 +72,9 @@ public:
     }
 
     // Linear interpolation: y = (1-Δ)·x[n-d] + Δ·x[n-d-1], d = floor(delay), Δ = delay - d.
+    // A non-finite delay reads as the minimum delay (a NaN cast to int would be undefined behaviour).
     float readLinear(int ch, float delaySamples) const noexcept {
-        const float delay = std::clamp(delaySamples, 0.0f, static_cast<float>(maxDelay_));
+        const float delay = clampDelay(delaySamples, 0.0f);
         const int d = static_cast<int>(delay); // floor (delay >= 0)
         return readLinearSplit(ch, d, delay - static_cast<float>(d));
     }
@@ -93,9 +94,9 @@ public:
     }
 
     // Four-point cubic Hermite (Catmull-Rom) interpolation. It needs the "newer" sample at d-1,
-    // so the delay must be at least 1; anything smaller is clamped to 1.
+    // so the delay must be at least 1; anything smaller (and a non-finite delay) reads as 1.
     float readCubic(int ch, float delaySamples) const noexcept {
-        const float delay = std::clamp(delaySamples, 1.0f, static_cast<float>(maxDelay_));
+        const float delay = clampDelay(delaySamples, 1.0f);
         const int d = static_cast<int>(delay);
         return readCubicSplit(ch, d, delay - static_cast<float>(d));
     }
@@ -122,7 +123,7 @@ public:
     // polynomial through the four points y0..y3.
     // h_k(t) is the Lagrange basis (k = -1, 0, 1, 2 correspond to y0..y3).
     float readLagrange(int ch, float delaySamples) const noexcept {
-        const float delay = std::clamp(delaySamples, 1.0f, static_cast<float>(maxDelay_));
+        const float delay = clampDelay(delaySamples, 1.0f);
         const int d = static_cast<int>(delay);
         const float t = delay - static_cast<float>(d);
         const float y0 = at(ch, d - 1);
@@ -144,6 +145,11 @@ public:
     }
 
 private:
+    // Limit a delay to [minDelay, maxDelay_]; a non-finite delay means minDelay (a read has no last value to keep)
+    float clampDelay(float delaySamples, float minDelay) const noexcept {
+        return std::clamp(finiteOr(delaySamples, minDelay), minDelay, static_cast<float>(maxDelay_));
+    }
+
     // Limit (d, frac) to [minDelay, maxDelay_]: when out of range the fractional part becomes 0
     // (the same result as clamping a float delay).
     void clampSplit(int& d, float& frac, int minDelay) const noexcept {

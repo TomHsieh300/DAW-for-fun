@@ -92,7 +92,8 @@ public:
     // 0 = all dry, 1 = all wet (linear mix, smoothed). The dry signal is also delayed by P samples internally,
     // so at any mix the latency of the whole output is getLatencySamples() (at mix = 0 it is simply the dry signal delayed by P).
     void setMix(float mix) noexcept {
-        if (std::isnan(mix)) // std::clamp(NaN) returns the NaN unchanged → the output would turn permanently into NaN; keep the previous valid value
+        // NaN / ±inf are ignored: std::clamp(NaN) returns the NaN unchanged → the output would turn permanently into NaN
+        if (!acceptParameter(mix))
             return;
         mix_ = std::clamp(mix, 0.0f, 1.0f);
     }

@@ -83,10 +83,17 @@ public:
         rebuildWindow();
     }
     // 0 = no smoothing; around 0.8 looks steady without being too slow. α is the weight of the old value.
-    void setSmoothing(float alpha) noexcept { smoothing_ = std::clamp(alpha, 0.0f, 0.99f); }
+    // NaN / ±inf are ignored by both float setters (acceptParameter in DspMath.h).
+    void setSmoothing(float alpha) noexcept {
+        if (!acceptParameter(alpha))
+            return;
+        smoothing_ = std::clamp(alpha, 0.0f, 0.99f);
+    }
     // Overlap fraction between adjacent frames (0 ~ 0.9); the default 0.5 -> the next frame is computed only after
     // another N/2 new samples have accumulated
     void setOverlap(float fraction) noexcept {
+        if (!acceptParameter(fraction))
+            return;
         overlap_ = std::clamp(fraction, 0.0f, 0.9f);
         updateHop();
     }

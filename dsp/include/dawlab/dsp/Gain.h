@@ -59,16 +59,21 @@ public:
     // Maximum allowed gain (+40 dB = 100x). Anything larger is almost certainly a bug (for example passing a linear factor as dB).
     static constexpr float kMaxGainDb = 40.0f;
 
-    // db <= kMinusInfinityDb (including -inf) = silence; NaN is ignored (the previous value is kept); values above kMaxGainDb are clamped.
+    // db <= kMinusInfinityDb (including -inf) = silence; NaN and +inf are ignored (the previous value is kept,
+    // acceptParameter in DspMath.h); values above kMaxGainDb are clamped.
     void setGainDb(float db) noexcept {
-        if (std::isnan(db))
-            return; // NaN must never flow into the audio: keep the existing setting
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
         gainDb_ = std::min(db, kMaxGainDb);
         smoother_.setTargetValue(targetLinear());
     }
 
-    // Sets the gain as a linear factor (negative or 0 is treated as -inf dB)
-    void setGainLinear(float linear) noexcept { setGainDb(gainToDb(linear)); }
+    // Sets the gain as a linear factor (negative or 0 is treated as -inf dB; NaN / inf are ignored)
+    void setGainLinear(float linear) noexcept {
+        if (!acceptParameter(linear))
+            return;
+        setGainDb(gainToDb(linear));
+    }
 
     float getGainDb() const noexcept { return gainDb_; }
     float getGainLinear() const noexcept { return dbToGain(gainDb_); }
@@ -83,6 +88,8 @@ public:
 
     // Ramp length (default 0.05 s = 50 ms). It may also be called after prepare and does not interrupt the current value.
     void setRampSeconds(double seconds) noexcept {
+        if (!acceptParameter(seconds))
+            return;
         rampSeconds_ = std::max(0.0, seconds);
         if (sampleRate_ > 0.0)
             smoother_.setRampLength(static_cast<int>(std::lround(rampSeconds_ * sampleRate_)));

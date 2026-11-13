@@ -66,11 +66,28 @@ public:
     }
 
     // ---- Parameters ----------------------------------------------------------
-    void setRateHz(float hz) noexcept { lfo_.setRateHz(std::clamp(hz, 0.0f, 20.0f)); }
+    // Every float setter ignores NaN / ±inf (acceptParameter in DspMath.h), so a smoother never gets one
+    void setRateHz(float hz) noexcept {
+        if (!acceptParameter(hz))
+            return;
+        lfo_.setRateHz(std::clamp(hz, 0.0f, 20.0f));
+    }
     // 0 = no sweep (stays at centre); 1 = sweep ±sweepOctaves octaves
-    void setDepth(float depth) noexcept { depthSm_.setTarget(std::clamp(depth, 0.0f, 1.0f)); }
-    void setCentreHz(float hz) noexcept { centreSm_.setTarget(std::clamp(hz, 20.0f, 20000.0f)); }
-    void setFeedback(float fb) noexcept { feedbackSm_.setTarget(std::clamp(fb, -0.95f, 0.95f)); }
+    void setDepth(float depth) noexcept {
+        if (!acceptParameter(depth))
+            return;
+        depthSm_.setTarget(std::clamp(depth, 0.0f, 1.0f));
+    }
+    void setCentreHz(float hz) noexcept {
+        if (!acceptParameter(hz))
+            return;
+        centreSm_.setTarget(std::clamp(hz, 20.0f, 20000.0f));
+    }
+    void setFeedback(float fb) noexcept {
+        if (!acceptParameter(fb))
+            return;
+        feedbackSm_.setTarget(std::clamp(fb, -0.95f, 0.95f));
+    }
     // Even numbers from 2 to 12; an odd value is rounded down to even
     void setStages(int stages) noexcept {
         stages = std::clamp(stages, kMinStages, kMaxStages);
@@ -80,11 +97,19 @@ public:
             stages_[static_cast<size_t>(s)].reset();
         numStages_ = stages;
     }
-    void setMix(float mix) noexcept { mixSm_.setTarget(std::clamp(mix, 0.0f, 1.0f)); }
+    void setMix(float mix) noexcept {
+        if (!acceptParameter(mix))
+            return;
+        mixSm_.setTarget(std::clamp(mix, 0.0f, 1.0f));
+    }
     void setLfoShape(LfoShape shape) noexcept { lfo_.setShape(shape); }
     void setLfoPhase(float phase01) noexcept { lfo_.setPhase(phase01); }
     // At depth = 1 the sweep is ±sweepOctaves (default ±2 octaves = 4 octaves in total)
-    void setSweepOctaves(float octaves) noexcept { sweepOctaves_ = std::clamp(octaves, 0.0f, 6.0f); }
+    void setSweepOctaves(float octaves) noexcept {
+        if (!acceptParameter(octaves))
+            return;
+        sweepOctaves_ = std::clamp(octaves, 0.0f, 6.0f);
+    }
 
     float getRateHz() const noexcept { return lfo_.getRateHz(); }
     float getDepth() const noexcept { return depthSm_.getTarget(); }

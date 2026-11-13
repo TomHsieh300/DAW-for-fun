@@ -62,12 +62,17 @@ public:
         peakHold_ = 0.0f;
     }
 
+    // NaN / ±inf are ignored (acceptParameter in DspMath.h); EnvelopeFollower's setters pass the value on to these
     void setAttackMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
         attackMs_ = std::max(0.0f, ms);
         updateCoefficients();
     }
 
     void setReleaseMs(float ms) noexcept {
+        if (!acceptParameter(ms))
+            return;
         releaseMs_ = std::max(0.0f, ms);
         updateCoefficients();
     }
@@ -83,6 +88,8 @@ public:
 
     // Set the state directly to some value (e.g. when a compressor wants to start from "no compression")
     void setCurrentValue(float value) noexcept {
+        if (!acceptParameter(value))
+            return;
         y_ = value;
         peakHold_ = value;
     }

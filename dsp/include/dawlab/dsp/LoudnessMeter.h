@@ -166,8 +166,10 @@ public:
         updateCount_.store(0u, std::memory_order_relaxed);
     }
 
-    // Per-channel weights (all 1.0 by default). For 5.1, set Ls / Rs to 1.41 and LFE to 0.
+    // Per-channel weights (all 1.0 by default). For 5.1, set Ls / Rs to 1.41 and LFE to 0. NaN / ±inf are ignored.
     void setChannelWeight(int channel, float weight) noexcept {
+        if (!acceptParameter(weight))
+            return;
         if (channel >= 0 && channel < kMaxChannels)
             channelWeights_[static_cast<size_t>(channel)] = weight;
     }

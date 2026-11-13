@@ -601,7 +601,7 @@ flowchart TD
 - **`setFreeze(true)`**：$`g_i = 1`$、略過 damping、輸入增益 0，而且 modulation 以約 30 ms 的時間常數淡出到 0。Householder 矩陣無損，所以尾巴永遠不衰減（範例 2：凍結後 1.1 秒 RMS 只差 +0.02 dB）。modulation 一定要停：在小數位置讀 delay 線（linear interpolation）等於每圈多一個 lowpass，開著 1 ms 的 modulation 凍結 28 秒會掉約 4 dB、而且越來越暗；停掉之後 28 秒只差 0.03 dB。同理，delay 長度的平滑在接近目標時會直接吸附到整數長度（delay 長度是幾千 samples 的 float，差距小於約 0.1–0.2 sample 時，平滑的增量小於半個 ulp，加不上去，會永遠停在小數點上）。解除 freeze 時 modulation 再淡入。
 - **`setWidth()`**：對 wet 做 mid/side，side × width。width = 0 → wet 變 mono。
 - **`setMix()`**：線性 dry/wet，`out = dry·(1−mix) + wet·mix`，有平滑。
-- **NaN 參數**：所有 float setter 開頭都有 `if (std::isnan(x)) return;`，收到 NaN 時保留上一個有效值（理由見第 4 節）。
+- **NaN 參數**：所有 float setter 開頭都有 `if (!acceptParameter(x)) return;`（`DspMath.h`），收到 NaN 或 ±inf 時保留上一個有效值（理由見第 4 節）。
 - **Modulation**（額外參數）：`setModulationDepthMs()`（0–2 ms，預設 0）、`setModulationRateHz()`；每條線的 LFO 相位相差 45°。
 - **Mono**：block 只有 1 個 channel 時，左右輸入都用同一個訊號，只輸出左聲道的 wet。
 - **`processSampleStereo(inL, inR, wetL, wetR)`**：只算 wet（不含 width / mix），給想自己組合的人用。
@@ -780,7 +780,7 @@ pre-fader,  fader -inf : return RMS 0.0752 (+0.00 dB relative to 0 dB -> unaffec
 - **參數平滑**：`setMix()`、`setWidth()`、`setPreDelayMs()`、`setSize()` 都會平滑（約 30 ms 時間常數）。`setSize()` 與 pre-delay 的變化本質上是 delay 長度在滑動 → 短暫的音高變化（Doppler），比 click 好得多，但不要拿來做快速自動化。`setDecaySeconds()` 立即生效（只改變衰減率，不會 click）。
 - **`reset()` 會讓平滑值直接跳到目標**：reset 之後內部沒有任何聲音，跳值不會 click。所以離線處理時的慣用順序是 `prepare()` → 各種 setter → `reset()`，第一個 sample 起參數就到位（否則前 ~0.1 s 會從預設值滑過來，例如 mix 從 0.3 滑到 1，漏出 dry）。
 - **Latency 回報**：`ConvolutionReverb::getLatencySamples()` = P。內建的 dry/wet mix 已經把 dry 也延遲 P（3.3 節），所以不論 mix 多少，整個輸出的 latency 都一致是 P；但 host 仍然必須做延遲補償，否則和其他軌或 send/return 的 dry 訊號平行混音時，這一路會晚 P 個 sample。`Reverb`（FDN）沒有 latency。
-- **NaN 參數**：`std::clamp(NaN, lo, hi)` 會原樣回傳 NaN。如果 setter 只靠 clamp，一個 NaN 參數（例如 host automation 出錯）就會讓 $`g_i`$ 或 mix 變 NaN，輸出永久變 NaN，連 `reset()` 都救不回來（reset 只是把平滑值設成已經是 NaN 的目標）。本章所有 setter 都和 `OnePole`、`Delay` 一樣，開頭先 `if (std::isnan(x)) return;`。
+- **NaN 參數**：`std::clamp(NaN, lo, hi)` 會原樣回傳 NaN。如果 setter 只靠 clamp，一個 NaN 參數（例如 host automation 出錯）就會讓 $`g_i`$ 或 mix 變 NaN，輸出永久變 NaN，連 `reset()` 都救不回來（reset 只是把平滑值設成已經是 NaN 的目標）。本章所有 setter 都和 `dsp/` 裡每個 float setter 一樣，開頭先 `if (!acceptParameter(x)) return;`，忽略 NaN 與 ±inf（見[撰寫指南](../../docs/authoring-guide.zh-TW.md) 4.1 節）。
 - **NaN 輸入 sample**：輸入裡的一個 NaN / inf 會在 FDN 裡永遠繞下去（對 NaN 的每個運算都得到 NaN，連 `0 * NaN` 也是）。它絕不會被留下：delay 線與 pre-delay 都是 `FractionalDelayLine`，它的 `push()` 改存 0；damping 用的 `OnePole` 遇到非有限值會清掉狀態；building block 的 ring（`CombFilter`、`AllpassDiffuser`、`TappedDelay`）與 `ConvolutionReverb` 的輸入 FIFO 也存 0（見[撰寫指南](../../docs/authoring-guide.zh-TW.md) 4.1 節）。壞 sample 本身仍可能經由 dry path 出去一次。
 - **Freeze 的安全性**：freeze 時 $`g_i = 1`$，只有在矩陣嚴格正交時才不會發散。不要在 freeze 時打開 damping 以外的增益（或把 A 換成非正交矩陣），float 誤差也可能慢慢累積 —— 實務上可以讓 freeze 的 g 是 0.99999 而不是 1。
 
@@ -800,7 +800,7 @@ pre-fader,  fader -inf : return RMS 0.0752 (+0.00 dB relative to 0 dB -> unaffec
 | 改 size 時有 click | delay 長度直接跳（整數 delay 突然改變） | 長度要平滑變化並用 fractional read |
 | Convolution 輸出有週期性的「咔咔」或 aliasing 般的雜訊 | overlap-save 留錯半邊、FFT 長度不夠（N < 2P）造成 circular wrap；IR 段沒有補零 | 和直接卷積逐 sample 比對（範例 3 的作法），誤差應該在 10⁻⁶ 以下 |
 | Convolution wet 和 dry 對不齊、平行混音時音色變薄（間距 fs/P 的 comb filtering） | 內部 mix 只延遲了 wet、dry 沒延遲；或在外面自己拿 mix = 1 的 wet 和未延遲的 dry 相加 | 內部 mix 的 dry 要取 P 個 sample 前的輸入（3.3 節）；外部平行混音用 `getLatencySamples()` 把 dry 也延遲 P，或讓 host 做 PDC |
-| 某次自動化之後輸出永久變 NaN，`reset()` 也救不回來 | setter 只用 `std::clamp`，NaN 直接穿過去 | setter 開頭 `if (std::isnan(x)) return;` |
+| 某次自動化之後輸出永久變 NaN，`reset()` 也救不回來 | setter 只用 `std::clamp`，NaN 直接穿過去 | setter 開頭 `if (!acceptParameter(x)) return;`（`DspMath.h`；±inf 也會忽略） |
 | Freeze 的尾巴還是慢慢變暗、變小 | freeze 時 delay 讀取位置仍在小數點上（modulation 沒停、或長度平滑卡在離目標一點點的地方），linear interpolation 每圈都是 lowpass | freeze 時把 modulation 淡出，長度平滑在接近目標時吸附到整數 |
 | Convolution reverb 大聲到爆 | IR 沒有正規化（錄來的 IR 能量可能很大） | 正規化成單位能量，或量 wet 的 RMS 再調整 |
 | 播完之後 CPU 越來越高 | denormal | flush denormal、FTZ/DAZ |

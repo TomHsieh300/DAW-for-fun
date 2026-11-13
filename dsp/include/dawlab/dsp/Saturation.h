@@ -122,7 +122,10 @@ public:
     SaturationCurve getCurve() const noexcept { return curve_; }
 
     // drive: 0 dB = the signal enters the curve unchanged; +20 dB = multiplied by 10 before the curve
+    // Every float setter ignores NaN / ±inf (-inf dB = the floor kMinusInfinityDb; acceptParameter in DspMath.h)
     void setDriveDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
         driveDb_ = db;
         driveGain_.setTarget(dbToGain(db));
     }
@@ -130,6 +133,8 @@ public:
 
     // 0 = all dry, 1 = all wet
     void setMix(float mix) noexcept {
+        if (!acceptParameter(mix))
+            return;
         mixTarget_ = std::clamp(mix, 0.0f, 1.0f);
         mix_.setTarget(mixTarget_);
     }
@@ -137,6 +142,8 @@ public:
 
     // Compensation gain at the end of the wet path (usually lowered again after pushing drive up)
     void setOutputGainDb(float db) noexcept {
+        if (!acceptParameter(db, ParameterUnit::Decibels))
+            return;
         outputGainDb_ = db;
         outputGain_.setTarget(dbToGain(db));
     }
@@ -145,6 +152,8 @@ public:
     // DC blocker (on by default, 10 Hz). Symmetric curves do not actually need it, but leaving it on does no harm
     void setDcBlockerEnabled(bool enabled) noexcept { dcBlockerEnabled_ = enabled; }
     void setDcBlockerHz(float hz) noexcept {
+        if (!acceptParameter(hz))
+            return;
         dcBlockerHz_ = hz;
         if (prepared_)
             dcBlocker_.setCutoff(hz);
