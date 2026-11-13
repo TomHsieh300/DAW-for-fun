@@ -74,7 +74,7 @@
 19 20 engine/include/dawlab/engine/Track.h
 14 15 16 17 18 engine/include/dawlab/engine/Transport.h
 19 20 engine/include/dawlab/engine/Transport.h
-19 20 engine/include/dawlab/engine/TripleBuffer.h
+14 15 16 17 18 19 20 engine/include/dawlab/engine/TripleBuffer.h
 15 16 17 18 19 20 tests/TestHelpers.h
 15 16 17 18 19 20 tests/TestTracks.h
 16 17 tests/test_automation.cpp

@@ -28,7 +28,7 @@ UI thread 隨時會給 transport 一個新的 map；audio thread 用一個 map �
 
 每個 map 同一時間只屬於一個 thread；交接是一次 atomic exchange。沒有人會讀到正在被寫的 map，audio thread 上也不會複製任何東西。UI 自己還留了第四份，用於它自己的換算（小節和拍子、grid）。這四個 map 放在 heap 上：多出的 32 KB 會讓 Engine 放不進測試的 stack——這是測試第一次執行時發現的，就像第 18 章為它的樂器發現的那樣。
 
-這三個 map 和 exchange 自成一個小 class：`TripleBuffer.h` 裡的 `TripleBuffer<T>`：一個 writer 用 `write()`，一個 reader 用 `take()` 和 `front()`。任何必須整個跨 thread 的值都可以用它。
+這三個 map 和 exchange 自成一個小 class：`TripleBuffer.h` 裡的 `TripleBuffer<T>`：一個 writer 用 `write()`，一個 reader 用 `take()` 和 `front()`。任何必須整個跨 thread 的值都可以用它：loop 範圍也經由一個 triple buffer 傳遞，起點、終點和單位（tick 或 sample）一起，所以沒有 block 會把 tick 當成 sample 讀。
 
 ### Transport 播放 Step 2
 

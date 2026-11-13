@@ -179,6 +179,7 @@ flowchart LR
 | `SpscQueue.h` | wait-free 的 single-producer / single-consumer ring buffer | 7 |
 | `Commands.h` | `Command`（結構性變更）與 `Garbage`（稍後刪除我） | 7 |
 | `LatencyCompensator.h` | 用於 PDC 的整數 delay line | 8 |
+| `TripleBuffer.h` | 把有好幾個欄位的值（loop 範圍）整個交給 audio thread | 2 |
 | `Renderer.h` | `renderOffline()` / `bounceToWav()` | 9 |
 | `DemoSong.h` | 以資料形式存在的 8 軌 demo song（`makeDemoSong`、`applyDemoSong`） | 9, 18 |
 | `All.h` | include 所有東西（`DemoSong.h` 除外） | - |

@@ -3,9 +3,10 @@
 //
 // The transport is the engine's clock. The audio thread reads and advances it once per block;
 // the UI thread may change tempo, request a seek, toggle looping... at any time. Every UI
-// write goes into an atomic. A seek is "pending" until the audio thread picks it up at the
-// start of its next block, so the audio thread never sees the position jump in the middle of
-// a block.
+// write goes into an atomic, or - the tempo map and the loop range, values of several
+// fields - into a triple buffer (see "Threads" below). A seek is "pending" until the audio
+// thread picks it up at the start of its next block, so the audio thread never sees the
+// position jump in the middle of a block.
 //
 // Time units
 //   The timeline is measured in samples (int64_t: at 48 kHz an int32 would overflow after
@@ -48,6 +49,10 @@
 //   owned by one side at a time. The UI writes its back buffer and swaps it with the middle one (marked new); the
 //   audio thread, at the start of a block, swaps its front buffer with the middle one when that is new. One atomic
 //   exchange each, no copy on the audio thread, no allocation, and never a map half written.
+//   The loop range (start, end, and whether they are ticks) travels the same way, in a triple buffer of its own:
+//   read field by field, a block could take ticks for samples, or the start of one range and the end of another,
+//   and wrap where no loop ends. Its setters are for the UI thread too; on / off stays an atomic for any thread.
+//   The map and the loop are two values: a block may still see a new map with the loop set just before it.
 
 #include <algorithm>
 #include <atomic>
@@ -79,6 +84,13 @@ struct TimelineSegment {
     int64_t tickFrom = 0;      // the ticks it plays: [tickFrom, tickTo) (chapter 19)
     int64_t tickTo = 0;
     bool ticksJump = false;    // they do not follow on from the last segment's
+};
+
+// The loop's edges and their unit: one value, handed to the audio thread whole.
+struct LoopRange {
+    int64_t start = 0;
+    int64_t end = 0;
+    bool inTicks = false; // ticks (setLoopRangeTicks, setLoopRangeBars) or samples (setLoopRange)
 };
 
 class Transport {
@@ -132,20 +144,18 @@ public:
     double getPositionSeconds() const noexcept { return toSeconds(getPosition()); }
     BarsBeats getPositionBarsBeats() const noexcept { return samplesToBarsBeats(getPosition()); }
 
-    // ---- loop (any thread; the ticks' conversions on the UI thread) -------------------------
+    // ---- loop (the range: UI thread, one writer; on / off: any thread) ------------------------
     // The loop is active when enabled AND end > start. If the playhead is already past the
     // loop end when looping is switched on, it keeps playing linearly (like most DAWs).
+    // The range is one value (see "Threads and the map"): the UI keeps its own copy, which the
+    // getters read, and the audio thread takes it whole at the start of a block.
     // In samples: it stays where it is when the tempo changes.
     void setLoopRange(int64_t startSample, int64_t endSample) noexcept {
-        loopStart_.store(std::max<int64_t>(0, startSample), std::memory_order_relaxed);
-        loopEnd_.store(std::max<int64_t>(0, endSample), std::memory_order_relaxed);
-        loopInTicks_.store(false, std::memory_order_release);
+        setLoop({std::max<int64_t>(0, startSample), std::max<int64_t>(0, endSample), false});
     }
     // In ticks (chapter 19): it follows the tempo, and its edges are exact.
     void setLoopRangeTicks(int64_t startTick, int64_t endTick) noexcept {
-        loopStart_.store(std::max<int64_t>(0, startTick), std::memory_order_relaxed);
-        loopEnd_.store(std::max<int64_t>(0, endTick), std::memory_order_relaxed);
-        loopInTicks_.store(true, std::memory_order_release);
+        setLoop({std::max<int64_t>(0, startTick), std::max<int64_t>(0, endTick), true});
     }
     void setLoopRangeBars(int firstBar, int numBars) noexcept {
         const int64_t ticksPerBar = static_cast<int64_t>(getTimeSignature().numerator) * kTicksPerBeat;
@@ -153,13 +163,13 @@ public:
     }
     void setLoopEnabled(bool enabled) noexcept { loopEnabled_.store(enabled, std::memory_order_relaxed); }
     bool isLoopEnabled() const noexcept { return loopEnabled_.load(std::memory_order_relaxed); }
-    bool isLoopInTicks() const noexcept { return loopInTicks_.load(std::memory_order_acquire); }
+    bool isLoopInTicks() const noexcept { return loopUi_.inTicks; }
     // As it was set: ticks when isLoopInTicks(), samples otherwise (a project file keeps it that way).
-    int64_t getLoopStartValue() const noexcept { return loopStart_.load(std::memory_order_relaxed); }
-    int64_t getLoopEndValue() const noexcept { return loopEnd_.load(std::memory_order_relaxed); }
-    // In samples, whichever way it was set (UI thread: through its own map).
-    int64_t getLoopStart() const noexcept { return loopSample(loopStart_.load(std::memory_order_relaxed), maps_->ui); }
-    int64_t getLoopEnd() const noexcept { return loopSample(loopEnd_.load(std::memory_order_relaxed), maps_->ui); }
+    int64_t getLoopStartValue() const noexcept { return loopUi_.start; }
+    int64_t getLoopEndValue() const noexcept { return loopUi_.end; }
+    // In samples, whichever way it was set (through the UI's own map).
+    int64_t getLoopStart() const noexcept { return loopSample(loopUi_.start, maps_->ui, loopUi_.inTicks); }
+    int64_t getLoopEnd() const noexcept { return loopSample(loopUi_.end, maps_->ui, loopUi_.inTicks); }
 
     // ---- conversions (UI thread: the map it set) ----------------------------------------------
     // The first tempo's: what a song of one tempo has.
@@ -208,13 +218,14 @@ public:
     // The map the audio thread plays (taken at the start of its last advance()).
     const TempoMap& getAudioTempoMap() const noexcept { return maps_->audio.front(); }
 
-    // Takes a new map (keeping the playhead's musical place) and a pending seek. If playing, fills
-    // `segments` (capacity kMaxSegmentsPerBlock) for up to numSamples samples, advances the position and
+    // Takes a new map (keeping the playhead's musical place), a new loop range and a pending seek. If playing,
+    // fills `segments` (capacity kMaxSegmentsPerBlock) for up to numSamples samples, advances the position and
     // returns the number of segments. `samplesCovered` receives how many of the numSamples were described
     // (== numSamples unless the loop is so short that the segment array filled up). When stopped it returns
     // 0 and sets samplesCovered = numSamples.
     int advance(int numSamples, TimelineSegment* segments, int& samplesCovered) noexcept {
         takeNewMap();
+        loop_.take(); // a range the UI set since the last block, whole (also while stopped)
         const int64_t seek = pendingSeek_.exchange(-1, std::memory_order_acq_rel);
         if (seek >= 0) {
             position_.store(seek, std::memory_order_relaxed);
@@ -225,9 +236,10 @@ public:
             return 0;
 
         int64_t pos = position_.load(std::memory_order_relaxed);
-        const bool inTicks = loopInTicks_.load(std::memory_order_acquire);
-        const int64_t loopStartRaw = loopStart_.load(std::memory_order_relaxed);
-        const int64_t loopEndRaw = loopEnd_.load(std::memory_order_relaxed);
+        const LoopRange& loop = loop_.front();
+        const bool inTicks = loop.inTicks;
+        const int64_t loopStartRaw = loop.start;
+        const int64_t loopEndRaw = loop.end;
         const int64_t loopStart = loopSample(loopStartRaw, getAudioTempoMap(), inTicks);
         const int64_t loopEnd = loopSample(loopEndRaw, getAudioTempoMap(), inTicks);
         const bool loopActive = isLoopEnabled() && loopEnd > loopStart;
@@ -274,8 +286,10 @@ private:
     int64_t loopSample(int64_t value, const TempoMap& map, bool inTicks) const noexcept {
         return inTicks ? map.sampleOfTick(value, sampleRate_) : value;
     }
-    int64_t loopSample(int64_t value, const TempoMap& map) const noexcept {
-        return loopSample(value, map, loopInTicks_.load(std::memory_order_acquire));
+    // UI thread: the one writer of the loop range.
+    void setLoop(const LoopRange& loop) noexcept {
+        loopUi_ = loop;
+        loop_.write(loop);
     }
 
     // Audio thread: a map the UI published since the last block. The playhead keeps its musical place; the ticks
@@ -283,7 +297,8 @@ private:
     void takeNewMap() noexcept {
         if (!maps_->audio.hasNew())
             return;
-        const double tick = getAudioTempoMap().tickAtSample(static_cast<double>(position_.load(std::memory_order_relaxed)), sampleRate_);
+        const double position = static_cast<double>(position_.load(std::memory_order_relaxed));
+        const double tick = getAudioTempoMap().tickAtSample(position, sampleRate_);
         maps_->audio.take();
         position_.store(std::llround(getAudioTempoMap().secondsAt(tick) * sampleRate_), std::memory_order_relaxed);
     }
@@ -295,9 +310,8 @@ private:
     std::atomic<int64_t> position_{0};
     std::atomic<int64_t> pendingSeek_{-1};
     std::atomic<bool> loopEnabled_{false};
-    std::atomic<bool> loopInTicks_{false};
-    std::atomic<int64_t> loopStart_{0};
-    std::atomic<int64_t> loopEnd_{0};
+    LoopRange loopUi_;              // UI thread: the range as it set it last
+    TripleBuffer<LoopRange> loop_;  // UI thread writes, audio thread takes
 
     // The map: the UI's own copy, and the triple buffer that hands it to the audio thread (the UI writes, the
     // audio thread takes). On the heap: 4 maps of 8 KB would make an Engine too large for a test's stack.

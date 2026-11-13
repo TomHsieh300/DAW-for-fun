@@ -94,6 +94,7 @@ public:
 struct TimeSignature { int numerator = 4, denominator = 4; };
 struct BarsBeats { int bar = 1, beat = 1, tick = 0; };            // 1-based, 960 ticks per beat
 struct TimelineSegment { int64_t timelineStart; int blockOffset; int numSamples; };
+struct LoopRange { int64_t start = 0, end = 0; };                 // the loop's edges, one value
 
 class Transport {
 public:
@@ -107,6 +108,7 @@ public:
     void setPositionBarsBeats(const BarsBeats&) noexcept;
     int64_t getPosition() const noexcept;           double getPositionSeconds() const noexcept;
     BarsBeats getPositionBarsBeats() const noexcept;
+    // the loop range: UI thread (one writer, handed to the audio thread whole); on / off: any thread
     void setLoopRange(int64_t start, int64_t end) noexcept;  void setLoopRangeBars(int firstBar, int numBars) noexcept;
     void setLoopEnabled(bool) noexcept;  bool isLoopEnabled() const noexcept;
     int64_t getLoopStart() const noexcept;  int64_t getLoopEnd() const noexcept;
@@ -287,6 +289,12 @@ See Steps 9, 7 and 8. `RenderOptions`, `renderOffline()`, `bounceToWav()`; `Spsc
 `pop`, `size`, `empty`, `capacity`); `ChannelKind`, `ChannelRef` (`track(i)`, `bus(i)`, `master()`),
 `CommandType`, `Command`, `Garbage`; `LatencyCompensator` (`prepare`, `reset`, `setDelaySamples`,
 `getDelaySamples`, `getMaxDelaySamples`, `process`).
+
+### TripleBuffer.h
+
+`TripleBuffer<T>` hands a value of several fields from one writer thread to one reader thread, always
+whole: `write(value)` (writer), `hasNew()`, `take()`, `front()` (reader). The transport's loop range
+travels in one (Step 2).
 
 ### DemoSong.h (not included by All.h)
 

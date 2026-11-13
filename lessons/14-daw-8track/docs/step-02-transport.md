@@ -54,6 +54,14 @@ if (seek >= 0) position_.store(seek, std::memory_order_relaxed);
 `getPosition()` returns the pending value if there is one, so the UI shows the new position
 immediately.
 
+**The loop range in the reference engine.** The step's `minidaw.h` keeps the loop's start and end
+in two atomics, as above. The reference engine (`engine/include/dawlab/engine/Transport.h`) hands
+the range over whole instead: two edges read one by one can come from two different
+`setLoopRange()` calls, and one block then wraps where neither loop ends - the playhead jumps. So
+`setLoopRange()` there is for one writer, the UI thread, which keeps its own copy and publishes
+the range whole through a triple buffer (`TripleBuffer.h`: three copies, one atomic exchange);
+`advance()` takes it at the start of a block. Loop on/off stays an atomic for any thread.
+
 ### Timeline segments and the loop
 
 `advance(numSamples, segments, samplesCovered)` returns a list of **segments**: "block samples

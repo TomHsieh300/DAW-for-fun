@@ -182,6 +182,7 @@ All engine code is header-only in `engine/include/dawlab/engine/`, namespace
 | `SpscQueue.h` | wait-free single-producer / single-consumer ring buffer | 7 |
 | `Commands.h` | `Command` (structural change) and `Garbage` (delete me later) | 7 |
 | `LatencyCompensator.h` | integer delay line used for PDC | 8 |
+| `TripleBuffer.h` | hands a value of several fields (the loop range) to the audio thread whole | 2 |
 | `Renderer.h` | `renderOffline()` / `bounceToWav()` | 9 |
 | `DemoSong.h` | the 8-track demo song as data (`makeDemoSong`, `applyDemoSong`) | 9, 18 |
 | `All.h` | includes everything (except `DemoSong.h`) | - |

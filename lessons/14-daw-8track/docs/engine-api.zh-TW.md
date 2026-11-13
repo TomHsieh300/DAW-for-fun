@@ -92,6 +92,7 @@ public:
 struct TimeSignature { int numerator = 4, denominator = 4; };
 struct BarsBeats { int bar = 1, beat = 1, tick = 0; };            // 1-based, 960 ticks per beat
 struct TimelineSegment { int64_t timelineStart; int blockOffset; int numSamples; };
+struct LoopRange { int64_t start = 0, end = 0; };                 // loop 的兩個邊界，一個值
 
 class Transport {
 public:
@@ -105,6 +106,7 @@ public:
     void setPositionBarsBeats(const BarsBeats&) noexcept;
     int64_t getPosition() const noexcept;           double getPositionSeconds() const noexcept;
     BarsBeats getPositionBarsBeats() const noexcept;
+    // loop 範圍：UI thread（一個 writer，整個交給 audio thread）；開／關：任何 thread
     void setLoopRange(int64_t start, int64_t end) noexcept;  void setLoopRangeBars(int firstBar, int numBars) noexcept;
     void setLoopEnabled(bool) noexcept;  bool isLoopEnabled() const noexcept;
     int64_t getLoopStart() const noexcept;  int64_t getLoopEnd() const noexcept;
@@ -284,6 +286,12 @@ std::unique_ptr<InsertEffect> createEffect(const char* name);
 `pop`、`size`、`empty`、`capacity`）；`ChannelKind`、`ChannelRef`（`track(i)`、`bus(i)`、`master()`）、
 `CommandType`、`Command`、`Garbage`；`LatencyCompensator`（`prepare`、`reset`、`setDelaySamples`、
 `getDelaySamples`、`getMaxDelaySamples`、`process`）。
+
+### TripleBuffer.h
+
+`TripleBuffer<T>` 把一個有好幾個欄位的值從一個 writer thread 交給一個 reader thread，永遠是整個交出：
+`write(value)`（writer）、`hasNew()`、`take()`、`front()`（reader）。Transport 的 loop 範圍就經由它
+傳遞（Step 2）。
 
 ### DemoSong.h（不被 All.h include）
 

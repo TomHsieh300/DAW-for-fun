@@ -52,6 +52,13 @@ if (seek >= 0) position_.store(seek, std::memory_order_relaxed);
 
 如果有 pending 值，`getPosition()` 就回傳它，所以 UI 會立刻顯示新的位置。
 
+**參考 engine 裡的 loop 範圍。** 這個 step 的 `minidaw.h` 和上面一樣，把 loop 的起點和終點放在兩個
+atomic 裡。參考 engine（`engine/include/dawlab/engine/Transport.h`）則把整個範圍一次交出去：一個一個
+讀取的兩個邊界可能來自兩次不同的 `setLoopRange()` 呼叫，於是某個 block 會在兩個 loop 都沒有結束的
+地方繞回去——播放頭會跳。所以那裡的 `setLoopRange()` 只有一個 writer，也就是 UI thread：它保留自己
+的一份，並經由 triple buffer（`TripleBuffer.h`：三份副本、一次 atomic exchange）整個發布範圍；`advance()` 在
+block 開頭取用它。Loop 的開／關仍然是一個 atomic，任何 thread 都可以切換。
+
 ### Timeline segment 與 loop
 
 `advance(numSamples, segments, samplesCovered)` 會回傳一份 **segment** 清單：「block 的 sample

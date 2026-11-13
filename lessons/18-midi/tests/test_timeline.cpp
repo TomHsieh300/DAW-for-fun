@@ -1,10 +1,14 @@
 // test_timeline: transport maths, sample-accurate clip placement, clip gain / fades, loop,
-// seek and stop (Steps 2 and 3).
+// seek and stop (Steps 2 and 3), and a loop changed while another thread plays.
 
 #include "TestHelpers.h"
 
+#include <atomic>
+#include <chrono>
+#include <cstdio>
 #include <memory>
 #include <random>
+#include <thread>
 
 #include "TestTracks.h"
 
@@ -245,6 +249,56 @@ void testSeekAndStop() {
     DAWLAB_CHECK(decodePosition(block, 0) == 24000);
 }
 
+void testLoopChangeArrivesWhole() {
+    // The UI thread switches the loop between [0, 3000) and [1000, 2000) while an audio thread plays blocks of
+    // 4000. A wrap may only go from 3000 to 0 or from 2000 to 1000; a loop read half old, half new would wrap
+    // somewhere else. Today's way can only pass; the old one (two atomics) failed in every run. 50000 switches,
+    // or 10 s on a slow machine.
+    Transport t;
+    t.prepare(48000.0);
+    t.setLoopRange(0, 3000);
+    t.setLoopEnabled(true);
+    t.play();
+    std::atomic<bool> quit{false};
+    std::atomic<long> calls{0};
+    long legal = 0, torn = 0; // the audio thread's, read after join()
+    std::thread audio([&] {
+        TimelineSegment seg[Transport::kMaxSegmentsPerBlock];
+        while (!quit.load(std::memory_order_relaxed)) {
+            int covered = 0;
+            const int n = t.advance(4000, seg, covered);
+            for (int s = 0; s + 1 < n; ++s) {
+                const int64_t end = seg[s].timelineStart + seg[s].numSamples, next = seg[s + 1].timelineStart;
+                if (end != next)
+                    ++((end == 3000 && next == 0) || (end == 2000 && next == 1000) ? legal : torn);
+            }
+            calls.fetch_add(1, std::memory_order_release);
+        }
+    });
+    const auto waitForBlocks = [&](long more) {
+        const long target = calls.load(std::memory_order_acquire) + more;
+        while (calls.load(std::memory_order_acquire) < target)
+            std::this_thread::yield();
+    };
+    std::mt19937 rng(1);
+    volatile unsigned sink = 0;
+    int switches = 0;
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    for (; switches < 50000 && std::chrono::steady_clock::now() < until; ++switches) {
+        t.setLoopRange(0, 3000);
+        t.setPosition(0);
+        waitForBlocks(2);
+        for (unsigned spin = rng() % 64; spin > 0; --spin) // a different moment each time
+            sink = sink + 1;
+        t.setLoopRange(1000, 2000);
+        waitForBlocks(1);
+    }
+    quit = true;
+    audio.join();
+    std::printf("  %d loop changes while another thread plays: %ld wraps where a loop ends, %ld torn\n", switches, legal, torn);
+    DAWLAB_CHECK(torn == 0 && legal > 0);
+}
+
 } // namespace
 
 int main() {
@@ -253,5 +307,6 @@ int main() {
     testFades();
     testLoopPlayback();
     testSeekAndStop();
+    testLoopChangeArrivesWhole();
     return dawlab::test::summary("l15_test_timeline");
 }

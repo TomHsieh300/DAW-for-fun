@@ -3,7 +3,8 @@
 //
 // The transport is the engine's clock. The audio thread reads and advances it once per block;
 // the UI thread may change tempo, request a seek, toggle looping... at any time. Every UI
-// write goes into an atomic. A seek is "pending" until the audio thread picks it up at the
+// write goes into an atomic, or - the loop range, a value of two fields - into a triple
+// buffer (see "loop" below). A seek is "pending" until the audio thread picks it up at the
 // start of its next block, so the audio thread never sees the position jump in the middle of
 // a block.
 //
@@ -38,6 +39,8 @@
 #include <cmath>
 #include <cstdint>
 
+#include "TripleBuffer.h"
+
 namespace dawlab::engine {
 
 struct TimeSignature {
@@ -56,6 +59,12 @@ struct TimelineSegment {
     int64_t timelineStart = 0; // timeline position of the first sample of this segment
     int blockOffset = 0;       // where the segment starts inside the audio block
     int numSamples = 0;
+};
+
+// The loop's edges: one value, handed to the audio thread whole.
+struct LoopRange {
+    int64_t start = 0;
+    int64_t end = 0;
 };
 
 class Transport {
@@ -104,12 +113,17 @@ public:
     double getPositionSeconds() const noexcept { return toSeconds(getPosition()); }
     BarsBeats getPositionBarsBeats() const noexcept { return samplesToBarsBeats(getPosition()); }
 
-    // ---- loop (any thread) ----------------------------------------------------------------
+    // ---- loop (the range: UI thread, one writer; on / off: any thread) --------------------
     // The loop is active when enabled AND end > start. If the playhead is already past the
     // loop end when looping is switched on, it keeps playing linearly (like most DAWs).
+    // The range is ONE value of two edges. Read edge by edge, a block could get the start of
+    // one range and the end of another and wrap where neither loop ends. So it has one writer,
+    // the UI thread, which keeps its own copy (the getters read it) and hands the range to the
+    // audio thread whole through a triple buffer (TripleBuffer.h), taken at the start of a
+    // block. On / off is a single value in an atomic: any thread may switch it (a render does).
     void setLoopRange(int64_t startSample, int64_t endSample) noexcept {
-        loopStart_.store(std::max<int64_t>(0, startSample), std::memory_order_relaxed);
-        loopEnd_.store(std::max<int64_t>(0, endSample), std::memory_order_relaxed);
+        loopUi_ = {std::max<int64_t>(0, startSample), std::max<int64_t>(0, endSample)};
+        loop_.write(loopUi_);
     }
     void setLoopRangeBars(int firstBar, int numBars) noexcept {
         const int64_t s = barsBeatsToSamples({firstBar, 1, 0});
@@ -118,8 +132,8 @@ public:
     }
     void setLoopEnabled(bool enabled) noexcept { loopEnabled_.store(enabled, std::memory_order_relaxed); }
     bool isLoopEnabled() const noexcept { return loopEnabled_.load(std::memory_order_relaxed); }
-    int64_t getLoopStart() const noexcept { return loopStart_.load(std::memory_order_relaxed); }
-    int64_t getLoopEnd() const noexcept { return loopEnd_.load(std::memory_order_relaxed); }
+    int64_t getLoopStart() const noexcept { return loopUi_.start; }
+    int64_t getLoopEnd() const noexcept { return loopUi_.end; }
 
     // ---- conversions (pure functions of tempo / meter / sample rate) ----------------------
     double getSamplesPerBeat() const noexcept { return sampleRate_ * 60.0 / getTempo(); }
@@ -158,12 +172,13 @@ public:
     }
 
     // ---- audio thread -----------------------------------------------------------------------
-    // Applies a pending seek. If playing, fills `segments` (capacity kMaxSegmentsPerBlock) for
-    // up to numSamples samples, advances the position and returns the number of segments.
-    // `samplesCovered` receives how many of the numSamples were described (== numSamples
-    // unless the loop is so short that the segment array filled up). When stopped it returns
-    // 0 and sets samplesCovered = numSamples.
+    // Takes a new loop range and applies a pending seek. If playing, fills `segments` (capacity
+    // kMaxSegmentsPerBlock) for up to numSamples samples, advances the position and returns the
+    // number of segments. `samplesCovered` receives how many of the numSamples were described
+    // (== numSamples unless the loop is so short that the segment array filled up). When
+    // stopped it returns 0 and sets samplesCovered = numSamples.
     int advance(int numSamples, TimelineSegment* segments, int& samplesCovered) noexcept {
+        loop_.take(); // a range the UI set since the last block, whole (also while stopped)
         const int64_t seek = pendingSeek_.exchange(-1, std::memory_order_acq_rel);
         if (seek >= 0)
             position_.store(seek, std::memory_order_relaxed);
@@ -172,8 +187,9 @@ public:
             return 0;
 
         int64_t pos = position_.load(std::memory_order_relaxed);
-        const int64_t loopStart = getLoopStart();
-        const int64_t loopEnd = getLoopEnd();
+        const LoopRange& loop = loop_.front();
+        const int64_t loopStart = loop.start;
+        const int64_t loopEnd = loop.end;
         const bool loopActive = isLoopEnabled() && loopEnd > loopStart;
 
         int count = 0;
@@ -202,8 +218,8 @@ private:
     std::atomic<int64_t> position_{0};
     std::atomic<int64_t> pendingSeek_{-1};
     std::atomic<bool> loopEnabled_{false};
-    std::atomic<int64_t> loopStart_{0};
-    std::atomic<int64_t> loopEnd_{0};
+    LoopRange loopUi_;              // UI thread: the range as it set it last
+    TripleBuffer<LoopRange> loop_;  // UI thread writes, audio thread takes
 };
 
 } // namespace dawlab::engine

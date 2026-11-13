@@ -40,7 +40,9 @@ and beats, the grid). The four maps live on the heap: 32 KB more would not fit a
 the first run of the tests found, as chapter 18's did for its instruments.
 
 The three maps and the exchange are a small class of their own, `TripleBuffer<T>` in `TripleBuffer.h`: `write()`
-for the one writer, `take()` and `front()` for the one reader. It works for any value that must cross whole.
+for the one writer, `take()` and `front()` for the one reader. It works for any value that must cross whole: the
+loop range travels in one too, its start, end and unit (ticks or samples) together, so that no block reads a tick
+as a sample.
 
 ### The transport plays Step 2
 

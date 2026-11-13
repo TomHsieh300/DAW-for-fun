@@ -9,12 +9,13 @@
 //   4b. The song's end (Engine::getSongEndSample, a bounce's default length) puts the MIDI clips through the map.
 //   5. Changing the map while it plays allocates nothing on the audio thread (this file replaces operator new).
 //   6. A UI thread that changes the map while the audio thread plays: the audio thread never sees half a map
-//      (ThreadSanitizer).
+//      (ThreadSanitizer). Nor half a loop: a loop switched between samples and ticks arrives whole.
 
 #include "TestHelpers.h"
 #include "TestTracks.h"
 
 #include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <new>
@@ -450,6 +451,56 @@ void testThreads() {
     DAWLAB_CHECK(torn.load() == 0);
 }
 
+void testLoopUnitArrivesWhole() {
+    // The UI thread switches between a loop of 3000 samples and one of 2000 ticks (50000 samples at 120 BPM) while
+    // another thread plays blocks of 4000 from 0. A wrap may only go from 3000 or 50000 to 0; ticks read as samples,
+    // or samples as ticks, would wrap at 2000 or 75000. 20000 switches, or 10 s on a slow machine.
+    Transport t;
+    t.prepare(kSampleRate);
+    t.setLoopRange(0, 3000);
+    t.setLoopEnabled(true);
+    t.play();
+    std::atomic<bool> quit{false};
+    std::atomic<long> calls{0};
+    long legal = 0, torn = 0; // the audio thread's, read after join()
+    std::thread audio([&] {
+        TimelineSegment seg[Transport::kMaxSegmentsPerBlock];
+        while (!quit.load(std::memory_order_relaxed)) {
+            int covered = 0;
+            const int n = t.advance(4000, seg, covered);
+            for (int s = 0; s + 1 < n; ++s) {
+                const int64_t end = seg[s].timelineStart + seg[s].numSamples, next = seg[s + 1].timelineStart;
+                if (end != next)
+                    ++((end == 3000 || end == 50000) && next == 0 ? legal : torn);
+            }
+            calls.fetch_add(1, std::memory_order_release);
+        }
+    });
+    const auto waitForBlocks = [&](long more) {
+        const long target = calls.load(std::memory_order_acquire) + more;
+        while (calls.load(std::memory_order_acquire) < target)
+            std::this_thread::yield();
+    };
+    std::mt19937 rng(1);
+    volatile unsigned sink = 0;
+    int switches = 0;
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    for (; switches < 20000 && std::chrono::steady_clock::now() < until; ++switches) {
+        t.setLoopRange(0, 3000);
+        t.setPosition(0);
+        waitForBlocks(2);
+        for (unsigned spin = rng() % 64; spin > 0; --spin) // a different moment each time
+            sink = sink + 1;
+        t.setLoopRangeTicks(0, 2000);
+        waitForBlocks(1);
+    }
+    quit = true;
+    audio.join();
+    std::printf("  %d switches between a loop in samples and one in ticks while another thread plays: %ld wraps, %ld torn\n",
+                switches, legal, torn);
+    DAWLAB_CHECK(torn == 0 && legal > 0);
+}
+
 } // namespace
 
 int main() {
@@ -464,5 +515,6 @@ int main() {
     testSongEndFollowsTheMap();
     testNoAllocation();
     testThreads();
+    testLoopUnitArrivesWhole();
     return dawlab::test::summary("l19_test_tempo");
 }
