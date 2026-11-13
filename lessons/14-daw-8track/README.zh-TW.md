@@ -643,7 +643,7 @@ Release build 印出相同的報告，並在 1.38 秒內 render 完這 19 秒（
 | UI 忙碌時出現 glitch | audio thread 上有 lock 或配置 | `l14_test_realtime_safety`；絕不要在 `processBlock` 中呼叫 `new`、`std::vector::push_back`、`printf` 或 mutex |
 | 移除 effect 後過一陣子 crash | UI 刪除了 audio thread 還在使用的 effect | 走 `removeInsert()` + `collectGarbage()` |
 | Bounce 與播放不同 | 不同的 block size 改變了結果 | `l14_test_block_invariance`；smoother 必須逐 sample 前進 |
-| NaN 在 mix 中擴散 | effect 被餵入 NaN 參數，或 filter 不穩定 | `ParameterInfo::clamp()` 會取代 NaN；測試中的 `hasNanOrInf()` |
+| NaN 在 mix 中擴散 | effect 被餵入 NaN 參數、filter 不穩定，或 float 檔裡有 NaN | `ParameterInfo::clamp()` 會取代 NaN；`MediaLoader::readChecked()` 把檔案裡的 NaN 設成 0（Step 18）；測試中的 `hasNanOrInf()` |
 | 編輯時記憶體持續增長 | 從未呼叫 `collectGarbage()` | UI timer |
 | （app）Space 沒反應 / 按到最後一個按鈕 | 某個子 component 拿到了鍵盤 focus | 對按鈕、旋鈕、fader 設定 `setWantsKeyboardFocus(false)`（Step 21） |
 | （app）載入的檔案播放得太高又太快 | 檔案 sample rate != device rate，且沒有轉換 | `MediaLoader` 中的 `resampleBuffer()`（Step 18） |

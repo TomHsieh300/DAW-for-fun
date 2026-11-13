@@ -116,6 +116,7 @@ allocates anything:
 | more than `kMaxFrames` frames (20 minutes at 192 kHz) | refuses it: a stereo float copy stays below 1.8 GB at any rate |
 | more than 2 channels | reads only the first 2, straight into the engine's stereo buffer |
 | more samples than a WAV or AIFF file holds (the file was cut off) | refuses it: JUCE's AIFF reader would return zeros for the missing part |
+| samples that are NaN or Inf (a float file) | sets each to 0 before resampling (which would spread one over a kernel width), counts them in `LoadedMedia::nonFiniteSamples`, and the status line says how many |
 
 </div>
 

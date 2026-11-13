@@ -94,6 +94,10 @@ sample 都能 bit-exact 地讀回來。
 所以帶著警告開啟之後，Save 會要求另一個名稱（建議的是舊檔旁邊的新名稱），`saveProject()` 也拒絕覆寫開啟的那個檔案。以新名稱存下的檔案
 內容就是 session 的內容，之後 Save 照常覆寫那個檔案。
 
+有一種問題兩者都不是：音訊檔裡有不是數字的 sample（NaN 或 Inf，由別的程式寫入）。`MediaLoader::readChecked()` 把每一個都設成
+0 並計數（第 14 章 Step 18），`ProjectIO::open()` 把它們放在 `OpenResult::notes` 裡回報，status 列會在警告之後顯示。note 不是
+警告：把 NaN 設成 0 不會失去任何值得保留的東西，所以 Save 不會因此要求另一個名稱。
+
 ### id：session 的和檔案的
 
 Step 7 讓 session 的 track id 在程式執行期間一直往上數。所以檔案裡的 id 是**檔案自己的參照**。Save 依顯示順序寫成 1..N；

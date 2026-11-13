@@ -20,12 +20,14 @@
 #include <dawlab/engine/DemoSong.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <random>
 #include <set>
 #include <vector>
@@ -555,6 +557,32 @@ juce::File writeAiff(const juce::File& file, double rate, std::uint32_t declared
     return file;
 }
 
+// A 32-bit float mono WAV of `frames` frames of 0.25, with a NaN at `bad[0]` and +Inf at `bad[1]`.
+juce::File writeFloatWav(const juce::File& file, std::uint32_t frames, std::array<std::uint32_t, 2> bad) {
+    std::vector<unsigned char> v{'R', 'I', 'F', 'F'};
+    putLittleEndian(v, 36u + 4u * frames, 4);
+    v.insert(v.end(), {'W', 'A', 'V', 'E', 'f', 'm', 't', ' '});
+    putLittleEndian(v, 16, 4);
+    putLittleEndian(v, 3, 2); // IEEE float
+    putLittleEndian(v, 1, 2); // mono
+    putLittleEndian(v, 48000, 4);
+    putLittleEndian(v, 48000u * 4u, 4);
+    putLittleEndian(v, 4, 2);
+    putLittleEndian(v, 32, 2);
+    v.insert(v.end(), {'d', 'a', 't', 'a'});
+    putLittleEndian(v, 4u * frames, 4);
+    for (std::uint32_t i = 0; i < frames; ++i) {
+        const float x = i == bad[0]   ? std::numeric_limits<float>::quiet_NaN()
+                        : i == bad[1] ? std::numeric_limits<float>::infinity()
+                                      : 0.25f;
+        std::uint32_t bits = 0;
+        std::memcpy(&bits, &x, 4);
+        putLittleEndian(v, bits, 4);
+    }
+    file.replaceWithData(v.data(), v.size());
+    return file;
+}
+
 void testAudioFileBoundary() {
     const juce::File dir = juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l16_boundary");
     dir.deleteRecursively();
@@ -575,6 +603,7 @@ void testAudioFileBoundary() {
     std::printf("   an AIFF at 768 kHz that declares %lld frames: %s\n", static_cast<long long>(MediaLimits::kMaxFrames + 1),
                 tooMany.audio != nullptr ? "read" : tooMany.error.toRawUTF8());
     DAWLAB_CHECK(tooMany.audio == nullptr && tooMany.error.contains("20 minutes"));
+
     // A file cut off in the middle. An uncompressed one (WAV, AIFF) must hold what its header declares, so the cut
     // shows; JUCE's AIFF reader would read zeros for the missing part. A compressed one cannot be told from silence:
     // its decoder returns zeros too, and such a file loads (chapter 14, Step 18: a known limit).
@@ -612,6 +641,20 @@ void testAudioFileBoundary() {
     const LoadedMedia cutFlac = MediaLoader::readAudioFile(flacFile, 48000.0);
     std::printf("   a FLAC of 48000 frames cut in half: %s\n", cutFlac.audio != nullptr ? "read (the rest silent)" : cutFlac.error.toRawUTF8());
     DAWLAB_CHECK(cutFlac.audio != nullptr);
+
+    // Samples that are not numbers: each NaN or Inf in a file becomes 0, counted, before anything else sees it.
+    // Resampled too: the resampler would spread one NaN over a whole kernel width.
+    const juce::File nanFile = writeFloatWav(dir.getChildFile("nan.wav"), 1000, {500, 600});
+    for (const double rate : {48000.0, 44100.0}) {
+        const LoadedMedia m = MediaLoader::readAudioFile(nanFile, rate);
+        std::printf("   a float WAV with a NaN and an Inf, read at %.0f Hz: %s, %d set to 0, %s\n", rate,
+                    m.audio != nullptr ? "read" : m.error.toRawUTF8(), m.nonFiniteSamples,
+                    m.audio != nullptr && hasNanOrInf(*m.audio) ? "NaN or Inf in the clip" : "all finite");
+        DAWLAB_CHECK(m.audio != nullptr && m.nonFiniteSamples == 2 && !hasNanOrInf(*m.audio));
+        if (m.audio != nullptr && rate == 48000.0)
+            DAWLAB_CHECK(m.audio->getSample(0, 500) == 0.0f && m.audio->getSample(1, 600) == 0.0f &&
+                         m.audio->getSample(0, 499) == 0.25f);
+    }
     dir.deleteRecursively();
 }
 
@@ -1322,6 +1365,39 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
                     refusedStatus.toRawUTF8(), savedElsewhere ? "yes" : "no");
         DAWLAB_CHECK(!overwritten && alone.loadFileAsString() == aloneText && refusedStatus.startsWith("Not saved"));
         DAWLAB_CHECK(savedElsewhere && b.getProjectFile() == elsewhere);
+
+        // A NaN in one of the project's WAVs (another program wrote it) is set to 0 and noted. That loses nothing
+        // worth keeping, so it is a note, not a warning: Save may write over the file.
+        const juce::File nanProject = dir.getChildFile("nan").getChildFile("Demo.dawlab");
+        nanProject.getParentDirectory().createDirectory();
+        file.copyFileTo(nanProject);
+        ProjectIO::mediaFolderFor(file).copyDirectoryTo(ProjectIO::mediaFolderFor(nanProject));
+        {
+            const juce::File wav = ProjectIO::mediaFolderFor(nanProject).findChildFiles(juce::File::findFiles, false, "*.wav")[0];
+            juce::MemoryBlock bytes;
+            wav.loadFileAsData(bytes);
+            auto* data = static_cast<unsigned char*>(bytes.getData());
+            for (size_t i = 0; i + 8 + 404 <= bytes.getSize(); ++i) {
+                if (std::memcmp(data + i, "data", 4) == 0) {
+                    const unsigned char nan[4] = {0x00, 0x00, 0xc0, 0x7f}; // a quiet NaN as a little-endian float
+                    std::memcpy(data + i + 8 + 400, nan, 4);
+                    break;
+                }
+            }
+            wav.replaceWithData(bytes.getData(), bytes.getSize());
+        }
+        const ProjectIO::OpenResult withNan = b.openProject(nanProject);
+        const juce::String nanStatus = b.getStatus();
+        bool allFinite = true;
+        for (const auto& source : sb.getClipSources())
+            allFinite = allFinite && !hasNanOrInf(*source);
+        const bool savedOverNan = b.saveProject(nanProject);
+        std::printf("    a NaN in a WAV: %s, %d warnings, %d notes (\"%s\"), clips %s; saved over itself: %s\n",
+                    withNan.ok ? "opened" : withNan.error.toRawUTF8(), withNan.warnings.size(), withNan.notes.size(),
+                    withNan.notes[0].toRawUTF8(), allFinite ? "all finite" : "hold NaN or Inf", savedOverNan ? "yes" : "refused");
+        DAWLAB_CHECK(withNan.ok && withNan.warnings.isEmpty() && withNan.notes.size() == 1);
+        DAWLAB_CHECK(withNan.notes[0].contains("NaN") && nanStatus.contains(withNan.notes[0]));
+        DAWLAB_CHECK(allFinite && savedOverNan);
         DAWLAB_CHECK(sb.getNumTracks() == kDemoTracks + 1);
 
         // Opened by an engine at 44.1 kHz: positions and audio are converted.

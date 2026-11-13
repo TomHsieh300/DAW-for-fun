@@ -94,8 +94,10 @@ StripState captureStrip(const Session& session, ChannelRef ref) {
 }
 
 // Reads an audio file as it is when it is already at `rate` (a project's own 32-bit float WAVs:
-// every sample, every channel exactly), otherwise through MediaLoader (resampled to `rate`).
-std::shared_ptr<const AudioBuffer> readAudio(const juce::File& file, double rate, juce::String& error) {
+// every sample, every channel exactly), otherwise through MediaLoader (resampled to `rate`). Both
+// ways go through MediaLoader::readChecked; `nonFinite` counts the NaN or Inf samples it set to 0.
+std::shared_ptr<const AudioBuffer> readAudio(const juce::File& file, double rate, juce::String& error, int& nonFinite) {
+    nonFinite = 0;
     if (!file.existsAsFile()) {
         error = "not found";
         return nullptr;
@@ -105,13 +107,14 @@ std::shared_ptr<const AudioBuffer> readAudio(const juce::File& file, double rate
     std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(file));
     if (reader != nullptr && reader->sampleRate == rate && reader->numChannels >= 1 && reader->numChannels <= 2) {
         auto buffer = std::make_shared<AudioBuffer>();
-        if (!MediaLoader::readChecked(*reader, false, *buffer, error))
+        if (!MediaLoader::readChecked(*reader, false, *buffer, error, nonFinite))
             return nullptr;
         return buffer;
     }
     const LoadedMedia media = MediaLoader::readAudioFile(file, rate);
     if (media.audio == nullptr)
         error = media.error;
+    nonFinite = media.nonFiniteSamples;
     return media.audio;
 }
 
@@ -394,11 +397,15 @@ ProjectIO::OpenResult ProjectIO::open(Session& session, host::PluginHost* plugin
         const juce::String path = juce::String::fromUTF8(c.file.c_str());
         const juce::File f = juce::File::isAbsolutePath(path) ? juce::File(path) : file.getParentDirectory().getChildFile(path);
         juce::String why;
-        audio[c.file] = readAudio(f, p.sampleRate, why);
-        if (audio[c.file] == nullptr)
+        int nonFinite = 0;
+        audio[c.file] = readAudio(f, p.sampleRate, why, nonFinite);
+        if (audio[c.file] == nullptr) {
             r.warnings.add("audio file " + path + ": " + why + " (its clips are left out)");
-        else
+        } else {
             ++r.audioFiles;
+            if (nonFinite > 0) // a repair, nothing left out: a note, not a warning
+                r.notes.add("audio file " + path + ": " + MediaLoader::describeNonFinite(nonFinite));
+        }
     }
 
     // From here on the old project is replaced.

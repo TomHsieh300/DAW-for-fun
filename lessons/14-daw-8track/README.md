@@ -648,7 +648,7 @@ In the application (stage 2):
 | Glitches when the UI is busy | lock or allocation on the audio thread | `l14_test_realtime_safety`; never call `new`, `std::vector::push_back`, `printf` or a mutex in `processBlock` |
 | Crash a while after removing an effect | the UI deleted an effect the audio thread still used | go through `removeInsert()` + `collectGarbage()` |
 | Bounce differs from playback | different block size changes the result | `l14_test_block_invariance`; smoothers must advance per sample |
-| NaN spreading through the mix | an effect fed with NaN parameters, or an unstable filter | `ParameterInfo::clamp()` replaces NaN; `hasNanOrInf()` in tests |
+| NaN spreading through the mix | an effect fed with NaN parameters, an unstable filter, or a float file holding NaN | `ParameterInfo::clamp()` replaces NaN; `MediaLoader::readChecked()` sets a file's NaN to 0 (Step 18); `hasNanOrInf()` in tests |
 | Memory grows while editing | `collectGarbage()` never called | a UI timer |
 | (app) Space does nothing / clicks the last button | a child component has the keyboard focus | `setWantsKeyboardFocus(false)` on buttons, knobs, faders (Step 21) |
 | (app) A loaded file plays too high and too fast | file sample rate != device rate, no conversion | `resampleBuffer()` in `MediaLoader` (Step 18) |

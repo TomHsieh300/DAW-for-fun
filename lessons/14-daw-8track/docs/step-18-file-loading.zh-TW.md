@@ -87,6 +87,7 @@ engine buffer 永遠是 stereo，所以 clip 與 arrangement 不在乎 format；
 | 超過 `kMaxFrames` 個 frame（192 kHz 下的 20 分鐘） | 拒絕：不管 rate 是多少，stereo float 的副本都低於 1.8 GB |
 | 超過 2 個 channel | 只讀前 2 個，直接讀進 engine 的 stereo buffer |
 | sample 數多於 WAV 或 AIFF 檔實際裝得下的（檔案被截斷了） | 拒絕：JUCE 的 AIFF reader 會對缺少的部分回傳零 |
+| 是 NaN 或 Inf 的 sample（float 檔） | 在 resampling 之前把每一個設成 0（resampling 會把一個 NaN 擴散到整個 kernel 寬度），計數在 `LoadedMedia::nonFiniteSamples`，status 列會說有幾個 |
 
 </div>
 

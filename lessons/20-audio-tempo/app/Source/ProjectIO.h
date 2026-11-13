@@ -62,6 +62,7 @@ public:
         bool ok = false;
         juce::String error;         // when !ok: what is wrong, e.g. "Song.dawlab, line 7: ..."
         juce::StringArray warnings; // when ok: what was skipped
+        juce::StringArray notes;    // when ok: what was repaired and lost nothing (it does not make Save refuse)
         int formatVersion = 0;
         int audioFiles = 0;         // distinct audio files read
     };

@@ -293,6 +293,8 @@ void MainComponent::loadAudioFile(int track, const juce::File& file) {
         juce::String text = "Loaded " + media.name + " into track " + juce::String(media.track + 1);
         if (media.fileSampleRate != media.targetSampleRate)
             text << " (resampled " << juce::String(media.fileSampleRate, 0) << " -> " << juce::String(media.targetSampleRate, 0) << " Hz)";
+        if (media.nonFiniteSamples > 0)
+            text << " (" << MediaLoader::describeNonFinite(media.nonFiniteSamples) << ")";
         safe->setStatus(text);
     });
 }

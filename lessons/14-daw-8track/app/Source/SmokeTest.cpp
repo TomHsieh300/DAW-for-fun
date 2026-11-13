@@ -19,11 +19,13 @@
 #include <dawlab/engine/DemoSong.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <set>
 #include <vector>
 
@@ -214,6 +216,32 @@ juce::File writeAiff(const juce::File& file, double rate, std::uint32_t declared
     return file;
 }
 
+// A 32-bit float mono WAV of `frames` frames of 0.25, with a NaN at `bad[0]` and +Inf at `bad[1]`.
+juce::File writeFloatWav(const juce::File& file, std::uint32_t frames, std::array<std::uint32_t, 2> bad) {
+    std::vector<unsigned char> v{'R', 'I', 'F', 'F'};
+    putLittleEndian(v, 36u + 4u * frames, 4);
+    v.insert(v.end(), {'W', 'A', 'V', 'E', 'f', 'm', 't', ' '});
+    putLittleEndian(v, 16, 4);
+    putLittleEndian(v, 3, 2); // IEEE float
+    putLittleEndian(v, 1, 2); // mono
+    putLittleEndian(v, 48000, 4);
+    putLittleEndian(v, 48000u * 4u, 4);
+    putLittleEndian(v, 4, 2);
+    putLittleEndian(v, 32, 2);
+    v.insert(v.end(), {'d', 'a', 't', 'a'});
+    putLittleEndian(v, 4u * frames, 4);
+    for (std::uint32_t i = 0; i < frames; ++i) {
+        const float x = i == bad[0]   ? std::numeric_limits<float>::quiet_NaN()
+                        : i == bad[1] ? std::numeric_limits<float>::infinity()
+                                      : 0.25f;
+        std::uint32_t bits = 0;
+        std::memcpy(&bits, &x, 4);
+        putLittleEndian(v, bits, 4);
+    }
+    file.replaceWithData(v.data(), v.size());
+    return file;
+}
+
 void testAudioFileBoundary() {
     const juce::File dir = juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l14_boundary");
     dir.deleteRecursively();
@@ -234,6 +262,7 @@ void testAudioFileBoundary() {
     std::printf("   an AIFF at 768 kHz that declares %lld frames: %s\n", static_cast<long long>(MediaLimits::kMaxFrames + 1),
                 tooMany.audio != nullptr ? "read" : tooMany.error.toRawUTF8());
     DAWLAB_CHECK(tooMany.audio == nullptr && tooMany.error.contains("20 minutes"));
+
     // A file cut off in the middle. An uncompressed one (WAV, AIFF) must hold what its header declares, so the cut
     // shows; JUCE's AIFF reader would read zeros for the missing part. A compressed one cannot be told from silence:
     // its decoder returns zeros too, and such a file loads (chapter 14, Step 18: a known limit).
@@ -271,6 +300,20 @@ void testAudioFileBoundary() {
     const LoadedMedia cutFlac = MediaLoader::readAudioFile(flacFile, 48000.0);
     std::printf("   a FLAC of 48000 frames cut in half: %s\n", cutFlac.audio != nullptr ? "read (the rest silent)" : cutFlac.error.toRawUTF8());
     DAWLAB_CHECK(cutFlac.audio != nullptr);
+
+    // Samples that are not numbers: each NaN or Inf in a file becomes 0, counted, before anything else sees it.
+    // Resampled too: the resampler would spread one NaN over a whole kernel width.
+    const juce::File nanFile = writeFloatWav(dir.getChildFile("nan.wav"), 1000, {500, 600});
+    for (const double rate : {48000.0, 44100.0}) {
+        const LoadedMedia m = MediaLoader::readAudioFile(nanFile, rate);
+        std::printf("   a float WAV with a NaN and an Inf, read at %.0f Hz: %s, %d set to 0, %s\n", rate,
+                    m.audio != nullptr ? "read" : m.error.toRawUTF8(), m.nonFiniteSamples,
+                    m.audio != nullptr && hasNanOrInf(*m.audio) ? "NaN or Inf in the clip" : "all finite");
+        DAWLAB_CHECK(m.audio != nullptr && m.nonFiniteSamples == 2 && !hasNanOrInf(*m.audio));
+        if (m.audio != nullptr && rate == 48000.0)
+            DAWLAB_CHECK(m.audio->getSample(0, 500) == 0.0f && m.audio->getSample(1, 600) == 0.0f &&
+                         m.audio->getSample(0, 499) == 0.25f);
+    }
     dir.deleteRecursively();
 }
 

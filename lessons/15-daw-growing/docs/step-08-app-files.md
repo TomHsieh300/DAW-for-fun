@@ -125,6 +125,12 @@ read. So after an open with warnings, Save asks for another name (the suggestion
 next to the old), and `saveProject()` refuses to write over the opened file. The file saved under
 the new name holds what the session holds, and Save writes over that one as usual.
 
+One kind of problem is neither: an audio file holding samples that are not numbers (NaN or Inf,
+written by another program). `MediaLoader::readChecked()` sets each of them to 0 and counts them
+(chapter 14, Step 18), and `ProjectIO::open()` reports them in `OpenResult::notes`, which the
+status line shows after the warnings. A note is not a warning: a NaN set to 0 loses nothing worth
+keeping, so it does not make Save ask for another name.
+
 ### Ids: the session's and the file's
 
 Step 7 made the session's track ids count up for as long as the program runs. The ids in a file

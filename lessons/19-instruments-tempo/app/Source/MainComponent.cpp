@@ -549,6 +549,8 @@ ProjectIO::OpenResult MainComponent::openProject(const juce::File& file) {
             juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Opened with warnings",
                                                    r.warnings.joinIntoString("\n"));
     }
+    for (const juce::String& note : r.notes) // not in leftOut_: nothing was left out
+        text << "; " << note;
     setStatus(text);
     return r;
 }
@@ -807,6 +809,8 @@ void MainComponent::loadAudioFile(engine::TrackId track, const juce::File& file)
         juce::String text = "Loaded " + media.name + " into track " + juce::String(safe->session_.indexOf(media.track) + 1);
         if (media.fileSampleRate != media.targetSampleRate)
             text << " (resampled " << juce::String(media.fileSampleRate, 0) << " -> " << juce::String(media.targetSampleRate, 0) << " Hz)";
+        if (media.nonFiniteSamples > 0)
+            text << " (" << MediaLoader::describeNonFinite(media.nonFiniteSamples) << ")";
         safe->setStatus(text);
     });
 }

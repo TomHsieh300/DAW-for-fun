@@ -115,7 +115,7 @@ LoadedMedia MediaLoader::readAudioFile(const juce::File& file, double targetSamp
     }
     // The engine is stereo: mono files are duplicated, extra channels are dropped.
     AudioBuffer stereo;
-    if (!readChecked(*reader, true, stereo, result.error))
+    if (!readChecked(*reader, true, stereo, result.error, result.nonFiniteSamples))
         return result;
     result.fileSampleRate = reader->sampleRate;
     result.fileNumChannels = static_cast<int>(reader->numChannels);
@@ -125,7 +125,13 @@ LoadedMedia MediaLoader::readAudioFile(const juce::File& file, double targetSamp
     return result;
 }
 
-bool MediaLoader::readChecked(juce::AudioFormatReader& reader, bool stereo, AudioBuffer& out, juce::String& error) {
+juce::String MediaLoader::describeNonFinite(int count) {
+    return juce::String(count) + (count == 1 ? " sample was" : " samples were") + " NaN or Inf, set to 0";
+}
+
+bool MediaLoader::readChecked(juce::AudioFormatReader& reader, bool stereo, AudioBuffer& out, juce::String& error,
+                              int& nonFiniteSamples) {
+    nonFiniteSamples = 0;
     const double rate = reader.sampleRate;
     if (!(rate >= MediaLimits::kMinSampleRate && rate <= MediaLimits::kMaxSampleRate)) {
         char text[96];
@@ -162,6 +168,17 @@ bool MediaLoader::readChecked(juce::AudioFormatReader& reader, bool stereo, Audi
         out = AudioBuffer();
         error = "The file could not be read";
         return false;
+    }
+    // A sample that is not a number (NaN, Inf) becomes 0 here, before the resampler would spread it over a
+    // kernel width and before the engine plays it. It is counted, so the caller can say so.
+    for (int ch = 0; ch < fileChannels; ++ch) {
+        float* const x = out.getWritePointer(ch);
+        for (int i = 0; i < n; ++i) {
+            if (!std::isfinite(x[i])) {
+                x[i] = 0.0f;
+                ++nonFiniteSamples;
+            }
+        }
     }
     if (out.getNumChannels() > fileChannels)
         std::copy_n(out.getReadPointer(0), n, out.getWritePointer(1));

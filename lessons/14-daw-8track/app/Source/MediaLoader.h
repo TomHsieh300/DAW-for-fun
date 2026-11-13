@@ -76,6 +76,7 @@ struct LoadedMedia {
     double fileSampleRate = 0.0;
     int fileNumChannels = 0;                   // 1 -> the track becomes mono, 2+ -> stereo
     double targetSampleRate = 0.0;
+    int nonFiniteSamples = 0;                  // NaN or Inf in the file, set to 0 (see readChecked)
     juce::String error;
 };
 
@@ -110,9 +111,13 @@ public:
     // project's own WAVs). It refuses what MediaLimits does not allow and a WAV or AIFF that is cut off
     // (shorter than its header declares; a cut-off compressed file loads, silent where it ends). It
     // reads at most 2 channels straight into `out`: 2 channels when `stereo` (a mono file duplicated),
-    // else the file's 1 or 2.
-    // False, with `error`, when nothing could be read.
-    static bool readChecked(juce::AudioFormatReader& reader, bool stereo, AudioBuffer& out, juce::String& error);
+    // else the file's 1 or 2. Every sample that is NaN or Inf becomes 0 and is counted in
+    // `nonFiniteSamples`. False, with `error`, when nothing could be read.
+    static bool readChecked(juce::AudioFormatReader& reader, bool stereo, AudioBuffer& out, juce::String& error,
+                            int& nonFiniteSamples);
+
+    // "3 samples were NaN or Inf, set to 0": how the program reports nonFiniteSamples.
+    static juce::String describeNonFinite(int count);
 
     // File patterns the reader understands, for the file chooser ("*.wav;*.aif;...;*.mp3").
     static juce::String getWildcard();
