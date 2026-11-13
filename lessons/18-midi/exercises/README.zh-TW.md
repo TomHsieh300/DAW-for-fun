@@ -51,6 +51,8 @@
 
 檔案是不可信的輸入。Self-check 會餵給 reader 23 個壞掉的檔案、一個好檔案的每一種截斷，以及 20 000 個隨機損壞的檔案：它必須拒絕讀不了的東西並說明原因，而且絕不能讀超過結尾。也用 AddressSanitizer 建置它（在 Linux 上用 `-DDAWLAB_SANITIZE=address,undefined`），或用 MSVC 的 Debug 建置，它的 checked iterator 會抓到同樣的錯。
 
+這個練習的歌都很短，也只有一個可用的 tempo，所以它的 writer 可以保留兩個 app 的 `MidiFile.cpp`（第 19 章）沒有的簡化：4 個 byte 的 delta time 最多只能表示 2^28 - 1 個 tick，更長的間隔需要填充事件；而 0 或 NaN 的 tempo 換算不出每拍的微秒數。第 19 章兩者都處理。
+
 ## 練習 4 - Tempo map ★★☆（實作）
 
 [`l18_ex4_starter`，檔案 `exercises/starter/ex4_tempo_map.cpp`]

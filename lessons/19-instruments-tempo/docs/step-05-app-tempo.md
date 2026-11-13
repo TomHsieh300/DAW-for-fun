@@ -84,7 +84,9 @@ MIDI file put them in the menu.
 - **Out.** Every tempo point is a tempo event. A file has no ramps, so a ramp becomes steps of a sixteenth - each at
   the tempo that makes the step exactly as long as the ramp is over it. The tempo in the middle of the step would
   be the obvious choice, and it is 2 ms off after one beat from 120 to 60 BPM; the right one keeps every sixteenth
-  on time.
+  on time. A gap longer than a delta time holds (2^28 - 1 ticks, some 39 hours at 120 BPM; a project holds MIDI
+  clips up to 2^40 ticks) is split by empty text events, so every tick reads back exactly. A tempo is kept to the
+  tempo map's 20 .. 999 BPM, and one that is no tempo (0, below 0, NaN) is written as MIDI's default of 120.
 - **In.** Tempo events may be in any track, out of order, twice at one tick: they are sorted, and the last at a tick
   stays. They become jumps of the tempo map. A file may have more than the map's 256 points; keeping every k-th
   one would let the song drift by seconds, so `TempoThinning.h` keeps the *fewest* points with which no tick

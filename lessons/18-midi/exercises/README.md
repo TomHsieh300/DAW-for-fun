@@ -84,6 +84,10 @@ and 20 000 randomly damaged ones: it must refuse what it cannot read, with a rea
 end. Build it with AddressSanitizer too (`-DDAWLAB_SANITIZE=address,undefined` on Linux), or in Debug with
 MSVC, whose checked iterators catch the same mistakes.
 
+The exercise's songs are short and have one usable tempo, so its writer may keep two simplifications that the
+app's `MidiFile.cpp` (chapter 19) does not: a delta time of 4 bytes holds at most 2^28 - 1 ticks, and a longer
+gap needs filler events; and a tempo of 0 or NaN has no microseconds a quarter. Chapter 19 writes both.
+
 ## Exercise 4 - A tempo map ★★☆ (implementation)
 
 [`l18_ex4_starter`, file `exercises/starter/ex4_tempo_map.cpp`]

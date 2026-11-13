@@ -1,5 +1,7 @@
 #include "MidiFile.h"
 
+#include <dawlab/engine/TempoMap.h>
+
 #include <algorithm>
 #include <cmath>
 
@@ -31,6 +33,10 @@ void chunk(Bytes& out, const char* type, const Bytes& data) {
     out.insert(out.end(), data.begin(), data.end());
 }
 
+// The longest delta time a file can hold: 4 bytes of 7 bits.
+constexpr std::int64_t kMaxDelta = 0x0FFFFFFF;
+
+// A value of at most kMaxDelta.
 void writeVlq(Bytes& out, std::uint32_t value) {
     std::uint8_t bytes[4];
     int n = 0;
@@ -41,6 +47,26 @@ void writeVlq(Bytes& out, std::uint32_t value) {
     while (n > 1)
         out.push_back(static_cast<std::uint8_t>(bytes[--n] | 0x80));
     out.push_back(bytes[0]);
+}
+
+// The delta time before an event, `delta` >= 0 ticks. A longer gap than a delta holds is kMaxDelta, then an empty
+// text event, as often as it takes: read() skips the text, and every tick comes back exactly. A meta event cancels
+// running status, so `running` starts again after one.
+void putDelta(Bytes& out, std::int64_t delta, int& running) {
+    for (; delta > kMaxDelta; delta -= kMaxDelta) {
+        writeVlq(out, static_cast<std::uint32_t>(kMaxDelta));
+        out.insert(out.end(), {0xFF, 0x01, 0x00});
+        running = 0;
+    }
+    writeVlq(out, static_cast<std::uint32_t>(delta));
+}
+
+// A tempo event's microseconds a quarter. A tempo write() cannot use (0, below 0, NaN, infinity) is MIDI's default,
+// 120 BPM; any other is kept to the engine's range, where 60e6 / bpm always fits the event's 24 bits.
+std::uint32_t microsPerQuarter(double bpm) {
+    const double usable = std::isfinite(bpm) && bpm > 0.0 ? bpm : 120.0;
+    const double kept = std::clamp(usable, engine::TempoMap::kMinBpm, engine::TempoMap::kMaxBpm);
+    return static_cast<std::uint32_t>(std::llround(60000000.0 / kept));
 }
 
 bool readVlq(const std::uint8_t* data, std::size_t size, std::size_t& pos, std::uint32_t& value) noexcept {
@@ -93,10 +119,11 @@ std::vector<std::uint8_t> write(const Song& song) {
     if (tempos.empty())
         tempos.push_back({0, 120.0});
     std::int64_t last = 0;
+    int noRunning = 0; // the conductor has only meta events
     for (const Tempo& t : tempos) {
         const std::int64_t tick = std::max<std::int64_t>(t.tick, last);
-        const auto micros = static_cast<std::uint32_t>(std::clamp<long long>(std::llround(60000000.0 / t.bpm), 1, 0xFFFFFF));
-        writeVlq(conductor, static_cast<std::uint32_t>(tick - last));
+        const std::uint32_t micros = microsPerQuarter(t.bpm);
+        putDelta(conductor, tick - last, noRunning);
         conductor.insert(conductor.end(), {0xFF, 0x51, 0x03, static_cast<std::uint8_t>(micros >> 16), static_cast<std::uint8_t>(micros >> 8),
                                            static_cast<std::uint8_t>(micros)});
         last = tick;
@@ -124,7 +151,7 @@ std::vector<std::uint8_t> write(const Song& song) {
         std::int64_t at = 0;
         int running = 0;
         for (const Event& e : events) {
-            writeVlq(data, static_cast<std::uint32_t>(e.tick - at));
+            putDelta(data, e.tick - at, running);
             at = e.tick;
             if (e.message.status != running) {
                 data.push_back(e.message.status);

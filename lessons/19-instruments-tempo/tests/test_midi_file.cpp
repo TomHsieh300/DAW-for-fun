@@ -4,11 +4,14 @@
 //   2. Tempos anywhere in a file - in any track, out of order, twice at a tick - become the song's, in order.
 //   3. Random songs come back the same.
 //   4. Broken and damaged files are refused; nothing is read past the end (AddressSanitizer watches).
+//   5. Gaps longer than a delta time holds, and tempos a file cannot hold, are written so that they read back.
 
 #include "MidiFile.h"
 
 #include <dawlab/Check.h>
 
+#include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <initializer_list>
 #include <random>
@@ -163,6 +166,37 @@ void testRoundTrips() {
     DAWLAB_CHECK(good == runs);
 }
 
+// write() says any gap and any tempo. A delta time holds 28 bits, so a longer gap is split by empty text events,
+// which read() skips: 2^28 ticks are some 39 hours at 120 BPM, and a project holds MIDI clips up to 2^40 ticks. A tempo
+// write() cannot use (0, below 0, NaN) is MIDI's default of 120 BPM, and any other is kept to the engine's 20 .. 999.
+void testLongGapsAndBadTempos() {
+    const std::int64_t far = 480 + (std::int64_t{1} << 28), farther = 480 + (std::int64_t{1} << 32) + 7;
+    Song song;
+    song.tempos = {{0, 120.0}, {far, 60.0}};
+    song.tracks.push_back({"Far", {{0, MidiMessage::noteOn(0, 60, 100)}, {480, MidiMessage::noteOff(0, 60)},
+                                   {far, MidiMessage::noteOn(0, 62, 100)}, {farther, MidiMessage::noteOff(0, 62)}}});
+    const ReadResult r = read(write(song));
+    const bool same = r.ok && r.song.tracks.size() == 1 && sameEvents(r.song.tracks[0].events, song.tracks[0].events);
+    const bool four = r.ok && r.song.tracks.size() == 1 && r.song.tracks[0].events.size() == 4;
+    const long long third = four ? static_cast<long long>(r.song.tracks[0].events[2].tick) : -1LL;
+    const long long fourth = four ? static_cast<long long>(r.song.tracks[0].events[3].tick) : -1LL;
+    const long long change = r.ok && r.song.tempos.size() == 2 ? static_cast<long long>(r.song.tempos[1].tick) : -1LL;
+    std::printf("  events at 2^28 + 480 and 2^32 + 487 ticks: read back at %lld and %lld, the tempo change at %lld\n", third, fourth, change);
+    DAWLAB_CHECK(same && sameTempos(r.song.tempos, song.tempos));
+
+    const auto tempoOf = [](double bpm) {
+        Song s;
+        s.tempos = {{0, bpm}};
+        s.tracks.push_back({"", {{0, MidiMessage::noteOn(0, 60, 100)}}});
+        const ReadResult back = read(write(s));
+        return back.ok && back.song.tempos.size() == 1 ? back.song.tempos[0].bpm : -1.0;
+    };
+    std::printf("  a tempo of 0, -120, NaN, 5 and 5000 BPM: read back as %g, %g, %g, %g and %g\n", tempoOf(0.0), tempoOf(-120.0),
+                tempoOf(std::nan("")), tempoOf(5.0), tempoOf(5000.0));
+    DAWLAB_CHECK(tempoOf(0.0) == 120.0 && tempoOf(-120.0) == 120.0 && tempoOf(std::nan("")) == 120.0 && tempoOf(HUGE_VAL) == 120.0);
+    DAWLAB_CHECK(tempoOf(5.0) == 20.0 && std::abs(tempoOf(5000.0) - 999.0) < 0.01); // 999 BPM is 60060 us, 999.001
+}
+
 void testUntrusted() {
     const Bytes ok = bytes({0x00, 0x90, 60, 100, 0x00, 0xFF, 0x2F, 0x00});
     const struct {
@@ -235,6 +269,7 @@ int main() {
     testBytes();
     testTemposAnywhere();
     testRoundTrips();
+    testLongGapsAndBadTempos();
     testUntrusted();
     return dawlab::test::summary("l19_test_midi_file");
 }

@@ -4,7 +4,9 @@
 // No JUCE: bytes in, a Song out, and back - tested in tests/test_midi_file.cpp in every build.
 //
 //   write()   format 1 at 960 ticks a quarter: a conductor track with the time signature and EVERY tempo of the
-//             song at its tick, then one track per song track, with running status.
+//             song at its tick, then one track per song track, with running status. A gap longer than a delta
+//             time holds (2^28 - 1 ticks) is split by empty text events, so every tick reads back exactly. A tempo
+//             is kept to the engine's 20 .. 999 BPM; one that is no tempo (0, below 0, NaN) is written as 120.
 //   read()    format 0 or 1 at any division, into ticks of 960 (each event's absolute tick converted, so nothing
 //             drifts). Every tempo event of any track becomes a tempo of the song, in tick order; a later one at
 //             the same tick replaces the earlier. The first time signature is the song's.
