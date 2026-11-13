@@ -5,6 +5,7 @@
 #include <limits>
 #include <locale>
 #include <sstream>
+#include <tuple>
 #include <type_traits>
 
 namespace dawlab::app::project {
@@ -12,57 +13,58 @@ namespace dawlab::app::project {
 using engine::TrackId;
 
 // ---- comparisons (round-trip tests) ---------------------------------------------------------------
+// Each compares all of its members, as tuples: a member added to a state is added to its list here.
 
 bool operator==(const SendState& a, const SendState& b) { return a.levelDb == b.levelDb && a.preFader == b.preFader; }
 bool operator==(const ParamState& a, const ParamState& b) { return a.name == b.name && a.value == b.value; }
 bool operator==(const InsertState& a, const InsertState& b) {
-    return a.slot == b.slot && a.vst3 == b.vst3 && a.type == b.type && a.bypassed == b.bypassed && a.params == b.params &&
-           a.state == b.state;
+    return std::tie(a.slot, a.vst3, a.type, a.bypassed, a.params, a.state) == std::tie(b.slot, b.vst3, b.type, b.bypassed, b.params, b.state);
 }
 bool operator==(const PointState& a, const PointState& b) {
-    return a.position == b.position && a.value == b.value && a.hold == b.hold;
+    return std::tie(a.position, a.value, a.hold) == std::tie(b.position, b.value, b.hold);
 }
 bool operator==(const LaneState& a, const LaneState& b) {
-    return a.slot == b.slot && a.parameter == b.parameter && a.mode == b.mode && a.defaultValue == b.defaultValue && a.points == b.points;
+    return std::tie(a.slot, a.parameter, a.mode, a.defaultValue, a.points) == std::tie(b.slot, b.parameter, b.mode, b.defaultValue, b.points);
 }
 bool operator==(const StripState& a, const StripState& b) {
-    return a.name == b.name && a.gainDb == b.gainDb && a.pan == b.pan && a.mute == b.mute && a.solo == b.solo &&
-           a.sends == b.sends && a.inserts == b.inserts && a.lanes == b.lanes;
+    return std::tie(a.name, a.gainDb, a.pan, a.mute, a.solo, a.sends, a.inserts, a.lanes) ==
+           std::tie(b.name, b.gainDb, b.pan, b.mute, b.solo, b.sends, b.inserts, b.lanes);
 }
 bool operator==(const TrackState& a, const TrackState& b) {
-    return a.id == b.id && a.format == b.format && a.strip == b.strip && a.instrument == b.instrument && a.synth == b.synth &&
-           a.instrumentFile == b.instrumentFile && a.instrumentState == b.instrumentState;
+    return std::tie(a.id, a.format, a.strip, a.instrument, a.synth, a.instrumentFile, a.instrumentState) ==
+           std::tie(b.id, b.format, b.strip, b.instrument, b.synth, b.instrumentFile, b.instrumentState);
 }
+
+namespace {
+bool sameController(const engine::ControllerPoint& x, const engine::ControllerPoint& y) {
+    return std::tie(x.tick, x.number, x.value, x.channel) == std::tie(y.tick, y.number, y.value, y.channel);
+}
+} // namespace
+
 bool operator==(const MidiClipState& a, const MidiClipState& b) {
-    auto sameControllers = [](const std::vector<engine::ControllerPoint>& x, const std::vector<engine::ControllerPoint>& y) {
-        if (x.size() != y.size())
-            return false;
-        for (size_t i = 0; i < x.size(); ++i)
-            if (x[i].tick != y[i].tick || x[i].number != y[i].number || x[i].value != y[i].value || x[i].channel != y[i].channel)
-                return false;
-        return true;
-    };
-    return a.track == b.track && a.start == b.start && a.length == b.length && a.offset == b.offset && a.muted == b.muted &&
-           a.name == b.name && a.grid == b.grid && a.strength == b.strength && a.swing == b.swing && a.notes == b.notes &&
-           sameControllers(a.controllers, b.controllers);
+    return std::tie(a.track, a.start, a.length, a.offset, a.muted, a.name, a.grid, a.strength, a.swing, a.notes) ==
+               std::tie(b.track, b.start, b.length, b.offset, b.muted, b.name, b.grid, b.strength, b.swing, b.notes) &&
+           std::equal(a.controllers.begin(), a.controllers.end(), b.controllers.begin(), b.controllers.end(), sameController);
 }
 bool operator==(const ClipState& a, const ClipState& b) {
-    return a.track == b.track && a.start == b.start && a.length == b.length && a.file == b.file &&
-           a.sourceOffset == b.sourceOffset && a.fadeIn == b.fadeIn && a.fadeOut == b.fadeOut &&
-           a.equalPowerFades == b.equalPowerFades && a.gainDb == b.gainDb && a.muted == b.muted && a.name == b.name && a.follow == b.follow && a.startTick == b.startTick && a.sourceLength == b.sourceLength &&
-           a.markers == b.markers && a.headCut == b.headCut && a.tailCut == b.tailCut;
+    const auto clip = [](const ClipState& c) {
+        return std::tie(c.track, c.start, c.length, c.file, c.sourceOffset, c.fadeIn, c.fadeOut, c.equalPowerFades, c.gainDb, c.muted, c.name);
+    };
+    const auto follow = [](const ClipState& c) { return std::tie(c.follow, c.startTick, c.sourceLength, c.markers, c.headCut, c.tailCut); };
+    return clip(a) == clip(b) && follow(a) == follow(b);
 }
 bool operator==(const TakeState& a, const TakeState& b) {
-    return a.start == b.start && a.sourceOffset == b.sourceOffset && a.length == b.length;
+    return std::tie(a.start, a.sourceOffset, a.length) == std::tie(b.start, b.sourceOffset, b.length);
 }
 bool operator==(const TakeSetState& a, const TakeSetState& b) { return a.file == b.file && a.takes == b.takes; }
-bool operator==(const TempoPointState& a, const TempoPointState& b) { return a.tick == b.tick && a.bpm == b.bpm && a.ramp == b.ramp; }
+bool operator==(const TempoPointState& a, const TempoPointState& b) { return std::tie(a.tick, a.bpm, a.ramp) == std::tie(b.tick, b.bpm, b.ramp); }
 bool operator==(const ProjectState& a, const ProjectState& b) {
-    return a.sampleRate == b.sampleRate && a.nextTrackId == b.nextTrackId && a.tempo == b.tempo &&
-           a.loopInTicks == b.loopInTicks && a.tempoPoints == b.tempoPoints &&
-           a.beatsPerBar == b.beatsPerBar && a.beatUnit == b.beatUnit && a.loopStart == b.loopStart &&
-           a.loopEnd == b.loopEnd && a.loopEnabled == b.loopEnabled && a.tracks == b.tracks && a.buses == b.buses &&
-           a.master == b.master && a.clips == b.clips && a.takeSets == b.takeSets && a.midiClips == b.midiClips;
+    const auto song = [](const ProjectState& p) {
+        return std::tie(p.sampleRate, p.nextTrackId, p.tempo, p.loopInTicks, p.tempoPoints, p.beatsPerBar, p.beatUnit, p.loopStart, p.loopEnd,
+                        p.loopEnabled);
+    };
+    const auto parts = [](const ProjectState& p) { return std::tie(p.tracks, p.buses, p.master, p.clips, p.takeSets, p.midiClips); };
+    return song(a) == song(b) && parts(a) == parts(b);
 }
 
 namespace {
@@ -74,6 +76,32 @@ struct Token {
     bool quoted = false;
 };
 
+// The quoted token that starts at line[i] (the quote): `i` moves past its closing quote. False, with the error,
+// for an unknown escape or no closing quote.
+bool readQuoted(std::string_view line, size_t& i, Token& t, std::string& error) {
+    t = Token{std::string{}, true};
+    ++i;
+    while (i < line.size()) {
+        const char d = line[i++];
+        if (d == '"')
+            return true;
+        if (d != '\\') {
+            t.text += d;
+            continue;
+        }
+        if (i == line.size())
+            break;
+        const char e = line[i++];
+        if (e != '"' && e != '\\' && e != 'n') {
+            error = std::string("unknown escape \\") + e;
+            return false;
+        }
+        t.text += e == 'n' ? '\n' : e;
+    }
+    error = "unterminated string";
+    return false;
+}
+
 bool splitLine(std::string_view line, std::vector<Token>& out, std::string& error) {
     out.clear();
     size_t i = 0;
@@ -84,35 +112,9 @@ bool splitLine(std::string_view line, std::vector<Token>& out, std::string& erro
         } else if (c == '#') {
             break;
         } else if (c == '"') {
-            Token t{std::string{}, true};
-            ++i;
-            bool closed = false;
-            while (i < line.size()) {
-                const char d = line[i++];
-                if (d == '"') {
-                    closed = true;
-                    break;
-                }
-                if (d == '\\') {
-                    if (i == line.size())
-                        break;
-                    const char e = line[i++];
-                    if (e == '"' || e == '\\')
-                        t.text += e;
-                    else if (e == 'n')
-                        t.text += '\n';
-                    else {
-                        error = std::string("unknown escape \\") + e;
-                        return false;
-                    }
-                } else {
-                    t.text += d;
-                }
-            }
-            if (!closed) {
-                error = "unterminated string";
+            Token t;
+            if (!readQuoted(line, i, t, error))
                 return false;
-            }
             out.push_back(std::move(t));
         } else {
             const size_t start = i;
@@ -244,26 +246,33 @@ inline bool isPosition(std::int64_t value, std::int64_t least = 0) noexcept { re
 constexpr double kMaxFollowValue = static_cast<double>(kMaxPosition);      // 2^40 ticks or samples
 constexpr double kMinTicksPerSample = 1.0 / 1048576.0, kMaxTicksPerSample = 1048576.0; // 2^-20 .. 2^20 between two markers
 
-std::string followProblem(const ClipState& c) {
-    if (c.follow == engine::FollowMode::Off)
-        return c.length > 0 ? "" : "clip length must be at least 1 sample";
-    if (c.follow == engine::FollowMode::Start) {
-        if (c.length <= 0)
-            return "clip length must be at least 1 sample";
-        return c.startTick >= 0.0 && c.startTick <= kMaxFollowValue ? "" : "a clip's start in ticks must be 0 or more (and at most 2^40)";
-    }
-    if (c.markers.size() < 2)
-        return "a clip that follows by varispeed or stretch needs at least two markers";
-    for (size_t i = 0; i < c.markers.size(); ++i) {
-        const engine::WarpMarker& m = c.markers[i];
+// The markers themselves: every value within 2^40, and between two of them a speed some tempo makes.
+std::string markersProblem(const std::vector<engine::WarpMarker>& markers) {
+    for (size_t i = 0; i < markers.size(); ++i) {
+        const engine::WarpMarker& m = markers[i];
         if (std::fabs(m.source) > kMaxFollowValue || std::fabs(m.tick) > kMaxFollowValue)
             return "a marker's position in the source and its tick must be at most 2^40";
         if (i == 0)
             continue;
-        const double ticksPerSample = (m.tick - c.markers[i - 1].tick) / (m.source - c.markers[i - 1].source);
+        const double ticksPerSample = (m.tick - markers[i - 1].tick) / (m.source - markers[i - 1].source);
         if (!(ticksPerSample >= kMinTicksPerSample && ticksPerSample <= kMaxTicksPerSample))
             return "between two markers there must be 2^-20 to 2^20 ticks per sample of the source";
     }
+    return "";
+}
+
+std::string followProblem(const ClipState& c) {
+    if (c.follow == engine::FollowMode::Off || c.follow == engine::FollowMode::Start) {
+        if (c.length <= 0)
+            return "clip length must be at least 1 sample";
+        const bool inSong = c.follow == engine::FollowMode::Off || (c.startTick >= 0.0 && c.startTick <= kMaxFollowValue);
+        return inSong ? "" : "a clip's start in ticks must be 0 or more (and at most 2^40)";
+    }
+    if (c.markers.size() < 2)
+        return "a clip that follows by varispeed or stretch needs at least two markers";
+    const std::string problem = markersProblem(c.markers);
+    if (!problem.empty())
+        return problem;
     // Up to a sample outside them is a rounding: a change of sample rate scales the markers, and rounds the samples.
     const double from = static_cast<double>(c.sourceOffset) + c.headCut, to = static_cast<double>(c.sourceOffset + c.sourceLength) - c.tailCut;
     if (from < c.markers.front().source - 1.0 || to > c.markers.back().source + 1.0)
@@ -308,21 +317,24 @@ void writeStripDetails(std::ostream& out, ChannelName channel, const StripState&
 
 } // namespace
 
-std::string writeProject(const ProjectState& p) {
-    std::ostringstream out;
-    out.imbue(std::locale::classic()); // "-6.5" and "48000" in every language, no digit grouping
-    out.precision(std::numeric_limits<float>::max_digits10); // 9 digits: every float reads back exactly
+namespace {
+
+// The lines of writeProject(), one kind at a time and in the file's order. Each leaves the stream's precision as it
+// found it: 9 digits, which read every float back exactly; doubles - ticks, tempos, positions in the source - get 17.
+
+void writeHeader(std::ostream& out, const ProjectState& p) {
     out << "DawLabProject " << kFormatVersion << '\n';
     out << "sampleRate " << p.sampleRate << '\n';
     out << "nextTrackId " << p.nextTrackId << '\n';
     out << "tempo " << p.tempo << ' ' << p.beatsPerBar << ' ' << p.beatUnit << '\n';
     out << "loop " << p.loopStart << ' ' << p.loopEnd << ' ' << p.loopEnabled << (p.loopInTicks ? " ticks" : "") << '\n';
-    {
-        const auto digits = out.precision(std::numeric_limits<double>::max_digits10); // a tempo is a double
-        for (const TempoPointState& t : p.tempoPoints)
-            out << "tempopoint " << t.tick << ' ' << t.bpm << ' ' << t.ramp << '\n';
-        out.precision(digits);
-    }
+    const auto digits = out.precision(std::numeric_limits<double>::max_digits10); // a tempo is a double
+    for (const TempoPointState& t : p.tempoPoints)
+        out << "tempopoint " << t.tick << ' ' << t.bpm << ' ' << t.ramp << '\n';
+    out.precision(digits);
+}
+
+void writeChannels(std::ostream& out, const ProjectState& p) {
     for (const TrackState& t : p.tracks)
         out << "track " << t.id.value << ' ' << quote(t.strip.name) << ' ' << t.strip.gainDb << ' ' << t.strip.pan << ' '
             << (t.format == engine::TrackFormat::Mono ? "mono" : "stereo") << ' ' << t.strip.mute << ' ' << t.strip.solo
@@ -337,25 +349,31 @@ std::string writeProject(const ProjectState& p) {
     for (int b = 0; b < engine::kNumBuses; ++b)
         writeStripDetails(out, {ChannelName::Kind::Bus, static_cast<std::uint32_t>(b)}, p.buses[static_cast<size_t>(b)]);
     writeStripDetails(out, {ChannelName::Kind::Master, 0}, p.master);
+}
+
+// Format 8: how the clip above follows the tempo, and for a warped one its markers. Ticks and positions in the
+// source are doubles: 17 digits read back as the same number.
+void writeFollow(std::ostream& out, const ClipState& c) {
+    const auto digits = out.precision(std::numeric_limits<double>::max_digits10);
+    if (c.follow == engine::FollowMode::Start) {
+        out << "follow start " << c.startTick << '\n';
+    } else {
+        out << "follow " << (c.follow == engine::FollowMode::Varispeed ? "varispeed" : "stretch") << ' ' << c.sourceLength << '\n';
+        for (const engine::WarpMarker& m : c.markers)
+            out << "marker " << m.source << ' ' << m.tick << '\n';
+        if (c.headCut != 0.0 || c.tailCut != 0.0) // format 9: a piece of a cut
+            out << "cut " << c.headCut << ' ' << c.tailCut << '\n';
+    }
+    out.precision(digits);
+}
+
+void writeClips(std::ostream& out, const ProjectState& p) {
     for (const ClipState& c : p.clips) {
         out << "clip " << c.track.value << ' ' << c.start << ' ' << c.length << ' ' << quote(c.file) << ' ' << c.sourceOffset
             << ' ' << c.fadeIn << ' ' << c.fadeOut << ' ' << (c.equalPowerFades ? "equalPower" : "linear") << ' ' << c.gainDb
             << ' ' << c.muted << ' ' << quote(c.name) << '\n';
-        // Format 8: how the clip above follows the tempo, and for a warped one its markers. Ticks and positions
-        // in the source are doubles: 17 digits read back as the same number.
-        if (c.follow == engine::FollowMode::Off)
-            continue;
-        const auto digits = out.precision(std::numeric_limits<double>::max_digits10);
-        if (c.follow == engine::FollowMode::Start) {
-            out << "follow start " << c.startTick << '\n';
-        } else {
-            out << "follow " << (c.follow == engine::FollowMode::Varispeed ? "varispeed" : "stretch") << ' ' << c.sourceLength << '\n';
-            for (const engine::WarpMarker& m : c.markers)
-                out << "marker " << m.source << ' ' << m.tick << '\n';
-            if (c.headCut != 0.0 || c.tailCut != 0.0) // format 9: a piece of a cut
-                out << "cut " << c.headCut << ' ' << c.tailCut << '\n';
-        }
-        out.precision(digits);
+        if (c.follow != engine::FollowMode::Off)
+            writeFollow(out, c);
     }
     for (const TakeSetState& s : p.takeSets) {
         out << "takes " << quote(s.file);
@@ -363,20 +381,25 @@ std::string writeProject(const ProjectState& p) {
             out << ' ' << t.start << ' ' << t.sourceOffset << ' ' << t.length;
         out << '\n';
     }
+}
+
+void writeInstruments(std::ostream& out, const ProjectState& p) {
     for (const TrackState& t : p.tracks)
         if (t.instrument)
             out << "instrument " << t.id.value << '\n';
-    {
-        const auto digits = out.precision(std::numeric_limits<double>::max_digits10);
-        for (const TrackState& t : p.tracks) {
-            if (!t.synth.isDefault())
-                out << "synth " << t.id.value << ' ' << t.synth.cutoffHz << ' ' << t.synth.resonance << ' ' << t.synth.attack << ' '
-                    << t.synth.decay << ' ' << t.synth.sustain << ' ' << t.synth.release << ' ' << t.synth.level << '\n';
-            if (!t.instrumentFile.empty())
-                out << "plugininstrument " << t.id.value << ' ' << quote(t.instrumentFile) << ' ' << quote(t.instrumentState) << '\n';
-        }
-        out.precision(digits);
+    const auto digits = out.precision(std::numeric_limits<double>::max_digits10);
+    for (const TrackState& t : p.tracks) {
+        if (!t.synth.isDefault())
+            out << "synth " << t.id.value << ' ' << t.synth.cutoffHz << ' ' << t.synth.resonance << ' ' << t.synth.attack << ' '
+                << t.synth.decay << ' ' << t.synth.sustain << ' ' << t.synth.release << ' ' << t.synth.level << '\n';
+        if (!t.instrumentFile.empty())
+            out << "plugininstrument " << t.id.value << ' ' << quote(t.instrumentFile) << ' ' << quote(t.instrumentState) << '\n';
     }
+    out.precision(digits);
+}
+
+// MIDI clips are numbered through the file; notes and controllers name their clip by its number.
+void writeMidiClips(std::ostream& out, const ProjectState& p) {
     int clipNumber = 0;
     for (const MidiClipState& c : p.midiClips) {
         ++clipNumber;
@@ -388,12 +411,29 @@ std::string writeProject(const ProjectState& p) {
         for (const engine::ControllerPoint& cc : c.controllers)
             out << "cc " << clipNumber << ' ' << cc.tick << ' ' << cc.number << ' ' << cc.value << ' ' << cc.channel << '\n';
     }
+}
+
+void writeAllLanes(std::ostream& out, const ProjectState& p) {
     int laneNumber = 0;
     for (const TrackState& t : p.tracks)
         writeLanes(out, {ChannelName::Kind::Track, t.id.value}, t.strip, laneNumber);
     for (int b = 0; b < engine::kNumBuses; ++b)
         writeLanes(out, {ChannelName::Kind::Bus, static_cast<std::uint32_t>(b)}, p.buses[static_cast<size_t>(b)], laneNumber);
     writeLanes(out, {ChannelName::Kind::Master, 0}, p.master, laneNumber);
+}
+
+} // namespace
+
+std::string writeProject(const ProjectState& p) {
+    std::ostringstream out;
+    out.imbue(std::locale::classic()); // "-6.5" and "48000" in every language, no digit grouping
+    out.precision(std::numeric_limits<float>::max_digits10); // 9 digits: every float reads back exactly
+    writeHeader(out, p);
+    writeChannels(out, p);
+    writeClips(out, p);
+    writeInstruments(out, p);
+    writeMidiClips(out, p);
+    writeAllLanes(out, p);
     return out.str();
 }
 
