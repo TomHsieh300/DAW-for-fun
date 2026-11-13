@@ -287,7 +287,7 @@ gain computer 用最直覺的 **∞:1、上限 range**：偵測 level 超過 thr
 \text{GR} = \mathrm{clamp}(L_\text{det} - T,\ 0,\ \text{range})
 ```
 
-range（`setRangeDb`，正值）不要設太大：齒音壓過頭，人聲會變得像「大舌頭」（lisp）。6–10 dB 通常就夠。
+range（`setRangeDb`，正值）不要設太大：齒音壓過頭，人聲會變得像「大舌頭」（lisp）。6–10 dB 通常就夠。（和 gate、expander 一樣，range 的上限是 100 dB = 靜音。）
 
 #### 2.5.3 Wideband vs split-band
 
@@ -450,7 +450,7 @@ threshold、ratio、knee、range 都直接出現在 gain 公式 $`g = \max(\text
 `enum class GateState { Closed, Attack, Open, Hold, Release }` 與 `gateStateName()`（印時間軸用）。`nextGain()` 是 2.4.2 節狀態機的 `switch`。幾個實作重點：
 
 - 偵測器固定 peak 模式、attack `Gate::kDetectorAttackMs` = 0.1 ms（要能抓到 transient），release 預設 20 ms，可用 `setDetectorReleaseMs()` 改。偵測器的 release 和 gate 的 release 是兩回事：前者決定 envelope 的漣漪大小（2.4.1 節，影響 hysteresis 要設多少），後者決定門關上的 fade 時間。
-- `setRangeDb()` 對正負號防呆：一律視為「衰減 |db| dB」。門關著時改 range 不會瞬間跳變：Closed 狀態每個 sample 把 gain 往新的 range 滑一步（往上用 attack 斜率、往下用 release 斜率，至少 0.01 dB/sample），這樣第 14 章的 DAW 自動化 range 也不會有 click。
+- `setRangeDb()` 對正負號防呆：一律視為「衰減 |db| dB」。它的上限是 100 dB，`dbToGain` 在那裡已經給出靜音（−100 dB = `kMinusInfinityDb`）；更大的 range 聽不出差別，卻會讓 attack / release 的步幅（每 sample 幾 dB）變得極大，所以 −1e30 會讓門一步就打開，−inf 則讓步幅變成 inf − inf = NaN，門從此一直關著。`Gate`、`Expander`、`DeEsser` 共用這條規則：`DspMath.h` 的 `acceptRangeDb()`。門關著時改 range 不會瞬間跳變：Closed 狀態每個 sample 把 gain 往新的 range 滑一步（往上用 attack 斜率、往下用 release 斜率，至少 0.01 dB/sample），這樣第 14 章的 DAW 自動化 range 也不會有 click。
 - `updateTimes()` 把 attack / release 換算成 dB/sample 的斜率（2.4.2 節的 $`\Delta_a`$），hold 換算成 sample 數。attack 小於 1 sample 時斜率設成極大值（等於瞬間開門）；|range| 小於 1 dB 時斜率以 1 dB 計算，避免 range = 0 時斜率為 0、正在 Attack 的 gain 永遠爬不到 0 dB。
 - `isOpen()` 在 Attack / Open / Hold 時為 true；Release 期間視為「正在關」。`getState()` 給除錯與教學用。狀態存在 `std::atomic<GateState>`（relaxed），`nextGain()` 開頭讀一次、結尾寫一次，所以 UI thread 也可以安全地呼叫這兩個函式來畫「門開著」的燈號。
 - `process(main, sidechain)`：sidechain 的 channel 數可以和 main 不同（例如 mono kick 控制 stereo pad），sample 數以兩者較小者為準。

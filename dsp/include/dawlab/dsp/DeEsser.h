@@ -115,11 +115,11 @@ public:
         thresholdDb_ = db;
         setSmoothedTarget(thresholdSmoothed_, thresholdDb_);
     }
-    // Maximum reduction (positive value, dB); either sign is treated as |db|
+    // Maximum reduction (positive value, dB); either sign is treated as |db|, capped at 100 dB (acceptRangeDb)
     void setRangeDb(float db) noexcept {
-        if (!acceptParameter(db, ParameterUnit::Decibels))
+        if (!acceptRangeDb(db))
             return;
-        rangeDb_ = std::abs(db);
+        rangeDb_ = db;
         setSmoothedTarget(rangeSmoothed_, rangeDb_);
     }
     void setSplitBand(bool enabled) noexcept { splitBand_ = enabled; }

@@ -130,11 +130,11 @@ public:
         setSmoothedTarget(kneeSmoothed_, kneeDb_);
     }
     // Lower limit of the gain (dB). By convention the contract uses a negative value (for example -60); either sign is
-    // treated as "attenuate by at most |db| dB".
+    // treated as "attenuate by at most |db| dB", capped at 100 dB = silence (acceptRangeDb in DspMath.h).
     void setRangeDb(float db) noexcept {
-        if (!acceptParameter(db, ParameterUnit::Decibels))
+        if (!acceptRangeDb(db))
             return;
-        rangeDb_ = -std::abs(db);
+        rangeDb_ = -db;
         setSmoothedTarget(rangeSmoothed_, rangeDb_);
     }
     void setAttackMs(float ms) noexcept {

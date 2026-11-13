@@ -287,7 +287,7 @@ The gain computer uses the most intuitive **∞:1 with an upper limit of range**
 \text{GR} = \mathrm{clamp}(L_\text{det} - T,\ 0,\ \text{range})
 ```
 
-Do not set the range (`setRangeDb`, a positive value) too large: if sibilance is over-compressed, the voice sounds as if it has a lisp. 6-10 dB is usually enough.
+Do not set the range (`setRangeDb`, a positive value) too large: if sibilance is over-compressed, the voice sounds as if it has a lisp. 6-10 dB is usually enough. (Like the gate's and the expander's, the range is capped at 100 dB = silence.)
 
 #### 2.5.3 Wideband vs split-band
 
@@ -450,7 +450,7 @@ Threshold, ratio, knee, and range all appear directly in the gain formula $`g = 
 `enum class GateState { Closed, Attack, Open, Hold, Release }` and `gateStateName()` (for printing the timeline). `nextGain()` is the `switch` of the state machine in section 2.4.2. Some implementation points:
 
 - The detector is fixed in peak mode with attack `Gate::kDetectorAttackMs` = 0.1 ms (it has to catch transients) and a default release of 20 ms, changeable through `setDetectorReleaseMs()`. The detector's release and the gate's release are two different things: the former determines the size of the envelope ripple (section 2.4.1, which affects how much hysteresis to use), the latter the fade time at which the gate closes.
-- `setRangeDb()` is sign-proof: it always treats the value as "attenuate by |db| dB". Changing the range while the gate is closed does not make the gain jump: in the Closed state, every sample moves the gain one step toward the new range (upward with the attack slope, downward with the release slope, at least 0.01 dB/sample), so range automation in the Chapter 14 DAW is also click-free.
+- `setRangeDb()` is sign-proof: it always treats the value as "attenuate by |db| dB". It is capped at 100 dB, where `dbToGain` already gives silence (−100 dB = `kMinusInfinityDb`); a larger range cannot be heard, but it made the attack / release steps (dB per sample) huge, so −1e30 opened the gate in a single step and −inf made the step inf − inf = NaN, which kept the gate shut for good. `Gate`, `Expander` and `DeEsser` share this rule as `acceptRangeDb()` in `DspMath.h`. Changing the range while the gate is closed does not make the gain jump: in the Closed state, every sample moves the gain one step toward the new range (upward with the attack slope, downward with the release slope, at least 0.01 dB/sample), so range automation in the Chapter 14 DAW is also click-free.
 - `updateTimes()` converts attack / release into slopes in dB/sample (the $`\Delta_a`$ of section 2.4.2) and hold into a sample count. When attack is shorter than 1 sample the slope is set to a huge value (the gate opens instantly); when |range| is below 1 dB the slope is computed as if it were 1 dB, to avoid a zero slope at range = 0 that would leave a gain in Attack never climbing to 0 dB.
 - `isOpen()` is true in Attack / Open / Hold; during Release it counts as "closing". `getState()` is for debugging and teaching. The state is stored in a `std::atomic<GateState>` (relaxed), read once at the start of `nextGain()` and written once at the end, so the UI thread can safely call these two functions to draw a "gate open" indicator.
 - `process(main, sidechain)`: the sidechain may have a different channel count from main (for example a mono kick controlling a stereo pad); the sample count is the smaller of the two.

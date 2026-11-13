@@ -106,14 +106,15 @@ public:
         closeDb_ = thresholdDb_ - hysteresisDb_;
     }
     // Attenuation applied while closed. The contract specifies a negative value (for example -80); as a safeguard,
-    // either sign is treated as "attenuate by |db| dB".
-    // Below kMinusInfinityDb (-100 dB) dbToGain returns 0 directly, which means complete silence.
+    // either sign is treated as "attenuate by |db| dB". It is capped at 100 dB (acceptRangeDb in DspMath.h): at
+    // kMinusInfinityDb (-100 dB) dbToGain already returns 0, complete silence, and a larger range would only make
+    // the attack / release steps (dB per sample) huge - an infinite one made them inf - inf = NaN.
     // Changing the range while the gate is closed does not jump instantly: the Closed state of nextGain() ramps
     // the gain to the new range.
     void setRangeDb(float db) noexcept {
-        if (!acceptParameter(db, ParameterUnit::Decibels))
+        if (!acceptRangeDb(db))
             return;
-        rangeDb_ = -std::abs(db);
+        rangeDb_ = -db;
         rangeGain_ = dbToGain(rangeDb_);
         updateTimes();
     }

@@ -10,6 +10,7 @@
 //     the floor kMinusInfinityDb (acceptParameter in DspMath.h). One row per public float / double setter, in a
 //     configuration where a valid value changes the output. A stateless function maps a non-finite argument to a
 //     documented default (finiteOr).
+//   - the range of Gate, Expander and DeEsser is capped at 100 dB (acceptRangeDb): a larger one acts exactly like it
 // The Limiter is the one exception to the first rule on purpose: before prepare() it clears the block (and asserts in
 // a Debug build), because a limiter that cannot look ahead cannot keep its ceiling.
 // Every check is table-driven: one row per class (and per variant that takes a different path). The objects live on
@@ -835,6 +836,88 @@ void checkStatelessDefaults() {
     std::printf("non-finite argument of a stateless function: %d failures\n", failures);
 }
 
+// ---- Rule: a range is at most 100 dB --------------------------------------------------------------------------------
+
+// The range of Gate, Expander and DeEsser (how far they attenuate) is capped at 100 dB (-kMinusInfinityDb), where
+// dbToGain already gives silence. A larger range cannot be heard; an infinite one made the gate's attack step
+// inf - inf = NaN. So any range beyond 100 dB (either sign, finite or -inf) acts exactly like 100 dB.
+// Fx is set up, then gets setRange(fx, big) before the first block; its output must be bit-identical to a twin set
+// to the cap, and getRange(fx) must read the cap (-100 for Gate and Expander, +100 for DeEsser).
+template <typename Fx, typename Setup, typename SetRange, typename GetRange>
+void checkRangeCapped(const char* name, Setup setup, SetRange setRange, GetRange getRange, float cap) {
+    const auto noSetter = [](Fx&, float) {};
+    const auto render = [&](float range) {
+        return renderWithSetter<Fx>(
+            [&](Fx& fx) {
+                setup(fx);
+                setRange(fx, range);
+            },
+            noSetter, false, false, 0.0f);
+    };
+    const std::vector<float> capped = render(cap);
+    for (float big : {-1.0e30f, -150.0f, 1.0e30f, -kInf}) {
+        const auto fx = std::make_unique<Fx>();
+        prepareFx(*fx);
+        setRange(*fx, big);
+        const float read = getRange(*fx);
+        const bool same = sameBits(capped, render(big));
+        if (read != cap || !same)
+            std::printf("  %-9s setRangeDb(%g): range reads %g (want %g), output %s the twin set to %g\n", name,
+                        static_cast<double>(big), static_cast<double>(read), static_cast<double>(cap),
+                        same ? "equals" : "DIFFERS from", static_cast<double>(cap));
+        DAWLAB_CHECK(read == cap);
+        DAWLAB_CHECK(same);
+    }
+}
+
+void checkRangeRule() {
+    using SGate = Stepped<Gate>;
+    using SExp = Stepped<Expander>;
+    checkRangeCapped<SGate>(
+        "Gate", [](SGate& g) { g.fx.setThresholdDb(-24.0f); }, [](SGate& g, float v) { g.fx.setRangeDb(v); },
+        [](SGate& g) { return g.fx.getRangeDb(); }, kMinusInfinityDb);
+    checkRangeCapped<SExp>(
+        "Expander",
+        [](SExp& e) {
+            e.fx.setThresholdDb(-20.0f);
+            e.fx.setReleaseMs(20.0f);
+        },
+        [](SExp& e, float v) { e.fx.setRangeDb(v); }, [](SExp& e) { return e.fx.getRangeDb(); }, kMinusInfinityDb);
+    // The detector sees the 440 Hz sine about 24 dB down; a threshold of -200 dBFS asks for more than 100 dB
+    checkRangeCapped<DeEsser>(
+        "DeEsser", [](DeEsser& d) { d.setThresholdDb(-200.0f); }, [](DeEsser& d, float v) { d.setRangeDb(v); },
+        [](DeEsser& d) { return d.getRangeDb(); }, -kMinusInfinityDb);
+
+    // The review's case: a gate whose range is -inf (set before or after prepare) still opens on a loud signal, and its
+    // gain reduction reads a finite value
+    for (bool beforePrepare : {true, false}) {
+        const auto gate = std::make_unique<Gate>();
+        if (beforePrepare)
+            gate->setRangeDb(-kInf);
+        gate->prepare(kSampleRate, kBlock, 2);
+        if (!beforePrepare)
+            gate->setRangeDb(-kInf);
+        AudioBuffer buf(2, kBlock);
+        double sum = 0.0;
+        for (int blk = 0; blk < 120; ++blk) {
+            fillSine(buf, static_cast<long>(blk) * kBlock);
+            if (blk < 20)
+                buf.clear();
+            gate->process(AudioBlock(buf));
+            if (blk >= 70)
+                for (int i = 0; i < kBlock; ++i)
+                    sum += static_cast<double>(buf.getSample(0, i)) * buf.getSample(0, i);
+        }
+        const double rms = std::sqrt(sum / (50.0 * kBlock));
+        const bool opens = rms >= 0.9 * 0.25 / std::sqrt(2.0) && std::isfinite(gate->getGainReductionDb());
+        if (!opens)
+            std::printf("  Gate setRangeDb(-inf) %s prepare(): rms %g, gain reduction %g\n",
+                        beforePrepare ? "before" : "after", rms, static_cast<double>(gate->getGainReductionDb()));
+        DAWLAB_CHECK(opens);
+    }
+    std::printf("range beyond 100 dB: checked for Gate, Expander, DeEsser\n");
+}
+
 } // namespace
 
 int main() {
@@ -872,6 +955,7 @@ int main() {
     checkParameterRuleCh06to08();
     checkParameterRuleCh09to12();
     checkStatelessDefaults();
+    checkRangeRule();
 
     return dawlab::test::summary("dsp");
 }

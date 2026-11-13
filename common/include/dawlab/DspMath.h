@@ -45,6 +45,19 @@ inline bool acceptParameter(T& value, ParameterUnit unit = ParameterUnit::Plain)
     return false;
 }
 
+// The rule for a range in dB (how far a gate, expander or de-esser attenuates), on top of acceptParameter's: the
+// magnitude counts, either sign, and it is capped at 100 dB (-kMinusInfinityDb), where dbToGain already gives silence.
+// A larger range cannot be heard, but an infinite one (or one of 1e30 dB) broke the gate's attack ramp. Turns db
+// into that magnitude in [0, 100] and returns true, or returns false when the setter must ignore the value:
+//     if (!acceptRangeDb(db)) return;
+//     rangeDb_ = -db;
+inline bool acceptRangeDb(float& db) noexcept {
+    if (!acceptParameter(db, ParameterUnit::Decibels))
+        return false;
+    db = std::min(std::abs(db), -kMinusInfinityDb);
+    return true;
+}
+
 // dB -> linear gain: gain = 10^(dB/20)
 inline float dbToGain(float db, float minusInfinityDb = kMinusInfinityDb) noexcept {
     return db > minusInfinityDb ? std::pow(10.0f, db * 0.05f) : 0.0f;
