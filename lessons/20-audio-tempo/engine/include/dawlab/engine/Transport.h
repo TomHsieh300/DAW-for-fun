@@ -44,19 +44,19 @@
 //
 // Threads and the map
 //   setTempo() / setTempoMap() and the conversions are for ONE writer, the UI thread: it keeps its own copy of
-//   the map (getTempoMap()). The audio thread gets it through a TRIPLE BUFFER: three maps, each owned by one side
-//   at a time. The UI writes its back buffer and swaps it with the middle one (marked new); the audio thread, at
-//   the start of a block, swaps its front buffer with the middle one when that is new. One atomic exchange each,
-//   no copy on the audio thread, no allocation, and never a map half written.
+//   the map (getTempoMap()). The audio thread gets it through a TRIPLE BUFFER (TripleBuffer.h): three maps, each
+//   owned by one side at a time. The UI writes its back buffer and swaps it with the middle one (marked new); the
+//   audio thread, at the start of a block, swaps its front buffer with the middle one when that is new. One atomic
+//   exchange each, no copy on the audio thread, no allocation, and never a map half written.
 
 #include <algorithm>
-#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <memory>
 
 #include "TempoMap.h"
+#include "TripleBuffer.h"
 
 namespace dawlab::engine {
 
@@ -99,8 +99,7 @@ public:
     double getTempo() const noexcept { return maps_->ui.point(0).bpm; }
     void setTempoMap(const TempoMap& map) noexcept {
         maps_->ui = map;
-        maps_->buffers[static_cast<size_t>(back_)] = map;
-        back_ = middle_.exchange(back_ | kNewMap, std::memory_order_acq_rel) & kIndex;
+        maps_->audio.write(map);
     }
     const TempoMap& getTempoMap() const noexcept { return maps_->ui; }
 
@@ -207,7 +206,7 @@ public:
 
     // ---- audio thread -----------------------------------------------------------------------
     // The map the audio thread plays (taken at the start of its last advance()).
-    const TempoMap& getAudioTempoMap() const noexcept { return maps_->buffers[static_cast<size_t>(front_)]; }
+    const TempoMap& getAudioTempoMap() const noexcept { return maps_->audio.front(); }
 
     // Takes a new map (keeping the playhead's musical place) and a pending seek. If playing, fills
     // `segments` (capacity kMaxSegmentsPerBlock) for up to numSamples samples, advances the position and
@@ -282,13 +281,11 @@ private:
     // Audio thread: a map the UI published since the last block. The playhead keeps its musical place; the ticks
     // go on (or a pending jump stays pending).
     void takeNewMap() noexcept {
-        if ((middle_.load(std::memory_order_acquire) & kNewMap) == 0)
+        if (!maps_->audio.hasNew())
             return;
-        const TempoMap& old = maps_->buffers[static_cast<size_t>(front_)];
-        const double tick = old.tickAtSample(static_cast<double>(position_.load(std::memory_order_relaxed)), sampleRate_);
-        front_ = middle_.exchange(front_, std::memory_order_acq_rel) & kIndex;
-        const TempoMap& map = maps_->buffers[static_cast<size_t>(front_)];
-        position_.store(std::llround(map.secondsAt(tick) * sampleRate_), std::memory_order_relaxed);
+        const double tick = getAudioTempoMap().tickAtSample(static_cast<double>(position_.load(std::memory_order_relaxed)), sampleRate_);
+        maps_->audio.take();
+        position_.store(std::llround(getAudioTempoMap().secondsAt(tick) * sampleRate_), std::memory_order_relaxed);
     }
 
     double sampleRate_ = 48000.0;
@@ -302,18 +299,13 @@ private:
     std::atomic<int64_t> loopStart_{0};
     std::atomic<int64_t> loopEnd_{0};
 
-    // The map: the UI's own copy, and the triple buffer - the UI's back buffer, the middle one (with kNewMap when
-    // the UI put a map there that the audio thread has not taken), the audio thread's front buffer.
-    // On the heap: 4 maps of 8 KB would make an Engine too large for a test's stack.
-    static constexpr int kIndex = 3, kNewMap = 4;
+    // The map: the UI's own copy, and the triple buffer that hands it to the audio thread (the UI writes, the
+    // audio thread takes). On the heap: 4 maps of 8 KB would make an Engine too large for a test's stack.
     struct Maps {
         TempoMap ui;
-        std::array<TempoMap, 3> buffers{};
+        TripleBuffer<TempoMap> audio;
     };
     std::unique_ptr<Maps> maps_ = std::make_unique<Maps>();
-    int back_ = 0;                // UI thread
-    std::atomic<int> middle_{1};  // either thread, exchanged
-    int front_ = 2;               // audio thread
 
     // Audio thread: the ticks.
     bool jump_ = true;

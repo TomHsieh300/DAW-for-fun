@@ -39,6 +39,9 @@ being written, and nothing is copied on the audio thread. The UI keeps a fourth 
 and beats, the grid). The four maps live on the heap: 32 KB more would not fit an Engine on a test's stack - which
 the first run of the tests found, as chapter 18's did for its instruments.
 
+The three maps and the exchange are a small class of their own, `TripleBuffer<T>` in `TripleBuffer.h`: `write()`
+for the one writer, `take()` and `front()` for the one reader. It works for any value that must cross whole.
+
 ### The transport plays Step 2
 
 `Transport::advance()` gives every `TimelineSegment` its ticks, `tickFrom`, `tickTo` and `ticksJump`, as Step 2's
