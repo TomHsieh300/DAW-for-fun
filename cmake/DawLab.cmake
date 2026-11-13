@@ -8,6 +8,19 @@
 # Every target links dawlab::dsp (which includes dawlab::common). Tests run with the build folder as
 # their working directory, so the WAV files a program writes end up under build/dawlab_output/.
 
+# Every program that runs as a test has a time limit: DAWLAB_TIMEOUT seconds, or DAWLAB_LONG_TIMEOUT for the
+# chapters' engine tests. Under a sanitizer everything runs several times slower - ThreadSanitizer some 5 to 15
+# times - so the limits grow with it, here, for every chapter at once.
+if(DAWLAB_SANITIZE MATCHES "thread")
+    set(DAWLAB_TIMEOUT_SCALE 10)
+elseif(DAWLAB_SANITIZE)
+    set(DAWLAB_TIMEOUT_SCALE 3)
+else()
+    set(DAWLAB_TIMEOUT_SCALE 1)
+endif()
+math(EXPR DAWLAB_TIMEOUT "120 * ${DAWLAB_TIMEOUT_SCALE}")
+math(EXPR DAWLAB_LONG_TIMEOUT "300 * ${DAWLAB_TIMEOUT_SCALE}")
+
 function(dawlab_set_warnings target)
     if(MSVC)
         target_compile_options(${target} PRIVATE /W4 /permissive-)
@@ -25,7 +38,7 @@ function(_dawlab_add_program target label)
         set_tests_properties(${target} PROPERTIES
             LABELS "${label}"
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-            TIMEOUT 120)
+            TIMEOUT ${DAWLAB_TIMEOUT})
     endif()
 endfunction()
 

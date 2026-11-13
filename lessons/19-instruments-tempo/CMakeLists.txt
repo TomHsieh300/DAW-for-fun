@@ -36,7 +36,7 @@ function(l19_add_test target)
     set_tests_properties(${target} PROPERTIES
         LABELS "test"
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-        TIMEOUT 300)
+        TIMEOUT ${DAWLAB_LONG_TIMEOUT})
 endfunction()
 
 l19_add_test(l19_test_timeline          tests/test_timeline.cpp)
@@ -92,7 +92,7 @@ function(l19_add_juce_program target label)
         set_tests_properties(${target} PROPERTIES
             LABELS "${label}"
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-            TIMEOUT 300)
+            TIMEOUT ${DAWLAB_LONG_TIMEOUT})
     endif()
 endfunction()
 

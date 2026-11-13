@@ -41,7 +41,7 @@ function(l13_add_juce_program target label source)
         set_tests_properties(${target} PROPERTIES
             LABELS "${label}"
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-            TIMEOUT 300)
+            TIMEOUT ${DAWLAB_LONG_TIMEOUT})
     endif()
 endfunction()
 

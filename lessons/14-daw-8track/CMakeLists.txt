@@ -20,7 +20,7 @@ function(l14_add_test target)
     set_tests_properties(${target} PROPERTIES
         LABELS "test"
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-        TIMEOUT 300)
+        TIMEOUT ${DAWLAB_LONG_TIMEOUT})
 endfunction()
 
 # ---- examples (ctest label: example) ----------------------------------------------------------
@@ -92,7 +92,7 @@ function(l14_add_juce_program target label)
         set_tests_properties(${target} PROPERTIES
             LABELS "${label}"
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-            TIMEOUT 300)
+            TIMEOUT ${DAWLAB_LONG_TIMEOUT})
     endif()
 endfunction()
 
