@@ -57,7 +57,7 @@ clip 1 0 192000 "Demo_media/01235f213fcc259d.wav" 0 0 0 linear 0 0 "drums"
 - 參照別的東西的行（send、insert、參數、clip）會在整個檔案讀完後才檢查，所以順序沒有關係。
 - 格式 1 和 2（Step 4 的檔案）仍然能開啟；它們沒寫的東西保持預設值。
 
-文字沿用 Step 4 的規則：classic locale、9 位有效數字的 float、每個錯誤都附上行號。它也拒絕符號正確、但 DawLab 從來不會寫出的數字：8000 到 768000 Hz 以外的 sample rate、超過 2^40 個 sample（48 kHz 下大約 260 天）的位置或長度、在檔案的 sample rate 下長於 60 秒的 fade。Fade 是一個 `int`，engine 會對它加 1，換 rate 時會被縮放；以秒為單位，這個上限在每個 rate 下都成立（768 kHz 下是 46,080,000 個 sample）。這些上限放在 `ProjectLimits.h`，第 15 到 20 章共用同一個檔案。
+文字沿用 Step 4 的規則：classic locale、9 位有效數字的 float（double，也就是 sample rate 和 tempo，用 17 位：像 117.64705882352941 這種來自 MIDI 檔的 tempo 每一位都需要）、每個錯誤都附上行號。它也拒絕符號正確、但 DawLab 從來不會寫出的數字：8000 到 768000 Hz 以外的 sample rate、超過 2^40 個 sample（48 kHz 下大約 260 天）的位置或長度、在檔案的 sample rate 下長於 60 秒的 fade。Fade 是一個 `int`，engine 會對它加 1，換 rate 時會被縮放；以秒為單位，這個上限在每個 rate 下都成立（768 kHz 下是 46,080,000 個 sample）。這些上限放在 `ProjectLimits.h`，第 15 到 20 章共用同一個檔案。
 
 ### 音訊：放在文字旁邊，用內容命名
 

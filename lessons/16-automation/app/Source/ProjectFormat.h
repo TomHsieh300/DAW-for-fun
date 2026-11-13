@@ -10,7 +10,7 @@
 // a Session into a ProjectState and back, and does the files (the text, the audio, the plugins).
 //
 // The format (UTF-8 text, one item per line, '#' starts a comment outside quotes; numbers in the
-// classic locale; floats with 9 digits, so every float reads back exactly):
+// classic locale; floats with 9 digits and doubles with 17, so every number reads back exactly):
 //
 //   DawLabProject 4                                header: the format version
 //   sampleRate 48000                               the rate of every sample position below

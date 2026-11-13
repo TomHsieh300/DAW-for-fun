@@ -85,7 +85,7 @@ marker 0 11520
 marker 192000 19200
 ```
 
-（在 120 BPM 做的兩小節 audio，放在第 4 小節，歌是 90 BPM。）起點模式是 `follow start <tick>`；其他模式是 `follow varispeed|stretch <source 裡的長度>` 加上至少兩行 `marker <source> <tick>`。Tick 和 source 位置以 17 位數字寫出：它們是小數，讀回來必須是同一個數。`clip` 行的 `start` 和 `length` 是存檔當時 clip 所在的位置；開檔時會依檔案的 tempo map 重新擺放。第 1 到 7 版的檔案沒有這些行，照舊開啟。
+（在 120 BPM 做的兩小節 audio，放在第 4 小節，歌是 90 BPM。）起點模式是 `follow start <tick>`；其他模式是 `follow varispeed|stretch <source 裡的長度>` 加上至少兩行 `marker <source> <tick>`。Tick 和 source 位置以 17 位數字寫出，檔案裡每個 double 都是如此（sample rate 和 tempo 也是）：它們是小數，讀回來必須是同一個數。`clip` 行的 `start` 和 `length` 是存檔當時 clip 所在的位置；開檔時會依檔案的 tempo map 重新擺放。第 1 到 7 版的檔案沒有這些行，照舊開啟。
 
 第 9 版在切出來的片段的 marker 之後多一行：`cut <head> <tail>`，表示它頭尾那兩個 source sample 中不播放的比例，各自從 0 到 1（不含 1）。沒有被切過的 clip 沒有這一行，所以沒有切過的專案在第 20 章照舊能讀；第 19 章則會把第 9 版當成較新的 DawLab 做的檔案而拒絕。
 

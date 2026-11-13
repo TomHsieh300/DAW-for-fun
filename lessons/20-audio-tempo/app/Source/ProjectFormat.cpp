@@ -315,11 +315,11 @@ namespace {
 
 void writeHeader(std::ostream& out, const ProjectState& p) {
     out << "DawLabProject " << kFormatVersion << '\n';
+    const auto digits = out.precision(std::numeric_limits<double>::max_digits10); // the rate and the tempos are doubles
     out << "sampleRate " << p.sampleRate << '\n';
     out << "nextTrackId " << p.nextTrackId << '\n';
     out << "tempo " << p.tempo << ' ' << p.beatsPerBar << ' ' << p.beatUnit << '\n';
     out << "loop " << p.loopStart << ' ' << p.loopEnd << ' ' << p.loopEnabled << (p.loopInTicks ? " ticks" : "") << '\n';
-    const auto digits = out.precision(std::numeric_limits<double>::max_digits10); // a tempo is a double
     for (const TempoPointState& t : p.tempoPoints)
         out << "tempopoint " << t.tick << ' ' << t.bpm << ' ' << t.ramp << '\n';
     out.precision(digits);

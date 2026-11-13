@@ -269,12 +269,12 @@ std::string writeProject(const ProjectState& p) {
     out.imbue(std::locale::classic()); // "-6.5" and "48000" in every language, no digit grouping
     out.precision(std::numeric_limits<float>::max_digits10); // 9 digits: every float reads back exactly
     out << "DawLabProject " << kFormatVersion << '\n';
-    out << "sampleRate " << p.sampleRate << '\n';
-    out << "nextTrackId " << p.nextTrackId << '\n';
-    out << "tempo " << p.tempo << ' ' << p.beatsPerBar << ' ' << p.beatUnit << '\n';
-    out << "loop " << p.loopStart << ' ' << p.loopEnd << ' ' << p.loopEnabled << (p.loopInTicks ? " ticks" : "") << '\n';
     {
-        const auto digits = out.precision(std::numeric_limits<double>::max_digits10); // a tempo is a double
+        const auto digits = out.precision(std::numeric_limits<double>::max_digits10); // the rate and the tempos are doubles
+        out << "sampleRate " << p.sampleRate << '\n';
+        out << "nextTrackId " << p.nextTrackId << '\n';
+        out << "tempo " << p.tempo << ' ' << p.beatsPerBar << ' ' << p.beatUnit << '\n';
+        out << "loop " << p.loopStart << ' ' << p.loopEnd << ' ' << p.loopEnabled << (p.loopInTicks ? " ticks" : "") << '\n';
         for (const TempoPointState& t : p.tempoPoints)
             out << "tempopoint " << t.tick << ' ' << t.bpm << ' ' << t.ramp << '\n';
         out.precision(digits);

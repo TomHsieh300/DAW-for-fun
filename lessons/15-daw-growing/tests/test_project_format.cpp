@@ -269,6 +269,22 @@ void testRanges() {
     std::printf("ranges: a sample rate of 8000 to 768000 Hz, every position and length at most 2^40, a fade at most 60 s\n");
 }
 
+// Every double in the file is written with 17 digits, so that it reads back as the same number: a tempo from a
+// MIDI file (60e6 / 510000 us a quarter) needs more than a float's 9, and so may a sample rate.
+void testTempoDigits() {
+    ProjectState p;
+    p.tempo = 60000000.0 / 510000.0; // 117.64705882352941...
+    p.sampleRate = 44100.000123456789;
+    const std::string text = writeProject(p);
+    const ReadResult back = readProject(text);
+    std::printf("tempo %.17g written as \"%s\", read back %s\n", p.tempo,
+                text.substr(text.find("tempo "), text.find('\n', text.find("tempo ")) - text.find("tempo ")).c_str(),
+                back.ok && back.project.tempo == p.tempo ? "exactly" : "NOT exactly");
+    DAWLAB_CHECK(text.find("tempo 117.64705882352941 4 4\n") != std::string::npos);
+    DAWLAB_CHECK(back.ok && back.project.tempo == p.tempo && back.project.sampleRate == p.sampleRate && back.project == p);
+    DAWLAB_CHECK(writeProject(back.project) == text);
+}
+
 int main() {
     std::printf("l15_test_project_format: the application's project file, format %d\n", kFormatVersion);
     testRoundTrip();
@@ -278,5 +294,6 @@ int main() {
     testTextVariants();
     testLocale();
     testRanges();
+    testTempoDigits();
     return dawlab::test::summary("l15_test_project_format");
 }

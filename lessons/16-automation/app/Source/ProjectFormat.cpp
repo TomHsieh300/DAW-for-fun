@@ -247,9 +247,13 @@ std::string writeProject(const ProjectState& p) {
     out.imbue(std::locale::classic()); // "-6.5" and "48000" in every language, no digit grouping
     out.precision(std::numeric_limits<float>::max_digits10); // 9 digits: every float reads back exactly
     out << "DawLabProject " << kFormatVersion << '\n';
-    out << "sampleRate " << p.sampleRate << '\n';
-    out << "nextTrackId " << p.nextTrackId << '\n';
-    out << "tempo " << p.tempo << ' ' << p.beatsPerBar << ' ' << p.beatUnit << '\n';
+    {
+        const auto digits = out.precision(std::numeric_limits<double>::max_digits10); // doubles: 17 digits
+        out << "sampleRate " << p.sampleRate << '\n';
+        out << "nextTrackId " << p.nextTrackId << '\n';
+        out << "tempo " << p.tempo << ' ' << p.beatsPerBar << ' ' << p.beatUnit << '\n';
+        out.precision(digits);
+    }
     out << "loop " << p.loopStart << ' ' << p.loopEnd << ' ' << p.loopEnabled << '\n';
     for (const TrackState& t : p.tracks)
         out << "track " << t.id.value << ' ' << quote(t.strip.name) << ' ' << t.strip.gainDb << ' ' << t.strip.pan << ' '

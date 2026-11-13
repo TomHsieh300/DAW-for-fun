@@ -116,8 +116,9 @@ marker 192000 19200
 ```
 
 (Two bars of audio made at 120 BPM, on bar 4, in a song at 90 BPM.) `follow start <tick>` for a start; `follow varispeed|stretch <length in the source>` and at least two `marker
-<source> <tick>` lines for the others. Ticks and source positions are written with 17 digits: they are
-fractions, and they must read back as the same numbers. The `start` and `length` of the `clip` line are where the
+<source> <tick>` lines for the others. Ticks and source positions are written with 17 digits, as every double
+in the file is (the sample rate and the tempos too): they are fractions, and they must read back as the same
+numbers. The `start` and `length` of the `clip` line are where the
 clip was when the file was saved; on opening it is placed again under the file's tempo map. Files of formats 1
 to 7 have no such lines and open as before.
 
