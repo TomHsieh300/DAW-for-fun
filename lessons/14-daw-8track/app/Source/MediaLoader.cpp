@@ -141,9 +141,16 @@ bool MediaLoader::readChecked(juce::AudioFormatReader& reader, bool stereo, Audi
         return false;
     }
     const juce::int64 length = reader.lengthInSamples;
-    if (length <= 0 || reader.numChannels == 0 || static_cast<double>(length) > MediaLimits::kMaxSeconds * rate ||
-        length > MediaLimits::kMaxFrames) {
-        error = "The file is empty or longer than 20 minutes";
+    if (length <= 0 || reader.numChannels == 0) {
+        error = "The file is empty";
+        return false;
+    }
+    if (static_cast<double>(length) > MediaLimits::kMaxSeconds * rate) {
+        error = "The file is longer than 20 minutes";
+        return false;
+    }
+    if (length > MediaLimits::kMaxFrames) { // within 20 minutes only at a rate far above 192 kHz
+        error = "The file holds more frames than 20 minutes at 192 kHz";
         return false;
     }
     // An uncompressed file holds exactly the samples it declares; when they are not all there, it was cut off (the
