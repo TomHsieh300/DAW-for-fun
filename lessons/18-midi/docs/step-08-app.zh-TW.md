@@ -43,7 +43,7 @@ note 1 0 480 36 100 0
 cc 1 0 64 127 0
 ```
 
-全部都以 tick 表示。以另一個取樣率開啟的專案會轉換它的音訊位置（第 14 章），而音符不動：它們跟著 tempo，而不是跟著 sample。`tests/test_project_format.cpp` 會讀寫它，並拒絕每一行超出範圍的內容。
+全部都以 tick 表示。以另一個取樣率開啟的專案會轉換它的音訊位置（第 14 章），而音符不動：它們跟著 tempo，而不是跟著 sample。`tests/test_project_format.cpp` 會讀寫它，並拒絕每一行超出範圍的內容，超過 2^40 的 tick 也一樣。
 
 ### Arrangement 和 piano roll
 

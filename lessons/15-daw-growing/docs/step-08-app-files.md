@@ -67,7 +67,10 @@ clip 1 0 192000 "Demo_media/01235f213fcc259d.wav" 0 0 0 linear 0 0 "drums"
 - Formats 1 and 2 (Step 4's files) still open; everything they do not say keeps its default.
 
 The text keeps Step 4's rules: the classic locale, floats with 9 significant digits, every
-error with its line number.
+error with its line number. And it refuses numbers that pass for their sign but that DawLab
+never writes: a sample rate outside 8000 to 768000 Hz, a position or a length beyond 2^40
+samples (some 260 days at 48 kHz). These limits are in `ProjectLimits.h`, one file that
+chapters 15 to 20 share.
 
 ### The audio: next to the text, named by its content
 

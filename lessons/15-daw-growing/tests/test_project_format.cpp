@@ -243,6 +243,26 @@ void testLocale() {
 
 } // namespace
 
+// Numbers that pass for their sign but that DawLab never writes: a sample rate no device has (1e-9 made the
+// conversion of the clips cast an enormous size), and positions or lengths beyond 2^40 samples or ticks (260 days at
+// 48 kHz), where `start + length` would overflow. The file is refused where it is read (ProjectLimits.h).
+void testRanges() {
+    const std::string version = "DawLabProject " + std::to_string(kFormatVersion) + "\n";
+    const auto opens = [&version](const std::string& rate) { return readProject(version + "sampleRate " + rate + "\n").ok; };
+    DAWLAB_CHECK(opens("8000") && opens("44100") && opens("192000") && opens("768000"));
+    DAWLAB_CHECK(!opens("1e-9") && !opens("7999") && !opens("768001") && !opens("1e9"));
+
+    const std::string head = version + "sampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\n";
+    const auto reads = [&head](const std::string& lines) { return readProject(head + lines + "\n").ok; };
+    const std::string edge = "1099511627776", past = "1099511627777", huge = "9223372036854775807";
+    DAWLAB_CHECK(reads("clip 1 " + edge + " 100 \"a.wav\""));                        // 2^40: the last that is taken
+    DAWLAB_CHECK(!reads("clip 1 " + past + " 100 \"a.wav\"") && !reads("clip 1 " + huge + " " + huge + " \"a.wav\""));
+    DAWLAB_CHECK(!reads("clip 1 0 " + past + " \"a.wav\""));                         // a length
+    DAWLAB_CHECK(!reads("clip 1 0 100 \"a.wav\" " + past + " 0 0 linear 0 0 \"x\"")); // a source offset
+    DAWLAB_CHECK(!reads("loop 0 " + past + " 1") && reads("loop 0 " + edge + " 1"));
+    std::printf("ranges: a sample rate of 8000 to 768000 Hz, every position and length at most 2^40\n");
+}
+
 int main() {
     std::printf("l15_test_project_format: the application's project file, format %d\n", kFormatVersion);
     testRoundTrip();
@@ -251,5 +271,6 @@ int main() {
     testErrors();
     testTextVariants();
     testLocale();
+    testRanges();
     return dawlab::test::summary("l15_test_project_format");
 }

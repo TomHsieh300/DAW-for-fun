@@ -38,7 +38,7 @@ tempopoint 3840 60 1
 tempopoint 7680 180 0
 ```
 
-只有一個點的 map 不寫 `tempopoint`：單一 tempo 的歌，檔案看起來和以前一樣。以小節設定的 loop 會標上 `ticks`。Tempo 以 17 位數字寫出，讀回來才會是同一個數。`tests/test_project_format.cpp` 會讀寫它，並拒絕不是 map 的內容：第一個點不在 0、tick 往回走、tempo 超出範圍、超過 256 個點。
+只有一個點的 map 不寫 `tempopoint`：單一 tempo 的歌，檔案看起來和以前一樣。以小節設定的 loop 會標上 `ticks`。Tempo 以 17 位數字寫出，讀回來才會是同一個數。`tests/test_project_format.cpp` 會讀寫它，並拒絕不是 map 的內容：第一個點不在 0、tick 往回走、tempo 超出範圍、超過 2^40 的 tick、超過 256 個點。
 
 ### Tempo lane
 

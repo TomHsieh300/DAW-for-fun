@@ -1,4 +1,5 @@
 #include "ProjectFormat.h"
+#include "ProjectLimits.h"
 
 #include <algorithm>
 #include <cmath>
@@ -228,16 +229,6 @@ bool parseMode(const std::string& text, engine::AutomationMode& out) noexcept {
         }
     return false;
 }
-
-// The largest position or length a file may give, in samples or ticks: 2^40, some 260 days at 48 kHz. DawLab writes
-// nothing near it, and the sum of two of them (a start and a length) is far from overflowing. And the sample rates
-// that a device has. A file beyond them is refused where it is read: 1e-9 Hz made the conversion of the clips
-// cast an enormous size, and a start of 2^63 - 1 overflowed when its length was added.
-constexpr std::int64_t kMaxPosition = std::int64_t{1} << 40;
-constexpr double kMinSampleRate = 8000.0, kMaxSampleRate = 768000.0;
-
-// A position or a length: from `least` to kMaxPosition.
-inline bool isPosition(std::int64_t value, std::int64_t least = 0) noexcept { return value >= least && value <= kMaxPosition; }
 
 // Chapter 20: what a clip's follow lines may say, checked once, here, where they come in. The session places a
 // clip that follows by its tick or by its markers; numbers that DawLab never writes would put it before the song,
@@ -656,7 +647,7 @@ private:
     std::string readSampleRate() {
         if (haveRate_)
             return "sampleRate given twice";
-        if (tok_.size() != 2 || !parseNumber(tok_[1], p_.sampleRate) || !(p_.sampleRate >= kMinSampleRate && p_.sampleRate <= kMaxSampleRate))
+        if (tok_.size() != 2 || !parseNumber(tok_[1], p_.sampleRate) || !isSampleRate(p_.sampleRate))
             return "sampleRate needs one number, 8000 to 768000";
         haveRate_ = true;
         return "";

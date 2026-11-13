@@ -34,6 +34,7 @@
 19 20 app/Source/PluginInstrument.cpp
 19 20 app/Source/PluginInstrument.h
 15 16 17 18 19 20 app/Source/ProjectIO.h
+15 16 17 18 19 20 app/Source/ProjectLimits.h
 19 20 app/Source/SynthPanel.cpp
 19 20 app/Source/SynthPanel.h
 19 20 app/Source/TempoLane.cpp

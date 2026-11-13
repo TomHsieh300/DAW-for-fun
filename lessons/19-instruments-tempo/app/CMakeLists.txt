@@ -67,6 +67,7 @@ set(L19_APP_SOURCES
     Source/SynthPanel.cpp
     Source/ProjectFormat.h
     Source/ProjectFormat.cpp
+    Source/ProjectLimits.h
     Source/ProjectIO.h
     Source/ProjectIO.cpp
     Source/Session.h

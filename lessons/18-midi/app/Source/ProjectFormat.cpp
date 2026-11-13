@@ -1,4 +1,5 @@
 #include "ProjectFormat.h"
+#include "ProjectLimits.h"
 
 #include <algorithm>
 #include <cmath>
@@ -413,8 +414,8 @@ ReadResult readProject(std::string_view text) {
         if (kw == "sampleRate") {
             if (haveRate)
                 return fail(lineNo, "sampleRate given twice");
-            if (tok.size() != 2 || !parseNumber(tok[1], p.sampleRate) || p.sampleRate <= 0.0)
-                return fail(lineNo, "sampleRate needs one positive number");
+            if (tok.size() != 2 || !parseNumber(tok[1], p.sampleRate) || !isSampleRate(p.sampleRate))
+                return fail(lineNo, "sampleRate needs one number, 8000 to 768000");
             haveRate = true;
         } else if (kw == "nextTrackId") {
             if (tok.size() != 2 || !parseNumber(tok[1], p.nextTrackId))
@@ -428,8 +429,8 @@ ReadResult readProject(std::string_view text) {
                 return fail(lineNo, "the beat unit must be 1, 2, 4, 8, 16 or 32");
         } else if (kw == "loop") {
             if (tok.size() != 4 || !parseNumber(tok[1], p.loopStart) || !parseNumber(tok[2], p.loopEnd) ||
-                !parseFlag(tok[3], p.loopEnabled) || p.loopStart < 0 || p.loopEnd < p.loopStart)
-                return fail(lineNo, "loop needs start >= 0, end >= start (samples) and 0/1");
+                !parseFlag(tok[3], p.loopEnabled) || !isPosition(p.loopStart) || !isPosition(p.loopEnd, p.loopStart))
+                return fail(lineNo, "loop needs start >= 0, end >= start (samples, at most 2^40) and 0/1");
         } else if (kw == "track") {
             const size_t expected = version >= 3 ? 8 : version == 2 ? 5 : 4; // 1: no pan; 3: format, mute, solo
             if (tok.size() != expected)
@@ -524,17 +525,17 @@ ReadResult readProject(std::string_view text) {
             ClipState c;
             if (!parseNumber(tok[1], c.track.value) || !c.track.isValid())
                 return fail(lineNo, "bad track id \"" + tok[1].text + "\"");
-            if (!parseNumber(tok[2], c.start) || c.start < 0)
-                return fail(lineNo, "clip start must be 0 or more samples");
-            if (!parseNumber(tok[3], c.length) || c.length <= 0)
-                return fail(lineNo, "clip length must be at least 1 sample");
+            if (!parseNumber(tok[2], c.start) || !isPosition(c.start))
+                return fail(lineNo, "clip start must be 0 to 2^40 samples");
+            if (!parseNumber(tok[3], c.length) || !isPosition(c.length, 1))
+                return fail(lineNo, "clip length must be 1 to 2^40 samples");
             if (!tok[4].quoted)
                 return fail(lineNo, "the file name must be in quotes");
             c.file = tok[4].text;
             if (full) {
-                if (!parseNumber(tok[5], c.sourceOffset) || c.sourceOffset < 0 || !parseNumber(tok[6], c.fadeIn) ||
+                if (!parseNumber(tok[5], c.sourceOffset) || !isPosition(c.sourceOffset) || !parseNumber(tok[6], c.fadeIn) ||
                     !parseNumber(tok[7], c.fadeOut) || c.fadeIn < 0 || c.fadeOut < 0)
-                    return fail(lineNo, "source offset and fades must be 0 or more samples");
+                    return fail(lineNo, "source offset and fades must be 0 or more samples (the offset at most 2^40)");
                 if (tok[8].quoted || (tok[8].text != "linear" && tok[8].text != "equalPower"))
                     return fail(lineNo, "the fade shape must be linear or equalPower");
                 c.equalPowerFades = tok[8].text == "equalPower";
@@ -553,9 +554,9 @@ ReadResult readProject(std::string_view text) {
             s.file = tok[1].text;
             for (size_t i = 2; i < tok.size(); i += 3) {
                 TakeState t;
-                if (!parseNumber(tok[i], t.start) || t.start < 0 || !parseNumber(tok[i + 1], t.sourceOffset) || t.sourceOffset < 0 ||
-                    !parseNumber(tok[i + 2], t.length) || t.length <= 0)
-                    return fail(lineNo, "a take needs a start and a source offset of 0 or more, and a length of at least 1");
+                if (!parseNumber(tok[i], t.start) || !isPosition(t.start) || !parseNumber(tok[i + 1], t.sourceOffset) ||
+                    !isPosition(t.sourceOffset) || !parseNumber(tok[i + 2], t.length) || !isPosition(t.length, 1))
+                    return fail(lineNo, "a take needs a start and a source offset of 0 or more, and a length of at least 1 (each at most 2^40)");
                 s.takes.push_back(t);
             }
             p.takeSets.push_back(std::move(s));
@@ -572,9 +573,9 @@ ReadResult readProject(std::string_view text) {
                 int number = 0;
                 if (tok.size() != 11 || !parseNumber(tok[1], c.track.value) || !c.track.isValid() || !parseNumber(tok[2], number))
                     return fail(lineNo, "midiclip needs a track id, a clip number, start, length, offset, muted, a name, grid, strength, swing");
-                if (!parseNumber(tok[3], c.start) || c.start < 0 || !parseNumber(tok[4], c.length) || c.length <= 0 ||
-                    !parseNumber(tok[5], c.offset) || c.offset < 0)
-                    return fail(lineNo, "a MIDI clip needs a start and an offset of 0 or more ticks, and a length of at least 1");
+                if (!parseNumber(tok[3], c.start) || !isPosition(c.start) || !parseNumber(tok[4], c.length) || !isPosition(c.length, 1) ||
+                    !parseNumber(tok[5], c.offset) || !isPosition(c.offset))
+                    return fail(lineNo, "a MIDI clip needs a start and an offset of 0 or more ticks, and a length of at least 1 (each at most 2^40)");
                 if (!parseFlag(tok[6], c.muted) || !tok[7].quoted)
                     return fail(lineNo, "a MIDI clip needs 0/1 for muted and a name in quotes");
                 c.name = tok[7].text;
@@ -593,10 +594,10 @@ ReadResult readProject(std::string_view text) {
                 if (tok.size() != 7 || !parseNumber(tok[1], e.clip) || !parseNumber(tok[2], n.start) || !parseNumber(tok[3], n.length) ||
                     !parseNumber(tok[4], n.pitch) || !parseNumber(tok[5], n.velocity) || !parseNumber(tok[6], n.channel))
                     return fail(lineNo, "note needs a clip number, start, length, pitch, velocity and channel");
-                if (n.start < 0 || n.length <= 0 || n.pitch < 0 || n.pitch > 127 || n.velocity < 1 || n.velocity > 127 || n.channel < 0 ||
-                    n.channel > 15)
-                    return fail(lineNo, "a note needs a start of 0 or more, a length of at least 1, a pitch 0-127, a velocity 1-127 "
-                                        "and a channel 0-15");
+                if (!isPosition(n.start) || !isPosition(n.length, 1) || n.pitch < 0 || n.pitch > 127 || n.velocity < 1 || n.velocity > 127 ||
+                    n.channel < 0 || n.channel > 15)
+                    return fail(lineNo, "a note needs a start of 0 or more, a length of at least 1 (both at most 2^40), "
+                                        "a pitch 0-127, a velocity 1-127 and a channel 0-15");
                 notes.push_back(e);
             } else {
                 PendingCc e;
@@ -605,7 +606,7 @@ ReadResult readProject(std::string_view text) {
                 if (tok.size() != 6 || !parseNumber(tok[1], e.clip) || !parseNumber(tok[2], c.tick) || !parseNumber(tok[3], c.number) ||
                     !parseNumber(tok[4], c.value) || !parseNumber(tok[5], c.channel))
                     return fail(lineNo, "cc needs a clip number, a tick, a controller, a value and a channel");
-                if (c.tick < 0 || c.number < 0 || c.number > 127 || c.value < 0 || c.value > 127 || c.channel < 0 || c.channel > 15)
+                if (!isPosition(c.tick) || c.number < 0 || c.number > 127 || c.value < 0 || c.value > 127 || c.channel < 0 || c.channel > 15)
                     return fail(lineNo, "a controller point needs a tick of 0 or more, a controller and a value 0-127 and a channel 0-15");
                 ccs.push_back(e);
             }
@@ -632,8 +633,8 @@ ReadResult readProject(std::string_view text) {
             e.line = lineNo;
             if (tok.size() != 5 || !parseNumber(tok[1], e.number) || tok[4].quoted)
                 return fail(lineNo, "point needs a lane number, a position, a value and a shape");
-            if (!parseNumber(tok[2], e.point.position) || e.point.position < 0)
-                return fail(lineNo, "a point's position must be 0 or more samples");
+            if (!parseNumber(tok[2], e.point.position) || !isPosition(e.point.position))
+                return fail(lineNo, "a point's position must be 0 to 2^40 samples");
             if (!parseNumber(tok[3], e.point.value) || e.point.value < 0.0f || e.point.value > 1.0f)
                 return fail(lineNo, "a point's value must be a number from 0 to 1");
             if (tok[4].text != "linear" && tok[4].text != "hold")

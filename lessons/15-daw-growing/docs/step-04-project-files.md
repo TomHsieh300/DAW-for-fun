@@ -99,6 +99,11 @@ example:
 line 4: clip on track 9, which does not exist
 ```
 
+The application's reader (Step 8) refuses more: numbers that pass for their sign but that DawLab
+never writes, such as a sample rate outside 8000 to 768000 Hz or a position beyond 2^40
+(`app/Source/ProjectLimits.h`). This step's reader, Exercise 4 and chapter 16's Step 4 stay as
+they are: they teach the format, not every limit.
+
 The reader also accepts what editors do to text files: a UTF-8 byte order mark at the start
 (Notepad) and CRLF line ends (Windows).
 

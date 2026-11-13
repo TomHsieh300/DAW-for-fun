@@ -1,4 +1,5 @@
 #include "ProjectFormat.h"
+#include "ProjectLimits.h"
 
 #include <algorithm>
 #include <cmath>
@@ -299,8 +300,8 @@ ReadResult readProject(std::string_view text) {
         if (kw == "sampleRate") {
             if (haveRate)
                 return fail(lineNo, "sampleRate given twice");
-            if (tok.size() != 2 || !parseNumber(tok[1], p.sampleRate) || p.sampleRate <= 0.0)
-                return fail(lineNo, "sampleRate needs one positive number");
+            if (tok.size() != 2 || !parseNumber(tok[1], p.sampleRate) || !isSampleRate(p.sampleRate))
+                return fail(lineNo, "sampleRate needs one number, 8000 to 768000");
             haveRate = true;
         } else if (kw == "nextTrackId") {
             if (tok.size() != 2 || !parseNumber(tok[1], p.nextTrackId))
@@ -314,8 +315,8 @@ ReadResult readProject(std::string_view text) {
                 return fail(lineNo, "the beat unit must be 1, 2, 4, 8, 16 or 32");
         } else if (kw == "loop") {
             if (tok.size() != 4 || !parseNumber(tok[1], p.loopStart) || !parseNumber(tok[2], p.loopEnd) ||
-                !parseFlag(tok[3], p.loopEnabled) || p.loopStart < 0 || p.loopEnd < p.loopStart)
-                return fail(lineNo, "loop needs start >= 0, end >= start (samples) and 0/1");
+                !parseFlag(tok[3], p.loopEnabled) || !isPosition(p.loopStart) || !isPosition(p.loopEnd, p.loopStart))
+                return fail(lineNo, "loop needs start >= 0, end >= start (samples, at most 2^40) and 0/1");
         } else if (kw == "track") {
             const size_t expected = version >= 3 ? 8 : version == 2 ? 5 : 4; // 1: no pan; 3: format, mute, solo
             if (tok.size() != expected)
@@ -410,17 +411,17 @@ ReadResult readProject(std::string_view text) {
             ClipState c;
             if (!parseNumber(tok[1], c.track.value) || !c.track.isValid())
                 return fail(lineNo, "bad track id \"" + tok[1].text + "\"");
-            if (!parseNumber(tok[2], c.start) || c.start < 0)
-                return fail(lineNo, "clip start must be 0 or more samples");
-            if (!parseNumber(tok[3], c.length) || c.length <= 0)
-                return fail(lineNo, "clip length must be at least 1 sample");
+            if (!parseNumber(tok[2], c.start) || !isPosition(c.start))
+                return fail(lineNo, "clip start must be 0 to 2^40 samples");
+            if (!parseNumber(tok[3], c.length) || !isPosition(c.length, 1))
+                return fail(lineNo, "clip length must be 1 to 2^40 samples");
             if (!tok[4].quoted)
                 return fail(lineNo, "the file name must be in quotes");
             c.file = tok[4].text;
             if (full) {
-                if (!parseNumber(tok[5], c.sourceOffset) || c.sourceOffset < 0 || !parseNumber(tok[6], c.fadeIn) ||
+                if (!parseNumber(tok[5], c.sourceOffset) || !isPosition(c.sourceOffset) || !parseNumber(tok[6], c.fadeIn) ||
                     !parseNumber(tok[7], c.fadeOut) || c.fadeIn < 0 || c.fadeOut < 0)
-                    return fail(lineNo, "source offset and fades must be 0 or more samples");
+                    return fail(lineNo, "source offset and fades must be 0 or more samples (the offset at most 2^40)");
                 if (tok[8].quoted || (tok[8].text != "linear" && tok[8].text != "equalPower"))
                     return fail(lineNo, "the fade shape must be linear or equalPower");
                 c.equalPowerFades = tok[8].text == "equalPower";

@@ -53,7 +53,7 @@ tempopoint 7680 180 0
 A map of one point writes no `tempopoint` line: the file of a song with one tempo looks as it did. A loop set in
 bars says `ticks`. A tempo is written with 17 digits, so that it reads back as the same number.
 `tests/test_project_format.cpp` reads and writes it and refuses what is not a map: a first point that is not at 0,
-ticks that go back, a tempo out of range, more than 256 points.
+ticks that go back, a tempo out of range, a tick beyond 2^40, more than 256 points.
 
 ### The tempo lane
 

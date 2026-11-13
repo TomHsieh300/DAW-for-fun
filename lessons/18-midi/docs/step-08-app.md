@@ -56,7 +56,7 @@ cc 1 0 64 127 0
 
 All of it is in ticks. A project opened at another sample rate converts its audio positions (chapter 14) and leaves
 its notes alone: they follow the tempo, not the samples. `tests/test_project_format.cpp` reads and writes it, and
-refuses every line that is out of range.
+refuses every line that is out of range, a tick beyond 2^40 too.
 
 ### The arrangement and the piano roll
 
