@@ -33,7 +33,9 @@
 
 **Observer pointer**：`addInsert()` / `replaceInsert()` / `getInsert()` 會回傳 `InsertEffect*`。
 這樣的 pointer 在 effect 被移除（或被取代）**並且**執行 `collectGarbage()` 的 thread 已回收它之前，
-都保持有效。所以只在 message thread 上持有它們，並在移除 effect 時放掉它們。
+都保持有效。command 無法成功時它們是 nullptr：engine 在 message thread 上記住每條 chain 在 queue 裡的
+command 全部套用後將會有的長度，所以已滿 chain 的第 9 個 effect、或取代 / 移除 chain 將不會有的 slot，
+都會立刻被拒絕（`removeInsert()` 回傳 false）。所以只在 message thread 上持有它們，並在移除 effect 時放掉它們。
 
 ## 2. 公開 API
 

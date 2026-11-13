@@ -143,9 +143,17 @@ inline int run() {
         DAWLAB_CHECK(engine.collectGarbage() == 1);
         DAWLAB_CHECK_NEAR(out.getSample(0, 100), 0.2 * 3.0 * kCentre, 1e-4);
 
-        // the 9th insert of a full chain is sent straight back
-        for (int i = 0; i < 9; ++i) // one more than kMaxInserts
-            engine.addInsert(ChannelRef::master(), -1, std::make_unique<CountedGain>());
+        // a full chain: addInsert() refuses the 9th at once (the UI knows the chain's length), and
+        // a command that reaches the audio thread anyway is sent straight back by applyCommands()
+        for (int i = 0; i < kMaxInserts; ++i)
+            DAWLAB_CHECK(engine.addInsert(ChannelRef::master(), -1, std::make_unique<CountedGain>()) != nullptr);
+        DAWLAB_CHECK(engine.addInsert(ChannelRef::master(), -1, std::make_unique<CountedGain>()) == nullptr);
+        Command ninth;
+        ninth.type = CommandType::AddInsert;
+        ninth.channel = ChannelRef::master();
+        ninth.slot = -1;
+        ninth.effect = new CountedGain();
+        DAWLAB_CHECK(engine.pushCommand(ninth));
         engine.processBlock(out.toBlock());
         DAWLAB_CHECK(engine.getMixer().getMaster().getInserts().getNumInserts() == 8);
         DAWLAB_CHECK(engine.collectGarbage() == 1);
@@ -182,14 +190,16 @@ inline int run() {
             }
         });
         std::mt19937 rng(3);
-        int pushed = 0;
+        int pushed = 0, refused = 0; // refused: an insert to remove that the chain will not have, or a 9th
         for (int i = 0; i < 600; ++i) {
             const int track = static_cast<int>(rng() % kNumTracks);
+            bool ok = false;
             switch (rng() % 3) {
-            case 0: pushed += engine.setTrackClips(track, {dcClip(0.01f * static_cast<float>(i % 7), 2000)}) ? 1 : 0; break;
-            case 1: pushed += engine.addInsert(ChannelRef::track(track), -1, std::make_unique<CountedGain>()) ? 1 : 0; break;
-            default: pushed += engine.removeInsert(ChannelRef::track(track), 0) ? 1 : 0; break;
+            case 0: ok = engine.setTrackClips(track, {dcClip(0.01f * static_cast<float>(i % 7), 2000)}); break;
+            case 1: ok = engine.addInsert(ChannelRef::track(track), -1, std::make_unique<CountedGain>()) != nullptr; break;
+            default: ok = engine.removeInsert(ChannelRef::track(track), 0); break;
             }
+            (ok ? pushed : refused) += 1;
             engine.collectGarbage();
             if (i % 50 == 0)
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -199,11 +209,12 @@ inline int run() {
         stop.store(true);
         audio.join();
         engine.collectGarbage();
-        std::printf("  UI thread vs audio thread: %d commands pushed, %llu applied, %llu dropped, %llu leaked\n", pushed,
-                    static_cast<unsigned long long>(engine.getCommandsApplied()),
+        std::printf("  UI thread vs audio thread: %d commands pushed, %llu applied, %d refused, %llu dropped, %llu leaked\n",
+                    pushed, static_cast<unsigned long long>(engine.getCommandsApplied()), refused,
                     static_cast<unsigned long long>(engine.getCommandsDropped()),
                     static_cast<unsigned long long>(engine.getGarbageLeaked()));
-        DAWLAB_CHECK(pushed == 600 && engine.getCommandsApplied() == 600);
+        DAWLAB_CHECK(pushed + refused == 600 && engine.getCommandsApplied() == static_cast<uint64_t>(pushed));
+        DAWLAB_CHECK(engine.getCommandsDropped() == 0);
         DAWLAB_CHECK(engine.getGarbageLeaked() == 0);
     }
     DAWLAB_CHECK(gAlive.load() == 0);

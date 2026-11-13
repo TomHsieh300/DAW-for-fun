@@ -137,12 +137,12 @@ void testInsertCommands() {
         e.processBlock(block);
         DAWLAB_CHECK_NEAR(block.getSample(0, 100), 0.1 * 0.70711, 1e-4);
 
-        // the chain holds at most kMaxInserts: the extra one comes back as garbage
+        // the chain holds at most kMaxInserts: the extra one is refused at once (testChainLength)
         for (int i = 0; i < kMaxInserts; ++i)
             e.addInsert(t0(), -1, std::make_unique<CountingEffect>());
         e.processBlock(block);
         DAWLAB_CHECK(e.getNumInserts(t0()) == kMaxInserts);
-        DAWLAB_CHECK(e.collectGarbage() == 1);
+        DAWLAB_CHECK(e.collectGarbage() == 0);
         DAWLAB_CHECK(gAlive == kMaxInserts);
 
         // clip list replacement: the old list becomes garbage
@@ -189,7 +189,7 @@ void testInvalidTargets() {
     e.prepare(kSampleRate, kBlockSize);
     DAWLAB_CHECK(e.addInsert(testTrack(99), -1, std::make_unique<CountingEffect>()) == nullptr);
     DAWLAB_CHECK(!e.setTrackClips(testId(-1), {}));
-    DAWLAB_CHECK(e.removeInsert(ChannelRef::bus(0), 5)); // queued, harmless no-op
+    DAWLAB_CHECK(!e.removeInsert(ChannelRef::bus(0), 5)); // there is no slot 5: nothing queued
     AudioBuffer block(2, 64);
     e.processBlock(block);
     DAWLAB_CHECK(e.collectGarbage() == 0);
@@ -202,6 +202,57 @@ void testInvalidTargets() {
     DAWLAB_CHECK(e.getNumInserts(ChannelRef::master()) == 1);
 }
 
+// The UI thread decides whether an insert command can work, by the length the chain WILL have
+// once everything queued so far is applied: an effect the audio thread would refuse is never
+// handed out as an observer (it would dangle once collectGarbage() freed it).
+void testChainLength() {
+    {
+        Engine e;
+        addTestTracks(e);
+        e.prepare(kSampleRate, kBlockSize);
+        // all queued before any block: the 9th is refused although the chain is still empty
+        for (int i = 0; i < kMaxInserts; ++i)
+            DAWLAB_CHECK(e.addInsert(t0(), -1, std::make_unique<CountingEffect>()) != nullptr);
+        DAWLAB_CHECK(e.addInsert(t0(), -1, std::make_unique<CountingEffect>()) == nullptr);
+        DAWLAB_CHECK(gAlive == kMaxInserts); // the refused one was deleted right away
+        // a removal makes room at once, even before it is applied
+        DAWLAB_CHECK(e.removeInsert(t0(), 0));
+        DAWLAB_CHECK(e.addInsert(t0(), -1, std::make_unique<CountingEffect>()) != nullptr);
+        DAWLAB_CHECK(e.addInsert(t0(), -1, std::make_unique<CountingEffect>()) == nullptr);
+        AudioBuffer block(2, 64);
+        e.processBlock(block);
+        DAWLAB_CHECK(e.getNumInserts(t0()) == kMaxInserts);
+        DAWLAB_CHECK(e.collectGarbage() == 1); // only the removed one
+        DAWLAB_CHECK(gAlive == kMaxInserts);
+
+        // replace / remove a slot the chain will not have: refused, nothing queued
+        DAWLAB_CHECK(e.replaceInsert(ChannelRef::bus(0), 3, std::make_unique<CountingEffect>()) == nullptr);
+        DAWLAB_CHECK(e.replaceInsert(t0(), kMaxInserts, std::make_unique<CountingEffect>()) == nullptr);
+        DAWLAB_CHECK(e.replaceInsert(t0(), -1, std::make_unique<CountingEffect>()) == nullptr);
+        DAWLAB_CHECK(!e.removeInsert(t0(), kMaxInserts));
+        DAWLAB_CHECK(e.getPendingCommands() == 0);
+        DAWLAB_CHECK(gAlive == kMaxInserts);
+        InsertEffect* last = e.replaceInsert(t0(), kMaxInserts - 1, std::make_unique<CountingEffect>());
+        DAWLAB_CHECK(last != nullptr);
+        e.processBlock(block);
+        DAWLAB_CHECK(e.getInsert(t0(), kMaxInserts - 1) == last);
+        DAWLAB_CHECK(e.collectGarbage() == 1);
+
+        // a removed track takes its inserts along: the next track in its slot starts empty
+        DAWLAB_CHECK(e.removeTrack(testId(0)));
+        const ChannelRef next = e.addTrack(TrackId{100});
+        DAWLAB_CHECK(next.index == 0);
+        for (int i = 0; i < kMaxInserts; ++i)
+            DAWLAB_CHECK(e.addInsert(next, -1, std::make_unique<CountingEffect>()) != nullptr);
+        DAWLAB_CHECK(e.addInsert(next, -1, std::make_unique<CountingEffect>()) == nullptr);
+        e.processBlock(block);
+        DAWLAB_CHECK(e.getNumInserts(next) == kMaxInserts);
+        DAWLAB_CHECK(e.collectGarbage() == kMaxInserts); // the old track's chain
+        DAWLAB_CHECK(e.getGarbageLeaked() == 0);
+    }
+    DAWLAB_CHECK(gAlive == 0);
+}
+
 } // namespace
 
 int main() {
@@ -210,6 +261,7 @@ int main() {
     testInsertCommands();
     testQueueFull();
     testInvalidTargets();
+    testChainLength();
     DAWLAB_CHECK(gAlive == 0);
     return dawlab::test::summary("l15_test_commands");
 }

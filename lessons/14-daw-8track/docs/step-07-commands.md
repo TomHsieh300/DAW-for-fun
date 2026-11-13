@@ -93,8 +93,13 @@ Edge cases, all handled and tested:
 
 - **Command queue full**: `pushCommand()` returns false, counts a drop, and deletes the payload at
   once (it never reached the audio thread, so the UI still owns it).
-- **Chain full / invalid channel**: the audio thread cannot link the effect, so it sends it straight
-  back as garbage.
+- **Chain full / no such slot**: the UI thread keeps the length each chain *will* have once the
+  commands queued so far are applied (the audio thread applies them in order), so `addInsert()`
+  refuses a 9th effect at once - nullptr, and the effect is deleted right there - and
+  `removeInsert()` a slot the chain will not have. Handing out an observer for an effect the audio
+  thread then refuses would leave the UI a pointer to freed memory once `collectGarbage()` ran.
+- **Chain full / invalid channel on the audio thread** (a command pushed by hand): the audio thread
+  cannot link the effect, so it sends it straight back as garbage.
 - **Garbage queue full**: the audio thread may not free, so it *leaks* the object and counts it
   (`getGarbageLeaked()`). Every command produces at most one garbage ticket and both queues have the
   same capacity, so this cannot happen while `collectGarbage()` runs regularly.
@@ -153,13 +158,14 @@ Step 7: command queue and garbage queue (build-along)
   removed insert: alive until collectGarbage() frees 1 object (expected 1)
   living effects after the engine is gone: 0 (expected 0)
   queue of 4: 4 accepted, 6 dropped, 4 alive (expected 4, 6, 4)
-  UI thread vs audio thread: 600 commands pushed, 600 applied, 0 dropped, 0 leaked
-[PASS] l14_step07 (25 checks passed)
+  UI thread vs audio thread: 546 commands pushed, 546 applied, 54 refused, 0 dropped, 0 leaked
+[PASS] l14_step07 (36 checks passed)
 ```
 
 An instance counter in the test effect proves the ownership rules: an effect removed by the audio
-thread stays alive until the UI thread collects it, a replaced clip list and the 9th insert of a
-full chain come back as garbage, a dropped command's payload is deleted at once, and an engine
+thread stays alive until the UI thread collects it, `addInsert()` refuses the 9th insert of a full
+chain at once, a replaced clip list and a 9th insert pushed by hand come back as garbage, a dropped
+command's payload is deleted at once, and an engine
 destroyed with commands pending frees them. The last line runs a real audio thread while the main
 thread adds, removes and replaces things 600 times.
 
@@ -173,7 +179,8 @@ thread adds, removes and replaces things 600 times.
   (x2 then x3 on DC 0.1 gives 0.1 x 6 x 0.7071); parameter change via the observer pointer;
   move + remove; the removed effect is alive until `collectGarbage()` frees it (an instance
   counter proves no leak and no double free); replace; bypass; the 9th insert of a full chain
-  comes back as garbage; a replaced clip list comes back as garbage;
+  is refused at once, also while the first 8 are still queued, and replace / remove of a slot the
+  chain will not have are refused; a replaced clip list comes back as garbage;
 - a queue of 4 commands: 4 accepted, 6 dropped and deleted immediately;
 - the engine destroyed with a command pending frees its payload.
 

@@ -1022,9 +1022,12 @@ public:
         return false;
     }
     // Prepares the effect HERE (UI thread, may allocate), then queues it. Returns an observer
-    // pointer, valid until the effect is removed AND collectGarbage() has run; nullptr on failure.
+    // pointer, valid until the effect is removed AND collectGarbage() has run; nullptr on failure,
+    // also when the chain will be full once the commands queued so far are applied (the audio
+    // thread would have to send the effect back, and the observer would dangle).
     InsertEffect* addInsert(ChannelRef channel, int slot, std::unique_ptr<InsertEffect> effect) {
-        if (!effect || !isPrepared() || mixer_.getStrip(channel) == nullptr)
+        int* length = uiChainLength(channel);
+        if (!effect || !isPrepared() || length == nullptr || *length >= kMaxInserts)
             return nullptr;
         effect->prepare(sampleRate_, maxBlockSize_, kNumChannels);
         InsertEffect* observer = effect.get();
@@ -1033,14 +1036,24 @@ public:
         c.channel = channel;
         c.slot = slot;
         c.effect = effect.release();
-        return pushCommand(c) ? observer : nullptr;
+        if (!pushCommand(c))
+            return nullptr;
+        ++*length;
+        return observer;
     }
+    // False if the chain will not have that slot once the commands queued so far are applied.
     bool removeInsert(ChannelRef channel, int slot) {
+        int* length = uiChainLength(channel);
+        if (length == nullptr || slot < 0 || slot >= *length)
+            return false;
         Command c;
         c.type = CommandType::RemoveInsert;
         c.channel = channel;
         c.slot = slot;
-        return pushCommand(c);
+        if (!pushCommand(c))
+            return false;
+        --*length;
+        return true;
     }
     // The list is copied into a new vector here (UI thread); the audio thread swaps one pointer.
     bool setTrackClips(int track, std::vector<Clip> clips) {
@@ -1115,6 +1128,17 @@ private:
     // (mixer_.getStrip(c.channel) finds the strip; a Track is static_cast from ChannelStrip.)
     void applyCommands() noexcept; // YOUR TURN
 
+    // UI thread: the length `ref`'s chain WILL have once every command queued so far is applied
+    // (the audio thread applies them in order). nullptr if there is no such channel.
+    int* uiChainLength(ChannelRef ref) noexcept {
+        if (mixer_.getStrip(ref) == nullptr)
+            return nullptr;
+        const int index = ref.kind == ChannelKind::Track ? ref.index
+                          : ref.kind == ChannelKind::Bus ? kNumTracks + ref.index
+                                                         : kNumTracks + kNumBuses;
+        return &uiChainLengths_[static_cast<size_t>(index)];
+    }
+
     // Audio thread: hand an object to the UI thread. If the garbage queue is full we may not
     // free it here, so it leaks and is counted (cannot happen while collectGarbage() runs).
     void discard(Garbage g) noexcept {
@@ -1136,6 +1160,7 @@ private:
     std::atomic<bool> prepared_{false};
     Transport transport_;
     Mixer mixer_;
+    std::array<int, kNumTracks + kNumBuses + 1> uiChainLengths_{}; // UI thread only: see uiChainLength()
     SpscQueue<Command> commands_;
     SpscQueue<Garbage> garbage_;
     int64_t chunksProcessed_ = 0;

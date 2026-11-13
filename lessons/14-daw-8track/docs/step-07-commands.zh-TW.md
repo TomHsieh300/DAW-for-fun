@@ -92,8 +92,13 @@ flowchart TD
 
 - **Command queue 已滿**：`pushCommand()` 回傳 false，計入一次 drop，並立刻刪除 payload
   （它從未到達 audio thread，所以 UI 仍然擁有它）。
-- **Chain 已滿 / channel 無效**：audio thread 無法 link 這個 effect，所以它直接把它當成 garbage
-  送回去。
+- **Chain 已滿 / 沒有那個 slot**：UI thread 記住每條 chain 在目前 queue 裡的 command 全部套用後
+  *將會*有的長度（audio thread 依序套用它們），所以 `addInsert()` 會立刻拒絕第 9 個 effect
+  （回傳 nullptr，effect 當場刪除），`removeInsert()` 也會拒絕 chain 將不會有的 slot。若交出
+  一個之後被 audio thread 拒絕的 effect 的 observer，`collectGarbage()` 跑過後 UI 手上就是指向已釋放
+  記憶體的 pointer。
+- **Audio thread 上的 chain 已滿 / channel 無效**（手動 push 的 command）：audio thread 無法 link
+  這個 effect，所以它直接把它當成 garbage 送回去。
 - **Garbage queue 已滿**：audio thread 不可以釋放，所以它會*洩漏*該物件並計數
   （`getGarbageLeaked()`）。每個 command 最多產生一張 garbage ticket，而且兩條 queue 的容量
   相同，所以只要 `collectGarbage()` 定期執行，這就不可能發生。
@@ -152,11 +157,11 @@ Step 7: command queue and garbage queue (build-along)
   removed insert: alive until collectGarbage() frees 1 object (expected 1)
   living effects after the engine is gone: 0 (expected 0)
   queue of 4: 4 accepted, 6 dropped, 4 alive (expected 4, 6, 4)
-  UI thread vs audio thread: 600 commands pushed, 600 applied, 0 dropped, 0 leaked
-[PASS] l14_step07 (25 checks passed)
+  UI thread vs audio thread: 546 commands pushed, 546 applied, 54 refused, 0 dropped, 0 leaked
+[PASS] l14_step07 (36 checks passed)
 ```
 
-測試 effect 中的 instance counter 證明了擁有權規則：被 audio thread 移除的 effect 會一直存活到 UI thread 回收它，被取代的 clip list 與已滿 chain 的第 9 個 insert 會當成 garbage 送回來，被丟棄的 command 的 payload 會立刻被刪除，而帶著 pending command 被 destroy 的 engine 會釋放它們。最後一行執行的是真正的 audio thread，同時主
+測試 effect 中的 instance counter 證明了擁有權規則：被 audio thread 移除的 effect 會一直存活到 UI thread 回收它，`addInsert()` 會立刻拒絕已滿 chain 的第 9 個 insert，被取代的 clip list 與手動 push 的第 9 個 insert 會當成 garbage 送回來，被丟棄的 command 的 payload 會立刻被刪除，而帶著 pending command 被 destroy 的 engine 會釋放它們。最後一行執行的是真正的 audio thread，同時主
 thread 新增、移除與取代東西共 600 次。
 
 ## Verify（參考路線）
@@ -169,7 +174,8 @@ thread 新增、移除與取代東西共 600 次。
   （DC 0.1 上先 x2 再 x3 得到 0.1 x 6 x 0.7071）；透過 observer pointer 變更參數；
   移動 + 移除；被移除的 effect 會存活到 `collectGarbage()` 釋放它（instance
   counter 證明沒有 leak 也沒有 double free）；取代；bypass；已滿 chain 的第 9 個 insert
-  會當成 garbage 送回來；被取代的 clip list 會當成 garbage 送回來；
+  會立刻被拒絕（前 8 個還在 queue 裡時也一樣），取代 / 移除 chain 將不會有的 slot 也會被拒絕；
+  被取代的 clip list 會當成 garbage 送回來；
 - 4 個 command 的 queue：4 個被接受，6 個被丟棄並立刻刪除；
 - 帶著 pending command 被 destroy 的 engine 會釋放它的 payload。
 

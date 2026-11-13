@@ -33,7 +33,10 @@ from one thread at a time - the message thread. The command queue is single-prod
 
 **Observer pointers**: `addInsert()` / `replaceInsert()` / `getInsert()` return `InsertEffect*`.
 Such a pointer stays valid until the effect has been removed (or replaced) **and** the thread that
-runs `collectGarbage()` has collected it. So hold them only on the message thread, and drop them
+runs `collectGarbage()` has collected it. They are nullptr when the command cannot work: the engine
+keeps, on the message thread, the length each chain will have once the queued commands are
+applied, so a 9th effect for a full chain, or a replace / remove of a slot the chain will not have,
+is refused at once (`removeInsert()` returns false). So hold them only on the message thread, and drop them
 when you remove the effect.
 
 ## 2. Public API

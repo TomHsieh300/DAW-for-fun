@@ -125,20 +125,28 @@ public:
     // Prepares `effect` with the engine's sample rate / block size (allocation happens here,
     // on the calling thread) and queues it for insertion at `slot` (-1 = append). Ownership
     // passes to the engine. Returns an observer pointer that stays valid until the effect is
-    // removed AND collectGarbage() has run; nullptr on failure.
+    // removed AND collectGarbage() has run; nullptr on failure - also when the chain will be
+    // full once the commands queued so far are applied (the effect is deleted right away; the
+    // audio thread would have to refuse it, and the observer would dangle).
     InsertEffect* addInsert(ChannelRef channel, int slot, std::unique_ptr<InsertEffect> effect) {
-        if (!effect || !isPrepared() || mixer_.getStrip(channel) == nullptr)
+        int* length = uiChainLength(channel);
+        if (!effect || !isPrepared() || length == nullptr || *length >= kMaxInserts)
             return nullptr;
         effect->prepare(sampleRate_, maxBlockSize_, kNumChannels);
         effect->publishLatency(); // the UI may ask for it before the audio thread runs
         InsertEffect* observer = effect.get();
-        return pushCommand(Command::addInsert(channel, slot, effect.release())) ? observer : nullptr;
+        if (!pushCommand(Command::addInsert(channel, slot, effect.release())))
+            return nullptr;
+        ++*length;
+        return observer;
     }
 
     // Swaps the effect in `slot` for a new one in one block boundary (no gap, no double
-    // processing). Use it to change "prepare-time" settings such as a convolution IR.
+    // processing). Use it to change "prepare-time" settings such as a convolution IR. nullptr if
+    // the chain will not have that slot once the commands queued so far are applied.
     InsertEffect* replaceInsert(ChannelRef channel, int slot, std::unique_ptr<InsertEffect> effect) {
-        if (!effect || !isPrepared() || mixer_.getStrip(channel) == nullptr)
+        const int* length = uiChainLength(channel);
+        if (!effect || !isPrepared() || length == nullptr || slot < 0 || slot >= *length)
             return nullptr;
         effect->prepare(sampleRate_, maxBlockSize_, kNumChannels);
         effect->publishLatency(); // the UI may ask for it before the audio thread runs
@@ -146,7 +154,14 @@ public:
         return pushCommand(Command::replaceInsert(channel, slot, effect.release())) ? observer : nullptr;
     }
 
-    bool removeInsert(ChannelRef channel, int slot) { return pushCommand(Command::removeInsert(channel, slot)); }
+    // False if the chain will not have that slot once the commands queued so far are applied.
+    bool removeInsert(ChannelRef channel, int slot) {
+        int* length = uiChainLength(channel);
+        if (length == nullptr || slot < 0 || slot >= *length || !pushCommand(Command::removeInsert(channel, slot)))
+            return false;
+        --*length;
+        return true;
+    }
     bool moveInsert(ChannelRef channel, int fromSlot, int toSlot) {
         return pushCommand(Command::moveInsert(channel, fromSlot, toSlot));
     }
@@ -284,6 +299,18 @@ private:
         }
     }
 
+    // UI thread: the length `ref`'s insert chain WILL have once every command queued so far is
+    // applied - the audio thread applies them in order, so the UI can tell now whether an insert
+    // command can work. nullptr if there is no such channel.
+    int* uiChainLength(ChannelRef ref) noexcept {
+        if (mixer_.getStrip(ref) == nullptr)
+            return nullptr;
+        const int index = ref.kind == ChannelKind::Track ? ref.index
+                          : ref.kind == ChannelKind::Bus ? kNumTracks + ref.index
+                                                         : kNumTracks + kNumBuses;
+        return &uiChainLengths_[static_cast<size_t>(index)];
+    }
+
     // Audio thread: hand an object to the UI thread for deletion. If the garbage queue is full
     // we may not delete here (that would free memory on the audio thread), so the object leaks
     // and we count it. With kCommandQueueCapacity slots that does not happen as long as
@@ -310,6 +337,7 @@ private:
 
     Transport transport_;
     Mixer mixer_;
+    std::array<int, kNumTracks + kNumBuses + 1> uiChainLengths_{}; // UI thread only: see uiChainLength()
     SpscQueue<Command> commands_;
     SpscQueue<Garbage> garbage_;
 
