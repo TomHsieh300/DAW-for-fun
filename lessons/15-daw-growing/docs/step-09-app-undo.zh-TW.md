@@ -70,7 +70,8 @@ factory：`Session::createVst3`。沒有這個 factory，這種 edit 就套用�
 - **全有或全無。** 由好幾個 edit 組成的變更（載入檔案：格式、clip、名稱）是一筆紀錄。其中一個 edit 套用不了，已經套用的
   就會被還原。
 - **merge key。** 拖動 fader 時，每次滑鼠移動都會執行一個 edit。key 相同的移動（「track 17 的 gain」）都合併成一筆。每個
-  控制項在拖動**開始**和**結束**時都會結束合併，所以拖兩次就是兩個 undo 步驟。
+  控制項在拖動**開始**和**結束**時都會結束合併，所以拖兩次就是兩個 undo 步驟。按一下或選一個選項沒有拖動：它在自己之前和
+  之後都結束合併，所以它自己就是一步。
 - **序號。** 每筆紀錄都有一個永不重用的序號。存檔時記住最新紀錄的序號；最新紀錄換成別筆時，專案就算修改過。所以 undo
   可以讓專案回到未修改的狀態，redo 又會讓它變成修改過。
 - **New、開檔、demo song、換音訊裝置** 都會重新開始歷史紀錄。換裝置會把每個 clip 轉到新的 rate，而舊紀錄裡存的是舊 rate
@@ -99,6 +100,11 @@ factory：`Session::createVst3`。沒有這個 factory，這種 edit 就套用�
 面板和 transport bar 只透過 callback 回報變更；由 `MainComponent` 把它轉成 edit。沒有 callback 時，它們仍然直接寫入
 效果器或 transport，所以單獨使用時也能運作。
 
+一個 undo 步驟在哪裡結束，由控制項所在的地方決定。拖一次旋鈕是一步：面板在拖動開始和結束時呼叫 `onGesture`（它會結束
+merge）。在清單裡選一個選項或按一下開關沒有拖動，每一次都是自己的一步：面板在修改之前和之後都呼叫 `onGesture`
+（`ParameterPanel::changeAsOneGesture`）。少了這一步，緊接在第一個選項之後的第二個選項會帶著同一個 merge key 併進去，
+一次 undo 就會把兩個都收回。
+
 ### 丟掉變更之前先詢問
 
 New、Open、demo song 和 Quit 都會經過 `MainComponent::askToSaveChanges(then)`。歷史紀錄顯示專案修改過時，會跳出
@@ -112,7 +118,8 @@ smoke test 的 6e 和 6f 段（總共 180 項檢查）：
 - **刪除後 undo。** 用指令刪除 bass。標題出現 `*`，Undo 選項寫著「Undo Delete track Bass」。undo 後，bass 帶著 id 10、16 個
   clip 和 2 個 insert 回到第 2 個 lane，整個專案和原本的文字（Step 8 的格式）相同，標題也回到未修改。redo 會再刪除一次。
 - **手勢。** 兩次 fader 拖動，分別移動 3 次和 2 次，得到兩筆紀錄。第一次 undo 回到 -14 dB（第一次拖動的終點），第二次回到 -3 dB。
-- **效果器面板。** compressor 的 threshold 旋鈕從 -20 轉到 -35，undo 回到 -20。
+- **效果器面板。** compressor 的 threshold 旋鈕從 -20 轉到 -35，undo 回到 -20。Saturation 的 curve 連續選兩次、EQ 某個
+  band 的開關連按兩次，各是兩步：一次 undo 只收回第二次。
 - **存檔與否。** 存檔後標題是乾淨的。mute 加上 `*`，undo 讓它變乾淨，redo 又加上。
 - **VST3。** 刪除一個有 VST3 insert 的 track（用測試 plugin 代替檔案）再 undo：plugin 透過 `createVst3` 重建。
 - **隨機操作。** 150 個隨機 edit，涵蓋測試用的全部 14 種（新增、刪除、有拖動和沒拖動的 gain、pan、mute、solo、send、改名、
@@ -145,6 +152,7 @@ smoke test 的 6e 和 6f 段（總共 180 項檢查）：
 | undo 把刪除的 track 放到最後面，而不是原本的位置 | 6e 和 6f：專案不同 |
 | fader 從不結束合併 | 6e：兩次拖動變成一筆紀錄 |
 | 效果器面板直接寫入效果器 | 6e：undo 沒有把 threshold 改回來 |
+| 選項或開關沒有結束它的合併 | 6e：選兩次或按兩次變成一筆紀錄 |
 | 存檔時沒有標記歷史紀錄 | 6e：存檔後標題仍然有 `*` |
 
 </div>

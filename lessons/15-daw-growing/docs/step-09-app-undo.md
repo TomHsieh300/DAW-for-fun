@@ -80,7 +80,8 @@ such an edit does not apply.
   entry. If one of its edits does not apply, the ones already applied are taken back.
 - **Merge keys.** A fader drag performs an edit on every mouse move. All moves with the same key
   ("the gain of track 17") go into one entry. Every control closes the merge when a drag
-  **starts** and when it **ends**, so two drags are two undo steps.
+  **starts** and when it **ends**, so two drags are two undo steps. A click or a choice has no
+  drag: it closes the merge before and after itself, so it is a step of its own.
 - **Serials.** Every entry has a serial that is never reused. Saving remembers the serial of the
   newest entry, and the project is modified when the newest entry is a different one. So undo
   can make a project clean again, and redo makes it modified again.
@@ -114,6 +115,13 @@ The panel and the transport bar only report a change through a callback; `MainCo
 into an edit. Without the callback they still write the effect or the transport directly, so they
 stay usable on their own.
 
+Where one undo step ends is decided where the control lives. A knob's drag is one step: the panel
+calls `onGesture` (which ends the merge) at its start and at its end. A choice in a list or a click
+on a toggle has no drag, and every one of them is a step of its own: the panel calls `onGesture`
+before and after the change (`ParameterPanel::changeAsOneGesture`). Without that, a second choice
+right after the first would carry the same merge key and join it, and one undo would take back
+both.
+
 ### Asking before throwing changes away
 
 New, Open, the demo song and Quit go through `MainComponent::askToSaveChanges(then)`. When the
@@ -133,6 +141,8 @@ The smoke test's sections 6e and 6f (180 checks in total):
 - **Gestures.** Two fader drags, with three and two moves, give two entries. The first undo
   returns to -14 dB (the end of the first drag), and the second to -3 dB.
 - **Effect panel.** The compressor's threshold knob goes from -20 to -35, and undo returns it to -20.
+  Two choices in a row of the Saturation's curve, and two clicks of an EQ band's switch, are two
+  steps each: one undo takes back only the second.
 - **Saved or not.** After a save the title is clean. A mute adds the `*`, undo makes it clean,
   redo adds it again.
 - **VST3.** Delete a track with a VST3 insert (the test plugin stands in for a file), then undo:
@@ -173,6 +183,7 @@ even the test's first line:
 | undo puts a deleted track at the end, not at its place | 6e and 6f: the project differs |
 | the fader never ends its merge | 6e: two drags become one entry |
 | the effect panel writes the effect directly | 6e: undo does not return the threshold |
+| a choice or a toggle does not end its merge | 6e: two choices, or two clicks, become one entry |
 | saving does not mark the history | 6e: the title keeps its `*` after a save |
 
 </div>

@@ -59,8 +59,10 @@ public:
     void refreshFromEffect();
 
     // Chapter 15, Step 9: when set, the controls change the effect through these - the owner
-    // makes the change undoable - instead of writing it directly. onGesture is called at the
-    // start and the end of a knob drag, so that one drag becomes one undo step.
+    // makes the change undoable - instead of writing it directly. onGesture marks where one undo
+    // step ends: it is called at the start and the end of a knob drag, so that one drag becomes one
+    // step, and before and after every choice in a list and every click on a toggle, so that each
+    // of those is a step of its own.
     std::function<void(int index, float value)> onParameterChange;
     std::function<void(bool bypassed)> onBypassChange;
     std::function<void()> onGesture;
@@ -72,6 +74,7 @@ private:
     struct Control;
     void timerCallback() override { refreshFromEffect(); }
     void changeParameter(int index, float value);
+    void changeAsOneGesture(int index, float value); // onGesture, changeParameter, onGesture
     int getNumColumns() const noexcept;
 
     engine::InsertEffect& effect_;

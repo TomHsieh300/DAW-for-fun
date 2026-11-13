@@ -60,14 +60,14 @@ ParameterPanel::ParameterPanel(engine::InsertEffect& effect) : effect_(effect) {
                 c->combo->addItem(juce::String::fromUTF8(info.choices[k]), k + 1);
             c->combo->setSelectedId(static_cast<int>(current - info.min) + 1, juce::dontSendNotification);
             c->combo->onChange = [this, i, info, combo = c->combo.get()] {
-                changeParameter(i, info.min + static_cast<float>(combo->getSelectedId() - 1));
+                changeAsOneGesture(i, info.min + static_cast<float>(combo->getSelectedId() - 1));
             };
             content_.addAndMakeVisible(*c->combo);
         } else if (info.kind == ParameterKind::Bool) {
             c->toggle = std::make_unique<juce::ToggleButton>(current >= 0.5f ? "On" : "Off");
             c->toggle->setToggleState(current >= 0.5f, juce::dontSendNotification);
             c->toggle->onClick = [this, i, t = c->toggle.get()] {
-                changeParameter(i, t->getToggleState() ? 1.0f : 0.0f);
+                changeAsOneGesture(i, t->getToggleState() ? 1.0f : 0.0f);
                 t->setButtonText(t->getToggleState() ? "On" : "Off");
             };
             content_.addAndMakeVisible(*c->toggle);
@@ -114,6 +114,16 @@ void ParameterPanel::changeParameter(int index, float value) {
         onParameterChange(index, value);
     else
         effect_.setParameter(index, value);
+}
+
+// A choice or a click has no drag to begin and end it: it is a whole gesture by itself, so that two of them in
+// a row are two undo steps, not one merged one.
+void ParameterPanel::changeAsOneGesture(int index, float value) {
+    if (onGesture)
+        onGesture();
+    changeParameter(index, value);
+    if (onGesture)
+        onGesture();
 }
 
 juce::Slider* ParameterPanel::getSlider(int i) const noexcept {

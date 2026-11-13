@@ -2118,6 +2118,51 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
             DAWLAB_CHECK(changed == -35.0f && comp->getParameter(0) == threshold0);
         }
 
+        // A choice in a list and a click on a switch have no drag: each is a step of its own. Two in a row of the
+        // same parameter, and one undo takes back only the second.
+        {
+            const ChannelRef bassRef = s.trackRef(bass);
+            InsertSnapshot saturation;
+            saturation.kind = SlotKind::Builtin;
+            saturation.type = EffectType::Saturation;
+            InsertSnapshot eq = saturation;
+            eq.type = EffectType::ParametricEq;
+            DAWLAB_CHECK(s.perform(edit::SetInsert{StripTarget::ofTrack(bass), 2, saturation}, "Insert Saturation"));
+            DAWLAB_CHECK(s.perform(edit::SetInsert{StripTarget::ofTrack(bass), 3, eq}, "Insert EQ"));
+            InsertEffect* satFx = s.getSlot(bassRef, 2).effect;
+            InsertEffect* eqFx = s.getSlot(bassRef, 3).effect;
+            m.openInsertEditor(bassRef, 2, false);
+            m.openInsertEditor(bassRef, 3, false);
+            ParameterWindow* satWindow = satFx != nullptr ? m.getParameterWindow(satFx) : nullptr;
+            ParameterWindow* eqWindow = eqFx != nullptr ? m.getParameterWindow(eqFx) : nullptr;
+            const int curve = satFx != nullptr ? satFx->findParameter("Curve") : -1;
+            const int enabled = eqFx != nullptr ? eqFx->findParameter("B1 Enabled") : -1;
+            juce::ComboBox* combo = satWindow != nullptr ? satWindow->getPanel().getComboBox(curve) : nullptr;
+            juce::ToggleButton* toggle = eqWindow != nullptr ? eqWindow->getPanel().getToggle(enabled) : nullptr;
+            DAWLAB_CHECK(combo != nullptr && toggle != nullptr);
+            if (combo != nullptr && toggle != nullptr) {
+                const size_t entries0 = s.getHistory().undoCount();
+                combo->setSelectedId(2, juce::sendNotificationSync); // Cubic
+                combo->setSelectedId(3, juce::sendNotificationSync); // Arctan
+                const size_t choices = s.getHistory().undoCount() - entries0;
+                m.undo();
+                const float curveAfterUndo = satFx->getParameter(curve);
+                const bool on0 = toggle->getToggleState();
+                const size_t entries1 = s.getHistory().undoCount();
+                toggle->setToggleState(!on0, juce::sendNotificationSync);
+                toggle->setToggleState(on0, juce::sendNotificationSync);
+                const size_t clicks = s.getHistory().undoCount() - entries1;
+                m.undo();
+                const float enabledAfterUndo = eqFx->getParameter(enabled);
+                std::printf("    two choices of the Saturation's curve: %zu undo entries, undo -> %.0f (1 expected);\n"
+                            "    two clicks of the EQ's B1 Enabled: %zu undo entries, undo -> %.0f (%d expected)\n",
+                            choices, static_cast<double>(curveAfterUndo), clicks, static_cast<double>(enabledAfterUndo),
+                            on0 ? 0 : 1);
+                DAWLAB_CHECK(choices == 2 && curveAfterUndo == 1.0f);
+                DAWLAB_CHECK(clicks == 2 && enabledAfterUndo == (on0 ? 0.0f : 1.0f));
+            }
+        }
+
         // Saved or not: the serial of the newest entry decides, so undo can make a project clean again.
         const juce::File saved = juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l17_undo").getChildFile("Undo.dawlab");
         saved.getParentDirectory().createDirectory();
