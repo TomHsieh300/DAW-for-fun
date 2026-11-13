@@ -30,7 +30,8 @@
 //
 // Numbers are checked for more than their sign (ProjectLimits.h, the same in chapters 15 to 20): a
 // sample rate of 8000 to 768000 Hz, every position and length at most 2^40 samples or ticks, and a
-// fade at most 60 seconds at the file's sample rate.
+// fade at most 60 seconds at the file's sample rate. sampleRate, nextTrackId, tempo, loop and master come at
+// most once (a bus once per index).
 //
 // Channels are written "track:<id>", "bus:<index>" or "master". Lines that refer to something -
 // a send, an insert, a parameter, a clip - are checked once the whole file is read, so their

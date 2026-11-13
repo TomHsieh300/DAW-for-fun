@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 #include <locale>
+#include <set>
 #include <sstream>
 #include <tuple>
 #include <type_traits>
@@ -440,6 +441,17 @@ bool inRange(T value, T lo, T hi) {
     return value >= lo && value <= hi;
 }
 
+// The tempo line and tempopoint 0 say one tempo. Formats 7 to 9 wrote the tempo line with a float's 9 digits before
+// review F11, and the point with 17: such a line is the point's tempo, written with 9 digits.
+bool sameTempo(double line, double point) {
+    std::ostringstream nine;
+    nine.imbue(std::locale::classic());
+    nine.precision(std::numeric_limits<float>::max_digits10);
+    nine << point;
+    double old = 0.0;
+    return line == point || (parseNumber(Token{nine.str(), false}, old) && line == old);
+}
+
 // A word, not in quotes, that is one of the two.
 bool isEither(const Token& token, const char* a, const char* b) { return !token.quoted && (token.text == a || token.text == b); }
 
@@ -577,7 +589,9 @@ private:
             return "a line must start with a keyword";
         if (version_ == 0) // the first item must be the header
             return readHeader();
-        const std::string problem = checkOrder();
+        std::string problem = checkOrder();
+        if (problem.empty())
+            problem = checkOnce();
         if (!problem.empty())
             return problem;
         return readItem();
@@ -597,10 +611,20 @@ private:
     // sampleRate comes right after the header, and formats 1 and 2 know only four keywords.
     std::string checkOrder() const {
         const std::string& kw = keyword();
-        if (!haveRate_ && kw != "sampleRate")
+        if (once_.count("sampleRate") == 0 && kw != "sampleRate")
             return "sampleRate must come right after the header";
         if (version_ < 3 && kw != "sampleRate" && kw != "nextTrackId" && kw != "track" && kw != "clip")
             return needsFormat(3);
+        return "";
+    }
+
+    // The keywords a file has at most once. A second line is damage, not a change of mind: the last one would win
+    // without a word. (A bus is once per index, in readBus.)
+    std::string checkOnce() {
+        static const char* const kOnce[] = {"sampleRate", "nextTrackId", "tempo", "loop", "master"};
+        for (const char* once : kOnce)
+            if (keyword() == once && !once_.insert(once).second)
+                return keyword() + " given twice";
         return "";
     }
 
@@ -645,11 +669,8 @@ private:
     // ---- the song: rate, tempo, loop ----
 
     std::string readSampleRate() {
-        if (haveRate_)
-            return "sampleRate given twice";
         if (tok_.size() != 2 || !parseNumber(tok_[1], p_.sampleRate) || !isSampleRate(p_.sampleRate))
             return "sampleRate needs one number, 8000 to 768000";
-        haveRate_ = true;
         return "";
     }
 
@@ -666,6 +687,7 @@ private:
             return "beats per bar must be 1 .. 32";
         if (!parseNumber(tok_[3], p_.beatUnit) || !inRange(p_.beatUnit, 1, 32) || (p_.beatUnit & (p_.beatUnit - 1)) != 0)
             return "the beat unit must be 1, 2, 4, 8, 16 or 32";
+        tempoLine_ = lineNo_;
         return "";
     }
 
@@ -746,9 +768,6 @@ private:
     std::string readMaster() {
         if (tok_.size() != 5)
             return "master needs 4 values";
-        if (haveMaster_)
-            return "master given twice";
-        haveMaster_ = true;
         return readStripValues(p_.master, 1);
     }
 
@@ -1125,11 +1144,11 @@ private:
     Problem finish() {
         if (version_ == 0)
             return {lineNo_, "not a DawLab project (empty file)"};
-        if (!haveRate_)
+        if (once_.count("sampleRate") == 0)
             return {lineNo_, "no sampleRate"};
         // One step after the other, in this order: of several problems, the first one found is the one reported.
-        for (const Step step : {&ProjectReader::resolveSends, &ProjectReader::resolveInserts, &ProjectReader::resolveParams,
-                                &ProjectReader::checkLanes, &ProjectReader::resolvePoints, &ProjectReader::checkClips,
+        for (const Step step : {&ProjectReader::checkTempoLine, &ProjectReader::resolveSends, &ProjectReader::resolveInserts,
+                                &ProjectReader::resolveParams, &ProjectReader::checkLanes, &ProjectReader::resolvePoints, &ProjectReader::checkClips,
                                 &ProjectReader::resolveInstruments, &ProjectReader::resolveSounds, &ProjectReader::checkMidiClips,
                                 &ProjectReader::resolveNotes, &ProjectReader::resolveCcs, &ProjectReader::checkTrackIds}) {
             Problem problem = (this->*step)();
@@ -1140,6 +1159,16 @@ private:
         sortInserts();
         sortMidiClips();
         p_.nextTrackId = std::max(p_.nextTrackId, maxTrackId() + 1); // never hand out an id that is in the file
+        return {};
+    }
+
+    // A map's point 0 is the song's tempo: the tempo line, when there is one, must say the same.
+    Problem checkTempoLine() {
+        if (p_.tempoPoints.empty())
+            return {};
+        if (tempoLine_ > 0 && !sameTempo(p_.tempo, p_.tempoPoints.front().bpm))
+            return {tempoLine_, "the tempo line and tempopoint 0 must give the same BPM"};
+        p_.tempo = p_.tempoPoints.front().bpm;
         return {};
     }
 
@@ -1344,9 +1373,9 @@ private:
     ProjectState p_;
     int version_ = 0;
     int lineNo_ = 0;
-    bool haveRate_ = false;
+    std::set<std::string> once_; // the keywords of checkOnce() read so far
+    int tempoLine_ = 0;          // the line of the tempo line, 0: none
     std::array<bool, engine::kNumBuses> haveBus_{};
-    bool haveMaster_ = false;
     std::vector<Token> tok_; // the line being read
 
     std::vector<Pending> sends_, inserts_, params_;

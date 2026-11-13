@@ -188,6 +188,12 @@ void testErrors() {
         {head + "clip 1 0 0 \"a.wav\"\n", "line 4: clip length"},
         {head + "track 3 \"open\n", "line 4: unterminated string"},
         {head + "gain 1,5\n", "line 4: unknown keyword"},
+        // A keyword a file has once, given twice: damage, not a change of mind (the last one would win silently).
+        {"DawLabProject 3\nsampleRate 48000\nsampleRate 44100\n", "line 3: sampleRate given twice"},
+        {head + "nextTrackId 5\nnextTrackId 5\n", "line 5: nextTrackId given twice"},
+        {head + "tempo 120 4 4\ntempo 90 3 4\n", "line 5: tempo given twice"},
+        {head + "loop 0 0 0\nloop 0 48000 1\n", "line 5: loop given twice"},
+        {head + "master \"M\" 0 0 0\nmaster \"N\" 0 0 0\n", "line 5: master given twice"},
     };
     int ok = 0;
     for (const Case& c : cases) {
@@ -458,6 +464,13 @@ void testTempoMap() {
     for (int i = 0; i < 256; ++i)
         many += "tempopoint " + std::to_string(i * 10) + " 120 0\n";
     DAWLAB_CHECK(reads(many) && !reads(many + "tempopoint 9999 120 0"));
+    // Point 0 is the tempo line's BPM: a file where they differ is refused, and one written before review F11 -
+    // the tempo line with 9 digits, the point with 17 - still opens, at the point's tempo.
+    DAWLAB_CHECK(reads("tempopoint 0 120 0") && !reads("tempopoint 0 140 0\ntempopoint 960 90 0"));
+    const ReadResult old = readProject("DawLabProject 7\nsampleRate 48000\ntempo 117.647059 4 4\n"
+                                       "tempopoint 0 117.64705882352941 0\ntempopoint 960 90 0\n");
+    DAWLAB_CHECK(old.ok && old.project.tempo == 117.64705882352941 && old.project.tempoPoints[0].bpm == 117.64705882352941);
+    DAWLAB_CHECK(!reads("tempopoint 0 120.000001 0\ntempopoint 960 90 0")); // with 9 digits 120.000001 is still not 120
     // An older file cannot have them.
     DAWLAB_CHECK(!readProject("DawLabProject 6\nsampleRate 48000\ntempopoint 0 120 0\n").ok);
     DAWLAB_CHECK(!readProject("DawLabProject 6\nsampleRate 48000\nloop 0 3840 1 ticks\n").ok);

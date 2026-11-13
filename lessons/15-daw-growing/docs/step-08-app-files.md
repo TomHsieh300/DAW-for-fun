@@ -68,12 +68,15 @@ clip 1 0 192000 "Demo_media/01235f213fcc259d.wav" 0 0 0 linear 0 0 "drums"
 
 The text keeps Step 4's rules: the classic locale, floats with 9 significant digits (and the
 doubles, the sample rate and the tempo, with 17: a tempo from a MIDI file such as
-117.64705882352941 needs them all), every error with its line number. And it refuses numbers that pass for their sign but that DawLab
-never writes: a sample rate outside 8000 to 768000 Hz, a position or a length beyond 2^40
-samples (some 260 days at 48 kHz), a fade longer than 60 seconds at the file's rate. A fade is
-an `int` that the engine adds 1 to and a change of rate scales; in seconds, the limit holds at
-every rate (46,080,000 samples at 768 kHz). These limits are in `ProjectLimits.h`, one file that
-chapters 15 to 20 share.
+117.64705882352941 needs them all), every error with its line number.
+
+And it refuses numbers that pass for their sign but that DawLab never writes: a sample rate
+outside 8000 to 768000 Hz, a position or a length beyond 2^40 samples (some 260 days at 48 kHz),
+a fade longer than 60 seconds at the file's rate. A fade is an `int` that the engine adds 1 to
+and a change of rate scales; in seconds, the limit holds at every rate (46,080,000 samples at
+768 kHz). These limits are in `ProjectLimits.h`, one file that chapters 15 to 20 share. A keyword
+that a file has once - `sampleRate`, `nextTrackId`, `tempo`, `loop`, `master` - is refused when
+it comes twice: the last one would otherwise win without a word.
 
 ### The audio: next to the text, named by its content
 
@@ -139,14 +142,16 @@ the opened project is converted exactly as after a device change, with
 
 ## Testing
 
-`l15_test_project_format` (no JUCE, 44 checks):
+`l15_test_project_format` (no JUCE, 60 checks):
 
 - A round trip of a project that uses every field, with names that contain quotes, backslashes
   and line breaks and floats that need all 9 digits. Write, read, compare; write again: the same
   text.
 - Lines in any order, Step 4's formats 1 and 2, CRLF, a byte order mark, comments, and a German
   locale (`"97,5"` must not appear).
-- 25 broken files, each refused with the right line and message.
+- 30 broken files, each refused with the right line and message, a keyword given twice among them.
+- The limits: sample rates, positions at 2^40 and one past it, fades at 60 seconds and one
+  sample more; and a tempo that needs all 17 digits, which must read back exactly.
 
 The app's smoke test, section 6d:
 

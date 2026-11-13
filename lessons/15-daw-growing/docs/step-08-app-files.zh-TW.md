@@ -57,7 +57,7 @@ clip 1 0 192000 "Demo_media/01235f213fcc259d.wav" 0 0 0 linear 0 0 "drums"
 - 參照別的東西的行（send、insert、參數、clip）會在整個檔案讀完後才檢查，所以順序沒有關係。
 - 格式 1 和 2（Step 4 的檔案）仍然能開啟；它們沒寫的東西保持預設值。
 
-文字沿用 Step 4 的規則：classic locale、9 位有效數字的 float（double，也就是 sample rate 和 tempo，用 17 位：像 117.64705882352941 這種來自 MIDI 檔的 tempo 每一位都需要）、每個錯誤都附上行號。它也拒絕符號正確、但 DawLab 從來不會寫出的數字：8000 到 768000 Hz 以外的 sample rate、超過 2^40 個 sample（48 kHz 下大約 260 天）的位置或長度、在檔案的 sample rate 下長於 60 秒的 fade。Fade 是一個 `int`，engine 會對它加 1，換 rate 時會被縮放；以秒為單位，這個上限在每個 rate 下都成立（768 kHz 下是 46,080,000 個 sample）。這些上限放在 `ProjectLimits.h`，第 15 到 20 章共用同一個檔案。
+文字沿用 Step 4 的規則：classic locale、9 位有效數字的 float（double，也就是 sample rate 和 tempo，用 17 位：像 117.64705882352941 這種來自 MIDI 檔的 tempo 每一位都需要）、每個錯誤都附上行號。它也拒絕符號正確、但 DawLab 從來不會寫出的數字：8000 到 768000 Hz 以外的 sample rate、超過 2^40 個 sample（48 kHz 下大約 260 天）的位置或長度、在檔案的 sample rate 下長於 60 秒的 fade。Fade 是一個 `int`，engine 會對它加 1，換 rate 時會被縮放；以秒為單位，這個上限在每個 rate 下都成立（768 kHz 下是 46,080,000 個 sample）。這些上限放在 `ProjectLimits.h`，第 15 到 20 章共用同一個檔案。檔案裡只會出現一次的關鍵字——`sampleRate`、`nextTrackId`、`tempo`、`loop`、`master`——出現第二次就會被拒絕：不然最後一行會不聲不響地蓋掉前面的。
 
 ### 音訊：放在文字旁邊，用內容命名
 
@@ -109,11 +109,12 @@ Open 給每個 track 一個新的 session id，再對照 clip 和 channel。因�
 
 ## 測試
 
-`l15_test_project_format`（不需要 JUCE，44 項檢查）：
+`l15_test_project_format`（不需要 JUCE，60 項檢查）：
 
 - 一個用到所有欄位的專案，名稱裡有引號、反斜線和換行，還有需要完整 9 位數的 float。寫出、讀回、比對，再寫一次：文字相同。
 - 任意順序的行、Step 4 的格式 1 和 2、CRLF、byte order mark、註解，以及德文 locale（不能出現 `"97,5"`）。
-- 25 個壞掉的檔案，每個都以正確的行號和訊息被拒絕。
+- 30 個壞掉的檔案，每個都以正確的行號和訊息被拒絕，其中包括重複出現的關鍵字。
+- 上限：sample rate、剛好 2^40 和多一的位置、剛好 60 秒和多一個 sample 的 fade；還有需要完整 17 位數的 tempo，必須精確讀回。
 
 app 的 smoke test 第 6d 段：
 

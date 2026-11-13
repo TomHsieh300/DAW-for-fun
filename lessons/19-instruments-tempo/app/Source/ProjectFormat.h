@@ -24,7 +24,7 @@
 //   plugininstrument 17 "C:/.../Synth.vst3" "<base64>"  (format 7) a plugin in the synth's place: file, state
 //   tempopoint 7680 140 1                          (format 7) a point of the tempo map: tick, BPM, 1 = ramps to
 //                                                  the next point. All points of a map that has more than one,
-//                                                  the first at tick 0 (its BPM is the tempo line's)
+//                                                  the first at tick 0, whose BPM the tempo line must give
 //   track 17 "Drums" -2 0 mono 0 0                 id, name, gain dB, pan, format, mute, solo
 //   bus 0 "Reverb" -2 0 0                          index, name, gain dB, pan, mute
 //   master "Master" 0 0 0                          name, gain dB, pan, mute
@@ -62,7 +62,8 @@
 //
 // Numbers are checked for more than their sign (ProjectLimits.h, the same in chapters 15 to 20): a
 // sample rate of 8000 to 768000 Hz, every position and length at most 2^40 samples or ticks, and a
-// fade at most 60 seconds at the file's sample rate.
+// fade at most 60 seconds at the file's sample rate. sampleRate, nextTrackId, tempo, loop and master come at
+// most once (a bus once per index).
 //
 // Channels are written "track:<id>", "bus:<index>" or "master". Lines that refer to something -
 // a send, an insert, a parameter, a clip - are checked once the whole file is read, so their

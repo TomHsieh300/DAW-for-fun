@@ -3,10 +3,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <limits>
 #include <locale>
+#include <set>
 #include <sstream>
 #include <type_traits>
+#include <utility>
 
 namespace dawlab::app::project {
 
@@ -299,9 +302,8 @@ ReadResult readProject(std::string_view text) {
     p.sampleRate = 0.0;
     p.nextTrackId = 0;
     int version = 0;
-    bool haveRate = false;
+    std::set<std::string> once; // the keywords of kOnce (below) read so far
     std::array<bool, engine::kNumBuses> haveBus{};
-    bool haveMaster = false;
 
     // Lines that refer to a channel are resolved after the last line (any order is fine).
     struct Pending {
@@ -358,17 +360,19 @@ ReadResult readProject(std::string_view text) {
                                         std::to_string(kFormatVersion) + ")");
             continue;
         }
-        if (!haveRate && kw != "sampleRate")
+        if (once.count("sampleRate") == 0 && kw != "sampleRate")
             return fail(lineNo, "sampleRate must come right after the header");
         if (version < 3 && kw != "sampleRate" && kw != "nextTrackId" && kw != "track" && kw != "clip")
             return fail(lineNo, "\"" + kw + "\" needs format 3 (this file is format " + std::to_string(version) + ")");
+        // The keywords a file has at most once. A second line is damage, not a change of mind: the last one would
+        // win without a word. (A bus is once per index, below.)
+        static const char* const kOnce[] = {"sampleRate", "nextTrackId", "tempo", "loop", "master"};
+        if (std::find(std::begin(kOnce), std::end(kOnce), kw) != std::end(kOnce) && !once.insert(kw).second)
+            return fail(lineNo, kw + " given twice");
 
         if (kw == "sampleRate") {
-            if (haveRate)
-                return fail(lineNo, "sampleRate given twice");
             if (tok.size() != 2 || !parseNumber(tok[1], p.sampleRate) || !isSampleRate(p.sampleRate))
                 return fail(lineNo, "sampleRate needs one number, 8000 to 768000");
-            haveRate = true;
         } else if (kw == "nextTrackId") {
             if (tok.size() != 2 || !parseNumber(tok[1], p.nextTrackId))
                 return fail(lineNo, "nextTrackId needs one whole number");
@@ -416,10 +420,8 @@ ReadResult readProject(std::string_view text) {
             int b = 0;
             if (!master && (!parseNumber(tok[1], b) || b < 0 || b >= engine::kNumBuses))
                 return fail(lineNo, "bus index must be 0 .. " + std::to_string(engine::kNumBuses - 1));
-            bool& seen = master ? haveMaster : haveBus[static_cast<size_t>(b)];
-            if (seen)
-                return fail(lineNo, master ? std::string("master given twice") : "bus " + tok[1].text + " given twice");
-            seen = true;
+            if (!master && std::exchange(haveBus[static_cast<size_t>(b)], true))
+                return fail(lineNo, "bus " + tok[1].text + " given twice");
             StripState& s = master ? p.master : p.buses[static_cast<size_t>(b)];
             if (!tok[first].quoted)
                 return fail(lineNo, "the name must be in quotes");
@@ -535,7 +537,7 @@ ReadResult readProject(std::string_view text) {
 
     if (version == 0)
         return fail(lineNo, "not a DawLab project (empty file)");
-    if (!haveRate)
+    if (once.count("sampleRate") == 0)
         return fail(lineNo, "no sampleRate");
 
     // ---- references, now that everything is read ----

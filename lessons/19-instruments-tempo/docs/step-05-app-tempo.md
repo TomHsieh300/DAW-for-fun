@@ -51,7 +51,10 @@ tempopoint 7680 180 0
 ```
 
 A map of one point writes no `tempopoint` line: the file of a song with one tempo looks as it did. A loop set in
-bars says `ticks`. A tempo is written with 17 digits, so that it reads back as the same number.
+bars says `ticks`. A tempo is written with 17 digits, so that it reads back as the same number. Point 0 of the map
+is the song's tempo, so the `tempo` line must give the same BPM; a file where they differ is refused. A file saved
+before the tempo line had 17 digits (it had a float's 9) still opens: its line is point 0's BPM written with 9
+digits, and the song takes point 0's.
 `tests/test_project_format.cpp` reads and writes it and refuses what is not a map: a first point that is not at 0,
 ticks that go back, a tempo out of range, a tick beyond 2^40, more than 256 points.
 

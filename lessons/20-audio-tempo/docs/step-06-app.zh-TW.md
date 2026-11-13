@@ -113,7 +113,7 @@ audio clips that follow the tempo
 
 ```text
 clips that follow: a start in ticks, varispeed and stretch with their markers written and read back exactly
-[PASS] l20_test_project_format (176 checks passed)
+[PASS] l20_test_project_format (220 checks passed)
 ```
 
 `tests/test_warp.cpp` 多了第七部分，測試 clip 的輔助函式，不需要 JUCE：

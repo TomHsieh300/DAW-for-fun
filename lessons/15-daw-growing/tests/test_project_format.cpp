@@ -187,6 +187,12 @@ void testErrors() {
         {head + "clip 1 0 0 \"a.wav\"\n", "line 4: clip length"},
         {head + "track 3 \"open\n", "line 4: unterminated string"},
         {head + "gain 1,5\n", "line 4: unknown keyword"},
+        // A keyword a file has once, given twice: damage, not a change of mind (the last one would win silently).
+        {"DawLabProject 3\nsampleRate 48000\nsampleRate 44100\n", "line 3: sampleRate given twice"},
+        {head + "nextTrackId 5\nnextTrackId 5\n", "line 5: nextTrackId given twice"},
+        {head + "tempo 120 4 4\ntempo 90 3 4\n", "line 5: tempo given twice"},
+        {head + "loop 0 0 0\nloop 0 48000 1\n", "line 5: loop given twice"},
+        {head + "master \"M\" 0 0 0\nmaster \"N\" 0 0 0\n", "line 5: master given twice"},
     };
     int ok = 0;
     for (const Case& c : cases) {
