@@ -77,6 +77,7 @@ public:
         setPreDelayMs(preDelayMs_);
         setModulationDepthMs(modulationDepthMs_);
         reset();
+        prepared_ = true;
     }
 
     void reset() noexcept {
@@ -185,7 +186,7 @@ public:
     void process(AudioBlock block) noexcept {
         const int nch = std::min(block.getNumChannels(), 2);
         const int n = block.getNumSamples();
-        if (nch == 0)
+        if (nch == 0 || !prepared_) // before prepare() the block passes through as it is: its delay lines do not exist yet
             return;
         float* left = block.getChannelPointer(0);
         float* right = nch > 1 ? block.getChannelPointer(1) : nullptr;
@@ -213,7 +214,12 @@ public:
     }
 
     // Computes only the wet signal (no dry, no width/mix), for anyone who wants to build their own send/return
+    // (before prepare() there is no reverb yet: both are 0)
     void processSampleStereo(float inL, float inR, float& wetL, float& wetR) noexcept {
+        if (!prepared_) {
+            wetL = wetR = 0.0f;
+            return;
+        }
         // 1. Pre-delay (a fractional delay whose changes are smoothed)
         currentPreDelay_ += smoothCoef_ * (targetPreDelay_ - currentPreDelay_);
         preDelay_.push(0, inL);
@@ -313,6 +319,7 @@ private:
     double sampleRate_ = 48000.0;
     int numChannels_ = 2;
     int maxLineDelay_ = 0;
+    bool prepared_ = false; // process() before prepare() passes the signal through
     int maxModulationSamples_ = 0;
 
     FractionalDelayLine lines_;    // kNumLines delay lines

@@ -144,9 +144,10 @@ public:
 
     // External sidechain: the detector looks at the sidechain, and the gain is applied to the block.
     // The sidechain may have fewer channels than the block (e.g. a mono sidechain controlling a stereo signal); the last channel is reused.
+    // The number of samples is the smaller of the two, as in Gate and Expander: the rest of the block is left as it is.
     void process(AudioBlock block, const AudioBlock& sidechain) noexcept {
         const int numCh = std::min(block.getNumChannels(), static_cast<int>(channels_.size()));
-        const int numSamples = block.getNumSamples();
+        const int numSamples = std::min(block.getNumSamples(), sidechain.getNumSamples());
         const int scCh = sidechain.getNumChannels();
         if (numCh <= 0 || scCh <= 0)
             return;

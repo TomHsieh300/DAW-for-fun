@@ -75,6 +75,9 @@ public:
 ```
 
 - `process()` 內**不可**：allocate / free、拿 mutex、檔案或 console I/O、throw exception。
+- 在 `prepare()` 之前呼叫 `process()` 與 `processSample()`，訊號原樣通過（host 可能呼叫還沒設定好的效果；`prepare()` 還沒配置的 buffer 絕不能讀）。唯一的例外是 `Limiter`：它會把 block 清成 0，因為沒有 lookahead 就守不住 ceiling。
+- 有 sidechain 的效果（`process(AudioBlock main, const AudioBlock& sidechain)`）只處理兩個 block 中較短那個的 sample 數，`main` 其餘部分原樣保留。
+- `dsp_selftest`（`dsp/tests/test_dsp.cpp`）對適用的每個 class 檢查這兩條規則；新增 class 時也加進去。
 - 參數改變要避免 zipper noise / click：用 `SmoothedValue`（第 01 章）或係數插值。
 - 遞迴結構（IIR filter、envelope）要處理 denormal：在 `reset()` 歸零，必要時加極小 offset 或把極小值 flush 成 0。
 - 需要給 UI 讀的量測值（例如 gain reduction）用 `std::atomic<float>`（relaxed 即可）。

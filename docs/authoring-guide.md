@@ -75,6 +75,9 @@ public:
 ```
 
 - `process()` must **not**: allocate / free, take a mutex, do file or console I/O, or throw an exception.
+- `process()` and `processSample()` called before `prepare()` leave the signal as it is (a host may call an effect it has not set up yet; a buffer that `prepare()` has not allocated must never be read). The one exception is the `Limiter`, which clears the block, because it cannot keep its ceiling without its lookahead.
+- An effect with a sidechain (`process(AudioBlock main, const AudioBlock& sidechain)`) processes as many samples as the shorter of the two blocks and leaves the rest of `main` as it is.
+- `dsp_selftest` (`dsp/tests/test_dsp.cpp`) checks these two rules for every class they apply to; add a new class there.
 - Parameter changes must avoid zipper noise / clicks: use `SmoothedValue` (chapter 01) or coefficient interpolation.
 - Recursive structures (IIR filters, envelopes) must handle denormals: zero them in `reset()`, and where necessary add a tiny offset or flush tiny values to 0.
 - Measurements that the UI reads (for example gain reduction) use `std::atomic<float>` (relaxed ordering is enough).

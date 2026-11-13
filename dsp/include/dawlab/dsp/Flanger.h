@@ -47,6 +47,7 @@ public:
         depthSm_.prepare(sampleRate, 20.0);
         feedbackSm_.prepare(sampleRate, 20.0);
         mixSm_.prepare(sampleRate, 20.0);
+        prepared_ = true;
         reset();
     }
 
@@ -90,6 +91,8 @@ public:
 
     // ---- Processing ----------------------------------------------------------
     float processSample(int channel, float x) noexcept {
+        if (!prepared_)
+            return x;
         if (channel == 0)
             advanceModulation();
         return renderSample(channel, x);
@@ -98,6 +101,8 @@ public:
     void process(AudioBlock block) noexcept {
         const int n = block.getNumSamples();
         const int nch = std::min(block.getNumChannels(), numChannels_);
+        if (!prepared_) // before prepare() the block passes through as it is: its buffers do not exist yet
+            return;
         for (int i = 0; i < n; ++i) {
             advanceModulation();
             for (int ch = 0; ch < nch; ++ch) {
@@ -135,6 +140,7 @@ private:
 
     double sampleRate_ = 48000.0;
     int numChannels_ = 2;
+    bool prepared_ = false; // process() before prepare() passes the signal through
     FractionalDelayLine delay_;
     Lfo lfo_;
 

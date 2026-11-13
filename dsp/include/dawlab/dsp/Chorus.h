@@ -55,6 +55,7 @@ public:
         mixSm_.prepare(sampleRate, 20.0);
         spreadSm_.prepare(sampleRate, 20.0);
         reset();
+        prepared_ = true;
     }
 
     void reset() noexcept {
@@ -109,6 +110,8 @@ public:
     // (the LFOs and parameter smoothers advance one step only on channel 0; the other channels
     // share the same values)
     float processSample(int channel, float x) noexcept {
+        if (!prepared_)
+            return x;
         if (channel == 0)
             advanceModulation();
         return renderSample(channel, x);
@@ -117,6 +120,8 @@ public:
     void process(AudioBlock block) noexcept {
         const int n = block.getNumSamples();
         const int nch = std::min(block.getNumChannels(), numChannels_);
+        if (!prepared_) // before prepare() the block passes through as it is: its buffers do not exist yet
+            return;
         for (int i = 0; i < n; ++i) {
             advanceModulation();
             for (int ch = 0; ch < nch; ++ch) {
@@ -170,6 +175,7 @@ private:
     float rateHz_ = 0.8f;
     bool useCubic_ = true;
 
+    bool prepared_ = false; // process() before prepare() passes the signal through
     FractionalDelayLine delay_;
     std::array<Lfo, kMaxVoices> lfos_{}; // fixed size: calling setters before prepare is also safe
     float voicePhase_[kMaxVoices] = {};

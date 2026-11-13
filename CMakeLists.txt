@@ -55,6 +55,8 @@ target_link_libraries(dawlab_dsp INTERFACE dawlab_common)
 
 # Tests for the shared utilities themselves
 _dawlab_add_program(common_selftest common common/tests/test_common.cpp)
+# ... and for the rules every effect in dsp/ shares
+_dawlab_add_program(dsp_selftest dsp dsp/tests/test_dsp.cpp)
 
 # ---- JUCE (only chapters 13-20 need it) ----------------------------------
 if(DAWLAB_WITH_JUCE)
