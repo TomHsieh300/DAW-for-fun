@@ -528,6 +528,7 @@ ProjectIO::OpenResult MainComponent::openProject(const juce::File& file) {
         return r;
     }
     projectFile_ = file;
+    leftOut_ = r.warnings;
     session_.dispatchPendingMessages(); // the views show the opened tracks now
     arrangement_.selectLane(0);
     arrangement_.zoomToFit();
@@ -550,13 +551,18 @@ bool MainComponent::saveProject(const juce::File& target) {
                                 ? target
                                 : target.withFileExtension(ProjectIO::kFileExtension);
     juce::String error;
-    if (!ProjectIO::save(session_, file, error)) {
+    if (file == projectFile_ && !leftOut_.isEmpty())
+        error = file.getFileName() + " still holds what opening it left out (" + leftOut_[0] +
+                (leftOut_.size() > 1 ? ", and " + juce::String(leftOut_.size() - 1) + " more" : juce::String()) +
+                "); saving over it would lose that. Save it under another name";
+    if (error.isNotEmpty() || !ProjectIO::save(session_, file, error)) {
         setStatus("Not saved: " + error);
         if (mode_ == Mode::Live)
             juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Save project", error);
         return false;
     }
     projectFile_ = file;
+    leftOut_.clear(); // the file holds what the session holds
     session_.setProjectName(file.getFileNameWithoutExtension());
     session_.getHistory().markSaved();
     setStatus("Saved " + file.getFullPathName());
@@ -576,14 +582,14 @@ void MainComponent::openProjectInteractive() {
 }
 
 void MainComponent::saveProjectInteractive(bool saveAs, std::function<void()> afterSave) {
-    if (!saveAs && projectFile_ != juce::File()) {
+    if (!saveAs && projectFile_ != juce::File() && leftOut_.isEmpty()) {
         if (saveProject(projectFile_) && afterSave)
             afterSave();
         return;
     }
     const juce::File suggestion =
         projectFile_ != juce::File()
-            ? projectFile_
+            ? (leftOut_.isEmpty() ? projectFile_ : projectFile_.getNonexistentSibling())
             : juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
                   .getChildFile(session_.getProjectName() + ProjectIO::kFileExtension);
     fileChooser_ = std::make_unique<juce::FileChooser>("Save project as", suggestion, juce::String("*") + ProjectIO::kFileExtension);

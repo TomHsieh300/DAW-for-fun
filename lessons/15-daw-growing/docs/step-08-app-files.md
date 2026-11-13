@@ -110,6 +110,12 @@ audio file (its clips are left out), a plugin that does not load, an effect or a
 version does not know, a clip longer than its audio. The status line shows the first warning,
 and in the app a message box lists them all.
 
+What a warning left out is not in the session, but it is still in the file. Saving over the file
+would write the session and lose it - and delete the audio files that are there but did not
+read. So after an open with warnings, Save asks for another name (the suggestion is a new one
+next to the old), and `saveProject()` refuses to write over the opened file. The file saved under
+the new name holds what the session holds, and Save writes over that one as usual.
+
 ### Ids: the session's and the file's
 
 Step 7 made the session's track ids count up for as long as the program runs. The ids in a file
@@ -144,7 +150,8 @@ The app's smoke test, section 6d:
 - A second window opens the file. Both windows render 2 s: the largest difference is **0**.
 - Saving from the second window into another folder gives the **same text**.
 - A broken file is refused with its line, and the open project is untouched.
-- Without its media folder, the project opens with no clips and one warning per missing file.
+- Without its media folder, the project opens with no clips and one warning per missing file;
+  saving it over itself is refused (the file is unchanged), under another name it is saved.
 - An engine at 44.1 kHz opens the file: the bass clip 3 sits at 88200.
 
 Each guarantee was broken on purpose:

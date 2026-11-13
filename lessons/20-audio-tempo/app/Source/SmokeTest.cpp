@@ -3131,6 +3131,17 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
                     sb.getNumTracks(), static_cast<int>(sb.getClipSources().size()), partial.warnings.size(),
                     partial.warnings[0].toRawUTF8());
         DAWLAB_CHECK(partial.ok && partial.warnings.size() == distinct && sb.getClipSources().empty());
+        // What the open left out is still in the file: Save never writes over it (that would lose it, and delete
+        // audio that is there but does not read). Under another name it is saved, and that file is complete.
+        const juce::String aloneText = alone.loadFileAsString();
+        const bool overwritten = b.saveProject(alone);
+        const juce::String refusedStatus = b.getStatus();
+        const juce::File elsewhere = alone.getSiblingFile("Elsewhere.dawlab");
+        const bool savedElsewhere = b.saveProject(elsewhere) && b.saveProject(elsewhere);
+        std::printf("    saved over itself: %s (\"%s\"); under another name, twice: %s\n", overwritten ? "yes" : "refused",
+                    refusedStatus.toRawUTF8(), savedElsewhere ? "yes" : "no");
+        DAWLAB_CHECK(!overwritten && alone.loadFileAsString() == aloneText && refusedStatus.startsWith("Not saved"));
+        DAWLAB_CHECK(savedElsewhere && b.getProjectFile() == elsewhere);
         DAWLAB_CHECK(sb.getNumTracks() == kDemoTracks + 1);
 
         // Opened by an engine at 44.1 kHz: positions and audio are converted.

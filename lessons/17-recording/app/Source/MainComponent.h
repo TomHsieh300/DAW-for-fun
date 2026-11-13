@@ -94,7 +94,9 @@ public:
     void newProject();
     // Project files (chapter 15, Step 8). openProject() and saveProject() work synchronously and
     // report on the status line (and, in Live mode, in a message box); the *Interactive versions
-    // ask for the file first. Save asks only for a project that has no file yet.
+    // ask for the file first. Save asks only for a project that has no file yet - or for one whose
+    // opening left something out (a warning): that is still in the file, and saveProject() never
+    // writes over it, since the session cannot write it back. It is saved under another name.
     ProjectIO::OpenResult openProject(const juce::File& file);
     bool saveProject(const juce::File& file);
     void openProjectInteractive();
@@ -206,6 +208,7 @@ private:
     juce::ApplicationCommandTarget* extraCommandTarget_ = nullptr;
     bool conversionRunning_ = false;                 // message thread only
     juce::File projectFile_;                         // where Save writes; none for a new project
+    juce::StringArray leftOut_;                      // what opening projectFile_ left out: not written over
     juce::String lastTitle_;
     std::atomic<bool> resumeAfterConversion_{false}; // also set by the device thread
 
