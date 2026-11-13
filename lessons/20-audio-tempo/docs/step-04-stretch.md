@@ -92,8 +92,10 @@ That is nothing for a render ahead of time, and too much to do on the audio thre
 The window and the search are lengths at 48 kHz. A piece is a time, though: the same 1024 samples at 96 kHz are
 half as long, too short for a low tone's cycles, and a 55 Hz tone came out an octave low. The engine's stretcher
 (`stretchSettingsFor()`, Step 5) scales them with the sample rate, so that a tone sounds the same at every rate -
-and keeps whole, at every rate, the cycles of tones down to about 60 Hz. Lower bass needs a longer window and
-search: more time, and drums that smear more.
+and keeps whole, at every rate, the cycles of tones down to about 60 Hz. Lower than that, a piece cannot slide far
+enough to find the next cycle, and a bass line loses its shape. So the engine looks at what a clip plays first:
+if a quarter of its energy or more is below 80 Hz, its pieces get the lengths a 40 Hz tone needs (a search of one
+cycle, 25 ms, and a window of two). That is four times the work and a hit smears more, so only such a clip gets it.
 
 ## Your turn
 

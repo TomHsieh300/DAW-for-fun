@@ -392,6 +392,37 @@ inline StretchSettings stretchSettingsFor(double sampleRate) {
     return s;
 }
 
+// The lengths for one clip: those of stretchSettingsFor(rate), which keep the cycles of tones down to about 60 Hz
+// whole, unless the source's samples [from, to) have much of their energy below 80 Hz. A piece slides by up to
+// `search` to find where the last one goes on, so for a bass it must reach a whole cycle: the lengths then keep
+// tones down to 40 Hz whole - four times the work, and a hit smears more, so only such a clip pays for it.
+inline StretchSettings stretchSettingsFor(const AudioBuffer& source, std::int64_t from, std::int64_t to, double sampleRate) {
+    StretchSettings s = stretchSettingsFor(sampleRate);
+    from = std::clamp<std::int64_t>(from, 0, source.getNumSamples());
+    to = std::clamp<std::int64_t>(to, from, source.getNumSamples());
+    if (to <= from || source.getNumChannels() <= 0 || !(sampleRate > 0.0))
+        return s;
+    // Two one-pole lowpasses at 80 Hz over the mean of the channels: how much of the energy is below.
+    const double a = std::exp(-kTwoPi * 80.0 / sampleRate);
+    double lp1 = 0.0, lp2 = 0.0, low = 0.0, all = 0.0;
+    for (std::int64_t i = from; i < to; ++i) {
+        double x = 0.0;
+        for (int ch = 0; ch < source.getNumChannels(); ++ch)
+            x += source.getReadPointer(ch)[i];
+        x /= source.getNumChannels();
+        lp1 = (1.0 - a) * x + a * lp1;
+        lp2 = (1.0 - a) * lp1 + a * lp2;
+        low += lp2 * lp2;
+        all += x * x;
+    }
+    if (all <= 0.0 || low < 0.25 * all)
+        return s;
+    constexpr double kLowestTone = 40.0; // Hz: a cycle of it is 25 ms
+    s.search = std::max(s.search, static_cast<int>(std::ceil(sampleRate / kLowestTone)));
+    s.window = std::max(s.window, 2 * s.search);
+    return s;
+}
+
 // How far the piece that wants to start at `candidate` slides to fit the natural continuation at `natural`:
 // the best of sum(a b) / sqrt(sum(a a)) over the first half window, the nearest of equal scores.
 inline int bestStretchOffset(const std::vector<float>& x, std::int64_t candidate, std::int64_t natural, const StretchSettings& settings) noexcept {
@@ -518,7 +549,8 @@ inline bool renderFollowClip(const FollowClip& clip, const TempoMap& map, double
     auto rendered = std::make_shared<AudioBuffer>();
     if (clip.mode == FollowMode::Stretch) {
         positions.pop_back();
-        *rendered = stretchAlong(source, positions, stretchSettingsFor(sampleRate), cancel);
+        const std::int64_t usedFrom = static_cast<std::int64_t>(std::floor(positions.front())), usedTo = static_cast<std::int64_t>(std::ceil(positions.back())) + 1;
+        *rendered = stretchAlong(source, positions, stretchSettingsFor(source, usedFrom, usedTo, sampleRate), cancel);
         if (length > 0 && rendered->getNumSamples() != length)
             return false; // cancelled
     } else {
