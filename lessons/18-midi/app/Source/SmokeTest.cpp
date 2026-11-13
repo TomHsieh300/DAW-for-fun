@@ -1514,6 +1514,43 @@ void testAudioFileBoundary() {
     std::printf("   an AIFF at 768 kHz that declares %lld frames: %s\n", static_cast<long long>(MediaLimits::kMaxFrames + 1),
                 tooMany.audio != nullptr ? "read" : tooMany.error.toRawUTF8());
     DAWLAB_CHECK(tooMany.audio == nullptr && tooMany.error.contains("20 minutes"));
+    // A file cut off in the middle. An uncompressed one (WAV, AIFF) must hold what its header declares, so the cut
+    // shows; JUCE's AIFF reader would read zeros for the missing part. A compressed one cannot be told from silence:
+    // its decoder returns zeros too, and such a file loads (chapter 14, Step 18: a known limit).
+    const juce::File whole = writeAiff(dir.getChildFile("whole.aiff"), 48000.0, 1000);
+    const juce::File cut = dir.getChildFile("cut.aiff");
+    {
+        juce::MemoryBlock bytes;
+        whole.loadFileAsData(bytes);
+        cut.replaceWithData(bytes.getData(), bytes.getSize() - 1000); // half of the 2000 bytes of samples
+    }
+    const LoadedMedia wholeMedia = MediaLoader::readAudioFile(whole, 48000.0);
+    const LoadedMedia cutMedia = MediaLoader::readAudioFile(cut, 48000.0);
+    std::printf("   an AIFF of 1000 frames: %s; cut to 500: %s\n", wholeMedia.audio != nullptr ? "read" : wholeMedia.error.toRawUTF8(),
+                cutMedia.audio != nullptr ? "read" : cutMedia.error.toRawUTF8());
+    DAWLAB_CHECK(wholeMedia.audio != nullptr && wholeMedia.audio->getNumSamples() == 1000);
+    DAWLAB_CHECK(cutMedia.audio == nullptr && cutMedia.error.contains("cut off"));
+    // The known limit, pinned: a FLAC cut the same way still loads, the missing part silent.
+    const juce::File flacFile = dir.getChildFile("cut.flac");
+    {
+        std::unique_ptr<juce::OutputStream> stream = std::make_unique<juce::FileOutputStream>(flacFile);
+        juce::FlacAudioFormat flac;
+        const auto options = juce::AudioFormatWriterOptions{}.withSampleRate(48000.0).withNumChannels(1).withBitsPerSample(16);
+        std::unique_ptr<juce::AudioFormatWriter> writer = flac.createWriterFor(stream, options);
+        std::vector<float> samples(48000);
+        for (size_t i = 0; i < samples.size(); ++i)
+            samples[i] = 0.25f * static_cast<float>(std::sin(0.13 * static_cast<double>(i))); // not compressible to nothing
+        const float* channels[] = {samples.data()};
+        DAWLAB_CHECK(writer != nullptr && writer->writeFromFloatArrays(channels, 1, 48000));
+    }
+    {
+        juce::MemoryBlock bytes;
+        flacFile.loadFileAsData(bytes);
+        flacFile.replaceWithData(bytes.getData(), bytes.getSize() / 2);
+    }
+    const LoadedMedia cutFlac = MediaLoader::readAudioFile(flacFile, 48000.0);
+    std::printf("   a FLAC of 48000 frames cut in half: %s\n", cutFlac.audio != nullptr ? "read (the rest silent)" : cutFlac.error.toRawUTF8());
+    DAWLAB_CHECK(cutFlac.audio != nullptr);
     dir.deleteRecursively();
 }
 

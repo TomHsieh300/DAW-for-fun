@@ -115,8 +115,14 @@ allocates anything:
 | more than 20 minutes at its own rate | refuses it |
 | more than `kMaxFrames` frames (20 minutes at 192 kHz) | refuses it: a stereo float copy stays below 1.8 GB at any rate |
 | more than 2 channels | reads only the first 2, straight into the engine's stereo buffer |
+| more samples than a WAV or AIFF file holds (the file was cut off) | refuses it: JUCE's AIFF reader would return zeros for the missing part |
 
 </div>
+
+A compressed file (FLAC, Ogg Vorbis, Opus, MP3) that was cut off cannot be caught this way: its
+size says nothing about its length, and JUCE's decoders return zeros for what they cannot decode,
+without an error. Such a file loads, silent from where it was cut. This is the same limit as a take
+after a power cut in chapter 17 (Step 3): zeros at the end cannot be told from silence.
 
 ### Resampling: band-limited interpolation
 

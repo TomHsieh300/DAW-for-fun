@@ -140,12 +140,29 @@ bool MediaLoader::readChecked(juce::AudioFormatReader& reader, bool stereo, Audi
         error = "The file is empty or longer than 20 minutes";
         return false;
     }
+    // An uncompressed file holds exactly the samples it declares; when they are not all there, it was cut off (the
+    // reader would return zeros for the rest). A cut-off compressed file cannot be told from a silent one: its
+    // decoder returns zeros too, without an error, so it loads with silence for the missing part.
+    const juce::String format = reader.getFormatName();
+    if (format == juce::WavAudioFormat().getFormatName() || format == juce::AiffAudioFormat().getFormatName()) {
+        const juce::int64 declaredBytes = length * reader.numChannels * ((reader.bitsPerSample + 7) / 8);
+        const juce::int64 fileBytes = reader.input != nullptr ? reader.input->getTotalLength() : -1;
+        if (declaredBytes > fileBytes) {
+            error = "The file is cut off: it declares " + juce::String(length) + " frames, more than its " +
+                    juce::String(fileBytes) + " bytes hold";
+            return false;
+        }
+    }
     // Straight into the result: no buffer of the file's full width in between.
     const int n = static_cast<int>(length); // <= kMaxFrames, far below INT_MAX
     const int fileChannels = static_cast<int>(std::min(2u, reader.numChannels));
     out.setSize(stereo ? 2 : fileChannels, n);
     float* const channels[2] = {out.getWritePointer(0), out.getNumChannels() > 1 ? out.getWritePointer(1) : nullptr};
-    reader.read(channels, fileChannels, 0, n);
+    if (!reader.read(channels, fileChannels, 0, n)) {
+        out = AudioBuffer();
+        error = "The file could not be read";
+        return false;
+    }
     if (out.getNumChannels() > fileChannels)
         std::copy_n(out.getReadPointer(0), n, out.getWritePointer(1));
     return true;

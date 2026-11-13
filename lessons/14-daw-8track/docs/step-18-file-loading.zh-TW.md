@@ -86,8 +86,11 @@ engine buffer 永遠是 stereo，所以 clip 與 arrangement 不在乎 format；
 | 以它自己的 rate 計算超過 20 分鐘 | 拒絕 |
 | 超過 `kMaxFrames` 個 frame（192 kHz 下的 20 分鐘） | 拒絕：不管 rate 是多少，stereo float 的副本都低於 1.8 GB |
 | 超過 2 個 channel | 只讀前 2 個，直接讀進 engine 的 stereo buffer |
+| sample 數多於 WAV 或 AIFF 檔實際裝得下的（檔案被截斷了） | 拒絕：JUCE 的 AIFF reader 會對缺少的部分回傳零 |
 
 </div>
+
+被截斷的壓縮檔（FLAC、Ogg Vorbis、Opus、MP3）沒辦法這樣抓出來：它的大小說明不了它的長度，而 JUCE 的 decoder 對解不出來的部分回傳零，不會報錯。這種檔案會載入，從截斷處開始是靜音。這和第 17 章（Step 3）斷電後的 take 是同一個限制：結尾的零無法和靜音區分。
 
 ### Resampling：band-limited interpolation
 

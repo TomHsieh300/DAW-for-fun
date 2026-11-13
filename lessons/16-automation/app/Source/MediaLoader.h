@@ -107,8 +107,10 @@ public:
     static LoadedMedia readAudioFile(const juce::File& file, double targetSampleRate);
 
     // The one place where the program reads a whole audio file (readAudioFile, and ProjectIO for a
-    // project's own WAVs). It refuses what MediaLimits does not allow, and reads at most 2 channels
-    // straight into `out`: 2 channels when `stereo` (a mono file duplicated), else the file's 1 or 2.
+    // project's own WAVs). It refuses what MediaLimits does not allow and a WAV or AIFF that is cut off
+    // (shorter than its header declares; a cut-off compressed file loads, silent where it ends). It
+    // reads at most 2 channels straight into `out`: 2 channels when `stereo` (a mono file duplicated),
+    // else the file's 1 or 2.
     // False, with `error`, when nothing could be read.
     static bool readChecked(juce::AudioFormatReader& reader, bool stereo, AudioBuffer& out, juce::String& error);
 
