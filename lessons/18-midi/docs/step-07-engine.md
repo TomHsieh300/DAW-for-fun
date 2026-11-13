@@ -173,8 +173,7 @@ instrument other than the synth. So the engine got one hook more, after the chap
   tempo to turn ticks into samples.
 
 `tests/test_midi.cpp` checks it (`testAnotherInstrument`, `testQueuedThroughADeviceChange`, and the full track
-and no-allocation tests); the app
-does not use it yet.
+and no-allocation tests). The app does not use `setTrackInstrument()` yet.
 
 ## What you learned
 

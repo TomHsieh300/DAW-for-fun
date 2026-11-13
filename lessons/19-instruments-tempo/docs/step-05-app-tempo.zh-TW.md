@@ -61,7 +61,7 @@ Arrangement 上方的一條，用同一個時間軸：tempo 維持的地方是�
 
 第 18 章的練習 3 和 9 成為 app 的一部分。`MidiFile.h` 讀寫 byte（不需要 JUCE，每次建置都測試）；`MidiFileIO.h` 把專案變成歌、把歌變成 track；File > Import MIDI file 和 Export MIDI file 把它們放進選單。
 
-- **匯出。** 每個 tempo 點是一個 tempo 事件。檔案沒有 ramp，所以 ramp 變成一個十六分音符一階的階梯——每一階的 tempo 讓這一階的長度正好等於 ramp 在這段的長度。用這一階中間的 tempo 是直覺的選擇，但從 120 到 60 BPM 一拍之後就差了 2 ms；正確的那個讓每個十六分音符都準時。比 delta time 能表示的更長的間隔（2^28 - 1 個 tick，120 BPM 下大約 39 小時；專案的 MIDI clip 最長可到 2^40 個 tick）會用空的 text 事件分段，所以每個 tick 都能精確讀回。Tempo 會限制在 tempo map 的 20 .. 999 BPM 之內，而不是 tempo 的值（0、負數、NaN）寫成 MIDI 的預設值 120。
+- **匯出。** 每個 tempo 點是一個 tempo 事件。檔案沒有 ramp，所以 ramp 變成一個十六分音符一階的階梯——每一階的 tempo 讓這一階的長度正好等於 ramp 在這段的長度。用這一階中間的 tempo 是直覺的選擇，但從 120 到 60 BPM 一拍之後就差了 2 ms；正確的那個讓每個十六分音符都準時。比 delta time 能表示的更長的間隔（2^28 - 1 個 tick，120 BPM 下大約 39 小時；專案的 MIDI clip 最長可到 2^40 個 tick）會用空的 text 事件分段，所以每個 tick 都能精確讀回。Tempo 會限制在 tempo map 的 20 .. 999 BPM 之內；不是 tempo 的值（0、負數、NaN）則寫成 MIDI 的預設值 120。
 - **匯入。** Tempo 事件可能在任何 track、順序錯亂、同一個 tick 有兩個：會先排序，同一個 tick 留最後一個。它們變成 tempo map 的跳躍。檔案的 tempo 可能超過 map 的 256 個點；每 k 個留一個會讓歌漂移好幾秒，所以 `TempoThinning.h` 留下*最少*的點，讓任何 tick 的移動都不超過容許值——先用 0，這只會拿掉重複的 tempo，再用 0.5 ms、1 ms、2 ms……之中放得下的最小那個——status line 會說明用了哪一個（練習 5 和 9 就是自己寫出這個）。Track 和 tempo 是**一個** undo 步驟。
 
 ## 檢查
@@ -82,8 +82,10 @@ l19_test_midi_file: Standard MIDI Files with tempo changes
   a song with three tempos: 90 bytes, exactly the expected ones, and read back
   tempos in two tracks, out of order, two at one tick, none at 0: 3 tempos in order
   1000 of 1000 random songs (tempos, names, every kind of message) came back the same
+  events at 2^28 + 480 and 2^32 + 487 ticks: read back at 268435936 and 4294967783, the tempo change at 268435936
+  a tempo of 0, -120, NaN, 5 and 5000 BPM: read back as 120, 120, 120, 20 and 999.001
   14 of 14 broken files refused, 75 files cut short refused, 20000 damaged files: no crash (1338 still readable)
-[PASS] l19_test_midi_file (10 checks passed)
+[PASS] l19_test_midi_file (13 checks passed)
 ```
 
 ```text

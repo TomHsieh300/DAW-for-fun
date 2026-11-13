@@ -113,7 +113,7 @@ app 的 `systemRequestedQuit()` 也用同樣的方式詢問，所以關閉視窗
 
 ## 測試
 
-smoke test 的 6e 和 6f 段（總共 180 項檢查）：
+smoke test 的 6e 和 6f 段：
 
 - **刪除後 undo。** 用指令刪除 bass。標題出現 `*`，Undo 選項寫著「Undo Delete track Bass」。undo 後，bass 帶著 id 10、16 個
   clip 和 2 個 insert 回到第 2 個 lane，整個專案和原本的文字（Step 8 的格式）相同，標題也回到未修改。redo 會再刪除一次。

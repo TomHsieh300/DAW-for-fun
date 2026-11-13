@@ -109,6 +109,8 @@ public:
     void setTempo(double bpm) noexcept { setTempoMap(TempoMap::constant(bpm)); }
     // The first point's tempo: THE tempo of a song with one.
     double getTempo() const noexcept { return maps_->ui.point(0).bpm; }
+    // A new map moves the playhead's samples: like any jump of the playhead, it ends a running audio take
+    // (Recorder). The app refuses tempo changes while a recording runs (MainComponent::refuseWhileRecording).
     void setTempoMap(const TempoMap& map) noexcept {
         maps_->ui = map;
         maps_->audio.write(map);

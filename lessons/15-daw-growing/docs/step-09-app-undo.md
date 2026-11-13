@@ -132,7 +132,7 @@ either.
 
 ## Testing
 
-The smoke test's sections 6e and 6f (180 checks in total):
+The smoke test's sections 6e and 6f:
 
 - **Delete and undo.** Delete the bass with the command. The title gets its `*`, and the Undo item
   reads "Undo Delete track Bass". Undo: the bass is back at lane 2 with id 10, 16 clips and 2

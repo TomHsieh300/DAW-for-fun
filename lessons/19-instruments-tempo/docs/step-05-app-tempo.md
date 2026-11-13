@@ -121,8 +121,10 @@ l19_test_midi_file: Standard MIDI Files with tempo changes
   a song with three tempos: 90 bytes, exactly the expected ones, and read back
   tempos in two tracks, out of order, two at one tick, none at 0: 3 tempos in order
   1000 of 1000 random songs (tempos, names, every kind of message) came back the same
+  events at 2^28 + 480 and 2^32 + 487 ticks: read back at 268435936 and 4294967783, the tempo change at 268435936
+  a tempo of 0, -120, NaN, 5 and 5000 BPM: read back as 120, 120, 120, 20 and 999.001
   14 of 14 broken files refused, 75 files cut short refused, 20000 damaged files: no crash (1338 still readable)
-[PASS] l19_test_midi_file (10 checks passed)
+[PASS] l19_test_midi_file (13 checks passed)
 ```
 
 ```text
