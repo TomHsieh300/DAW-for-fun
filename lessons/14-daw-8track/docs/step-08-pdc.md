@@ -83,6 +83,14 @@ on every block, also while $`c = 0`$; otherwise growing $`c`$ from 0 to $`D`$ wo
 stale audio from whenever the delay was last in use, instead of just repeating the most recent $`D`$
 samples. Professional DAWs crossfade here; that is a good extension exercise.
 
+All channels share one write position, so **every channel's ring is written on every block**. A
+block may carry fewer channels than the compensator has: a mono track sends only its left channel
+through its inserts and compensator. The reference engine
+(`engine/include/dawlab/engine/LatencyCompensator.h`) then writes the missing channels as silence.
+If it skipped them, the write position would run on past rings that keep their old samples, and
+when the track is stereo again its right channel would replay audio from before the switch. The
+step's `minidaw.h` has no mono tracks, so its loop over the block's channels never leaves one out.
+
 ### The limit, and what happens beyond it
 
 $`C = 16\,384`$ samples (`kDefaultMaxPdcSamples`, about 341 ms at 48 kHz, 171 ms at 96 kHz) is the

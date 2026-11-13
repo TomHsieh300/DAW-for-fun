@@ -83,6 +83,13 @@ y[n] = x[n - c], \qquad 0 \le c \le 16\,384
 $`D`$ 個 sample 的舊音訊，而不是單純重複最近的 $`D`$
 個 sample。專業的 DAW 會在這裡做 crossfade；這是個很好的延伸習題。
 
+所有 channel 共用同一個 write position，所以**每個 channel 的 ring 在每個 block 都會被寫入**。
+一個 block 帶的 channel 可能比 compensator 少：mono track 只把它的左 channel 送過它的 insert 與
+compensator。這時 reference engine（`engine/include/dawlab/engine/LatencyCompensator.h`）
+會把缺少的 channel 寫成靜音。如果跳過它們，write position 會繼續往前走，而那些 ring 仍保留舊的
+sample；等 track 再變回 stereo，它的右 channel 就會重播切換之前的音訊。這個 step 的
+`minidaw.h` 沒有 mono track，所以它對 block 的 channel 做的迴圈不會漏掉任何一個。
+
 ### 上限，以及超過上限時會發生什麼
 
 $`C = 16\,384`$ 個 sample（`kDefaultMaxPdcSamples`，在 48 kHz 下約 341 ms，在 96 kHz 下約 171 ms）是每個 compensator 的

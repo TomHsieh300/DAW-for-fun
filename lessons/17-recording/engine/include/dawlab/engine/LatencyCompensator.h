@@ -42,27 +42,33 @@ public:
     // The ring is written even when the delay is 0, so that it always holds the most recent
     // input: when the delay later grows from 0 to D, the output repeats the last D samples
     // (a small jump) instead of replaying stale audio from long ago.
+    // Every channel's ring is written every block, because they share one write position. A
+    // channel the block does not carry (a mono track's right side) is written as silence, so
+    // when it comes back it plays silence, not what its ring held before it was left out.
     void process(AudioBlock block) noexcept {
         if (ring_.empty())
             return;
         const int n = block.getNumSamples();
-        const int nch = std::min(numChannels_, block.getNumChannels());
-        int w = writeIndex_;
-        for (int ch = 0; ch < nch; ++ch) {
+        const int carried = std::min(numChannels_, block.getNumChannels());
+        for (int ch = 0; ch < numChannels_; ++ch) {
             float* ring = ring_.data() + static_cast<size_t>(ch) * static_cast<size_t>(capacity_);
-            float* x = block.getChannelPointer(ch);
-            w = writeIndex_;
+            float* x = ch < carried ? block.getChannelPointer(ch) : nullptr;
+            int w = writeIndex_;
             for (int i = 0; i < n; ++i) {
                 int r = w - delay_;
                 if (r < 0)
                     r += capacity_;
-                ring[w] = x[i];
-                x[i] = ring[r]; // delay 0: r == w, the sample just written
+                if (x != nullptr) {
+                    ring[w] = x[i];
+                    x[i] = ring[r]; // delay 0: r == w, the sample just written
+                } else {
+                    ring[w] = 0.0f;
+                }
                 if (++w == capacity_)
                     w = 0;
             }
         }
-        writeIndex_ = w;
+        writeIndex_ = (writeIndex_ + n) % capacity_;
     }
 
 private:

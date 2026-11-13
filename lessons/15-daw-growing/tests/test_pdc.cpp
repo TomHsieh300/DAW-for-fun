@@ -6,6 +6,8 @@
 #include "TestHelpers.h"
 #include "TestTracks.h"
 
+#include <cstdio>
+
 using namespace l15test;
 using namespace dawlab::engine::test;
 
@@ -181,6 +183,31 @@ void testPdcLimit() {
     }
 }
 
+void testChannelLeftOutReplaysNothing() {
+    // A mono track sends only its left channel through its compensator. When it is stereo again, its right
+    // channel must not play what the ring held from before: a channel a block does not carry is written as
+    // silence. A block of no channels moves every ring on the same way.
+    LatencyCompensator lc;
+    lc.prepare(16, 2);
+    lc.setDelaySamples(4);
+    AudioBuffer loud(2, 32), silence(2, 40), after(2, 8);
+    for (int ch = 0; ch < 2; ++ch)
+        for (int i = 0; i < loud.getNumSamples(); ++i)
+            loud.setSample(ch, i, 1.0f);
+    lc.process(loud.toBlock());
+    lc.process(silence.toBlock().getChannelSubset(0, 1)); // mono: the left channel only
+    lc.process(after.toBlock());
+    const float afterMono = peakAbs(after);
+    lc.process(loud.toBlock());
+    lc.process(silence.toBlock().getChannelSubset(0, 0).getSubBlock(0, 8)); // no channels
+    after.clear();
+    lc.process(after.toBlock());
+    const float afterNone = peakAbs(after);
+    std::printf("  a delay of 4 back to stereo after a block of the left channel only: peak %.2f; after no channels: %.2f\n",
+                static_cast<double>(afterMono), static_cast<double>(afterNone));
+    DAWLAB_CHECK(afterMono == 0.0f && afterNone == 0.0f);
+}
+
 } // namespace
 
 int main() {
@@ -189,5 +216,6 @@ int main() {
     testRealEffectsAndLatencyChange();
     testDeviceChange();
     testPdcLimit();
+    testChannelLeftOutReplaysNothing();
     return dawlab::test::summary("l15_test_pdc");
 }
