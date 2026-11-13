@@ -108,7 +108,8 @@ public:
             ChannelState& c = channels_[static_cast<size_t>(ch)];
             const float* x = block.getChannelPointer(ch);
             for (int i = 0; i < n; ++i) {
-                const float a = std::abs(x[i]);
+                // A non-finite sample counts as 0: an +inf would otherwise stay in peak / hold for good
+                const float a = std::abs(finiteOrZero(x[i]));
 
                 // --- peak: instant attack, fixed dB/s release ---
                 if (a > c.peak)

@@ -12,6 +12,11 @@ constexpr double kTwoPi = 2.0 * kPi;
 // Anything at or below this dB value is treated as silence (-inf dB)
 constexpr float kMinusInfinityDb = -100.0f;
 
+// The rule for an input sample that an object keeps in its memory (filter state, delay line, FIFO, analyzer ring):
+// a non-finite value (NaN, +-inf) is never kept. Every later operation on NaN gives NaN (even 0 * NaN), so one bad
+// sample would otherwise come back forever; a store writes 0 in its place, and the bad sample is forgotten.
+inline float finiteOrZero(float x) noexcept { return std::isfinite(x) ? x : 0.0f; }
+
 // dB -> linear gain: gain = 10^(dB/20)
 inline float dbToGain(float db, float minusInfinityDb = kMinusInfinityDb) noexcept {
     return db > minusInfinityDb ? std::pow(10.0f, db * 0.05f) : 0.0f;

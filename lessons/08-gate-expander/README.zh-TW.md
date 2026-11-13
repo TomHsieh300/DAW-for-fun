@@ -460,7 +460,7 @@ threshold、ratio、knee、range 都直接出現在 gain 公式 $`g = \max(\text
 - `prepare()` 準備五個 `Biquad`：偵測用 bandpass（Q = 1.5）、LR4 分頻的 LP×2 與 HP×2（都是 Q = 1/√2 的 Butterworth），以及一個存「每個 channel 目前偵測 sample」的 vector（listen 模式用；只在 prepare 配置）。
 - `setFrequency()` 同時更新偵測 bandpass 與分頻點（`getCrossoverHz()` = 0.7208 f）。
 - `process()` 每個 sample：先把 NaN / Inf 換成 0 → 每個 channel 各自 bandpass、取 $`\max|\cdot|`$（stereo-link）→ `EnvelopeFollower`（attack 1 ms、release 40 ms，可用 `setAttackMs` / `setReleaseMs` 改）→ GR = clamp(level − T, 0, range) → 套用。
-- **NaN 防護要放在 biquad 之前**：`EnvelopeFollower` 自己會擋 NaN，但 `Biquad`（TDF-II）不會。只要一個 NaN 進到濾波器，狀態變數就永遠是 NaN，split-band 與 listen 模式從此一直輸出 NaN，只有 `reset()` 救得回來。所以 `DeEsser` 在讀進 x 之後、送進任何 biquad 之前，就先把非有限值換成 0。
+- **NaN 防護放在最前面**：`EnvelopeFollower` 與 `Biquad`（TDF-II）自己都撐得過 NaN —— 它們絕不把非有限值留在狀態裡（清掉狀態、那個 sample 輸出 0；見[撰寫指南](../../docs/authoring-guide.zh-TW.md) 4.1 節），所以 de-esser 不會一直壞掉。但 wideband 模式輸出 `x * gain`，split-band 模式把 crossover 的輸出加回去，沒有這道防護，壞 sample 本身就會到達輸出。所以 `DeEsser` 在讀進 x 之後馬上把非有限值換成 0：那個 sample 以 0 離開。
 - threshold 與 range 直接出現在 GR 公式裡，和 `Expander` 一樣用 `SmoothedValue` 平滑（`DeEsser::kParameterRampMs` = 20 ms，reset 後第一個 sample 之前的 setter 直接生效）。
 - **分頻器永遠在跑**，即使是 wideband 模式：這樣使用者在播放中切換 split-band 時，濾波器狀態已經是「熱的」，不會因為從零開始而產生 transient。
 

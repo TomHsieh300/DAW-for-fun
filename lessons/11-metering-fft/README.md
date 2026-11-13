@@ -789,6 +789,7 @@ public:
 - The readings are written into a `std::atomic<float>` only at the end of each block: the UI reads only 30 times a second, so there is no need to write on every sample.
 - `resetPeakHold()` is normally called from the UI thread (the user clicks the meter), so it does not modify the audio thread's state directly but sets an atomic flag.
 - Tiny values are flushed to 0 (< 1e-10) to avoid denormals, and so that the reading can really return to −100 dB (`kMinusInfinityDb`).
+- A non-finite input sample (NaN / inf) counts as 0: an +inf would otherwise stay in peak and hold for good (`inf × decay` is still inf). No class in `dsp/` keeps a non-finite value in its memory (section 4.1 of the [authoring guide](../../docs/authoring-guide.md)); `SpectrumAnalyzer` likewise stores 0 in its ring in place of one.
 
 **Example 3: `l11_level_meter` (`examples/level_meter_timeline.cpp`)**
 

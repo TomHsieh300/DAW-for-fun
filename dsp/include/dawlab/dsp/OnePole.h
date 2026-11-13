@@ -72,15 +72,17 @@ public:
 
     float processSample(int channel, float x) noexcept {
         State& s = state_[static_cast<size_t>(channel)];
-        double y;
-        if (type_ == Type::Lowpass) {
-            // y[n] = (1 - a) x[n] + a y[n-1]
-            y = b_ * x + a_ * s.y1;
-        } else {
-            // y[n] = h (x[n] - x[n-1]) + a y[n-1]
-            y = h_ * (x - s.x1) + a_ * s.y1;
-            s.x1 = x;
+        // y[n] = (1 - a) x[n] + a y[n-1]          (lowpass)
+        // y[n] = h (x[n] - x[n-1]) + a y[n-1]     (highpass)
+        const double y = type_ == Type::Lowpass ? b_ * x + a_ * s.y1 : h_ * (x - s.x1) + a_ * s.y1;
+        // A single NaN / Inf entering a recursive structure would turn its state into NaN for good (the same guard
+        // as Biquad): on a non-finite value, clear this channel's state and output 0; the filter recovers from the
+        // next sample.
+        if (!std::isfinite(y)) {
+            s = State{};
+            return 0.0f;
         }
+        s.x1 = x;
         s.y1 = flushDenormal(y);
         return static_cast<float>(y);
     }
@@ -96,7 +98,7 @@ public:
 
 private:
     struct State {
-        double x1 = 0.0; // x[n-1] (used only by the highpass)
+        double x1 = 0.0; // x[n-1] (read only by the highpass)
         double y1 = 0.0; // y[n-1]
     };
 

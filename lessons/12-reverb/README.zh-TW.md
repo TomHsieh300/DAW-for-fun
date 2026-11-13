@@ -781,6 +781,7 @@ pre-fader,  fader -inf : return RMS 0.0752 (+0.00 dB relative to 0 dB -> unaffec
 - **`reset()` 會讓平滑值直接跳到目標**：reset 之後內部沒有任何聲音，跳值不會 click。所以離線處理時的慣用順序是 `prepare()` → 各種 setter → `reset()`，第一個 sample 起參數就到位（否則前 ~0.1 s 會從預設值滑過來，例如 mix 從 0.3 滑到 1，漏出 dry）。
 - **Latency 回報**：`ConvolutionReverb::getLatencySamples()` = P。內建的 dry/wet mix 已經把 dry 也延遲 P（3.3 節），所以不論 mix 多少，整個輸出的 latency 都一致是 P；但 host 仍然必須做延遲補償，否則和其他軌或 send/return 的 dry 訊號平行混音時，這一路會晚 P 個 sample。`Reverb`（FDN）沒有 latency。
 - **NaN 參數**：`std::clamp(NaN, lo, hi)` 會原樣回傳 NaN。如果 setter 只靠 clamp，一個 NaN 參數（例如 host automation 出錯）就會讓 $`g_i`$ 或 mix 變 NaN，輸出永久變 NaN，連 `reset()` 都救不回來（reset 只是把平滑值設成已經是 NaN 的目標）。本章所有 setter 都和 `OnePole`、`Delay` 一樣，開頭先 `if (std::isnan(x)) return;`。
+- **NaN 輸入 sample**：輸入裡的一個 NaN / inf 會在 FDN 裡永遠繞下去（對 NaN 的每個運算都得到 NaN，連 `0 * NaN` 也是）。它絕不會被留下：delay 線與 pre-delay 都是 `FractionalDelayLine`，它的 `push()` 改存 0；damping 用的 `OnePole` 遇到非有限值會清掉狀態；building block 的 ring（`CombFilter`、`AllpassDiffuser`、`TappedDelay`）與 `ConvolutionReverb` 的輸入 FIFO 也存 0（見[撰寫指南](../../docs/authoring-guide.zh-TW.md) 4.1 節）。壞 sample 本身仍可能經由 dry path 出去一次。
 - **Freeze 的安全性**：freeze 時 $`g_i = 1`$，只有在矩陣嚴格正交時才不會發散。不要在 freeze 時打開 damping 以外的增益（或把 A 換成非正交矩陣），float 誤差也可能慢慢累積 —— 實務上可以讓 freeze 的 g 是 0.99999 而不是 1。
 
 ---

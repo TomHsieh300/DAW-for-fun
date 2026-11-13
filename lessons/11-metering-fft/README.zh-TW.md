@@ -791,6 +791,7 @@ public:
 - 每個 block 結束才把讀數寫進 `std::atomic<float>`：UI 每秒只讀 30 次，沒必要每個 sample 都寫。
 - `resetPeakHold()` 通常由 UI thread 呼叫（使用者點 meter），所以它不直接改 audio thread 的狀態，而是設一個 atomic flag。
 - 極小值 flush 成 0（< 1e-10），避免 denormal，也讓讀數真的能回到 −100 dB（`kMinusInfinityDb`）。
+- 非有限的輸入 sample（NaN / inf）當成 0：否則一個 +inf 會永遠留在 peak 與 hold 裡（`inf × decay` 仍是 inf）。`dsp/` 裡沒有任何 class 會把非有限值留在記憶體裡（見[撰寫指南](../../docs/authoring-guide.zh-TW.md) 4.1 節）；`SpectrumAnalyzer` 也一樣，它的 ring 改存 0。
 
 **範例 3：`l11_level_meter`（`examples/level_meter_timeline.cpp`）**
 

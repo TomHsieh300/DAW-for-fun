@@ -21,6 +21,8 @@
 //                   identical to Hermite at Δ = 0.5)
 // - prepare() is the only place that allocates; every other method is noexcept and does not allocate.
 
+#include <dawlab/DspMath.h>
+
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -54,12 +56,13 @@ public:
     int getNumChannels() const noexcept { return numChannels_; }
     int getBufferSize() const noexcept { return size_; } // a power of two (for teaching: print it and look)
 
-    // Write one sample; the write index advances by one and wraps.
+    // Write one sample; the write index advances by one and wraps. A non-finite sample is stored as 0
+    // (finiteOrZero), so it can never come back around a feedback loop.
     void push(int ch, float x) noexcept {
         assert(ch >= 0 && ch < numChannels_);
         float* b = channelData(ch);
         int& w = writeIndex_[static_cast<size_t>(ch)];
-        b[w] = x;
+        b[w] = finiteOrZero(x);
         w = (w + 1) & mask_; // equivalent to (w + 1) % size_, but needs only one AND
     }
 

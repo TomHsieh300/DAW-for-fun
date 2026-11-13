@@ -524,7 +524,7 @@ flowchart LR
 - **delay time 用 sample 數平滑，而且用 double。** `DelayRamp delayRamp_` 存的是 sample 數而不是 ms，每個 sample `getNext()` 一次，讀取位置就連續移動（2.7 節的「平滑過渡」策略）。為什麼不直接用第 01 章的 `SmoothedValue`？它是 float、每個 sample `current += step`。delay 以 sample 計可以很大：1900 ms @ 48 kHz = 91200 sample，落在 $`[2^{16}, 2^{17})`$，float 在這裡的間距（ulp）是 $`2^{-7} = 0.0078`$ sample。把 1900 ms 改成 1901 ms、50 ms ramp 時 step = 48/2400 = 0.02 = 2.56 ulp，每次相加都被捨入成 3 ulp，2399 步累積多走約 8 sample，最後一步再「跳回」目標——讀取位置瞬間跳 8 sample，就是 click（15000 ms 時 ulp = 0.0625 > 2 × step，`current += step` 根本加不上去，先靜止 2400 sample 再一次跳 48 sample）。`DelayRamp` 用 double（ulp 小 $`2^{29}`$ 倍），而且不累加：每次直接算 `current = target − step × countdown`，誤差永遠只有一次捨入。讀取時把 double 位置拆成「整數 + 小數」交給 `readCubicSplit` / `readLinearSplit`，所以長 delay 的小數部分也不會因為轉成 float 而失去精度。feedback 與 mix 的範圍只在 0..1，float 的 `SmoothedValue` 完全夠用。
 - **feedback 迴路的 filter。** `feedbackFilter()` 依序過 HP、LP；兩者都在 `prepare()` 配置好每個 channel 的狀態。
 - **Ping-pong** 走 `processPingPong()`，完全照 2.9 節的圖：`push(0, mono + fb·filter(wetR))`、`push(1, fb·filter(wetL))`。
-- **NaN 防護。** 所有 setter 都忽略 NaN、保留上一個有效值（`std::clamp(NaN, lo, hi)` 會原樣回傳 NaN，一旦變成讀取位置就是越界讀取）；±inf 則會被 clamp 到合法範圍。這和第 02 章 `OnePole::setCutoff()` 的做法一致。
+- **NaN 防護。** 所有 setter 都忽略 NaN、保留上一個有效值（`std::clamp(NaN, lo, hi)` 會原樣回傳 NaN，一旦變成讀取位置就是越界讀取）；±inf 則會被 clamp 到合法範圍。這和第 02 章 `OnePole::setCutoff()` 的做法一致。NaN / inf 的*輸入* sample 也絕不會被存起來：`FractionalDelayLine::push()` 改寫入 0，所以它無法繞著 feedback loop 回來 —— 連 feedback 為 0 時也不會，那時 `0 * NaN` 仍然是 NaN（見[撰寫指南](../../docs/authoring-guide.zh-TW.md) 4.1 節）。壞 sample 本身仍可能經由 dry path 出去一次。
 - **Denormal。** 寫回 delay line 的值經過 `flushDenormal()`：小於 $`10^{-15}`$（−300 dBFS）就清成 0。否則輸入靜音之後，echo 每圈乘 $`g`$，幾十秒後會掉進 denormal 範圍，CPU 負載可能突然暴增。
 
 ### 3.3 範例

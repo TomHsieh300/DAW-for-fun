@@ -99,7 +99,8 @@ public:
             return;
         const uint64_t pos = beginWrite(n);
         for (int i = 0; i < n; ++i)
-            ring_[static_cast<size_t>((pos + static_cast<uint64_t>(i)) & ringMask_)].store(x[i], std::memory_order_relaxed);
+            ring_[static_cast<size_t>((pos + static_cast<uint64_t>(i)) & ringMask_)].store(finiteOrZero(x[i]),
+                                                                                           std::memory_order_relaxed);
         endWrite(pos, n);
     }
 
@@ -115,7 +116,8 @@ public:
             float sum = 0.0f;
             for (int ch = 0; ch < nch; ++ch)
                 sum += block.getSample(ch, i);
-            ring_[static_cast<size_t>((pos + static_cast<uint64_t>(i)) & ringMask_)].store(sum * scale, std::memory_order_relaxed);
+            ring_[static_cast<size_t>((pos + static_cast<uint64_t>(i)) & ringMask_)].store(finiteOrZero(sum * scale),
+                                                                                           std::memory_order_relaxed);
         }
         endWrite(pos, n);
     }

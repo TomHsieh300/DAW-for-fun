@@ -134,7 +134,7 @@ public:
                 // so no extra delay line is needed.
                 const float dryDelayed = c.inputFifo[pos];
                 const float wet = c.outputFifo[pos]; // the wet signal, P samples late
-                c.inputFifo[pos] = in;
+                c.inputFifo[pos] = finiteOrZero(in); // never kept: it would stay in the FDL spectra for K frames
                 ++c.fifoPos;
                 if (c.fifoPos == partitionSize_) {
                     processPartition(c, spectra);

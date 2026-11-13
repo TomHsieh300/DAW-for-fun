@@ -20,11 +20,13 @@
 // Interface (the API contract; Chapter 09's FractionalDelayLine keeps the same design):
 //   prepare(maxDelaySamples, numChannels)  allocate memory (the only place that allocates)
 //   reset()                                clear to 0
-//   push(ch, x)                            push one new sample into channel ch
+//   push(ch, x)                            push one new sample into channel ch (a non-finite one is stored as 0)
 //   read(ch, d)                            read the sample from "d pushes ago"; d = 0 is the one just pushed
 //
 // Each channel has its own write index, so the order and number of pushes can differ per
 // channel (for example, when processing mono you only push channel 0).
+
+#include <dawlab/DspMath.h>
 
 #include <algorithm>
 #include <cassert>
@@ -52,11 +54,12 @@ public:
     int getMaxDelaySamples() const noexcept { return maxDelay_; }
     int getNumChannels() const noexcept { return numChannels_; }
 
-    // Push one new sample. O(1), no allocation.
+    // Push one new sample. O(1), no allocation. A non-finite sample is stored as 0 (finiteOrZero): the line
+    // never keeps it, even when a caller feeds the output back in.
     void push(int channel, float x) noexcept {
         assert(channel >= 0 && channel < numChannels_);
         int& w = writeIndex_[static_cast<size_t>(channel)];
-        channelData(channel)[w] = x;
+        channelData(channel)[w] = finiteOrZero(x);
         if (++w >= size_) // circular: wrap back to the start at the end
             w = 0;
     }

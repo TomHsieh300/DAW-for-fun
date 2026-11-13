@@ -673,7 +673,7 @@ public:
 對照公式：
 
 - `updateCoefficients()`：`a_ = exp(-2π fc / fs)`、`b_ = 1 - a`（lowpass 的輸入係數）、`h_ = (1 + a) / 2`（highpass 的正規化常數）。cutoff 先 clamp 到 $`(0.001, 0.49 f_s)`$，避免 $`a`$ 落到 0 或 1；`setCutoff(NaN)` 會被忽略（保留上一個有效值），因為 `std::clamp` 擋不住 NaN。
-- `processSample()`：lowpass 是 `y = b_ * x + a_ * s.y1`（$`y[n] = (1-a)x[n] + a\,y[n-1]`$）；highpass 是 `y = h_ * (x - s.x1) + a_ * s.y1`。
+- `processSample()`：lowpass 是 `y = b_ * x + a_ * s.y1`（$`y[n] = (1-a)x[n] + a\,y[n-1]`$）；highpass 是 `y = h_ * (x - s.x1) + a_ * s.y1`。如果 `y` 不是有限數（輸入是 NaN / inf），就清掉該 channel 的狀態並輸出 0，和 `Biquad` 一樣的防護（第 4 節）。
 - 每個 channel 有自己的 `State { x1, y1 }`（double），放在 `prepare()` 時配置好的 `std::vector` 裡；`processSample()` 不做邊界檢查，channel 必須小於 `prepare()` 時給的 `numChannels`。
 - `flushDenormal()`：$`|y| < 10^{-30}`$ 時清成 0（見第 4 節）。
 - `setCutoff()` 只算一次 `exp`，可以在 block 之間呼叫。
@@ -717,7 +717,7 @@ public:
 - 每個 factory 先呼叫 `angles()` 算出 $`\cos\omega_0`$ 與 $`\alpha = \sin\omega_0 / 2Q`$（頻率 clamp 到 $`(0.001, 0.499 f_s)`$，Q 至少 0.001；NaN 的 frequency / Q / gainDb 分別當成 1 kHz / $`1/\sqrt2`$ / 0 dB，保證係數永遠是有限值），再把 2.11 節表格的六個值交給 `normalize()` 除以 $`a_0`$。程式碼和表格可以逐項對照。
 - `response()`：`z1 = polar(1, -ω)` 就是 $`e^{-j\omega}`$（$`z^{-1}`$），`num / den` 就是 2.5 節的 $`H(e^{j\omega})`$。`magnitudeDb()` 取 `abs` 再轉 dB（`gainToDb` 下限 −100 dB，所以 notch 中心會印 −100）。這兩個函式給 UI 畫曲線、給第 03 章的 EQ 算整條曲線用。
 - `poles()` 用 `std::complex` 的 `sqrt` 解二次方程式（判別式為負時自然得到共軛 pole）；`isStable()` 用三角形條件。
-- `Biquad::processSample()` 就是 2.15 節 TDF-II 的三行式子，狀態 `s1`、`s2` 是 double。
+- `Biquad::processSample()` 就是 2.15 節 TDF-II 的三行式子，狀態 `s1`、`s2` 是 double。如果 `y` 不是有限數，就清掉該 channel 的狀態並輸出 0（第 4 節）。
 - `setCoefficients()` **不會**清掉狀態：block 之間換係數時輸出是連續的（TDF-II 的優點）。大幅跳動仍可能有短暫 transient，需要平滑時由上層處理（第 03 章 `ParametricEq`）。
 - `butterworthQ()` 是自由函式（不是 class 成員），練習 3 會用到。
 
@@ -739,7 +739,7 @@ public:
 };
 ```
 
-`processSampleAll()` 逐行對應 2.16 節的式子；`band` 乘了 $`k`$，讓 bandpass 峰值是 0 dB（與 RBJ BPF 相同）。
+`processSampleAll()` 逐行對應 2.16 節的式子；`band` 乘了 $`k`$，讓 bandpass 峰值是 0 dB（與 RBJ BPF 相同）。如果 `v1` 或 `v2` 不是有限數（輸入是 NaN / inf），就清掉該 channel 的狀態並回傳四個 0，和 `Biquad` 一樣的防護（第 4 節）。
 
 ### 3.4 建置與執行
 
@@ -841,7 +841,7 @@ cd build
 - **只在 `prepare()` 配置記憶體。** 三個 class 都在 `prepare()` 用 `std::vector::assign` 配置每個 channel 的狀態；`process()` / `processSample()` / setter 都不 allocate、不 lock、不 throw。channel 數改變時必須重新 `prepare()`（在 audio thread 之外）。
 - **算係數的成本。** `BiquadCoefficients::make*()` 要 `sin` / `cos`（shelf、peak 還有 `pow`），`OnePole::setCutoff()` 一次 `exp`，SVF 一次 `tan`。在 block 之間呼叫完全沒問題；8 軌 × 6 band 每個 sample 都重算就太浪費——用 block 更新 + 平滑，或只在參數真的變動時才算。
 - **Denormal。** IIR 的狀態在輸入變成靜音後會無限趨近 0，最後落入 denormal（次正規數）範圍，x86 CPU 處理 denormal 可能慢上數十倍，造成「靜音時 CPU 反而飆高」。本章元件在每次更新狀態時把 $`|v| < 10^{-30}`$ 清成 0（`flushDenormal()`）；另外 JUCE 的 `ScopedNoDenormals`（第 13、14 章）會在整個 callback 開啟 FTZ/DAZ。
-- **NaN 會永久污染 IIR。** 一旦輸入出現 NaN / inf（或係數不穩定），它會進入 feedback 狀態，之後永遠輸出 NaN。除錯時用 `hasNanOrInf()` 檢查；實務上 host 遇到這種情況會 `reset()` 該 filter。注意 `reset()` **只清狀態、不修係數**：如果是**參數**變成 NaN（例如 UI 傳來壞值），算出來的係數就是 NaN，reset 也救不回來。所以本章的 `OnePole::setCutoff()` 會忽略 NaN、`BiquadCoefficients::make*()` 會把 NaN 參數換成安全值（`std::clamp` / `std::max` 遇到 NaN 會原樣回傳，擋不住）；你自己寫的元件也要在參數進來時就擋掉 NaN。
+- **NaN 會永久污染 IIR。** 一旦 NaN / inf 進入 feedback 狀態（來自輸入，或來自不穩定的係數），之後永遠輸出 NaN：對 NaN 的每個運算都得到 NaN，連 `0 * NaN` 也是，只有 `reset()` 能清掉。所以本章的 `OnePole`、`Biquad`、`StateVariableFilter` 會檢查每個新算出的值：不是有限數就清掉該 channel 的狀態並輸出 0，從下一個 sample 起自己恢復（`dsp/` 裡每個 class 都遵守這條規則，見[撰寫指南](../../docs/authoring-guide.zh-TW.md) 4.1 節）。除錯自己寫的 filter 時用 `hasNanOrInf()` 檢查。注意 `reset()` **只清狀態、不修係數**：如果是**參數**變成 NaN（例如 UI 傳來壞值），算出來的係數就是 NaN，reset 也救不回來。所以本章的 `OnePole::setCutoff()` 會忽略 NaN、`BiquadCoefficients::make*()` 會把 NaN 參數換成安全值（`std::clamp` / `std::max` 遇到 NaN 會原樣回傳，擋不住）；你自己寫的元件也要在參數進來時就擋掉 NaN。
 - **Thread safety。** `setCoefficients()` 寫入 5 個 double，不是 atomic。UI thread 直接呼叫而 audio thread 同時在 `process()`，可能讀到「一半舊、一半新」的係數（甚至不穩定的組合）。正確作法是 UI 只寫 atomic 的參數（cutoff、Q、gain），由 audio thread 在 block 開頭讀取並自己算係數——第 03 章的 `ParametricEq` 與第 13 章的 plugin 都照這個模式。
 - **`reset()` 的時機。** transport 跳位、開始播放、bypass 切回來時呼叫 `reset()`，否則上一段的殘響（尤其高 Q）會出現在新位置。但**播放中改參數不要 reset**（會 click）。
 - **立體聲要每個 channel 一份狀態。** 不要用同一個 `State` 處理左右聲道（會互相干擾、變成奇怪的 filter）；本章的 class 都依 `numChannels` 自動分開。

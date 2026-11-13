@@ -74,6 +74,12 @@ public:
         const double v3 = x - s.ic2eq;
         const double v1 = a1_ * s.ic1eq + a2_ * v3;
         const double v2 = s.ic2eq + a2_ * s.ic1eq + a3_ * v3;
+        // A non-finite value would stay in the integrators for good (the same guard as Biquad): clear this channel's
+        // state and output 0; the filter recovers from the next sample.
+        if (!std::isfinite(v1) || !std::isfinite(v2)) {
+            s = State{};
+            return Outputs{0.0f, 0.0f, 0.0f, 0.0f};
+        }
         s.ic1eq = flushDenormal(2.0 * v1 - s.ic1eq);
         s.ic2eq = flushDenormal(2.0 * v2 - s.ic2eq);
         Outputs o;

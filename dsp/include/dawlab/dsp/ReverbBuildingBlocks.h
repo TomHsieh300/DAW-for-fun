@@ -36,8 +36,9 @@ public:
         std::fill(buffer_.begin(), buffer_.end(), 0.0f);
         write_ = 0;
     }
+    // A non-finite sample is stored as 0 (finiteOrZero), so it never goes round a comb or allpass loop
     void push(float x) noexcept {
-        buffer_[static_cast<size_t>(write_)] = x;
+        buffer_[static_cast<size_t>(write_)] = finiteOrZero(x);
         write_ = (write_ + 1) % size_;
     }
     float read(int delaySamples) const noexcept {
