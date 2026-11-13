@@ -3,6 +3,7 @@
 
 #include "TestHelpers.h"
 
+#include <memory>
 #include <random>
 
 #include "TestTracks.h"
@@ -74,10 +75,14 @@ void testTransportMaths() {
 }
 
 void testClipPlacement() {
+    // The engines here are on the heap: an Engine holds all its track slots (some 190 KB), and a Debug build of
+    // MSVC gives each block below its own room on the stack, so a few of them overflowed Windows' 1 MB stack.
+
     // An impulse clip at timeline sample 12345 must appear at exactly output sample 12345,
     // whatever the block size.
     for (int blockSize : {512, 64, 1, 1000}) {
-        Engine e;
+        const auto engine = std::make_unique<Engine>();
+        Engine& e = *engine;
         addTestTracks(e);
         e.prepare(kSampleRate, 512);
         Clip c = Clip::fromBuffer(makeImpulseClip(1, 0), 12345, "click");
@@ -90,7 +95,8 @@ void testClipPlacement() {
 
     // trimming: sourceOffset / length select a window of the source
     {
-        Engine e;
+        const auto engine = std::make_unique<Engine>();
+        Engine& e = *engine;
         addTestTracks(e);
         e.prepare(kSampleRate, 512);
         auto ramp = std::make_shared<AudioBuffer>(1, 1000);
@@ -114,7 +120,8 @@ void testClipPlacement() {
     // that is longer than its source pads silence. (A mono track would fold it to (L+R)/2:
     // test_track_format.)
     {
-        Engine e;
+        const auto engine = std::make_unique<Engine>();
+        Engine& e = *engine;
         addTestTracks(e);
         e.prepare(kSampleRate, 512);
         e.getMixer().getTrack(0).setFormat(TrackFormat::Stereo);
@@ -134,7 +141,8 @@ void testClipPlacement() {
 
     // overlapping clips on one track add
     {
-        Engine e;
+        const auto engine = std::make_unique<Engine>();
+        Engine& e = *engine;
         addTestTracks(e);
         e.prepare(kSampleRate, 512);
         e.setTrackClips(testId(0), {Clip::fromBuffer(makeConstant(0.1f, 1000), 0), Clip::fromBuffer(makeConstant(0.2f, 1000), 500)});

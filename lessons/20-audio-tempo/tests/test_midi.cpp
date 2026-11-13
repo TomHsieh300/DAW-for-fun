@@ -18,6 +18,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
 #include <new>
 #include <random>
 #include <thread>
@@ -296,9 +297,13 @@ void testNothingHangs() {
 
 // What the cases above do not reach.
 void testMoreCases() {
+    // The engines here are on the heap: an Engine holds all its track slots (some 190 KB), and a Debug build of
+    // MSVC gives each block below its own room on the stack, so a few of them overflowed Windows' 1 MB stack.
+
     // A seek BACK into a note: it ends at the jump (its end is far ahead), and it is not started again.
     {
-        Engine e;
+        const auto engine = std::make_unique<Engine>();
+        Engine& e = *engine;
         setUp(e);
         e.setTrackMidiClips(testId(0), {clipOf(1, 0, 2 * kBar, {{0, 2 * kBar, 60, 100, 0}})});
         e.applyPendingCommandsOffline();
@@ -311,7 +316,8 @@ void testMoreCases() {
     // Controllers are chased: the sustain pedal, pressed at the start of the clip, still holds after a seek past it,
     // so a short note at bar 2 is still heard half a second after it ended.
     {
-        Engine e;
+        const auto engine = std::make_unique<Engine>();
+        Engine& e = *engine;
         setUp(e);
         MidiClip c = clipOf(1, 0, 4 * kBar, {{kBar, 100, 60, 100, 0}}); // 100 ticks: 2500 samples
         c.controllers = {{0, Synth::kSustainPedal, 127, 0}};
@@ -325,7 +331,8 @@ void testMoreCases() {
     }
     // An instrument track's audio clips still play: the synth adds to them.
     {
-        Engine e;
+        const auto engine = std::make_unique<Engine>();
+        Engine& e = *engine;
         setUp(e);
         e.setTrackClips(testId(0), {Clip::fromBuffer(makeConstant(0.1f, 48000), 0)});
         e.setTrackMidiClips(testId(0), {clipOf(1, 0, kBar, {{960, 100, 60, 100, 0}})});
@@ -336,7 +343,8 @@ void testMoreCases() {
     }
     // At another tempo: 60 BPM, tick 960 is sample 48000.
     {
-        Engine e;
+        const auto engine = std::make_unique<Engine>();
+        Engine& e = *engine;
         setUp(e);
         e.getTransport().setTempo(60.0);
         e.setTrackMidiClips(testId(0), {clipOf(1, 0, kBar, {{960, 480, 60, 100, 0}})});
@@ -346,7 +354,8 @@ void testMoreCases() {
     }
     // A reset (before a bounce) silences the synth at once.
     {
-        Engine e;
+        const auto engine = std::make_unique<Engine>();
+        Engine& e = *engine;
         setUp(e);
         e.setTrackMidiClips(testId(0), {clipOf(1, 0, kBar, {{0, kBar, 60, 100, 0}})});
         e.applyPendingCommandsOffline();

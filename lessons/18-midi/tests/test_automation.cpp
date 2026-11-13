@@ -6,6 +6,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
 #include <new>
 #include <thread>
 #include <vector>
@@ -218,8 +219,12 @@ void testBlockSizeChangesNothing() {
 }
 
 void testPanAndTheOtherStrips() {
+    // The engines here are on the heap: an Engine holds all its track slots (some 190 KB), and a Debug build of
+    // MSVC gives each block below its own room on the stack, so a few of them overflowed Windows' 1 MB stack.
+
     { // pan, per sample, per side
-        Engine e;
+        const auto engine = std::make_unique<Engine>();
+        Engine& e = *engine;
         setUp(e);
         const AutomationCurve pan = ramp(0, 0.0f, 24000, 1.0f); // hard left to hard right
         e.setLaneCurve(LaneTarget{e.trackRef(kTrack), EffectId{}, kLanePan}, pan);
@@ -238,7 +243,8 @@ void testPanAndTheOtherStrips() {
         DAWLAB_CHECK(worst < 1e-5f);
     }
     { // the master
-        Engine e;
+        const auto engine = std::make_unique<Engine>();
+        Engine& e = *engine;
         setUp(e);
         const AutomationCurve curve = ramp(0, 0.5f, 48000, 0.75f);
         e.setLaneCurve(LaneTarget{ChannelRef::master(), EffectId{}, kLaneGain}, curve);
@@ -252,7 +258,8 @@ void testPanAndTheOtherStrips() {
         DAWLAB_CHECK(worst < 1e-5f);
     }
     { // a bus: the track only reaches it through a pre-fader send
-        Engine e;
+        const auto engine = std::make_unique<Engine>();
+        Engine& e = *engine;
         setUp(e);
         Track* t = e.getTrack(kTrack);
         t->setGainDb(kMinusInfinityDb);
