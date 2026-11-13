@@ -5,6 +5,10 @@
 // Writing supports: 16/24-bit PCM integer, 32-bit float.
 // Integer formats clip values beyond ±1.0 when written; use 32-bit float if you want to keep the overs.
 //
+// A file is outside data: readWav refuses a sample rate of 0 and a data chunk that says more bytes than the file
+// holds. writeWav refuses a sample rate that a WAV cannot hold (below 1 Hz, NaN) and more than 4 GiB of samples,
+// which its 32-bit sizes cannot say, before it opens the file.
+//
 // Usage:
 //   dawlab::WavData wav;
 //   if (!dawlab::readWav("in.wav", wav)) { ... }
@@ -54,6 +58,19 @@ inline void setError(std::string* error, const std::string& message) {
         *error = message;
 }
 
+// What a WAV can say, for reading and for writing. Its fmt chunk holds the sample rate in 32 bits, and 0 Hz (or
+// NaN) is no rate: a file with one is damaged, and a rate that cannot be written is refused.
+inline bool isWavSampleRate(double rate) noexcept { return std::isfinite(rate) && rate >= 1.0 && rate <= 4294967295.0; }
+
+// The bytes of sample data of `numFrames` frames, counted in 64 bits so that no size wraps.
+inline uint64_t wavDataBytes(uint64_t numFrames, uint64_t numChannels, uint64_t bytesPerSample) noexcept {
+    return numFrames * numChannels * bytesPerSample;
+}
+
+// The RIFF header says the file's size less 8 in 32 bits: 36 header bytes, the data and its pad byte. More than
+// that (some 4 GiB) is not a WAV file; writeWav refuses it before it writes anything.
+inline bool fitsWav(uint64_t dataBytes) noexcept { return 36 + dataBytes + (dataBytes & 1) <= 0xFFFFFFFFull; }
+
 } // namespace detail
 
 inline bool readWav(const std::string& path, WavData& out, std::string* error = nullptr) {
@@ -80,6 +97,11 @@ inline bool readWav(const std::string& path, WavData& out, std::string* error = 
         const size_t size = detail::readU32(&bytes[pos + 4]);
         const size_t body = pos + 8;
         const size_t available = std::min(size, bytes.size() - body);
+        if (id == "data" && available < size) { // a file from outside: its samples are not all there
+            detail::setError(error, "The data chunk is cut short (" + std::to_string(size) + " bytes said, " +
+                                        std::to_string(available) + " there): " + path);
+            return false;
+        }
         if (id == "fmt " && available >= 16) {
             format = detail::readU16(&bytes[body]);
             numChannels = detail::readU16(&bytes[body + 2]);
@@ -99,7 +121,7 @@ inline bool readWav(const std::string& path, WavData& out, std::string* error = 
         detail::setError(error, "fmt or data chunk not found: " + path);
         return false;
     }
-    if (numChannels == 0 || blockAlign == 0 || blockAlign < numChannels * (bitsPerSample / 8)) {
+    if (numChannels == 0 || blockAlign == 0 || blockAlign < numChannels * (bitsPerSample / 8) || !detail::isWavSampleRate(sampleRate)) {
         detail::setError(error, "Invalid fmt chunk contents: " + path);
         return false;
     }
@@ -154,6 +176,21 @@ inline bool writeWav(const std::string& path, const AudioBuffer& buffer, double 
         detail::setError(error, "bitDepth must be 16, 24 or 32");
         return false;
     }
+    const int numChannels = buffer.getNumChannels();
+    const int numFrames = buffer.getNumSamples();
+    const int bytesPerSample = bitDepth / 8;
+    const uint64_t dataBytes = detail::wavDataBytes(uint64_t(numFrames), uint64_t(numChannels), uint64_t(bytesPerSample));
+    // Checked before the file is opened: a refused WAV leaves nothing behind, not a truncated file.
+    const uint64_t rate = detail::isWavSampleRate(sampleRate) ? uint64_t(std::llround(sampleRate)) : 0;
+    const uint64_t byteRate = rate * uint64_t(numChannels) * uint64_t(bytesPerSample);
+    if (rate == 0 || byteRate > 0xFFFFFFFFull) {
+        detail::setError(error, "A WAV file cannot hold a sample rate of " + std::to_string(sampleRate) + " Hz: " + path);
+        return false;
+    }
+    if (!detail::fitsWav(dataBytes)) {
+        detail::setError(error, "Too large for a WAV file (4 GiB): " + path);
+        return false;
+    }
     const auto parent = std::filesystem::path(path).parent_path();
     if (!parent.empty()) {
         std::error_code ec;
@@ -165,11 +202,7 @@ inline bool writeWav(const std::string& path, const AudioBuffer& buffer, double 
         return false;
     }
 
-    const int numChannels = buffer.getNumChannels();
-    const int numFrames = buffer.getNumSamples();
-    const int bytesPerSample = bitDepth / 8;
-    const uint32_t dataSize = uint32_t(numFrames) * uint32_t(numChannels) * uint32_t(bytesPerSample);
-
+    const auto dataSize = uint32_t(dataBytes);
     f.write("RIFF", 4);
     detail::writeU32(f, 36 + dataSize + (dataSize & 1));
     f.write("WAVE", 4);
@@ -177,8 +210,8 @@ inline bool writeWav(const std::string& path, const AudioBuffer& buffer, double 
     detail::writeU32(f, 16);
     detail::writeU16(f, bitDepth == 32 ? 3 : 1);
     detail::writeU16(f, uint16_t(numChannels));
-    detail::writeU32(f, uint32_t(std::lround(sampleRate)));
-    detail::writeU32(f, uint32_t(std::lround(sampleRate)) * uint32_t(numChannels * bytesPerSample));
+    detail::writeU32(f, uint32_t(rate));
+    detail::writeU32(f, uint32_t(byteRate));
     detail::writeU16(f, uint16_t(numChannels * bytesPerSample));
     detail::writeU16(f, uint16_t(bitDepth));
     f.write("data", 4);

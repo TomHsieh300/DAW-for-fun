@@ -523,6 +523,8 @@ dawlab::writeWav(dawlab::outputPath("out32.wav"), wav.buffer, wav.sampleRate, 32
 
 讀取支援 8/16/24/32-bit PCM、32/64-bit float 與 WAVE_FORMAT_EXTENSIBLE；寫入支援 16/24-bit PCM 與 32-bit float。整數格式寫出時會把超過 ±1.0 的值 clamp（這就是 2.7 的 clipping）。`outputPath()` 回傳 `dawlab_output/<檔名>` 並確保資料夾存在。
 
+WAV 檔是外部來的資料，所以 `readWav` 會拒絕不能相信的內容：sample rate 為 0，以及 data chunk 宣稱的 byte 數比檔案裡實際有的多（被截斷的檔案）。`writeWav` 會拒絕 WAV 存不下的 sample rate（低於 1 Hz、NaN），以及超過 4 GiB 的 sample，因為 header 的 32-bit 大小欄位寫不下；兩者都在開檔之前檢查，所以被拒絕的 WAV 不會留下任何檔案。
+
 ### 3.3 `Signals.h`：測試訊號
 
 每一章都用這些 deterministic（同樣參數 → 同樣結果）的訊號當輸入，不需要準備音檔：

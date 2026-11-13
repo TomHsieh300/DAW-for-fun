@@ -521,6 +521,8 @@ dawlab::writeWav(dawlab::outputPath("out32.wav"), wav.buffer, wav.sampleRate, 32
 
 Reading supports 8/16/24/32-bit PCM, 32/64-bit float and WAVE_FORMAT_EXTENSIBLE; writing supports 16/24-bit PCM and 32-bit float. Integer formats clamp values beyond ±1.0 when written (this is the clipping of 2.7). `outputPath()` returns `dawlab_output/<filename>` and makes sure the folder exists.
 
+A WAV file is data from outside, so `readWav` refuses what it cannot trust: a sample rate of 0, and a data chunk that says more bytes than the file holds (a file cut short). `writeWav` refuses a sample rate a WAV cannot hold (below 1 Hz, NaN) and more than 4 GiB of samples, which the header's 32-bit sizes cannot say; it checks both before it opens the file, so a refused WAV leaves nothing behind.
+
 ### 3.3 `Signals.h`: test signals
 
 Every chapter uses these deterministic signals (same parameters → same result) as input, so you do not need to prepare any audio files:

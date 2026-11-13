@@ -1,7 +1,12 @@
 // Self-test of the shared utilities: WAV round trip, Goertzel measurement accuracy, dB conversion.
 #include <dawlab/Common.h>
 
+#include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <fstream>
+#include <string>
+#include <vector>
 
 int main() {
     using namespace dawlab;
@@ -44,6 +49,44 @@ int main() {
         const double tol = bits == 32 ? 0.0 : (bits == 24 ? 1.0 / 8388607.0 : 1.0 / 32767.0);
         DAWLAB_CHECK(maxErr <= tol);
     }
+
+    // A WAV from outside: readWav refuses a sample rate of 0 and a data chunk that says more than the file holds.
+    // A 16-bit mono file of 4 frames, made by hand: `rate` in its fmt chunk, `declared` as its data chunk's size.
+    const auto handMade = [](const std::string& name, uint32_t rate, uint32_t declared) {
+        std::vector<char> b;
+        const auto u32 = [&b](uint32_t v) {
+            for (int i = 0; i < 4; ++i)
+                b.push_back(char((v >> (8 * i)) & 0xff));
+        };
+        const auto u16 = [&b](uint32_t v) { b.push_back(char(v & 0xff)), b.push_back(char((v >> 8) & 0xff)); };
+        const auto tag = [&b](const char* t) { b.insert(b.end(), t, t + 4); };
+        tag("RIFF"), u32(36 + 8), tag("WAVE");
+        tag("fmt "), u32(16), u16(1), u16(1), u32(rate), u32(rate * 2), u16(2), u16(16);
+        tag("data"), u32(declared);
+        b.insert(b.end(), 8, char(0));
+        const std::string path = outputPath("common_" + name + ".wav");
+        std::ofstream(path, std::ios::binary).write(b.data(), std::streamsize(b.size()));
+        return path;
+    };
+    WavData wav;
+    std::string why;
+    DAWLAB_CHECK(readWav(handMade("hand_ok", 48000, 8), wav) && wav.buffer.getNumSamples() == 4 && wav.sampleRate == 48000.0);
+    DAWLAB_CHECK(!readWav(handMade("hand_rate0", 0, 8), wav, &why));
+    std::printf("a WAV with a sample rate of 0: %s\n", why.c_str());
+    DAWLAB_CHECK(!readWav(handMade("hand_short", 48000, 1000000), wav, &why));
+    std::printf("a data chunk of 1000000 bytes with 8 there: %s\n", why.c_str());
+    DAWLAB_CHECK(!readWav(handMade("hand_huge", 48000, 0xFFFFFFFFu), wav));
+
+    // writeWav refuses a sample rate that a WAV cannot hold, before it writes anything.
+    AudioBuffer one(1, 1);
+    const std::string rated = outputPath("common_rate.wav");
+    DAWLAB_CHECK(!writeWav(rated, one, 0.0, 24, &why) && !writeWav(rated, one, -48000.0) && !writeWav(rated, one, std::nan("")));
+    std::printf("writeWav at 0 Hz: %s\n", why.c_str());
+    DAWLAB_CHECK(writeWav(rated, one, 48000.0) && readWav(rated, wav) && wav.buffer.getNumSamples() == 1);
+    // And more than 4 GiB of samples, which the RIFF header's 32-bit size cannot say: 1.5e9 stereo 24-bit frames
+    // are 9e9 bytes, which wrapped to 410065408 in 32 bits. The size is counted in 64 bits and checked first.
+    DAWLAB_CHECK(detail::wavDataBytes(1500000000, 2, 3) == 9000000000ull && !detail::fitsWav(9000000000ull));
+    DAWLAB_CHECK(detail::fitsWav(0xFFFFFFFFull - 37) && !detail::fitsWav(0xFFFFFFFFull - 36)); // 36 header bytes, a pad byte
 
     // AudioBlock sub-blocks and mixing
     AudioBuffer a(2, 8), b(2, 8);
