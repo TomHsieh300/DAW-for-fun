@@ -121,6 +121,10 @@ Nothing lists the chapters by hand: the build takes every folder of `lessons/` w
 `juce` and `engine` follow from what a chapter has, and `scripts/check_copies.py` checks every chapter with an
 `engine/` and an `app/`. A new chapter is a new folder; the CI picks it up through the groups.
 
+From chapter 15 on an `Engine` is some 190 KB. A test function keeps at most two of them as local variables, and
+more with `std::make_unique<Engine>()`: a Debug build of MSVC gives every block its own room on Windows' 1 MB stack.
+`scripts/check_test_stacks.py` checks it in the CI.
+
 The warning level is MSVC `/W4`; new code should produce no warnings.
 
 ### 4.6 Building and testing (Linux / macOS)

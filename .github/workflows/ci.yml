@@ -44,6 +44,11 @@ jobs:
       - name: Check that the files copied between chapters are still the same
         run: python3 scripts/check_copies.py
 
+      # An engine with its track pool is some 190 KB: more than two of them in one function overflowed the 1 MB
+      # stack of a Windows Debug build now and then (CI #72, #77)
+      - name: Check that no test puts more than two engines on the stack
+        run: python3 scripts/check_test_stacks.py
+
   core:
     name: core (${{ matrix.os }}, ${{ matrix.config }})
     runs-on: ${{ matrix.os }}
