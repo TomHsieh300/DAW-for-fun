@@ -10,6 +10,7 @@
 #include <dawlab/AudioBuffer.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -141,6 +142,7 @@ public:
             state_->replacement->prepare(sampleRate, maxBlockSize);
         state_->player.reset();
         state_->events.reserve(kMaxBlockEvents);
+        state_->live.reserve(kMaxBlockEvents);
         state_->merged.reserve(kMaxBlockEvents);
         state_->sampleRate = sampleRate;
     }
@@ -166,11 +168,13 @@ public:
         if (state_->replacement != nullptr)
             state_->replacement->reset();
         state_->player.reset();
+        state_->keys = {};
         state_->wasOn = false;
     }
 
     // Audio thread: the clips' events and (when armed) the live ones, merged in order of offset, through the
-    // synth, ADDED to both channels of dest.
+    // synth, ADDED to both channels of dest. Disarmed, the live events that end what the keyboard held on this
+    // track still come through (LiveKeys).
     void renderInstrument(AudioBlock dest, const TimelineSegment* segments, int numSegments, const TempoMap& map, MidiBlock live) noexcept {
         if (state_ == nullptr)
             return; // not prepared
@@ -186,15 +190,19 @@ public:
         in.player.process(getMidiClips(), segments, numSegments, map, in.sampleRate, in.events);
         // The clips' events are in order within each segment, and the segments follow each other; the live
         // ones are in order. Merge: at one offset the clips' first.
+        in.live.clear();
+        const bool armed = isArmed();
+        for (int i = 0; i < live.numEvents && in.live.size() < in.live.capacity(); ++i)
+            if (in.keys.pass(live.events[i].message, armed))
+                in.live.push_back(live.events[i]);
         in.merged.clear();
-        const int numLive = isArmed() ? live.numEvents : 0;
         size_t a = 0;
-        int b = 0;
-        while ((a < in.events.size() || b < numLive) && in.merged.size() < in.merged.capacity()) {
-            if (b >= numLive || (a < in.events.size() && in.events[a].offset <= live.events[b].offset))
+        size_t b = 0;
+        while ((a < in.events.size() || b < in.live.size()) && in.merged.size() < in.merged.capacity()) {
+            if (b >= in.live.size() || (a < in.events.size() && in.events[a].offset <= in.live[b].offset))
                 in.merged.push_back(in.events[a++]);
             else
-                in.merged.push_back(live.events[b++]);
+                in.merged.push_back(in.live[b++]);
         }
         float* channels[kNumChannels] = {};
         const int numChannels = std::min(dest.getNumChannels(), kNumChannels);
@@ -217,11 +225,47 @@ public:
 
 private:
     static constexpr int kMaxBlockEvents = 4096;
+    // What the keyboard holds on this track: the keys it pressed and the sustain pedal, per MIDI channel. Armed,
+    // every live event passes; disarmed, only those that end something held - the key let go, the pedal up - so
+    // that a note played before the track was disarmed does not hang, and nothing new starts.
+    struct LiveKeys {
+        std::array<std::array<bool, 128>, 16> key{};
+        std::array<bool, 16> pedal{};
+
+        bool pass(const MidiMessage& m, bool armed) noexcept {
+            const size_t ch = static_cast<size_t>(m.channel());
+            const size_t note = static_cast<size_t>(m.note());
+            switch (m.kind()) {
+            case MidiKind::NoteOn:
+                if (armed)
+                    key[ch][note] = true;
+                return armed;
+            case MidiKind::NoteOff: {
+                const bool held = key[ch][note];
+                key[ch][note] = false;
+                return armed || held;
+            }
+            case MidiKind::Controller:
+                if (m.note() == Synth::kSustainPedal) {
+                    const bool up = m.velocity() < 64;
+                    const bool wasDown = pedal[ch];
+                    if (armed || up)
+                        pedal[ch] = !up;
+                    return armed || (wasDown && up);
+                }
+                return armed;
+            case MidiKind::PitchBend:
+            case MidiKind::Other: return armed;
+            }
+            return armed;
+        }
+    };
     struct InstrumentState {
         ClipPlayer player;
         SynthInstrument builtin;
         Instrument* replacement = nullptr; // owned; audio thread (set up by prepare() before)
-        std::vector<BlockEvent> events, merged;
+        std::vector<BlockEvent> events, live, merged;
+        LiveKeys keys; // audio thread only
         double sampleRate = 48000.0;
         bool wasOn = false; // audio thread only
 

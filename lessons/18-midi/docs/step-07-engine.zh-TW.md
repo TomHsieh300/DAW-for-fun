@@ -65,6 +65,7 @@ Track 被移除時，它的 MIDI clip 清單像 audio clip 一樣以 garbage 交
 - **在它的 sample 上。** 位於 tick 960 的音符，第一次被聽到是在 sample 24001——envelope 從 0 開始，所以第一個聲音在 note on 之後一個 sample——不論 block 是 512、64、100、1 或隨機大小。
 - **任何 block 大小都一樣。** 四小節的和弦，加上一段在被修剪過、有 controller 的 clip 中互相重疊的旋律，loop 播三次，用 512、37、1000 和隨機大小的 block 逐位元相同。
 - **不會卡住音。** 停止、seek 到和弦中間、關掉樂器、把 clip 換成空的、移除 track 之後：都是無聲，而舊 slot 裡的新 track 以一般的 audio track 開始——或者，若 UI 在 audio thread 看到移除之前就這麼說，以樂器開始。
+- **踩著 sustain pedal 也不會。** clip player 記住每個 MIDI channel 上是哪個 clip 踩下 pedal（controller 64），在那個 clip 不再發聲時放開它（送出值為 0 的 controller 64）：停止、seek 或 loop 繞回時（在 note off 之後）、clip 結束的地方、clip 被刪除或 mute 時。沒有這一步，clip 裡踩下的 pedal 會在 transport 停止後讓音永遠響下去。Live 輸入時，track 記住鍵盤在它上面按住的鍵和 pedal；disarm 之後，它仍然放行結束這些音的 note off 和 pedal 放開，其他一律不放——不然 disarm 前彈下的鍵永遠不會停。
 - **更多情況。** 往回 seek 到長音符中間會結束它；延音踏板在 seek 之後會被 chase；instrument track 的 audio clip 仍然會播；60 BPM 時 tick 960 是 sample 48000；reset 會讓 synth 靜音。
 - **即時 MIDI。** 沒有 arm：什麼都沒有。Arm 了：從它的 offset 之後一個 sample 開始。Arm 的 audio track：什麼都沒有。在為 512 準備的 engine 上、2048 個 sample 的 block 的第四個 chunk：在它該在的地方。同一個 block 裡也有 clip 的音符：兩者都有。
 - **Garbage。** 擁有所有 insert、audio clip、MIDI clip 和兩條曲線的 track，交回剛好 `kMaxGarbagePerCommand` 個。

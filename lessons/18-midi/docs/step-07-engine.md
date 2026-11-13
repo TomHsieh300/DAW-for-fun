@@ -99,6 +99,12 @@ new one in its slot before the audio thread has seen either.
 - **Nothing hangs.** After a stop, a seek into a chord, the instrument switched off, the clips replaced by none, the
   track removed: silence, and a new track in the old slot starts as a plain audio track - or as an instrument, when
   the UI says so before the audio thread has even seen the removal.
+- **Nor with the sustain pedal.** The clip player remembers which clip pressed the pedal (controller 64) on each
+  MIDI channel and lets it go - a controller 64 of 0 - when that clip stops sounding: on a stop, a seek or a wrap
+  (after the note offs), where the clip ends, and when the clip is deleted or muted. Without that a pedal pressed
+  in a clip held its notes for ever once the transport stopped. Live, the track remembers the keys and the pedal
+  the keyboard holds on it; disarmed, it still lets through the note offs and the pedal up that end them, and
+  nothing else - a key played before the track was disarmed would otherwise never stop.
 - **More cases.** A seek *back* into a long note ends it; the sustain pedal is chased past a seek; an instrument
   track's audio clips still play; tick 960 at 60 BPM is sample 48000; a reset silences the synth.
 - **Live MIDI.** Not armed: nothing. Armed: from the sample after its offset. An armed audio track: nothing. In the

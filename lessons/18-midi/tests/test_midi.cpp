@@ -3,6 +3,8 @@
 //   1. A note starts on the sample of its tick, through the real transport and mixer, in any block size, and a
 //      whole song with a loop is the same in any block size.
 //   2. Nothing hangs: after a stop, a seek, turning the instrument off, removing the track - silence.
+//   2b. Nor with the sustain pedal down: a clip's pedal is let go when the clip stops sounding, and a key or
+//       pedal held on the keyboard is let go on a track disarmed meanwhile.
 //   3. Live MIDI reaches the armed instrument tracks only, at its offset, also when processBlock() is given more
 //      than one chunk.
 //   4. Removing a track that has everything hands back exactly kMaxGarbagePerCommand objects.
@@ -293,6 +295,89 @@ void testNothingHangs() {
     tr.play();
     play(e, 4800, 512); // RemoveTrack, AddTrack and the clips arrive in this block, in that order
     DAWLAB_CHECK(reused.index == 0 && e.getMixer().getTrack(0).isInstrument() && t.getSynth()->activeVoices() == 1);
+}
+
+// A clip that presses the sustain pedal (CC 64 = 127 at its start) and plays a chord, `length` ticks long.
+MidiClip pedalClip(int id, int64_t start, int64_t length) {
+    MidiClip c = clipOf(id, start, length, {{0, 960, 60, 100, 0}, {0, 960, 64, 100, 0}, {0, 960, 67, 100, 0}});
+    c.controllers = {{0, 64, 127, 0}};
+    return c;
+}
+
+// Each case is silent 0.3 s (the release) after the clip stops sounding, or after the key or pedal is let go.
+void testPedalLetGo() {
+    // The engines here are on the heap: see testMoreCases.
+    {
+        auto e = std::make_unique<Engine>(); // a stop
+        setUp(*e);
+        e->setTrackMidiClips(testId(0), {pedalClip(1, 0, kBar)});
+        e->applyPendingCommandsOffline();
+        e->getTransport().play();
+        play(*e, 30000, 512);
+        DAWLAB_CHECK(e->getMixer().getTrack(0).getSynth()->activeVoices() == 3); // held by the pedal
+        e->getTransport().stop();
+        const AudioBuffer after = play(*e, 24000, 512);
+        DAWLAB_CHECK(silentFrom(after, 15000) && e->getMixer().getTrack(0).getSynth()->activeVoices() == 0);
+    }
+    {
+        auto e = std::make_unique<Engine>(); // a seek to before the clip, playing on
+        setUp(*e);
+        e->setTrackMidiClips(testId(0), {pedalClip(1, 2 * kBar, kBar)});
+        e->applyPendingCommandsOffline();
+        Transport& tr = e->getTransport();
+        tr.setPosition(2 * 96000); // where the clip starts
+        tr.play();
+        play(*e, 30000, 512);
+        tr.setPosition(0);
+        const AudioBuffer after = play(*e, 24000, 512);
+        DAWLAB_CHECK(silentFrom(after, 15000) && e->getMixer().getTrack(0).getSynth()->activeVoices() == 0);
+    }
+    {
+        auto e = std::make_unique<Engine>(); // the clip ends with the pedal down, the song plays on
+        setUp(*e);
+        e->setTrackMidiClips(testId(0), {pedalClip(1, 0, kBar)});
+        e->applyPendingCommandsOffline();
+        e->getTransport().play();
+        const AudioBuffer song = play(*e, 96000 + 24000, 512); // a bar is 96000 samples
+        DAWLAB_CHECK(silentFrom(song, 96000 + 15000) && e->getMixer().getTrack(0).getSynth()->activeVoices() == 0);
+        // the clips replaced by nothing while the pedal is down
+        e->getTransport().setPosition(0);
+        play(*e, 30000, 512);
+        e->setTrackMidiClips(testId(0), {});
+        const AudioBuffer gone = play(*e, 24000, 512);
+        DAWLAB_CHECK(silentFrom(gone, 15000) && e->getMixer().getTrack(0).getSynth()->activeVoices() == 0);
+    }
+    {
+        auto e = std::make_unique<Engine>(); // live: a key held, the track disarmed, then the key let go
+        setUp(*e);
+        Track& inst = e->getMixer().getTrack(0);
+        inst.setArmed(true);
+        std::vector<std::pair<int64_t, MidiMessage>> down{{0, MidiMessage::noteOn(0, 60, 100)}};
+        play(*e, 512, 512, nullptr, nullptr, &down);
+        inst.setArmed(false);
+        std::vector<std::pair<int64_t, MidiMessage>> up{{0, MidiMessage::noteOff(0, 60)}};
+        play(*e, 512, 512, nullptr, nullptr, &up);
+        DAWLAB_CHECK(silentFrom(play(*e, 24000, 512), 15000) && inst.getSynth()->activeVoices() == 0);
+        // the same with the pedal: pressed while armed, let go after
+        inst.setArmed(true);
+        std::vector<std::pair<int64_t, MidiMessage>> pedalAndKey{{0, MidiMessage::controller(0, 64, 127)},
+                                                                 {10, MidiMessage::noteOn(0, 62, 100)},
+                                                                 {20, MidiMessage::noteOff(0, 62)}};
+        play(*e, 512, 512, nullptr, nullptr, &pedalAndKey);
+        inst.setArmed(false);
+        std::vector<std::pair<int64_t, MidiMessage>> pedalUp{{0, MidiMessage::controller(0, 64, 0)}};
+        play(*e, 512, 512, nullptr, nullptr, &pedalUp);
+        DAWLAB_CHECK(silentFrom(play(*e, 24000, 512), 15000) && inst.getSynth()->activeVoices() == 0);
+        // a disarmed track still ignores what the keyboard did not start on it: a clip's note plays on
+        e->setTrackMidiClips(testId(0), {clipOf(1, 0, kBar, {{0, 3840, 60, 100, 0}})});
+        e->applyPendingCommandsOffline();
+        e->getTransport().setPosition(0);
+        e->getTransport().play();
+        play(*e, 4800, 512);
+        play(*e, 512, 512, nullptr, nullptr, &up);
+        play(*e, 24000, 512);
+        DAWLAB_CHECK(inst.getSynth()->activeVoices() == 1);
+    }
 }
 
 // What the cases above do not reach.
@@ -610,6 +695,7 @@ int main() {
     testNoteOnItsSample();
     testBlockInvariance();
     testNothingHangs();
+    testPedalLetGo();
     testMoreCases();
     testLiveMidi();
     testGarbageOfAFullTrack();

@@ -167,15 +167,20 @@ public:
         }
     }
 
-    // A note off for everything that sounds, at `offset`.
+    // A note off for everything that sounds, at `offset` - and the sustain pedal up where a clip pressed it,
+    // or the synth would hold those notes until some later clip lets the pedal go.
     void allNotesOff(int offset, std::vector<BlockEvent>& out) noexcept {
         for (int i = 0; i < numSounding_; ++i)
             pushEvent(out, {offset, MidiMessage::noteOff(sounding_[static_cast<size_t>(i)].channel, sounding_[static_cast<size_t>(i)].pitch)});
         numSounding_ = 0;
+        for (int ch = 0; ch < 16; ++ch)
+            if (pedals_[static_cast<size_t>(ch)].down)
+                letPedalGo(ch, offset, out);
     }
     // Forget everything (the track is gone, or prepare()). No events.
     void reset() noexcept {
         numSounding_ = 0;
+        pedals_ = {};
         next_ = -1;
     }
 
@@ -187,6 +192,24 @@ private:
         int clipId = 0, channel = 0, pitch = 0;
         int64_t offTick = 0;
     };
+    // The sustain pedal as the clips left it, per MIDI channel: which clip pressed it and where that clip ends.
+    struct Pedal {
+        bool down = false;
+        int clipId = 0;
+        int64_t endTick = 0;
+    };
+    static constexpr int kSustainPedal = 64;
+
+    // A clip's controller passes here on its way out: remember what it did to the pedal.
+    void notePedal(const MidiClip& clip, const MidiMessage& m) noexcept {
+        if (m.note() == kSustainPedal)
+            pedals_[static_cast<size_t>(m.channel())] = {m.velocity() >= 64, clip.id, clip.end()};
+    }
+    void letPedalGo(int channel, int offset, std::vector<BlockEvent>& out) noexcept {
+        pushEvent(out, {offset, MidiMessage::controller(channel, kSustainPedal, 0)});
+        pedals_[static_cast<size_t>(channel)].down = false;
+    }
+
     struct Pending {
         int64_t tick = 0;
         int rank = 0; // 0 note off, 1 controller, 2 note on
@@ -199,7 +222,7 @@ private:
             out.push_back(e);
     }
 
-    void chase(const std::vector<MidiClip>& clips, int64_t tick, int offset, std::vector<BlockEvent>& out) const noexcept {
+    void chase(const std::vector<MidiClip>& clips, int64_t tick, int offset, std::vector<BlockEvent>& out) noexcept {
         for (const MidiClip& clip : clips) {
             if (clip.muted || tick < clip.start || tick >= clip.end())
                 continue;
@@ -212,8 +235,11 @@ private:
                 last[static_cast<size_t>((p.channel & 15) * 128 + (p.number & 127))] = static_cast<int16_t>(p.value);
             }
             for (size_t i = 0; i < last.size(); ++i)
-                if (last[i] >= 0)
-                    pushEvent(out, {offset, MidiMessage::controller(static_cast<int>(i / 128), static_cast<int>(i % 128), last[i])});
+                if (last[i] >= 0) {
+                    const MidiMessage m = MidiMessage::controller(static_cast<int>(i / 128), static_cast<int>(i % 128), last[i]);
+                    pushEvent(out, {offset, m});
+                    notePedal(clip, m);
+                }
         }
     }
 
@@ -228,6 +254,13 @@ private:
             } else {
                 ++i;
             }
+        }
+        // The same for the pedal such a clip pressed.
+        for (int ch = 0; ch < 16; ++ch) {
+            const Pedal& p = pedals_[static_cast<size_t>(ch)];
+            const auto clip = std::find_if(clips.begin(), clips.end(), [&p](const MidiClip& c) { return c.id == p.clipId; });
+            if (p.down && (clip == clips.end() || clip->muted))
+                letPedalGo(ch, seg.blockOffset, out);
         }
         const int64_t t0 = firstTickAtOrAfter(seg.timelineStart, spt);
         const int64_t t1 = firstTickAtOrAfter(seg.timelineStart + seg.numSamples, spt);
@@ -253,8 +286,10 @@ private:
             }
             for (const ControllerPoint& p : clip.controllers) {
                 const int64_t t = clip.timelineTick(p.tick);
-                if (p.tick >= clip.offset && p.tick < clip.offset + clip.length && t >= t0 && t < t1 && room())
+                if (p.tick >= clip.offset && p.tick < clip.offset + clip.length && t >= t0 && t < t1 && room()) {
                     pend(t, 1, MidiMessage::controller(p.channel, p.number, p.value));
+                    notePedal(clip, scratch_.back().message);
+                }
             }
         }
         for (int i = 0; i < numSounding_;) {
@@ -264,6 +299,14 @@ private:
                 sounding_[static_cast<size_t>(i)] = sounding_[static_cast<size_t>(--numSounding_)];
             } else {
                 ++i;
+            }
+        }
+        // A clip that ends with the pedal down lets it go where it ends (after its last note offs there).
+        for (int ch = 0; ch < 16; ++ch) {
+            Pedal& p = pedals_[static_cast<size_t>(ch)];
+            if (p.down && p.endTick < t1) {
+                pend(std::max(p.endTick, t0), 0, MidiMessage::controller(ch, kSustainPedal, 0));
+                p.down = false;
             }
         }
         std::sort(scratch_.begin(), scratch_.end(), [](const Pending& a, const Pending& b) {
@@ -279,6 +322,7 @@ private:
 
     std::array<Sounding, kMaxSounding> sounding_{};
     int numSounding_ = 0;
+    std::array<Pedal, 16> pedals_{};
     int64_t next_ = -1; // the timeline sample the next segment continues at; -1: none
     long dropped_ = 0;
     std::vector<Pending> scratch_;
