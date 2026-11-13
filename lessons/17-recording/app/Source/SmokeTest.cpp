@@ -24,7 +24,9 @@
 #include <chrono>
 #include <cmath>
 #include <csignal>
+#include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <random>
 #include <set>
@@ -1088,6 +1090,88 @@ void testAutomation() {
     DAWLAB_CHECK(engine.getGarbageLeaked() == 0);
 }
 
+// ---- audio files at the boundary (MediaLoader::readChecked) ---------------------------------------------
+// What a file's header declares is checked before it is believed. The files are written by hand, 1000 frames.
+
+void putLittleEndian(std::vector<unsigned char>& bytes, std::uint32_t value, int numBytes) {
+    for (int i = 0; i < numBytes; ++i)
+        bytes.push_back(static_cast<unsigned char>((value >> (8 * i)) & 0xffu));
+}
+
+// A 16-bit mono PCM WAV that declares `rate`, holding `frames` frames of 0.25.
+juce::File writeRawWav(const juce::File& file, std::uint32_t rate, std::uint32_t frames) {
+    std::vector<unsigned char> v{'R', 'I', 'F', 'F'};
+    putLittleEndian(v, 36u + 2u * frames, 4);
+    v.insert(v.end(), {'W', 'A', 'V', 'E', 'f', 'm', 't', ' '});
+    putLittleEndian(v, 16, 4);
+    putLittleEndian(v, 1, 2); // PCM
+    putLittleEndian(v, 1, 2); // mono
+    putLittleEndian(v, rate, 4);
+    putLittleEndian(v, rate * 2u, 4);
+    putLittleEndian(v, 2, 2);
+    putLittleEndian(v, 16, 2);
+    v.insert(v.end(), {'d', 'a', 't', 'a'});
+    putLittleEndian(v, 2u * frames, 4);
+    for (std::uint32_t i = 0; i < frames; ++i)
+        putLittleEndian(v, 8192, 2);
+    file.replaceWithData(v.data(), v.size());
+    return file;
+}
+
+void putBigEndian(unsigned char* at, std::uint32_t value) {
+    for (int b = 0; b < 4; ++b)
+        at[b] = static_cast<unsigned char>((value >> (24 - 8 * b)) & 0xffu);
+}
+
+// 1000 frames of 16-bit mono as an AIFF written by JUCE, whose COMM and SSND chunks then claim `declaredFrames`.
+juce::File writeAiff(const juce::File& file, double rate, std::uint32_t declaredFrames) {
+    file.deleteFile();
+    {
+        std::unique_ptr<juce::OutputStream> stream = std::make_unique<juce::FileOutputStream>(file);
+        juce::AiffAudioFormat aiff;
+        const auto options = juce::AudioFormatWriterOptions{}.withSampleRate(rate).withNumChannels(1).withBitsPerSample(16);
+        std::unique_ptr<juce::AudioFormatWriter> writer = aiff.createWriterFor(stream, options);
+        std::vector<float> samples(1000, 0.25f);
+        const float* channels[] = {samples.data()};
+        if (writer == nullptr || !writer->writeFromFloatArrays(channels, 1, 1000))
+            return {};
+    }
+    juce::MemoryBlock bytes;
+    file.loadFileAsData(bytes);
+    auto* data = static_cast<unsigned char*>(bytes.getData());
+    for (size_t i = 0; i + 14 <= bytes.getSize(); ++i) {
+        if (std::memcmp(data + i, "COMM", 4) == 0) // id, size, channels (2 bytes), then the frames
+            putBigEndian(data + i + 10, declaredFrames);
+        if (std::memcmp(data + i, "SSND", 4) == 0) // id, then its size: offset and block size (8 bytes) and the data
+            putBigEndian(data + i + 4, 8u + 2u * declaredFrames);
+    }
+    file.replaceWithData(bytes.getData(), bytes.getSize());
+    return file;
+}
+
+void testAudioFileBoundary() {
+    const juce::File dir = juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l17_boundary");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    // The sample rate must be one audio has: a header that says 4 GHz would make 1000 frames a fraction of a
+    // second, and 20 minutes of them billions of frames.
+    const struct { std::uint32_t rate; bool readable; } rates[] = {
+        {7999, false}, {8000, true}, {768000, true}, {768001, false}, {4000000000u, false}};
+    for (const auto& r : rates) {
+        const LoadedMedia media = MediaLoader::readAudioFile(writeRawWav(dir.getChildFile("rate-" + juce::String(r.rate) + ".wav"), r.rate, 1000), 48000.0);
+        std::printf("   a WAV at %u Hz: %s\n", r.rate, media.audio != nullptr ? "read" : media.error.toRawUTF8());
+        DAWLAB_CHECK((media.audio != nullptr) == r.readable);
+        DAWLAB_CHECK(r.readable || media.error.contains("sample rate"));
+    }
+    // More frames than MediaLimits::kMaxFrames (20 minutes at 192 kHz), at a rate where 20 minutes would allow them.
+    const juce::File many = writeAiff(dir.getChildFile("many.aiff"), 768000.0, static_cast<std::uint32_t>(MediaLimits::kMaxFrames + 1));
+    const LoadedMedia tooMany = MediaLoader::readAudioFile(many, 48000.0);
+    std::printf("   an AIFF at 768 kHz that declares %lld frames: %s\n", static_cast<long long>(MediaLimits::kMaxFrames + 1),
+                tooMany.audio != nullptr ? "read" : tooMany.error.toRawUTF8());
+    DAWLAB_CHECK(tooMany.audio == nullptr && tooMany.error.contains("20 minutes"));
+    dir.deleteRecursively();
+}
+
 // ---- --smoke-test --------------------------------------------------------------------------------
 
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
@@ -1207,6 +1291,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
             DAWLAB_CHECK(MediaLoader::canRead(juce::File::getCurrentWorkingDirectory().getChildFile(name)));
         DAWLAB_CHECK(!MediaLoader::canRead(juce::File::getCurrentWorkingDirectory().getChildFile("notes.txt")));
         std::printf("   readable formats: %s\n", MediaLoader::getWildcard().toRawUTF8());
+        testAudioFileBoundary();
     }
 
     // 2. Engine + Session + the demo song (the GUI's code path)

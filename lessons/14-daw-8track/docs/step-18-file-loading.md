@@ -100,6 +100,24 @@ only the track's processing does. New projects reset every track to Mono (`Sessi
 the demo song sets its own formats (Step 9), and the strip's format button (Step 15) overrides the
 automatic choice - e.g. a mono drum loop on a stereo track for a wide reverb insert.
 
+### What a file may declare
+
+A file's header is a claim, not a fact: a damaged or hostile one can say anything. Every whole
+file the program reads goes through one function, `MediaLoader::readChecked()` (chapter 15's
+project files too), and it checks the claims against `MediaLimits` (`MediaLoader.h`) before it
+allocates anything:
+
+<div align="center">
+
+| the header says | the loader does |
+|---|---|
+| a sample rate outside 8 000 .. 768 000 Hz | refuses the file: at 4 GHz, "20 minutes" would be billions of frames |
+| more than 20 minutes at its own rate | refuses it |
+| more than `kMaxFrames` frames (20 minutes at 192 kHz) | refuses it: a stereo float copy stays below 1.8 GB at any rate |
+| more than 2 channels | reads only the first 2, straight into the engine's stereo buffer |
+
+</div>
+
 ### Resampling: band-limited interpolation
 
 A 44.1 kHz file played by a 48 kHz engine would be 8.8 % too fast and 1.5 semitones too high
@@ -152,7 +170,7 @@ audio at the old rate would end up in the project and play at the wrong pitch fo
 ## Code
 
 - `app/Source/MediaLoader.h/.cpp`: `resampleBuffer()`, `MediaLoader::readAudioFile()` (the
-  synchronous part, usable from tests), `loadFile()`, `loadDemoSong()`, `convertBuffers()` (the
+  synchronous part, usable from tests), `readChecked()` (the checks of "What a file may declare"), `loadFile()`, `loadDemoSong()`, `convertBuffers()` (the
   same resampler on the loader thread, used when the device's sample rate changes, Step 11).
 - `app/Source/Session.cpp`: `setTrackAudio()`, `applyDemoSong()`, `applySampleRateConversion()`,
   `handleSampleRateChange()` (Step 11).

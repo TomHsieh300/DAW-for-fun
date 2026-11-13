@@ -74,6 +74,21 @@ safe->session_.setTrackAudio(media.track, media.audio, media.name);
 
 engine buffer 永遠是 stereo，所以 clip 與 arrangement 不在乎 format；只有 track 的處理方式會因此不同。新 project 會把每個 track 重設為 Mono（`Session::resetMixerSettings()`），demo song 會設定它自己的 format（Step 9），而 strip 的 format 按鈕（Step 15）可以覆寫自動的選擇——例如把 mono drum loop 放到 stereo track 上，讓 reverb insert 保持寬廣。
 
+### 檔案可以宣告什麼
+
+檔案的 header 是一個聲稱，不是事實：損壞的或惡意的 header 可以寫任何東西。程式讀取的每一個完整檔案都經過同一個函式 `MediaLoader::readChecked()`（第 15 章的專案檔也是），它在配置任何記憶體之前，先用 `MediaLimits`（`MediaLoader.h`）檢查這些聲稱：
+
+<div align="center">
+
+| header 寫的是 | loader 的做法 |
+|---|---|
+| sample rate 不在 8 000 .. 768 000 Hz 之間 | 拒絕這個檔案：在 4 GHz 下，「20 分鐘」會是好幾十億個 frame |
+| 以它自己的 rate 計算超過 20 分鐘 | 拒絕 |
+| 超過 `kMaxFrames` 個 frame（192 kHz 下的 20 分鐘） | 拒絕：不管 rate 是多少，stereo float 的副本都低於 1.8 GB |
+| 超過 2 個 channel | 只讀前 2 個，直接讀進 engine 的 stereo buffer |
+
+</div>
+
 ### Resampling：band-limited interpolation
 
 44.1 kHz 的檔案由 48 kHz 的 engine 播放，會快 8.8 %、高 1.5 個半音（$`12\log_2(48000/44100) = 1.47`$）。它必須被轉換。輸出 sample $`m`$ 位於輸入位置 $`t_m = m \cdot f_{\text{in}} / f_{\text{out}}`$，介於兩個輸入 sample 之間。Band-limited 訊號的理想重建（sampling theorem）是 sinc 函數之和；我們用加窗、低通過的 sinc kernel 在 $`t_m`$ 處求值：
@@ -98,7 +113,7 @@ Kernel 只製表一次（每個 zero crossing 512 個點，點與點之間用 li
 
 ## 程式碼
 
-- `app/Source/MediaLoader.h/.cpp`：`resampleBuffer()`、`MediaLoader::readAudioFile()`（同步的部分，可從測試使用）、`loadFile()`、`loadDemoSong()`、`convertBuffers()`（同一個 resampler 在 loader thread 上執行，當 device 的 sample rate 改變時使用，Step 11）。
+- `app/Source/MediaLoader.h/.cpp`：`resampleBuffer()`、`MediaLoader::readAudioFile()`（同步的部分，可從測試使用）、`readChecked()`（「檔案可以宣告什麼」的那些檢查）、`loadFile()`、`loadDemoSong()`、`convertBuffers()`（同一個 resampler 在 loader thread 上執行，當 device 的 sample rate 改變時使用，Step 11）。
 - `app/Source/Session.cpp`：`setTrackAudio()`、`applyDemoSong()`、`applySampleRateConversion()`、`handleSampleRateChange()`（Step 11）。
 - `app/Source/MainComponent.cpp`：`chooseAudioFileForTrack()`、`loadAudioFile()`（依 `fileNumChannels` 設定 track format）、`loadDemoSongAsync()`（啟動時與 Ctrl+D）、`loadDemoSongNow()`（同步，供測試使用）。
 

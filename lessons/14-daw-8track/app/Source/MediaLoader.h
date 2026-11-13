@@ -36,6 +36,7 @@
 #include <juce_events/juce_events.h>
 
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -51,6 +52,16 @@ struct ResamplerSettings {
     static constexpr int kZeroCrossings = 24;     // kernel half-width in zero crossings
     static constexpr int kTableResolution = 512;  // table points per zero crossing
     static constexpr double kCutoffScale = 0.92;  // fc = 0.92 * Nyquist of the lower rate (~0.88: no alias at all)
+};
+
+// What an audio file may declare. MediaLoader::readChecked() checks it before it allocates anything:
+// a header is not proof of anything, and a damaged or hostile one must not cost gigabytes.
+struct MediaLimits {
+    static constexpr double kMinSampleRate = 8000.0;   // the rates audio files really have
+    static constexpr double kMaxSampleRate = 768000.0;
+    static constexpr double kMaxSeconds = 20.0 * 60.0; // at the file's own rate
+    // 20 minutes at 192 kHz: at most 1.8 GB as stereo float, whatever rate the header claims.
+    static constexpr std::int64_t kMaxFrames = static_cast<std::int64_t>(kMaxSeconds) * 192000;
 };
 
 // Result of a background sample-rate conversion: old buffer -> the same audio at the new rate.
@@ -94,6 +105,12 @@ public:
 
     // The synchronous part of loadFile(), usable from any thread (tests, the smoke test).
     static LoadedMedia readAudioFile(const juce::File& file, double targetSampleRate);
+
+    // The one place where the program reads a whole audio file (readAudioFile, and ProjectIO for a
+    // project's own WAVs). It refuses what MediaLimits does not allow, and reads at most 2 channels
+    // straight into `out`: 2 channels when `stereo` (a mono file duplicated), else the file's 1 or 2.
+    // False, with `error`, when nothing could be read.
+    static bool readChecked(juce::AudioFormatReader& reader, bool stereo, AudioBuffer& out, juce::String& error);
 
     // File patterns the reader understands, for the file chooser ("*.wav;*.aif;...;*.mp3").
     static juce::String getWildcard();

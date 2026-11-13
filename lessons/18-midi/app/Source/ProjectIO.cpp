@@ -8,7 +8,6 @@
 
 #include <algorithm>
 #include <cstdio>
-#include <cstring>
 #include <map>
 #include <set>
 #include <string_view>
@@ -104,18 +103,10 @@ std::shared_ptr<const AudioBuffer> readAudio(const juce::File& file, double rate
     juce::AudioFormatManager formats;
     formats.registerBasicFormats();
     std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(file));
-    if (reader != nullptr && reader->sampleRate == rate && reader->numChannels >= 1 && reader->numChannels <= 2 &&
-        reader->lengthInSamples > 0 && reader->lengthInSamples < (1LL << 31)) {
-        const int channels = static_cast<int>(reader->numChannels);
-        const int n = static_cast<int>(reader->lengthInSamples);
-        juce::AudioBuffer<float> raw(channels, n);
-        if (!reader->read(&raw, 0, n, 0, true, true)) {
-            error = "read error";
+    if (reader != nullptr && reader->sampleRate == rate && reader->numChannels >= 1 && reader->numChannels <= 2) {
+        auto buffer = std::make_shared<AudioBuffer>();
+        if (!MediaLoader::readChecked(*reader, false, *buffer, error))
             return nullptr;
-        }
-        auto buffer = std::make_shared<AudioBuffer>(channels, n);
-        for (int ch = 0; ch < channels; ++ch)
-            std::memcpy(buffer->getWritePointer(ch), raw.getReadPointer(ch), sizeof(float) * static_cast<size_t>(n));
         return buffer;
     }
     const LoadedMedia media = MediaLoader::readAudioFile(file, rate);

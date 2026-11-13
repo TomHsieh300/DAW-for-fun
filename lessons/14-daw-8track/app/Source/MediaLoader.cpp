@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <vector>
 
 namespace dawlab::app {
@@ -112,28 +113,42 @@ LoadedMedia MediaLoader::readAudioFile(const juce::File& file, double targetSamp
         result.error = "Cannot read " + file.getFullPathName() + " (WAV, AIFF, FLAC, Ogg Vorbis, Opus or MP3 expected)";
         return result;
     }
-    const auto length = reader->lengthInSamples;
-    const double maxSeconds = 20.0 * 60.0;
-    if (length <= 0 || static_cast<double>(length) > maxSeconds * reader->sampleRate) {
-        result.error = "The file is empty or longer than 20 minutes";
+    // The engine is stereo: mono files are duplicated, extra channels are dropped.
+    AudioBuffer stereo;
+    if (!readChecked(*reader, true, stereo, result.error))
         return result;
-    }
     result.fileSampleRate = reader->sampleRate;
     result.fileNumChannels = static_cast<int>(reader->numChannels);
-
-    // The engine is stereo: mono files are duplicated, extra channels are dropped.
-    const int fileChannels = static_cast<int>(reader->numChannels);
-    juce::AudioBuffer<float> temp(std::max(1, fileChannels), static_cast<int>(length));
-    reader->read(&temp, 0, static_cast<int>(length), 0, true, true);
-
-    AudioBuffer stereo(2, static_cast<int>(length));
-    for (int ch = 0; ch < 2; ++ch)
-        std::copy_n(temp.getReadPointer(std::min(ch, temp.getNumChannels() - 1)), static_cast<int>(length),
-                    stereo.getWritePointer(ch));
 
     AudioBuffer converted = resampleBuffer(stereo, reader->sampleRate, targetSampleRate);
     result.audio = std::make_shared<const AudioBuffer>(std::move(converted));
     return result;
+}
+
+bool MediaLoader::readChecked(juce::AudioFormatReader& reader, bool stereo, AudioBuffer& out, juce::String& error) {
+    const double rate = reader.sampleRate;
+    if (!(rate >= MediaLimits::kMinSampleRate && rate <= MediaLimits::kMaxSampleRate)) {
+        char text[96];
+        std::snprintf(text, sizeof(text), "The file's sample rate (%.0f Hz) is not supported (%.0f to %.0f Hz)", rate,
+                      MediaLimits::kMinSampleRate, MediaLimits::kMaxSampleRate);
+        error = text;
+        return false;
+    }
+    const juce::int64 length = reader.lengthInSamples;
+    if (length <= 0 || reader.numChannels == 0 || static_cast<double>(length) > MediaLimits::kMaxSeconds * rate ||
+        length > MediaLimits::kMaxFrames) {
+        error = "The file is empty or longer than 20 minutes";
+        return false;
+    }
+    // Straight into the result: no buffer of the file's full width in between.
+    const int n = static_cast<int>(length); // <= kMaxFrames, far below INT_MAX
+    const int fileChannels = static_cast<int>(std::min(2u, reader.numChannels));
+    out.setSize(stereo ? 2 : fileChannels, n);
+    float* const channels[2] = {out.getWritePointer(0), out.getNumChannels() > 1 ? out.getWritePointer(1) : nullptr};
+    reader.read(channels, fileChannels, 0, n);
+    if (out.getNumChannels() > fileChannels)
+        std::copy_n(out.getReadPointer(0), n, out.getWritePointer(1));
+    return true;
 }
 
 // ---- the loader thread ----------------------------------------------------------------------------
