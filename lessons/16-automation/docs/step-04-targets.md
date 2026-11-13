@@ -150,6 +150,10 @@ only because the bad lane happened to be the last line, and lanes put in file or
 round trip could not see that last one, because writing puts them in order first. It takes a file
 *not* written by this program, which is exactly what a project file may be.
 
+This step's reader checks numbers such as the sample rate for their sign only. The application's
+reader also refuses numbers DawLab never writes, such as a sample rate outside 8000 to 768000 Hz or
+a position beyond 2^40 (`app/Source/ProjectLimits.h`); the step keeps to the lanes.
+
 ## Your turn
 
 Build and run the starter (no JUCE needed):
