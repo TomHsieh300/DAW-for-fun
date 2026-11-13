@@ -32,6 +32,7 @@
 #include <juce_audio_devices/juce_audio_devices.h>
 
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <memory>
@@ -217,13 +218,16 @@ int main() {
     disk.startThread();
     recorder.start();
 
-    // The "audio thread": a second std::thread calling the callback like a device, roughly paced.
+    // The "audio thread": a second std::thread calling the callback like a device, at a device's pace - a block
+    // every 256 / 48000 s. The disk thread then has the whole FIFO, 0.25 s, to come round. (Forty times faster,
+    // a disk thread that a busy machine kept away for 6 ms was already too late, and the take lost samples.)
     std::thread audio([&] {
+        using Clock = std::chrono::steady_clock;
+        const Clock::time_point begin = Clock::now();
         for (int done = 0; done < total; done += block) {
             const float* in[1] = {input.data() + done};
             callback.audioDeviceIOCallbackWithContext(in, 1, outs, 2, std::min(block, total - done), {});
-            if ((done / block) % 8 == 0)
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            std::this_thread::sleep_until(begin + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>((done + block) / sr)));
         }
     });
     audio.join();
