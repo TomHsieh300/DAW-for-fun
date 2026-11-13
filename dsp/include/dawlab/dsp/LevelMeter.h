@@ -54,6 +54,7 @@ public:
             c.hold = 0.0f;
             c.holdCounter = 0;
             c.sumSquares = 0.0;
+            c.tripSum = 0.0;
             c.ringPos = 0;
             std::fill(c.rmsRing.begin(), c.rmsRing.end(), 0.0f);
         }
@@ -106,6 +107,7 @@ public:
             for (ChannelState& c : channels_) {
                 std::fill(c.rmsRing.begin(), c.rmsRing.end(), 0.0f);
                 c.sumSquares = 0.0;
+                c.tripSum = 0.0;
                 c.ringPos = 0;
             }
         }
@@ -141,14 +143,16 @@ public:
                 float& slot = c.rmsRing[static_cast<size_t>(c.ringPos)];
                 c.sumSquares += static_cast<double>(sq) - static_cast<double>(slot);
                 slot = sq;
+                // A second, exact sum: only the values written during this trip around the ring, added in slot
+                // order. When the ring wraps it holds exactly those W values, so tripSum is the exact sum of the
+                // window, and it replaces the running sum to remove its accumulated floating-point error. Re-summing
+                // the ring at the wrap gives the same double, but would make that one block pay for the whole
+                // window (O(W), 233 us for 3 s); this way every sample costs O(1).
+                c.tripSum += static_cast<double>(sq);
                 if (++c.ringPos >= rmsSamples_) {
                     c.ringPos = 0;
-                    // Re-sum exactly once per trip around the ring to remove accumulated floating-point error
-                    // (still O(1) per sample amortized)
-                    double exact = 0.0;
-                    for (int j = 0; j < rmsSamples_; ++j)
-                        exact += c.rmsRing[static_cast<size_t>(j)];
-                    c.sumSquares = exact;
+                    c.sumSquares = c.tripSum;
+                    c.tripSum = 0.0;
                 }
             }
             // Flush tiny values to 0 to avoid denormals and a reading that never reaches -inf
@@ -187,7 +191,8 @@ private:
         float peak = 0.0f;
         float hold = 0.0f;
         int holdCounter = 0;
-        double sumSquares = 0.0;
+        double sumSquares = 0.0; // running sum over the window
+        double tripSum = 0.0;    // exact sum of the values written since the ring last wrapped
         int ringPos = 0;
         std::vector<float> rmsRing;
     };

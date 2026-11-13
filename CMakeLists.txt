@@ -57,6 +57,8 @@ target_link_libraries(dawlab_dsp INTERFACE dawlab_common)
 _dawlab_add_program(common_selftest common common/tests/test_common.cpp)
 # ... and for the rules every effect in dsp/ shares
 _dawlab_add_program(dsp_selftest dsp dsp/tests/test_dsp.cpp)
+# Its timing check judges only an optimized build without sanitizers, so it needs to know the scale
+target_compile_definitions(dsp_selftest PRIVATE DAWLAB_TIMEOUT_SCALE=${DAWLAB_TIMEOUT_SCALE})
 
 # ---- JUCE (only chapters 13-20 need it) ----------------------------------
 if(DAWLAB_WITH_JUCE)

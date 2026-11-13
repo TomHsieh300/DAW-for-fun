@@ -11,6 +11,8 @@
 //     configuration where a valid value changes the output. A stateless function maps a non-finite argument to a
 //     documented default (finiteOr).
 //   - the range of Gate, Expander and DeEsser is capped at 100 dB (acceptRangeDb): a larger one acts exactly like it
+//   - process() costs about the same in every block: LevelMeter's RMS reads bit-identical to the exact re-sum, and no
+//     block pays for the whole window (judged by wall-clock time only in an optimized build without sanitizers)
 // The Limiter is the one exception to the first rule on purpose: before prepare() it clears the block (and asserts in
 // a Debug build), because a limiter that cannot look ahead cannot keep its ceiling.
 // Every check is table-driven: one row per class (and per variant that takes a different path). The objects live on
@@ -45,6 +47,7 @@
 #include <dawlab/dsp/Tremolo.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -918,6 +921,120 @@ void checkRangeRule() {
     std::printf("range beyond 100 dB: checked for Gate, Expander, DeEsser\n");
 }
 
+// ---- Rule: process() costs about the same in every block ------------------------------------------------------------
+
+// LevelMeter's RMS as the course defines it: a ring of x^2, a running sum (add the new value, subtract the one pushed
+// out), and every time the ring wraps the exact sum of the ring in slot order, so rounding error never builds up.
+// This reference does the exact sum the slow way, O(W) at the wrap; LevelMeter must read the same, bit for bit.
+struct ReferenceRms {
+    std::vector<float> ring;
+    double sum = 0.0;
+    int pos = 0;
+    explicit ReferenceRms(int window) : ring(static_cast<size_t>(window), 0.0f) {}
+    float process(const float* x, int n) {
+        for (int i = 0; i < n; ++i) {
+            const float a = std::abs(finiteOrZero(x[i]));
+            const float sq = a * a;
+            float& slot = ring[static_cast<size_t>(pos)];
+            sum += static_cast<double>(sq) - static_cast<double>(slot);
+            slot = sq;
+            if (++pos >= static_cast<int>(ring.size())) {
+                pos = 0;
+                double exact = 0.0;
+                for (float v : ring)
+                    exact += v;
+                sum = exact;
+            }
+        }
+        if (sum < 0.0)
+            sum = 0.0;
+        return gainToDb(static_cast<float>(std::sqrt(sum / static_cast<double>(ring.size()))));
+    }
+};
+
+bool timingIsJudged() {
+#if !defined(NDEBUG) || defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
+    return false;
+#else
+#if defined(__has_feature)
+#if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer) || __has_feature(undefined_behavior_sanitizer)
+    return false;
+#endif
+#endif
+#if defined(DAWLAB_TIMEOUT_SCALE)
+    return DAWLAB_TIMEOUT_SCALE == 1; // CMake (cmake/DawLab.cmake) sets it above 1 for a sanitizer build
+#else
+    return true;
+#endif
+#endif
+}
+
+double median(std::vector<double> v) {
+    std::sort(v.begin(), v.end());
+    return v.empty() ? 0.0 : v[v.size() / 2];
+}
+
+void checkMeterCostIsFlat() {
+    // (1) The reading: bit-identical to the reference over 5 trips of a 7 ms window (336 samples), blocks of 1..700
+    {
+        const auto meter = std::make_unique<LevelMeter>();
+        meter->prepare(kSampleRate, 2);
+        meter->setRmsWindowMs(7.0f);
+        const int window = msToSamples(7.0, kSampleRate);
+        ReferenceRms ref[2] = {ReferenceRms(window), ReferenceRms(window)};
+        NoiseGenerator noise(7u);
+        AudioBuffer buf(2, 700);
+        bool same = true;
+        long done = 0;
+        for (int blk = 0; done < 5L * window * 40; ++blk) {
+            const int n = 1 + (blk * 7919) % 700;
+            AudioBlock block = AudioBlock(buf).getSubBlock(0, n);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < n; ++i)
+                    block.getChannelPointer(ch)[i] = 0.3f * noise.next();
+            meter->process(block);
+            for (int ch = 0; ch < 2; ++ch)
+                same = same && meter->getRmsDb(ch) == ref[ch].process(block.getChannelPointer(ch), n);
+            done += n;
+        }
+        if (!same)
+            std::printf("  LevelMeter RMS differs from the exact reference\n");
+        DAWLAB_CHECK(same);
+    }
+    // (2) The cost: with the longest window (3 s = 144000 samples), the block in which the ring wraps used to re-sum
+    // the whole window (233 us instead of 0.5 us for a 64-sample block; with 17 stereo strips a certain dropout).
+    // Wall-clock time is only judged in an optimized build without sanitizers (NDEBUG, DAWLAB_TIMEOUT_SCALE unset or
+    // 1); elsewhere the check is skipped. Medians over 20 trips, and a 50 us allowance, keep a preempted block or a
+    // coarse clock from failing it.
+    if (!timingIsJudged()) {
+        std::printf("LevelMeter block cost: not judged (not an optimized build without sanitizers)\n");
+        return;
+    }
+    const auto meter = std::make_unique<LevelMeter>();
+    meter->prepare(kSampleRate, 2);
+    meter->setRmsWindowMs(LevelMeter::kMaxRmsWindowMs);
+    constexpr int kSmall = 64;
+    const long window = msToSamples(LevelMeter::kMaxRmsWindowMs, kSampleRate);
+    AudioBuffer buf(2, kSmall);
+    fillSine(buf, 0);
+    std::vector<double> wrapUs, otherUs;
+    const long blocks = 20 * window / kSmall;
+    for (long blk = 0; blk < blocks; ++blk) {
+        const auto t0 = std::chrono::steady_clock::now();
+        meter->process(AudioBlock(buf));
+        const auto t1 = std::chrono::steady_clock::now();
+        const double us = std::chrono::duration<double, std::micro>(t1 - t0).count();
+        const bool wraps = ((blk + 1) * kSmall) / window != (blk * kSmall) / window;
+        (wraps ? wrapUs : otherUs).push_back(us);
+    }
+    const double wrap = median(wrapUs), other = median(otherUs);
+    const bool flat = wrap < 10.0 * other + 50.0;
+    std::printf("LevelMeter block cost (3 s window, 64 samples): median %.2f us in the %zu blocks where the ring wraps, "
+                "%.2f us in the others -> %s\n",
+                wrap, wrapUs.size(), other, flat ? "flat" : "SPIKE");
+    DAWLAB_CHECK(flat);
+}
+
 } // namespace
 
 int main() {
@@ -956,6 +1073,7 @@ int main() {
     checkParameterRuleCh09to12();
     checkStatelessDefaults();
     checkRangeRule();
+    checkMeterCostIsFlat();
 
     return dawlab::test::summary("dsp");
 }

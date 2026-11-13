@@ -103,7 +103,7 @@ else:                hold = max(hold * g, peak)      // hold never falls below p
 
 **Implementation**: re-summing $`W`$ squared values for every sample is $`O(W)`$. Instead, keep the most recent $`W`$ values of $`x^2`$ in a ring buffer
 and maintain a running "sum over the window": add the new one, subtract the one pushed out, and each sample costs only $`O(1)`$.
-Floating-point adds and subtracts accumulate error, so every time the ring wraps around once we re-sum it exactly (still amortized $`O(1)`$).
+Floating-point adds and subtracts accumulate error, so a second, exact sum adds up only the values written during the current trip around the ring; when the ring wraps it holds exactly those $`W`$ values, so this trip sum replaces the running sum and starts again from 0. That is $`O(1)`$ on every sample: re-summing the ring at the wrap would give the same number, but that one block would pay for the whole window (with the 3 s window, 233 µs instead of 0.5 µs for a 64-sample block; with a meter on every strip of a mixer, all wrapping in the same block, a certain dropout).
 
 Another common approach is to estimate $`E[x^2]`$ with an exponential moving average (a one-pole lowpass), which needs only one number of memory,
 but its "window" decays exponentially and has no definite length. The `LevelMeter` in this chapter uses a true sliding window; the correlation meter in Exercise 7 uses an EMA.

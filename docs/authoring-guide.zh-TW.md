@@ -74,13 +74,13 @@ public:
 };
 ```
 
-- `process()` 內**不可**：allocate / free、拿 mutex、檔案或 console I/O、throw exception。
+- `process()` 內**不可**：allocate / free、拿 mutex、檔案或 console I/O、throw exception。它在每個 block 做的工作量也要差不多：不能讓某一個 block 一次替整個視窗或 buffer 付帳（host 給每個 block 的時間預算都一樣；`LevelMeter` 用每圈的精確總和，而不是重新加總整個 ring）。
 - 在 `prepare()` 之前呼叫 `process()` 與 `processSample()`，訊號原樣通過（host 可能呼叫還沒設定好的效果；`prepare()` 還沒配置的 buffer 絕不能讀）。唯一的例外是 `Limiter`：它會把 block 清成 0，因為沒有 lookahead 就守不住 ceiling。
 - 有 sidechain 的效果（`process(AudioBlock main, const AudioBlock& sidechain)`）只處理兩個 block 中較短那個的 sample 數，`main` 其餘部分原樣保留。
 - 非有限的輸入 sample（NaN、±inf）絕不留在物件的記憶體裡。之後對 NaN 的每個運算都得到 NaN（連 `0 * NaN` 也是），所以一個壞 sample 否則會永遠回來。防護放在寫入記憶體的地方：delay line、FIFO 或 analyzer 的 ring 改存 `finiteOrZero(x)`（`DspMath.h`），而新值不是有限數的遞迴 filter 清掉該 channel 的 state 並輸出 0（`OnePole`、`Biquad`、`StateVariableFilter`）。壞 sample 本身仍可能經由效果的 dry path 出去一次，但絕不留下。只把 sample 延遲固定 sample 數後就放出去的 buffer（oversampler 的 FIR history、`Distortion` 的 dry path 對齊、engine 的 latency ring）不在此限：它不保留這個值，只延遲一次。
 - public setter 收到非有限值時忽略它、保留上一個有效值：NaN 與 +inf 會被忽略，-inf 也一樣，只有 dB 值例外：-inf 代表靜音，變成下限 `kMinusInfinityDb`（所以 `Gain::setGainDb(-inf)` 仍然是 mute）。`std::clamp(NaN, lo, hi)` 會回傳 NaN、`std::max(0, NaN)` 會回傳 0，所以只靠 clamp 不算防護。這條規則只寫在一個地方：`DspMath.h` 的 `acceptParameter()`；每個 float / double setter 開頭都是 `if (!acceptParameter(x)) return;`（或 `acceptParameter(db, ParameterUnit::Decibels)`）。只把值轉交給另一個 class 的 setter 的 setter，靠那個 setter 防護；會先 clamp 或轉換的 setter 自己防護。內部的平滑器沒有自己的防護：只有 public setter 防護。無狀態函式沒有「上一個值」可以保留，所以非有限的引數代表一個寫在文件裡的預設值（`finiteOr()`：`BiquadCoefficients` 的 factory 用 1 kHz、$`1/\sqrt2`$ 與 0 dB，`Panner::computeGains()` 用中央，`FractionalDelayLine` 的讀取用最小延遲）。
 - dB 表示的 range（`Gate`、`Expander`、`DeEsser` 最多衰減多少）上限是 100 dB，`dbToGain` 在那裡已經給出靜音；正負號都當成大小。這條規則只寫在一個地方：`DspMath.h` 的 `acceptRangeDb()`，建立在上面的 setter 規則之上。
-- `dsp_selftest`（`dsp/tests/test_dsp.cpp`）對適用的每個 class 檢查這五條規則，setter 規則是每個 public setter 一列；新增 class 或 setter 時也加進去。
+- `dsp_selftest`（`dsp/tests/test_dsp.cpp`）對適用的每個 class 檢查這五條規則（以及 `LevelMeter` 每個 block 成本一致），setter 規則是每個 public setter 一列；新增 class 或 setter 時也加進去。
 - 參數改變要避免 zipper noise / click：用 `SmoothedValue`（第 01 章）或係數插值。
 - 遞迴結構（IIR filter、envelope）要處理 denormal：在 `reset()` 歸零，必要時加極小 offset 或把極小值 flush 成 0。
 - 需要給 UI 讀的量測值（例如 gain reduction）用 `std::atomic<float>`（relaxed 即可）。

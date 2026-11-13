@@ -104,7 +104,7 @@ else:                hold = max(hold * g, peak)      // hold never falls below p
 
 **實作**：每來一個 sample 就重新加總 $`W`$ 個平方值是 $`O(W)`$。用 ring buffer 存最近 $`W`$ 個 $`x^2`$，
 維護一個「視窗內的總和」：加上新的、減掉被擠出去的，每個 sample 只要 $`O(1)`$。
-浮點的加加減減會累積誤差，所以每繞 ring 一圈就重新精確加總一次（攤平後仍是 $`O(1)`$）。
+浮點的加加減減會累積誤差，所以另外有一個精確的總和，只累加目前這一圈寫進 ring 的值；ring 繞回起點時裡面剛好就是這 $`W`$ 個值，所以這一圈的總和取代 running sum，再從 0 開始。每個 sample 都是 $`O(1)`$：在繞回時重新加總整個 ring 會得到同一個數字，但那一個 block 要替整個視窗付帳（3 s 視窗時，一個 64-sample 的 block 要 233 µs 而不是 0.5 µs；mixer 每條 strip 都有一個 meter、又在同一個 block 繞回時，必定 dropout）。
 
 另一種常見做法是 exponential moving average（一階 lowpass）估計 $`E[x^2]`$，記憶體只要一個數字，
 但它的「視窗」是指數衰減的、沒有明確的長度。本章的 `LevelMeter` 用真的滑動視窗；練習 7 的 correlation meter 用 EMA。
