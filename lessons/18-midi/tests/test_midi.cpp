@@ -9,7 +9,8 @@
 //      than one chunk.
 //   4. Removing a track that has everything hands back exactly kMaxGarbagePerCommand objects.
 //   4b. Another instrument in the synth's place gets the track's events; the synth's settings change while it
-//       plays (the hook added after the chapter for exercises 8 and 12).
+//       plays (the hook added after the chapter for exercises 8 and 12). An instrument still queued when the
+//       device changes is prepared for the new device.
 //   5. The audio thread never allocates, with clips, loops, seeks and live MIDI (this file replaces operator new).
 //   6. Three threads at once - UI, audio, MIDI - for ThreadSanitizer.
 
@@ -530,9 +531,14 @@ void testGarbageOfAFullTrack() {
 class Recorder final : public Instrument {
 public:
     explicit Recorder(std::vector<std::pair<int64_t, MidiMessage>>& log) : log_(log) {}
-    void prepare(double, int) override { prepared_ = true; }
+    void prepare(double sampleRate, int maxBlockSize) override {
+        prepared_ = true;
+        rate_ = sampleRate;
+        maxBlock_ = maxBlockSize;
+    }
     void reset() noexcept override { ++resets_; }
     void render(const BlockEvent* events, int numEvents, float* const* out, int numChannels, int numSamples) noexcept override {
+        largestBlock_ = std::max(largestBlock_, numSamples);
         for (int k = 0; k < numEvents; ++k) {
             if (log_.size() < log_.capacity())
                 log_.push_back({rendered_ + events[k].offset, events[k].message});
@@ -544,6 +550,9 @@ public:
         rendered_ += numSamples;
     }
     bool prepared_ = false;
+    double rate_ = 0.0;
+    int maxBlock_ = 0;
+    int largestBlock_ = 0; // the most samples one render() was given
     int resets_ = 0;
 
 private:
@@ -593,6 +602,26 @@ void testAnotherInstrument() {
     const ChannelRef again = e.addTrack(TrackId{77});
     DAWLAB_CHECK(again.index == 0 && e.getTrackSynth(TrackId{77})->getSettings().level == VoiceSettings{}.level);
     std::printf("  the synth again, its settings changed while a note sounds, a new track with the default sound\n");
+}
+
+void testQueuedThroughADeviceChange() {
+    // An instrument and an insert are still in the queue when the device changes to 96 kHz and blocks of 1024:
+    // Engine::prepare() applies the queue first and then prepares everything, so both play at the new settings.
+    Engine e;
+    setUp(e);
+    std::vector<std::pair<int64_t, MidiMessage>> log;
+    auto recorder = std::make_unique<Recorder>(log);
+    Recorder* observer = recorder.get();
+    DAWLAB_CHECK(e.setTrackInstrument(testId(0), std::move(recorder)) == observer);
+    DAWLAB_CHECK(e.addInsert(testTrack(0), -1, std::make_unique<LimiterEffect>()) != nullptr);
+    e.prepare(96000.0, 1024);
+    e.getTransport().play();
+    play(e, 1024, 1024);
+    std::printf("  queued through a device change: the instrument is prepared for %.0f Hz / %d (renders %d), latency %d\n",
+                observer->rate_, observer->maxBlock_, observer->largestBlock_, e.getLatencySamples());
+    DAWLAB_CHECK(e.getMixer().getTrack(0).getReplacementInstrument() == observer);
+    DAWLAB_CHECK(observer->rate_ == 96000.0 && observer->largestBlock_ == 1024 && observer->maxBlock_ >= observer->largestBlock_);
+    DAWLAB_CHECK(e.getLatencySamples() == 480); // the limiter's 5 ms lookahead at 96 kHz
 }
 
 void testNoAllocation() {
@@ -700,6 +729,7 @@ int main() {
     testLiveMidi();
     testGarbageOfAFullTrack();
     testAnotherInstrument();
+    testQueuedThroughADeviceChange();
     testNoAllocation();
     testThreads();
     return dawlab::test::summary("l18_test_midi");

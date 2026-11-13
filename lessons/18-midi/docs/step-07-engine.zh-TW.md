@@ -111,8 +111,9 @@ l18_test_midi: instrument tracks in the engine
 - `Instrument`（在 `Midi.h` 裡）是 track 用來播放音符的東西：`prepare()`、`reset()`，以及把聲音*加到* track 各 channel 上的 `render()`。每個 slot 都有內建的 synth，以 `SynthInstrument` 的形式存在。
 - `SynthInstrument::setSettings()` 可以在任何 thread 呼叫：每個值都是一個 atomic，下一個 block 會把它們交給 voice，而不重設 voice（`Voice::setSettings()`）。Velocity 的 gain 和 level 現在分開保存，讓 level 也能作用在已經在響的音上。`Engine::getTrackSynth()` 找到 track 的 synth；`Engine::addTrack()` 會給新的 track 預設的音色，就像它重設樂器旗標一樣。
 - `Engine::setTrackInstrument(track, instrument)` 透過 command `ReplaceInstrument` 把另一個樂器放到 synth 的位置（nullptr：再換回 synth），就像 `replaceInsert()` 替換 effect 一樣：在呼叫的 thread 上 prepare，在 block 邊界換上，舊的經由 `collectGarbage()` 回來。移除 track 也會交回它的樂器，所以 `kMaxGarbagePerCommand` 現在是 `kMaxInserts + 5`。
+- `Engine::prepare()` 先套用 queue 裡的 command，再為新的 device prepare 每個 insert 和樂器。sample rate 或 block size 改變時還在 queue 裡的樂器也會重新 prepare；否則它會拿到比它 prepare 時更大的 block。
 
-`tests/test_midi.cpp` 會檢查它（`testAnotherInstrument`，以及完整 track 和不配置記憶體的測試）；app 還沒有用到它。
+`tests/test_midi.cpp` 會檢查它（`testAnotherInstrument`、`testQueuedThroughADeviceChange`，以及完整 track 和不配置記憶體的測試）；app 還沒有用到它。
 
 ## 你學到了什麼
 

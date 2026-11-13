@@ -164,8 +164,12 @@ instrument other than the synth. So the engine got one hook more, after the chap
   synth again) through the command `ReplaceInstrument`, the way `replaceInsert()` swaps an effect: prepared on
   the calling thread, swapped in at a block boundary, the old one back through `collectGarbage()`. Removing a
   track hands its instrument back too, so `kMaxGarbagePerCommand` is now `kMaxInserts + 5`.
+- `Engine::prepare()` applies the queued commands first and then prepares every insert and instrument for the
+  new device. An instrument still in the queue when the sample rate or block size changes is prepared again
+  too; otherwise it would get blocks larger than it was prepared for.
 
-`tests/test_midi.cpp` checks it (`testAnotherInstrument`, and the full track and no-allocation tests); the app
+`tests/test_midi.cpp` checks it (`testAnotherInstrument`, `testQueuedThroughADeviceChange`, and the full track
+and no-allocation tests); the app
 does not use it yet.
 
 ## What you learned

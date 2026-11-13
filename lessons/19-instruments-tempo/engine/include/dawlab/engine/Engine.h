@@ -96,20 +96,21 @@ public:
 
     // Allocates everything. Non-audio thread, while no audio callback is running (first
     // start, or after the audio device stopped because the sample rate or buffer size
-    // changed). Pending commands are applied first, then every insert already in the mixer is
-    // prepared again for the new settings, so a running project survives a device change.
+    // changed). Pending commands are applied first, then every insert and instrument in the
+    // mixer is prepared for the new settings - also one that was still in the queue - so a
+    // running project survives a device change.
     void prepare(double sampleRate, int maxBlockSize, int maxPdcSamples = kDefaultMaxPdcSamples) {
         // The device has stopped, so no audio thread will confirm the end of a recording. It ends here,
         // and the disk thread finishes the takes at the old sample rate.
         finishRecordingsWithoutAudio();
+        if (isPrepared())
+            applyCommands(); // safe: no audio thread is running during prepare()
         sampleRate_ = sampleRate;
         maxBlockSize_ = std::max(1, maxBlockSize);
         midiSlice_.reserve(kMaxLiveMidiEvents);
         transport_.prepare(sampleRate);
-        mixer_.prepare(sampleRate, maxBlockSize_, maxPdcSamples);
+        mixer_.prepare(sampleRate, maxBlockSize_, maxPdcSamples); // the tracks' instruments too
         cpuMeter_.prepare(sampleRate);
-        if (isPrepared())
-            applyCommands(); // safe: no audio thread is running during prepare()
         auto reprepare = [this](ChannelStrip& s) {
             for (int i = 0; i < s.getInserts().getNumInserts(); ++i)
                 if (InsertEffect* fx = s.getInserts().getInsert(i)) {
