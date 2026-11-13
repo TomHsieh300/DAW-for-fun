@@ -345,6 +345,32 @@ void testRecordingBasics() {
     DAWLAB_CHECK(session.getStripName(session.trackRef(rig.second)) == "Renamed" && session.getHistory().canUndo());
     DAWLAB_CHECK(main.loadDemoSongNow() < 0 && session.hasTrack(rig.first) && main.getStatus().contains("recording"));
 
+    // A new tempo waits too: it would move the playhead in samples, and a jump of the playhead ends a take. The
+    // tempo slider goes back to the transport's tempo.
+    const double bpmBefore = engine.getTransport().getTempo();
+    juce::Slider& tempoSlider = main.getTransportBar().getTempoSlider();
+    tempoSlider.setValue(bpmBefore + 20.0, juce::sendNotificationSync);
+    std::printf("   a new tempo while recording: %.1f -> %.1f BPM, the slider shows %.1f; \"%s\"\n", bpmBefore,
+                engine.getTransport().getTempo(), tempoSlider.getValue(), main.getStatus().toRawUTF8());
+    DAWLAB_CHECK(engine.getTransport().getTempo() == bpmBefore && main.getStatus().contains("recording"));
+    DAWLAB_CHECK(tempoSlider.getValue() == bpmBefore);
+    // Chapter 19: and so does the tempo lane - no new point, no moved one.
+    {
+        TempoLane& lane = main.getTempoLane();
+        const engine::TempoMap mapBefore = session.getTempoMap();
+        lane.press({static_cast<float>(ArrangementView::kHeaderWidth) + 200.0f, lane.bpmToY(90.0)}, {}, 2);
+        lane.release();
+        const juce::Point<float> first = lane.getPointPosition(0);
+        lane.press(first, {});
+        lane.dragTo(first.translated(0.0f, -20.0f), {});
+        lane.release();
+        std::printf("   the tempo lane while recording: %d point(s) (%d before), the first at %.1f BPM (%.1f before)\n",
+                    session.getTempoMap().size(), mapBefore.size(), session.getTempoMap().point(0).bpm, mapBefore.point(0).bpm);
+        DAWLAB_CHECK(session.getTempoMap().size() == mapBefore.size() &&
+                     session.getTempoMap().point(0).bpm == mapBefore.point(0).bpm);
+    }
+    DAWLAB_CHECK(rig.recorder.getPhase() == TakeRecorder::Phase::Recording);
+
     stopTransport(main);
     DAWLAB_CHECK(waitForTakes(main));
     DAWLAB_CHECK(rig.said.contains("Recorded 1 take"));
@@ -2343,6 +2369,11 @@ void testMidiRecording() {
         DAWLAB_CHECK(!main.isExporting() && main.getStatus().contains("recording"));
         DAWLAB_CHECK(!main.undo() && session.hasTrack(synth));
         DAWLAB_CHECK(main.loadDemoSongNow() < 0 && session.hasTrack(synth) && main.getMidiRecording().isRecording());
+        // Nor a new tempo: the notes after it would land on the wrong ticks.
+        const double bpmBefore = tr.getTempo();
+        main.getTransportBar().getTempoSlider().setValue(bpmBefore + 20.0, juce::sendNotificationSync);
+        DAWLAB_CHECK(tr.getTempo() == bpmBefore && main.getStatus().contains("recording"));
+
         kb.play(20, 355);                                                         // to 2 bars
         DAWLAB_CHECK(main.toggleRecord() && !main.getMidiRecording().isRecording());
     }

@@ -26,7 +26,7 @@ Engine 的時間軸仍然以 sample 為單位。Audio clip、automation、錄音
 
 使用者拖動一個 tempo 點。播放頭該怎麼辦？它在某個小節某一拍，使用者預期它就停在那裡：保留的是**音樂上的位置**。用 Step 1 的 `tickAt()` 找出它在舊 map 下精確的、帶小數的 tick，播放頭移到這個 tick 在新 map 下的 sample。
 
-對音訊來說這是一次跳躍——sample 跑到別的地方，就像 seek 之後一樣。對音符來說不是：tick 從上一個 segment 結束的地方繼續，`ticksJump` 維持 false，第 18 章的 MIDI player 會讓正在響的音繼續響。一個跨過這次改變而按住的音會繼續按住，以新的 tempo。
+對音訊來說這是一次跳躍——sample 跑到別的地方，就像 seek 之後一樣。對音符來說不是：tick 從上一個 segment 結束的地方繼續，`ticksJump` 維持 false，第 18 章的 MIDI player 會讓正在響的音繼續響。一個跨過這次改變而按住的音會繼續按住，以新的 tempo。錄音是例外：第 17 章的 recorder 在播放頭一跳時就結束 take，所以錄音進行中 app 不會改變 tempo（Step 5）。
 
 ```text
     舊 map：   ...|  第 3 小節 |...         播放頭在第 3 小節第 2 拍（tick 7926）

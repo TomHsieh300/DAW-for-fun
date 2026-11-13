@@ -73,6 +73,12 @@ on every point.
 Each gesture is one undo step. As in chapter 18's piano roll, the mouse handlers only call `press()`, `dragTo()`
 and `release()`, and the smoke test calls them too.
 
+While a recording runs, the lane and the transport bar's tempo field change nothing: a new map moves the playhead
+in samples (Step 2), and chapter 17's recorder ends a take at a jump of the playhead. Both ask
+`MainComponent::refuseTempoChange()` - the lane through its `refuseEdit` callback, at `press()` and at every
+`dragTo()` - which says so in the status line, the same refusal as New, Open and Undo (chapter 17, Step 7). The
+tempo field goes back to the transport's tempo.
+
 One thing is new. The time axis is in samples, so moving a tempo point moves every beat after it on the screen -
 including the point under the mouse. Read through the *current* map, the mouse would be over another beat after
 every step, and the point would run away from it. So a drag reads the mouse through the map **as it was when the

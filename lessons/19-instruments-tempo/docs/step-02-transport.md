@@ -42,7 +42,8 @@ Step 1's `tickAt()`, and the playhead moves to that tick's sample under the new 
 
 For the audio that is a jump - the samples go somewhere else, as after a seek. For the notes it is not: the ticks
 go on from where the last segment ended, `ticksJump` stays false, and chapter 18's MIDI player keeps the notes that
-sound. A note held across the change is held on, at the new tempo.
+sound. A note held across the change is held on, at the new tempo. A recording is the exception: chapter 17's
+recorder ends a take at a jump of the playhead, so the app does not change the tempo while one runs (Step 5).
 
 ```text
     old map:   ...|  bar 3   |...         the playhead at bar 3, beat 2 (tick 7926)

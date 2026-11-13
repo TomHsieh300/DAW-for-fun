@@ -105,6 +105,7 @@ Track 標頭的 `I` 讓 monitor 在 Off、Auto 和 Always 之間切換。在 `R`
 | track 被刪除 | take 留在 takes 資料夾，狀態列說明在哪裡 |
 | 程式當機 | 下次啟動時找到 `.recording` 檔，把它們放到新的 track 上 |
 | 錄音中要 New、Open、Export、Delete、Undo、Redo、demo song | 拒絕，直到錄音停止（Undo「Add track」會拿掉正在錄音的 track） |
+| 錄音中改 tempo | 以同樣方式拒絕（`refuseTempoChange()`），tempo slider 回到原值：第 18 章的 MIDI 錄音用 tempo 把時間換算成 tick，而從第 19 章起，新的 tempo 會以 sample 為單位移動 playhead，playhead 一跳就會結束 take（Step 2）。第 19 章的 tempo lane 也問同一個函式 |
 
 </div>
 

@@ -104,6 +104,8 @@ public:
     void askForTrim();
     // True, and it says so on the status line, while a recording (audio or MIDI) prevents `what`.
     bool refuseWhileRecording(const juce::String& what);
+    // The same for a new tempo, from the transport bar or the tempo lane (chapter 19); the tempo slider goes back.
+    bool refuseTempoChange();
     // The same for what replaces the whole project (new, the demo song): also not during an export.
     bool refuseProjectChange(const juce::String& what);
     void newProject();

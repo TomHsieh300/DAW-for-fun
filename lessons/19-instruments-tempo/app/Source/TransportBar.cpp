@@ -141,6 +141,8 @@ TransportBar::~TransportBar() = default;
 void TransportBar::setRecording(bool recording) { recordButton_->setToggleState(recording, juce::dontSendNotification); }
 bool TransportBar::isRecordingShown() const noexcept { return recordButton_->getToggleState(); }
 
+void TransportBar::showTransportTempo() { tempo_.setValue(engine_.getTransport().getTempo(), juce::dontSendNotification); }
+
 juce::String TransportBar::formatBarsBeats(const engine::BarsBeats& p) {
     return juce::String(p.bar) + "." + juce::String(p.beat) + "." + juce::String(p.tick).paddedLeft('0', 3);
 }

@@ -53,6 +53,8 @@ int TempoLane::pointAt(juce::Point<float> p) const {
 void TempoLane::press(juce::Point<float> p, juce::ModifierKeys mods, int clicks) {
     session_.getHistory().endMerge();
     dragPoint_ = -1;
+    if (refuseEdit && refuseEdit())
+        return;
     std::vector<engine::TempoPoint> points = session_.getTempoMap().points();
     const int hit = pointAt(p);
     if (hit >= 0 && mods.isPopupMenu()) {
@@ -95,6 +97,11 @@ void TempoLane::dragTo(juce::Point<float> p, juce::ModifierKeys mods) {
     std::vector<engine::TempoPoint> points = session_.getTempoMap().points();
     if (dragPoint_ < 0 || dragPoint_ >= static_cast<int>(points.size()))
         return;
+    if (refuseEdit && refuseEdit()) { // a drag that began before a recording started
+        dragPoint_ = -1;
+        repaint();
+        return;
+    }
     engine::TempoPoint& point = points[static_cast<size_t>(dragPoint_)];
     const engine::TempoPoint before = point;
     if (dragPoint_ > 0) { // between its neighbours, a tick from each

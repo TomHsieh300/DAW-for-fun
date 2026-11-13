@@ -23,6 +23,8 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <functional>
+
 namespace dawlab::app {
 
 class TempoLane final : public juce::Component, private juce::ChangeListener {
@@ -44,6 +46,9 @@ public:
     void press(juce::Point<float> p, juce::ModifierKeys mods, int clicks = 1);
     void dragTo(juce::Point<float> p, juce::ModifierKeys mods);
     void release();
+    // Asked at press() and at every step of a drag: true when no tempo change may be made now (MainComponent:
+    // while a recording runs). It says why itself.
+    std::function<bool()> refuseEdit;
 
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent& e) override { press(e.position, e.mods, e.getNumberOfClicks()); }

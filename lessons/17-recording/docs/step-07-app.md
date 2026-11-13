@@ -128,6 +128,7 @@ be heard.
 | the track is deleted | the take stays in the takes folder; the status line says where |
 | the program crashes | the next start finds the `.recording` files and puts them on new tracks |
 | New, Open, Export, Delete, Undo, Redo, the demo song while recording | refused until the recording is stopped (Undo of "Add track" would take away the track that records) |
+| the tempo is changed while recording | refused the same way (`refuseTempoChange()`), and the tempo slider goes back: chapter 18's MIDI recording turns time into ticks with the tempo, and from chapter 19 on a new tempo moves the playhead in samples, which ends a take (Step 2). Chapter 19's tempo lane asks the same |
 
 </div>
 

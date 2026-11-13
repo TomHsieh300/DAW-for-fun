@@ -53,6 +53,8 @@ Arrangement 上方的一條，用同一個時間軸：tempo 維持的地方是�
 
 每個手勢是一個 undo 步驟。和第 18 章的 piano roll 一樣，滑鼠處理函式只呼叫 `press()`、`dragTo()` 和 `release()`，smoke test 也呼叫它們。
 
+錄音進行中，lane 和 transport bar 的 tempo 欄位都不會改變任何東西：新的 map 會以 sample 為單位移動播放頭（Step 2），而第 17 章的 recorder 在播放頭一跳時就結束 take。兩者都問 `MainComponent::refuseTempoChange()`——lane 透過它的 `refuseEdit` callback，在 `press()` 和每一次 `dragTo()` 時問——它會在 status 列說明，和 New、Open、Undo 是同一種拒絕（第 17 章 Step 7）。tempo 欄位會回到 transport 的 tempo。
+
 有一件事是新的。時間軸以 sample 為單位，所以移動一個 tempo 點會移動畫面上它之後的每一拍——包括滑鼠底下的那個點。如果透過*目前的* map 來讀，每走一步滑鼠就會落在另一拍上，點會從滑鼠底下跑掉。所以拖曳時是透過**拖曳開始時的 map** 來讀滑鼠：點會去到當時滑鼠所在的那一拍。
 
 ### 帶著 tempo 的 MIDI 檔

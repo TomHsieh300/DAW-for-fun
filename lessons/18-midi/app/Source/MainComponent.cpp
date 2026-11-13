@@ -118,6 +118,8 @@ MainComponent::MainComponent(Mode mode) : mode_(mode) {
     transportBar_.onToggleLoop = [this] { toggleLoop(); };
     transportBar_.onRecord = [this] { toggleRecord(); };
     transportBar_.onTempoChange = [this](double bpm) {
+        if (refuseTempoChange())
+            return;
         session_.perform(edit::SetTempo{bpm}, "Tempo", mergeKeyFor(StripTarget{}, 0x54454d50)); // "TEMP"
     };
     transportBar_.onTempoGesture = [this] { session_.getHistory().endMerge(); };
@@ -232,6 +234,15 @@ bool MainComponent::refuseWhileRecording(const juce::String& what) {
     if (!takeRecorder_.isBusy() && !midiRecording_.isRecording())
         return false;
     setStatus(what + " has to wait: a recording is running. Stop it first");
+    return true;
+}
+
+// A new tempo while recording: chapter 18's MIDI recording turns time into ticks with the tempo, and from chapter
+// 19 on a new tempo map moves the playhead in samples - a jump, which ends an audio take (chapter 17, Step 2).
+bool MainComponent::refuseTempoChange() {
+    if (!refuseWhileRecording("Changing the tempo"))
+        return false;
+    transportBar_.showTransportTempo();
     return true;
 }
 

@@ -329,6 +329,17 @@ void testRecordingBasics() {
     DAWLAB_CHECK(session.getStripName(session.trackRef(rig.second)) == "Renamed" && session.getHistory().canUndo());
     DAWLAB_CHECK(main.loadDemoSongNow() < 0 && session.hasTrack(rig.first) && main.getStatus().contains("recording"));
 
+    // A new tempo waits too: it would move the playhead in samples, and a jump of the playhead ends a take. The
+    // tempo slider goes back to the transport's tempo.
+    const double bpmBefore = engine.getTransport().getTempo();
+    juce::Slider& tempoSlider = main.getTransportBar().getTempoSlider();
+    tempoSlider.setValue(bpmBefore + 20.0, juce::sendNotificationSync);
+    std::printf("   a new tempo while recording: %.1f -> %.1f BPM, the slider shows %.1f; \"%s\"\n", bpmBefore,
+                engine.getTransport().getTempo(), tempoSlider.getValue(), main.getStatus().toRawUTF8());
+    DAWLAB_CHECK(engine.getTransport().getTempo() == bpmBefore && main.getStatus().contains("recording"));
+    DAWLAB_CHECK(tempoSlider.getValue() == bpmBefore);
+    DAWLAB_CHECK(rig.recorder.getPhase() == TakeRecorder::Phase::Recording);
+
     stopTransport(main);
     DAWLAB_CHECK(waitForTakes(main));
     DAWLAB_CHECK(rig.said.contains("Recorded 1 take"));

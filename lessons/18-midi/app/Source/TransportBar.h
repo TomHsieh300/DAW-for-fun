@@ -53,11 +53,14 @@ public:
 
     // Pulls the current state from the engine (message thread, ~30 Hz).
     void update();
+    // Sets the tempo slider to the transport's tempo now, also while the mouse holds it (a refused change).
+    void showTransportTempo();
 
     // "3.2.480" (bar.beat.tick, 1-based bar and beat) and "1:04.250" (m:ss.mmm).
     static juce::String formatBarsBeats(const engine::BarsBeats& position);
     static juce::String formatTime(double seconds);
 
+    juce::Slider& getTempoSlider() noexcept { return tempo_; } // for tests
     juce::String getPositionText() const { return barsBeats_.getText(); }
     juce::String getTimeText() const { return time_.getText(); }
     juce::String getCpuText() const { return cpu_.getText(); }
