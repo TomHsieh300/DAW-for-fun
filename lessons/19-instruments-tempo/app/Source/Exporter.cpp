@@ -15,8 +15,10 @@ bool Exporter::writeWavFile(const juce::File& file, const AudioBuffer& buffer, d
         return false;
     }
     file.getParentDirectory().createDirectory();
-    file.deleteFile();
-    std::unique_ptr<juce::OutputStream> stream = std::make_unique<juce::FileOutputStream>(file);
+    // Written next to the file and moved over it only when complete: a write that fails half-way (a full disk)
+    // leaves the file that was there - the last export, a project's audio - as it was.
+    juce::TemporaryFile tmp(file);
+    std::unique_ptr<juce::OutputStream> stream = std::make_unique<juce::FileOutputStream>(tmp.getFile());
     if (!static_cast<juce::FileOutputStream*>(stream.get())->openedOk()) {
         error = "Cannot write " + file.getFullPathName();
         return false;
@@ -37,8 +39,15 @@ bool Exporter::writeWavFile(const juce::File& file, const AudioBuffer& buffer, d
     std::vector<const float*> channels;
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
         channels.push_back(buffer.getReadPointer(ch));
-    if (!writer->writeFromFloatArrays(channels.data(), buffer.getNumChannels(), buffer.getNumSamples())) {
+    const bool samplesWritten = writer->writeFromFloatArrays(channels.data(), buffer.getNumChannels(), buffer.getNumSamples());
+    writer.reset(); // writes the header and closes the file; a failure there shows only in the file's size
+    const juce::int64 dataBytes = static_cast<juce::int64>(buffer.getNumSamples()) * buffer.getNumChannels() * (bitDepth / 8);
+    if (!samplesWritten || tmp.getFile().getSize() < dataBytes) {
         error = "Writing the samples failed (disk full?)";
+        return false;
+    }
+    if (!tmp.overwriteTargetFileWithTemporary()) {
+        error = "Cannot replace " + file.getFullPathName();
         return false;
     }
     return true;

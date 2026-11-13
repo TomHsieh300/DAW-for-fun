@@ -23,11 +23,16 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <csignal>
 #include <cstdio>
 #include <filesystem>
 #include <random>
 #include <set>
 #include <vector>
+
+#if !defined(_WIN32)
+#include <sys/resource.h> // setrlimit: a write that fails half-way
+#endif
 
 namespace dawlab::app {
 
@@ -1466,6 +1471,29 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
         const juce::File wav = juce::File::getCurrentWorkingDirectory().getChildFile("dawlab_output").getChildFile("l18_app_smoke_44k.wav");
         juce::String error;
         DAWLAB_CHECK(Exporter::writeWavFile(wav, sine, 44100.0, 24, error));
+#if !defined(_WIN32)
+        {
+            // A write that fails half-way - here the process may not write more than 4096 bytes to a file, as on
+            // a full disk - leaves the file that was there as it was (an export over the last mix, a project's WAV).
+            const juce::int64 sizeBefore = wav.getSize();
+            const int filesBefore = wav.getParentDirectory().getNumberOfChildFiles(juce::File::findFiles);
+            const AudioBuffer longer = makeSine(500.0, 44100.0, 2.0, 0.5f, 2);
+            const auto oldHandler = std::signal(SIGXFSZ, SIG_IGN);
+            rlimit old{};
+            getrlimit(RLIMIT_FSIZE, &old);
+            rlimit small = old;
+            small.rlim_cur = 4096;
+            setrlimit(RLIMIT_FSIZE, &small);
+            juce::String why;
+            const bool written = Exporter::writeWavFile(wav, longer, 44100.0, 24, why);
+            setrlimit(RLIMIT_FSIZE, &old);
+            std::signal(SIGXFSZ, oldHandler);
+            std::printf("   a write that fails half-way: %s (\"%s\"); the old file %lld -> %lld bytes\n", written ? "written" : "refused",
+                        why.toRawUTF8(), static_cast<long long>(sizeBefore), static_cast<long long>(wav.getSize()));
+            DAWLAB_CHECK(!written && wav.getSize() == sizeBefore);
+            DAWLAB_CHECK(wav.getParentDirectory().getNumberOfChildFiles(juce::File::findFiles) == filesBefore); // no temporary left
+        }
+#endif
         const LoadedMedia media = MediaLoader::readAudioFile(wav, 48000.0);
         DAWLAB_CHECK(media.audio != nullptr);
         if (media.audio != nullptr) {

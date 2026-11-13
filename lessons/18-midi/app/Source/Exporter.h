@@ -12,7 +12,8 @@
 //      (MainComponent shows a modal overlay and pauses its garbage collection).
 //
 // The render runs on its own thread (ExportJob), so the GUI keeps repainting; the WAV file is
-// written with JUCE's WavAudioFormat (it handles Unicode paths on Windows).
+// written with JUCE's WavAudioFormat (it handles Unicode paths on Windows), next to its target
+// and moved over it only when complete: a failed export leaves the last one as it was.
 
 #include <dawlab/AudioBuffer.h>
 #include <dawlab/engine/Engine.h>
