@@ -721,8 +721,10 @@ void testRecordingWhenThingsGoWrong() {
         } // never finished
         DAWLAB_CHECK(rig.folder.get().getNumberOfChildFiles(juce::File::findFiles, "*.recording") == 1);
         const int tracksBefore = rig.session.getNumTracks();
+        rig.session.getHistory().markSaved();
         DAWLAB_CHECK(main.getTakeRecorder().recover() == 1);
         DAWLAB_CHECK(rig.session.getNumTracks() == tracksBefore + 1);
+        DAWLAB_CHECK(rig.session.getHistory().isModified()); // the recovered take is in no project file yet
         DAWLAB_CHECK(rig.folder.get().getNumberOfChildFiles(juce::File::findFiles, "*.recording") == 0);
         const TrackId recovered = rig.session.getTrackId(tracksBefore);
         const auto& clips = rig.session.getClips(recovered);
@@ -2671,6 +2673,14 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
                     at44.ok ? "ok" : at44.error.toRawUTF8(), bassClips.size() > 2 ? static_cast<long long>(bassClips[2].start) : -1LL,
                     static_cast<double>(gainToDb(peakAbs(at44Render))));
         DAWLAB_CHECK(at44.ok && converted);
+        // The conversion that opening did is no change of its own; one after an edit forgets the entries (they are
+        // at the old rate), not that the project has unsaved changes.
+        const bool openedUnmodified = !sc.getHistory().isModified();
+        const StripTarget firstStrip = StripTarget::ofTrack(sc.getTrackId(0));
+        sc.perform(edit::Rename{firstStrip, sc.getStripName(sc.trackRef(sc.getTrackId(0)))}, "Rename");
+        sc.applySampleRateConversion(48000.0, ConvertedBuffers{});
+        DAWLAB_CHECK(openedUnmodified && sc.getHistory().isModified() && !sc.getHistory().canUndo());
+        sc.applySampleRateConversion(44100.0, ConvertedBuffers{});
         DAWLAB_CHECK(!hasNanOrInf(at44Render) && peakAbs(at44Render) > 0.01f);
         for (MainComponent* m : {&a, &b, &c}) {
             m->getEngine().applyPendingCommandsOffline();

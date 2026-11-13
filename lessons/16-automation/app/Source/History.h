@@ -35,6 +35,12 @@ public:
     void endMerge() noexcept { openMergeKey_ = 0; }
     // Forgets everything (a new or opened project). The empty history counts as saved.
     void clear();
+    // Forgets the entries but not whether there are unsaved changes (the project was converted to
+    // another sample rate, and the entries' positions are at the old one).
+    void forgetEntries();
+    // The project changed without an entry (recovered takes): it has unsaved changes until the next
+    // save, and no undo or redo leads back to the saved state.
+    void markModified() noexcept { savedSerial_ = kNoSerial; }
     void markSaved() noexcept {
         savedSerial_ = currentSerial();
         endMerge(); // a drag continued after saving must count as a modification
@@ -64,6 +70,7 @@ private:
     std::uint32_t openMergeKey_ = 0;
     std::uint64_t nextSerial_ = 1;
     std::uint64_t savedSerial_ = 0;
+    static constexpr std::uint64_t kNoSerial = ~std::uint64_t{0}; // no entry has it (serials count from 1)
 };
 
 } // namespace dawlab::app

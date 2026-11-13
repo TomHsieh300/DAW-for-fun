@@ -85,7 +85,11 @@ such an edit does not apply.
   newest entry, and the project is modified when the newest entry is a different one. So undo
   can make a project clean again, and redo makes it modified again.
 - **New, open, the demo song, a device change** start a new history. A device change converts
-  every clip to the new rate, and old entries hold clip lists at the old rate.
+  every clip to the new rate, and old entries hold clip lists at the old rate. It forgets the
+  entries (`forgetEntries()`), not whether there are unsaved changes: edited before, the project
+  is still modified after; saved before, the conversion is no change of its own.
+- **A change without an entry** - a take recovered after a crash (chapter 17) - calls
+  `markModified()`: unsaved until the next save, whatever undo and redo do.
 
 ### Every change goes through `perform()`
 

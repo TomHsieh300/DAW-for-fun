@@ -901,6 +901,14 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
                     at44.ok ? "ok" : at44.error.toRawUTF8(), bassClips.size() > 2 ? static_cast<long long>(bassClips[2].start) : -1LL,
                     static_cast<double>(gainToDb(peakAbs(at44Render))));
         DAWLAB_CHECK(at44.ok && converted);
+        // The conversion that opening did is no change of its own; one after an edit forgets the entries (they are
+        // at the old rate), not that the project has unsaved changes.
+        const bool openedUnmodified = !sc.getHistory().isModified();
+        const StripTarget firstStrip = StripTarget::ofTrack(sc.getTrackId(0));
+        sc.perform(edit::Rename{firstStrip, sc.getStripName(sc.trackRef(sc.getTrackId(0)))}, "Rename");
+        sc.applySampleRateConversion(48000.0, ConvertedBuffers{});
+        DAWLAB_CHECK(openedUnmodified && sc.getHistory().isModified() && !sc.getHistory().canUndo());
+        sc.applySampleRateConversion(44100.0, ConvertedBuffers{});
         DAWLAB_CHECK(!hasNanOrInf(at44Render) && peakAbs(at44Render) > 0.01f);
         for (MainComponent* m : {&a, &b, &c}) {
             m->getEngine().applyPendingCommandsOffline();

@@ -1059,7 +1059,7 @@ void Session::applySampleRateConversion(double newRate, const ConvertedBuffers& 
             placeClips(t);
             pushClips(t);
         }
-    history_.clear(); // its clip lists and positions are at the old rate
+    history_.forgetEntries(); // its clip lists and positions are at the old rate; unsaved changes stay unsaved
     sendChangeMessage();
 }
 

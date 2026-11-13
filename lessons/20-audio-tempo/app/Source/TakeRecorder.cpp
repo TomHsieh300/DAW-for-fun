@@ -235,6 +235,7 @@ int TakeRecorder::recover() {
             continue;
         }
         session_.applyEdit(session_.makeTakeEdit(track, audio, takes, name));
+        session_.getHistory().markModified(); // the take is in no project file yet: closing must ask to save
     }
     return found;
 }

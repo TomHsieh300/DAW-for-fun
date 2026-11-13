@@ -92,4 +92,11 @@ void History::clear() {
     savedSerial_ = 0;
 }
 
+void History::forgetEntries() {
+    const bool modified = isModified();
+    clear();
+    if (modified)
+        markModified();
+}
+
 } // namespace dawlab::app
