@@ -73,6 +73,10 @@ gain_ += std::clamp(target - gain_, -rampStep_, rampStep_);
 5 毫秒短到聽不出來，又長到不會有爆音。Mode、音量、punch 和 guard 都只是不同的 `target`。這裡沒有東西依賴 block，所以
 同樣的 input 不管切成幾塊，output 都相同。
 
+Ramp 絕不能看到不是數字的音量：`target - gain_` 會是 NaN，`std::clamp` 會讓 NaN 直接通過，從此增益就一直是 NaN，連
+monitor 關掉之後也一樣。所以 `setLevel()` 遵守 setter 的規則：setter 收到 non-finite 的值（NaN、+-inf）時會忽略它，
+保留之前的音量。
+
 ### Feedback
 
 麥克風聽得到喇叭。如果繞回來的比送出去的小，它會像回音一樣消失。如果比較大，不管大多少，它都會一直變大到 converter

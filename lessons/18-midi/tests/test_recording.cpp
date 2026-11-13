@@ -16,6 +16,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -502,6 +503,43 @@ void monitorLevelAndOff() {
     DAWLAB_CHECK(largestStep(back) < 0.01f);
 }
 
+// A level that is not a number is ignored, and the monitor keeps the level it had: one NaN in the
+// gain ramp would stay there for good, and the track would play NaN even after the monitor is off.
+void monitorKeepsItsLevelWhenGivenNaN() {
+    Engine e;
+    const TrackId voice{1};
+    e.addTrack(voice);
+    e.prepare(kSampleRate, kMaxBlock);
+    e.applyPendingCommandsOffline();
+    Monitor& monitor = e.getTrack(voice)->getMonitor();
+    monitor.setMode(MonitorMode::Always);
+    monitor.setLevel(0.5f);
+    e.getTransport().play();
+    const auto constant = [](std::int64_t) { return 0.25f; };
+    const AudioBuffer before = play(e, nullptr, 1000, 128, constant);
+    DAWLAB_CHECK_NEAR(before.getSample(0, 999), 0.125f, 1e-3);
+
+    monitor.setLevel(std::numeric_limits<float>::quiet_NaN());
+    const float afterNaN = monitor.level();
+    const AudioBuffer withNaN = play(e, nullptr, 1000, 128, constant);
+    monitor.setLevel(std::numeric_limits<float>::infinity());
+    const float afterInf = monitor.level();
+    const AudioBuffer withInf = play(e, nullptr, 1000, 128, constant);
+    std::printf("  monitor level 0.5, then NaN: level %g, output %g; then +inf: level %g, output %g\n",
+                static_cast<double>(afterNaN), static_cast<double>(withNaN.getSample(0, 999)),
+                static_cast<double>(afterInf), static_cast<double>(withInf.getSample(0, 999)));
+    DAWLAB_CHECK(afterNaN == 0.5f && afterInf == 0.5f);
+    DAWLAB_CHECK_NEAR(withNaN.getSample(0, 999), 0.125f, 1e-3);
+    DAWLAB_CHECK_NEAR(withInf.getSample(0, 999), 0.125f, 1e-3);
+
+    monitor.setLevel(1.0f);
+    const AudioBuffer full = play(e, nullptr, 1000, 128, constant);
+    DAWLAB_CHECK_NEAR(full.getSample(0, 999), 0.25f, 1e-3);
+    monitor.setMode(MonitorMode::Off);
+    play(e, nullptr, 1000, 128, constant);
+    DAWLAB_CHECK(monitor.isSilent());
+}
+
 // Turning it off in the middle of the input: a fade, not a step.
 void monitorFadesOut() {
     Engine e;
@@ -973,6 +1011,7 @@ int main() {
     checkAuto();
     monitorWithoutInput();
     monitorLevelAndOff();
+    monitorKeepsItsLevelWhenGivenNaN();
     monitorFadesOut();
     monitorFollowsTheRate();
     monitorOfANewTrack();

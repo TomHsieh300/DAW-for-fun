@@ -79,6 +79,10 @@ Five milliseconds is short enough not to notice and long enough not to click. Th
 guard are all just a different `target`. Nothing depends on the blocks, so the same input gives the same output in any
 pieces.
 
+The ramp must never see a level that is not a number: `target - gain_` would be NaN, `std::clamp` passes NaN through,
+and from then on the gain stays NaN, even after the monitor is turned off. So `setLevel()` follows the rule for
+setters: a setter that gets a non-finite value (NaN, +-inf) ignores it and keeps the previous level.
+
 ### Feedback
 
 A microphone hears the speaker. If what comes back is softer than what went out, it dies away as an echo. If it is

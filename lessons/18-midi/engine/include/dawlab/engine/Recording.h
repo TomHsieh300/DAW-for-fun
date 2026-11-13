@@ -950,7 +950,12 @@ public:
     void setMode(MonitorMode mode) noexcept { mode_.store(mode, std::memory_order_relaxed); }
     MonitorMode mode() const noexcept { return mode_.load(std::memory_order_relaxed); }
     float level() const noexcept { return level_.load(std::memory_order_relaxed); }
-    void setLevel(float gain) noexcept { level_.store(gain, std::memory_order_relaxed); }
+    // A setter that gets a non-finite value (NaN, +-inf) ignores it and keeps the previous level:
+    // one NaN in the gain ramp would stay there, and the track would play NaN for good.
+    void setLevel(float gain) noexcept {
+        if (std::isfinite(gain))
+            level_.store(gain, std::memory_order_relaxed);
+    }
     void setRange(const RecordRange& range) noexcept {
         loopStart_.store(range.loopStart, std::memory_order_relaxed);
         loopEnd_.store(range.loopEnd, std::memory_order_relaxed);
