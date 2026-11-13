@@ -164,7 +164,7 @@ void testErrors() {
         const char* expected; // the error must start with this
     } cases[] = {
         {"", "line 1: not a DawLab project"},
-        {"DawLabProject 9\n", "line 1: made by a newer DawLab"},
+        {"DawLabProject 10\n", "line 1: made by a newer DawLab"},
         {"DawLabProject 3\ntrack 1 \"A\" 0 0 mono 0 0\n", "line 2: sampleRate must come"},
         {head + "volume 1\n", "line 4: unknown keyword"},
         {head + "track 2 \"B\" 0 0\n", "line 4: track needs 7 values"},
@@ -533,15 +533,22 @@ void testFollow() {
     kept.follow = dawlab::engine::FollowMode::Stretch;
     kept.sourceOffset = 100;
     kept.markers = {{-50.5, -960.0}, {123456.75, 7680.0}};
-    p.clips = {plain, start, tape, kept};
+    // Format 9: a piece of a cut, which plays from a quarter into its first sample of the source to a third before
+    // the end of its last.
+    ClipState piece = tape;
+    piece.name = "piece";
+    piece.headCut = 0.25;
+    piece.tailCut = 1.0 / 3.0;
+    p.clips = {plain, start, tape, kept, piece};
 
     const std::string text = writeProject(p);
-    DAWLAB_CHECK(text.rfind("DawLabProject 8\n", 0) == 0);
+    DAWLAB_CHECK(text.rfind("DawLabProject 9\n", 0) == 0);
+    DAWLAB_CHECK(text.find("cut 0.25 0.33333333333333331\n") != std::string::npos && text.find("cut 0 0") == std::string::npos);
     DAWLAB_CHECK(text.find("follow start 3840.3333333333335\n") != std::string::npos && text.find("follow varispeed 96000\n") != std::string::npos &&
                  text.find("follow stretch 96000\n") != std::string::npos && text.find("marker 48000.125 1920.1428571428571\n") != std::string::npos);
     const ReadResult back = readProject(text);
     DAWLAB_CHECK(back.ok && back.project == p && writeProject(back.project) == text);
-    DAWLAB_CHECK(back.ok && back.project.clips.size() == 4 && back.project.clips[0].follow == dawlab::engine::FollowMode::Off &&
+    DAWLAB_CHECK(back.ok && back.project.clips.size() == 5 && back.project.clips[0].follow == dawlab::engine::FollowMode::Off &&
                  back.project.clips[0].markers.empty() && back.project.clips[1].startTick == start.startTick && back.project.clips[3].markers == kept.markers);
     std::printf("clips that follow: a start in ticks, varispeed and stretch with their markers written and read back exactly\n");
 
@@ -589,6 +596,16 @@ void testFollow() {
     DAWLAB_CHECK(reads(clip + "follow varispeed 100\nmarker 0.5 0\nmarker 99.5 480"));
     const ReadResult far = readProject(head + clip + "follow varispeed 100\nmarker 0 0\nmarker 1 1e300\n");
     DAWLAB_CHECK(!far.ok && far.error.find("line 4") != std::string::npos);
+    // Format 9: "cut" after the follow line of a warped clip, fractions of a sample from 0 up to (not with) 1, and
+    // something of the source left between them.
+    const std::string head9 = "DawLabProject 9\nsampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\n";
+    const std::string warped = clip + "follow varispeed 100\nmarker 0 0\nmarker 100 480\n";
+    const auto reads9 = [&head9](const std::string& lines) { return readProject(head9 + lines + "\n").ok; };
+    DAWLAB_CHECK(reads9(warped + "cut 0.25 0.5") && reads9(warped + "cut 0 0.999"));
+    DAWLAB_CHECK(!reads9(warped + "cut 1 0") && !reads9(warped + "cut -0.1 0") && !reads9(warped + "cut 0.5") && !reads9(warped + "cut x 0"));
+    DAWLAB_CHECK(!reads9(clip + "follow start 0\ncut 0.5 0") && !reads9(clip + "cut 0.5 0") && !reads9(warped + "cut 0.5 0\ncut 0.5 0"));
+    DAWLAB_CHECK(!reads9("clip 1 0 1 \"a.wav\"\nfollow varispeed 1\nmarker 0 0\nmarker 1 480\ncut 0.5 0.5")); // nothing left
+    DAWLAB_CHECK(!readProject(head + warped + "cut 0.25 0.5\n").ok);                                           // format 8 has none
     // An older file cannot have them.
     DAWLAB_CHECK(!readProject("DawLabProject 7\nsampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\n" + clip + "follow start 0\n").ok);
     DAWLAB_CHECK(readProject("DawLabProject 7\nsampleRate 48000\ntrack 1 \"A\" 0 0 mono 0 0\n" + clip).ok);

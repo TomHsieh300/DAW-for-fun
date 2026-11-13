@@ -38,7 +38,7 @@ tick, and then every sample of its audio got one, through a few warp markers.
 | reading between samples | 3 | `Warp.h`: `readSinc()` | - |
 | WSOLA | 4 | `Warp.h`: `stretchAlong()` | - |
 | a render ahead of time | 5 | `Warp.h`: `renderFollowClip()`; `FollowRenderer.h` | `Session::pushClips()`, `pollRenders()`, `finishRenders()` |
-| the clip carries the data | 6 | `Clip.h`: `Clip::follow`; `Warp.h`: `ClipFollow`, `withFollowMode()`, `cutToSongRange()` | the clip menu, project format 8 |
+| the clip carries the data | 6 | `Clip.h`: `Clip::follow`; `Warp.h`: `ClipFollow`, `withFollowMode()`, `cutToSongRange()` | the clip menu, project formats 8 and 9 |
 
 </div>
 

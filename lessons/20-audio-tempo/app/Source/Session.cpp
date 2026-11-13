@@ -662,7 +662,10 @@ std::vector<Clip> Session::withClipOnTop(std::vector<Clip> clips, const Clip& cl
     const int fade = static_cast<int>(std::lround(0.005 * getClipSampleRate()));
     // Chapter 20: a warped clip is cut in its source, and where a sample of the source covers several of the song
     // the part left can hold none of it. That part is nothing, not a clip.
-    const auto holdsAudio = [](const Clip& piece) { return engine::followClipOf(piece).clip.length > 0; };
+    const auto holdsAudio = [](const Clip& piece) {
+        const engine::FollowClip f = engine::followClipOf(piece);
+        return f.isWarped() ? f.sourceTo() > f.sourceFrom() : f.clip.length > 0;
+    };
     std::vector<Clip> result;
     for (const Clip& old : clips) {
         if (old.end() <= clip.start || old.start >= clip.end()) {
@@ -991,6 +994,7 @@ void Session::applySampleRateConversion(double newRate, const ConvertedBuffers& 
         if (t.clips.empty())
             continue;
         for (Clip& c : t.clips) {
+            const engine::FollowClip warped = engine::followClipOf(c); // its range of the source, before it is scaled
             if (c.source) {
                 auto it = converted.find(c.source);
                 if (it == converted.end())
@@ -1009,9 +1013,14 @@ void Session::applySampleRateConversion(double newRate, const ConvertedBuffers& 
             c.fadeOutSamples = static_cast<int>(scale(c.fadeOutSamples));
             if (c.follow != nullptr) { // chapter 20: positions in the source are samples too; ticks are not
                 auto follow = std::make_shared<engine::ClipFollow>(*c.follow);
-                follow->sourceLength = scale(follow->sourceLength);
-                if (c.source)
-                    follow->sourceLength = std::min<int64_t>(follow->sourceLength, c.source->getNumSamples() - c.sourceOffset);
+                if (warped.isWarped()) { // its range of the source, scaled to the fraction of a sample
+                    const double end = c.source ? static_cast<double>(c.source->getNumSamples()) : HUGE_VAL;
+                    engine::setSourceRange(c, *follow, warped.sourceFrom() * ratio, std::min(warped.sourceTo() * ratio, end));
+                } else {
+                    follow->sourceLength = scale(follow->sourceLength);
+                    if (c.source)
+                        follow->sourceLength = std::min<int64_t>(follow->sourceLength, c.source->getNumSamples() - c.sourceOffset);
+                }
                 for (engine::WarpMarker& m : follow->markers)
                     m.source *= ratio;
                 c.follow = std::move(follow);

@@ -1978,7 +1978,7 @@ void testFollowingClips() {
     const juce::File file = folder.get().getChildFile("Follow.dawlab");
     DAWLAB_CHECK(main.saveProject(file));
     const juce::String text = file.loadFileAsString();
-    DAWLAB_CHECK(text.startsWith("DawLabProject 8") && text.contains("follow stretch " + juce::String(8 * beat)) && text.contains("marker "));
+    DAWLAB_CHECK(text.startsWith("DawLabProject 9") && text.contains("follow stretch " + juce::String(8 * beat)) && text.contains("marker "));
     const Clip saved = session.getClips(track)[1];
     session.newProject();
     engine.applyPendingCommandsOffline();
@@ -2046,16 +2046,32 @@ void testFollowingClipsReopen() {
         return ok;
     };
     TakesFolder folder;
-    const auto reopens = [&](const char* name) {
+    // Saved and opened in another window: it opens, and the clips of `track` come back as they were - in their
+    // places, and following as they did, to the fraction of a sample where a cut left them.
+    const auto reopens = [&](const char* name, TrackId track) {
         const juce::File file = folder.get().getChildFile(name);
         if (!main.saveProject(file))
             return false;
         auto other = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
         other->setSize(MainComponent::kDefaultWidth, MainComponent::kDefaultHeight);
         const ProjectIO::OpenResult opened = other->openProject(file);
-        if (!opened.ok)
+        if (!opened.ok) {
             std::printf("  %s does not open: %s\n", name, opened.error.toRawUTF8());
-        return opened.ok;
+            return false;
+        }
+        const std::vector<Clip>& mine = session.getClips(track);
+        const Session& theirs = other->getSession();
+        for (int i = 0; i < theirs.getNumTracks(); ++i) {
+            const std::vector<Clip>& back = theirs.getClips(theirs.getTrackId(i));
+            bool same = !back.empty() && back.size() == mine.size();
+            for (size_t k = 0; same && k < back.size(); ++k)
+                same = back[k].start == mine[k].start && back[k].length == mine[k].length && back[k].sourceOffset == mine[k].sourceOffset &&
+                       (back[k].follow == nullptr) == (mine[k].follow == nullptr) && (back[k].follow == nullptr || *back[k].follow == *mine[k].follow);
+            if (same)
+                return true;
+        }
+        std::printf("  %s opens with other clips\n", name);
+        return false;
     };
 
     // Two seconds of a take made at 120 BPM, by varispeed; at 30 BPM a sample of it covers four of the song.
@@ -2068,28 +2084,29 @@ void testFollowingClipsReopen() {
     engine.applyPendingCommandsOffline();
     DAWLAB_CHECK(main.setClipFollow(track, 0, engine::FollowMode::Varispeed) && atTempo(30.0));
 
-    // A clip put 1 to 8 samples after its start: what is left before it is less than a sample of the source, or
-    // a sample or two. A piece with nothing of the source in it is not kept.
+    // A clip put 1 to 8 samples after its start: what is left before it is a quarter of a sample of the source up
+    // to two - and it is kept, as much as it is, ending on the sample where the new clip starts (format 9 saves the
+    // fractions). No piece is empty.
     const Clip whole = session.getClips(track)[0];
-    int empty = 0, kept = 0;
+    int empty = 0, onTheCut = 0;
     for (int d = 1; d <= 8; ++d) {
         Clip over = session.makeAudioClip(clicks, "over", whole.start + d);
         over.length = 1000;
         for (const Clip& c : session.withClipOnTop({whole}, over)) {
             empty += engine::followModeOf(c) != engine::FollowMode::Off && c.follow->sourceLength <= 0 ? 1 : 0;
-            kept += c.start == whole.start ? 1 : 0;
+            onTheCut += c.start == whole.start && c.end() == over.start ? 1 : 0;
         }
     }
-    DAWLAB_CHECK(empty == 0 && kept > 0 && kept < 8);
+    DAWLAB_CHECK(empty == 0 && onTheCut == 8);
     for (int d = 1; d <= 3; ++d) {
         Clip over = session.makeAudioClip(clicks, "over", whole.start + d);
         over.length = 1000;
         DAWLAB_CHECK(session.perform(edit::SetClips{track, session.withClipOnTop({whole}, over)}, "Overdub"));
         engine.applyPendingCommandsOffline();
         session.finishRenders();
-        DAWLAB_CHECK(reopens("Cut.dawlab"));
+        DAWLAB_CHECK(reopens("Cut.dawlab", track));
         // At the fastest tempo a piece of a sample or two covers less than a sample of the song: still a clip.
-        DAWLAB_CHECK(atTempo(999.0) && reopens("Fast.dawlab") && atTempo(30.0));
+        DAWLAB_CHECK(atTempo(999.0) && reopens("Fast.dawlab", track) && atTempo(30.0));
     }
     std::printf("  a varispeed clip at 30 BPM cut 1 to 8 samples after its start: no empty piece; saved and opened, at 30 and 999 BPM\n");
     session.newProject();

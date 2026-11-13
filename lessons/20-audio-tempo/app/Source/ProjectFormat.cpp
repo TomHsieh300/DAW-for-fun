@@ -50,7 +50,7 @@ bool operator==(const ClipState& a, const ClipState& b) {
     return a.track == b.track && a.start == b.start && a.length == b.length && a.file == b.file &&
            a.sourceOffset == b.sourceOffset && a.fadeIn == b.fadeIn && a.fadeOut == b.fadeOut &&
            a.equalPowerFades == b.equalPowerFades && a.gainDb == b.gainDb && a.muted == b.muted && a.name == b.name && a.follow == b.follow && a.startTick == b.startTick && a.sourceLength == b.sourceLength &&
-           a.markers == b.markers;
+           a.markers == b.markers && a.headCut == b.headCut && a.tailCut == b.tailCut;
 }
 bool operator==(const TakeState& a, const TakeState& b) {
     return a.start == b.start && a.sourceOffset == b.sourceOffset && a.length == b.length;
@@ -265,7 +265,7 @@ std::string followProblem(const ClipState& c) {
             return "between two markers there must be 2^-20 to 2^20 ticks per sample of the source";
     }
     // Up to a sample outside them is a rounding: a change of sample rate scales the markers, and rounds the samples.
-    const double from = static_cast<double>(c.sourceOffset), to = from + static_cast<double>(c.sourceLength);
+    const double from = static_cast<double>(c.sourceOffset) + c.headCut, to = static_cast<double>(c.sourceOffset + c.sourceLength) - c.tailCut;
     if (from < c.markers.front().source - 1.0 || to > c.markers.back().source + 1.0)
         return "the markers must cover the part of the source that the clip plays";
     return "";
@@ -352,6 +352,8 @@ std::string writeProject(const ProjectState& p) {
             out << "follow " << (c.follow == engine::FollowMode::Varispeed ? "varispeed" : "stretch") << ' ' << c.sourceLength << '\n';
             for (const engine::WarpMarker& m : c.markers)
                 out << "marker " << m.source << ' ' << m.tick << '\n';
+            if (c.headCut != 0.0 || c.tailCut != 0.0) // format 9: a piece of a cut
+                out << "cut " << c.headCut << ' ' << c.tailCut << '\n';
         }
         out.precision(digits);
     }
@@ -592,6 +594,7 @@ private:
             {"clip", &ProjectReader::readClip},
             {"follow", &ProjectReader::readFollow},
             {"marker", &ProjectReader::readMarker},
+            {"cut", &ProjectReader::readCut},
             {"takes", &ProjectReader::readTakes},
             {"synth", &ProjectReader::readSynth},
             {"plugininstrument", &ProjectReader::readPluginInstrument},
@@ -883,6 +886,27 @@ private:
         if (!c.markers.empty() && (m.source <= c.markers.back().source || m.tick <= c.markers.back().tick))
             return "a marker must be after the one before it, in the source and in ticks";
         c.markers.push_back(m);
+        return "";
+    }
+
+    // Format 9: what a cut left of a warped clip's first and last sample of the source.
+    std::string readCut() {
+        if (version_ < 9)
+            return needsFormat(9);
+        const std::string problem = checkClipAbove();
+        if (!problem.empty())
+            return problem;
+        ClipState& c = p_.clips.back();
+        if (c.follow != engine::FollowMode::Varispeed && c.follow != engine::FollowMode::Stretch)
+            return "a cut needs a clip above it that follows by varispeed or stretch";
+        if (cutOfClip_ == p_.clips.size())
+            return "the clip above already has a \"cut\"";
+        if (tok_.size() != 3 || !parseNumber(tok_[1], c.headCut) || !parseNumber(tok_[2], c.tailCut) || !(c.headCut >= 0.0 && c.headCut < 1.0) ||
+            !(c.tailCut >= 0.0 && c.tailCut < 1.0))
+            return "cut needs two fractions of a sample, each 0 or more and less than 1";
+        if (!(c.headCut + c.tailCut < static_cast<double>(c.sourceLength)))
+            return "a cut must leave something of the source";
+        cutOfClip_ = p_.clips.size();
         return "";
     }
 
@@ -1298,6 +1322,7 @@ private:
     std::vector<PendingLane> lanes_;
     std::vector<PendingPoint> points_;
     std::vector<int> clipLines_;
+    std::size_t cutOfClip_ = 0; // format 9: how many clips there were when the last "cut" was read (one per clip)
     // Format 6: MIDI clips by their number in the file, and what refers to them.
     std::vector<int> midiClipNumbers_, midiClipLines_;
     std::vector<PendingNote> notes_;

@@ -226,6 +226,8 @@ ProjectIO::Captured ProjectIO::capture(const Session& session, const juce::Strin
                 cs.startTick = c.follow->startTick;
                 cs.sourceLength = c.follow->sourceLength;
                 cs.markers = c.follow->markers;
+                cs.headCut = c.follow->headCut;
+                cs.tailCut = c.follow->tailCut;
             }
             p.clips.push_back(std::move(cs));
         }
@@ -479,6 +481,8 @@ ProjectIO::OpenResult ProjectIO::open(Session& session, host::PluginHost* plugin
             follow->startTick = cs.startTick;
             follow->sourceLength = std::min<std::int64_t>(cs.sourceLength, available);
             follow->markers = cs.markers;
+            follow->headCut = cs.headCut;
+            follow->tailCut = cs.sourceLength > available ? 0.0 : cs.tailCut; // shortened: it ends with the audio
             if (cs.follow != engine::FollowMode::Start && cs.sourceLength > available)
                 r.warnings.add("clip \"" + juce::String(cs.name) + "\" was longer than " + juce::String(cs.file) + ": shortened");
             c.follow = std::move(follow);

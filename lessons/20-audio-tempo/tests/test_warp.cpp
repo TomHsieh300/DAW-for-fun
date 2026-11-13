@@ -831,8 +831,8 @@ void testClipsThatCarryIt() {
     // play the source's two ends, and lie against the gap.
     const Clip before = cutToSongRange(slow, slow.start, 240000, at60, kSampleRate), after = cutToSongRange(slow, 300000, slow.end(), at60, kSampleRate);
     DAWLAB_CHECK(before.follow->markers == tape.follow->markers && after.follow->markers == tape.follow->markers && followModeOf(after) == FollowMode::Varispeed);
-    DAWLAB_CHECK(before.sourceOffset == 1000 && before.follow->sourceLength == 24000 && before.start == 192000 && std::llabs(before.end() - 240000) <= 1);
-    DAWLAB_CHECK(after.sourceOffset == 55000 && after.follow->sourceLength == 36000 && std::llabs(after.start - 300000) <= 1 && std::llabs(after.end() - slow.end()) <= 1);
+    DAWLAB_CHECK(before.sourceOffset == 1000 && before.follow->sourceLength == 24000 && before.start == 192000 && before.end() == 240000);
+    DAWLAB_CHECK(after.sourceOffset == 55000 && after.follow->sourceLength == 36000 && after.start == 300000 && after.end() == slow.end());
     // Moved to a sample, a warped clip starts there: not a sample before or after, whatever the map (the tick of
     // the sample, found again through two maps, can round either way).
     std::mt19937 rngMoves(64);
@@ -847,7 +847,8 @@ void testClipsThatCarryIt() {
     DAWLAB_CHECK(std::llabs(pieceMoved.start - 500000) <= 1 && pieceMoved.length == after.length && pieceMoved.sourceOffset == 55000);
     const Clip all = cutToSongRange(slow, slow.start, slow.end(), at60, kSampleRate);
     DAWLAB_CHECK(all.sourceOffset == 1000 && all.follow->sourceLength == 90000 && all.start == slow.start && all.length == slow.length);
-    // Over a map that bends: the pieces of 200 random cuts tile the clip's source, and are within a sample of the cut.
+    // Over a map that bends: the pieces of 200 random cuts tile the clip's source, where one ends the next begins
+    // to the bit, and they end and start on the sample of the cut.
     std::mt19937 rng(63);
     Clip bent = tape;
     placeUnder(bent, bends, kSampleRate);
@@ -855,11 +856,26 @@ void testClipsThatCarryIt() {
     for (int c = 0; c < 200; ++c) {
         const std::int64_t at = bent.start + std::uniform_int_distribution<std::int64_t>(1, bent.length - 1)(rng);
         const Clip a = cutToSongRange(bent, bent.start, at, bends, kSampleRate), b = cutToSongRange(bent, at, bent.end(), bends, kSampleRate);
-        wrong += a.sourceOffset == 1000 && a.sourceOffset + a.follow->sourceLength == b.sourceOffset && b.sourceOffset + b.follow->sourceLength == 91000 ? 0 : 1;
-        wrong += std::llabs(a.end() - at) <= 1 && std::llabs(b.start - at) <= 1 && a.end() == b.start ? 0 : 1;
+        const FollowClip fa = followClipOf(a), fb = followClipOf(b);
+        wrong += fa.sourceFrom() == 1000.0 && fa.sourceTo() == fb.sourceFrom() && fb.sourceTo() == 91000.0 ? 0 : 1;
+        wrong += a.start == bent.start && a.end() == at && b.start == at && b.end() == bent.end() ? 0 : 1;
     }
     DAWLAB_CHECK(wrong == 0);
-    std::printf("  a clip that carries how it follows: its mode changed, placed, moved and cut - the pieces of 200 cuts tile its source\n");
+    // Also where a sample of the source covers many of the song - a take made at 120, 240 and 999 BPM played at 40,
+    // 20 and 20 BPM: a cut inside one sample of the source is still on its sample of the song.
+    int slowWrong = 0;
+    for (const auto& [recorded, played] : {std::pair<double, double>{120.0, 40.0}, {240.0, 20.0}, {999.0, 20.0}}) {
+        const TempoMap slowMap = mapOf({{0, played, false}});
+        Clip slowTape = withFollowMode(Clip::fromBuffer(sineBuffer({440.0}, 48000, 0.1), 48000, "t"), FollowMode::Varispeed, mapOf({{0, recorded, false}}), kSampleRate);
+        placeUnder(slowTape, slowMap, kSampleRate);
+        for (int c = 0; c < 50; ++c) {
+            const std::int64_t at = slowTape.start + std::uniform_int_distribution<std::int64_t>(1, slowTape.length - 1)(rng);
+            const Clip a = cutToSongRange(slowTape, slowTape.start, at, slowMap, kSampleRate), b = cutToSongRange(slowTape, at, slowTape.end(), slowMap, kSampleRate);
+            slowWrong += a.start == slowTape.start && a.end() == at && b.start == at && b.end() == slowTape.end() ? 0 : 1;
+        }
+    }
+    DAWLAB_CHECK(slowWrong == 0);
+    std::printf("  a clip that carries how it follows: its mode changed, placed, moved and cut - 350 cuts on their sample, at speeds down to 1/50\n");
 }
 
 // ---- 8 -------------------------------------------------------------------------------------------------------

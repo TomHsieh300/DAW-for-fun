@@ -87,9 +87,9 @@ constexpr int kInsertSlotsPerStrip = 4; // GUI insert slots per strip (Session, 
 
 namespace project {
 
-constexpr int kFormatVersion = 8; // 1: Step 4 without pan; 2: Step 4; 3: the whole app project; 4: automation; 5: takes;
+constexpr int kFormatVersion = 9; // 1: Step 4 without pan; 2: Step 4; 3: the whole app project; 4: automation; 5: takes;
                                   // 6: instruments and MIDI clips; 7: a tempo map, instrument sounds;
-                                  // 8: clips that follow the tempo
+                                  // 8: clips that follow the tempo; 9: a warped clip cut inside a sample ("cut")
 
 struct SendState {
     float levelDb = kMinusInfinityDb;
@@ -186,6 +186,7 @@ struct ClipState {
     double startTick = 0.0;                  // Start
     std::int64_t sourceLength = 0;           // Varispeed, Stretch: > 0
     std::vector<engine::WarpMarker> markers; // Varispeed, Stretch: at least two, sources and ticks rising
+    double headCut = 0.0, tailCut = 0.0;     // format 9, Varispeed, Stretch: ClipFollow's, each in [0, 1)
 };
 
 // Which parts of an audio file are the takes of one recording. The clip says which one plays.

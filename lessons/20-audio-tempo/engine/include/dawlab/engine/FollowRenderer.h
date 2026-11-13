@@ -313,7 +313,7 @@ private:
     // markers too, it is the same render under the same map.
     static bool sameAudio(const FollowClip& a, const FollowClip& b, bool markersToo) noexcept {
         return a.clip.source == b.clip.source && a.clip.sourceOffset == b.clip.sourceOffset && a.clip.length == b.clip.length && a.mode == b.mode &&
-               (!markersToo || a.markers == b.markers);
+               a.headCut == b.headCut && a.tailCut == b.tailCut && (!markersToo || a.markers == b.markers);
     }
     // The first entry of the last update() that is not taken over yet and has the clip's audio; -1 if none.
     int takeOver(const FollowClip& clip, bool markersToo) const noexcept {

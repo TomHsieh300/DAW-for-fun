@@ -34,7 +34,7 @@
 | 讀 sample 之間的值 | 3 | `Warp.h`：`readSinc()` | - |
 | WSOLA | 4 | `Warp.h`：`stretchAlong()` | - |
 | 事先運算 | 5 | `Warp.h`：`renderFollowClip()`；`FollowRenderer.h` | `Session::pushClips()`、`pollRenders()`、`finishRenders()` |
-| 由 clip 帶著資料 | 6 | `Clip.h`：`Clip::follow`；`Warp.h`：`ClipFollow`、`withFollowMode()`、`cutToSongRange()` | clip 選單、專案檔第 8 版 |
+| 由 clip 帶著資料 | 6 | `Clip.h`：`Clip::follow`；`Warp.h`：`ClipFollow`、`withFollowMode()`、`cutToSongRange()` | clip 選單、專案檔第 8、9 版 |
 
 </div>
 

@@ -72,9 +72,9 @@ Clip 選單記住的是打開它時的那個 clip，不是它的 index（`choose
 
 被拖曳的 clip 會帶著它的 tick 或 marker 一起走（`movedTo()`）：marker 移動的 tick 數和起點移動的一樣多。
 
-錄音落在某個 clip 上時，第 17 章會把舊的 clip 沿著新的 clip 切開。對 warp 過的 clip，這一刀是用它自己的方式切的（`cutToSongRange()`）：切出來的片段保留 marker，只是播放的 source 變少。前一段的結尾和後一段的開頭，都落在新 clip 邊緣的一個 sample 以內。
+錄音落在某個 clip 上時，第 17 章會把舊的 clip 沿著新的 clip 切開。對 warp 過的 clip，這一刀是用它自己的方式切的（`cutToSongRange()`）：切出來的片段保留 marker，只是播放的 source 變少。前一段的結尾和後一段的開頭，都剛好落在新 clip 邊緣的那個 sample 上。如果一個 source sample 涵蓋歌曲的很多個 sample（take 播放得比錄製時慢很多），邊緣會落在某個 source sample 的中間：切出來的片段會記住它頭尾那兩個 sample 實際播放的比例（`ClipFollow::headCut`、`tailCut`），由第 9 版存檔。
 
-### 專案檔，第 8 版
+### 專案檔，第 8 和第 9 版
 
 跟著 tempo 的 clip 在它的 `clip` 行底下有幾行：
 
@@ -86,6 +86,8 @@ marker 192000 19200
 ```
 
 （在 120 BPM 做的兩小節 audio，放在第 4 小節，歌是 90 BPM。）起點模式是 `follow start <tick>`；其他模式是 `follow varispeed|stretch <source 裡的長度>` 加上至少兩行 `marker <source> <tick>`。Tick 和 source 位置以 17 位數字寫出：它們是小數，讀回來必須是同一個數。`clip` 行的 `start` 和 `length` 是存檔當時 clip 所在的位置；開檔時會依檔案的 tempo map 重新擺放。第 1 到 7 版的檔案沒有這些行，照舊開啟。
+
+第 9 版在切出來的片段的 marker 之後多一行：`cut <head> <tail>`，表示它頭尾那兩個 source sample 中不播放的比例，各自從 0 到 1（不含 1）。沒有被切過的 clip 沒有這一行，所以沒有切過的專案在第 20 章照舊能讀；第 19 章則會把第 9 版當成較新的 DawLab 做的檔案而拒絕。
 
 這些行來自外部，所以在讀進來的地方就檢查（ProjectFormat.cpp 的 `followProblem()`）。一個檔案如果會把 clip 放到 DawLab 從來不會放的位置，就會連同行號一起被拒絕：起點 tick 小於 0；tick 或位置超過 2^40；兩個 marker 之間的關係不是任何 tempo 做得出來的（每個 source sample 對應的 tick 數不在 2^-20 到 2^20 之間）；或 markers 沒有涵蓋 clip 播放的那段 source（容許一個 sample 的捨入誤差）。Warped clip 的 `length` 可以是 0：在很快的 tempo 下，一兩個 sample 長的片段蓋不到歌曲的任何一個 sample。另外，切 clip 時如果某個片段裡完全沒有 source 的內容，那個片段就不保留（`Session::withClipOnTop()`）。
 
@@ -104,7 +106,7 @@ Smoke test 多了一個部分，格式測試多了一節：
 ```text
 audio clips that follow the tempo
   a take of 8 clicks made at 120 BPM, by varispeed at 60: 8 clicks, on their beats yes, the clip 8 s long
-  start, varispeed and stretch: set, moved, cut, saved (format 8), opened, at another sample rate, and off again
+  start, varispeed and stretch: set, moved, cut, saved (format 9), opened, at another sample rate, and off again
 ```
 
 ```text

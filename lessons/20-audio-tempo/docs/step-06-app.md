@@ -100,9 +100,11 @@ the start does.
 
 When a recording lands on a clip, chapter 17 cuts the old clip around the new one. For a warped clip the cut is
 made in its own terms (`cutToSongRange()`): the pieces keep the markers and play less of the source. The piece
-before ends, and the piece after starts, within a sample of the new clip's edges.
+before ends, and the piece after starts, on the samples of the new clip's edges. Where a sample of the source covers
+many of the song (a take played much slower than it was made), the edge falls inside one: the pieces keep the
+fraction of their first and last sample they play (`ClipFollow::headCut`, `tailCut`), and format 9 saves it.
 
-### The project file, format 8
+### The project file, formats 8 and 9
 
 A clip that follows has lines under its `clip` line:
 
@@ -118,6 +120,10 @@ marker 192000 19200
 fractions, and they must read back as the same numbers. The `start` and `length` of the `clip` line are where the
 clip was when the file was saved; on opening it is placed again under the file's tempo map. Files of formats 1
 to 7 have no such lines and open as before.
+
+Format 9 adds one line after the markers of a piece of a cut: `cut <head> <tail>`, the fractions of its first and
+last sample of the source that it does not play, each from 0 up to (not with) 1. A clip with none has no such line,
+so a project with no cut piece reads in chapter 20 as before; chapter 19 refuses format 9 as made by a newer DawLab.
 
 These lines come from outside, so they are checked where they are read (`followProblem()` in ProjectFormat.cpp),
 and a file that would place a clip where DawLab never puts one is refused with its line: a start tick below 0,
@@ -145,7 +151,7 @@ The smoke test has a new part, and the format test a new section:
 ```text
 audio clips that follow the tempo
   a take of 8 clicks made at 120 BPM, by varispeed at 60: 8 clicks, on their beats yes, the clip 8 s long
-  start, varispeed and stretch: set, moved, cut, saved (format 8), opened, at another sample rate, and off again
+  start, varispeed and stretch: set, moved, cut, saved (format 9), opened, at another sample rate, and off again
 ```
 
 ```text
