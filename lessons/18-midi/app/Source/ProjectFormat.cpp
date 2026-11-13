@@ -534,8 +534,8 @@ ReadResult readProject(std::string_view text) {
             c.file = tok[4].text;
             if (full) {
                 if (!parseNumber(tok[5], c.sourceOffset) || !isPosition(c.sourceOffset) || !parseNumber(tok[6], c.fadeIn) ||
-                    !parseNumber(tok[7], c.fadeOut) || c.fadeIn < 0 || c.fadeOut < 0)
-                    return fail(lineNo, "source offset and fades must be 0 or more samples (the offset at most 2^40)");
+                    !parseNumber(tok[7], c.fadeOut) || !isFade(c.fadeIn, p.sampleRate) || !isFade(c.fadeOut, p.sampleRate))
+                    return fail(lineNo, "source offset and fades must be 0 or more samples (the offset at most 2^40, a fade at most 60 s)");
                 if (tok[8].quoted || (tok[8].text != "linear" && tok[8].text != "equalPower"))
                     return fail(lineNo, "the fade shape must be linear or equalPower");
                 c.equalPowerFades = tok[8].text == "equalPower";

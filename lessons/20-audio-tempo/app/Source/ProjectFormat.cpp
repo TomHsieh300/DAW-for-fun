@@ -852,8 +852,8 @@ private:
     // Format 3: a clip's source offset, fades, gain, muted and name.
     std::string readClipDetails(ClipState& c) {
         if (!parseNumber(tok_[5], c.sourceOffset) || !isPosition(c.sourceOffset) || !parseNumber(tok_[6], c.fadeIn) ||
-            !parseNumber(tok_[7], c.fadeOut) || c.fadeIn < 0 || c.fadeOut < 0)
-            return "source offset and fades must be 0 or more samples (the offset at most 2^40)";
+            !parseNumber(tok_[7], c.fadeOut) || !isFade(c.fadeIn, p_.sampleRate) || !isFade(c.fadeOut, p_.sampleRate))
+            return "source offset and fades must be 0 or more samples (the offset at most 2^40, a fade at most 60 s)";
         if (!isEither(tok_[8], "linear", "equalPower"))
             return "the fade shape must be linear or equalPower";
         c.equalPowerFades = tok_[8].text == "equalPower";

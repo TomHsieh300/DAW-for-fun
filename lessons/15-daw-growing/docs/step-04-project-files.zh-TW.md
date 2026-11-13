@@ -86,7 +86,7 @@ line 4: clip on track 9, which does not exist
 ```
 
 應用程式的 reader（Step 8）拒絕得更多：符號正確、但 DawLab 從來不會寫出的數字，例如 8000 到 768000 Hz 以外的
-sample rate，或超過 2^40 的位置（`app/Source/ProjectLimits.h`）。這一步的 reader、Exercise 4 和第 16 章的 Step 4
+sample rate、超過 2^40 的位置，或長於 60 秒的 fade（`app/Source/ProjectLimits.h`）。這一步的 reader、Exercise 4 和第 16 章的 Step 4
 維持原樣：它們教的是格式，不是每一個上限。
 
 reader 也接受編輯器對文字檔做的事：開頭的 UTF-8 byte order mark（記事本）和 CRLF 行尾（Windows）。

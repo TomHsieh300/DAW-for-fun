@@ -69,7 +69,9 @@ clip 1 0 192000 "Demo_media/01235f213fcc259d.wav" 0 0 0 linear 0 0 "drums"
 The text keeps Step 4's rules: the classic locale, floats with 9 significant digits, every
 error with its line number. And it refuses numbers that pass for their sign but that DawLab
 never writes: a sample rate outside 8000 to 768000 Hz, a position or a length beyond 2^40
-samples (some 260 days at 48 kHz). These limits are in `ProjectLimits.h`, one file that
+samples (some 260 days at 48 kHz), a fade longer than 60 seconds at the file's rate. A fade is
+an `int` that the engine adds 1 to and a change of rate scales; in seconds, the limit holds at
+every rate (46,080,000 samples at 768 kHz). These limits are in `ProjectLimits.h`, one file that
 chapters 15 to 20 share.
 
 ### The audio: next to the text, named by its content

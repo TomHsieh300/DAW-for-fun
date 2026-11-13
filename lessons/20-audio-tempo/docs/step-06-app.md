@@ -132,6 +132,10 @@ or markers that do not cover the part of the source the clip plays (a sample of 
 may have a `length` of 0: at a fast tempo a piece of a sample or two covers no sample of the song. And a cut that
 leaves a piece with nothing of the source in it does not keep that piece (`Session::withClipOnTop()`).
 
+The `clip` line keeps the limits of chapters 15 to 19, in one file they share (`ProjectLimits.h`): a sample rate
+of 8000 to 768000 Hz, every position and length at most 2^40, and each fade at most 60 seconds at the file's
+rate. A fade is not limited by its clip: a warped clip keeps its fades when a faster tempo shortens it.
+
 ### What it does not do
 
 - **Recording does not make a take follow.** A take is recorded as a clip that stays; you turn following on

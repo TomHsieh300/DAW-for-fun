@@ -363,11 +363,17 @@ void testRanges() {
     DAWLAB_CHECK(!reads("clip 1 " + past + " 100 \"a.wav\"") && !reads("clip 1 " + huge + " " + huge + " \"a.wav\""));
     DAWLAB_CHECK(!reads("clip 1 0 " + past + " \"a.wav\""));                         // a length
     DAWLAB_CHECK(!reads("clip 1 0 100 \"a.wav\" " + past + " 0 0 linear 0 0 \"x\"")); // a source offset
+    // A fade: at most 60 seconds at the file's rate, 2880000 samples at 48 kHz. The engine adds 1 to it in an int, and
+    // a change of rate scales it: INT_MAX overflowed.
+    DAWLAB_CHECK(reads("clip 1 0 100 \"a.wav\" 0 2880000 2880000 linear 0 0 \"x\""));
+    DAWLAB_CHECK(!reads("clip 1 0 100 \"a.wav\" 0 2880001 0 linear 0 0 \"x\"") && !reads("clip 1 0 100 \"a.wav\" 0 0 2880001 linear 0 0 \"x\""));
+    DAWLAB_CHECK(!reads("clip 1 0 100 \"a.wav\" 0 2147483647 0 linear 0 0 \"x\"") &&
+                 !reads("clip 1 0 100 \"a.wav\" 0 0 2147483647 linear 0 0 \"x\""));
     DAWLAB_CHECK(!reads("loop 0 " + past + " 1") && reads("loop 0 " + edge + " 1"));
     const std::string lane = "insert track:1 2 builtin \"Gain\" 0\nlane 1 track:1 - \"Gain\" read 0.5\n";
     DAWLAB_CHECK(reads(lane + "point 1 " + edge + " 0.5 linear") && !reads(lane + "point 1 " + past + " 0.5 linear"));
     DAWLAB_CHECK(!reads("takes \"a.wav\" " + past + " 0 1") && !reads("takes \"a.wav\" 0 " + huge + " 1") && !reads("takes \"a.wav\" 0 0 " + past));
-    std::printf("ranges: a sample rate of 8000 to 768000 Hz, every position and length at most 2^40\n");
+    std::printf("ranges: a sample rate of 8000 to 768000 Hz, every position and length at most 2^40, a fade at most 60 s\n");
 }
 
 int main() {
