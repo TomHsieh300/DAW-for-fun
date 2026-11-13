@@ -216,7 +216,7 @@ public:
 
     // How many times the last safety clamp caught a sample that "clearly exceeded the ceiling"
     // (relative error > 1e-6). In theory this is always 0; it becomes > 0 only if the ceiling /
-    // lookahead is changed during playback, or the input contains NaN / Inf.
+    // lookahead is changed during playback (a NaN / Inf input never reaches it: the DelayLine stores 0 instead).
     // Used as a debugging indicator (for example in a fuzz test).
     uint64_t getSafetyClipCount() const noexcept { return safetyClipCount_.load(std::memory_order_relaxed); }
 
@@ -255,7 +255,7 @@ public:
             for (int ch = 0; ch < numChannels; ++ch) {
                 const float xs = block.getSample(ch, i) * currentInputGain_;
                 delay_.push(ch, xs);
-                peak = std::max(peak, std::abs(xs)); // max ignores NaN; the safety clamp deals with it later
+                peak = std::max(peak, std::abs(xs)); // max ignores NaN; the delay line stores 0 for it
             }
 
             // (2) The gain this sample needs: g = min(1, ceiling / peak)

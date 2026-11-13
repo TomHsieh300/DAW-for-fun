@@ -385,7 +385,7 @@ void process(AudioBlock block) noexcept {
 - **input gain 用約 20 ms 的線性 ramp**（`setInputGainDb()`），避免轉旋鈕時的 zipper noise；`reset()` 會讓它直接就位。
 - **lookahead 的上限在 `prepare()` 決定**：`setMaxLookaheadMs()`（預設 20 ms）要在 `prepare()` 之前呼叫，`prepare()` 依它配置 delay line、deque 與平均環。`setLookaheadMs()` 只記住你要求的值，生效的值是 $`\min(\text{要求}, \text{上限})`$，所以兩個 setter 的呼叫順序不影響結果；`getLookaheadMs()` 回傳生效的值，prepare 之後永遠與 `getLatencySamples()` 一致。
 - **`getGainReductionDb()`** 回傳上一個 block 內最大的 gain reduction（正值 dB），`std::atomic<float>` relaxed，UI thread 可以直接讀。
-- **`getSafetyClipCount()`** 是除錯用的計數器：正常使用下永遠是 0；只有播放中把 ceiling 調低、或輸入含 NaN / Inf 才會增加。
+- **`getSafetyClipCount()`** 是除錯用的計數器：正常使用下永遠是 0；只有播放中把 ceiling 調低才會增加。輸入的 NaN / Inf 已經到不了這裡：lookahead 用的 `DelayLine` 改存 0（`dsp/` 裡沒有任何 class 會留下非有限值；見[撰寫指南](../../docs/authoring-guide.zh-TW.md) 4.1 節），peak detector 裡的 Inf 會讓 gain 降到 0，再以 release 的速度恢復。
 
 API（依教材合約）：
 
@@ -484,7 +484,7 @@ input gain      in peak     out peak      out RMS     RMS gain       max GR
 | 用 true-peak meter 看超過 -1 dBTP | 這是 sample-peak limiter 的正常現象（2.8 節）。ceiling 再往下留 1–2 dB，或做 true-peak 偵測 |
 | 左右聲像在大聲時往一邊偏 | 沒有 stereo link |
 | 輸出全 0 | `prepare()` 沒呼叫，或 block 的 channel 數比 `prepare()` 時多（Debug 建置會在 assert 停下；Release 建置把沒有 delay line 的 channel 清成 0，沒 prepare 時就是整個 block） |
-| 某些 sample 變成 0 | 輸入含 NaN / Inf：本章的 safety clamp 會把乘出來的 NaN 換成 0（`getSafetyClipCount()` 會增加），但上游該修 |
+| 某些 sample 變成 0 | 輸入含 NaN / Inf：lookahead 用的 `DelayLine` 把非有限的 sample 改存 0，Inf 還會讓 gain 降到 0，再以 release 的速度恢復；上游該修 |
 | GR meter 顯示 -0.00 | `-gainToDb(1)` 是 -0.0；本章用 `std::max(0.0f, …)` 處理 |
 
 </div>

@@ -385,7 +385,7 @@ A few design details:
 - **The input gain uses a linear ramp of about 20 ms** (`setInputGainDb()`) to avoid zipper noise when you turn the knob; `reset()` puts it in place immediately.
 - **The upper bound of lookahead is fixed at `prepare()`**: `setMaxLookaheadMs()` (default 20 ms) must be called before `prepare()`, and `prepare()` allocates the delay line, the deque and the averaging ring accordingly. `setLookaheadMs()` only remembers the value you asked for, and the effective value is $`\min(\text{requested}, \text{upper bound})`$, so the call order of the two setters does not affect the result; `getLookaheadMs()` returns the effective value, which after prepare always agrees with `getLatencySamples()`.
 - **`getGainReductionDb()`** returns the largest gain reduction within the previous block (positive dB) as a relaxed `std::atomic<float>`, so the UI thread can read it directly.
-- **`getSafetyClipCount()`** is a debugging counter: always 0 under normal use; it increases only if the ceiling is lowered during playback or the input contains NaN / Inf.
+- **`getSafetyClipCount()`** is a debugging counter: always 0 under normal use; it increases only if the ceiling is lowered during playback. A NaN / Inf input does not reach it any more: the lookahead `DelayLine` stores 0 in its place (no class in `dsp/` keeps a non-finite value; section 4.1 of the [authoring guide](../../docs/authoring-guide.md)), and an Inf in the peak detector pulls the gain down to 0, from where it recovers at the release speed.
 
 The API (per the course contract):
 
@@ -484,7 +484,7 @@ Part (3) of `l05_latency_impulse` (tone burst -30 → 0 dBFS, ceiling -6 dB, L =
 | A true-peak meter shows more than -1 dBTP | This is normal for a sample-peak limiter (section 2.8). Leave another 1–2 dB below the ceiling, or do true-peak detection |
 | The stereo image shifts to one side when loud | No stereo link |
 | The output is all 0 | `prepare()` was not called, or the block has more channels than at `prepare()` (a Debug build stops at an assert; a Release build clears the channels that have no delay line to 0, or the whole block if there was no prepare) |
-| Some samples become 0 | The input contains NaN / Inf: this chapter's safety clamp replaces the resulting NaN with 0 (`getSafetyClipCount()` increases), but the upstream should be fixed |
+| Some samples become 0 | The input contains NaN / Inf: the lookahead `DelayLine` stores 0 in place of a non-finite sample, and an Inf pulls the gain to 0, from where it recovers at the release speed; the upstream should be fixed |
 | The GR meter shows -0.00 | `-gainToDb(1)` is -0.0; this chapter handles it with `std::max(0.0f, …)` |
 
 </div>
