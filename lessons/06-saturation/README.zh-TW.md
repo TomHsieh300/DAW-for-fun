@@ -581,7 +581,7 @@ flowchart LR
 
 `process()` 先把 block 切成不超過 `maxBlockSize` 的小塊（正常情況下只有一塊），每塊交給 `processChunk()`，分成三段：
 
-1. **複製 dry、套 drive。** dry 先複製到 `dryScratch_`（prepare 時已配置好），wet 路徑逐 sample 乘上 drive。drive、output gain、mix 都經過 20 ms 的線性 ramp（`LinearRamp`，跟第 01 章 `SmoothedValue` 同概念），推 drive 旋鈕時不會有 zipper noise。
+1. **複製 dry、套 drive。** dry 先複製到 `dryScratch_`（prepare 時已配置好），wet 路徑逐 sample 乘上 drive。drive、output gain、mix 都經過 20 ms 的線性 ramp（第 01 章的 `SmoothedValue`），推 drive 旋鈕時不會有 zipper noise。把參數設成它已經有的值不會改變任何事：host 或第 16 章的自動化每個 block 都會推一次所有參數，先前私有的 ramp 每次被呼叫都重新開始，要花 3.3 倍的時間才到達。
 2. **升頻 → 曲線 → 降頻。** `switch (curve_)` 放在 sample 迴圈**外面**，避免每個 sample 都做一次分支；`Tanh` 直接呼叫 `std::tanh`，其他曲線呼叫 `shape()`。
 3. **DC blocker → output gain → 混合。** 進入 DC blocker 之前先把非有限值（NaN、inf）換成 0（理由見第 5 節）。dry 經過一個長度 `latency + 1` 的 ring buffer 延遲（`pushAndReadDry()`），再以 `dry + (wet - dry) * mix` 混合（等於 $`(1-\text{mix})\,\text{dry} + \text{mix}\cdot\text{wet}`$，少一次乘法）。
 

@@ -581,7 +581,7 @@ flowchart LR
 
 `process()` first cuts the block into chunks of at most `maxBlockSize` (normally just one chunk) and hands each to `processChunk()`, which has three parts:
 
-1. **Copy dry, apply drive.** The dry is first copied to `dryScratch_` (allocated at prepare time), and the wet path is multiplied by the drive sample by sample. Drive, output gain and mix all go through a 20 ms linear ramp (`LinearRamp`, the same idea as Chapter 01's `SmoothedValue`), so turning the drive knob causes no zipper noise.
+1. **Copy dry, apply drive.** The dry is first copied to `dryScratch_` (allocated at prepare time), and the wet path is multiplied by the drive sample by sample. Drive, output gain and mix all go through a 20 ms linear ramp (Chapter 01's `SmoothedValue`), so turning the drive knob causes no zipper noise. Setting a parameter to the value it already has changes nothing: a host or the Chapter 16 automation pushes every parameter once per block, and an earlier private ramp that restarted on every call took 3.3 times as long to arrive.
 2. **Upsample → curve → downsample.** The `switch (curve_)` sits **outside** the sample loop to avoid a branch per sample; `Tanh` calls `std::tanh` directly and the other curves call `shape()`.
 3. **DC blocker → output gain → mix.** Before entering the DC blocker, non-finite values (NaN, inf) are replaced with 0 (the reason is in section 5). The dry is delayed through a ring buffer of length `latency + 1` (`pushAndReadDry()`), then mixed as `dry + (wet - dry) * mix` (equal to $`(1-\text{mix})\,\text{dry} + \text{mix}\cdot\text{wet}`$ with one fewer multiplication).
 

@@ -24,12 +24,14 @@
 // - Oversampler: harmonics created by the nonlinearity alias when they exceed Nyquist; before prepare, choose 1x/2x/4x/8x with setOversamplingFactorLog2().
 // - mix: parallel dry/wet mixing (parallel saturation). The dry signal goes through the same delay as the wet one.
 //
-// Parameter changes all go through a linear ramp (20 ms) to avoid zipper noise. process() does not allocate.
+// Parameter changes all go through a linear ramp (20 ms, chapter 01's SmoothedValue) to avoid zipper noise; setting a
+// parameter to the value it already has changes nothing. process() does not allocate.
 
 #include <dawlab/AudioBuffer.h>
 #include <dawlab/DspMath.h>
 #include <dawlab/dsp/OnePole.h>
 #include <dawlab/dsp/Oversampler.h>
+#include <dawlab/dsp/SmoothedValue.h>
 
 #include <algorithm>
 #include <cmath>
@@ -100,9 +102,11 @@ public:
         dryScratch_.setSize(numChannels, maxBlockSize_);
 
         const int rampSamples = std::max(1, static_cast<int>(std::lround(kRampSeconds * sampleRate)));
-        driveGain_.prepare(rampSamples, dbToGain(driveDb_));
-        outputGain_.prepare(rampSamples, dbToGain(outputGainDb_));
-        mix_.prepare(rampSamples, mixTarget_);
+        for (SmoothedValue* ramp : {&driveGain_, &outputGain_, &mix_})
+            ramp->setRampLength(rampSamples);
+        driveGain_.setCurrentAndTargetValue(dbToGain(driveDb_));
+        outputGain_.setCurrentAndTargetValue(dbToGain(outputGainDb_));
+        mix_.setCurrentAndTargetValue(mixTarget_);
         prepared_ = true;
         reset();
     }
@@ -113,9 +117,8 @@ public:
         for (auto& d : dryDelay_)
             std::fill(d.begin(), d.end(), 0.0f);
         std::fill(dryPos_.begin(), dryPos_.end(), 0);
-        driveGain_.snap();
-        outputGain_.snap();
-        mix_.snap();
+        for (SmoothedValue* ramp : {&driveGain_, &outputGain_, &mix_})
+            ramp->setCurrentAndTargetValue(ramp->getTargetValue());
     }
 
     void setCurve(SaturationCurve curve) noexcept { curve_ = curve; }
@@ -127,7 +130,7 @@ public:
         if (!acceptParameter(db, ParameterUnit::Decibels))
             return;
         driveDb_ = db;
-        driveGain_.setTarget(dbToGain(db));
+        driveGain_.setTargetValue(dbToGain(db));
     }
     float getDriveDb() const noexcept { return driveDb_; }
 
@@ -136,7 +139,7 @@ public:
         if (!acceptParameter(mix))
             return;
         mixTarget_ = std::clamp(mix, 0.0f, 1.0f);
-        mix_.setTarget(mixTarget_);
+        mix_.setTargetValue(mixTarget_);
     }
     float getMix() const noexcept { return mixTarget_; }
 
@@ -145,7 +148,7 @@ public:
         if (!acceptParameter(db, ParameterUnit::Decibels))
             return;
         outputGainDb_ = db;
-        outputGain_.setTarget(dbToGain(db));
+        outputGain_.setTargetValue(dbToGain(db));
     }
     float getOutputGainDb() const noexcept { return outputGainDb_; }
 
@@ -190,7 +193,7 @@ private:
         for (int ch = 0; ch < numChannels; ++ch)
             std::copy_n(block.getChannelPointer(ch), n, dryScratch_.getWritePointer(ch));
         for (int i = 0; i < n; ++i) {
-            const float drive = driveGain_.next();
+            const float drive = driveGain_.getNextValue();
             for (int ch = 0; ch < numChannels; ++ch)
                 block.getChannelPointer(ch)[i] *= drive;
         }
@@ -213,8 +216,8 @@ private:
 
         // 3. DC blocker -> output gain -> mix with the delayed dry signal
         for (int i = 0; i < n; ++i) {
-            const float outGain = outputGain_.next();
-            const float mix = mix_.next();
+            const float outGain = outputGain_.getNextValue();
+            const float mix = mix_.getNextValue();
             for (int ch = 0; ch < numChannels; ++ch) {
                 float* d = block.getChannelPointer(ch);
                 float wet = d[i];
@@ -233,31 +236,6 @@ private:
             }
         }
     }
-
-    // Linear ramp (same concept as Chapter 01's SmoothedValue; a minimal implementation here avoids a cross-chapter dependency)
-    struct LinearRamp {
-        float current = 1.0f, target = 1.0f, step = 0.0f;
-        int remaining = 0, rampSamples = 1;
-        void prepare(int samples, float value) noexcept {
-            rampSamples = std::max(1, samples);
-            current = target = value;
-            remaining = 0;
-        }
-        void setTarget(float v) noexcept {
-            target = v;
-            remaining = rampSamples;
-            step = (target - current) / static_cast<float>(rampSamples);
-        }
-        void snap() noexcept { current = target; remaining = 0; }
-        float next() noexcept {
-            if (remaining > 0) {
-                current += step;
-                if (--remaining == 0)
-                    current = target;
-            }
-            return current;
-        }
-    };
 
     // The ring buffer has length latency + 1: x[n] is written at pos first, and the "next slot" holds x[n - latency], written latency samples ago.
     // With latency = 0 the length is 1 and the same slot is read back immediately after writing -> output unchanged.
@@ -291,7 +269,9 @@ private:
     std::vector<std::vector<float>> dryDelay_;
     std::vector<int> dryPos_;
     AudioBuffer dryScratch_;
-    LinearRamp driveGain_, outputGain_, mix_;
+    // Chapter 01's ramp: one ramp class in dsp/, and its setTargetValue() ignores an unchanged value, so a host that
+    // pushes every parameter once per block does not restart the ramp
+    SmoothedValue driveGain_{1.0f}, outputGain_{1.0f}, mix_{1.0f};
 };
 
 } // namespace dawlab::dsp

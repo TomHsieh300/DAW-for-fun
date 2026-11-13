@@ -13,6 +13,7 @@
 //   - the range of Gate, Expander and DeEsser is capped at 100 dB (acceptRangeDb): a larger one acts exactly like it
 //   - process() costs about the same in every block: LevelMeter's RMS reads bit-identical to the exact re-sum, and no
 //     block pays for the whole window (judged by wall-clock time only in an optimized build without sanitizers)
+//   - setting a parameter to the value it already has changes nothing: once or before every block, same output
 // The Limiter is the one exception to the first rule on purpose: before prepare() it clears the block (and asserts in
 // a Debug build), because a limiter that cannot look ahead cannot keep its ceiling.
 // Every check is table-driven: one row per class (and per variant that takes a different path). The objects live on
@@ -1035,6 +1036,89 @@ void checkMeterCostIsFlat() {
     DAWLAB_CHECK(flat);
 }
 
+// ---- Rule: setting a parameter to the value it already has changes nothing -----------------------------------------
+
+// A host (the chapter 13 plugin) and the chapter 16 automation push every parameter once per block, even when it has
+// not changed. A ramp that restarted on every call would never arrive (Saturation's took 3.3 times as long).
+template <typename Fx, typename Setup, typename Set>
+std::vector<float> renderRepeatedSetter(const Setup& setup, const Set& set, float value, bool everyBlock, bool call) {
+    const auto fx = std::make_unique<Fx>();
+    prepareFx(*fx);
+    setup(*fx);
+    AudioBuffer buf(2, kBlock);
+    std::vector<float> out;
+    for (int blk = 0; blk < 8; ++blk) {
+        if (call && (blk == 0 || everyBlock))
+            set(*fx, value);
+        fillSine(buf, static_cast<long>(blk) * kBlock);
+        fx->process(AudioBlock(buf));
+        for (int ch = 0; ch < 2; ++ch)
+            out.insert(out.end(), buf.getReadPointer(ch), buf.getReadPointer(ch) + kBlock);
+    }
+    return out;
+}
+
+int sameValueRows = 0, sameValueFailures = 0;
+
+// set(fx, value) once before block 0, or before every one of 8 blocks: the output is bit-identical. The value must
+// change the output (against a twin where set is never called), so the row tests a ramp that really runs.
+template <typename Fx, typename Setup, typename Set>
+void checkSameValueKeepsRamp(const char* name, Setup setup, Set set, float value) {
+    const std::vector<float> once = renderRepeatedSetter<Fx>(setup, set, value, false, true);
+    const bool observable = !sameBits(once, renderRepeatedSetter<Fx>(setup, set, value, false, false));
+    const bool same = sameBits(once, renderRepeatedSetter<Fx>(setup, set, value, true, true));
+    ++sameValueRows;
+    if (!observable || !same) {
+        ++sameValueFailures;
+        std::printf("  %-30s %s\n", name,
+                    !observable ? "the value changes nothing: the row proves nothing"
+                                : "set again every block: output differs from setting it once (the ramp restarts)");
+    }
+    DAWLAB_CHECK(observable);
+    DAWLAB_CHECK(same);
+}
+
+template <typename Fx, typename Set>
+void sameValue(const char* name, Set set, float value) {
+    checkSameValueKeepsRamp<Fx>(name, [](Fx&) {}, set, value);
+}
+
+void checkSameValueRule() {
+    sameValue<Saturation>("Saturation::setOutputGainDb", [](Saturation& s, float v) { s.setOutputGainDb(v); }, -20.0f);
+    sameValue<Saturation>("Saturation::setMix", [](Saturation& s, float v) { s.setMix(v); }, 0.2f);
+    sameValue<Saturation>("Saturation::setDriveDb", [](Saturation& s, float v) { s.setDriveDb(v); }, 12.0f);
+    sameValue<Gain>("Gain::setGainDb", [](Gain& g, float v) { g.setGainDb(v); }, -12.0f);
+    sameValue<Panner>("Panner::setPan", [](Panner& p, float v) { p.setPan(v); }, 0.7f);
+    const auto shortDelay = [](Delay& d) {
+        d.setDelayMs(30.0f);
+        d.reset();
+    };
+    checkSameValueKeepsRamp<Delay>("Delay::setDelayMs", shortDelay, [](Delay& d, float v) { d.setDelayMs(v); }, 60.0f);
+    checkSameValueKeepsRamp<Delay>("Delay::setFeedback", shortDelay, [](Delay& d, float v) { d.setFeedback(v); }, 0.8f);
+    checkSameValueKeepsRamp<Delay>("Delay::setMix", shortDelay, [](Delay& d, float v) { d.setMix(v); }, 0.8f);
+    sameValue<Expander>("Expander::setThresholdDb", [](Expander& e, float v) { e.setThresholdDb(v); }, -6.0f);
+    checkSameValueKeepsRamp<Expander>("Expander::setRangeDb", [](Expander& e) { e.setThresholdDb(-6.0f); },
+                        [](Expander& e, float v) { e.setRangeDb(v); }, -3.0f);
+    sameValue<DeEsser>("DeEsser::setThresholdDb", [](DeEsser& d, float v) { d.setThresholdDb(v); }, -50.0f);
+    sameValue<Limiter>("Limiter::setInputGainDb", [](Limiter& l, float v) { l.setInputGainDb(v); }, 12.0f);
+    sameValue<Distortion>("Distortion::setDriveDb", [](Distortion& d, float v) { d.setDriveDb(v); }, 24.0f);
+    sameValue<Distortion>("Distortion::setOutputGainDb", [](Distortion& d, float v) { d.setOutputGainDb(v); }, -6.0f);
+    sameValue<Distortion>("Distortion::setMix", [](Distortion& d, float v) { d.setMix(v); }, 0.5f);
+    sameValue<AmpChain>("AmpChain::setOutputGainDb", [](AmpChain& a, float v) { a.setOutputGainDb(v); }, -6.0f);
+    sameValue<Compressor>("Compressor::setMakeupGainDb", [](Compressor& c, float v) { c.setMakeupGainDb(v); }, 6.0f);
+    checkSameValueKeepsRamp<ParametricEq>("ParametricEq::setBandGainDb", [](ParametricEq& eq) { eq.setBandEnabled(2, true); },
+                            [](ParametricEq& eq, float v) { eq.setBandGainDb(2, v); }, 6.0f);
+    sameValue<Chorus>("Chorus::setMix", [](Chorus& c, float v) { c.setMix(v); }, 0.9f);
+    sameValue<Chorus>("Chorus::setDepthMs", [](Chorus& c, float v) { c.setDepthMs(v); }, 10.0f);
+    sameValue<Flanger>("Flanger::setMix", [](Flanger& f, float v) { f.setMix(v); }, 0.9f);
+    sameValue<Flanger>("Flanger::setDepthMs", [](Flanger& f, float v) { f.setDepthMs(v); }, 1.0f);
+    sameValue<Phaser>("Phaser::setMix", [](Phaser& p, float v) { p.setMix(v); }, 0.9f);
+    sameValue<Phaser>("Phaser::setDepth", [](Phaser& p, float v) { p.setDepth(v); }, 0.2f);
+    sameValue<Tremolo>("Tremolo::setDepth", [](Tremolo& t, float v) { t.setDepth(v); }, 0.2f);
+    sameValue<Reverb>("Reverb::setMix", [](Reverb& r, float v) { r.setMix(v); }, 0.8f);
+    std::printf("same value set again: %d setters, %d failures\n", sameValueRows, sameValueFailures);
+}
+
 } // namespace
 
 int main() {
@@ -1074,6 +1158,7 @@ int main() {
     checkStatelessDefaults();
     checkRangeRule();
     checkMeterCostIsFlat();
+    checkSameValueRule();
 
     return dawlab::test::summary("dsp");
 }

@@ -81,7 +81,7 @@ public:
 - public setter 收到非有限值時忽略它、保留上一個有效值：NaN 與 +inf 會被忽略，-inf 也一樣，只有 dB 值例外：-inf 代表靜音，變成下限 `kMinusInfinityDb`（所以 `Gain::setGainDb(-inf)` 仍然是 mute）。`std::clamp(NaN, lo, hi)` 會回傳 NaN、`std::max(0, NaN)` 會回傳 0，所以只靠 clamp 不算防護。這條規則只寫在一個地方：`DspMath.h` 的 `acceptParameter()`；每個 float / double setter 開頭都是 `if (!acceptParameter(x)) return;`（或 `acceptParameter(db, ParameterUnit::Decibels)`）。只把值轉交給另一個 class 的 setter 的 setter，靠那個 setter 防護；會先 clamp 或轉換的 setter 自己防護。內部的平滑器沒有自己的防護：只有 public setter 防護。無狀態函式沒有「上一個值」可以保留，所以非有限的引數代表一個寫在文件裡的預設值（`finiteOr()`：`BiquadCoefficients` 的 factory 用 1 kHz、$`1/\sqrt2`$ 與 0 dB，`Panner::computeGains()` 用中央，`FractionalDelayLine` 的讀取用最小延遲）。
 - dB 表示的 range（`Gate`、`Expander`、`DeEsser` 最多衰減多少）上限是 100 dB，`dbToGain` 在那裡已經給出靜音；正負號都當成大小。這條規則只寫在一個地方：`DspMath.h` 的 `acceptRangeDb()`，建立在上面的 setter 規則之上。
 - `dsp_selftest`（`dsp/tests/test_dsp.cpp`）對適用的每個 class 檢查這五條規則（以及 `LevelMeter` 每個 block 成本一致），setter 規則是每個 public setter 一列；新增 class 或 setter 時也加進去。
-- 參數改變要避免 zipper noise / click：用 `SmoothedValue`（第 01 章）或係數插值。
+- 參數改變要避免 zipper noise / click：用 `SmoothedValue`（第 01 章）或係數插值。把參數設成它已經有的值不會改變任何事（host 與第 16 章的自動化每個 block 都推一次所有參數；每次呼叫都重新開始的 ramp 永遠到不了）；`dsp_selftest` 對每個有平滑的 setter 檢查。
 - 遞迴結構（IIR filter、envelope）要處理 denormal：在 `reset()` 歸零，必要時加極小 offset 或把極小值 flush 成 0。
 - 需要給 UI 讀的量測值（例如 gain reduction）用 `std::atomic<float>`（relaxed 即可）。
 - 註解解釋「為什麼」，公式旁邊寫出對應的數學式。
