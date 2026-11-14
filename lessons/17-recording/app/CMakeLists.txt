@@ -36,6 +36,7 @@ set(L17_APP_SOURCES
     Source/EffectMenu.cpp
     Source/Exporter.h
     Source/Exporter.cpp
+    Source/GridSpacing.h
     Source/Edits.h
     Source/History.h
     Source/History.cpp

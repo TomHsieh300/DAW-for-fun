@@ -67,6 +67,9 @@ target_include_directories(l20_test_midi_file PRIVATE app/Source)
 # And for the tempos of an imported file: the fewest points within a tolerance.
 l20_add_test(l20_test_tempo_thinning    tests/test_tempo_thinning.cpp)
 target_include_directories(l20_test_tempo_thinning PRIVATE app/Source)
+# Which bar lines the arrangement draws (app/Source/GridSpacing.h): no JUCE, so it runs in every build.
+l20_add_test(l20_test_grid_spacing        tests/test_grid_spacing.cpp)
+target_include_directories(l20_test_grid_spacing PRIVATE app/Source)
 
 # ---- Step 6: the JUCE application "DawLab 20" ---------------------------------------------
 # Needs -DDAWLAB_WITH_JUCE=ON (build.ps1 -Juce). Without JUCE the chapter stops here.

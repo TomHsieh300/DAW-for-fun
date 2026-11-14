@@ -14,6 +14,7 @@
 14 15 16 17 18 19 20 app/Source/EffectMenu.h
 14 15 16 17 18 19 20 app/Source/Exporter.cpp
 14 15 16 17 18 19 20 app/Source/Exporter.h
+14 15 16 17 18 19 20 app/Source/GridSpacing.h
 15 16 17 18 19 20 app/Source/History.cpp
 15 16 17 18 19 20 app/Source/History.h
 15 16 17 18 19 20 app/Source/MediaLoader.cpp
@@ -86,6 +87,7 @@
 15 16 17 18 19 20 tests/test_commands.cpp
 15 16 17 18 19 20 tests/test_demo_song.cpp
 15 16 17 18 19 20 tests/test_effects.cpp
+14 15 16 17 18 19 20 tests/test_grid_spacing.cpp
 18 19 20 tests/test_midi.cpp
 19 20 tests/test_midi_file.cpp
 15 16 17 18 19 20 tests/test_mixer.cpp

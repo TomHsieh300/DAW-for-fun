@@ -61,6 +61,9 @@ target_compile_definitions(l15_test_track_pool PRIVATE DAWLAB_ENGINE_MAX_TRACKS=
 # runs in every build, not only with -Juce.
 l15_add_test(l15_test_project_format    tests/test_project_format.cpp app/Source/ProjectFormat.cpp)
 target_include_directories(l15_test_project_format PRIVATE app/Source)
+# Which bar lines the arrangement draws (app/Source/GridSpacing.h): no JUCE, so it runs in every build.
+l15_add_test(l15_test_grid_spacing        tests/test_grid_spacing.cpp)
+target_include_directories(l15_test_grid_spacing PRIVATE app/Source)
 
 # ---- Step 7: the JUCE application "DawLab 15" ----------------------------------------------------
 # Needs -DDAWLAB_WITH_JUCE=ON (build.ps1 -Juce). Without JUCE the chapter stops here.

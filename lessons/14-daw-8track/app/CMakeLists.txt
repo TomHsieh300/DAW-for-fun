@@ -32,6 +32,7 @@ set(L14_APP_SOURCES
     Source/EffectMenu.cpp
     Source/Exporter.h
     Source/Exporter.cpp
+    Source/GridSpacing.h
     Source/MainComponent.h
     Source/MainComponent.cpp
     Source/MediaLoader.h

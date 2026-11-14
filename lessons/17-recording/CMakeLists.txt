@@ -60,6 +60,9 @@ l17_add_test(l17_test_recording_threads tests/test_recording_threads.cpp)
 # every build, not only with -Juce.
 l17_add_test(l17_test_project_format    tests/test_project_format.cpp app/Source/ProjectFormat.cpp)
 target_include_directories(l17_test_project_format PRIVATE app/Source)
+# Which bar lines the arrangement draws (app/Source/GridSpacing.h): no JUCE, so it runs in every build.
+l17_add_test(l17_test_grid_spacing        tests/test_grid_spacing.cpp)
+target_include_directories(l17_test_grid_spacing PRIVATE app/Source)
 
 # ---- Step 7: the JUCE application "DawLab 17" ----------------------------------------------------
 # Needs -DDAWLAB_WITH_JUCE=ON (build.ps1 -Juce). Without JUCE the chapter stops here.
