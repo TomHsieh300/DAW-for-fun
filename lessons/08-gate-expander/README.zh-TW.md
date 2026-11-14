@@ -476,7 +476,7 @@ static constexpr float kFloorDb = -80.0f;     // slow 低於此視為靜音
 static constexpr float kGainSmoothMs = 0.5f;
 ```
 
-`nextGain()` 是 2.6.2 節映射的直接翻譯，最後 `gainDb_ = target + α·(gainDb_ − target)` 做 one-pole 平滑。`setAttackDb` / `setSustainDb` 限制在 ±24 dB。量測值 `getLastGainDb()`（可正可負）供 UI 使用。
+`nextGain()` 是 2.6.2 節映射的直接翻譯，最後 `gainDb_ = smoothToward(gainDb_, target, k)` 做 one-pole 平滑（$`k = 1 - \alpha`$；`DspMath.h` 的 `smoothToward()` 接近時會精確取到目標值，所以靜音時 gain 會回到剛好 0 dB，而不是停在 subnormal 的 dB 數上）。`setAttackDb` / `setSustainDb` 限制在 ±24 dB。量測值 `getLastGainDb()`（可正可負）供 UI 使用。
 
 ### 3.5 範例
 

@@ -52,15 +52,16 @@ The key parts:
 delay_.prepare(dawlab::msToSamples(kMaxCentreMs + kMaxDepthMs, sampleRate) + 8, numChannels_);
 
 // advanceModulation: once per time step (channel 0), shared by all channels
-const float ms = std::max(centreMs_ + depth * lfo_.getNextValue(), 0.05f);
-currentDelaySamples_ = std::clamp(ms * fs / 1000, 2.0f, maxDelay - 3);
+const float depth = std::min(depthSm_.next(), std::max(0.0f, centreMs_ - minDelayMs_)); // never rests on the clamp
+const float ms = centreMs_ + depth * lfo_.getNextValue();
+currentDelaySamples_ = std::clamp(ms * fs / 1000, kMinDelaySamples, maxDelay - 3);       // a rail only
 
 // process: push, then read; the output is ONLY the delayed signal
 delay_.push(ch, d[i]);
 d[i] = delay_.readCubic(ch, currentDelaySamples_);
 ```
 
-- **centre must be ≥ depth**, otherwise $`d(t)`$ goes negative (reading the "future"). The centre itself is just a fixed latency (5 ms) that the ear cannot hear.
+- **The depth in use is at most centre − the minimum delay** (2 samples), limited after the smoother. Otherwise the lower part of the sweep is cut flat on the clamp: at centre 1 ms and depth 10 ms the delay would rest there for 47% of each cycle, and since a vibrato has no dry signal there is no comb; instead the pitch sweep goes flat (no vibrato) for that part of the cycle. Self-check 5 measures it. The centre itself is just a fixed latency (5 ms) that the ear cannot hear.
 - Use `readCubic`: the delay keeps changing, and linear interpolation would make the highs fluctuate with the LFO (README Section 2.8).
 - Measured: 1 kHz, 5 Hz, 1 ms → 968.6 .. 1031.4 Hz (same as theory, +53.6 / −55.3 cents), mean 1000.51 Hz, RMS −0.00 dB; with depth 0 it stays at exactly 1000.00 Hz.
 - A singer's natural vibrato is about 5–6 Hz, ±20–50 cents. The solution's output uses 5.5 Hz and 0.6 ms → $1200\log_2(1 \pm 2\pi \cdot 5.5 \cdot 0.0006) = $ +35.5 / −36.3 cents.
@@ -99,8 +100,9 @@ void reset() noexcept {
 }
 // process (every sample, every channel):
 delay_.push(ch, x);
-const float delayMs = centreMs_ + depthMs_ * lfo_[ch].getNextValue();
-const float wet = delay_.readCubic(ch, std::clamp(delayMs * toSamples, 2.0f, maxRead));
+const float depthMs = std::min(depthMs_, std::max(0.0f, centreMs_ - minDelayMs_)); // the depth in use: at most centre − the minimum delay, so the clamp below is a rail only
+const float delayMs = centreMs_ + depthMs * lfo_[ch].getNextValue();
+const float wet = delay_.readCubic(ch, std::clamp(delayMs * toSamples, kMinDelaySamples, maxRead));
 d[i] = (1.0f - mix_) * x + mix_ * wet;
 ```
 
@@ -162,7 +164,7 @@ Complete solution: [`ex8_staggered_phaser.cpp`](ex8_staggered_phaser.cpp) (targe
 
 - **TODO 1**: `theoryPhase` simply adds up `Phaser::allpassPhase(f, scale · fc_i, fs)` over the stages. The amplitude of a first-order allpass is 1 everywhere; the response of the cascade = the product of the stage responses, so the phases add.
 - **TODO 2**: each $`\varphi_i`$ falls monotonically from 0 to $`-\pi`$ and the sum $`\Phi`$ falls monotonically from 0 to $`-N\pi`$, so $`\Phi(f) = -(2k+1)\pi`$ has exactly one solution and bisection always converges: if $`\Phi(\text{mid})`$ is larger than the target (not negative enough yet), move `lo` to mid; otherwise move `hi`. Bisecting the 24 kHz interval 60 times leaves an error far below 1 Hz.
-- **TODO 3**: all stages share the same factor $`s = 2^{\text{depth}\cdot\text{octaves}\cdot m}`$, and stage $`i`$ is set to $`f_c = s \cdot f_{c,i}`$. The whole set of notches then translates together on the log frequency axis, while the distribution between stages (the timbre) is unchanged. Note that `makeFirstOrderAllpass` is called "for each stage separately", unlike `Phaser`, which computes the coefficients once and applies them to all stages.
+- **TODO 3**: all stages share the same factor $`s = 2^{\text{depth}\cdot\text{octaves}\cdot m}`$, and stage $`i`$ is set to $`f_c = s \cdot f_{c,i}`$. The whole set of notches then translates together on the log frequency axis, while the distribution between stages (the timbre) is unchanged. Note that `makeFirstOrderAllpass` is called "for each stage separately", unlike `Phaser`, which computes the coefficients once and applies them to all stages. As in `Phaser`, the octaves in use are first limited to the room between the lowest stage and 20 Hz and between the highest stage and 0.45·fs, so no stage rests on the clamp (self-check 5: 300–4800 Hz swept ±3 octaves would otherwise put the top stage on 0.45·fs for a quarter of each cycle).
 
 Measured results (the output of `l10_ex8_solution`):
 

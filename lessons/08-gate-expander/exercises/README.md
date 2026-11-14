@@ -130,12 +130,13 @@ Further thinking: if you use only a single 2nd-order Butterworth stage for LP / 
 Starter code: `exercises/starter/ex8_transient_shaper.cpp` (target `l08_ex8_starter`). The `MyTransientShaper` in the starter code already has the two `EnvelopeFollower`s, fast (0.5 / 30 ms) and slow (10 / 150 ms), the smoothing coefficient, and `process()` prepared.
 
 1. Complete `mapToGainDb(d, attackDb, sustainDb)`: the mapping from README section 2.6.2, using attackDb for $`d > 0`$ and sustainDb for $`d \le 0`$, saturating when $`|d|`$ reaches 6 dB.
-2. Complete `nextGain()`: the two envelopes → $`d = 20\log_{10}(e_\text{fast}/e_\text{slow})`$ → mapping → 0.5 ms one-pole smoothing (in the dB domain) → linear gain. When the slow envelope is below −80 dBFS, the target gain is 0 dB.
+2. Complete `nextGain()`: the two envelopes → $`d = 20\log_{10}(e_\text{fast}/e_\text{slow})`$ → mapping → 0.5 ms one-pole smoothing (in the dB domain, one step `smoothToward(gainDb_, target, smoothCoef_)` from `DspMath.h`) → linear gain. When the slow envelope is below −80 dBFS, the target gain is 0 dB.
 
 Self-check:
 
 - Mapping: with $`d = +3`$, attack +12 → +6 dB; $`d = +20`$ → +12 dB (saturated); with $`d = -3`$, sustain -12 → -6 dB; $`d = 0`$ → 0 dB.
 - Compare sample by sample against `dawlab::dsp::TransientShaper`, with an error < $`10^{-5}`$.
+- After the drums and 2 s of silence the smoothed gain is exactly 0 dB (a plain one-pole would park at a subnormal number of dB).
 - **Level-independence test**: the same `makeDrumLoop()` is normalized to a peak of −6 dBFS and to −26 dBFS. With attack +6 dB, the peak increase of both must be greater than 3 dB and equal to each other (± 0.3 dB); with sustain −12 dB, the tail RMS of both (120-240 ms of each eighth-note cell) must drop by more than 3 dB, and the drops must be equal (± 0.3 dB).
 - Control group: the same two levels are sent into a compressor (threshold −20 dB, 4:1), and the peak changes differ by 3 dB or more: a compressor looks at absolute level, a transient shaper does not.
 

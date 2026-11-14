@@ -476,7 +476,7 @@ static constexpr float kFloorDb = -80.0f;     // slow below this is treated as s
 static constexpr float kGainSmoothMs = 0.5f;
 ```
 
-`nextGain()` is a direct translation of the mapping in section 2.6.2, and finally `gainDb_ = target + α·(gainDb_ − target)` does the one-pole smoothing. `setAttackDb` / `setSustainDb` are limited to ±24 dB. The measurement `getLastGainDb()` (positive or negative) is for the UI.
+`nextGain()` is a direct translation of the mapping in section 2.6.2, and finally `gainDb_ = smoothToward(gainDb_, target, k)` does the one-pole smoothing ($`k = 1 - \alpha`$; `smoothToward()` in `DspMath.h` takes the target exactly once it is close, so in silence the gain returns to exactly 0 dB instead of parking at a subnormal number of dB). `setAttackDb` / `setSustainDb` are limited to ±24 dB. The measurement `getLastGainDb()` (positive or negative) is for the UI.
 
 ### 3.5 Examples
 

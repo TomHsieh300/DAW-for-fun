@@ -82,7 +82,9 @@ public:
 - dB 表示的 range（`Gate`、`Expander`、`DeEsser` 最多衰減多少）上限是 100 dB，`dbToGain` 在那裡已經給出靜音；正負號都當成大小。這條規則只寫在一個地方：`DspMath.h` 的 `acceptRangeDb()`，建立在上面的 setter 規則之上。
 - `dsp_selftest`（`dsp/tests/test_dsp.cpp`）對適用的每個 class 檢查這五條規則（以及 `LevelMeter` 每個 block 成本一致），setter 規則是每個 public setter 一列；新增 class 或 setter 時也加進去。
 - 參數改變要避免 zipper noise / click：用 `SmoothedValue`（第 01 章）或係數插值。把參數設成它已經有的值不會改變任何事（host 與第 16 章的自動化每個 block 都推一次所有參數；每次呼叫都重新開始的 ramp 永遠到不了）；`dsp_selftest` 對每個有平滑的 setter 檢查。
-- 遞迴結構（IIR filter、envelope）要處理 denormal：在 `reset()` 歸零，必要時加極小 offset 或把極小值 flush 成 0。
+- state 是程式實際套用的值（gain、mix、長度、delay 或頻率）的 one-pole 平滑器，不論 target 是設定值還是從訊號算出的 gain，都要真的到達：一步是 `y = smoothToward(y, target, k)`（`DspMath.h`），一旦這一步落在 target 的 1e-6 之內（`kSmootherArriveEpsilon`），或 float 的捨入已經讓 `y` 不再移動，就直接取 target。手寫成 `y += k * (target - y)` 時，往 0 滑的會停在 subnormal 數（在 x86 上慢 10 到 100 倍），往其他值滑的會永遠差一點點到不了（第 01 章練習 3）。各 app 與第 13 章的 plugin 在 audio callback 裡設定了 FTZ/DAZ（`juce::ScopedNoDenormals`），所以代價出現在離線 render 與測試裡；`dsp/` 是可攜的，不能靠 host 來處理。追蹤 |x| 或 x² 的 follower（`AttackReleaseFilter`、`LevelMeter`、`SpectrumAnalyzer`）不是這種平滑器：它保留下面的 flush 規則，因為絕對的 1e-6 會把小聲的訊號切掉。`dsp_selftest` 對每個看得到的平滑器有一列。
+- 調變的 sweep 絕不停靠在它的安全 clamp 上：depth 在 sweep 被使用的地方、在平滑器之後限制，clamp 只留作護欄，在公開的範圍內的 sweep 永遠碰不到。停靠在上面會讓被 sweep 的值在每個週期的一部分靜止不動（`Chorus` 在 centre 1 ms、depth 10 ms 時，有 47% 的週期停在 2-sample 的 clamp 上，是一個第一個 null 在 fs/4 的固定 comb）。`Chorus` 把 depth 限制在 centre − 最小延遲；`Phaser` 把 octave 數限制在 centre 到 [20 Hz, 0.45 fs] 較近那一端的空間內。這種彼此相依的限制無法寫成參數範圍，因為一個範圍不能依賴另一個參數。`dsp_selftest` 量測每個 sweep 在一個週期中停在 clamp 上的比例。
+- 遞迴結構（IIR filter、envelope）要處理 denormal：在 `reset()` 歸零，必要時加極小 offset 或把極小值 flush 成 0。這是 signal state 的規則；往某個值滑的平滑器用 `smoothToward`（見上）。
 - 需要給 UI 讀的量測值（例如 gain reduction）用 `std::atomic<float>`（relaxed 即可）。
 - 註解解釋「為什麼」，公式旁邊寫出對應的數學式。
 

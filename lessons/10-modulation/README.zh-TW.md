@@ -641,7 +641,7 @@ public:
 - `getNextValue()` 先用「目前」相位算值、再前進——所以 `setPhase(0.25)` 之後的第一個值就是 $`\sin(\pi/2) = 1`$。
 - 相位累加器是 `double`（2.2 節）。
 - `shapeValue()` 是 static 純函式。`Chorus` 用它從同一個相位推出「右聲道再加 0.25 週期」的值，不必維護第二組 LFO。
-- 檔案裡還有一個 `detail::ModParamSmoother`（one-pole 參數平滑：$`y \mathrel{+}= k(\text{target} - y)`$，收斂到 $`10^{-6}`$ 內直接貼齊目標），本章五個元件共用。它自己沒有防護：每個 public float setter（`Lfo` 與四個效果的）都會忽略 NaN 與 ±inf、保留上一個有效值（`DspMath.h` 的 `acceptParameter()`，見[撰寫指南](../../docs/authoring-guide.zh-TW.md) 4.1 節），所以平滑器永遠收不到這種值。在這條規則之前，`setMix(NaN)` 會讓輸出永久變 NaN：平滑器的 `current += k·(NaN − current)` 一直是 NaN，連 `reset()` 也只是把 NaN 目標複製到目前值。
+- 檔案裡還有一個 `detail::ModParamSmoother`（one-pole 參數平滑：$`y \mathrel{+}= k(\text{target} - y)`$，經由 `DspMath.h` 的 `smoothToward()` 到達目標：在 $`10^{-6}`$ 之內、或 float 的一步已經不再讓值移動時直接取目標值，所以 centre 從 800 → 1200 Hz 真的會停在 1200，而不是 1199.94），本章五個元件共用。它自己沒有防護：每個 public float setter（`Lfo` 與四個效果的）都會忽略 NaN 與 ±inf、保留上一個有效值（`DspMath.h` 的 `acceptParameter()`，見[撰寫指南](../../docs/authoring-guide.zh-TW.md) 4.1 節），所以平滑器永遠收不到這種值。在這條規則之前，`setMix(NaN)` 會讓輸出永久變 NaN：平滑器的 `current += k·(NaN − current)` 一直是 NaN，連 `reset()` 也只是把 NaN 目標複製到目前值。
 
 ### 3.2 `Chorus.h`
 
@@ -671,11 +671,13 @@ const float phaseOffset = 0.25f * spread_ * ch;            // 右聲道多 0.25�
 for (int v = 0; v < voices_; ++v) {
     const float m = Lfo::shapeValue(LfoShape::Sine, voicePhase_[v] + phaseOffset);
     const float delayMs = centreMs_ + depthMs_ * m;        // d_v = d0 + D·sin(…)
-    wet += delay_.readCubic(ch, clamp(delayMs · fs/1000, 2, maxRead));
+    wet += delay_.readCubic(ch, clamp(delayMs · fs/1000, kMinDelaySamples, maxRead)); // a rail only
 }
 wet /= voices_;                                            // ÷N：voice 數不影響音量
 return (1 - mix_) * x + mix_ * wet;
 ```
+
+`advanceModulation()` 在兩個平滑器之後，把實際使用的 depth 限制在 centre − 最小延遲：`depthMs_ = min(depth, max(0, centre − 以 ms 表示的 kMinDelaySamples))`。centre 與 depth 是兩個獨立的參數，所以 centre 1 ms 配 depth 10 ms 是允許的；沒有這個限制，正弦的下半部會在 2-sample 的 clamp 上被削平，每個週期有 47% 停在那裡，而固定 2 sample 的延遲混上原音，就是第一個 null 在 fs/4（48 kHz 時是 12 kHz）的 comb。有了限制，sweep 只在波谷那一瞬間碰到 2 sample，clamp 留作護欄。`getDepthMs()` 仍回傳設定的 depth。
 
 最長延遲在 `prepare()` 固定為 50 + 30 ms（再多 8 個 sample 給插值），所以之後改參數絕不 allocate。預設：rate 0.8 Hz、depth 3 ms、centre 15 ms、2 voices、mix 0.5、spread 1。
 
@@ -741,7 +743,8 @@ public:
 每個 sample：
 
 ```cpp
-const float octaves = depth * sweepOctaves_ * lfo_.getNextValue();
+const float room = max(0, min(log2(0.45·fs / centre), log2(centre / 20)));   // octaves to the nearer end
+const float octaves = min(depth * sweepOctaves_, room) * lfo_.getNextValue();
 currentHz_ = clamp(centre * std::exp2(octaves), 20, 0.45·fs);   // 指數刻度
 const BiquadCoefficients c = makeFirstOrderAllpass(currentHz_, sampleRate_); // a = (t−1)/(t+1)
 for (int s = 0; s < numStages_; ++s) stages_[s].setCoefficients(c);
@@ -910,6 +913,8 @@ bin\Debug\l10_tremolo.exe
 | Phaser 的 notch 數不對 | stages 是奇數；或拿錯公式（notch 數 = stages/2，不是 stages） | 範例 4 的掃描 |
 | 高頻在 chorus / flanger 裡變暗、還會「呼吸」 | linear 插值（$`\Delta`$ 掃過 0..1 時高頻起伏） | 改 cubic；量 12 kHz 正弦的 RMS（範例 2） |
 | 低 rate 的 LFO 週期不準 | 相位累加器用 float | 改 double；量一千個週期的總長度 |
+| centre 短、depth 大的 chorus 聽起來像固定的 comb（12 kHz 附近有個 notch） | 延遲在每個週期的一部分停在 2-sample 的 clamp 上 | `dsp::Chorus` 把 depth 限制在 centre − 最小延遲；自己寫時，在平滑器之後限制 depth（練習 3 與 5 會檢查） |
+| centre 高的 phaser 在 sweep 的頂端停住 | 被 sweep 的頻率停在 0.45·fs 的 clamp 上（centre 8000 Hz ± 2 octave 時每個週期有四分之一停在那裡） | `dsp::Phaser` 把 octave 數限制在 centre 到 [20 Hz, 0.45·fs] 較近那一端的空間內 |
 | 立體聲 chorus 在 mono 播放時變薄 | 左右相反的濕訊號在相加時部分抵消 | 量 $`(L+R)/2`$ 的 RMS（練習 5）；降低 spread 或 mix |
 | Autopan 經過中央時變小聲 | linear pan law：中央各 $`1 - D/2`$ | 需要的話改 constant power |
 | S&H 的值都差不多 / 不夠隨機 | xorshift 從很小的種子起跑時，前幾個輸出分布差 | `Lfo` 會先用 hash 打散種子；自己寫時也要 |

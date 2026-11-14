@@ -641,7 +641,7 @@ Key points:
 - `getNextValue()` computes the value from the "current" phase first and then advances, so the first value after `setPhase(0.25)` is $`\sin(\pi/2) = 1`$.
 - The phase accumulator is a `double` (Section 2.2).
 - `shapeValue()` is a static pure function. `Chorus` uses it to derive the "right channel plus 0.25 cycles" value from the same phase, so there is no need to maintain a second set of LFOs.
-- The file also contains a `detail::ModParamSmoother` (a one-pole parameter smoother: $`y \mathrel{+}= k(\text{target} - y)`$, snapping to the target once it converges to within $`10^{-6}`$), shared by all five components in this chapter. It has no guard of its own: every public float setter (of `Lfo` and of the four effects) ignores NaN and ±inf and keeps the last valid value (`acceptParameter()` in `DspMath.h`, section 4.1 of the [authoring guide](../../docs/authoring-guide.md)), so the smoother never receives one. Before that rule, `setMix(NaN)` made the output NaN for good: the smoother's `current += k·(NaN − current)` stays NaN, and even `reset()` only copied the NaN target into the current value.
+- The file also contains a `detail::ModParamSmoother` (a one-pole parameter smoother: $`y \mathrel{+}= k(\text{target} - y)`$, arriving at the target through `smoothToward()` in `DspMath.h`: it takes the target once within $`10^{-6}`$, or once a float step no longer moves the value, so a centre of 800 → 1200 Hz really ends at 1200 rather than 1199.94), shared by all five components in this chapter. It has no guard of its own: every public float setter (of `Lfo` and of the four effects) ignores NaN and ±inf and keeps the last valid value (`acceptParameter()` in `DspMath.h`, section 4.1 of the [authoring guide](../../docs/authoring-guide.md)), so the smoother never receives one. Before that rule, `setMix(NaN)` made the output NaN for good: the smoother's `current += k·(NaN − current)` stays NaN, and even `reset()` only copied the NaN target into the current value.
 
 ### 3.2 `Chorus.h`
 
@@ -671,11 +671,13 @@ const float phaseOffset = 0.25f * spread_ * ch;            // right channel gets
 for (int v = 0; v < voices_; ++v) {
     const float m = Lfo::shapeValue(LfoShape::Sine, voicePhase_[v] + phaseOffset);
     const float delayMs = centreMs_ + depthMs_ * m;        // d_v = d0 + D·sin(…)
-    wet += delay_.readCubic(ch, clamp(delayMs · fs/1000, 2, maxRead));
+    wet += delay_.readCubic(ch, clamp(delayMs · fs/1000, kMinDelaySamples, maxRead)); // a rail only
 }
 wet /= voices_;                                            // ÷N: the number of voices does not affect loudness
 return (1 - mix_) * x + mix_ * wet;
 ```
+
+`advanceModulation()` limits the depth in use to centre − the minimum delay, after both smoothers: `depthMs_ = min(depth, max(0, centre − kMinDelaySamples in ms))`. Centre and depth are separate parameters, so centre 1 ms with depth 10 ms is allowed; without the limit the sine's lower part would be cut flat on the 2-sample clamp for 47% of each cycle, and a fixed 2-sample delay mixed with the dry signal is a comb with its first null at fs/4 (12 kHz at 48 kHz). With the limit the sweep only touches 2 samples at its trough, and the clamp stays as a rail. `getDepthMs()` still returns the depth that was set.
 
 The longest delay is fixed in `prepare()` at 50 + 30 ms (plus 8 samples for interpolation), so changing parameters later never allocates. Defaults: rate 0.8 Hz, depth 3 ms, centre 15 ms, 2 voices, mix 0.5, spread 1.
 
@@ -741,7 +743,8 @@ public:
 For each sample:
 
 ```cpp
-const float octaves = depth * sweepOctaves_ * lfo_.getNextValue();
+const float room = max(0, min(log2(0.45·fs / centre), log2(centre / 20)));   // octaves to the nearer end
+const float octaves = min(depth * sweepOctaves_, room) * lfo_.getNextValue();
 currentHz_ = clamp(centre * std::exp2(octaves), 20, 0.45·fs);   // exponential scale
 const BiquadCoefficients c = makeFirstOrderAllpass(currentHz_, sampleRate_); // a = (t−1)/(t+1)
 for (int s = 0; s < numStages_; ++s) stages_[s].setCoefficients(c);
@@ -910,6 +913,8 @@ bin\Debug\l10_tremolo.exe
 | Wrong number of phaser notches | stages is odd; or the wrong formula (number of notches = stages/2, not stages) | The sweep in Example 4 |
 | The highs get dark and "breathe" in chorus / flanger | Linear interpolation (the highs fluctuate as $`\Delta`$ sweeps through 0..1) | Switch to cubic; measure the RMS of a 12 kHz sine (Example 2) |
 | The period of a low-rate LFO is inaccurate | The phase accumulator is a float | Switch to double; measure the total length of a thousand periods |
+| Chorus with a short centre and a large depth sounds like a fixed comb (a notch near 12 kHz) | The delay rests on its 2-sample clamp for part of every cycle | `dsp::Chorus` limits the depth to centre − the minimum delay; when writing your own, limit the depth after the smoothers (Exercises 3 and 5 check it) |
+| A phaser with a high centre stalls at the top of its sweep | The swept frequency rests on its 0.45·fs clamp (centre 8000 Hz ± 2 octaves sat there for a quarter of each cycle) | `dsp::Phaser` limits the octaves to the room between the centre and the nearer end of [20 Hz, 0.45·fs] |
 | Stereo chorus thins out when played in mono | The opposite left/right wet signals partly cancel when summed | Measure the RMS of $`(L+R)/2`$ (Exercise 5); reduce spread or mix |
 | Autopan gets quieter when passing the centre | Linear pan law: $`1 - D/2`$ in each channel at the centre | Switch to constant power if you need it |
 | S&H values are all similar / not random enough | An xorshift started from a very small seed gives a poor distribution for the first few outputs | `Lfo` scrambles the seed with a hash first; do the same when writing your own |

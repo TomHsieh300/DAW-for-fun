@@ -52,15 +52,16 @@
 delay_.prepare(dawlab::msToSamples(kMaxCentreMs + kMaxDepthMs, sampleRate) + 8, numChannels_);
 
 // advanceModulation：每個時間點一次（channel 0），所有 channel 共用
-const float ms = std::max(centreMs_ + depth * lfo_.getNextValue(), 0.05f);
-currentDelaySamples_ = std::clamp(ms * fs / 1000, 2.0f, maxDelay - 3);
+const float depth = std::min(depthSm_.next(), std::max(0.0f, centreMs_ - minDelayMs_)); // 絕不停靠在 clamp 上
+const float ms = centreMs_ + depth * lfo_.getNextValue();
+currentDelaySamples_ = std::clamp(ms * fs / 1000, kMinDelaySamples, maxDelay - 3);       // 只是護欄
 
 // process：push 再讀，輸出「只有」延遲的訊號
 delay_.push(ch, d[i]);
 d[i] = delay_.readCubic(ch, currentDelaySamples_);
 ```
 
-- **centre 必須 ≥ depth**，否則 $`d(t)`$ 會變負（讀到「未來」）。centre 本身只是固定的 latency（5 ms），耳朵聽不出來。
+- **實際使用的 depth 最多是 centre − 最小延遲**（2 sample），在平滑器之後限制。否則 sweep 的下半部會在 clamp 上被削平：centre 1 ms、depth 10 ms 時，每個週期有 47% 停在那裡；vibrato 沒有原音，所以不會有 comb，而是音高的 sweep 在那段時間變平（沒有 vibrato）。self-check 5 會量它。centre 本身只是固定的 latency（5 ms），耳朵聽不出來。
 - 用 `readCubic`：延遲一直在變，linear 插值會讓高頻隨 LFO 起伏（README 2.8 節）。
 - 實測：1 kHz、5 Hz、1 ms → 968.6 .. 1031.4 Hz（理論相同，+53.6 / −55.3 cents），平均 1000.51 Hz，RMS −0.00 dB；depth 0 時固定 1000.00 Hz。
 - 歌手的自然顫音約 5–6 Hz、±20–50 cents。解答輸出用 5.5 Hz、0.6 ms → $1200\log_2(1 \pm 2\pi \cdot 5.5 \cdot 0.0006) = $ +35.5 / −36.3 cents。
@@ -99,8 +100,9 @@ void reset() noexcept {
 }
 // process（每個 sample、每個 channel）：
 delay_.push(ch, x);
-const float delayMs = centreMs_ + depthMs_ * lfo_[ch].getNextValue();
-const float wet = delay_.readCubic(ch, std::clamp(delayMs * toSamples, 2.0f, maxRead));
+const float depthMs = std::min(depthMs_, std::max(0.0f, centreMs_ - minDelayMs_)); // 實際使用的 depth：最多 centre − 最小延遲，所以下面的 clamp 只是護欄
+const float delayMs = centreMs_ + depthMs * lfo_[ch].getNextValue();
+const float wet = delay_.readCubic(ch, std::clamp(delayMs * toSamples, kMinDelaySamples, maxRead));
 d[i] = (1.0f - mix_) * x + mix_ * wet;
 ```
 
@@ -162,7 +164,7 @@ void process(dawlab::AudioBlock block, double ppqAtBlockStart) noexcept {
 
 - **TODO 1**：`theoryPhase` 就是把每一級的 `Phaser::allpassPhase(f, scale · fc_i, fs)` 加起來。一階 allpass 的振幅處處是 1，串接後的響應 = 各級響應相乘，相位就相加。
 - **TODO 2**：每一項 $`\varphi_i`$ 都從 0 單調降到 $`-\pi`$，總和 $`\Phi`$ 從 0 單調降到 $`-N\pi`$，所以 $`\Phi(f) = -(2k+1)\pi`$ 恰好有一個解，二分法一定收斂：$`\Phi(\text{mid})`$ 比目標大（還不夠負）就把 `lo` 移到 mid，否則移 `hi`。區間 24 kHz 二分 60 次，誤差遠小於 1 Hz。
-- **TODO 3**：所有 stage 共用同一個比例 $`s = 2^{\text{depth}\cdot\text{octaves}\cdot m}`$，第 $`i`$ 級設 $`f_c = s \cdot f_{c,i}`$。這樣整組 notch 在對數頻率軸上一起平移，各級之間的分布（音色）不變。注意是「每一級各自」呼叫 `makeFirstOrderAllpass`——和 `Phaser` 算一次係數、套到所有 stage 不同。
+- **TODO 3**：所有 stage 共用同一個比例 $`s = 2^{\text{depth}\cdot\text{octaves}\cdot m}`$，第 $`i`$ 級設 $`f_c = s \cdot f_{c,i}`$。這樣整組 notch 在對數頻率軸上一起平移，各級之間的分布（音色）不變。注意是「每一級各自」呼叫 `makeFirstOrderAllpass`——和 `Phaser` 算一次係數、套到所有 stage 不同。和 `Phaser` 一樣，octave 數先限制在最低一級到 20 Hz、最高一級到 0.45·fs 的空間內，所以沒有任何一級會停在 clamp 上（self-check 5：300–4800 Hz、±3 octave 的 sweep 否則會讓最高一級在每個週期有四分之一停在 0.45·fs）。
 
 量測結果（`l10_ex8_solution` 的輸出）：
 

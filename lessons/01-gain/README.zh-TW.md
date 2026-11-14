@@ -664,7 +664,7 @@ bin\Debug\l01_mixing_headroom.exe
 - **本章元件不是 thread-safe：setter 只在 block 之間、由呼叫 `process()` 的同一個 thread 呼叫。** `setGainDb()` 寫的是一個 float（`gainDb_`）加上 SmoothedValue 的 target / step / countdown，全部是普通的 float / int。如果 UI thread 直接呼叫 setter、audio thread 同時在 `process()` 裡讀，在 C++ 記憶體模型下這就是 **data race，屬於 undefined behavior**——就算 x86 / ARM64 硬體上對齊的 float 寫入剛好不會被「撕裂」，編譯器也可以假設沒有其他 thread 在改這些變數而做出意想不到的最佳化，所以「硬體寫入是 atomic」不能當作 thread safety 的依據。正確做法是：UI thread 只寫一個 `std::atomic<float>`，audio thread 在每個 block 開頭讀出來、再交給平滑器（第 14 章的 `ChannelStrip` 就是這個模式）；第 13 章會用 JUCE 的 `AudioProcessorValueTreeState` 正式處理 parameter 的 thread safety。教材刻意不在本章元件內部加 atomic / lock，讓元件保持簡單、可以離線測試。
 - **初始化要 `setCurrentAndTargetValue` / `reset()`。** 否則 plugin 一載入會從 0 ramp 到目標值，前 50 ms 有 fade-in；對 `Gain` 而言 `prepare()` 已經幫你做了。
 - **Sample rate 改變要重新 `prepare()`。** ramp 長度以 sample 計，從 48 kHz 換到 96 kHz 不重算就會變成 25 ms。
-- **Denormal。** 本章的 linear ramp 走完會精確對齊目標，不會留下極小值；但練習 3 的 exponential smoother 會，所以要 snap。第 02 章的 IIR filter 更需要注意。
+- **Denormal。** 本章的 linear ramp 走完會精確對齊目標，不會留下極小值；但練習 3 的 exponential smoother 會，所以要 snap。`dsp/` 裡的平滑器共用這個 snap，只寫在一個地方：`DspMath.h` 的 `smoothToward()`：在 $`10^{-6}`$ 之內、或 float 的一步已經不再讓值移動時，直接取目標值。第 02 章的 IIR filter 更需要注意。
 - **ramp 不是 latency。** 平滑只影響「參數」到達目標的時間，訊號本身沒有被延遲，所以 `Gain` / `Panner` 不需要回報 latency。
 - **多聲道共用一條 ramp。** `Gain::process()` 讓同一個 frame 的每個 channel 乘同一個值；如果你自己寫 loop 用 `processSample()`，請遵守「每個 frame 先 channel 0」的慣例，否則左右聲道的 ramp 會走成兩倍快。
 

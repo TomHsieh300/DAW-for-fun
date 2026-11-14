@@ -56,7 +56,7 @@ flowchart LR
 | Detector | 「現在多大聲？」 | `DetectorMode::Peak`（瞬間 $`\lvert x \rvert`$）或 `DetectorMode::Rms`（$`\sqrt{\overline{x^2}}`$） |
 | Gain computer | 「這麼大聲的話，該壓幾 dB？」 | `Compressor::computeOutputDb()`，純函式，沒有狀態 |
 | Attack / release | 「要多快壓下去、多快放開？」 | `AttackReleaseFilter`，在 dB domain 平滑 GR |
-| Makeup gain | 「壓完變小聲了，補回來」 | 固定 dB，內部用 10 ms one-pole 平滑避免 zipper noise |
+| Makeup gain | 「壓完變小聲了，補回來」 | 固定 dB，內部用 10 ms one-pole 平滑避免 zipper noise（會精確到達，所以 -inf dB 是真正的 0） |
 
 </div>
 
@@ -432,7 +432,7 @@ GR 理論值 $`(-6 + 20)(1 - 1/4) = 10.5`$ dB；量到 10.48 是因為 decoupled
 
 - **`process()` 不 allocate**：`prepare()` 是唯一配置記憶體的地方（`channels_.resize`）。範例與練習裡的 sidechain buffer 也都在迴圈外配置一次。
 - **Denormal**：`AttackReleaseFilter` 的狀態在 release 時會指數衰減到極小，`process()` 把 $`\lvert y \rvert < 10^{-15}`$ flush 成 0；`reset()` 把所有狀態歸零。沒做這件事，安靜一段時間後 CPU 使用率會突然飆高。
-- **Zipper noise**：threshold / ratio / knee 直接改值是安全的——它們只影響 GR 的**目標值**，而 GR 本身永遠經過 attack / release 平滑，所以轉旋鈕不會有 click。Makeup gain 是乘在輸出上的，所以內部用 10 ms one-pole 平滑。Attack / release 改變只是換 $`\alpha`$，狀態不變，也安全。Stereo link 切換也安全：linked 時每個 channel 仍跑自己的 smoother（只是吃同一個目標值），切換瞬間每一邊都從目前的 GR 平滑過渡（範例 5 (B)）。
+- **Zipper noise**：threshold / ratio / knee 直接改值是安全的——它們只影響 GR 的**目標值**，而 GR 本身永遠經過 attack / release 平滑，所以轉旋鈕不會有 click。Makeup gain 是乘在輸出上的，所以內部用 10 ms one-pole 平滑。每一步是 `smoothToward()`（`DspMath.h`），最後會精確取到目標值：單純的 one-pole 往 -inf dB 的 makeup（gain 0）走，會停在 subnormal 數上，乘上它的每個輸出 sample 也都是 subnormal（在沒有 FTZ/DAZ 的 x86 上很慢）。Attack / release 改變只是換 $`\alpha`$，狀態不變，也安全。Stereo link 切換也安全：linked 時每個 channel 仍跑自己的 smoother（只是吃同一個目標值），切換瞬間每一邊都從目前的 GR 平滑過渡（範例 5 (B)）。
 - **壞輸入（Inf / NaN）**：遞迴濾波器的狀態只要變成 NaN 就永遠回不來（NaN 參與的運算結果都是 NaN），只能 `reset()`。上游一個 bug（例如除以 0）送進一個 Inf，compressor 就可能從此靜音或從此不壓縮。所以 `AttackReleaseFilter` 把 non-finite 的輸入當成 0、狀態若溢位也歸零；`EnvelopeFollower` 先把輸入夾在 ±$`10^6`$ 再平方；`Compressor` 把 non-finite 的 level 當成 0。這些檢查每個 sample 只多幾次比較，對 CPU 幾乎沒有影響（範例 5 (A)）。
 - **Thread safety**：`getGainReductionDb()` 用 `std::atomic<float>` + relaxed ordering，UI thread 隨時可以讀；setter 是單一 float 寫入，在 x86/ARM 上實務安全，但如果 UI 會一次改多個參數並要求一致性，要在 host 層做參數快照（第 13 章）。
 - **零延遲**：feedforward 無 lookahead，`getLatencySamples()` 回傳 0，host 不需要補償。

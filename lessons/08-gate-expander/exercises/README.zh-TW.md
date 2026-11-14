@@ -130,12 +130,13 @@ self-check：
 起始碼：`exercises/starter/ex8_transient_shaper.cpp`（target `l08_ex8_starter`）。起始碼裡的 `MyTransientShaper` 已經準備好 fast（0.5 / 30 ms）與 slow（10 / 150 ms）兩個 `EnvelopeFollower`、平滑係數與 `process()`。
 
 1. 完成 `mapToGainDb(d, attackDb, sustainDb)`：README 2.6.2 節的映射，$`d > 0`$ 用 attackDb、$`d \le 0`$ 用 sustainDb，$`|d|`$ 達到 6 dB 時飽和。
-2. 完成 `nextGain()`：兩個 envelope → $`d = 20\log_{10}(e_\text{fast}/e_\text{slow})`$ → 映射 → 0.5 ms one-pole 平滑（dB 域）→ 線性 gain。slow envelope 低於 −80 dBFS 時目標 gain 是 0 dB。
+2. 完成 `nextGain()`：兩個 envelope → $`d = 20\log_{10}(e_\text{fast}/e_\text{slow})`$ → 映射 → 0.5 ms one-pole 平滑（dB 域，一步是 `DspMath.h` 的 `smoothToward(gainDb_, target, smoothCoef_)`）→ 線性 gain。slow envelope 低於 −80 dBFS 時目標 gain 是 0 dB。
 
 self-check：
 
 - 映射：$`d = +3`$ 時 attack +12 → +6 dB；$`d = +20`$ → +12 dB（飽和）；$`d = -3`$ 時 sustain -12 → -6 dB；$`d = 0`$ → 0 dB。
 - 與 `dawlab::dsp::TransientShaper` 逐 sample 比對，誤差 < $`10^{-5}`$。
+- 鼓聲之後接 2 秒靜音，平滑後的 gain 剛好是 0 dB（單純的 one-pole 會停在 subnormal 的 dB 數上）。
 - **level-independent 測試**：同一段 `makeDrumLoop()` 分別正規化到 peak −6 dBFS 與 −26 dBFS。attack +6 dB 時，兩者的 peak 增量要大於 3 dB 且彼此相等（± 0.3 dB）；sustain −12 dB 時，兩者的尾音 RMS（每個八分音符格子的 120–240 ms）都要下降 3 dB 以上，且下降量相等（± 0.3 dB）。
 - 對照組：同樣兩個 level 送進 compressor（threshold −20 dB、4:1），peak 變化相差 3 dB 以上——compressor 看絕對 level，transient shaper 不看。
 

@@ -465,7 +465,7 @@ input gain      in peak     out peak      out RMS     RMS gain       max GR
 - **`setCeilingDb()` 在播放中往下調**會讓 pipeline 內已算好 gain 的 L 個 sample 超過新 ceiling，由 safety clamp 兜底（會有 clip）。要做「可以在播放中轉的 ceiling 旋鈕」，應該把 ceiling 用 `SmoothedValue` 平滑、或在 ramp 期間同時降低 input gain。
 - **參數平滑**：input gain 內建 20 ms 線性 ramp；release 係數改變不需要平滑（只影響回復速度）。
 - **Setter 要能被「每個 block 重複呼叫」**：plugin wrapper（第 13 章）通常在每個 `processBlock()` 開頭把所有參數再設一次。`setInputGainDb()` 若每次都依「剩下的距離」重算 ramp step，ramp 會越走越慢、永遠到不了目標；所以本章的 `setInputGainDb()` / `setReleaseMs()` 在值沒變時直接 return（練習 6 解答第 (5) 段驗證：每個 block 都設 +6 dB，25 ms 後輸出剛好是目標值）。
-- **Denormal**：release 的 one-pole 是往 1 收斂、不是往 0，所以不會產生 denormal；程式還是在 `released > 1 - 10^{-6}` 時直接設成 1，避免永遠差一點點。
+- **Denormal 與到達**：release 的 one-pole 是往 1 收斂、不是往 0，所以不會產生 denormal。但它還是要真的到達：float 在 1 附近的 ulp 約 $`6 \cdot 10^{-8}`$，一旦一步 $`c_\text{rel}(1 - g)`$ 小於它的一半，加上去就沒有變化，所以預設 100 ms 的 release 會卡在 0.999857（永遠留著 −0.0012 dB 的 gain reduction；像 `released > 1 - 10^{-6}` 這樣的判斷永遠不會成立）。因此每一步是 `smoothToward(releasedGain_, 1.0f, cRel)`（`DspMath.h`），一旦一步不再讓值移動就精確取 1。
 - **Thread safety**：`getGainReductionDb()` / `getSafetyClipCount()` 是 relaxed atomic，UI thread 隨時可讀。setter 與 `process()` 要在同一個 thread、或由 host 保證在 block 之間呼叫（跟第 04 章一樣）。
 - **Block 大小無關**：所有狀態都是逐 sample 維護的，block 長度 1 或 1024、每次都不一樣，結果完全相同（`l05_ceiling_stress` 最後一段把同一段 drum loop 用 block 512、block 1、隨機 block 各跑一次，輸出最大差異 = 0；fuzz test 也全程用隨機 block 長度）。
 - **Stereo link**：所有 channel 共用一個 gain。若左右各自 limit，當只有一邊觸發時立體聲像會瞬間往另一邊偏。

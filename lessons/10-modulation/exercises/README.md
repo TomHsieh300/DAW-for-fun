@@ -66,7 +66,7 @@ Starter code: `exercises/starter/ex3_vibrato.cpp`
 Use `FractionalDelayLine` from Chapter 09 and `Lfo` from this chapter to write a `Vibrato`: the delay is $`d(t) = \text{centre} + \text{depth}\cdot m(t)`$, and the output is **only** the delayed signal. Complete the three TODOs:
 
 1. In `prepare()`, allocate the delay line (maximum delay = `kMaxCentreMs + kMaxDepthMs`, converted to samples, with a few extra for interpolation).
-2. In `advanceModulation()`, compute the delay (in samples) for this sample and clamp it to the legal range.
+2. In `advanceModulation()`, first limit the depth to at most centre − the minimum delay (`minDelayMs_`, 2 samples), so the sweep never rests on the clamp; then compute the delay (in samples) for this sample and clamp it to the legal range (now only a rail).
 3. In `processSample()` / `process()`: push, then read with `readCubic`, and **do not** mix in the dry signal.
 
 Self-checks:
@@ -74,6 +74,7 @@ Self-checks:
 - 1 kHz sine, rate 5 Hz, depth 1 ms → the maximum / minimum instantaneous frequency is $`1000(1 \pm 2\pi \cdot 5 \cdot 0.001) = 1031.4 / 968.6`$ Hz (±2 Hz).
 - The mean frequency is 1000 Hz (±1 Hz); the output RMS equals the input RMS (±0.3 dB).
 - depth 0 → the frequency stays at 1000 Hz.
+- centre 1 ms, depth 10 ms → the delay is at its shortest for < 5% of the cycle (without the depth limit it rests on the clamp for 47% of the cycle, and the pitch sweep goes flat there).
 
 The program writes `l10_ex3_vibrato.wav` (plucked arpeggio + vibrato). Listen and work out how depth and rate combine to sound like a singer's natural vibrato (hint: 5–6 Hz, ±20–50 cents).
 
@@ -105,6 +106,7 @@ Self-checks:
 - The phase difference really is 90°: rate 0, impulse input → the left-channel impulse appears at 15 ms (centre) and the right-channel one at 18 ms (centre + depth·sin 90°). The $`\rho`$ of white noise only shows "whether left and right are offset", not "by how much", so this check is needed.
 - Mono compatibility: the RMS of $`(L+R)/2`$ relative to the RMS of a single channel ≈ −1.25 dB (±0.5), and not below −3 dB. First derive for yourself where the −1.25 dB figure comes from.
 - The $`\rho`$ differs from that of `dawlab::dsp::Chorus` (1 voice, mix 1, `setStereoSpread(1)`) by < 0.05.
+- centre 1 ms, depth 20 ms → the delay is at its shortest for < 5% of the cycle: limit the depth to centre − the minimum delay, as `dsp::Chorus` does (resting on the 2-sample clamp would be a comb with its first null at fs/4).
 
 Further thought: the $`\rho`$ of white noise is close to 0 at both 90° and 180°, so why is 90° the usual choice for a stereo chorus?
 
@@ -152,5 +154,6 @@ Self-checks (mix 0.5, no feedback, LFO parked, sweep 50 Hz–16 kHz to find the 
 - 300 / 600 / 1200 / 2400 Hz: there are still **2** measured notches, within 0.5% of `predictNotchHz`, with depth < −30 dB.
 - Verify the prediction of Exercise 7, part 4: the first notch is below the 414.7 Hz of the 4 × 1000 Hz case, and the second is above 2397.8 Hz.
 - depth 1, octaves 1, LFO parked at +1 (rate 0, phase 0.25) → all $`f_c`$ double, and the measured notches = `predictNotchHz(k, 2)` (±0.5%).
+- 300–4800 Hz swept ±3 octaves → no stage rests on the [20 Hz, 0.45·fs] clamp (< 0.1% of the cycle): limit the octaves to the room between the lowest stage and 20 Hz and between the highest stage and 0.45·fs, as `dsp::Phaser` does.
 
 The program writes `l10_ex8_uniform.wav` and `l10_ex8_staggered.wav` (white noise, rate 0.2 Hz, ±1.5 octaves). Compare how the two sweeps sound: what changes once the notches are farther apart?

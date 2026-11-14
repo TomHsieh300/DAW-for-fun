@@ -66,7 +66,7 @@ cd build
 用第 09 章的 `FractionalDelayLine` 與本章的 `Lfo` 寫一個 `Vibrato`：延遲 $`d(t) = \text{centre} + \text{depth}\cdot m(t)`$，輸出**只有**延遲後的訊號。完成三個 TODO：
 
 1. `prepare()` 裡配置 delay line（最長延遲 = `kMaxCentreMs + kMaxDepthMs`，換成 sample，多留幾個給插值）。
-2. `advanceModulation()` 算出這個 sample 的延遲（sample），clamp 在合法範圍。
+2. `advanceModulation()` 先把 depth 限制在最多 centre − 最小延遲（`minDelayMs_`，2 sample），讓 sweep 絕不停靠在 clamp 上；再算出這個 sample 的延遲（sample），clamp 在合法範圍（現在只是護欄）。
 3. `processSample()` / `process()`：push、再用 `readCubic` 讀出來，**不要**混原音。
 
 Self-check：
@@ -74,6 +74,7 @@ Self-check：
 - 1 kHz 正弦、rate 5 Hz、depth 1 ms → 瞬時頻率最大 / 最小 = $`1000(1 \pm 2\pi \cdot 5 \cdot 0.001) = 1031.4 / 968.6`$ Hz（±2 Hz）。
 - 平均頻率 1000 Hz（±1 Hz）；輸出 RMS 與輸入相同（±0.3 dB）。
 - depth 0 → 頻率固定 1000 Hz。
+- centre 1 ms、depth 10 ms → 延遲停在最短值的時間 < 週期的 5%（沒有 depth 限制時，有 47% 的週期停在 clamp 上，音高的 sweep 在那段時間變平）。
 
 輸出 `l10_ex3_vibrato.wav`（撥弦琶音 + vibrato）。聽聽看 depth、rate 怎麼搭配才像歌手的自然顫音（提示：5–6 Hz、±20–50 cents）。
 
@@ -105,6 +106,7 @@ Self-check：
 - 相位差真的是 90°：rate 0、impulse 輸入 → 左聲道的 impulse 出現在 15 ms（centre）、右聲道在 18 ms（centre + depth·sin 90°）。白雜訊的 $`\rho`$ 只看得出「左右有沒有錯開」，看不出錯開多少，所以需要這一項。
 - mono 相容性：$`(L+R)/2`$ 的 RMS 相對單一聲道 RMS ≈ −1.25 dB（±0.5），且不低於 −3 dB。先自己推導 −1.25 dB 這個數字從哪裡來。
 - 和 `dawlab::dsp::Chorus`（1 voice、mix 1、`setStereoSpread(1)`）的 $`\rho`$ 相差 < 0.05。
+- centre 1 ms、depth 20 ms → 延遲停在最短值的時間 < 週期的 5%：像 `dsp::Chorus` 一樣把 depth 限制在 centre − 最小延遲（停在 2-sample 的 clamp 上會是第一個 null 在 fs/4 的 comb）。
 
 延伸思考：白雜訊在 90° 和 180° 的 $`\rho`$ 都接近 0，那 stereo chorus 為什麼常用 90°？
 
@@ -152,5 +154,6 @@ Self-check（mix 0.5、無 feedback、LFO 停住，掃頻 50 Hz–16 kHz 自動�
 - 300 / 600 / 1200 / 2400 Hz：量到的 notch 仍是 **2 個**，位置和 `predictNotchHz` 相差 < 0.5%，深度 < −30 dB。
 - 驗證練習 7 第 4 小題的預測：第一個 notch 比 4 × 1000 Hz 的 414.7 Hz 低、第二個比 2397.8 Hz 高。
 - depth 1、octaves 1、LFO 停在 +1（rate 0、相位 0.25）→ 所有 $`f_c`$ 加倍，量到的 notch = `predictNotchHz(k, 2)`（±0.5%）。
+- 300–4800 Hz、±3 octave 的 sweep → 沒有任何一級停在 [20 Hz, 0.45·fs] 的 clamp 上（< 週期的 0.1%）：像 `dsp::Phaser` 一樣，把 octave 數限制在最低一級到 20 Hz、最高一級到 0.45·fs 的空間內。
 
 輸出 `l10_ex8_uniform.wav`、`l10_ex8_staggered.wav`（白雜訊、rate 0.2 Hz、±1.5 個八度）。比較兩者掃動的聽感：notch 分得更開之後有什麼不同？

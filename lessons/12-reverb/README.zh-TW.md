@@ -598,7 +598,7 @@ flowchart TD
 
 - **delay 長度**：基礎長度 29.7–73.1 ms（`kBaseDelaysMs`），乘上 `size` 對應的倍率 0.5 + size（0.5–1.5），換算成 samples 後取 `nextPrime()`。size = 0.5、48 kHz 時是 1427, 1783, 1973, 2099, 2579, 2879, 3251, 3511（全是質數）。
 - **`setDecaySeconds()`** 立刻重算 $`g_i`$；**`setSize()`** 改變目標長度，實際長度以約 30 ms 的時間常數平滑滑過去（delay 長度跳動會 click，平滑滑動則只是短暫的音高變化），同時重算 $`g_i`$。
-- **`setFreeze(true)`**：$`g_i = 1`$、略過 damping、輸入增益 0，而且 modulation 以約 30 ms 的時間常數淡出到 0。Householder 矩陣無損，所以尾巴永遠不衰減（範例 2：凍結後 1.1 秒 RMS 只差 +0.02 dB）。modulation 一定要停：在小數位置讀 delay 線（linear interpolation）等於每圈多一個 lowpass，開著 1 ms 的 modulation 凍結 28 秒會掉約 4 dB、而且越來越暗；停掉之後 28 秒只差 0.03 dB。同理，delay 長度的平滑在接近目標時會直接吸附到整數長度（delay 長度是幾千 samples 的 float，差距小於約 0.1–0.2 sample 時，平滑的增量小於半個 ulp，加不上去，會永遠停在小數點上）。解除 freeze 時 modulation 再淡入。
+- **`setFreeze(true)`**：$`g_i = 1`$、略過 damping、輸入增益 0，而且 modulation 以約 30 ms 的時間常數淡出到 0。Householder 矩陣無損，所以尾巴永遠不衰減（範例 2：凍結後 1.1 秒 RMS 只差 +0.02 dB）。modulation 一定要停：在小數位置讀 delay 線（linear interpolation）等於每圈多一個 lowpass，開著 1 ms 的 modulation 凍結 28 秒會掉約 4 dB、而且越來越暗；停掉之後 28 秒只差 0.03 dB。同理，delay 長度的平滑在接近目標時會直接吸附到整數長度（delay 長度是幾千 samples 的 float，差距小於約 0.1–0.2 sample 時，平滑的增量小於半個 ulp，加不上去，會永遠停在小數點上）。這個吸附就是 `DspMath.h` 共用的 `smoothToward()`：一旦一步不再讓值移動就取目標值；modulation 的淡出也用它，只是範圍放寬到 $`10^{-4}`$。解除 freeze 時 modulation 再淡入。
 - **`setWidth()`**：對 wet 做 mid/side，side × width。width = 0 → wet 變 mono。
 - **`setMix()`**：線性 dry/wet，`out = dry·(1−mix) + wet·mix`，有平滑。
 - **NaN 參數**：所有 float setter 開頭都有 `if (!acceptParameter(x)) return;`（`DspMath.h`），收到 NaN 或 ±inf 時保留上一個有效值（理由見第 4 節）。
@@ -777,7 +777,7 @@ pre-fader,  fader -inf : return RMS 0.0752 (+0.00 dB relative to 0 dB -> unaffec
 - **CPU 尖峰**：uniform partitioned convolution 的所有工作都在「收滿 P 個 sample」的那一刻做。如果 host block = 128、P = 512，每 4 個 callback 才有一個要做全部的 FFT 與 K 次頻譜乘加 —— 平均 CPU 很低，但最壞情況的那個 callback 決定會不會掉音。這是 `prepare()` 讓 P ≥ maxBlockSize 的原因之一，也是 non-uniform partition 要把大 FFT 分散到多個 callback 的原因。
 - **`Fft` 物件不可共用**：第 11 章的 `Fft::forwardReal()` 使用內部 scratch buffer，同一個物件不能同時被兩個 thread 使用。每個 `ConvolutionReverb` 有自己的 `Fft`。
 - **Denormal**：遞迴結構的尾巴最後會衰減到 denormal 範圍，CPU 可能暴增數十倍。`ReverbBuildingBlocks.h` 的 `flushDenormal()` 把 |x| < 10⁻²⁰ 直接變 0，FDN 寫回 delay 線前也會 flush；`OnePole` 本身也有 flush。在 plugin 裡還應該在 callback 開頭設定 FTZ/DAZ（JUCE 的 `ScopedNoDenormals`）。
-- **參數平滑**：`setMix()`、`setWidth()`、`setPreDelayMs()`、`setSize()` 都會平滑（約 30 ms 時間常數）。`setSize()` 與 pre-delay 的變化本質上是 delay 長度在滑動 → 短暫的音高變化（Doppler），比 click 好得多，但不要拿來做快速自動化。`setDecaySeconds()` 立即生效（只改變衰減率，不會 click）。
+- **參數平滑**：`setMix()`、`setWidth()`、`setPreDelayMs()`、`setSize()` 都會平滑（約 30 ms 時間常數），而且每個平滑器都會精確到達（`DspMath.h` 的 `smoothToward()`）：單純的 one-pole 往 mix 0 走會停在 subnormal 數上，凍結的尾巴乘上這個 mix，每個輸出 sample 都會是 subnormal（在沒有 FTZ/DAZ 的 x86 上很慢）。`ConvolutionReverb` 的 mix 平滑器也一樣。`setSize()` 與 pre-delay 的變化本質上是 delay 長度在滑動 → 短暫的音高變化（Doppler），比 click 好得多，但不要拿來做快速自動化。`setDecaySeconds()` 立即生效（只改變衰減率，不會 click）。
 - **`reset()` 會讓平滑值直接跳到目標**：reset 之後內部沒有任何聲音，跳值不會 click。所以離線處理時的慣用順序是 `prepare()` → 各種 setter → `reset()`，第一個 sample 起參數就到位（否則前 ~0.1 s 會從預設值滑過來，例如 mix 從 0.3 滑到 1，漏出 dry）。
 - **Latency 回報**：`ConvolutionReverb::getLatencySamples()` = P。內建的 dry/wet mix 已經把 dry 也延遲 P（3.3 節），所以不論 mix 多少，整個輸出的 latency 都一致是 P；但 host 仍然必須做延遲補償，否則和其他軌或 send/return 的 dry 訊號平行混音時，這一路會晚 P 個 sample。`Reverb`（FDN）沒有 latency。
 - **NaN 參數**：`std::clamp(NaN, lo, hi)` 會原樣回傳 NaN。如果 setter 只靠 clamp，一個 NaN 參數（例如 host automation 出錯）就會讓 $`g_i`$ 或 mix 變 NaN，輸出永久變 NaN，連 `reset()` 都救不回來（reset 只是把平滑值設成已經是 NaN 的目標）。本章所有 setter 都和 `dsp/` 裡每個 float setter 一樣，開頭先 `if (!acceptParameter(x)) return;`，忽略 NaN 與 ±inf（見[撰寫指南](../../docs/authoring-guide.zh-TW.md) 4.1 節）。
@@ -801,7 +801,7 @@ pre-fader,  fader -inf : return RMS 0.0752 (+0.00 dB relative to 0 dB -> unaffec
 | Convolution 輸出有週期性的「咔咔」或 aliasing 般的雜訊 | overlap-save 留錯半邊、FFT 長度不夠（N < 2P）造成 circular wrap；IR 段沒有補零 | 和直接卷積逐 sample 比對（範例 3 的作法），誤差應該在 10⁻⁶ 以下 |
 | Convolution wet 和 dry 對不齊、平行混音時音色變薄（間距 fs/P 的 comb filtering） | 內部 mix 只延遲了 wet、dry 沒延遲；或在外面自己拿 mix = 1 的 wet 和未延遲的 dry 相加 | 內部 mix 的 dry 要取 P 個 sample 前的輸入（3.3 節）；外部平行混音用 `getLatencySamples()` 把 dry 也延遲 P，或讓 host 做 PDC |
 | 某次自動化之後輸出永久變 NaN，`reset()` 也救不回來 | setter 只用 `std::clamp`，NaN 直接穿過去 | setter 開頭 `if (!acceptParameter(x)) return;`（`DspMath.h`；±inf 也會忽略） |
-| Freeze 的尾巴還是慢慢變暗、變小 | freeze 時 delay 讀取位置仍在小數點上（modulation 沒停、或長度平滑卡在離目標一點點的地方），linear interpolation 每圈都是 lowpass | freeze 時把 modulation 淡出，長度平滑在接近目標時吸附到整數 |
+| Freeze 的尾巴還是慢慢變暗、變小 | freeze 時 delay 讀取位置仍在小數點上（modulation 沒停、或長度平滑卡在離目標一點點的地方），linear interpolation 每圈都是 lowpass | freeze 時把 modulation 淡出，長度平滑在接近目標時吸附到整數（`DspMath.h` 的 `smoothToward()`） |
 | Convolution reverb 大聲到爆 | IR 沒有正規化（錄來的 IR 能量可能很大） | 正規化成單位能量，或量 wet 的 RMS 再調整 |
 | 播完之後 CPU 越來越高 | denormal | flush denormal、FTZ/DAZ |
 | Stereo 的 reverb 在 mono 播放時變小聲或變空洞 | 左右 wet 太去相關、甚至反相 | 用 width 控制；在 mono 下檢查 |
