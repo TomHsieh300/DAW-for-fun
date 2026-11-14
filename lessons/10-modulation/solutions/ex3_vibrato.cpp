@@ -13,6 +13,8 @@
 //   2. The mean frequency is still 1000 Hz (the pitch just drifts back and forth; it does not become higher or lower overall)
 //   3. The output RMS equals the input RMS (±0.3 dB): with mix = 1 there are no comb peaks and valleys, so the amplitude is unchanged
 //   4. 1 kHz sine, depth 0 -> the output is just the delayed input, and the instantaneous frequency stays at 1000 Hz
+//   5. centre 1 ms, depth 10 ms -> the depth in use is limited to centre − the minimum delay, so the delay never rests
+//      on its clamp (without the limit it would sit there for 47% of each cycle, and the pitch sweep would go flat)
 // Output: dawlab_output/l10_ex3_vibrato.wav (plucked arpeggio with vibrato, rate 5.5 Hz, depth 0.6 ms)
 
 #include <dawlab/Common.h>
@@ -22,6 +24,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <vector>
 
 using dawlab::dsp::FractionalDelayLine;
 using dawlab::dsp::Lfo;
@@ -36,11 +39,13 @@ class Vibrato {
 public:
     static constexpr float kMaxCentreMs = 20.0f;
     static constexpr float kMaxDepthMs = 10.0f;
+    static constexpr float kMinDelaySamples = 2.0f; // readCubic needs one newer sample, plus one for margin
 
     void prepare(double sampleRate, int maxBlockSize, int numChannels) {
         (void)maxBlockSize;
         sampleRate_ = sampleRate;
         numChannels_ = std::max(1, numChannels);
+        minDelayMs_ = static_cast<float>(dawlab::samplesToMs(kMinDelaySamples, sampleRate));
         delay_.prepare(dawlab::msToSamples(kMaxCentreMs + kMaxDepthMs, sampleRate) + 8, numChannels_);
         lfo_.prepare(sampleRate);
         depthSm_.prepare(sampleRate, 20.0);
@@ -55,7 +60,8 @@ public:
 
     void setRateHz(float hz) noexcept { lfo_.setRateHz(std::clamp(hz, 0.0f, 20.0f)); }
     void setDepthMs(float ms) noexcept { depthSm_.setTarget(std::clamp(ms, 0.0f, kMaxDepthMs)); }
-    // centre must be >= depth, otherwise the delay would go negative. The centre itself is just a fixed latency the ear cannot hear.
+    // The depth in use is at most centre − the minimum delay (advanceModulation), so the delay never rests on its clamp.
+    // The centre itself is just a fixed latency the ear cannot hear.
     void setCentreDelayMs(float ms) noexcept { centreMs_ = std::clamp(ms, 1.0f, kMaxCentreMs); }
     void setShape(LfoShape shape) noexcept { lfo_.setShape(shape); }
 
@@ -81,15 +87,18 @@ public:
 
 private:
     void advanceModulation() noexcept {
-        const float depth = depthSm_.next();
-        const float ms = std::max(centreMs_ + depth * lfo_.getNextValue(), 0.05f);
+        // The sweep stays above the minimum delay: depth is limited to centre − minimum after the smoother. Otherwise the
+        // delay would rest on the clamp for part of each cycle, and the pitch sweep would go flat there.
+        const float depth = std::min(depthSm_.next(), std::max(0.0f, centreMs_ - minDelayMs_));
+        const float ms = centreMs_ + depth * lfo_.getNextValue();
         const float maxRead = static_cast<float>(delay_.getMaxDelaySamples() - 3);
-        currentDelaySamples_ = std::clamp(static_cast<float>(ms * sampleRate_ * 0.001), 2.0f, maxRead);
+        currentDelaySamples_ = std::clamp(static_cast<float>(ms * sampleRate_ * 0.001), kMinDelaySamples, maxRead); // a rail only
     }
 
     double sampleRate_ = 48000.0;
     int numChannels_ = 2;
     float centreMs_ = 5.0f;
+    float minDelayMs_ = kMinDelaySamples * 1000.0f / 48000.0f;
     float currentDelaySamples_ = 240.0f;
     FractionalDelayLine delay_;
     Lfo lfo_;
@@ -125,6 +134,31 @@ void instantaneousFrequency(const float* x, int n, int skip, double& fMin, doubl
         }
     }
     fMean = count > 0 ? sum / count : 0.0;
+}
+
+// The share of one LFO cycle (rate 1 Hz) the delay spends within 0.05 sample of its shortest value, wherever a clamp
+// put it. A ramp x[n] = slope·n goes in: cubic interpolation reproduces a straight line, so the delay in use is
+// (x − y) / slope. A sweep that turns round at its trough spends about 1.5% of the cycle there; one that rests on a
+// clamp spends far more.
+double shareAtClamp(float centreMs, float depthMs) {
+    Vibrato v;
+    v.prepare(kSampleRate, kBlockSize, 1);
+    v.setRateHz(1.0f);
+    v.setCentreDelayMs(centreMs);
+    v.setDepthMs(depthMs);
+    v.reset();
+    constexpr double slope = 1.0e-5;
+    const long settle = 4000, cycle = static_cast<long>(kSampleRate);
+    std::vector<double> delay;
+    for (long i = 0; i < settle + cycle; ++i) {
+        const float x = static_cast<float>(slope * static_cast<double>(i));
+        const float y = v.processSample(0, x);
+        if (i >= settle)
+            delay.push_back((static_cast<double>(x) - static_cast<double>(y)) / slope);
+    }
+    const double shortest = *std::min_element(delay.begin(), delay.end());
+    const auto atFloor = std::count_if(delay.begin(), delay.end(), [shortest](double d) { return d < shortest + 0.05; });
+    return static_cast<double>(atFloor) / static_cast<double>(cycle);
 }
 
 } // namespace
@@ -195,6 +229,15 @@ int main() {
                     1200.0 * std::log2(1.0 + dawlab::kTwoPi * 5.5 * 0.0006),
                     1200.0 * std::log2(1.0 - dawlab::kTwoPi * 5.5 * 0.0006), dawlab::peakAbs(pluck));
         DAWLAB_CHECK(!dawlab::hasNanOrInf(pluck));
+    }
+
+    // ---- 5. The sweep never rests on the clamp ------------------------------------
+    {
+        // centre 1 ms, depth 10 ms: without the depth limit the delay would sit at 2 samples for 47% of each cycle,
+        // and the pitch sweep would go flat (no vibrato at all) for that part of the cycle
+        const double share = shareAtClamp(1.0f, 10.0f);
+        std::printf("centre 1 ms, depth 10 ms: delay at its shortest for %.2f%% of the cycle (must be < 5%%)\n", 100.0 * share);
+        DAWLAB_CHECK(share < 0.05);
     }
 
     return dawlab::test::summary("l10_ex3");

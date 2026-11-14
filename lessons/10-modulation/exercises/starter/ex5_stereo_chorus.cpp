@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <vector>
 
 using dawlab::dsp::Chorus;
 using dawlab::dsp::FractionalDelayLine;
@@ -36,11 +37,13 @@ constexpr int kBlockSize = 512;
 class StereoChorus {
 public:
     static constexpr float kMaxDelayMs = 50.0f;
+    static constexpr float kMinDelaySamples = 2.0f; // readCubic needs one newer sample, plus one for margin
 
     void prepare(double sampleRate, int maxBlockSize, int numChannels) {
         (void)maxBlockSize;
         (void)numChannels; // always processes two channels
         sampleRate_ = sampleRate;
+        minDelayMs_ = static_cast<float>(dawlab::samplesToMs(kMinDelaySamples, sampleRate));
         delay_.prepare(dawlab::msToSamples(kMaxDelayMs, sampleRate) + 8, 2);
         for (Lfo& l : lfo_)
             l.prepare(sampleRate);
@@ -74,9 +77,11 @@ public:
                 float* d = block.getChannelPointer(ch);
                 const float x = d[i];
                 delay_.push(ch, x);
-                // TODO 2: delayMs = centreMs_ + depthMs_ · lfo_[ch].getNextValue();
-                //         convert to samples, clamp to [2, maxRead], read wet with readCubic,
-                //         and output (1 − mix)·x + mix·wet
+                // TODO 2: limit the depth to at most centreMs_ − minDelayMs_ (never below 0), so the sweep never
+                //         rests on the clamp (a fixed 2-sample delay mixed with the dry signal is a comb, null at fs/4);
+                //         delayMs = centreMs_ + depth · lfo_[ch].getNextValue();
+                //         convert to samples, clamp to [kMinDelaySamples, maxRead] (only a rail now), read wet with
+                //         readCubic, and output (1 − mix)·x + mix·wet
                 (void)toSamples;
                 (void)maxRead;
                 d[i] = x;
@@ -86,6 +91,7 @@ public:
 
 private:
     double sampleRate_ = 48000.0;
+    float minDelayMs_ = kMinDelaySamples * 1000.0f / 48000.0f;
     float depthMs_ = 3.0f, centreMs_ = 15.0f, mix_ = 0.5f, phaseOffset_ = 0.25f;
     FractionalDelayLine delay_;
     Lfo lfo_[2];
@@ -164,6 +170,32 @@ void impulsePeakDelaysMs(float phaseOffset, double& leftMs, double& rightMs) {
     }
     leftMs = ms[0];
     rightMs = ms[1];
+}
+
+// The share of one LFO cycle (rate 1 Hz) the left delay spends within 0.05 sample of its shortest value, wherever a
+// clamp put it. A ramp x[n] = slope·n goes in, fully wet: cubic interpolation reproduces a straight line, so the
+// delay in use is (x − y) / slope. A sweep that turns round at its trough spends about 1.5% of the cycle there.
+double shareAtClamp(float centreMs, float depthMs) {
+    constexpr double slope = 1.0e-5;
+    const int settle = 4000, cycle = static_cast<int>(kSampleRate);
+    dawlab::AudioBuffer b(2, settle + cycle);
+    for (int ch = 0; ch < 2; ++ch)
+        for (int i = 0; i < b.getNumSamples(); ++i)
+            b.setSample(ch, i, static_cast<float>(slope * i));
+    StereoChorus c;
+    c.prepare(kSampleRate, kBlockSize, 2);
+    c.setRateHz(1.0f);
+    c.setCentreDelayMs(centreMs);
+    c.setDepthMs(depthMs);
+    c.setMix(1.0f);
+    c.reset();
+    processInBlocks(c, b);
+    std::vector<double> delay;
+    for (int i = settle; i < b.getNumSamples(); ++i)
+        delay.push_back((static_cast<float>(slope * i) - static_cast<double>(b.getSample(0, i))) / slope);
+    const double shortest = *std::min_element(delay.begin(), delay.end());
+    const auto atFloor = std::count_if(delay.begin(), delay.end(), [shortest](double d) { return d < shortest + 0.05; });
+    return static_cast<double>(atFloor) / static_cast<double>(cycle);
 }
 
 } // namespace
@@ -252,6 +284,15 @@ int main() {
         std::printf("Output l10_ex5_stereo_chorus.wav: peak %.3f, L/R correlation %.3f\n", dawlab::peakAbs(pluck),
                     correlation(pluck, 0));
         DAWLAB_CHECK(!dawlab::hasNanOrInf(pluck));
+    }
+
+    // ---- 6. The sweep never rests on the clamp ------------------------------------
+    {
+        // centre 1 ms, depth 20 ms: without the depth limit the delay would sit at 2 samples for about half of each
+        // cycle, and a fixed 2-sample delay mixed with the dry signal is a comb with its first null at fs/4
+        const double share = shareAtClamp(1.0f, 20.0f);
+        std::printf("centre 1 ms, depth 20 ms: delay at its shortest for %.2f%% of the cycle (must be < 5%%)\n", 100.0 * share);
+        DAWLAB_CHECK(share < 0.05);
     }
 
     return dawlab::test::summary("l10_ex5");

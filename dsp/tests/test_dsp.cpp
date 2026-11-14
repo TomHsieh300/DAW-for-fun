@@ -16,6 +16,8 @@
 //   - setting a parameter to the value it already has changes nothing: once or before every block, same output
 //   - a one-pole smoother of a gain, mix, length, delay or frequency arrives at its target exactly (smoothToward in
 //     DspMath.h): it never parks at a subnormal number (toward 0) or a hair short of any other target
+//   - a modulated sweep never rests on its safety clamp: the depth is limited where the sweep is used, after the
+//     smoothers, and the clamp is only a rail (Chorus: depth at most centre - the minimum delay)
 // The Limiter is the one exception to the first rule on purpose: before prepare() it clears the block (and asserts in
 // a Debug build), because a limiter that cannot look ahead cannot keep its ceiling.
 // Every check is table-driven: one row per class (and per variant that takes a different path). The objects live on
@@ -1233,6 +1235,46 @@ void checkSmootherRule() {
     std::printf("a smoother arrives: %d rows, %d failures\n", arriveRows, arriveFailures);
 }
 
+// ---- A modulated sweep never rests on its clamp -----------------------------------------------------------------
+// The depth is limited where the sweep is used, after the smoothers; the clamp stays as a rail that a sweep inside the
+// published ranges never reaches. Resting on it would hold the swept value still for part of every cycle.
+
+// One voice, fully wet, rate 1 Hz, fed a ramp x[n] = slope * n: cubic interpolation reproduces a straight line, so
+// the delay in use is (x - y) / slope. Returns the share of one LFO cycle the delay spends within 0.05 sample of the
+// 2-sample clamp.
+double chorusShareAtClamp(float centreMs, float depthMs) {
+    const auto c = std::make_unique<Chorus>();
+    c->prepare(kSampleRate, kBlock, 1);
+    c->setVoices(1);
+    c->setMix(1.0f);
+    c->setRateHz(1.0f);
+    c->setCentreDelayMs(centreMs);
+    c->setDepthMs(depthMs);
+    c->reset(); // the smoothers jump to their targets
+    constexpr double slope = 1.0e-5;
+    constexpr long settle = 4000; // longer than the deepest delay (31 ms = 1488 samples)
+    const long cycle = static_cast<long>(kSampleRate);
+    long atClamp = 0;
+    for (long i = 0; i < settle + cycle; ++i) {
+        const float x = static_cast<float>(slope * static_cast<double>(i));
+        const float y = c->processSample(0, x);
+        if (i >= settle && (static_cast<double>(x) - static_cast<double>(y)) / slope < 2.05)
+            ++atClamp;
+    }
+    return static_cast<double>(atClamp) / static_cast<double>(cycle);
+}
+
+void checkSweepRule() {
+    // Centre 1 ms with depth 10 ms (both inside the engine's published ranges): without the limit the delay sat at
+    // 2 samples for 47% of the cycle, a fixed comb with its first null at fs/4
+    const double shortCentre = chorusShareAtClamp(1.0f, 10.0f);
+    const double defaults = chorusShareAtClamp(15.0f, 3.0f);
+    std::printf("Chorus centre 1 ms, depth 10 ms: %.2f%% of the cycle at the 2-sample clamp (defaults 15/3: %.2f%%)\n",
+                100.0 * shortCentre, 100.0 * defaults);
+    DAWLAB_CHECK(shortCentre < 0.05);
+    DAWLAB_CHECK(defaults == 0.0);
+}
+
 } // namespace
 
 int main() {
@@ -1274,6 +1316,7 @@ int main() {
     checkMeterCostIsFlat();
     checkSameValueRule();
     checkSmootherRule();
+    checkSweepRule();
 
     return dawlab::test::summary("dsp");
 }

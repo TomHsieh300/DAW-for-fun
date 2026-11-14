@@ -16,6 +16,10 @@
 // - stereo spread: when the right channel reads the same voice's LFO, the phase gets an extra
 //   spread × 0.25 cycle (up to 90° apart), so the left and right detuning are out of sync ->
 //   a wider stereo image (lower left/right correlation).
+// - The sweep never rests on the clamp: the depth in use is limited to centre − the minimum delay
+//   (kMinDelaySamples), after both smoothers. Centre 1 ms with depth 10 ms would otherwise sit on
+//   the 2-sample clamp for 47% of each cycle: a fixed 2-sample delay mixed with the dry signal is a
+//   comb with its first null at fs/4 (12 kHz at 48 kHz). The clamp stays as a rail.
 //
 // Dependencies: Chapter 09 FractionalDelayLine (readCubic), and this chapter's Lfo.
 
@@ -35,6 +39,8 @@ public:
     static constexpr int kMaxVoices = 4;
     static constexpr float kMaxCentreDelayMs = 50.0f;
     static constexpr float kMaxDepthMs = 30.0f;
+    // The shortest delay the sweep may read: readCubic needs one newer sample, plus one for margin
+    static constexpr float kMinDelaySamples = 2.0f;
 
     void prepare(double sampleRate, int maxBlockSize, int numChannels) {
         (void)maxBlockSize; // processed sample by sample; no block scratch buffer needed
@@ -50,6 +56,7 @@ public:
             lfo.setRateHz(rateHz_); // a setRateHz call made before prepare is not lost
         }
 
+        minDelayMs_ = static_cast<float>(samplesToMs(kMinDelaySamples, sampleRate));
         centreSm_.prepare(sampleRate, 20.0);
         depthSm_.prepare(sampleRate, 20.0);
         mixSm_.prepare(sampleRate, 20.0);
@@ -78,7 +85,8 @@ public:
         for (auto& lfo : lfos_)
             lfo.setRateHz(rateHz_);
     }
-    // Maximum deviation of the delay from centre (±depth).
+    // Maximum deviation of the delay from centre (±depth). The depth in use is at most centre − the
+    // minimum delay, so the sweep never rests on the clamp; getDepthMs() returns the value that was set.
     void setDepthMs(float ms) noexcept {
         if (!acceptParameter(ms))
             return;
@@ -160,7 +168,8 @@ private:
     // Done once per time step: smooth the parameters, grab each voice's phase, and advance the LFOs
     void advanceModulation() noexcept {
         centreMs_ = centreSm_.next();
-        depthMs_ = depthSm_.next();
+        // The sweep stays above the minimum delay: depth is limited where it is used, after both smoothers
+        depthMs_ = std::min(depthSm_.next(), std::max(0.0f, centreMs_ - minDelayMs_));
         mix_ = mixSm_.next();
         spread_ = spreadSm_.next();
         for (int v = 0; v < voices_; ++v) {
@@ -181,7 +190,7 @@ private:
         for (int v = 0; v < voices_; ++v) {
             const float m = Lfo::shapeValue(LfoShape::Sine, voicePhase_[v] + phaseOffset);
             const float delayMs = centreMs_ + depthMs_ * m;
-            const float delaySamples = std::clamp(delayMs * msToSamplesF, 2.0f, maxRead);
+            const float delaySamples = std::clamp(delayMs * msToSamplesF, kMinDelaySamples, maxRead); // a rail only
             wet += useCubic_ ? delay_.readCubic(ch, delaySamples) : delay_.readLinear(ch, delaySamples);
         }
         wet /= static_cast<float>(voices_);
@@ -189,6 +198,7 @@ private:
     }
 
     double sampleRate_ = 48000.0;
+    float minDelayMs_ = kMinDelaySamples * 1000.0f / 48000.0f; // kMinDelaySamples in ms, set by prepare()
     int numChannels_ = 2;
     int voices_ = 2;
     float rateHz_ = 0.8f;
