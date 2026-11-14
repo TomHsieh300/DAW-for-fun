@@ -82,6 +82,65 @@ class CheckCopiesTest(unittest.TestCase):
         self.assertIn("differs between", out)
         self.assertNotIn("not in scripts/copied_files.txt", out)
 
+    # ---- S2: --write must not silently drop a chapter ----
+
+    def test_write_refuses_to_drop_a_chapter(self):
+        self.three_chapters_sharing_meters()
+        self.put("14-a", "app/Source/Meters.cpp", "int changed;\n")
+        before = self.list_file.read_bytes()
+        code, out = self.run_script("--write")
+        self.assertEqual(code, 1, out)
+        dropped = [line for line in out.splitlines() if line.startswith("dropped:")]
+        self.assertEqual(len(dropped), 1, out)
+        self.assertTrue(dropped[0].startswith("dropped: 14 from app/Source/Meters.cpp"), dropped[0])
+        self.assertEqual(self.list_file.read_bytes(), before)
+
+    def test_write_with_accept_drops_writes_and_prints_the_drop(self):
+        self.three_chapters_sharing_meters()
+        self.put("14-a", "app/Source/Meters.cpp", "int changed;\n")
+        code, out = self.run_script("--write", "--accept-drops")
+        self.assertEqual(code, 0, out)
+        self.assertIn("dropped: 14 from app/Source/Meters.cpp", out)
+        self.assertIn("15 16 app/Source/Meters.cpp", self.list_file.read_text(encoding="utf-8"))
+        self.assertEqual(self.run_script()[0], 0)
+
+    def test_write_refuses_to_drop_a_whole_line(self):
+        self.three_chapters_sharing_meters()
+        self.put("14-a", "app/Source/Meters.cpp", "int a;\n")
+        self.put("15-b", "app/Source/Meters.cpp", "int b;\n")
+        before = self.list_file.read_bytes()
+        code, out = self.run_script("--write")
+        self.assertEqual(code, 1, out)
+        self.assertEqual(len([line for line in out.splitlines() if line.startswith("dropped:")]), 3, out)
+        self.assertEqual(self.list_file.read_bytes(), before)
+
+    def test_write_adds_a_new_group_without_the_flag(self):
+        self.three_chapters_sharing_meters()
+        for chapter in ("14-a", "15-b"):
+            self.put(chapter, "app/Source/NewShared.h", "#pragma once\n")
+        code, out = self.run_script("--write")
+        self.assertEqual(code, 0, out)
+        self.assertIn("added: 14 15 app/Source/NewShared.h", out)
+        self.assertIn("14 15 app/Source/NewShared.h", self.list_file.read_text(encoding="utf-8"))
+        self.assertEqual(self.run_script()[0], 0)
+
+    def test_write_with_a_list_line_of_a_chapter_that_is_gone(self):
+        self.three_chapters_sharing_meters()
+        self.set_list("14 15 16 app/Source/Meters.cpp", "13 14 app/Source/Old.h")
+        before = self.list_file.read_bytes()
+        code, out = self.run_script("--write")
+        self.assertEqual(code, 1, out)
+        self.assertNotIn("Traceback", out)
+        self.assertIn("dropped: 13 from app/Source/Old.h", out)
+        self.assertEqual(self.list_file.read_bytes(), before)
+
+    def test_check_with_a_list_line_of_a_chapter_that_is_gone_is_a_failure_not_a_crash(self):
+        self.three_chapters_sharing_meters()
+        self.set_list("14 15 16 app/Source/Meters.cpp", "13 14 app/Source/Old.h")
+        code, out = self.run_script()
+        self.assertEqual(code, 1, out)
+        self.assertNotIn("Traceback", out)
+
 
 if __name__ == "__main__":
     unittest.main()

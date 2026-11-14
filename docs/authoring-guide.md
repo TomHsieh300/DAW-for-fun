@@ -129,7 +129,11 @@ Nothing lists the chapters by hand: the build takes every folder of `lessons/` w
 
 `scripts/copied_files.txt` lists the files that are the same in several chapters, and `scripts/check_copies.py` fails
 both when a listed file differs and when two chapters hold an identical file that the list does not name (a new shared
-file, or a new chapter that starts as a copy). `python3 scripts/check_copies.py --write` writes the list again. The
+file, or a new chapter that starts as a copy). `python3 scripts/check_copies.py --write` writes the list again and
+prints what it adds. When a step changes a file it inherited on purpose, that difference is recorded in the same
+commit with `python3 scripts/check_copies.py --write --accept-drops`: without the flag `--write` refuses to take a
+chapter off a line and lists each one as `dropped:`, so a copy that someone forgot to change does not leave the list
+unnoticed. Look at the dropped lines in the diff of `scripts/copied_files.txt` before you commit. The
 scripts `check_copies.py`, `check_links.py` and `build.sh` have unit tests in `scripts/tests`, which the `docs` job runs:
 `python3 -m unittest discover -s scripts/tests -v`.
 

@@ -1,5 +1,7 @@
 # Files that are the same in several chapters, written by scripts/check_copies.py --write.
 # Every line: the chapters, then the path inside each chapter.
+# A difference that is meant to be there (a chapter changes a file it inherited) leaves the list with
+# --write --accept-drops; without the flag --write refuses to drop a chapter.
 18 19 20 app/Source/ArrangementView.h
 15 16 app/Source/AudioHost.cpp
 18 19 20 app/Source/AudioHost.cpp

@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """Check that the files the chapters copy from each other are still the same.
 
-Usage: python3 scripts/check_copies.py            check against scripts/copied_files.txt
-       python3 scripts/check_copies.py --write    write that list from what is in the chapters now
+Usage: python3 scripts/check_copies.py                          check against scripts/copied_files.txt
+       python3 scripts/check_copies.py --write                  write that list from what is in the chapters now
+       python3 scripts/check_copies.py --write --accept-drops   the same, and let a chapter or a line leave the list
 
 Chapters 14 and up each start from a copy of the engine and the application of the chapter before,
 and changing the copy is the lesson. The files a chapter did not change stay in the list below. If
 one of them changes in only one chapter, for example a fix that never reached the other copies,
 this script fails. It also fails for a file that is the same in several chapters but is not in the list
 (a new shared file, or a new chapter that starts as a copy), so that nothing is shared without being
-checked. A difference that is meant to be there leaves the list with --write, where a reviewer sees it
-in the diff. Exits with 1 on a difference. Needs only the standard library.
+checked. A difference that is meant to be there leaves the list with --write --accept-drops. Without
+the flag --write refuses to remove a chapter or a line, lists each one as "dropped:" and leaves the file
+alone, so that a copy someone forgot to change cannot leave the list unnoticed; a file that joins the list
+is only printed as "added:". Exits with 1 on a difference. Needs only the standard library.
 """
 
 import sys
@@ -26,6 +29,8 @@ COPIED_FOLDERS = ["engine", "app", "tests"]
 HEADER = """\
 # Files that are the same in several chapters, written by scripts/check_copies.py --write.
 # Every line: the chapters, then the path inside each chapter.
+# A difference that is meant to be there (a chapter changes a file it inherited) leaves the list with
+# --write --accept-drops; without the flag --write refuses to drop a chapter.
 """
 
 
@@ -50,17 +55,54 @@ def current_groups():
 
 
 def format_line(chapters, name):
-    return " ".join(chapter.split("-")[0] for chapter in chapters) + " " + name
+    return " ".join(number_of(chapter) for chapter in chapters) + " " + name
+
+
+def number_of(chapter):
+    return chapter.split("-")[0]
 
 
 def read_list():
-    numbers = {chapter.split("-")[0]: chapter for chapter in CHAPTERS}
+    """The list as (chapter folders, path). A number with no folder stays as it is: differences() reports it missing."""
+    numbers = {number_of(chapter): chapter for chapter in CHAPTERS}
     entries = []
     for line in LIST.read_text(encoding="utf-8").splitlines():
         if line and not line.startswith("#"):
             *chapters, name = line.split()
-            entries.append(([numbers[number] for number in chapters], name))
+            entries.append(([numbers.get(number, number) for number in chapters], name))
     return entries
+
+
+def list_changes(entries, groups):
+    """What the new groups change in the old list: the (chapter number, path, others) that leave, and the groups that join."""
+    old = {(number_of(chapter), name) for chapters, name in entries for chapter in chapters}
+    new = {(number_of(chapter), name) for chapters, name in groups for chapter in chapters}
+    dropped = []
+    for chapters, name in entries:
+        for chapter in chapters:
+            if (number_of(chapter), name) not in new:
+                others = [number_of(other) for other in chapters if other != chapter]
+                dropped.append((number_of(chapter), name, others))
+    added = [(chapters, name) for chapters, name in groups
+             if any((number_of(chapter), name) not in old for chapter in chapters)]
+    return sorted(dropped, key=lambda d: (d[1], d[0])), added
+
+
+def write_list(accept_drops):
+    groups = current_groups()
+    dropped, added = list_changes(read_list(), groups)
+    for number, name, others in dropped:
+        print(f"dropped: {number} from {name} (was shared with {' '.join(others)})")
+    for chapters, name in added:
+        print(f"added: {format_line(chapters, name)}")
+    if dropped and not accept_drops:
+        print(f"Nothing written: {len(dropped)} chapters would leave the list. If every difference is meant to be there, "
+              "run: python3 scripts/check_copies.py --write --accept-drops")
+        return 1
+    lines = [format_line(chapters, name) for chapters, name in groups]
+    LIST.write_text(HEADER + "\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    print(f"{len(groups)} copied files written to {LIST.relative_to(ROOT).as_posix()}")
+    return 0
 
 
 def differences(chapters, name):
@@ -75,12 +117,12 @@ def differences(chapters, name):
 
 
 def main():
-    if "--write" in sys.argv[1:]:
-        groups = current_groups()
-        lines = [format_line(chapters, name) for chapters, name in groups]
-        LIST.write_text(HEADER + "\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-        print(f"{len(groups)} copied files written to {LIST.relative_to(ROOT).as_posix()}")
-        return 0
+    args = set(sys.argv[1:])
+    if args - {"--write", "--accept-drops"} or ("--accept-drops" in args and "--write" not in args):
+        print(__doc__.split("\n\n")[1], file=sys.stderr)
+        return 2
+    if "--write" in args:
+        return write_list("--accept-drops" in args)
 
     entries = read_list()
     failures = 0
@@ -97,11 +139,12 @@ def main():
     listed = {(tuple(chapters), name) for chapters, name in entries}
     unlisted = [(chapters, name) for chapters, name in current_groups() if (chapters, name) not in listed and name not in failing]
     for chapters, name in unlisted:
-        print(f"{name}: identical in {', '.join(chapter.split('-')[0] for chapter in chapters)} but not in scripts/copied_files.txt")
+        print(f"{name}: identical in {', '.join(number_of(chapter) for chapter in chapters)} but not in scripts/copied_files.txt")
     failures += len(unlisted)
     print(f"{len(entries)} copied files, {failures} differ or are not listed")
     if failures:
-        print("Change every copy, or, if the difference is meant to be there: python3 scripts/check_copies.py --write")
+        print("Change every copy, or, if the difference is meant to be there: python3 scripts/check_copies.py --write --accept-drops")
+        print("(a file that is only missing from the list: python3 scripts/check_copies.py --write). Review the list in the diff.")
     return 1 if failures else 0
 
 
