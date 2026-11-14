@@ -21,7 +21,7 @@ chapter 18's.
 ### The map: a value, three buffers
 
 `TempoMap.h` is Steps 1 and 2's map as the engine needs it: a fixed-size value - up to 256 points in a
-`std::array`, their starts in seconds next to them - so that copying it allocates nothing. `setTempo(bpm)` is now a
+`std::array`, their starts in seconds next to them - so that copying it allocates nothing, and neither does making one or setting it to one tempo. `setTempo(bpm)` is now a
 map of one point, and everything that converted with "the" tempo converts through the map.
 
 The UI thread gives the transport a new map at any time; the audio thread plays a block with one. A map is 8 KB: no

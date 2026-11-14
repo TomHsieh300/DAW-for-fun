@@ -16,7 +16,7 @@
 
 ### Map：一個值，三個 buffer
 
-`TempoMap.h` 是 engine 需要的那種 Step 1 和 2 的 map：一個固定大小的值——最多 256 個點放在 `std::array` 裡，它們以秒計的起點放在旁邊——所以複製它不會配置記憶體。`setTempo(bpm)` 現在是一個只有一個點的 map，所有以前用「那個」tempo 換算的東西，現在都經過 map 換算。
+`TempoMap.h` 是 engine 需要的那種 Step 1 和 2 的 map：一個固定大小的值——最多 256 個點放在 `std::array` 裡，它們以秒計的起點放在旁邊——所以複製它不會配置記憶體，建立一個 map 或把它設成單一 tempo 也不會。`setTempo(bpm)` 現在是一個只有一個點的 map，所有以前用「那個」tempo 換算的東西，現在都經過 map 換算。
 
 UI thread 隨時會給 transport 一個新的 map；audio thread 用一個 map 播放一個 block。一個 map 有 8 KB：沒有 atomic 裝得下。Seqlock 可以，但它的讀者會讀寫入者正在寫的記憶體，C++ 稱之為 data race（ThreadSanitizer 也會回報）。所以 transport 保存**三個** map 並把它們傳來傳去：
 

@@ -53,7 +53,15 @@ public:
                 starts_[static_cast<size_t>(i - 1)] + secondsInto(i - 1, static_cast<double>(point(i).tick - point(i - 1).tick));
         return true;
     }
-    void setConstant(double bpm) noexcept { set({{0, std::clamp(bpm, kMinBpm, kMaxBpm), false}}); }
+    // One tempo, written into the map itself: no vector, so the constructor, constant() and this never allocate.
+    // set() refuses a NaN, so this does too (std::clamp would pass it on); any other bpm, infinity too, clamps.
+    void setConstant(double bpm) noexcept {
+        if (std::isnan(bpm))
+            return;
+        points_[0] = {0, std::clamp(bpm, kMinBpm, kMaxBpm), false};
+        starts_[0] = 0.0;
+        count_ = 1;
+    }
 
     int size() const noexcept { return count_; }
     const TempoPoint& point(int i) const noexcept { return points_[static_cast<size_t>(i)]; }

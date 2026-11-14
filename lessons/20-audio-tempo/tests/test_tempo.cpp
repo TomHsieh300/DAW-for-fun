@@ -18,6 +18,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <new>
 #include <random>
 #include <thread>
@@ -416,6 +417,35 @@ void testNoAllocation() {
     DAWLAB_CHECK(allocs == 0 && changes > 20);
 }
 
+void testMapIsMadeWithoutAllocation() {
+    // Making a map, or setting it to one tempo, writes into the map itself: nothing on the heap. The header says so,
+    // and Mixer's fallback map and Transport build theirs this way.
+    double nan = std::numeric_limits<double>::quiet_NaN();
+    long allocs = 0;
+    {
+        CountScope count;
+        TempoMap m;
+        m.setConstant(90.0);
+        const TempoMap c = TempoMap::constant(100.0);
+        DAWLAB_CHECK(m.size() == 1 && m.point(0).bpm == 90.0);
+        DAWLAB_CHECK(c.size() == 1 && c.point(0).bpm == 100.0);
+        // The bounds as before: NaN is refused (the map stays), out of range clamps, infinity too.
+        m.setConstant(nan);
+        DAWLAB_CHECK(m.size() == 1 && m.point(0).bpm == 90.0);
+        m.setConstant(5.0);
+        DAWLAB_CHECK(m.point(0).bpm == TempoMap::kMinBpm);
+        m.setConstant(5000.0);
+        DAWLAB_CHECK(m.point(0).bpm == TempoMap::kMaxBpm);
+        m.setConstant(-std::numeric_limits<double>::infinity());
+        DAWLAB_CHECK(m.point(0).bpm == TempoMap::kMinBpm);
+        m.setConstant(std::numeric_limits<double>::infinity());
+        DAWLAB_CHECK(m.point(0).bpm == TempoMap::kMaxBpm);
+        allocs = gAllocs.exchange(0);
+    }
+    std::printf("  a map made, set to one tempo and made with constant(): %ld allocations\n", allocs);
+    DAWLAB_CHECK(allocs == 0);
+}
+
 void testThreads() {
     // The UI thread publishes maps whose points all have one tempo, a different one each time; the audio thread
     // must only ever see whole maps.
@@ -514,6 +544,7 @@ int main() {
     testSwitchedOnWhilePlaying();
     testSongEndFollowsTheMap();
     testNoAllocation();
+    testMapIsMadeWithoutAllocation();
     testThreads();
     testLoopUnitArrivesWhole();
     return dawlab::test::summary("l19_test_tempo");
