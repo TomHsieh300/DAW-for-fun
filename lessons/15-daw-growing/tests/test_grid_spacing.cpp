@@ -12,6 +12,7 @@
 
 #include <dawlab/Check.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -34,9 +35,11 @@ bool followsTheRules(const BarGrid& g, double firstBar, double lastBar, double w
     const double pxPerBar = widthPx / (lastBar - firstBar);
     const int64_t lastDrawn = g.first + (g.count - 1) * g.step;
     const char* broken = nullptr;
-    if (g.count <= 0)
-        broken = "no line in a visible range";
-    else if (static_cast<double>(g.count) > std::floor(widthPx / minPx) + 1.0)
+    if (g.count <= 0) {
+        // Zoomed in inside one bar: no bar starts in view, so no line is right.
+        if (g.step != 1 || std::ceil(std::max(0.0, firstBar)) <= lastBar)
+            broken = "no line, though a bar starts in view";
+    } else if (static_cast<double>(g.count) > std::floor(widthPx / minPx) + 1.0)
         broken = "more lines than width / minPx + 1";
     else if (!isPowerOfTwo(g.step))
         broken = "the step is not a power of 2";
@@ -125,6 +128,7 @@ void testNothingToDraw() {
     DAWLAB_CHECK(barGrid(0.0, 10.0, 1400.0, nan).count == 0);
     DAWLAB_CHECK(barGrid(0.0, 10.0, 1400.0, 0.0).count == 0);
     DAWLAB_CHECK(barGrid(0.0, 1.0e300, 1400.0, 8.0).count == 0); // beyond any song: refused, not looped over
+    DAWLAB_CHECK(barGrid(0.0, 10.0, 1.0e-300, 8.0).count == 1);  // one line, not a step that overflows
     // A range before bar 0 starts at bar 0.
     const BarGrid before = barGrid(-3.5, 4.0, 1400.0, 8.0);
     DAWLAB_CHECK(before.first == 0 && before.count == 5);
