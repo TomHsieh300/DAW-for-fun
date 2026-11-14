@@ -17,7 +17,8 @@
 //   - a one-pole smoother of a gain, mix, length, delay or frequency arrives at its target exactly (smoothToward in
 //     DspMath.h): it never parks at a subnormal number (toward 0) or a hair short of any other target
 //   - a modulated sweep never rests on its safety clamp: the depth is limited where the sweep is used, after the
-//     smoothers, and the clamp is only a rail (Chorus: depth at most centre - the minimum delay)
+//     smoothers, and the clamp is only a rail (Chorus: depth at most centre - the minimum delay; Phaser: octaves at
+//     most the room between the centre and the nearer end of [20 Hz, 0.45 fs])
 // The Limiter is the one exception to the first rule on purpose: before prepare() it clears the block (and asserts in
 // a Debug build), because a limiter that cannot look ahead cannot keep its ceiling.
 // Every check is table-driven: one row per class (and per variant that takes a different path). The objects live on
@@ -1239,9 +1240,25 @@ void checkSmootherRule() {
 // The depth is limited where the sweep is used, after the smoothers; the clamp stays as a rail that a sweep inside the
 // published ranges never reaches. Resting on it would hold the swept value still for part of every cycle.
 
-// One voice, fully wet, rate 1 Hz, fed a ramp x[n] = slope * n: cubic interpolation reproduces a straight line, so
-// the delay in use is (x - y) / slope. Returns the share of one LFO cycle the delay spends within 0.05 sample of the
-// 2-sample clamp.
+// A modulated delay, fully wet, rate 1 Hz (prepared, mono, its smoothers at their targets), fed a ramp
+// x[n] = slope * n: cubic interpolation reproduces a straight line, so the delay in use is (x - y) / slope. Returns
+// the share of one LFO cycle the delay spends within 0.05 sample of `clampSamples`.
+template <typename Fx>
+double delayShareAtClamp(Fx& fx, double clampSamples) {
+    constexpr double slope = 1.0e-5;
+    constexpr long settle = 4000; // longer than the deepest delay (31 ms = 1488 samples)
+    const long cycle = static_cast<long>(kSampleRate);
+    long atClamp = 0;
+    for (long i = 0; i < settle + cycle; ++i) {
+        const float x = static_cast<float>(slope * static_cast<double>(i));
+        const float y = fx.processSample(0, x);
+        if (i >= settle && (static_cast<double>(x) - static_cast<double>(y)) / slope < clampSamples + 0.05)
+            ++atClamp;
+    }
+    return static_cast<double>(atClamp) / static_cast<double>(cycle);
+}
+
+// One voice: the share of the cycle at the 2-sample clamp
 double chorusShareAtClamp(float centreMs, float depthMs) {
     const auto c = std::make_unique<Chorus>();
     c->prepare(kSampleRate, kBlock, 1);
@@ -1251,17 +1268,28 @@ double chorusShareAtClamp(float centreMs, float depthMs) {
     c->setCentreDelayMs(centreMs);
     c->setDepthMs(depthMs);
     c->reset(); // the smoothers jump to their targets
-    constexpr double slope = 1.0e-5;
-    constexpr long settle = 4000; // longer than the deepest delay (31 ms = 1488 samples)
-    const long cycle = static_cast<long>(kSampleRate);
-    long atClamp = 0;
-    for (long i = 0; i < settle + cycle; ++i) {
-        const float x = static_cast<float>(slope * static_cast<double>(i));
-        const float y = c->processSample(0, x);
-        if (i >= settle && (static_cast<double>(x) - static_cast<double>(y)) / slope < 2.05)
-            ++atClamp;
+    return delayShareAtClamp(*c, 2.0);
+}
+
+// The share of one LFO cycle (rate 1 Hz) the phaser's allpass frequency spends on the rail of its clamp, 20 Hz or
+// 0.45 fs (getCurrentCentreHz() is the frequency in use)
+double phaserShareOnRail(double sampleRate, float centreHz, float sweepOctaves) {
+    const auto p = std::make_unique<Phaser>();
+    p->prepare(sampleRate, kBlock, 1);
+    p->setRateHz(1.0f);
+    p->setDepth(1.0f);
+    p->setSweepOctaves(sweepOctaves);
+    p->setCentreHz(centreHz);
+    p->reset();
+    const float top = static_cast<float>(0.45 * sampleRate);
+    const long cycle = static_cast<long>(sampleRate);
+    long onRail = 0;
+    for (long i = 0; i < cycle; ++i) {
+        p->processSample(0, 0.0f);
+        const float hz = p->getCurrentCentreHz();
+        onRail += (hz >= top || hz <= 20.0f) ? 1 : 0;
     }
-    return static_cast<double>(atClamp) / static_cast<double>(cycle);
+    return static_cast<double>(onRail) / static_cast<double>(cycle);
 }
 
 void checkSweepRule() {
@@ -1273,6 +1301,34 @@ void checkSweepRule() {
                 100.0 * shortCentre, 100.0 * defaults);
     DAWLAB_CHECK(shortCentre < 0.05);
     DAWLAB_CHECK(defaults == 0.0);
+
+    // Phaser: the engine's top centre, 8000 Hz, swept +-2 octaves would reach 32 kHz; and +-6 octaves around 800 Hz
+    // reaches below 20 Hz too. Without the limit the frequency sat on the rail for about a quarter of the cycle. With
+    // it the sweep may touch an end at its turning point, where the LFO's float sine rounds to exactly +-1 for a few
+    // samples (about 0.01% of the cycle), as the chorus touches its 2 samples at the trough; it never rests there.
+    for (const double sr : {48000.0, 44100.0}) {
+        const double top = phaserShareOnRail(sr, 8000.0f, 2.0f);
+        const double wide = phaserShareOnRail(sr, 800.0f, 6.0f);
+        std::printf("Phaser at %.0f Hz: on the rail for %.2f%% of the cycle (centre 8000 Hz, +-2 oct), %.2f%% (800 Hz, "
+                    "+-6 oct)\n",
+                    sr, 100.0 * top, 100.0 * wide);
+        DAWLAB_CHECK(top < 0.001);
+        DAWLAB_CHECK(wide < 0.001);
+    }
+
+    // Flanger (a pin): its delay runs from the base (at least 0.1 ms, 4.8 samples) upward, never down to its
+    // 1-sample clamp
+    const auto f = std::make_unique<Flanger>();
+    f->prepare(kSampleRate, kBlock, 1);
+    f->setFeedback(0.0f);
+    f->setMix(1.0f);
+    f->setRateHz(1.0f);
+    f->setDelayMs(0.1f);
+    f->setDepthMs(5.0f);
+    f->reset();
+    const double flanger = delayShareAtClamp(*f, 1.0);
+    std::printf("Flanger delay 0.1 ms, depth 5 ms: %.2f%% of the cycle at the 1-sample clamp\n", 100.0 * flanger);
+    DAWLAB_CHECK(flanger == 0.0);
 }
 
 } // namespace

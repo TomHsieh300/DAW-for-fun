@@ -77,6 +77,8 @@ public:
     void setLfoPhase(float phase01) noexcept { lfo_.setPhase(phase01); }
     void setMix(float mix) noexcept { mixSm_.setTarget(std::clamp(mix, 0.0f, 1.0f)); }
     int getStages() const noexcept { return numStages_; }
+    // The ratio every stage's fc was multiplied by for the most recent sample
+    float getScale() const noexcept { return scale_; }
 
     // ---- Theory --------------------------------------------------------------
     // Total phase (radians): Σ φ_i(f) after multiplying every fc by scale
@@ -122,8 +124,10 @@ private:
         mix_ = mixSm_.next();
         // Common ratio on the exponential scale: every stage's fc is multiplied by the same 2^(depth · octaves · lfo), preserving the ratios between stages
         const float m = lfo_.getNextValue();
-        // TODO 3: scale = 2^(depth_ · sweepOctaves_ · m); each stage's fc = baseHz_[s] · scale,
-        //         clamped to [20 Hz, 0.45·fs]; then set stages_[s]'s coefficients with
+        // TODO 3: first limit the octaves depth_ · sweepOctaves_ to the room between the lowest stage and 20 Hz and
+        //         between the highest stage and 0.45·fs (log2 of each ratio, never below 0), so no stage rests on the
+        //         clamp; scale_ = 2^(octaves · m); each stage's fc = baseHz_[s] · scale_,
+        //         clamped to [20 Hz, 0.45·fs] (only a rail now); then set stages_[s]'s coefficients with
         //         Phaser::makeFirstOrderAllpass(fc, sampleRate_) (only the first numStages_ stages).
         (void)m;
     }
@@ -146,6 +150,7 @@ private:
     Lfo lfo_;
     dawlab::dsp::detail::ModParamSmoother mixSm_{0.5f};
     float mix_ = 0.5f;
+    float scale_ = 1.0f;
 };
 
 template <typename Effect>
@@ -225,6 +230,28 @@ void checkNotches(const char* label, StaggeredPhaser& p, double scale) {
     }
     std::printf("\n");
     DAWLAB_CHECK(static_cast<int>(notches.size()) == expected);
+}
+
+// The share of one LFO cycle (rate 1 Hz) that the lowest or the highest stage spends on the rail of the clamp,
+// 20 Hz or 0.45 fs (getScale() is the ratio in use)
+double shareOnRail(const std::vector<float>& fcs, float octaves) {
+    StaggeredPhaser p;
+    p.prepare(kSampleRate, kBlockSize, 1);
+    p.setStageFrequencies(fcs);
+    p.setRateHz(1.0f);
+    p.setDepth(1.0f);
+    p.setSweepOctaves(octaves);
+    p.reset();
+    const float lowest = *std::min_element(fcs.begin(), fcs.end());
+    const float highest = *std::max_element(fcs.begin(), fcs.end());
+    const float top = static_cast<float>(0.45 * kSampleRate);
+    const int cycle = static_cast<int>(kSampleRate);
+    int onRail = 0;
+    for (int i = 0; i < cycle; ++i) {
+        p.processSample(0, 0.0f);
+        onRail += (highest * p.getScale() >= top || lowest * p.getScale() <= 20.0f) ? 1 : 0;
+    }
+    return static_cast<double>(onRail) / static_cast<double>(cycle);
 }
 
 } // namespace
@@ -321,6 +348,16 @@ int main() {
             DAWLAB_CHECK(!dawlab::hasNanOrInf(noise));
         }
         std::printf("  -> The staggered version's two notches are further apart and each is broader, so the sweep sounds more \"open\".\n");
+    }
+
+    // ---- 5. The sweep never rests on the clamp ----------------------------------
+    {
+        // 300 .. 4800 Hz swept +-3 octaves: the top stage would reach 38.4 kHz and sit on 0.45 fs for a quarter of each
+        // cycle. The octaves in use are limited to the room between the stages and the ends; the sweep may touch an end
+        // only at its turning point (a few samples where the LFO's float sine rounds to exactly +-1).
+        const double share = shareOnRail({300.0f, 600.0f, 1200.0f, 4800.0f}, 3.0f);
+        std::printf("300-4800 Hz, +-3 octaves: a stage on the rail for %.2f%% of the cycle (must be < 0.1%%)\n", 100.0 * share);
+        DAWLAB_CHECK(share < 0.001);
     }
 
     return dawlab::test::summary("l10_ex8");

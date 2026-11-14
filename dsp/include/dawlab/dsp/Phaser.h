@@ -20,6 +20,11 @@
 // Here the Chapter 02 Biquad serves as the container for each stage: setting b2 = a2 = 0 gives a
 // first-order section (b0 = a, b1 = 1, b2 = 0, a1 = a, a2 = 0).
 //
+// The sweep never rests on the clamp [kMinHz, kMaxHzOfFs·fs]: the octaves in use are limited to the room
+// between the centre and the nearer end, after the smoothers (centre 8000 Hz swept ±2 octaves would
+// otherwise sit at 0.45·fs for a quarter of each cycle, and the sweep would stall there). The clamp
+// stays as a rail.
+//
 // Dependencies: Chapter 02 Biquad, and this chapter's Lfo.
 
 #include <dawlab/AudioBuffer.h>
@@ -38,6 +43,9 @@ class Phaser {
 public:
     static constexpr int kMinStages = 2;
     static constexpr int kMaxStages = 12;
+    // The allpass frequency stays inside [kMinHz, kMaxHzOfFs · fs]
+    static constexpr float kMinHz = 20.0f;
+    static constexpr double kMaxHzOfFs = 0.45;
 
     void prepare(double sampleRate, int maxBlockSize, int numChannels) {
         sampleRate_ = sampleRate;
@@ -104,7 +112,8 @@ public:
     }
     void setLfoShape(LfoShape shape) noexcept { lfo_.setShape(shape); }
     void setLfoPhase(float phase01) noexcept { lfo_.setPhase(phase01); }
-    // At depth = 1 the sweep is ±sweepOctaves (default ±2 octaves = 4 octaves in total)
+    // At depth = 1 the sweep is ±sweepOctaves (default ±2 octaves = 4 octaves in total); the sweep in use
+    // is at most the room between the centre and the nearer end of [kMinHz, kMaxHzOfFs · fs]
     void setSweepOctaves(float octaves) noexcept {
         if (!acceptParameter(octaves))
             return;
@@ -179,10 +188,14 @@ private:
         feedback_ = feedbackSm_.next();
         mix_ = mixSm_.next();
 
-        // Exponential scale: fc = centre · 2^(depth · octaves · lfo), because the ear hears pitch logarithmically
+        // Exponential scale: fc = centre · 2^(depth · octaves · lfo), because the ear hears pitch logarithmically.
+        // The sweep never rests on the clamp: the octaves in use are limited to the room between the centre and the
+        // nearer end, so the clamp below is a rail only.
+        const float maxHz = static_cast<float>(kMaxHzOfFs * sampleRate_);
+        const float room = std::max(0.0f, std::min(std::log2(maxHz / centre), std::log2(centre / kMinHz)));
         const float m = lfo_.getNextValue();
-        const float octaves = depth * sweepOctaves_ * m;
-        currentHz_ = std::clamp(centre * std::exp2(octaves), 20.0f, static_cast<float>(0.45 * sampleRate_));
+        const float octaves = std::min(depth * sweepOctaves_, room) * m;
+        currentHz_ = std::clamp(centre * std::exp2(octaves), kMinHz, maxHz);
         uiCentreHz_.store(currentHz_);
 
         const BiquadCoefficients c = makeFirstOrderAllpass(currentHz_, sampleRate_);
