@@ -33,7 +33,8 @@ namespace detail {
 // First-order (one-pole) parameter smoother shared by the Chapter 10 effects:
 //   y[n] = y[n-1] + k (target - y[n-1]),  k = 1 - exp(-1 / (τ · fs))
 // τ is the time constant: after τ the smoother has covered 63% of the distance, and after
-// about 5τ it is considered to have arrived.
+// about 5τ it is considered to have arrived. It really does arrive: smoothToward (DspMath.h)
+// takes the target once it is within 1e-6, or once float rounding no longer moves the value.
 class ModParamSmoother {
 public:
     explicit ModParamSmoother(float initialValue = 0.0f) noexcept : current_(initialValue), target_(initialValue) {}
@@ -48,9 +49,7 @@ public:
     float getCurrent() const noexcept { return current_; }
 
     float next() noexcept {
-        current_ += coeff_ * (target_ - current_);
-        if (std::abs(target_ - current_) < 1e-6f) // Snap to the target once converged, avoiding denormals and a forever-almost-there tail
-            current_ = target_;
+        current_ = smoothToward(current_, target_, coeff_);
         return current_;
     }
 

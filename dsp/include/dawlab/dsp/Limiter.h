@@ -261,11 +261,9 @@ public:
             // (2) The gain this sample needs: g = min(1, ceiling / peak)
             const float g = (peak > ceiling) ? ceiling / peak : 1.0f;
 
-            // (3) Release: upward, the gain can only return to 1 at one-pole speed; downward, it follows instantly
-            float released = releasedGain_ + (1.0f - releasedGain_) * cRel;
-            if (released > 1.0f - 1.0e-6f) // once close enough to 1, snap to 1 so it never stays a hair short
-                released = 1.0f;
-            releasedGain_ = std::min(g, released);
+            // (3) Release: upward, the gain can only return to 1 at one-pole speed; downward, it follows instantly.
+            // smoothToward arrives at exactly 1: float rounding would otherwise stall the glide about 1e-4 short of it.
+            releasedGain_ = std::min(g, smoothToward(releasedGain_, 1.0f, cRel));
 
             // (4) Minimum within the lookahead window (length L+1)
             const float m = windowMin_.push(releasedGain_);

@@ -1213,6 +1213,23 @@ void checkSmootherRule() {
                          }),
                          [](TransientShaper&) {}, 1.5, 0.0f,
                          [](const TransientShaper& t) { return t.getLastGainDb() == 0.0f; });
+    // Toward a target other than 0 the rounding stall shows as a value a hair short of it
+    checkSmootherArrives("Limiter release back to 1 after a loud part",
+                         preparedAt<Limiter>([](Limiter& l) { l.setInputGainDb(12.0f); }),
+                         [](Limiter& l) { l.setInputGainDb(0.0f); }, 1.5, 0.01f,
+                         [](const Limiter& l) { return l.getGainReductionDb() == 0.0f; });
+    checkSmootherArrives("Phaser::setCentreHz(1200), depth 0", preparedAt<Phaser>([](Phaser& p) {
+                             p.setDepth(0.0f);
+                             p.reset();
+                         }),
+                         [](Phaser& p) { p.setCentreHz(1200.0f); }, 0.5, 0.25f,
+                         [](const Phaser& p) { return p.getCurrentCentreHz() == 1200.0f; });
+    checkSmootherArrives("Flanger::setDelayMs(5), depth 0", preparedAt<Flanger>([](Flanger& f) {
+                             f.setDepthMs(0.0f);
+                             f.reset();
+                         }),
+                         [](Flanger& f) { f.setDelayMs(5.0f); }, 0.5, 0.25f,
+                         [](const Flanger& f) { return f.getCurrentDelayMs() == 5.0f; });
     std::printf("a smoother arrives: %d rows, %d failures\n", arriveRows, arriveFailures);
 }
 
