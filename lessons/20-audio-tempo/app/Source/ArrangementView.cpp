@@ -112,6 +112,14 @@ float ArrangementView::sampleToX(double sample) const noexcept {
 
 double ArrangementView::xToSample(float x) const noexcept { return viewStart_ + (x - kHeaderWidth) * samplesPerPixel_; }
 
+grid::BarGrid ArrangementView::getBarGrid(double minPx) const noexcept {
+    // Bars are ticks: through the tempo map (chapter 19), two conversions for the whole view.
+    const double barTicks = session_.getEngine().getTransport().getTimeSignature().numerator * 960.0;
+    return grid::barGrid(session_.exactTickOfSample(viewStart_) / barTicks,
+                         session_.exactTickOfSample(xToSample(static_cast<float>(getWidth()))) / barTicks,
+                         static_cast<double>(getWidth() - kHeaderWidth), minPx);
+}
+
 int ArrangementView::getLaneHeight() const noexcept {
     const int lanes = std::max(1, session_.getNumTracks());
     const int automation = static_cast<int>(shownLanes_.size()) * kAutomationHeight;
@@ -409,29 +417,37 @@ void ArrangementView::paintRuler(juce::Graphics& g, juce::Rectangle<int> area) {
         g.fillRect(juce::Rectangle<float>(lx0, static_cast<float>(area.getBottom() - 8), lx1 - lx0, 8.0f));
     }
 
-    // bar lines and numbers, beat ticks
-    // Beats are ticks; the tempo map says where they are, so they lie closer where the song is faster.
+    // bar lines and numbers, beat ticks. getBarGrid() says which bars get a line (8 px apart at least) and a
+    // number (30 px), so the loop runs over the lines drawn, not over every bar in view (GridSpacing.h).
+    // Beat ticks only when every bar has its line and beats are more than 6 px apart.
+    // Beats are ticks; the tempo map says where they are, so they lie closer where the song is faster. The
+    // spacing is the average over the view.
     const int beatsPerBar = tr.getTimeSignature().numerator;
-    const auto firstBeat = static_cast<juce::int64>(std::floor(session_.exactTickOfSample(viewStart_) / 960.0));
-    const auto lastBeat = static_cast<juce::int64>(std::ceil(session_.exactTickOfSample(xToSample(static_cast<float>(getWidth()))) / 960.0));
-    for (auto b = std::max<juce::int64>(0, firstBeat); b <= lastBeat; ++b) {
-        const float x = sampleToX(static_cast<double>(session_.sampleOfTick(b * 960)));
-        if (x < kHeaderWidth)
+    const int64_t barTicks = static_cast<int64_t>(beatsPerBar) * 960;
+    const grid::BarGrid lines = getBarGrid(8.0);
+    const grid::BarGrid numbers = getBarGrid(30.0);
+    const bool beatTicks = lines.step == 1 && lines.pxPerBar / beatsPerBar > 6.0;
+    // With beat ticks, the bar that starts left of the view has some of its beats in it.
+    for (int64_t i = beatTicks ? -1 : 0; i < lines.count; ++i) {
+        const int64_t bar = lines.first + i * lines.step; // 0-based: bar 1 is 0
+        if (bar < 0)
             continue;
-        const double pixelsPerBeat = static_cast<double>(sampleToX(static_cast<double>(session_.sampleOfTick((b + 1) * 960))) - x);
-        const int barStep = pixelsPerBeat * beatsPerBar < 30.0 ? 4 : 1; // fewer numbers when zoomed out
-        const bool isBar = b % beatsPerBar == 0;
-        const auto bar = b / beatsPerBar + 1;
-        if (isBar) {
+        const float x = sampleToX(static_cast<double>(session_.sampleOfTick(bar * barTicks)));
+        if (i >= 0 && x >= kHeaderWidth) {
             g.setColour(DawColours::textDim());
             g.drawVerticalLine(static_cast<int>(x), static_cast<float>(area.getY() + 4), static_cast<float>(area.getBottom()));
-            if ((bar - 1) % barStep == 0) {
+            if (bar % numbers.step == 0) {
                 g.setColour(DawColours::text());
-                g.drawText(juce::String(bar), static_cast<int>(x) + 3, area.getY() + 2, 40, 14, juce::Justification::left);
+                g.drawText(juce::String(bar + 1), static_cast<int>(x) + 3, area.getY() + 2, 40, 14, juce::Justification::left);
             }
-        } else if (pixelsPerBeat > 6.0) {
-            g.setColour(DawColours::outline());
-            g.drawVerticalLine(static_cast<int>(x), static_cast<float>(area.getBottom() - 6), static_cast<float>(area.getBottom()));
+        }
+        if (!beatTicks)
+            continue;
+        g.setColour(DawColours::outline());
+        for (int b = 1; b < beatsPerBar; ++b) {
+            const float bx = sampleToX(static_cast<double>(session_.sampleOfTick(bar * barTicks + b * 960)));
+            if (bx >= kHeaderWidth && bx < static_cast<float>(getWidth()))
+                g.drawVerticalLine(static_cast<int>(bx), static_cast<float>(area.getBottom() - 6), static_cast<float>(area.getBottom()));
         }
     }
 }
@@ -447,17 +463,14 @@ void ArrangementView::paintLane(juce::Graphics& g, int lane, juce::Rectangle<int
     // lane background + bar grid
     g.setColour(selected ? DawColours::panelLight().withAlpha(0.6f) : (lane % 2 ? DawColours::background() : DawColours::background().brighter(0.03f)));
     g.fillRect(area);
+    // The ruler's bar lines (GridSpacing.h): every bar, or every 2nd, 4th ... when they would be closer than 8 px.
     const int64_t barTicks = static_cast<int64_t>(tr.getTimeSignature().numerator) * 960;
+    const grid::BarGrid lines = getBarGrid(8.0);
     g.setColour(DawColours::outline().withAlpha(0.5f));
-    float lastX = -100.0f;
-    for (int64_t t = static_cast<int64_t>(std::floor(session_.exactTickOfSample(viewStart_) / static_cast<double>(barTicks))) * barTicks;; t += barTicks) {
-        const float x = sampleToX(static_cast<double>(session_.sampleOfTick(t)));
-        if (x >= static_cast<float>(getWidth()))
-            break;
-        if (x >= kHeaderWidth && x - lastX > 8.0f) { // not when the bars are too close to tell apart
+    for (int64_t i = 0; i < lines.count; ++i) {
+        const float x = sampleToX(static_cast<double>(session_.sampleOfTick((lines.first + i * lines.step) * barTicks)));
+        if (x >= kHeaderWidth)
             g.drawVerticalLine(static_cast<int>(x), static_cast<float>(area.getY()), static_cast<float>(area.getBottom()));
-            lastX = x;
-        }
     }
 
     // clips
