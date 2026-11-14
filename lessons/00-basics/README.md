@@ -69,7 +69,7 @@ flowchart LR
 .\scripts\build.ps1 -Only 14-daw-8track -Juce          # JUCE chapters (13, 14) need -Juce
 ```
 
-`-Only` takes the name of a folder under `lessons/` (for example `00-basics` or `14-daw-8track`). If you mistype it (there is no such folder under `lessons/`), that name is silently skipped and only the self-tests of the shared code (`common_selftest`, `dsp_selftest`) get built; if you finish a build and find no executable for the chapter, check the spelling first. To build several chapters at once, separate them with commas: `-Only 13-vst-hosting,14-daw-8track`.
+`-Only` takes the name of a folder under `lessons/` (for example `00-basics` or `14-daw-8track`). If you mistype it (there is no such folder under `lessons/`), the configure step stops with an error that names the wrong word and lists the valid chapter names, so nothing is built; check the spelling against that list. To build several chapters at once, separate them with commas: `-Only 13-vst-hosting,14-daw-8track`.
 
 If PowerShell complains that scripts cannot be loaded, use `powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1 -Only 00-basics`.
 

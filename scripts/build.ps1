@@ -57,7 +57,7 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 if (-not $NoTest) {
     Write-Host "==> test" -ForegroundColor Cyan
-    $testArgs = @("--test-dir", $buildPath, "-C", $Config, "--output-on-failure")
+    $testArgs = @("--test-dir", $buildPath, "-C", $Config, "--output-on-failure", "--no-tests=error")
     if ($TestLabel) { $testArgs += @("-L", $TestLabel) }
     & $ctest @testArgs
     exit $LASTEXITCODE

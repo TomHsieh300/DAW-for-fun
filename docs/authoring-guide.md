@@ -137,6 +137,10 @@ unnoticed. Look at the dropped lines in the diff of `scripts/copied_files.txt` b
 scripts `check_copies.py`, `check_links.py` and `build.sh` have unit tests in `scripts/tests`, which the `docs` job runs:
 `python3 -m unittest discover -s scripts/tests -v`.
 
+A name in `--only` / `-Only` that is neither a folder of `lessons/` nor one of the groups `juce` and `engine` is an
+error: CMake refuses it at configure time and lists the valid names, so a typo cannot turn into a build that has only
+the shared code in it. A test run that finds no test fails too (`ctest --no-tests=error`).
+
 From chapter 15 on an `Engine` is some 190 KB. A test function keeps at most two of them as local variables, and
 more with `std::make_unique<Engine>()`: a Debug build of MSVC gives every block its own room on Windows' 1 MB stack.
 `scripts/check_test_stacks.py` checks it in the CI.

@@ -27,7 +27,8 @@ usage() {
     cat <<'EOF'
 Options:
   --only <a,b,...>     build only these chapters (folder names, comma-separated), or the groups
-                       juce (chapters with JUCE programs) and engine (chapters with an engine/)
+                       juce (chapters with JUCE programs) and engine (chapters with an engine/);
+                       any other name is an error. A test run that finds no test fails.
   --build-dir <dir>    build folder (default: build)
   --config <cfg>       Debug | Release | RelWithDebInfo (default: Debug)
   --juce               also build the JUCE programs (chapters 13 and up)
@@ -77,7 +78,7 @@ cmake --build "$build_dir" --parallel
 
 if [[ $run_tests -eq 1 ]]; then
     echo "==> test"
-    test_args=(--test-dir "$build_dir" --output-on-failure)
+    test_args=(--test-dir "$build_dir" --output-on-failure --no-tests=error)
     [[ -n "$test_label" ]] && test_args+=(-L "$test_label")
     ctest "${test_args[@]}"
 fi

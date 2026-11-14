@@ -127,6 +127,8 @@ dawlab_add_test(l03_test_parametric_eq  tests/parametric_eq_test.cpp)   # 可選
 
 `scripts/copied_files.txt` 列出在好幾章裡內容相同的檔案，`scripts/check_copies.py` 在兩種情況下會失敗：清單裡的檔案內容不一樣，或是兩章有一個內容相同的檔案、清單卻沒有列它（新的共用檔案，或是一開始就是整份複製的新章節）。`python3 scripts/check_copies.py --write` 會重新寫出清單，並印出新加入的項目。當某一步刻意改了它繼承來的檔案，要在同一個 commit 用 `python3 scripts/check_copies.py --write --accept-drops` 記下這個差異：沒有加這個 flag 時，`--write` 不會把任何一章從清單的某一行拿掉，而是把每一個被拿掉的章節列成 `dropped:`，這樣忘了改的那份 copy 就不會悄悄離開清單。commit 前先看 `scripts/copied_files.txt` 的 diff 裡有哪些 dropped 的行。`check_copies.py`、`check_links.py` 和 `build.sh` 這幾支 script 在 `scripts/tests` 裡有 unit test，由 CI 的 `docs` job 執行：`python3 -m unittest discover -s scripts/tests -v`。
 
+`--only` / `-Only` 後面的名稱如果既不是 `lessons/` 底下的資料夾，也不是 `juce`、`engine` 這兩個群組，就是錯誤：CMake 在 configure 時就會拒絕，並列出有效的名稱，所以打錯字不會變成只建了共用程式碼的 build。沒有找到任何測試的測試執行也會失敗（`ctest --no-tests=error`）。
+
 從第 15 章起，一個 `Engine` 約 190 KB。一個測試函式最多只能把兩個 engine 宣告成區域變數，再多就要用 `std::make_unique<Engine>()` 放到 heap：MSVC 的 Debug build 會在 Windows 只有 1 MB 的 stack 上，替每個區塊各自配一塊空間。CI 會用 `scripts/check_test_stacks.py` 檢查這一點。
 
 警告等級是 MSVC `/W4`；新程式碼不應該產生 warning。

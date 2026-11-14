@@ -25,7 +25,7 @@ else()
     set(_juce_default "")
 endif()
 set(DAWLAB_JUCE_DIR "${_juce_default}" CACHE PATH "Path to a local JUCE source tree; leave empty to download from GitHub with FetchContent")
-set(DAWLAB_ONLY "" CACHE STRING "Build only the listed chapters (semicolon-separated folder names, e.g. 02-filter;03-eq, or the groups juce and engine); empty = all")
+set(DAWLAB_ONLY "" CACHE STRING "Build only the listed chapters (semicolon-separated folder names, e.g. 02-filter;03-eq, or the groups juce and engine; any other name is an error); empty = all")
 
 # A sanitizer for every target, e.g. "thread" (ThreadSanitizer: data races between the UI and the
 # audio thread), "address" or "undefined". GCC and Clang only: MSVC has no ThreadSanitizer.
@@ -88,17 +88,42 @@ list(SORT DAWLAB_LESSONS)
 # DAWLAB_ONLY takes folder names, and the names of two groups that follow from what a chapter has:
 #   juce     the chapters whose CMakeLists.txt builds something with JUCE (13 and up)
 #   engine   the chapters with a DAW engine of their own, an engine/ folder (14 and up)
+# The names of the groups are listed here once: the check below and the loop take them from this list, and the loop
+# asks the variable _has_<group> of the chapter it looks at.
+set(DAWLAB_ONLY_GROUPS juce engine)
+
+# A name that is neither a chapter nor a group would be a filter that matches nothing, and the build would succeed
+# with only the shared code in it. It is refused here, the one place that knows the chapters, so build.sh, build.ps1
+# and a hand-typed cmake command all get the same answer.
+if(DAWLAB_ONLY)
+    if(NOT DAWLAB_ONLY MATCHES "[^;]")
+        message(FATAL_ERROR "DAWLAB_ONLY='${DAWLAB_ONLY}' names no chapter. Chapters: ${DAWLAB_LESSONS}; groups: ${DAWLAB_ONLY_GROUPS}")
+    endif()
+    foreach(_name IN LISTS DAWLAB_ONLY)
+        if(NOT _name IN_LIST DAWLAB_LESSONS AND NOT _name IN_LIST DAWLAB_ONLY_GROUPS)
+            message(FATAL_ERROR "DAWLAB_ONLY: '${_name}' is neither a folder of lessons/ nor one of the groups ${DAWLAB_ONLY_GROUPS}. Chapters: ${DAWLAB_LESSONS}")
+        endif()
+    endforeach()
+endif()
+
 foreach(lesson IN LISTS DAWLAB_LESSONS)
     set(_dir ${CMAKE_CURRENT_SOURCE_DIR}/lessons/${lesson})
     if(DAWLAB_ONLY)
         set(_names ${lesson})
         file(READ ${_dir}/CMakeLists.txt _lesson_cmake)
+        set(_has_juce FALSE)
         if(_lesson_cmake MATCHES "DAWLAB_WITH_JUCE")
-            list(APPEND _names juce)
+            set(_has_juce TRUE)
         endif()
+        set(_has_engine FALSE)
         if(IS_DIRECTORY ${_dir}/engine)
-            list(APPEND _names engine)
+            set(_has_engine TRUE)
         endif()
+        foreach(_group IN LISTS DAWLAB_ONLY_GROUPS)
+            if(_has_${_group})
+                list(APPEND _names ${_group})
+            endif()
+        endforeach()
         set(_wanted FALSE)
         foreach(_name IN LISTS _names)
             if(_name IN_LIST DAWLAB_ONLY)

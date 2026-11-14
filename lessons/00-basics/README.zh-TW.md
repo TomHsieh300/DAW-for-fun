@@ -69,7 +69,7 @@ flowchart LR
 .\scripts\build.ps1 -Only 14-daw-8track -Juce          # JUCE 章節（13、14）要加 -Juce
 ```
 
-`-Only` 後面接的是 `lessons/` 底下的資料夾名稱（例如 `00-basics`、`14-daw-8track`）。名稱打錯（`lessons/` 底下沒有那個資料夾）時，那個名稱會被默默略過，只會建出共用程式的自我測試（`common_selftest`、`dsp_selftest`）；建完如果發現沒有那一章的執行檔，先檢查拼字。要一次建多章，用逗號分隔：`-Only 13-vst-hosting,14-daw-8track`。
+`-Only` 後面接的是 `lessons/` 底下的資料夾名稱（例如 `00-basics`、`14-daw-8track`）。名稱打錯（`lessons/` 底下沒有那個資料夾）時，configure 這一步會直接報錯，指出打錯的字並列出所有有效的章節名稱，不會建出任何東西；照著那份清單檢查拼字。要一次建多章，用逗號分隔：`-Only 13-vst-hosting,14-daw-8track`。
 
 如果 PowerShell 說「無法載入指令碼」，用 `powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1 -Only 00-basics`。
 
