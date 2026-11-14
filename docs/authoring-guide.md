@@ -127,6 +127,12 @@ Nothing lists the chapters by hand: the build takes every folder of `lessons/` w
 `juce` and `engine` follow from what a chapter has, and `scripts/check_copies.py` checks every chapter with an
 `engine/` and an `app/`. A new chapter is a new folder; the CI picks it up through the groups.
 
+`scripts/copied_files.txt` lists the files that are the same in several chapters, and `scripts/check_copies.py` fails
+both when a listed file differs and when two chapters hold an identical file that the list does not name (a new shared
+file, or a new chapter that starts as a copy). `python3 scripts/check_copies.py --write` writes the list again. The
+scripts `check_copies.py`, `check_links.py` and `build.sh` have unit tests in `scripts/tests`, which the `docs` job runs:
+`python3 -m unittest discover -s scripts/tests -v`.
+
 From chapter 15 on an `Engine` is some 190 KB. A test function keeps at most two of them as local variables, and
 more with `std::make_unique<Engine>()`: a Debug build of MSVC gives every block its own room on Windows' 1 MB stack.
 `scripts/check_test_stacks.py` checks it in the CI.

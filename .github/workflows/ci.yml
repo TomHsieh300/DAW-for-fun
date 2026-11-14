@@ -1,7 +1,8 @@
 # Build every chapter and run its ctest suite (the self-checking examples, solutions and tests).
 #
 #   docs  every relative link and image in the Markdown files, and the files chapters copy from
-#         each other (scripts/copied_files.txt)
+#         each other (scripts/copied_files.txt), and the unit tests of those check scripts and of
+#         scripts/build.sh (scripts/tests)
 #   core  every pure C++ chapter (00-12 and the engine parts of 14-20), Debug and Release, on
 #         Windows, Linux (x64 and ARM64) and macOS
 #   tsan  chapters 15-20 under ThreadSanitizer: their checks run a real audio thread next to the
@@ -48,6 +49,11 @@ jobs:
       # stack of a Windows Debug build now and then (CI #72, #77)
       - name: Check that no test puts more than two engines on the stack
         run: python3 scripts/check_test_stacks.py
+
+      # The check scripts are the only thing that tells a learner or a reviewer that a link or a copy is wrong:
+      # a fault in them is silent, so they have tests of their own
+      - name: Test the check scripts and build.sh
+        run: python3 -m unittest discover -s scripts/tests -v
 
   core:
     name: core (${{ matrix.os }}, ${{ matrix.config }})

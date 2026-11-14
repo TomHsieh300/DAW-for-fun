@@ -7,8 +7,10 @@ Usage: python3 scripts/check_copies.py            check against scripts/copied_f
 Chapters 14 and up each start from a copy of the engine and the application of the chapter before,
 and changing the copy is the lesson. The files a chapter did not change stay in the list below. If
 one of them changes in only one chapter, for example a fix that never reached the other copies,
-this script fails. A difference that is meant to be there leaves the list with --write, where a
-reviewer sees it in the diff. Exits with 1 on a difference. Needs only the standard library.
+this script fails. It also fails for a file that is the same in several chapters but is not in the list
+(a new shared file, or a new chapter that starts as a copy), so that nothing is shared without being
+checked. A difference that is meant to be there leaves the list with --write, where a reviewer sees it
+in the diff. Exits with 1 on a difference. Needs only the standard library.
 """
 
 import sys
@@ -82,12 +84,22 @@ def main():
 
     entries = read_list()
     failures = 0
+    failing = set()
     for chapters, name in entries:
         problem = differences(chapters, name)
         if problem:
             print(f"{name}: {problem}")
+            failing.add(name)
             failures += 1
-    print(f"{len(entries)} copied files, {failures} differ")
+    # The list says which files are shared, the folders say which ones are. A file that is the same in several
+    # chapters must be in the list, or nobody notices when one copy is changed later. A name that already fails
+    # above is not reported a second time.
+    listed = {(tuple(chapters), name) for chapters, name in entries}
+    unlisted = [(chapters, name) for chapters, name in current_groups() if (chapters, name) not in listed and name not in failing]
+    for chapters, name in unlisted:
+        print(f"{name}: identical in {', '.join(chapter.split('-')[0] for chapter in chapters)} but not in scripts/copied_files.txt")
+    failures += len(unlisted)
+    print(f"{len(entries)} copied files, {failures} differ or are not listed")
     if failures:
         print("Change every copy, or, if the difference is meant to be there: python3 scripts/check_copies.py --write")
     return 1 if failures else 0
