@@ -58,6 +58,21 @@ inline bool acceptRangeDb(float& db) noexcept {
     return true;
 }
 
+// The rule for a one-pole smoother whose state is a value the code applies (a gain, a mix, a length, a delay, a
+// frequency), whether its target is a setting or a gain computed from the signal: it arrives. One step is
+//     y = smoothToward(y, target, k);      // y + k * (target - y)
+// and it returns the target itself once the step lands within epsilon of it, or once float rounding no longer moves y
+// (k * (target - y) is below half an ulp of y). Without the rule a glide toward 0 parks at a subnormal number (10 to
+// 100 times slower on x86 without FTZ/DAZ) and a glide toward any other value parks a hair short of it forever
+// (chapter 01, exercise 3). A follower of |x| or x^2 (an envelope follower, a meter) keeps its own rule: tiny state
+// is flushed to 0, because an absolute 1e-6 would cut off a quiet signal.
+constexpr float kSmootherArriveEpsilon = 1.0e-6f;
+
+inline float smoothToward(float current, float target, float k, float epsilon = kSmootherArriveEpsilon) noexcept {
+    const float next = current + k * (target - current);
+    return (next == current || std::abs(target - next) < epsilon) ? target : next;
+}
+
 // dB -> linear gain: gain = 10^(dB/20)
 inline float dbToGain(float db, float minusInfinityDb = kMinusInfinityDb) noexcept {
     return db > minusInfinityDb ? std::pow(10.0f, db * 0.05f) : 0.0f;

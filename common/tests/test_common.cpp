@@ -1,4 +1,4 @@
-// Self-test of the shared utilities: WAV round trip, Goertzel measurement accuracy, dB conversion.
+// Self-test of the shared utilities: WAV round trip, Goertzel measurement accuracy, dB conversion, smoothToward.
 #include <dawlab/Common.h>
 
 #include <cmath>
@@ -27,6 +27,47 @@ int main() {
     DAWLAB_CHECK_NEAR(gainToDb(2.0f), 6.0206, 1e-3);
     DAWLAB_CHECK_NEAR(dbToGain(-6), 0.50119, 1e-4);
     DAWLAB_CHECK(dbToGain(-200.0f) == 0.0f);
+
+    // smoothToward: a one-pole smoother arrives. Each row glides from `start` toward `target` with the step k of a
+    // smoother in dsp/; it must give exactly the target within `maxSteps` steps and never a subnormal on the way.
+    // Without the rule a glide toward 0 parks at a subnormal number and a glide toward anything else parks a hair
+    // short of it (a step below half an ulp changes nothing).
+    {
+        const auto k = [sr](double tauMs) { return static_cast<float>(1.0 - std::exp(-1.0 / (tauMs * 0.001 * sr))); };
+        struct Glide {
+            const char* what;
+            float start, target, k;
+            long maxSteps;
+        };
+        const Glide glides[] = {
+            {"Reverb mix 0.3 -> 0 (30 ms)", 0.3f, 0.0f, k(30.0), 48000},
+            {"Limiter release 0.5 -> 1 (100 ms)", 0.5f, 1.0f, k(100.0), 96000},
+            {"Phaser centre 800 -> 1200 Hz (20 ms)", 800.0f, 1200.0f, k(20.0), 48000},
+            {"Reverb delay 4096.3 -> 4000 samples (30 ms)", 4096.3f, 4000.0f, k(30.0), 48000},
+            {"makeup gain 1 -> 0 (10 ms)", 1.0f, 0.0f, k(10.0), 48000},
+            {"k = 1: there in one step", 0.25f, -0.75f, 1.0f, 1},
+        };
+        for (const Glide& g : glides) {
+            float y = g.start;
+            long steps = 0, subnormal = 0;
+            while (y != g.target && steps < g.maxSteps) {
+                y = smoothToward(y, g.target, g.k);
+                ++steps;
+                if (std::fpclassify(y) == FP_SUBNORMAL)
+                    ++subnormal;
+            }
+            std::printf("smoothToward %-44s %s after %ld steps (subnormal values on the way: %ld)\n", g.what,
+                        y == g.target ? "arrived" : "PARKED SHORT", steps, subnormal);
+            DAWLAB_CHECK(y == g.target);
+            DAWLAB_CHECK(subnormal == 0);
+        }
+        // The arrival is a snap only at the end: one step from far away is the plain one-pole step
+        DAWLAB_CHECK(smoothToward(0.0f, 1.0f, 0.25f) == 0.25f);
+        DAWLAB_CHECK(smoothToward(1.0f, 1.0f, 0.25f) == 1.0f);
+        // Within epsilon of the target it takes the target; the epsilon can be given (Reverb's modulation uses 1e-4)
+        DAWLAB_CHECK(smoothToward(5.0e-7f, 0.0f, 0.001f) == 0.0f);
+        DAWLAB_CHECK(smoothToward(5.0e-5f, 0.0f, 0.001f) != 0.0f && smoothToward(5.0e-5f, 0.0f, 0.001f, 1.0e-4f) == 0.0f);
+    }
 
     // Goertzel: a 1 kHz sine wave with amplitude 0.3
     AudioBuffer sine = makeSine(1000.0, sr, 0.5, 0.3f, 1);
