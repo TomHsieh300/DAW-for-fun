@@ -179,8 +179,8 @@ public:
         float blockMaxGr = 0.0f;
 
         for (int i = 0; i < numSamples; ++i) {
-            // Makeup gain smoothing: g += c·(target - g)
-            makeupGainSmoothed_ += makeupSmoothCoeff_ * (makeupTarget - makeupGainSmoothed_);
+            // Makeup gain smoothing: g += c·(target - g), arriving exactly (smoothToward), so -inf dB really is 0
+            makeupGainSmoothed_ = smoothToward(makeupGainSmoothed_, makeupTarget, makeupSmoothCoeff_);
 
             if (stereoLink_) {
                 // Stereo link: all channels share the "largest level" to compute one GR target, so the stereo image does not drift left or right.

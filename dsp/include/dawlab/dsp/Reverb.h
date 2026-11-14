@@ -197,9 +197,9 @@ public:
             float wetL, wetR;
             processSampleStereo(dryL, dryR, wetL, wetR);
 
-            // Smooth mix / width (avoids zipper noise)
-            currentMix_ += smoothCoef_ * (mix_ - currentMix_);
-            currentWidth_ += smoothCoef_ * (width_ - currentWidth_);
+            // Smooth mix / width (avoids zipper noise); smoothToward arrives, so a mix of 0 is exactly 0
+            currentMix_ = smoothToward(currentMix_, mix_, smoothCoef_);
+            currentWidth_ = smoothToward(currentWidth_, width_, smoothCoef_);
 
             // width: mid/side
             const float mid = 0.5f * (wetL + wetR);
@@ -221,7 +221,7 @@ public:
             return;
         }
         // 1. Pre-delay (a fractional delay whose changes are smoothed)
-        currentPreDelay_ += smoothCoef_ * (targetPreDelay_ - currentPreDelay_);
+        currentPreDelay_ = smoothToward(currentPreDelay_, targetPreDelay_, smoothCoef_);
         preDelay_.push(0, inL);
         preDelay_.push(1, inR);
         float dL = preDelay_.readLinear(0, currentPreDelay_);
@@ -243,22 +243,17 @@ public:
         if (lfoPhase_ >= static_cast<float>(kTwoPi))
             lfoPhase_ -= static_cast<float>(kTwoPi);
         // When frozen, the modulation fades smoothly to 0 (zeroing it directly would make the read position jump -> click) and fades back in when the freeze is released.
-        // Near the end point it snaps straight to 0 / 1: exponential smoothing never reaches the end point, and a small leftover fractional position would still cause loss.
-        modulationScale_ += smoothCoef_ * ((freeze_ ? 0.0f : 1.0f) - modulationScale_);
-        if (freeze_ && modulationScale_ < 1.0e-4f)
-            modulationScale_ = 0.0f;
-        else if (!freeze_ && modulationScale_ > 0.9999f)
-            modulationScale_ = 1.0f;
+        // Within 1e-4 of the end point it snaps straight to 0 / 1 (a wider epsilon than smoothToward's default): a small leftover fractional position would still cause loss.
+        modulationScale_ = smoothToward(modulationScale_, freeze_ ? 0.0f : 1.0f, smoothCoef_, 1.0e-4f);
         const float depth = modulationDepth_ * modulationScale_;
         float sum = 0.0f;
         for (int k = 0; k < kNumLines; ++k) {
             const size_t i = static_cast<size_t>(k);
             // Glide smoothly toward the target length. Exponential smoothing in float "gets stuck" at lengths of a few thousand samples:
             // once the gap is below about 0.1-0.2 sample, the increment smoothCoef_*diff is smaller than half a ulp, so adding it changes nothing
-            // and the read position stays on a fractional value forever
-            // (linear interpolation = lowpass -> the loop is no longer lossless when frozen). So when the addition has no effect, snap straight to the target.
-            const float nextDelay = currentDelay_[i] + smoothCoef_ * (targetDelay_[i] - currentDelay_[i]);
-            currentDelay_[i] = nextDelay == currentDelay_[i] ? targetDelay_[i] : nextDelay;
+            // and the read position would stay on a fractional value forever
+            // (linear interpolation = lowpass -> the loop is no longer lossless when frozen). smoothToward takes the target as soon as a step no longer moves it.
+            currentDelay_[i] = smoothToward(currentDelay_[i], targetDelay_[i], smoothCoef_);
             // Each line uses an LFO with a different phase (k*45 degrees), so the lines do not all "wobble" together
             const float lfo = depth > 0.0f ? depth * std::sin(lfoPhase_ + static_cast<float>(k) * 0.7853982f) : 0.0f;
             // This is "read first, write after": the last push was u[n-1], and readLinear(d) returns u[n-1-d],

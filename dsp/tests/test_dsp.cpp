@@ -14,6 +14,8 @@
 //   - process() costs about the same in every block: LevelMeter's RMS reads bit-identical to the exact re-sum, and no
 //     block pays for the whole window (judged by wall-clock time only in an optimized build without sanitizers)
 //   - setting a parameter to the value it already has changes nothing: once or before every block, same output
+//   - a one-pole smoother of a gain, mix, length, delay or frequency arrives at its target exactly (smoothToward in
+//     DspMath.h): it never parks at a subnormal number (toward 0) or a hair short of any other target
 // The Limiter is the one exception to the first rule on purpose: before prepare() it clears the block (and asserts in
 // a Debug build), because a limiter that cannot look ahead cannot keep its ceiling.
 // Every check is table-driven: one row per class (and per variant that takes a different path). The objects live on
@@ -1119,6 +1121,101 @@ void checkSameValueRule() {
     std::printf("same value set again: %d setters, %d failures\n", sameValueRows, sameValueFailures);
 }
 
+// ---- A smoother arrives -----------------------------------------------------------------------------------------
+// A one-pole smoother whose state is a gain, mix, length, delay or frequency takes its target exactly (smoothToward
+// in DspMath.h). Toward 0 it would otherwise park at a subnormal number, and the output in silence (or the signal
+// times a parked gain) would be subnormal forever; toward any other value it would park a hair short of it. The
+// rows run at a low sample rate to keep the test fast: the time a glide takes to park does not depend on the rate.
+
+constexpr double kArriveRate = 16000.0;
+
+int arriveRows = 0, arriveFailures = 0;
+
+// make() returns a prepared object (at kArriveRate). Half a second of a 440 Hz sine at 0.25, then move(fx), then
+// `tailSeconds` of silence (ampAfter = 0) or of the sine at ampAfter. In the last quarter second no output sample may
+// be subnormal, and arrived(fx) must hold at the end.
+template <typename Make, typename Move, typename Arrived>
+void checkSmootherArrives(const char* name, Make make, Move move, double tailSeconds, float ampAfter, Arrived arrived) {
+    const auto fx = make();
+    AudioBuffer buf(2, kBlock);
+    const auto render = [&buf, &fx](long blk, float amp) {
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < kBlock; ++i)
+                buf.setSample(ch, i, amp * static_cast<float>(std::sin(kTwoPi * 440.0 *
+                                                                       static_cast<double>(blk * kBlock + i) / kArriveRate)));
+        fx->process(AudioBlock(buf));
+    };
+    const long before = static_cast<long>(0.5 * kArriveRate) / kBlock;
+    const long after = static_cast<long>(tailSeconds * kArriveRate) / kBlock;
+    const long judged = static_cast<long>(0.25 * kArriveRate) / kBlock;
+    long blk = 0;
+    for (; blk < before; ++blk)
+        render(blk, 0.25f);
+    move(*fx);
+    long subnormal = 0;
+    for (long k = 0; k < after; ++k, ++blk) {
+        render(blk, ampAfter);
+        if (k >= after - judged)
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < kBlock; ++i)
+                    subnormal += std::fpclassify(buf.getSample(ch, i)) == FP_SUBNORMAL ? 1 : 0;
+    }
+    const bool there = arrived(*fx);
+    ++arriveRows;
+    if (subnormal != 0 || !there) {
+        ++arriveFailures;
+        std::printf("  %-46s subnormal output samples at the end: %ld, arrived: %s\n", name, subnormal,
+                    there ? "yes" : "NO");
+    }
+    DAWLAB_CHECK(subnormal == 0);
+    DAWLAB_CHECK(there);
+}
+
+template <typename Fx, typename Setup>
+auto preparedAt(Setup setup) {
+    return [setup] {
+        auto fx = std::make_unique<Fx>();
+        fx->prepare(kArriveRate, kBlock, 2);
+        setup(*fx);
+        return fx;
+    };
+}
+
+template <typename Fx>
+bool outputOnly(const Fx&) {
+    return true; // the class shows nothing else: the subnormal output is what the row judges
+}
+
+void checkSmootherRule() {
+    // The freeze keeps the wet tail alive, so a mix parked just above 0 shows in the output
+    checkSmootherArrives("Reverb::setMix(0), frozen tail, silence", preparedAt<Reverb>([](Reverb&) {}),
+                         [](Reverb& r) {
+                             r.setFreeze(true);
+                             r.setMix(0.0f);
+                         },
+                         3.5, 0.0f, outputOnly<Reverb>);
+    // An impulse response that is a pure 2.5 s delay: the wet signal is the sine again while the mix parks
+    AudioBuffer delayIr(1, static_cast<int>(2.5 * kArriveRate));
+    delayIr.setSample(0, delayIr.getNumSamples() - 1, 1.0f);
+    checkSmootherArrives("ConvolutionReverb::setMix(0), silence",
+                         preparedAt<ConvolutionReverb>([&delayIr](ConvolutionReverb& c) {
+                             c.setImpulseResponse(delayIr);
+                             c.setMix(0.3f);
+                             c.reset();
+                         }),
+                         [](ConvolutionReverb& c) { c.setMix(0.0f); }, 2.5, 0.0f, outputOnly<ConvolutionReverb>);
+    checkSmootherArrives("Compressor::setMakeupGainDb(-inf), sine", preparedAt<Compressor>([](Compressor&) {}),
+                         [](Compressor& c) { c.setMakeupGainDb(-kInf); }, 1.5, 0.25f, outputOnly<Compressor>);
+    checkSmootherArrives("TransientShaper gain back to 0 dB, silence",
+                         preparedAt<TransientShaper>([](TransientShaper& t) {
+                             t.setAttackDb(12.0f);
+                             t.setSustainDb(-12.0f);
+                         }),
+                         [](TransientShaper&) {}, 1.5, 0.0f,
+                         [](const TransientShaper& t) { return t.getLastGainDb() == 0.0f; });
+    std::printf("a smoother arrives: %d rows, %d failures\n", arriveRows, arriveFailures);
+}
+
 } // namespace
 
 int main() {
@@ -1159,6 +1256,7 @@ int main() {
     checkRangeRule();
     checkMeterCostIsFlat();
     checkSameValueRule();
+    checkSmootherRule();
 
     return dawlab::test::summary("dsp");
 }

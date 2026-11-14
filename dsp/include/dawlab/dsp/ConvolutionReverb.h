@@ -141,7 +141,7 @@ public:
                     processPartition(c, spectra);
                     c.fifoPos = 0;
                 }
-                mix += smoothCoef_ * (mix_ - mix);
+                mix = smoothToward(mix, mix_, smoothCoef_); // arrives: a mix of 0 is exactly 0, not a subnormal
                 data[i] = dryDelayed * (1.0f - mix) + wet * mix;
             }
             if (ch == 0)

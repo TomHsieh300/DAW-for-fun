@@ -60,8 +60,8 @@ public:
         slow_.setMode(DetectorMode::Peak);
         slow_.setAttackMs(kSlowAttackMs);
         slow_.setReleaseMs(kSlowReleaseMs);
-        // one-pole smoothing coefficient alpha = e^{-1/(tau*fs)}
-        smoothCoef_ = static_cast<float>(std::exp(-1.0 / (kGainSmoothMs * 0.001 * sampleRate)));
+        // one-pole smoothing step k = 1 - e^{-1/(tau*fs)}
+        smoothCoef_ = static_cast<float>(1.0 - std::exp(-1.0 / (kGainSmoothMs * 0.001 * sampleRate)));
         reset();
     }
     void reset() noexcept {
@@ -71,13 +71,15 @@ public:
     }
     void setAttackDb(float db) noexcept { attackDb_ = std::clamp(db, -24.0f, 24.0f); }
     void setSustainDb(float db) noexcept { sustainDb_ = std::clamp(db, -24.0f, 24.0f); }
+    float getGainDb() const noexcept { return gainDb_; }
 
     float nextGain(float detectorInput) noexcept {
         // TODO:
         //   fast = fast_.processSample(detectorInput), slow = slow_.processSample(detectorInput)
         //   if the dB of slow > kFloorDb: d = gainToDb(fast) - gainToDb(slow), target = mapToGainDb(d, ...)
         //   otherwise target = 0
-        //   gainDb_ = target + smoothCoef_ * (gainDb_ - target)
+        //   gainDb_ = smoothToward(gainDb_, target, smoothCoef_)   (DspMath.h: one step gainDb_ + k*(target - gainDb_)
+        //     that takes the target exactly once it is close, so the gain does not park at a subnormal number of dB)
         //   return dbToGain(gainDb_)
         (void)detectorInput;
         return dbToGain(gainDb_);
@@ -185,6 +187,21 @@ int main() {
                 maxErr = std::max(maxErr, std::abs(mine.getSample(ch, i) - expected.getSample(ch, i)));
         std::printf("\n[2] Sample-by-sample comparison with dawlab::dsp::TransientShaper: maximum error %.3g\n", maxErr);
         DAWLAB_CHECK(maxErr < 1.0e-5f);
+    }
+
+    // ---- 2b. The smoothed gain arrives: after the drums and 2 s of silence it is exactly 0 dB --------------
+    // (a plain one-pole would park at a subnormal number of dB, and every later sample would pay for it)
+    {
+        MyTransientShaper ts;
+        ts.prepare(kSampleRate, kBlockSize, loud.getNumChannels());
+        ts.setAttackDb(6.0f);
+        ts.setSustainDb(-12.0f);
+        AudioBuffer withSilence(loud.getNumChannels(), loud.getNumSamples() + secondsToSamples(2.0, kSampleRate));
+        for (int ch = 0; ch < loud.getNumChannels(); ++ch)
+            withSilence.copyFrom(ch, 0, loud, ch, 0, loud.getNumSamples());
+        runBlocks(withSilence, ts);
+        std::printf("[2b] Gain after 2 s of silence: %g dB (must be exactly 0)\n", static_cast<double>(ts.getGainDb()));
+        DAWLAB_CHECK(ts.getGainDb() == 0.0f);
     }
 
     // ---- 3. Level independence -----------------------------------------------------

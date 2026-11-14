@@ -63,7 +63,7 @@ public:
         slow_.setMode(DetectorMode::Peak);
         slow_.setAttackMs(kSlowAttackMs);
         slow_.setReleaseMs(kSlowReleaseMs);
-        smoothCoef_ = static_cast<float>(std::exp(-1.0 / (kGainSmoothMs * 0.001 * sampleRate)));
+        smoothCoef_ = static_cast<float>(1.0 - std::exp(-1.0 / (kGainSmoothMs * 0.001 * sampleRate))); // the step k
         reset();
     }
 
@@ -109,7 +109,7 @@ public:
             else
                 target = sustainDb_ * std::min(-d / kFullScaleDb, 1.0f);
         }
-        gainDb_ = target + smoothCoef_ * (gainDb_ - target);
+        gainDb_ = smoothToward(gainDb_, target, smoothCoef_); // arrives: back at exactly 0 dB in silence
         gain_ = dbToGain(gainDb_);
         return gain_;
     }
