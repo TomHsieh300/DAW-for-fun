@@ -22,7 +22,7 @@
 
 有三個地方用「每拍多少 sample」來算，而這個數字已經不存在了：
 
-- **Ruler 和 grid。** 小節和拍子是 tick；每一個都畫在 map 給它的 sample 上。歌比較快的地方，拍子靠得比較近。
+- **Ruler 和 grid。** 小節和拍子是 tick；每一個都畫在 map 給它的 sample 上。歌比較快的地方，拍子靠得比較近。哪些小節畫線（`grid::barGrid()`，第 14 章 Step 14）依整個 view 的平均間距決定，所以在快的段落裡，線可能靠得比 8 像素還近。
 - **Snap。** Clip 對齊到最近的拍子：滑鼠精確的 tick，取整到拍子，再換回 sample。
 - **Loop。** 以小節設定的 loop 現在存成 tick（`setLoopRangeBars()`），所以 tempo 改變時它仍然在它的小節上。取樣率改變不會動到以 tick 存的 loop。
 

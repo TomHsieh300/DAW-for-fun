@@ -221,6 +221,7 @@ thread 的每一個結果，都以 immutable 物件的形式，透過
 | `DawLookAndFeel.h/.cpp` | 深色主題、旋鈕、fader、色彩表 | 12 |
 | `TransportBar.h/.cpp` | play / stop / loop、位置、tempo、master meter + LUFS、CPU | 13 |
 | `ArrangementView.h/.cpp` | lane、波形快取、ruler、playhead、seek、clip 拖曳 | 14 |
+| `GridSpacing.h` | 目前 zoom 下哪些 bar 要畫線（不需要 JUCE） | 14 |
 | `MixerView.h/.cpp` | channel strip、fader law、send、mute / solo、meter、master 區段 | 15, 20 |
 | `Session.h/.cpp` | GUI model：insert slot <-> 精簡 chain、clip list、demo song、sample rate 變更 | 15, 16, 18 |
 | `EffectMenu.h/.cpp`、`ParameterPanel.h/.cpp` | insert 下拉選單、自動產生的參數面板 | 16 |
@@ -523,6 +524,7 @@ unit test 帶有 ctest label `test`。程式會輸出到 `build/bin/Debug/`，WA
 | `l14_test_realtime_safety` | test | audio thread 上不做配置、concurrency | - |
 | `l14_test_demo_song` | test | `DemoSong.h`（app 的 demo song 資料）能重現 `l14_render_song` 的報告 | - |
 | `l14_test_track_format` | test | mono / stereo track：pan mode、mono fold + pan law、balance 保留聲像、+3.01 dB、全部 19 個 effect 在單一 channel 上執行、chorus 塌縮 | - |
+| `l14_test_grid_spacing` | test | Step 14：任何 zoom 下哪些 bar 要畫線（`GridSpacing.h`，不需要 JUCE） | - |
 | `l14_ex2_solution` ... `l14_ex5_solution`、`l14_ex14_solution` | solution | 習題 2-5 與 14 | `l14_ex4_project.json` |
 | `l14_step01_solution` ... `l14_step10_solution` | solution | Step 1-10 跟著做的 snapshot（`steps/`），各自只檢查自己的 step | `l14_step01.wav`、`l14_step09.wav` |
 | `l14_step01_starter` ... `l14_step10_starter` | （只 build） | 同樣的 snapshot，但帶有你的 TODO；在 step 完成前會印出 `[FAIL]` | - |

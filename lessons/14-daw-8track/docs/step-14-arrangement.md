@@ -35,6 +35,18 @@ Snapping rounds to the nearest beat, $`\hat s = \mathrm{round}(s / N_{\text{beat
 (holding **Alt** disables it). Exercise 8 reuses `sampleToX`, `xToSample` and `snapToBeat` for an
 automation lane drawn under the arrangement.
 
+### Bar lines at any zoom
+
+The view zooms out to $`10^6`$ samples per pixel. At 999 BPM in 1/4 that puts some 440 000 bars into
+1268 pixels; walking every bar to find the few that can be drawn took longer than a 30 Hz frame.
+`grid::barGrid()` (`app/Source/GridSpacing.h`, no JUCE, tested by `tests/test_grid_spacing.cpp`)
+counts only the bars that get a line: every $`k`$-th bar, where $`k`$ is the smallest power of 2 that
+puts the lines at least 8 pixels apart. The lines sit on multiples of $`k`$, so they stay put while
+the view scrolls. The ruler asks a second time with 30 pixels for its numbers, which therefore fall on
+lines; beat ticks appear only when every bar has its line and beats are more than 6 pixels apart.
+`ArrangementView::getBarGrid()` asks it for the visible range, for the ruler and for every lane:
+at most $`\text{width}/8 + 1`$ lines at any zoom.
+
 ### Waveform thumbnails: a peak cache
 
 A 12-second clip has 576 000 samples per channel; at 681 samples per pixel, a naive `paint()` would
@@ -101,7 +113,8 @@ one audio block.
 ## Code
 
 `app/Source/ArrangementView.h/.cpp`: `WaveformCache::get` / `prune`, `sampleToX`, `xToSample`,
-`zoom`, `snapToBeat`, `paintRuler`, `paintLane`, `paintClip`, the mouse handlers.
+`zoom`, `snapToBeat`, `getBarGrid`, `paintRuler`, `paintLane`, `paintClip`, the mouse handlers.
+`app/Source/GridSpacing.h`: `grid::barGrid`.
 `app/Source/Session.cpp`: `moveClip`.
 
 The heart of the waveform drawing:

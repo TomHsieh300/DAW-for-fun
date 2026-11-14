@@ -29,6 +29,10 @@ s_m = s(x_m), \qquad \text{spp}' = \text{spp} / \text{factor}, \qquad s'_{\text{
 
 Snapping 取最近的 beat，$`\hat s = \mathrm{round}(s / N_{\text{beat}})\,N_{\text{beat}}`$（按住 **Alt** 會停用它）。Exercise 8 重複使用 `sampleToX`、`xToSample` 與 `snapToBeat`，來繪製 arrangement 下方的 automation lane。
 
+### 任何 zoom 下的 bar 線
+
+View 最遠可以 zoom out 到每 pixel $`10^6`$ 個 sample。在 999 BPM、1/4 拍號下，這會把約 440 000 個 bar 塞進 1268 像素；逐一走過每個 bar 才找出少數畫得出來的那幾條，花的時間超過一個 30 Hz frame。`grid::barGrid()`（`app/Source/GridSpacing.h`，不需要 JUCE，由 `tests/test_grid_spacing.cpp` 測試）只計算真的要畫線的 bar：每 $`k`$ 個 bar 一條，$`k`$ 是能讓線至少相隔 8 像素的最小 2 的冪次。線落在 $`k`$ 的倍數上，所以 view 捲動時它們不會跳動。Ruler 再以 30 像素問一次來決定數字，所以數字一定落在線上；只有當每個 bar 都有線、而且 beat 之間超過 6 像素時，才畫 beat 刻度。`ArrangementView::getBarGrid()` 為可見範圍向它詢問，ruler 和每條 lane 都用它：任何 zoom 下最多 $`\text{width}/8 + 1`$ 條線。
+
 ### Waveform thumbnail：peak cache
 
 一個 12 秒的 clip 每個 channel 有 576 000 個 sample；以每 pixel 681 個 sample 計，天真的 `paint()` 每次重繪都得讀過每個 sample。每個 DAW 都會保留一份縮減過的副本（"peak file"）。`WaveformCache` 對每個 source buffer 只計算一次：每一段 `kSamplesPerBucket = 128` 個 sample 的最小值與最大值（跨所有 channel）。繪製一個 pixel 欄時，只需合併 $`\lceil \text{spp} / 128 \rceil`$ 個 bucket——預設 zoom 下約 6 個——並畫出一條從最小值到最大值的垂直線，再乘上 clip gain。由於 clip 共用 buffer（drum loop 是一個被四個 clip 使用的 buffer；96 個 shaker hit 使用兩個 buffer），cache 以 buffer pointer 為 key：demo song 的 140 個 clip 需要 28 個 cache entry。當 session 改變時，不再被任何 clip 使用其 buffer 的 entry 會被丟棄（`prune`）。
@@ -73,7 +77,8 @@ Arrangement 從不碰 engine 的 clip 清單。它從 `Session::getClips(t)`—�
 
 ## 程式碼
 
-`app/Source/ArrangementView.h/.cpp`：`WaveformCache::get` / `prune`、`sampleToX`、`xToSample`、`zoom`、`snapToBeat`、`paintRuler`、`paintLane`、`paintClip`，以及各個滑鼠 handler。
+`app/Source/ArrangementView.h/.cpp`：`WaveformCache::get` / `prune`、`sampleToX`、`xToSample`、`zoom`、`snapToBeat`、`getBarGrid`、`paintRuler`、`paintLane`、`paintClip`，以及各個滑鼠 handler。
+`app/Source/GridSpacing.h`：`grid::barGrid`。
 `app/Source/Session.cpp`：`moveClip`。
 
 Waveform 繪製的核心：

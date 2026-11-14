@@ -224,6 +224,7 @@ waits for nobody.
 | `DawLookAndFeel.h/.cpp` | dark theme, knobs, faders, colour table | 12 |
 | `TransportBar.h/.cpp` | play / stop / loop, position, tempo, master meter + LUFS, CPU | 13 |
 | `ArrangementView.h/.cpp` | lanes, waveform cache, ruler, playhead, seek, clip dragging | 14 |
+| `GridSpacing.h` | which bars get a line at the current zoom (no JUCE) | 14 |
 | `MixerView.h/.cpp` | channel strips, fader law, sends, mute / solo, meters, master section | 15, 20 |
 | `Session.h/.cpp` | GUI model: insert slots <-> compact chains, clip lists, demo song, sample-rate change | 15, 16, 18 |
 | `EffectMenu.h/.cpp`, `ParameterPanel.h/.cpp` | insert drop-down, generated parameter panels | 16 |
@@ -528,6 +529,7 @@ The unit tests carry the ctest label `test`. Programs land in `build/bin/Debug/`
 | `l14_test_realtime_safety` | test | no allocation on the audio thread, concurrency | - |
 | `l14_test_demo_song` | test | `DemoSong.h` (the app's demo song as data) reproduces the `l14_render_song` report | - |
 | `l14_test_track_format` | test | mono / stereo tracks: pan mode, mono fold + pan law, balance keeps the image, +3.01 dB, all 19 effects on one channel, chorus collapse | - |
+| `l14_test_grid_spacing` | test | Step 14: which bars get a line at any zoom (`GridSpacing.h`, no JUCE) | - |
 | `l14_ex2_solution` ... `l14_ex5_solution`, `l14_ex14_solution` | solution | exercises 2-5 and 14 | `l14_ex4_project.json` |
 | `l14_step01_solution` ... `l14_step10_solution` | solution | the build-along snapshots of Steps 1-10 (`steps/`), each checking only its own step | `l14_step01.wav`, `l14_step09.wav` |
 | `l14_step01_starter` ... `l14_step10_starter` | (build only) | the same snapshots with your TODOs; they print `[FAIL]` until the step is done | - |

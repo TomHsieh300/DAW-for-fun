@@ -30,7 +30,8 @@ follows the map without knowing.
 Three places computed with "samples per beat", which no longer exists:
 
 - **The ruler and the grid.** Bars and beats are ticks; each is drawn at the sample the map gives it. Beats lie
-  closer together where the song is faster.
+  closer together where the song is faster. Which bars get a line (`grid::barGrid()`, chapter 14 Step 14) is
+  decided from the average spacing over the view, so in a fast part lines may lie closer than 8 pixels.
 - **Snapping.** A clip snaps to the nearest beat: the exact tick of the mouse, rounded to a beat, back to a sample.
 - **The loop.** Set in bars, it is now kept in ticks (`setLoopRangeBars()`), so it stays on its bars when the tempo
   changes. A sample-rate change leaves a loop in ticks alone.
