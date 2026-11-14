@@ -27,13 +27,18 @@ EXTERNAL = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:|^//")
 
 
 def prose_lines(text):
-    """The lines outside fenced code blocks, as (line number, line without inline code)."""
+    """The lines outside fenced code blocks, as (line number, line). Inline code is still in them: a heading's anchor
+    keeps its text, and the readers that must not see a link or an id in code take it out with without_code()."""
     in_fence = False
     for number, line in enumerate(text.splitlines(), 1):
         if FENCE.match(line):
             in_fence = not in_fence
         elif not in_fence:
-            yield number, INLINE_CODE.sub("", line)
+            yield number, line
+
+
+def without_code(line):
+    return INLINE_CODE.sub("", line)
 
 
 def github_slug(heading):
@@ -48,7 +53,7 @@ def anchors_of(path, cache={}):
         anchors = set()
         seen = {}
         for _, line in prose_lines(path.read_text(encoding="utf-8")):
-            anchors.update(HTML_ID.findall(line))
+            anchors.update(HTML_ID.findall(without_code(line)))
             match = HEADING.match(line)
             if match:
                 slug = github_slug(match.group(1))
@@ -61,6 +66,7 @@ def anchors_of(path, cache={}):
 
 def broken_links(path):
     for number, line in prose_lines(path.read_text(encoding="utf-8")):
+        line = without_code(line)
         for target in INLINE_LINK.findall(line) + HTML_SOURCE.findall(line):
             if EXTERNAL.match(target):
                 continue
