@@ -47,6 +47,7 @@
 // kSamplesPerBucket samples (a "peak file", like every DAW keeps next to its audio). paint()
 // only combines buckets.
 
+#include "GridSpacing.h"
 #include "Session.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -112,6 +113,9 @@ public:
     void zoom(double factor, float aroundX);
     float sampleToX(double sample) const noexcept;
     double xToSample(float x) const noexcept;
+    // The bars that get a line in the view, at least minPx apart on average: paintRuler() asks with 8 for its lines
+    // and 30 for its numbers, paintLane() with 8 (GridSpacing.h).
+    grid::BarGrid getBarGrid(double minPx) const noexcept;
     // Lanes are counted in display order (Session::getTrackId(lane) is the track in it).
     int laneAt(int y) const noexcept; // -1 outside the lanes
     juce::Rectangle<int> getLaneBounds(int lane) const noexcept;

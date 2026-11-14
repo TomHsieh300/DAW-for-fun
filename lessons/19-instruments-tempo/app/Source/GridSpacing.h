@@ -33,6 +33,7 @@ struct BarGrid {
     int64_t first = 0; // 0-based bar number of the first line, a multiple of step
     int64_t step = 1;  // bars from one line to the next, a power of 2
     int64_t count = 0; // number of lines; 0 = nothing to draw
+    double pxPerBar = 0.0; // average pixels from one bar to the next (0 when the input is refused)
 };
 
 // Far beyond any song (2^40 bars is 70 000 years at 999 BPM): a range past it is refused, not walked.
@@ -46,11 +47,11 @@ inline BarGrid barGrid(double firstBar, double lastBar, double widthPx, double m
                         lastBar <= kMaxBar;
     if (!usable)
         return grid;
-    firstBar = std::max(0.0, firstBar);
-    const double barsPerLine = minPx * (lastBar - firstBar) / widthPx; // bars that fit into minPx pixels
+    grid.pxPerBar = widthPx / (lastBar - firstBar);
+    const double barsPerLine = minPx / grid.pxPerBar; // bars that fit into minPx pixels
     while (static_cast<double>(grid.step) < barsPerLine && grid.step < kMaxStep)
         grid.step *= 2;
-    grid.first = static_cast<int64_t>(std::ceil(firstBar / static_cast<double>(grid.step))) * grid.step;
+    grid.first = static_cast<int64_t>(std::ceil(std::max(0.0, firstBar) / static_cast<double>(grid.step))) * grid.step;
     const int64_t last = static_cast<int64_t>(std::floor(lastBar / static_cast<double>(grid.step))) * grid.step;
     grid.count = last >= grid.first ? (last - grid.first) / grid.step + 1 : 0;
     return grid;

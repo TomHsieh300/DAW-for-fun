@@ -76,6 +76,7 @@ void testZoomToFit() {
     std::printf("2. zoomed to fit a short song\n");
     const BarGrid g = barGrid(0.0, 8.0, 1268.0, 8.0); // 8 bars over 1268 px: 158 px per bar
     DAWLAB_CHECK(g.first == 0 && g.step == 1 && g.count == 9);
+    DAWLAB_CHECK_NEAR(g.pxPerBar, 1268.0 / 8.0, 1e-9); // the ruler's beat ticks ask for it
     DAWLAB_CHECK(followsTheRules(g, 0.0, 8.0, 1268.0, 8.0));
     // Bars exactly minPx apart are all drawn.
     const BarGrid tight = barGrid(0.0, 100.0, 800.0, 8.0);

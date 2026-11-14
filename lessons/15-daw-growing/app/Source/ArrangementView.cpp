@@ -99,6 +99,14 @@ float ArrangementView::sampleToX(double sample) const noexcept {
 
 double ArrangementView::xToSample(float x) const noexcept { return viewStart_ + (x - kHeaderWidth) * samplesPerPixel_; }
 
+grid::BarGrid ArrangementView::getBarGrid(double minPx) const noexcept {
+    const double bar = session_.getEngine().getTransport().getSamplesPerBar();
+    if (!(bar > 0.0))
+        return {};
+    return grid::barGrid(viewStart_ / bar, xToSample(static_cast<float>(getWidth())) / bar,
+                         static_cast<double>(getWidth() - kHeaderWidth), minPx);
+}
+
 int ArrangementView::getLaneHeight() const noexcept {
     const int lanes = std::max(1, session_.getNumTracks());
     return std::max(kMinLaneHeight, (getHeight() - kRulerHeight) / lanes);
@@ -302,37 +310,41 @@ void ArrangementView::paintRuler(juce::Graphics& g, juce::Rectangle<int> area) {
         g.fillRect(juce::Rectangle<float>(lx0, static_cast<float>(area.getBottom() - 8), lx1 - lx0, 8.0f));
     }
 
-    // bar lines and numbers, beat ticks
-    const double beat = tr.getSamplesPerBeat();
+    // bar lines and numbers, beat ticks. getBarGrid() says which bars get a line (8 px apart at least) and a
+    // number (30 px), so the loop runs over the lines drawn, not over every bar in view (GridSpacing.h).
+    // Beat ticks only when every bar has its line and beats are more than 6 px apart.
+    const double barSamples = tr.getSamplesPerBar();
     const int beatsPerBar = tr.getTimeSignature().numerator;
-    if (beat <= 0.0)
-        return;
-    const double pixelsPerBeat = beat / samplesPerPixel_;
-    const int barStep = pixelsPerBeat * beatsPerBar < 30.0 ? 4 : 1; // fewer numbers when zoomed out
-    const auto firstBeat = static_cast<juce::int64>(std::floor(viewStart_ / beat));
-    const auto lastBeat = static_cast<juce::int64>(std::ceil(xToSample(static_cast<float>(getWidth())) / beat));
-    for (auto b = std::max<juce::int64>(0, firstBeat); b <= lastBeat; ++b) {
-        const float x = sampleToX(static_cast<double>(b) * beat);
-        if (x < kHeaderWidth)
+    const grid::BarGrid lines = getBarGrid(8.0);
+    const grid::BarGrid numbers = getBarGrid(30.0);
+    const bool beatTicks = lines.step == 1 && lines.pxPerBar / beatsPerBar > 6.0;
+    // With beat ticks, the bar that starts left of the view has some of its beats in it.
+    for (int64_t i = beatTicks ? -1 : 0; i < lines.count; ++i) {
+        const int64_t bar = lines.first + i * lines.step; // 0-based: bar 1 is 0
+        if (bar < 0)
             continue;
-        const bool isBar = b % beatsPerBar == 0;
-        const auto bar = b / beatsPerBar + 1;
-        if (isBar) {
+        const double start = static_cast<double>(bar) * barSamples;
+        const float x = sampleToX(start);
+        if (i >= 0 && x >= kHeaderWidth) {
             g.setColour(DawColours::textDim());
             g.drawVerticalLine(static_cast<int>(x), static_cast<float>(area.getY() + 4), static_cast<float>(area.getBottom()));
-            if ((bar - 1) % barStep == 0) {
+            if (bar % numbers.step == 0) {
                 g.setColour(DawColours::text());
-                g.drawText(juce::String(bar), static_cast<int>(x) + 3, area.getY() + 2, 40, 14, juce::Justification::left);
+                g.drawText(juce::String(bar + 1), static_cast<int>(x) + 3, area.getY() + 2, 40, 14, juce::Justification::left);
             }
-        } else if (pixelsPerBeat > 6.0) {
-            g.setColour(DawColours::outline());
-            g.drawVerticalLine(static_cast<int>(x), static_cast<float>(area.getBottom() - 6), static_cast<float>(area.getBottom()));
+        }
+        if (!beatTicks)
+            continue;
+        g.setColour(DawColours::outline());
+        for (int b = 1; b < beatsPerBar; ++b) {
+            const float bx = sampleToX(start + barSamples * b / beatsPerBar);
+            if (bx >= kHeaderWidth && bx < static_cast<float>(getWidth()))
+                g.drawVerticalLine(static_cast<int>(bx), static_cast<float>(area.getBottom() - 6), static_cast<float>(area.getBottom()));
         }
     }
 }
 
 void ArrangementView::paintLane(juce::Graphics& g, int lane, juce::Rectangle<int> area) {
-    const auto& tr = session_.getEngine().getTransport();
     const engine::TrackId track = session_.getTrackId(lane);
     const bool selected = track == selectedTrack_;
     const engine::ChannelStrip* strip = session_.getEngine().getStrip(session_.trackRef(track));
@@ -342,12 +354,14 @@ void ArrangementView::paintLane(juce::Graphics& g, int lane, juce::Rectangle<int
     // lane background + bar grid
     g.setColour(selected ? DawColours::panelLight().withAlpha(0.6f) : (lane % 2 ? DawColours::background() : DawColours::background().brighter(0.03f)));
     g.fillRect(area);
-    const double bar = tr.getSamplesPerBar();
-    if (bar > 0.0 && bar / samplesPerPixel_ > 8.0) {
-        g.setColour(DawColours::outline().withAlpha(0.5f));
-        for (double s = std::floor(viewStart_ / bar) * bar; sampleToX(s) < getWidth(); s += bar)
-            if (sampleToX(s) >= kHeaderWidth)
-                g.drawVerticalLine(static_cast<int>(sampleToX(s)), static_cast<float>(area.getY()), static_cast<float>(area.getBottom()));
+    // The ruler's bar lines (GridSpacing.h): every bar, or every 2nd, 4th ... when they would be closer than 8 px.
+    const grid::BarGrid lines = getBarGrid(8.0);
+    const double barSamples = session_.getEngine().getTransport().getSamplesPerBar();
+    g.setColour(DawColours::outline().withAlpha(0.5f));
+    for (int64_t i = 0; i < lines.count; ++i) {
+        const float x = sampleToX(static_cast<double>(lines.first + i * lines.step) * barSamples);
+        if (x >= kHeaderWidth)
+            g.drawVerticalLine(static_cast<int>(x), static_cast<float>(area.getY()), static_cast<float>(area.getBottom()));
     }
 
     // clips

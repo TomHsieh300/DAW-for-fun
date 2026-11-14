@@ -658,12 +658,39 @@ void testAudioFileBoundary() {
     dir.deleteRecursively();
 }
 
+// ---- the bar grid, zoomed fully out (review A8) ----------------------------------------------------
+// At the fastest tempo in 1/4, zoomed out as far as the view goes, over 400 000 bars are in view. The
+// arrangement draws a line on every 2^k-th bar so that the lines are 8 px apart (GridSpacing.h):
+// counted here, not timed.
+void testBarGrid() {
+    std::printf("the bar grid, zoomed fully out\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    main.setSize(MainComponent::kDefaultWidth, MainComponent::kDefaultHeight);
+    Transport& tr = main.getEngine().getTransport();
+    tr.setTempo(Transport::kMaxTempo);
+    tr.setTimeSignature(1, 4);
+    ArrangementView& view = main.getArrangement();
+    view.setView(0.0, 1.0e6);
+    const int width = view.getWidth() - ArrangementView::kHeaderWidth;
+    const double bars = view.getSamplesPerPixel() * width / tr.getSamplesPerBar();
+    const grid::BarGrid lines = view.getBarGrid(8.0);
+    std::printf("   %.0f BPM 1/4, %.0f samples per pixel: %.0f bars over %d px -> %lld lines, every %lld bars\n",
+                tr.getTempo(), view.getSamplesPerPixel(), bars, width, static_cast<long long>(lines.count),
+                static_cast<long long>(lines.step));
+    DAWLAB_CHECK(width > 0 && bars > 400000.0);
+    DAWLAB_CHECK(lines.count > 0 && lines.count <= width / 8 + 1);
+    view.zoomToFit();
+    DAWLAB_CHECK(view.getBarGrid(8.0).step == 1); // a short song: every bar
+}
+
 // ---- --smoke-test --------------------------------------------------------------------------------
 
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     constexpr double sr = 48000.0;
     std::setvbuf(stdout, nullptr, _IONBF, 0); // unbuffered: a crash must not swallow what was printed
     std::printf("DawLab 16 smoke test (no audio device)\n\n");
+    testBarGrid();
     testAutomation();
 
 
