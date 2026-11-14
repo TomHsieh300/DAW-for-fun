@@ -570,7 +570,7 @@ WAV 檔是外部來的資料，所以 `readWav` 會拒絕不能相信的內容�
 ```cpp
 DAWLAB_CHECK(peak <= 1.0f);
 DAWLAB_CHECK_NEAR(gainDb, -3.01, 0.05);         // |a - b| <= tol
-return dawlab::test::summary("l00_ex4");          // 全過回傳 0（ctest PASS），否則 1
+return dawlab::test::summary("l00_ex4");          // 至少跑了一個 check 且全過回傳 0（ctest PASS），否則 1
 ```
 
 失敗時印出運算式、實際值、預期值與檔案行號。每題練習的解答都以這個方式驗證，而不是「用耳朵聽起來對」。本章的 `l00_db_math` 也用它驗證 README 的每一個數值宣稱。

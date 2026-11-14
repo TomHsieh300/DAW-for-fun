@@ -8,6 +8,16 @@
 #include <string>
 #include <vector>
 
+// The rule of Check.h's summary(): a run passes only if at least one check ran and none failed. The probes use their own
+// Counters, so they do not touch the global one that main() reports.
+static void checkSummaryRule() {
+    using dawlab::test::Counters;
+    using dawlab::test::summaryOf;
+    DAWLAB_CHECK(summaryOf(Counters{0, 0}, "summary_probe_no_check") == 1);
+    DAWLAB_CHECK(summaryOf(Counters{3, 0}, "summary_probe_all_pass") == 0);
+    DAWLAB_CHECK(summaryOf(Counters{3, 1}, "summary_probe_one_fails") == 1);
+}
+
 int main() {
     using namespace dawlab;
     constexpr double sr = 48000.0;
@@ -107,6 +117,8 @@ int main() {
     DAWLAB_CHECK(peakAbs(plucks) < 1.0f && peakAbs(plucks) > 0.1f);
     std::printf("drum loop peak = %.2f dBFS, pluck sequence peak = %.2f dBFS\n", gainToDb(peakAbs(drums)),
                 gainToDb(peakAbs(plucks)));
+
+    checkSummaryRule();
 
     return dawlab::test::summary("common");
 }

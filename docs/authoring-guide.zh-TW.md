@@ -98,7 +98,7 @@ public:
 
 - 每章 5–8 題（第 08 章有 8 題，讓 Gate、Expander、De-esser、Transient shaper 各有實作題；例外：第 14 章為 7 題 engine 練習 + 6 個可選的 application project，標為 Exercises 1–7 與 optional Projects 8–13），混合：**觀念題**、**計算題**（手算 dB、係數、時間常數……）、**實作題**（至少 3 題）。標示難度 ★☆☆ / ★★☆ / ★★★。
 - 實作題提供 `exercises/starter/exN_xxx.cpp`：可編譯、留 `// TODO`，執行時會因為 self-check 失敗而印出 FAIL（這是預期的）。
-- `solutions/exN_xxx.cpp`：完整解答，用 `DAWLAB_CHECK` / `DAWLAB_CHECK_NEAR` **以數字驗證**結果（例如用 `measureGainDb` 驗證 cutoff 處是 -3 dB），最後 `return dawlab::test::summary("lNN_exN");`。
+- `solutions/exN_xxx.cpp`：完整解答，用 `DAWLAB_CHECK` / `DAWLAB_CHECK_NEAR` **以數字驗證**結果（例如用 `measureGainDb` 驗證 cutoff 處是 -3 dB），最後 `return dawlab::test::summary("lNN_exN");`。一個完全沒跑任何 check 的解答會失敗：什麼都沒驗證。
 - `solutions/README.md`：每一題都有答案與解說（觀念題寫完整說明，計算題寫出算式，實作題講解關鍵思路並指向解答檔）。
 - 解答檔可以自帶本題需要的 class（例如練習「自己寫一個 RMS detector」），不一定要放進 `dsp/`。
 

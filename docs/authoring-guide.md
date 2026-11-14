@@ -98,7 +98,7 @@ public:
 
 - Each chapter has 5–8 exercises (chapter 08 has 8, so that Gate, Expander, De-esser and Transient shaper each get a programming exercise; the exception is chapter 14, which has 7 engine exercises plus 6 optional application projects, labelled Exercises 1–7 and optional Projects 8–13). They mix **conceptual questions**, **calculation questions** (working out dB, coefficients, time constants, ... by hand) and **programming exercises** (at least 3). Difficulty is marked ★☆☆ / ★★☆ / ★★★.
 - Programming exercises provide `exercises/starter/exN_xxx.cpp`: it compiles and leaves `// TODO`s; when run it prints FAIL because the self-check fails (this is expected).
-- `solutions/exN_xxx.cpp`: the complete solution. It uses `DAWLAB_CHECK` / `DAWLAB_CHECK_NEAR` to **verify the result with numbers** (for example, using `measureGainDb` to verify that the gain at the cutoff is -3 dB), and ends with `return dawlab::test::summary("lNN_exN");`.
+- `solutions/exN_xxx.cpp`: the complete solution. It uses `DAWLAB_CHECK` / `DAWLAB_CHECK_NEAR` to **verify the result with numbers** (for example, using `measureGainDb` to verify that the gain at the cutoff is -3 dB), and ends with `return dawlab::test::summary("lNN_exN");`. A solution that runs no check at all fails: nothing was verified.
 - `solutions/README.md`: every exercise has an answer and an explanation (full explanations for conceptual questions, the working for calculation questions, and for programming exercises the key ideas plus a pointer to the solution file).
 - A solution file may bring along the classes the exercise needs (for example the exercise "write your own RMS detector"); they do not have to go into `dsp/`.
 

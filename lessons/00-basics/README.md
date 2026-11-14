@@ -568,7 +568,7 @@ Every chapter uses these deterministic signals (same parameters → same result)
 ```cpp
 DAWLAB_CHECK(peak <= 1.0f);
 DAWLAB_CHECK_NEAR(gainDb, -3.01, 0.05);         // |a - b| <= tol
-return dawlab::test::summary("l00_ex4");          // returns 0 if everything passed (ctest PASS), otherwise 1
+return dawlab::test::summary("l00_ex4");          // returns 0 if at least one check ran and all passed (ctest PASS), otherwise 1
 ```
 
 On failure it prints the expression, the actual value, the expected value and the file and line number. The solution of every exercise is verified this way, instead of "it sounds right to my ears". This chapter's `l00_db_math` also uses it to verify every numerical claim in the README.
