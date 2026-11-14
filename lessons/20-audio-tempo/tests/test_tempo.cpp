@@ -422,6 +422,8 @@ void testMapIsMadeWithoutAllocation() {
     // and Mixer's fallback map and Transport build theirs this way.
     double nan = std::numeric_limits<double>::quiet_NaN();
     long allocs = 0;
+    // Counted as a difference, like play(): the counter also holds what earlier tests counted without reading it.
+    const long before = gAllocs.load();
     {
         CountScope count;
         TempoMap m;
@@ -440,7 +442,7 @@ void testMapIsMadeWithoutAllocation() {
         DAWLAB_CHECK(m.point(0).bpm == TempoMap::kMinBpm);
         m.setConstant(std::numeric_limits<double>::infinity());
         DAWLAB_CHECK(m.point(0).bpm == TempoMap::kMaxBpm);
-        allocs = gAllocs.exchange(0);
+        allocs = gAllocs.load() - before;
     }
     std::printf("  a map made, set to one tempo and made with constant(): %ld allocations\n", allocs);
     DAWLAB_CHECK(allocs == 0);
