@@ -54,6 +54,31 @@ class BuildShTest(unittest.TestCase):
         self.assertEqual(len(ctest), 1, calls)
         self.assertIn("--no-tests=error", ctest[0])
 
+    # ---- S10: an option that needs a value says so ----
+
+    def test_option_without_a_value_is_a_usage_error(self):
+        for args in (["--only"], ["--juce", "--only"], ["--build-dir"], ["--config"], ["--test-label"], ["--sanitize"],
+                     ["--only", "--juce"], ["--test-label", "--no-test"], ["--build-dir", ""]):
+            with self.subTest(args=args):
+                code, out, calls = self.run_build(*args)
+                option = [arg for arg in args if arg.startswith("--") and arg in
+                          ("--only", "--build-dir", "--config", "--test-label", "--sanitize")][-1]
+                self.assertEqual(code, 2, out)
+                self.assertIn(f"{option} needs a value", out)
+                self.assertNotIn("unbound variable", out)
+                self.assertEqual(calls, [], "nothing may be configured or built")
+
+    def test_empty_only_still_means_every_chapter_like_build_ps1(self):
+        code, out, calls = self.run_build("--only", "")
+        self.assertEqual(code, 0, out)
+        self.assertIn("-DDAWLAB_ONLY=", [arg for arg in calls[0].split() if arg.startswith("-DDAWLAB_ONLY")])
+
+    def test_only_with_several_chapters_passes_them_to_cmake_with_semicolons(self):
+        code, out, calls = self.run_build("--only", "02-filter,03-eq", "--juce")
+        self.assertEqual(code, 0, out)
+        self.assertIn("-DDAWLAB_ONLY=02-filter;03-eq", calls[0])
+        self.assertIn("-DDAWLAB_WITH_JUCE=ON", calls[0])
+
     def test_build_ps1_calls_ctest_with_no_tests_error_too(self):
         # There is no PowerShell on the Linux runner: the Windows jobs run the real thing. This only keeps the
         # two scripts in step.

@@ -26,9 +26,10 @@ usage() {
     sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
     cat <<'EOF'
 Options:
+  (every option with a <value> needs one)
   --only <a,b,...>     build only these chapters (folder names, comma-separated), or the groups
                        juce (chapters with JUCE programs) and engine (chapters with an engine/);
-                       any other name is an error. A test run that finds no test fails.
+                       any other name is an error; '' means every chapter. A test run that finds no test fails.
   --build-dir <dir>    build folder (default: build)
   --config <cfg>       Debug | Release | RelWithDebInfo (default: Debug)
   --juce               also build the JUCE programs (chapters 13 and up)
@@ -39,19 +40,32 @@ Options:
 EOF
 }
 
+# Every option with a <value> needs one, and the next option is not a value: "--only --juce" is a mistake, not a
+# chapter called --juce. An empty value is the default of --only, --test-label and --sanitize (--only '' builds every
+# chapter, like build.ps1 -Only '').
+need_value() {
+    if [[ $# -lt 2 || $2 == -* ]]; then
+        echo "$1 needs a value" >&2
+        usage >&2
+        exit 2
+    fi
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --only)       only="$2"; shift 2 ;;
-        --build-dir)  build_dir="$2"; shift 2 ;;
-        --config)     config="$2"; shift 2 ;;
+        --only)       need_value "$@"; only="$2"; shift 2 ;;
+        --build-dir)  need_value "$@"; build_dir="$2"; shift 2 ;;
+        --config)     need_value "$@"; config="$2"; shift 2 ;;
         --juce)       juce="ON"; shift ;;
         --no-test)    run_tests=0; shift ;;
-        --test-label) test_label="$2"; shift 2 ;;
-        --sanitize)   sanitize="$2"; shift 2 ;;
+        --test-label) need_value "$@"; test_label="$2"; shift 2 ;;
+        --sanitize)   need_value "$@"; sanitize="$2"; shift 2 ;;
         -h|--help)    usage; exit 0 ;;
         *) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
     esac
 done
+
+[[ -n "$build_dir" ]] || { echo "--build-dir needs a value" >&2; usage >&2; exit 2; }
 
 case "$config" in
     Debug|Release|RelWithDebInfo) ;;
