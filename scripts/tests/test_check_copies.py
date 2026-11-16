@@ -65,6 +65,15 @@ class CheckCopiesTest(unittest.TestCase):
         self.assertIn("NewShared.h", out)
         self.assertIn("not in scripts/copied_files.txt", out)
 
+    def test_a_list_line_with_its_chapters_in_another_order_passes(self):
+        for chapter in ("14-a", "15-b", "16-c"):
+            self.chapter(chapter)
+            self.put(chapter, "app/Source/Meters.cpp", "int meters;\n")
+        self.set_list("16 14 15 app/Source/Meters.cpp")
+        code, out = self.run_script()
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("not in scripts/copied_files.txt", out)
+
     def test_new_chapter_that_is_a_copy_of_a_listed_file_fails(self):
         self.three_chapters_sharing_meters()
         self.chapter("17-d")

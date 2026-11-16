@@ -136,7 +136,7 @@ def main():
     # The list says which files are shared, the folders say which ones are. A file that is the same in several
     # chapters must be in the list, or nobody notices when one copy is changed later. A name that already fails
     # above is not reported a second time.
-    listed = {(tuple(chapters), name) for chapters, name in entries}
+    listed = {(tuple(sorted(chapters)), name) for chapters, name in entries}  # the order on a line is the writer's
     unlisted = [(chapters, name) for chapters, name in current_groups() if (chapters, name) not in listed and name not in failing]
     for chapters, name in unlisted:
         print(f"{name}: identical in {', '.join(number_of(chapter) for chapter in chapters)} but not in scripts/copied_files.txt")
