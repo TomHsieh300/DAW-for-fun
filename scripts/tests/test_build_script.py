@@ -20,8 +20,9 @@ BUILD_SH = ROOT / "scripts" / "build.sh"
 BUILD_PS1 = ROOT / "scripts" / "build.ps1"
 
 FAKE_TOOL = """#!/bin/sh
-echo "$(basename "$0") $*" >> "$FAKE_LOG"
+echo "$(basename "$0") $* [UBSAN_OPTIONS=${UBSAN_OPTIONS-}]" >> "$FAKE_LOG"
 """
+SUPPRESSIONS = ROOT / "scripts" / "ubsan_suppressions.txt"
 
 
 @unittest.skipUnless(shutil.which("bash"), "needs bash")
@@ -38,8 +39,8 @@ class BuildShTest(unittest.TestCase):
             path.chmod(path.stat().st_mode | stat.S_IXUSR)
         self.log = self.tmp / "log.txt"
 
-    def run_build(self, *args):
-        env = dict(os.environ, FAKE_LOG=str(self.log), PATH=str(self.fakes) + os.pathsep + os.environ["PATH"])
+    def run_build(self, *args, **extra_env):
+        env = dict(os.environ, FAKE_LOG=str(self.log), PATH=str(self.fakes) + os.pathsep + os.environ["PATH"], **extra_env)
         result = subprocess.run(["bash", str(BUILD_SH), "--build-dir", str(self.tmp / "build"), *args],
                                 capture_output=True, encoding="utf-8", env=env)
         calls = self.log.read_text(encoding="utf-8").splitlines() if self.log.exists() else []
@@ -53,6 +54,38 @@ class BuildShTest(unittest.TestCase):
         ctest = [call for call in calls if call.startswith("ctest ")]
         self.assertEqual(len(ctest), 1, calls)
         self.assertIn("--no-tests=error", ctest[0])
+
+    # ---- UBSan: JUCE's bundled codecs are not ours ----
+
+    def ctest_ubsan_options(self, calls):
+        ctest = [call for call in calls if call.startswith("ctest ")]
+        self.assertEqual(len(ctest), 1, calls)
+        return ctest[0].rsplit("[UBSAN_OPTIONS=", 1)[1].rstrip("]")
+
+    def test_undefined_sanitizer_runs_the_tests_with_the_suppressions(self):
+        code, out, calls = self.run_build("--only", "02-filter", "--sanitize", "address,undefined",
+                                          UBSAN_OPTIONS="halt_on_error=1 print_stacktrace=1")
+        self.assertEqual(code, 0, out)
+        options = self.ctest_ubsan_options(calls)
+        self.assertIn("halt_on_error=1 print_stacktrace=1", options)  # the caller's options stay
+        self.assertIn("suppressions=" + str(SUPPRESSIONS), options)
+
+    def test_other_sanitizers_leave_ubsan_options_alone(self):
+        for sanitize in ("thread", "address", ""):
+            with self.subTest(sanitize=sanitize):
+                self.log.unlink(missing_ok=True)
+                code, out, calls = self.run_build("--only", "02-filter", "--sanitize", sanitize, UBSAN_OPTIONS="x=1")
+                self.assertEqual(code, 0, out)
+                self.assertEqual(self.ctest_ubsan_options(calls), "x=1")
+
+    def test_the_suppressions_name_only_juce_code(self):
+        rules = [line for line in SUPPRESSIONS.read_text(encoding="utf-8").splitlines()
+                 if line.strip() and not line.startswith("#")]
+        self.assertTrue(rules)
+        for rule in rules:
+            kind, _, where = rule.partition(":")
+            self.assertIn(kind, ("shift-base", "bounds"), rule)
+            self.assertIn("/juce_audio_formats/codecs/", where, rule)
 
     # ---- S10: an option that needs a value says so ----
 

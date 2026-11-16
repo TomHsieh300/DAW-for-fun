@@ -1,0 +1,9 @@
+# UndefinedBehaviorSanitizer suppressions for code that is not ours (scripts/build.sh --sanitize ...undefined
+# passes this file to every test through UBSAN_OPTIONS).
+#
+# JUCE's bundled audio codecs shift negative values (the FLAC wrapper and libvorbis's floor1.c and psy.c), and
+# libvorbis's psy.c reads one past an array while it masks. Both are undefined behaviour in C++17, but they are in
+# JUCE's copy of third-party code, which this course does not change. Only those folders are named here, so a
+# report from any other code still stops the test.
+shift-base:*/juce_audio_formats/codecs/*
+bounds:*/juce_audio_formats/codecs/vorbis/*

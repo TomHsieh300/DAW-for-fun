@@ -95,5 +95,9 @@ if [[ $run_tests -eq 1 ]]; then
     echo "==> test"
     test_args=(--test-dir "$build_dir" --output-on-failure --no-tests=error)
     [[ -n "$test_label" ]] && test_args+=(-L "$test_label")
+    # UBSan: JUCE's bundled codecs are not ours (scripts/ubsan_suppressions.txt says what is left out, and why)
+    if [[ $sanitize == *undefined* ]]; then
+        export UBSAN_OPTIONS="${UBSAN_OPTIONS:+$UBSAN_OPTIONS:}suppressions=$root/scripts/ubsan_suppressions.txt"
+    fi
     ctest "${test_args[@]}"
 fi
