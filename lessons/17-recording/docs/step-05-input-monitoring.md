@@ -114,8 +114,12 @@ It only listens when the monitor is on. A loud input with monitoring off is not 
 
 ### Threads
 
-Mode, level and range are relaxed atomics that the UI can set at any time. A range being changed can be read half old
-and half new for one block, but all that can do is to move a switch of what is heard. The recording reads its own copy,
+Mode and level are relaxed atomics that the UI can set at any time. The range is four fields, and the step's
+`minidaw.h` keeps them as four atomics too. Read one by one, half an old range and half a new one can hold a moment
+that neither holds: a punch of 1000-2000 changed to 100000-200000 can be read as 1000-200000 for one block, and the
+input is heard where no punch is. So the reference engine (`engine/include/dawlab/engine/Recording.h`) hands the
+range over whole, as the transport does with its loop: `setRange()` is for the UI thread only and publishes through a
+triple buffer (`TripleBuffer.h`), and `process()` takes it at the start of a block. The recording reads its own copy,
 taken in `start()`. That is why these do not need what the Recorder needs in Step 2.
 
 The reset is a request. The guard belongs to the audio thread, and only it may touch it.

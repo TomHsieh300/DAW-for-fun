@@ -38,6 +38,7 @@
 #endif
 
 #include "Transport.h"
+#include "TripleBuffer.h"
 
 namespace dawlab::engine {
 
@@ -934,8 +935,9 @@ private:
 };
 
 // The monitor path. The audio thread adds what should be heard to the output; the UI sets the rest
-// at any time. A range that is being changed can be seen half old and half new for one block, which
-// only moves a switch of what is heard.
+// at any time. The range (loop and punch, four fields) travels whole through a TripleBuffer: read field
+// by field, half the old range and half the new one can hold a moment that neither holds, and the input
+// is heard there.
 class Monitor {
 public:
     // ---- UI thread, before the audio thread runs ----------------------------------------------
@@ -956,12 +958,8 @@ public:
         if (std::isfinite(gain))
             level_.store(gain, std::memory_order_relaxed);
     }
-    void setRange(const RecordRange& range) noexcept {
-        loopStart_.store(range.loopStart, std::memory_order_relaxed);
-        loopEnd_.store(range.loopEnd, std::memory_order_relaxed);
-        punchIn_.store(range.punchIn, std::memory_order_relaxed);
-        punchOut_.store(range.punchOut, std::memory_order_relaxed);
-    }
+    // UI thread only: the TripleBuffer has one writer.
+    void setRange(const RecordRange& range) noexcept { range_.write(range); }
     // Only for telling the user. Nothing on the other side of this depends on it.
     bool feedbackDetected() const noexcept { return feedback_.load(std::memory_order_relaxed); }
     void resetFeedback() noexcept { resetRequested_.store(true, std::memory_order_relaxed); }
@@ -998,7 +996,7 @@ private:
     static constexpr int kRampMs = 5;
     std::atomic<MonitorMode> mode_{MonitorMode::Off};
     std::atomic<float> level_{1.0f};
-    std::atomic<std::int64_t> loopStart_{0}, loopEnd_{0}, punchIn_{0}, punchOut_{0};
+    TripleBuffer<RecordRange> range_; // UI thread writes, audio thread takes
     std::atomic<bool> feedback_{false}, resetRequested_{false};
     FeedbackGuard guard_; // audio thread
     float gain_ = 0.0f;   // audio thread
@@ -1060,11 +1058,8 @@ inline void Monitor::process(const float* const* input, int numInputChannels, fl
         guard_.reset();
     const MonitorMode mode = mode_.load(std::memory_order_relaxed);
     const float level = level_.load(std::memory_order_relaxed);
-    RecordRange range;
-    range.loopStart = loopStart_.load(std::memory_order_relaxed);
-    range.loopEnd = loopEnd_.load(std::memory_order_relaxed);
-    range.punchIn = punchIn_.load(std::memory_order_relaxed);
-    range.punchOut = punchOut_.load(std::memory_order_relaxed);
+    range_.take();
+    const RecordRange& range = range_.front();
 
     if (numSegments == 0)
         run(input, numInputChannels, output, numOutputChannels, replaced, numReplacedChannels, 0, n, 0, false, mode, level, range);

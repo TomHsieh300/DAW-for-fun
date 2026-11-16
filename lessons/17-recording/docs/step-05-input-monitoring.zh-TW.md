@@ -106,8 +106,12 @@ Output 和 input 無法簡單比較，因為真實的房間不是一個延遲加
 
 ### Thread
 
-Mode、音量和 range 都是 relaxed atomic，UI 隨時可以設定。正在變更的 range 可能在一個 block 內被讀成一半舊、一半新，但
-那頂多移動聽到內容的切換點。錄音讀的是它自己的副本，在 `start()` 時取得。所以這些不需要 Step 2 的 Recorder 所需要的東西。
+Mode 和音量是 relaxed atomic，UI 隨時可以設定。Range 有四個欄位，這個 step 的 `minidaw.h` 也把它們存成四個 atomic。
+一個一個讀的話，一半舊 range、一半新 range 可能包含一個兩者都不包含的時刻：punch 從 1000-2000 改成 100000-200000 時，
+某個 block 可能讀到 1000-200000，於是在沒有 punch 的地方聽到 input。所以參考 engine
+（`engine/include/dawlab/engine/Recording.h`）像 transport 處理 loop 一樣，把 range 整個交出去：`setRange()` 只給 UI
+thread 呼叫，經由 triple buffer（`TripleBuffer.h`）發布，`process()` 在 block 開頭取用。錄音讀的是它自己的副本，在
+`start()` 時取得。所以這些不需要 Step 2 的 Recorder 所需要的東西。
 
 Reset 是一個請求。Guard 屬於 audio thread，只有它能碰。
 

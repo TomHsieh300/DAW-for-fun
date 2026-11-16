@@ -9,6 +9,7 @@
 #include "TestTracks.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -18,7 +19,9 @@
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <random>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace dawlab;
@@ -541,6 +544,61 @@ void monitorKeepsItsLevelWhenGivenNaN() {
 }
 
 // Turning it off in the middle of the input: a fade, not a step.
+void monitorRangeArrivesWhole() {
+    // The UI thread switches a monitor between a punch of 1000-2000 and one of 100000-200000 while another
+    // thread runs it in Auto at position 50000, outside both: it must never be heard there. Half of one and half
+    // of the other is heard: 1000-200000 holds 50000, and 100000-2000 is no punch at all. 20000 switches, or 10 s.
+    Monitor m;
+    m.prepare(static_cast<int>(kSampleRate));
+    m.setMode(MonitorMode::Auto);
+    RecordRange near, far;
+    near.punchIn = 1000;
+    near.punchOut = 2000;
+    far.punchIn = 100000;
+    far.punchOut = 200000;
+    m.setRange(near);
+    std::atomic<bool> quit{false};
+    std::atomic<long> calls{0};
+    long heard = 0; // the audio thread's, read after join()
+    std::thread audio([&] {
+        constexpr int n = 16;
+        float in[n], out[n];
+        std::fill(in, in + n, 0.1f); // quieter than the feedback guard listens for
+        const float* inputs[] = {in};
+        float* outputs[] = {out};
+        TimelineSegment seg;
+        seg.timelineStart = 50000;
+        seg.blockOffset = 0;
+        seg.numSamples = n;
+        while (!quit.load(std::memory_order_relaxed)) {
+            std::fill(out, out + n, 0.0f);
+            m.process(inputs, 1, outputs, 1, nullptr, 0, &seg, 1, n);
+            if (std::any_of(out, out + n, [](float x) { return x != 0.0f; }))
+                ++heard;
+            calls.fetch_add(1, std::memory_order_release);
+        }
+    });
+    const auto waitForBlocks = [&](long more) {
+        const long target = calls.load(std::memory_order_acquire) + more;
+        while (calls.load(std::memory_order_acquire) < target)
+            std::this_thread::yield();
+    };
+    std::mt19937 rng(1);
+    volatile unsigned sink = 0;
+    int switches = 0;
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    for (; switches < 20000 && std::chrono::steady_clock::now() < until; ++switches) {
+        for (unsigned spin = rng() % 64; spin > 0; --spin) // a different moment each time
+            sink = sink + 1;
+        m.setRange(switches % 2 == 0 ? far : near);
+        waitForBlocks(1);
+    }
+    quit = true;
+    audio.join();
+    std::printf("  %d punch switches while another thread monitors outside both: heard in %ld blocks\n", switches, heard);
+    DAWLAB_CHECK(heard == 0 && switches > 0);
+}
+
 void monitorFadesOut() {
     Engine e;
     const TrackId voice{1};
@@ -1012,6 +1070,7 @@ int main() {
     monitorWithoutInput();
     monitorLevelAndOff();
     monitorKeepsItsLevelWhenGivenNaN();
+    monitorRangeArrivesWhole();
     monitorFadesOut();
     monitorFollowsTheRate();
     monitorOfANewTrack();
