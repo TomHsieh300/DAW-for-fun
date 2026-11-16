@@ -500,6 +500,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     DAWLAB_CHECK(slotsUsed == static_cast<int>(song.inserts.size()));
     DAWLAB_CHECK(chainsMatch);
     DAWLAB_CHECK(session.getSongEndSample() > 0);
+    DAWLAB_CHECK(session.getSongEndSample() == engine.getMixer().getSongEndSample()); // the export's length is the arrangement's
     DAWLAB_CHECK(latency == engine.getMixer().getMaxTrackLatencySamples() + engine.getMixer().getMaxBusLatencySamples() +
                                 engine.getMixer().getMaster().getInsertLatencySamples());
 

@@ -2636,6 +2636,63 @@ void testAudioFileBoundary() {
 // At the fastest tempo in 1/4, zoomed out as far as the view goes, over 400 000 bars are in view. The
 // arrangement draws a line on every 2^k-th bar so that the lines are 8 px apart (GridSpacing.h):
 // counted here, not timed.
+// The song's end is decided twice: the Session's from its model (the arrangement's length, "nothing to export")
+// and the Engine's from what it plays (the export's length). Once the engine has caught up they are one number.
+void testSongEndAgrees() {
+    std::printf("the song's end: the session and the engine agree\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    Session& session = main.getSession();
+    Engine& engine = main.getEngine();
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    const auto caughtUp = [&] {
+        engine.applyPendingCommandsOffline();
+        session.finishRenders();
+        engine.applyPendingCommandsOffline();
+    };
+    int agreed = 0, asked = 0;
+    const auto agree = [&](const char* what) {
+        caughtUp();
+        ++asked;
+        const std::int64_t mine = session.getSongEndSample(), theirs = engine.getSongEndSample();
+        if (mine == theirs)
+            ++agreed;
+        else
+            std::printf("  %s: the session says %lld, the engine %lld\n", what, static_cast<long long>(mine),
+                        static_cast<long long>(theirs));
+    };
+    agree("an empty project");
+
+    const double rate = session.getClipSampleRate();
+    const std::int64_t beat = std::llround(rate * 0.5); // at 120 BPM
+    const TrackId track = main.addTrack(TrackFormat::Mono, false);
+    auto audio = std::make_shared<AudioBuffer>(1, static_cast<int>(8 * beat));
+    audio->setSample(0, 0, 0.5f);
+    const std::shared_ptr<const AudioBuffer> source = audio;
+    DAWLAB_CHECK(session.perform(edit::SetClips{track, {session.makeAudioClip(source, "take", 4 * beat)}}, "Add clip"));
+    agree("an audio clip");
+    const TrackId synth = main.addTrack(TrackFormat::Mono, true);
+    DAWLAB_CHECK(session.perform(edit::SetMidiClips{synth, {midiClip(4 * 3840, {{0, 960, 60, 100, 0}})}}, "Add MIDI clip"));
+    agree("and a MIDI clip after it");
+    for (const engine::FollowMode mode : {engine::FollowMode::Start, engine::FollowMode::Varispeed, engine::FollowMode::Stretch}) {
+        DAWLAB_CHECK(main.setClipFollow(track, 0, mode));
+        for (const double bpm : {60.0, 150.0, 120.0}) {
+            DAWLAB_CHECK(session.setTempoPoints({{0, bpm, false}}, "Tempo"));
+            agree("a following clip at a new tempo");
+        }
+        DAWLAB_CHECK(session.setTempoPoints({{0, 120.0, true}, {3840, 60.0, false}}, "Tempo"));
+        agree("a following clip on a ramp");
+    }
+    DAWLAB_CHECK(session.perform(edit::SetMidiClips{synth, {}}, "Remove MIDI clip"));
+    agree("the audio clip alone");
+    std::printf("  %d of %d moments agree\n", agreed, asked);
+    DAWLAB_CHECK(asked > 0 && agreed == asked);
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    engine.collectGarbage();
+}
+
 void testBarGrid() {
     std::printf("the bar grid, zoomed fully out\n");
     auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
@@ -2665,6 +2722,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     std::setvbuf(stdout, nullptr, _IONBF, 0); // unbuffered: a crash must not swallow what was printed
     std::printf("DawLab 20 smoke test (no audio device)\n\n");
     testBarGrid();
+    testSongEndAgrees();
     testMidiModel();
     testMidiEditing();
     testMidiRecording();
@@ -2830,6 +2888,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     DAWLAB_CHECK(slotsUsed == static_cast<int>(song.inserts.size()));
     DAWLAB_CHECK(chainsMatch);
     DAWLAB_CHECK(session.getSongEndSample() > 0);
+    DAWLAB_CHECK(session.getSongEndSample() == engine.getSongEndSample()); // the export's length is the arrangement's
     DAWLAB_CHECK(latency == engine.getMixer().getMaxTrackLatencySamples() + engine.getMixer().getMaxBusLatencySamples() +
                                 engine.getMixer().getMaster().getInsertLatencySamples());
 
