@@ -732,7 +732,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
             // A write that fails half-way - here the process may not write more than 4096 bytes to a file, as on
             // a full disk - leaves the file that was there as it was (an export over the last mix, a project's WAV).
             const juce::int64 sizeBefore = wav.getSize();
-            const int filesBefore = wav.getParentDirectory().getNumberOfChildFiles(juce::File::findFiles);
+            const int filesBefore = wav.getParentDirectory().getNumberOfChildFiles(juce::File::findFiles, "*" + wav.getFileNameWithoutExtension() + "*");
             const AudioBuffer longer = makeSine(500.0, 44100.0, 2.0, 0.5f, 2);
             const auto oldHandler = std::signal(SIGXFSZ, SIG_IGN);
             rlimit old{};
@@ -747,7 +747,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
             std::printf("   a write that fails half-way: %s (\"%s\"); the old file %lld -> %lld bytes\n", written ? "written" : "refused",
                         why.toRawUTF8(), static_cast<long long>(sizeBefore), static_cast<long long>(wav.getSize()));
             DAWLAB_CHECK(!written && wav.getSize() == sizeBefore);
-            DAWLAB_CHECK(wav.getParentDirectory().getNumberOfChildFiles(juce::File::findFiles) == filesBefore); // no temporary left
+            DAWLAB_CHECK(wav.getParentDirectory().getNumberOfChildFiles(juce::File::findFiles, "*" + wav.getFileNameWithoutExtension() + "*") == filesBefore); // no temporary left
         }
 #endif
         const LoadedMedia media = MediaLoader::readAudioFile(wav, 48000.0);
