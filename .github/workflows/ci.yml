@@ -7,7 +7,9 @@
 #         Windows, Linux (x64 and ARM64) and macOS
 #   tsan  chapters 15-20 under ThreadSanitizer: their checks run a real audio thread next to the
 #         UI thread, and TSan fails the run on any data race between them
-#   asan  every pure C++ chapter under AddressSanitizer and UndefinedBehaviorSanitizer
+#   asan  every pure C++ chapter under AddressSanitizer and UndefinedBehaviorSanitizer, with
+#         float-cast-overflow (a float too large, or NaN, cast to an integer), which -fsanitize=undefined
+#         leaves out
 #   juce  chapters 13-20 with JUCE, including the smoke tests and snapshots of DawLab 8 and 15 to
 #         20, on Windows, Linux (x64 and ARM64) and macOS
 #
@@ -106,7 +108,7 @@ jobs:
       - name: Build and test under AddressSanitizer and UndefinedBehaviorSanitizer
         env:
           UBSAN_OPTIONS: halt_on_error=1 print_stacktrace=1
-        run: ./scripts/build.sh --sanitize address,undefined --build-dir build-asan
+        run: ./scripts/build.sh --sanitize address,undefined,float-cast-overflow --build-dir build-asan
 
   juce:
     name: juce (${{ matrix.os }})

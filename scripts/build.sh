@@ -35,7 +35,8 @@ Options:
   --juce               also build the JUCE programs (chapters 13 and up)
   --no-test            build only, do not run ctest
   --test-label <lbl>   run only tests with this label (example, solution, test)
-  --sanitize <kind>    build with -fsanitize=<kind>: thread, address, undefined or address,undefined
+  --sanitize <kind>    build with -fsanitize=<kind>: thread, address, undefined, address,undefined, or as CI:
+                       address,undefined,float-cast-overflow (undefined leaves float-to-int casts out)
                        (use its own --build-dir: every file is compiled differently)
 EOF
 }
