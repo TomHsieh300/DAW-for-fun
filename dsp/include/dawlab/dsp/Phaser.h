@@ -20,10 +20,10 @@
 // Here the Chapter 02 Biquad serves as the container for each stage: setting b2 = a2 = 0 gives a
 // first-order section (b0 = a, b1 = 1, b2 = 0, a1 = a, a2 = 0).
 //
-// The sweep never rests on the clamp [kMinHz, kMaxHzOfFs·fs]: the octaves in use are limited to the room
-// between the centre and the nearer end, after the smoothers (centre 8000 Hz swept ±2 octaves would
-// otherwise sit at 0.45·fs for a quarter of each cycle, and the sweep would stall there). The clamp
-// stays as a rail.
+// The sweep never rests on the clamp [kMinHz, kMaxHzOfFs·fs]: after the smoothers, the centre in use moves
+// into the band just far enough that the whole sweep fits, and only a band narrower than the sweep
+// narrows the sweep (centre 8000 Hz swept ±2 octaves would otherwise sit at 0.45·fs for a quarter of
+// each cycle; at 44.1 kHz a centre of 20 kHz is above the band). The clamp stays as a rail.
 //
 // Dependencies: Chapter 02 Biquad, and this chapter's Lfo.
 
@@ -112,8 +112,8 @@ public:
     }
     void setLfoShape(LfoShape shape) noexcept { lfo_.setShape(shape); }
     void setLfoPhase(float phase01) noexcept { lfo_.setPhase(phase01); }
-    // At depth = 1 the sweep is ±sweepOctaves (default ±2 octaves = 4 octaves in total); the sweep in use
-    // is at most the room between the centre and the nearer end of [kMinHz, kMaxHzOfFs · fs]
+    // At depth = 1 the sweep is ±sweepOctaves (default ±2 octaves = 4 octaves in total). It is narrowed only
+    // when [kMinHz, kMaxHzOfFs · fs] is narrower than the whole sweep; near an end the centre moves instead
     void setSweepOctaves(float octaves) noexcept {
         if (!acceptParameter(octaves))
             return;
@@ -189,13 +189,16 @@ private:
         mix_ = mixSm_.next();
 
         // Exponential scale: fc = centre · 2^(depth · octaves · lfo), because the ear hears pitch logarithmically.
-        // The sweep never rests on the clamp: the octaves in use are limited to the room between the centre and the
-        // nearer end, so the clamp below is a rail only.
+        // The sweep never rests on the clamp: it is at most half the band's octaves each way, and the centre in use
+        // stays that far from both ends, so the clamp below is a rail only.
         const float maxHz = static_cast<float>(kMaxHzOfFs * sampleRate_);
-        const float room = std::max(0.0f, std::min(std::log2(maxHz / centre), std::log2(centre / kMinHz)));
+        const float halfBand = std::max(0.0f, 0.5f * std::log2(maxHz / kMinHz));
+        const float octaves = std::min(depth * sweepOctaves_, halfBand);
+        const float lowest = kMinHz * std::exp2(octaves);
+        const float highest = std::max(lowest, maxHz / std::exp2(octaves)); // equal at a full-band sweep, but for rounding
+        const float centreInUse = std::clamp(centre, lowest, highest);
         const float m = lfo_.getNextValue();
-        const float octaves = std::min(depth * sweepOctaves_, room) * m;
-        currentHz_ = std::clamp(centre * std::exp2(octaves), kMinHz, maxHz);
+        currentHz_ = std::clamp(centreInUse * std::exp2(octaves * m), kMinHz, maxHz);
         uiCentreHz_.store(currentHz_);
 
         const BiquadCoefficients c = makeFirstOrderAllpass(currentHz_, sampleRate_);

@@ -1273,7 +1273,12 @@ double chorusShareAtClamp(float centreMs, float depthMs) {
 
 // The share of one LFO cycle (rate 1 Hz) the phaser's allpass frequency spends on the rail of its clamp, 20 Hz or
 // 0.45 fs (getCurrentCentreHz() is the frequency in use)
-double phaserShareOnRail(double sampleRate, float centreHz, float sweepOctaves) {
+// One LFO cycle (rate 1 Hz) of a phaser at depth 1: the share of it on the rail [20 Hz, 0.45 fs], and how many
+// octaves the frequency sweeps from its lowest to its highest
+struct PhaserSweep {
+    double onRail = 0.0, octaves = 0.0;
+};
+PhaserSweep phaserSweep(double sampleRate, float centreHz, float sweepOctaves) {
     const auto p = std::make_unique<Phaser>();
     p->prepare(sampleRate, kBlock, 1);
     p->setRateHz(1.0f);
@@ -1284,12 +1289,15 @@ double phaserShareOnRail(double sampleRate, float centreHz, float sweepOctaves) 
     const float top = static_cast<float>(0.45 * sampleRate);
     const long cycle = static_cast<long>(sampleRate);
     long onRail = 0;
+    float lowest = top, highest = 0.0f;
     for (long i = 0; i < cycle; ++i) {
         p->processSample(0, 0.0f);
         const float hz = p->getCurrentCentreHz();
         onRail += (hz >= top || hz <= 20.0f) ? 1 : 0;
+        lowest = std::min(lowest, hz);
+        highest = std::max(highest, hz);
     }
-    return static_cast<double>(onRail) / static_cast<double>(cycle);
+    return {static_cast<double>(onRail) / static_cast<double>(cycle), std::log2(static_cast<double>(highest) / lowest)};
 }
 
 void checkSweepRule() {
@@ -1302,18 +1310,27 @@ void checkSweepRule() {
     DAWLAB_CHECK(shortCentre < 0.05);
     DAWLAB_CHECK(defaults == 0.0);
 
-    // Phaser: the engine's top centre, 8000 Hz, swept +-2 octaves would reach 32 kHz; and +-6 octaves around 800 Hz
-    // reaches below 20 Hz too. Without the limit the frequency sat on the rail for about a quarter of the cycle. With
-    // it the sweep may touch an end at its turning point, where the LFO's float sine rounds to exactly +-1 for a few
-    // samples (about 0.01% of the cycle), as the chorus touches its 2 samples at the trough; it never rests there.
+    // Phaser: the engine's top centre, 8000 Hz, swept +-2 octaves would reach 32 kHz; +-6 octaves around 800 Hz
+    // reaches below 20 Hz too; and a centre of 20 kHz is above 0.45 fs at 44.1 kHz. Without a limit the frequency sat
+    // on the rail for a quarter of the cycle or more. The centre in use moves into the band so that the whole sweep
+    // fits, and only a band narrower than the sweep narrows it: the sweep is min(2 x octaves, the band's octaves). It
+    // may touch an end at its turning point, where the LFO's float sine rounds to exactly +-1 for a few samples (about
+    // 0.01% of the cycle), as the chorus touches its 2 samples at the trough; it never rests there.
     for (const double sr : {48000.0, 44100.0}) {
-        const double top = phaserShareOnRail(sr, 8000.0f, 2.0f);
-        const double wide = phaserShareOnRail(sr, 800.0f, 6.0f);
-        std::printf("Phaser at %.0f Hz: on the rail for %.2f%% of the cycle (centre 8000 Hz, +-2 oct), %.2f%% (800 Hz, "
-                    "+-6 oct)\n",
-                    sr, 100.0 * top, 100.0 * wide);
-        DAWLAB_CHECK(top < 0.001);
-        DAWLAB_CHECK(wide < 0.001);
+        const double band = std::log2(0.45 * sr / 20.0);
+        struct Row {
+            float centre, octaves;
+        };
+        for (const Row row : {Row{8000.0f, 2.0f}, Row{800.0f, 6.0f}, Row{20000.0f, 2.0f}, Row{30.0f, 3.0f}, Row{1000.0f, 2.0f}}) {
+            const PhaserSweep sweep = phaserSweep(sr, row.centre, row.octaves);
+            const double wanted = std::min(2.0 * row.octaves, band);
+            std::printf("Phaser at %.0f Hz, centre %.0f Hz +-%.0f oct: on the rail for %.2f%% of the cycle, sweeps %.2f "
+                        "of %.2f octaves\n",
+                        sr, static_cast<double>(row.centre), static_cast<double>(row.octaves), 100.0 * sweep.onRail,
+                        sweep.octaves, wanted);
+            DAWLAB_CHECK(sweep.onRail < 0.001);
+            DAWLAB_CHECK_NEAR(sweep.octaves, wanted, 0.01);
+        }
     }
 
     // Flanger (a pin): its delay runs from the base (at least 0.1 ms, 4.8 samples) upward, never down to its

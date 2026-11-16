@@ -124,9 +124,11 @@ private:
         mix_ = mixSm_.next();
         // Common ratio on the exponential scale: every stage's fc is multiplied by the same 2^(depth · octaves · lfo), preserving the ratios between stages
         const float m = lfo_.getNextValue();
-        // TODO 3: first limit the octaves depth_ · sweepOctaves_ to the room between the lowest stage and 20 Hz and
-        //         between the highest stage and 0.45·fs (log2 of each ratio, never below 0), so no stage rests on the
-        //         clamp; scale_ = 2^(octaves · m); each stage's fc = baseHz_[s] · scale_,
+        // TODO 3: so that no stage rests on the clamp, first limit the octaves depth_ · sweepOctaves_ to half of what
+        //         the band [20 Hz, 0.45·fs] leaves beside the stages' own spread (in log2, never below 0); then shift
+        //         all stages together (an octave shift, as little as possible, 0 if it fits) so that the lowest stage
+        //         stays above 20 Hz · 2^octaves and the highest below 0.45·fs / 2^octaves;
+        //         scale_ = 2^(shift + octaves · m); each stage's fc = baseHz_[s] · scale_,
         //         clamped to [20 Hz, 0.45·fs] (only a rail now); then set stages_[s]'s coefficients with
         //         Phaser::makeFirstOrderAllpass(fc, sampleRate_) (only the first numStages_ stages).
         (void)m;

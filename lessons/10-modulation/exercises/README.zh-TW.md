@@ -154,6 +154,6 @@ Self-check（mix 0.5、無 feedback、LFO 停住，掃頻 50 Hz–16 kHz 自動�
 - 300 / 600 / 1200 / 2400 Hz：量到的 notch 仍是 **2 個**，位置和 `predictNotchHz` 相差 < 0.5%，深度 < −30 dB。
 - 驗證練習 7 第 4 小題的預測：第一個 notch 比 4 × 1000 Hz 的 414.7 Hz 低、第二個比 2397.8 Hz 高。
 - depth 1、octaves 1、LFO 停在 +1（rate 0、相位 0.25）→ 所有 $`f_c`$ 加倍，量到的 notch = `predictNotchHz(k, 2)`（±0.5%）。
-- 300–4800 Hz、±3 octave 的 sweep → 沒有任何一級停在 [20 Hz, 0.45·fs] 的 clamp 上（< 週期的 0.1%）：像 `dsp::Phaser` 一樣，把 octave 數限制在最低一級到 20 Hz、最高一級到 0.45·fs 的空間內。
+- 300–4800 Hz、±3 octave 的 sweep → 沒有任何一級停在 [20 Hz, 0.45·fs] 的 clamp 上（< 週期的 0.1%），而且保留完整 6 octave 的 sweep：把所有級一起移進頻帶，移到 sweep 剛好放得下為止，就像 `dsp::Phaser` 移動它的 centre；只有頻帶剩下的空間不夠時才縮小 sweep。
 
 輸出 `l10_ex8_uniform.wav`、`l10_ex8_staggered.wav`（白雜訊、rate 0.2 Hz、±1.5 個八度）。比較兩者掃動的聽感：notch 分得更開之後有什麼不同？

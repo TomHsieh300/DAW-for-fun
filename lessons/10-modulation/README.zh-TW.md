@@ -743,9 +743,9 @@ public:
 每個 sample：
 
 ```cpp
-const float room = max(0, min(log2(0.45·fs / centre), log2(centre / 20)));   // octaves to the nearer end
-const float octaves = min(depth * sweepOctaves_, room) * lfo_.getNextValue();
-currentHz_ = clamp(centre * std::exp2(octaves), 20, 0.45·fs);   // 指數刻度
+const float octaves = min(depth * sweepOctaves_, max(0, log2(0.45·fs / 20) / 2));   // 最多頻帶的一半
+const float inUse = clamp(centre, 20 · 2^octaves, 0.45·fs / 2^octaves);   // 整個 sweep 放得下
+currentHz_ = clamp(inUse * std::exp2(octaves * lfo_.getNextValue()), 20, 0.45·fs);   // 指數刻度
 const BiquadCoefficients c = makeFirstOrderAllpass(currentHz_, sampleRate_); // a = (t−1)/(t+1)
 for (int s = 0; s < numStages_; ++s) stages_[s].setCoefficients(c);
 ...
@@ -914,7 +914,7 @@ bin\Debug\l10_tremolo.exe
 | 高頻在 chorus / flanger 裡變暗、還會「呼吸」 | linear 插值（$`\Delta`$ 掃過 0..1 時高頻起伏） | 改 cubic；量 12 kHz 正弦的 RMS（範例 2） |
 | 低 rate 的 LFO 週期不準 | 相位累加器用 float | 改 double；量一千個週期的總長度 |
 | centre 短、depth 大的 chorus 聽起來像固定的 comb（12 kHz 附近有個 notch） | 延遲在每個週期的一部分停在 2-sample 的 clamp 上 | `dsp::Chorus` 把 depth 限制在 centre − 最小延遲；自己寫時，在平滑器之後限制 depth（練習 3 與 5 會檢查） |
-| centre 高的 phaser 在 sweep 的頂端停住 | 被 sweep 的頻率停在 0.45·fs 的 clamp 上（centre 8000 Hz ± 2 octave 時每個週期有四分之一停在那裡） | `dsp::Phaser` 把 octave 數限制在 centre 到 [20 Hz, 0.45·fs] 較近那一端的空間內 |
+| centre 高的 phaser 在 sweep 的頂端停住 | 被 sweep 的頻率停在 0.45·fs 的 clamp 上（centre 8000 Hz ± 2 octave 時每個週期有四分之一停在那裡） | `dsp::Phaser` 把實際使用的 centre 移進 [20 Hz, 0.45·fs]，移到整個 sweep 剛好放得下為止；只有頻帶比 sweep 窄時才縮小 sweep |
 | 立體聲 chorus 在 mono 播放時變薄 | 左右相反的濕訊號在相加時部分抵消 | 量 $`(L+R)/2`$ 的 RMS（練習 5）；降低 spread 或 mix |
 | Autopan 經過中央時變小聲 | linear pan law：中央各 $`1 - D/2`$ | 需要的話改 constant power |
 | S&H 的值都差不多 / 不夠隨機 | xorshift 從很小的種子起跑時，前幾個輸出分布差 | `Lfo` 會先用 hash 打散種子；自己寫時也要 |

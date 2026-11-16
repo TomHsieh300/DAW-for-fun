@@ -743,9 +743,9 @@ public:
 For each sample:
 
 ```cpp
-const float room = max(0, min(log2(0.45·fs / centre), log2(centre / 20)));   // octaves to the nearer end
-const float octaves = min(depth * sweepOctaves_, room) * lfo_.getNextValue();
-currentHz_ = clamp(centre * std::exp2(octaves), 20, 0.45·fs);   // exponential scale
+const float octaves = min(depth * sweepOctaves_, max(0, log2(0.45·fs / 20) / 2));   // at most half the band
+const float inUse = clamp(centre, 20 · 2^octaves, 0.45·fs / 2^octaves);   // the whole sweep fits
+currentHz_ = clamp(inUse * std::exp2(octaves * lfo_.getNextValue()), 20, 0.45·fs);   // exponential scale
 const BiquadCoefficients c = makeFirstOrderAllpass(currentHz_, sampleRate_); // a = (t−1)/(t+1)
 for (int s = 0; s < numStages_; ++s) stages_[s].setCoefficients(c);
 ...
@@ -914,7 +914,7 @@ bin\Debug\l10_tremolo.exe
 | The highs get dark and "breathe" in chorus / flanger | Linear interpolation (the highs fluctuate as $`\Delta`$ sweeps through 0..1) | Switch to cubic; measure the RMS of a 12 kHz sine (Example 2) |
 | The period of a low-rate LFO is inaccurate | The phase accumulator is a float | Switch to double; measure the total length of a thousand periods |
 | Chorus with a short centre and a large depth sounds like a fixed comb (a notch near 12 kHz) | The delay rests on its 2-sample clamp for part of every cycle | `dsp::Chorus` limits the depth to centre − the minimum delay; when writing your own, limit the depth after the smoothers (Exercises 3 and 5 check it) |
-| A phaser with a high centre stalls at the top of its sweep | The swept frequency rests on its 0.45·fs clamp (centre 8000 Hz ± 2 octaves sat there for a quarter of each cycle) | `dsp::Phaser` limits the octaves to the room between the centre and the nearer end of [20 Hz, 0.45·fs] |
+| A phaser with a high centre stalls at the top of its sweep | The swept frequency rests on its 0.45·fs clamp (centre 8000 Hz ± 2 octaves sat there for a quarter of each cycle) | `dsp::Phaser` moves the centre in use into [20 Hz, 0.45·fs] just far enough that the whole sweep fits; only a band narrower than the sweep narrows it |
 | Stereo chorus thins out when played in mono | The opposite left/right wet signals partly cancel when summed | Measure the RMS of $`(L+R)/2`$ (Exercise 5); reduce spread or mix |
 | Autopan gets quieter when passing the centre | Linear pan law: $`1 - D/2`$ in each channel at the centre | Switch to constant power if you need it |
 | S&H values are all similar / not random enough | An xorshift started from a very small seed gives a poor distribution for the first few outputs | `Lfo` scrambles the seed with a hash first; do the same when writing your own |

@@ -154,6 +154,6 @@ Self-checks (mix 0.5, no feedback, LFO parked, sweep 50 Hz–16 kHz to find the 
 - 300 / 600 / 1200 / 2400 Hz: there are still **2** measured notches, within 0.5% of `predictNotchHz`, with depth < −30 dB.
 - Verify the prediction of Exercise 7, part 4: the first notch is below the 414.7 Hz of the 4 × 1000 Hz case, and the second is above 2397.8 Hz.
 - depth 1, octaves 1, LFO parked at +1 (rate 0, phase 0.25) → all $`f_c`$ double, and the measured notches = `predictNotchHz(k, 2)` (±0.5%).
-- 300–4800 Hz swept ±3 octaves → no stage rests on the [20 Hz, 0.45·fs] clamp (< 0.1% of the cycle): limit the octaves to the room between the lowest stage and 20 Hz and between the highest stage and 0.45·fs, as `dsp::Phaser` does.
+- 300–4800 Hz swept ±3 octaves → no stage rests on the [20 Hz, 0.45·fs] clamp (< 0.1% of the cycle), and the whole sweep of 6 octaves is kept: move all stages together into the band just far enough that the sweep fits beside them, as `dsp::Phaser` does with its centre; narrow the sweep only when the band leaves too little room.
 
 The program writes `l10_ex8_uniform.wav` and `l10_ex8_staggered.wav` (white noise, rate 0.2 Hz, ±1.5 octaves). Compare how the two sweeps sound: what changes once the notches are farther apart?

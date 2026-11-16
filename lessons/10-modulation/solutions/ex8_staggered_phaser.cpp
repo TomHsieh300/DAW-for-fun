@@ -16,8 +16,8 @@
 //   2. 300 / 600 / 1200 / 2400 Hz: the sweep still finds 2 notches, within 0.5% of predictNotchHz(), with depth < −30 dB
 //   3. The prediction from Exercise 7 part 4: the first notch is lower than the 4 x 1000 Hz one and the second is higher (the two notches spread further apart)
 //   4. depth 1, octaves 1, LFO parked at +1 (rate 0, phase 0.25) -> every fc doubles, and the measured notches = predictNotchHz(k, 2)
-//   5. 300-4800 Hz swept ±3 octaves: as in dsp::Phaser the octaves in use are limited to the room between the stages
-//      and the ends of [20 Hz, 0.45·fs], so no stage rests on the clamp
+//   5. 300-4800 Hz swept ±3 octaves: as in dsp::Phaser no stage rests on the clamp [20 Hz, 0.45·fs]; the stages move
+//      together into the band so that the whole sweep fits, which it does here (6 octaves)
 // Output: dawlab_output/l10_ex8_uniform.wav (4 x 1000 Hz sweep), l10_ex8_staggered.wav (300-2400 Hz sweep), white noise
 
 #include <dawlab/Common.h>
@@ -130,13 +130,18 @@ private:
         mix_ = mixSm_.next();
         // Common ratio on the exponential scale: every stage's fc is multiplied by the same 2^(depth · octaves · lfo), preserving the ratios between stages
         const float m = lfo_.getNextValue();
-        // The sweep never rests on the clamp: the octaves in use are limited to the room between the lowest stage and
-        // 20 Hz and between the highest stage and 0.45·fs, so the clamp below is a rail only
+        // The sweep never rests on the clamp, as in dsp::Phaser: the stages move together into [20 Hz, 0.45·fs] just
+        // far enough that the whole sweep fits, and only a band with too little room left beside the stages' own
+        // spread narrows the sweep. So the clamp below is a rail only.
         const float maxHz = static_cast<float>(0.45 * sampleRate_);
         const auto first = baseHz_.begin(), last = baseHz_.begin() + numStages_;
         const float lowest = *std::min_element(first, last), highest = *std::max_element(first, last);
-        const float room = std::max(0.0f, std::min(std::log2(maxHz / highest), std::log2(lowest / 20.0f)));
-        const float scale = scale_ = std::exp2(std::min(depth_ * sweepOctaves_, room) * m);
+        const float free = std::log2(maxHz / 20.0f) - std::log2(highest / lowest); // the band's octaves the stages leave
+        const float octaves = std::min(depth_ * sweepOctaves_, std::max(0.0f, 0.5f * free));
+        const float down = std::log2(20.0f / lowest) + octaves;  // the least shift that keeps the lowest stage above 20 Hz
+        const float up = std::log2(maxHz / highest) - octaves;   // the most that keeps the highest one below 0.45·fs
+        const float shift = std::clamp(0.0f, down, std::max(down, up)); // equal when the sweep fills the band
+        const float scale = scale_ = std::exp2(shift + octaves * m);
         for (int s = 0; s < numStages_; ++s) {
             const float fc = std::clamp(baseHz_[static_cast<size_t>(s)] * scale, 20.0f, maxHz);
             stages_[static_cast<size_t>(s)].setCoefficients(Phaser::makeFirstOrderAllpass(fc, sampleRate_));
@@ -242,9 +247,12 @@ void checkNotches(const char* label, StaggeredPhaser& p, double scale) {
     DAWLAB_CHECK(static_cast<int>(notches.size()) == expected);
 }
 
-// The share of one LFO cycle (rate 1 Hz) that the lowest or the highest stage spends on the rail of the clamp,
-// 20 Hz or 0.45 fs (getScale() is the ratio in use)
-double shareOnRail(const std::vector<float>& fcs, float octaves) {
+// One LFO cycle (rate 1 Hz): the share of it that the lowest or the highest stage spends on the rail of the clamp,
+// 20 Hz or 0.45 fs, and how many octaves the stages sweep (getScale() is the ratio in use)
+struct Sweep {
+    double onRail = 0.0, octaves = 0.0;
+};
+Sweep sweepOf(const std::vector<float>& fcs, float octaves) {
     StaggeredPhaser p;
     p.prepare(kSampleRate, kBlockSize, 1);
     p.setStageFrequencies(fcs);
@@ -257,11 +265,14 @@ double shareOnRail(const std::vector<float>& fcs, float octaves) {
     const float top = static_cast<float>(0.45 * kSampleRate);
     const int cycle = static_cast<int>(kSampleRate);
     int onRail = 0;
+    float smallest = p.getScale(), largest = p.getScale();
     for (int i = 0; i < cycle; ++i) {
         p.processSample(0, 0.0f);
         onRail += (highest * p.getScale() >= top || lowest * p.getScale() <= 20.0f) ? 1 : 0;
+        smallest = std::min(smallest, p.getScale());
+        largest = std::max(largest, p.getScale());
     }
-    return static_cast<double>(onRail) / static_cast<double>(cycle);
+    return {static_cast<double>(onRail) / static_cast<double>(cycle), std::log2(static_cast<double>(largest) / smallest)};
 }
 
 } // namespace
@@ -362,11 +373,15 @@ int main() {
     // ---- 5. The sweep never rests on the clamp ----------------------------------
     {
         // 300 .. 4800 Hz swept +-3 octaves: the top stage would reach 38.4 kHz and sit on 0.45 fs for a quarter of each
-        // cycle. The octaves in use are limited to the room between the stages and the ends; the sweep may touch an end
-        // only at its turning point (a few samples where the LFO's float sine rounds to exactly +-1).
-        const double share = shareOnRail({300.0f, 600.0f, 1200.0f, 4800.0f}, 3.0f);
-        std::printf("300-4800 Hz, +-3 octaves: a stage on the rail for %.2f%% of the cycle (must be < 0.1%%)\n", 100.0 * share);
-        DAWLAB_CHECK(share < 0.001);
+        // cycle. The stages move down together until the whole sweep fits: 4 octaves of stages and 6 of sweep fit in
+        // the 10.08 octaves from 20 Hz to 21.6 kHz. The sweep may touch an end only at its turning point (a few samples
+        // where the LFO's float sine rounds to exactly +-1).
+        const Sweep sweep = sweepOf({300.0f, 600.0f, 1200.0f, 4800.0f}, 3.0f);
+        std::printf("300-4800 Hz, +-3 octaves: a stage on the rail for %.2f%% of the cycle (must be < 0.1%%), the stages "
+                    "sweep %.2f octaves (must be 6)\n",
+                    100.0 * sweep.onRail, sweep.octaves);
+        DAWLAB_CHECK(sweep.onRail < 0.001);
+        DAWLAB_CHECK_NEAR(sweep.octaves, 6.0, 0.01);
     }
 
     return dawlab::test::summary("l10_ex8");
