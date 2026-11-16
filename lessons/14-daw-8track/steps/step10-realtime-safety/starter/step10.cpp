@@ -28,8 +28,26 @@ void countedFree(void* p) noexcept {
 
 void* operator new(std::size_t n) { return countedAlloc(n); }
 void* operator new[](std::size_t n) { return countedAlloc(n); }
+// The nothrow forms too (std::stable_sort takes its buffer with them): left to the library, they and our
+// delete would not pair up under AddressSanitizer, whose own nothrow new does not call ours.
+void* operator new(std::size_t n, const std::nothrow_t&) noexcept {
+    try {
+        return operator new(n);
+    } catch (...) {
+        return nullptr;
+    }
+}
+void* operator new[](std::size_t n, const std::nothrow_t&) noexcept {
+    try {
+        return operator new[](n);
+    } catch (...) {
+        return nullptr;
+    }
+}
 void operator delete(void* p) noexcept { countedFree(p); }
 void operator delete[](void* p) noexcept { countedFree(p); }
+void operator delete(void* p, const std::nothrow_t&) noexcept { operator delete(p); }
+void operator delete[](void* p, const std::nothrow_t&) noexcept { operator delete[](p); }
 void operator delete(void* p, std::size_t) noexcept { countedFree(p); }
 void operator delete[](void* p, std::size_t) noexcept { countedFree(p); }
 

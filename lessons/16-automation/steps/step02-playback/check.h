@@ -30,8 +30,26 @@ inline void countedFree(void* p) noexcept {
 } // namespace step02_check
 void* operator new(std::size_t size) { return step02_check::countedAlloc(size); }
 void* operator new[](std::size_t size) { return step02_check::countedAlloc(size); }
+// The nothrow forms too (std::stable_sort takes its buffer with them): left to the library, they and our
+// delete would not pair up under AddressSanitizer, whose own nothrow new does not call ours.
+void* operator new(std::size_t n, const std::nothrow_t&) noexcept {
+    try {
+        return operator new(n);
+    } catch (...) {
+        return nullptr;
+    }
+}
+void* operator new[](std::size_t n, const std::nothrow_t&) noexcept {
+    try {
+        return operator new[](n);
+    } catch (...) {
+        return nullptr;
+    }
+}
 void operator delete(void* p) noexcept { step02_check::countedFree(p); }
 void operator delete[](void* p) noexcept { step02_check::countedFree(p); }
+void operator delete(void* p, const std::nothrow_t&) noexcept { operator delete(p); }
+void operator delete[](void* p, const std::nothrow_t&) noexcept { operator delete[](p); }
 void operator delete(void* p, std::size_t) noexcept { step02_check::countedFree(p); }
 void operator delete[](void* p, std::size_t) noexcept { step02_check::countedFree(p); }
 
