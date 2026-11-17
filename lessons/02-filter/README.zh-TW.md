@@ -675,7 +675,7 @@ public:
 - `updateCoefficients()`：`a_ = exp(-2π fc / fs)`、`b_ = 1 - a`（lowpass 的輸入係數）、`h_ = (1 + a) / 2`（highpass 的正規化常數）。cutoff 先 clamp 到 $`(0.001, 0.49 f_s)`$，避免 $`a`$ 落到 0 或 1；`setCutoff()` 會忽略 NaN 與 ±inf（保留上一個有效值），因為 `std::clamp` 擋不住 NaN。
 - `processSample()`：lowpass 是 `y = b_ * x + a_ * s.y1`（$`y[n] = (1-a)x[n] + a\,y[n-1]`$）；highpass 是 `y = h_ * (x - s.x1) + a_ * s.y1`。如果 `y` 不是有限數（輸入是 NaN / inf），就清掉該 channel 的狀態並輸出 0，和 `Biquad` 一樣的防護（第 4 節）。
 - 每個 channel 有自己的 `State { x1, y1 }`（double），放在 `prepare()` 時配置好的 `std::vector` 裡；`processSample()` 不做邊界檢查，channel 必須小於 `prepare()` 時給的 `numChannels`。
-- `flushDenormal()`：$`|y| < 10^{-30}`$ 時清成 0（見第 4 節）。
+- `flushDenormal()`：$`|y| < 10^{-30}`$ 時清成 0（見第 4 節）。它來自 `RecursiveFilter.h`，`OnePole`、`Biquad` 和 `StateVariableFilter` 都以 private 繼承它，一起繼承的還有 `processChannels()`，也就是每個 `process()` 背後的 block 迴圈。
 - `setCutoff()` 只算一次 `exp`，可以在 block 之間呼叫。
 
 ### 3.2 `Biquad.h`

@@ -19,6 +19,7 @@ The DSP components implemented step by step across the chapters: header-only, in
 | [02](../../../../lessons/02-filter/README.md) | `OnePole.h` | First-order lowpass / highpass (the basis of DC blockers, smoothing and tone controls) |
 | 02 | `Biquad.h` | Second-order IIR filter with RBJ Audio EQ Cookbook coefficients and Transposed Direct Form II |
 | 02 | `StateVariableFilter.h` | TPT (zero-delay feedback) state variable filter that stays stable under fast cutoff modulation |
+| 02 | `RecursiveFilter.h` | What the three filters above share: the block loop over channels and the denormal flush of their state |
 | [03](../../../../lessons/03-eq/README.md) | `ParametricEq.h` | 6-band parametric EQ (low cut, shelf, peak, high cut, notch) with parameter smoothing, and it can compute the whole curve for a UI |
 | [04](../../../../lessons/04-compressor/README.md) | `EnvelopeFollower.h` | Peak / RMS envelope detector and attack / release smoother |
 | 04 | `Compressor.h` | Feedforward, log-domain compressor (threshold, ratio, knee, makeup, stereo link) |

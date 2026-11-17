@@ -22,6 +22,7 @@
 
 #include <dawlab/DspMath.h>
 #include <dawlab/AudioBuffer.h>
+#include <dawlab/dsp/RecursiveFilter.h>
 
 #include <algorithm>
 #include <cmath>
@@ -186,7 +187,7 @@ private:
     }
 };
 
-class Biquad {
+class Biquad : private RecursiveFilter {
 public:
     void prepare(double /*sampleRate*/, int /*maxBlockSize*/, int numChannels) {
         state_.assign(static_cast<size_t>(numChannels), State{});
@@ -227,20 +228,13 @@ public:
     }
 
     void process(AudioBlock block) noexcept {
-        const int numChannels = std::min(block.getNumChannels(), static_cast<int>(state_.size()));
-        for (int ch = 0; ch < numChannels; ++ch) {
-            float* d = block.getChannelPointer(ch);
-            for (int i = 0; i < block.getNumSamples(); ++i)
-                d[i] = processSample(ch, d[i]);
-        }
+        processChannels(*this, block, static_cast<int>(state_.size()));
     }
 
 private:
     struct State {
         double s1 = 0.0, s2 = 0.0;
     };
-
-    static double flushDenormal(double v) noexcept { return std::abs(v) < 1.0e-30 ? 0.0 : v; }
 
     BiquadCoefficients coeffs_;
     std::vector<State> state_;

@@ -675,7 +675,7 @@ Mapping to the formulas:
 - `updateCoefficients()`: `a_ = exp(-2π fc / fs)`, `b_ = 1 - a` (the input coefficient of the lowpass) and `h_ = (1 + a) / 2` (the normalization constant of the highpass). The cutoff is first clamped to $`(0.001, 0.49 f_s)`$ so that $`a`$ never reaches 0 or 1; `setCutoff()` ignores NaN and ±inf (the last valid value is kept), because `std::clamp` cannot stop NaN.
 - `processSample()`: the lowpass is `y = b_ * x + a_ * s.y1` ($`y[n] = (1-a)x[n] + a\,y[n-1]`$); the highpass is `y = h_ * (x - s.x1) + a_ * s.y1`. If `y` is not finite (a NaN / inf input), the channel's state is cleared and 0 is output, the same guard as `Biquad` (section 4).
 - Each channel has its own `State { x1, y1 }` (double), kept in a `std::vector` allocated in `prepare()`; `processSample()` does no bounds checking, so the channel must be less than the `numChannels` given to `prepare()`.
-- `flushDenormal()`: clears values to 0 when $`|y| < 10^{-30}`$ (see section 4).
+- `flushDenormal()`: clears values to 0 when $`|y| < 10^{-30}`$ (see section 4). It comes from `RecursiveFilter.h`, which `OnePole`, `Biquad` and `StateVariableFilter` inherit privately, together with `processChannels()`, the block loop behind each `process()`.
 - `setCutoff()` computes only one `exp`, so it can be called between blocks.
 
 ### 3.2 `Biquad.h`

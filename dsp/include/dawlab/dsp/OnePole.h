@@ -25,6 +25,7 @@
 
 #include <dawlab/DspMath.h>
 #include <dawlab/AudioBuffer.h>
+#include <dawlab/dsp/RecursiveFilter.h>
 
 #include <algorithm>
 #include <cmath>
@@ -32,7 +33,7 @@
 
 namespace dawlab::dsp {
 
-class OnePole {
+class OnePole : private RecursiveFilter {
 public:
     enum class Type { Lowpass, Highpass };
 
@@ -87,12 +88,7 @@ public:
     }
 
     void process(AudioBlock block) noexcept {
-        const int numChannels = std::min(block.getNumChannels(), static_cast<int>(state_.size()));
-        for (int ch = 0; ch < numChannels; ++ch) {
-            float* d = block.getChannelPointer(ch);
-            for (int i = 0; i < block.getNumSamples(); ++i)
-                d[i] = processSample(ch, d[i]);
-        }
+        processChannels(*this, block, static_cast<int>(state_.size()));
     }
 
 private:
@@ -100,11 +96,6 @@ private:
         double x1 = 0.0; // x[n-1] (read only by the highpass)
         double y1 = 0.0; // y[n-1]
     };
-
-    // The state of a recursive structure approaches 0 forever without ever reaching it, and
-    // eventually falls into the denormal range (the CPU becomes very slow).
-    // Flush values too small to be audible straight to 0.
-    static double flushDenormal(double v) noexcept { return std::abs(v) < 1.0e-30 ? 0.0 : v; }
 
     void updateCoefficients() noexcept {
         if (sampleRate_ <= 0.0)

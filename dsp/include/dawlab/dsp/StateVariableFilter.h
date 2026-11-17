@@ -26,6 +26,7 @@
 
 #include <dawlab/DspMath.h>
 #include <dawlab/AudioBuffer.h>
+#include <dawlab/dsp/RecursiveFilter.h>
 
 #include <algorithm>
 #include <cmath>
@@ -33,7 +34,7 @@
 
 namespace dawlab::dsp {
 
-class StateVariableFilter {
+class StateVariableFilter : private RecursiveFilter {
 public:
     enum class Type { Lowpass, Highpass, Bandpass, Notch };
 
@@ -106,20 +107,13 @@ public:
     }
 
     void process(AudioBlock block) noexcept {
-        const int numChannels = std::min(block.getNumChannels(), static_cast<int>(state_.size()));
-        for (int ch = 0; ch < numChannels; ++ch) {
-            float* d = block.getChannelPointer(ch);
-            for (int i = 0; i < block.getNumSamples(); ++i)
-                d[i] = processSample(ch, d[i]);
-        }
+        processChannels(*this, block, static_cast<int>(state_.size()));
     }
 
 private:
     struct State {
         double ic1eq = 0.0, ic2eq = 0.0; // the "capacitor voltages" of the two integrators
     };
-
-    static double flushDenormal(double v) noexcept { return std::abs(v) < 1.0e-30 ? 0.0 : v; }
 
     void updateCoefficients() noexcept {
         if (sampleRate_ <= 0.0)

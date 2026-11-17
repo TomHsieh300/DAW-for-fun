@@ -19,6 +19,7 @@
 | [02](../../../../lessons/02-filter/README.zh-TW.md) | `OnePole.h` | 一階 lowpass / highpass（DC blocker、平滑、tone 控制的基礎） |
 | 02 | `Biquad.h` | RBJ Audio EQ Cookbook 係數與 Transposed Direct Form II 的二階 IIR filter |
 | 02 | `StateVariableFilter.h` | TPT（zero-delay feedback）state variable filter，cutoff 快速調變也穩定 |
+| 02 | `RecursiveFilter.h` | 上面三個 filter 共用的部分：逐 channel 的 block 迴圈，以及狀態的 denormal 清除 |
 | [03](../../../../lessons/03-eq/README.zh-TW.md) | `ParametricEq.h` | 6-band parametric EQ（low cut、shelf、peak、high cut、notch），參數平滑且可算整條曲線給 UI |
 | [04](../../../../lessons/04-compressor/README.zh-TW.md) | `EnvelopeFollower.h` | Peak / RMS envelope 偵測器與 attack / release 平滑器 |
 | 04 | `Compressor.h` | feedforward、log-domain 的 compressor（threshold、ratio、knee、makeup、stereo link） |
