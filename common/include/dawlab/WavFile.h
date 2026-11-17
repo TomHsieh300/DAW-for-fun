@@ -71,101 +71,155 @@ inline uint64_t wavDataBytes(uint64_t numFrames, uint64_t numChannels, uint64_t 
 // that (some 4 GiB) is not a WAV file; writeWav refuses it before it writes anything.
 inline bool fitsWav(uint64_t dataBytes) noexcept { return 36 + dataBytes + (dataBytes & 1) <= 0xFFFFFFFFull; }
 
-} // namespace detail
+// ---- readWav, one step per function ----
 
-inline bool readWav(const std::string& path, WavData& out, std::string* error = nullptr) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) {
-        detail::setError(error, "Cannot open file: " + path);
-        return false;
-    }
-    std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    if (bytes.size() < 12 || std::string(bytes.begin(), bytes.begin() + 4) != "RIFF" ||
-        std::string(bytes.begin() + 8, bytes.begin() + 12) != "WAVE") {
-        detail::setError(error, "Not a RIFF/WAVE file: " + path);
-        return false;
-    }
-
+// What readWav finds in a file's chunks: the fmt fields and where the samples are
+struct WavLayout {
     uint16_t format = 0, numChannels = 0, bitsPerSample = 0, blockAlign = 0;
     uint32_t sampleRate = 0;
     const uint8_t* data = nullptr;
     size_t dataSize = 0;
+};
 
+inline bool readFileBytes(const std::string& path, std::vector<uint8_t>& bytes, std::string* error) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        setError(error, "Cannot open file: " + path);
+        return false;
+    }
+    bytes.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    return true;
+}
+
+inline bool isRiffWave(const std::vector<uint8_t>& bytes) {
+    return bytes.size() >= 12 && std::string(bytes.begin(), bytes.begin() + 4) == "RIFF" &&
+           std::string(bytes.begin() + 8, bytes.begin() + 12) == "WAVE";
+}
+
+// A fmt chunk body of `available` (>= 16) bytes
+inline void readFmtChunk(const uint8_t* body, size_t available, WavLayout& wav) noexcept {
+    wav.format = readU16(body);
+    wav.numChannels = readU16(body + 2);
+    wav.sampleRate = readU32(body + 4);
+    wav.blockAlign = readU16(body + 12);
+    wav.bitsPerSample = readU16(body + 14);
+    if (wav.format == 0xFFFE && available >= 26) // WAVE_FORMAT_EXTENSIBLE: the real format is in the first two bytes of the SubFormat GUID
+        wav.format = readU16(body + 24);
+}
+
+// Walks the chunks after "WAVE" and keeps the last fmt and data chunks. A file from outside may be cut short: a data
+// chunk whose samples are not all there is refused.
+inline bool findWavChunks(const std::vector<uint8_t>& bytes, WavLayout& wav, const std::string& path, std::string* error) {
     size_t pos = 12;
     while (pos + 8 <= bytes.size()) {
         const std::string id(bytes.begin() + std::ptrdiff_t(pos), bytes.begin() + std::ptrdiff_t(pos) + 4);
-        const size_t size = detail::readU32(&bytes[pos + 4]);
+        const size_t size = readU32(&bytes[pos + 4]);
         const size_t body = pos + 8;
         const size_t available = std::min(size, bytes.size() - body);
-        if (id == "data" && available < size) { // a file from outside: its samples are not all there
-            detail::setError(error, "The data chunk is cut short (" + std::to_string(size) + " bytes said, " +
-                                        std::to_string(available) + " there): " + path);
+        if (id == "data" && available < size) {
+            setError(error, "The data chunk is cut short (" + std::to_string(size) + " bytes said, " +
+                                std::to_string(available) + " there): " + path);
             return false;
         }
         if (id == "fmt " && available >= 16) {
-            format = detail::readU16(&bytes[body]);
-            numChannels = detail::readU16(&bytes[body + 2]);
-            sampleRate = detail::readU32(&bytes[body + 4]);
-            blockAlign = detail::readU16(&bytes[body + 12]);
-            bitsPerSample = detail::readU16(&bytes[body + 14]);
-            if (format == 0xFFFE && available >= 26) // WAVE_FORMAT_EXTENSIBLE: the real format is in the first two bytes of the SubFormat GUID
-                format = detail::readU16(&bytes[body + 24]);
+            readFmtChunk(&bytes[body], available, wav);
         } else if (id == "data") {
-            data = bytes.data() + body; // for an empty data chunk body == size(), so bytes[body] must not be used
-            dataSize = available;
+            wav.data = bytes.data() + body; // for an empty data chunk body == size(), so bytes[body] must not be used
+            wav.dataSize = available;
         }
         pos = body + size + (size & 1); // chunks are padded to an even length
     }
+    return true;
+}
 
-    if (format == 0 || data == nullptr) {
+// Channels, a frame (blockAlign) large enough to hold one sample of each, and a sample rate a WAV can say
+inline bool hasValidFmt(const WavLayout& wav) noexcept {
+    return wav.numChannels != 0 && wav.blockAlign != 0 && wav.blockAlign >= wav.numChannels * (wav.bitsPerSample / 8) &&
+           isWavSampleRate(wav.sampleRate);
+}
+
+// PCM (format 1) 8/16/24/32-bit integer or IEEE float (format 3) 32/64-bit
+inline bool isSupportedWav(const WavLayout& wav) noexcept {
+    const int bits = wav.bitsPerSample;
+    if (wav.format == 3)
+        return bits == 32 || bits == 64;
+    if (wav.format == 1)
+        return bits == 8 || bits == 16 || bits == 24 || bits == 32;
+    return false;
+}
+
+// One sample at p as a float: IEEE float as it is, integers scaled to [-1, 1)
+inline float decodeWavSample(const uint8_t* p, bool isFloat, int bitsPerSample) noexcept {
+    if (isFloat && bitsPerSample == 32) {
+        uint32_t u = readU32(p);
+        float f;
+        std::memcpy(&f, &u, 4);
+        return f;
+    }
+    if (isFloat) {
+        uint64_t u = uint64_t(readU32(p)) | (uint64_t(readU32(p + 4)) << 32);
+        double d;
+        std::memcpy(&d, &u, 8);
+        return float(d);
+    }
+    if (bitsPerSample == 8)
+        return (float(p[0]) - 128.0f) / 128.0f; // 8-bit WAV is unsigned
+    if (bitsPerSample == 16)
+        return float(int16_t(readU16(p))) / 32768.0f;
+    if (bitsPerSample == 24) {
+        int32_t s = int32_t(uint32_t(p[0]) << 8 | uint32_t(p[1]) << 16 | uint32_t(p[2]) << 24) >> 8;
+        return float(s) / 8388608.0f;
+    }
+    return float(double(int32_t(readU32(p))) / 2147483648.0);
+}
+
+// The data chunk's whole frames into out (a partial frame at the end is dropped)
+inline void decodeWavSamples(const WavLayout& wav, WavData& out) {
+    const int numFrames = int(wav.dataSize / wav.blockAlign);
+    const int bytesPerSample = wav.bitsPerSample / 8;
+    const bool isFloat = (wav.format == 3);
+    out.buffer.setSize(wav.numChannels, numFrames);
+    out.sampleRate = wav.sampleRate;
+    out.bitDepth = wav.bitsPerSample;
+
+    for (int i = 0; i < numFrames; ++i) {
+        for (int ch = 0; ch < wav.numChannels; ++ch) {
+            const uint8_t* p = wav.data + size_t(i) * wav.blockAlign + size_t(ch) * size_t(bytesPerSample);
+            out.buffer.setSample(ch, i, decodeWavSample(p, isFloat, wav.bitsPerSample));
+        }
+    }
+}
+
+} // namespace detail
+
+// Reads the whole file, finds its fmt and data chunks, checks the format, then converts the samples to float
+inline bool readWav(const std::string& path, WavData& out, std::string* error = nullptr) {
+    std::vector<uint8_t> bytes;
+    if (!detail::readFileBytes(path, bytes, error))
+        return false;
+    if (!detail::isRiffWave(bytes)) {
+        detail::setError(error, "Not a RIFF/WAVE file: " + path);
+        return false;
+    }
+
+    detail::WavLayout wav;
+    if (!detail::findWavChunks(bytes, wav, path, error))
+        return false;
+    if (wav.format == 0 || wav.data == nullptr) {
         detail::setError(error, "fmt or data chunk not found: " + path);
         return false;
     }
-    if (numChannels == 0 || blockAlign == 0 || blockAlign < numChannels * (bitsPerSample / 8) || !detail::isWavSampleRate(sampleRate)) {
+    if (!detail::hasValidFmt(wav)) {
         detail::setError(error, "Invalid fmt chunk contents: " + path);
         return false;
     }
-    const bool isFloat = (format == 3);
-    if (!(format == 1 || isFloat) || (isFloat && bitsPerSample != 32 && bitsPerSample != 64) ||
-        (!isFloat && bitsPerSample != 8 && bitsPerSample != 16 && bitsPerSample != 24 && bitsPerSample != 32)) {
-        detail::setError(error, "Unsupported WAV format (format=" + std::to_string(format) +
-                                    ", bits=" + std::to_string(bitsPerSample) + ")");
+    if (!detail::isSupportedWav(wav)) {
+        detail::setError(error, "Unsupported WAV format (format=" + std::to_string(wav.format) +
+                                    ", bits=" + std::to_string(wav.bitsPerSample) + ")");
         return false;
     }
 
-    const int numFrames = int(dataSize / blockAlign);
-    const int bytesPerSample = bitsPerSample / 8;
-    out.buffer.setSize(numChannels, numFrames);
-    out.sampleRate = sampleRate;
-    out.bitDepth = bitsPerSample;
-
-    for (int i = 0; i < numFrames; ++i) {
-        for (int ch = 0; ch < numChannels; ++ch) {
-            const uint8_t* p = data + size_t(i) * blockAlign + size_t(ch) * size_t(bytesPerSample);
-            float v = 0.0f;
-            if (isFloat && bitsPerSample == 32) {
-                uint32_t u = detail::readU32(p);
-                float f;
-                std::memcpy(&f, &u, 4);
-                v = f;
-            } else if (isFloat) {
-                uint64_t u = uint64_t(detail::readU32(p)) | (uint64_t(detail::readU32(p + 4)) << 32);
-                double d;
-                std::memcpy(&d, &u, 8);
-                v = float(d);
-            } else if (bitsPerSample == 8) {
-                v = (float(p[0]) - 128.0f) / 128.0f; // 8-bit WAV is unsigned
-            } else if (bitsPerSample == 16) {
-                v = float(int16_t(detail::readU16(p))) / 32768.0f;
-            } else if (bitsPerSample == 24) {
-                int32_t s = int32_t(uint32_t(p[0]) << 8 | uint32_t(p[1]) << 16 | uint32_t(p[2]) << 24) >> 8;
-                v = float(s) / 8388608.0f;
-            } else {
-                v = float(double(int32_t(detail::readU32(p))) / 2147483648.0);
-            }
-            out.buffer.setSample(ch, i, v);
-        }
-    }
+    detail::decodeWavSamples(wav, out);
     return true;
 }
 
