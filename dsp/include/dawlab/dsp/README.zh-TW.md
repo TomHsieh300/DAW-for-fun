@@ -30,6 +30,7 @@
 | [07](../../../../lessons/07-distortion/README.zh-TW.md) | `Distortion.h` | hard clip、foldback、fuzz、rectify、bitcrush 五種 distortion，含 tone filter 與 mix |
 | 07 | `AmpChain.h` | 簡易吉他 amp 模擬鏈（HPF → pre-EQ → preamp saturation → tone stack → power amp distortion → cabinet） |
 | [08](../../../../lessons/08-gate-expander/README.zh-TW.md) | `Gate.h` | 有 hysteresis、hold、range 與 sidechain 的 noise gate |
+| 08 | `Sidechain.h` | Gate 與 Expander 共用的 sample 迴圈：從 sidechain 做 stereo-link 偵測，把同一個 gain 套到 main 的每個 channel |
 | 08 | `Expander.h` | downward expander（低於 threshold 的訊號依 ratio 再壓低） |
 | 08 | `DeEsser.h` | 偵測齒音頻段並壓低（wideband 或 split-band，可監聽偵測訊號） |
 | 08 | `TransientShaper.h` | 以快 / 慢兩條 envelope 的差分別加強或減弱 attack 與 sustain |

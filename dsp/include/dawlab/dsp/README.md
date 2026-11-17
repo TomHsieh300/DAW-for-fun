@@ -30,6 +30,7 @@ The DSP components implemented step by step across the chapters: header-only, in
 | [07](../../../../lessons/07-distortion/README.md) | `Distortion.h` | Five distortion types (hard clip, foldback, fuzz, rectify, bitcrush) with tone filter and mix |
 | 07 | `AmpChain.h` | A simple guitar amp simulation chain (HPF → pre-EQ → preamp saturation → tone stack → power amp distortion → cabinet) |
 | [08](../../../../lessons/08-gate-expander/README.md) | `Gate.h` | Noise gate with hysteresis, hold, range and sidechain |
+| 08 | `Sidechain.h` | The sample loop Gate and Expander share: stereo-linked detection from a sidechain, one gain applied to every main channel |
 | 08 | `Expander.h` | Downward expander (signal below the threshold is pushed down further according to the ratio) |
 | 08 | `DeEsser.h` | Detects the sibilance band and attenuates it (wideband or split-band, with a monitorable detection signal) |
 | 08 | `TransientShaper.h` | Boosts or cuts attack and sustain separately, based on the difference between a fast and a slow envelope |

@@ -31,6 +31,7 @@
 #include <dawlab/AudioBuffer.h>
 #include <dawlab/DspMath.h>
 #include <dawlab/dsp/EnvelopeFollower.h>
+#include <dawlab/dsp/Sidechain.h>
 #include <dawlab/dsp/SmoothedValue.h>
 
 #include <algorithm>
@@ -192,17 +193,7 @@ public:
 
     // Extra: detect from a sidechain (the same interface as Gate). The number of samples is the smaller of the two.
     void process(AudioBlock main, const AudioBlock& sidechain) noexcept {
-        const int n = std::min(main.getNumSamples(), sidechain.getNumSamples());
-        const int nMain = main.getNumChannels();
-        const int nSc = sidechain.getNumChannels();
-        for (int i = 0; i < n; ++i) {
-            float det = 0.0f;
-            for (int ch = 0; ch < nSc; ++ch)
-                det = std::max(det, std::abs(sidechain.getChannelPointer(ch)[i]));
-            const float g = nextGain(det);
-            for (int ch = 0; ch < nMain; ++ch)
-                main.getChannelPointer(ch)[i] *= g;
-        }
+        applySidechainGain(main, sidechain, [this](float det) noexcept { return nextGain(det); });
         gainReductionDb_.store(-gainDb_, std::memory_order_relaxed);
     }
 
