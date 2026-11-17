@@ -37,6 +37,7 @@ The DSP components implemented step by step across the chapters: header-only, in
 | [09](../../../../lessons/09-delay/README.md) | `FractionalDelayLine.h` | Circular buffer supporting non-integer delays (linear / cubic Hermite / Lagrange interpolation) |
 | 09 | `Delay.h` | Stereo echo: smoothed delay time, filtering inside the feedback loop, ping-pong, tempo sync |
 | [10](../../../../lessons/10-modulation/README.md) | `Lfo.h` | Low-frequency oscillator (sine, triangle, saw, square, sample & hold) |
+| 10 | `ModulatedEffect.h` | What Chorus, Flanger and Phaser share: `processSample()` / `process()` around their own `advanceModulation()` and `renderSample()` |
 | 10 | `Chorus.h` | Multi-voice, LFO-modulated short delay with stereo spread |
 | 10 | `Flanger.h` | Very short modulated delay with feedback, forming a sweeping comb filter |
 | 10 | `Phaser.h` | Phaser built from cascaded first-order allpass filters with LFO-swept notches |

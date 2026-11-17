@@ -31,6 +31,7 @@
 #include <dawlab/DspMath.h>
 #include <dawlab/dsp/Biquad.h>
 #include <dawlab/dsp/Lfo.h>
+#include <dawlab/dsp/ModulatedEffect.h>
 
 #include <algorithm>
 #include <array>
@@ -39,7 +40,7 @@
 
 namespace dawlab::dsp {
 
-class Phaser {
+class Phaser : public ModulatedEffect<Phaser> {
 public:
     static constexpr int kMinStages = 2;
     static constexpr int kMaxStages = 12;
@@ -158,30 +159,11 @@ public:
         return c;
     }
 
-    // ---- Processing ----------------------------------------------------------
-    float processSample(int channel, float x) noexcept {
-        if (!prepared_)
-            return x;
-        if (channel == 0)
-            advanceModulation();
-        return renderSample(channel, x);
-    }
-
-    void process(AudioBlock block) noexcept {
-        const int n = block.getNumSamples();
-        const int nch = std::min(block.getNumChannels(), numChannels_);
-        if (!prepared_) // before prepare() the block passes through as it is: its buffers do not exist yet
-            return;
-        for (int i = 0; i < n; ++i) {
-            advanceModulation();
-            for (int ch = 0; ch < nch; ++ch) {
-                float* d = block.getChannelPointer(ch);
-                d[i] = renderSample(ch, d[i]);
-            }
-        }
-    }
+    // ---- Processing: processSample() and process() come from ModulatedEffect ---
 
 private:
+    friend class ModulatedEffect<Phaser>;
+
     void advanceModulation() noexcept {
         const float depth = depthSm_.next();
         const float centre = centreSm_.next();

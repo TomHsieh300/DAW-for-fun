@@ -27,6 +27,7 @@
 #include <dawlab/DspMath.h>
 #include <dawlab/dsp/FractionalDelayLine.h>
 #include <dawlab/dsp/Lfo.h>
+#include <dawlab/dsp/ModulatedEffect.h>
 
 #include <algorithm>
 #include <array>
@@ -34,7 +35,7 @@
 
 namespace dawlab::dsp {
 
-class Chorus {
+class Chorus : public ModulatedEffect<Chorus> {
 public:
     static constexpr int kMaxVoices = 4;
     static constexpr float kMaxCentreDelayMs = 50.0f;
@@ -132,33 +133,11 @@ public:
     float getMix() const noexcept { return mixSm_.getTarget(); }
     float getStereoSpread() const noexcept { return spreadSm_.getTarget(); }
 
-    // ---- Processing ----------------------------------------------------------
-    // Per sample: at each point in time the calls must go channel 0 first, then channel 1, ...
-    // (the LFOs and parameter smoothers advance one step only on channel 0; the other channels
-    // share the same values)
-    float processSample(int channel, float x) noexcept {
-        if (!prepared_)
-            return x;
-        if (channel == 0)
-            advanceModulation();
-        return renderSample(channel, x);
-    }
-
-    void process(AudioBlock block) noexcept {
-        const int n = block.getNumSamples();
-        const int nch = std::min(block.getNumChannels(), numChannels_);
-        if (!prepared_) // before prepare() the block passes through as it is: its buffers do not exist yet
-            return;
-        for (int i = 0; i < n; ++i) {
-            advanceModulation();
-            for (int ch = 0; ch < nch; ++ch) {
-                float* d = block.getChannelPointer(ch);
-                d[i] = renderSample(ch, d[i]);
-            }
-        }
-    }
+    // ---- Processing: processSample() and process() come from ModulatedEffect ---
 
 private:
+    friend class ModulatedEffect<Chorus>;
+
     // voice v's phase = base + v / N (Lfo::setPhase wraps it back into 0..1)
     void spreadVoicePhases(float base) noexcept {
         for (int v = 0; v < kMaxVoices; ++v)

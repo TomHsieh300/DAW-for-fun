@@ -37,6 +37,7 @@
 | [09](../../../../lessons/09-delay/README.zh-TW.md) | `FractionalDelayLine.h` | 支援非整數延遲的 circular buffer（linear / cubic Hermite / Lagrange 插值） |
 | 09 | `Delay.h` | 立體聲 echo：平滑 delay time、feedback 迴路內的濾波、ping-pong、tempo sync |
 | [10](../../../../lessons/10-modulation/README.zh-TW.md) | `Lfo.h` | 低頻振盪器（sine、triangle、saw、square、sample & hold） |
+| 10 | `ModulatedEffect.h` | Chorus、Flanger、Phaser 共用的部分：包住各自 `advanceModulation()` 與 `renderSample()` 的 `processSample()` / `process()` |
 | 10 | `Chorus.h` | 多 voice、LFO 調變的短延遲，加上立體聲展開 |
 | 10 | `Flanger.h` | 很短的調變延遲加 feedback，形成會掃動的 comb filter |
 | 10 | `Phaser.h` | 串接一階 allpass、以 LFO 掃動 notch 的 phaser |

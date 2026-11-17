@@ -663,7 +663,7 @@ public:
 };
 ```
 
-At each time step, `process()` first calls `advanceModulation()` once (smooth the parameters, record each voice's phase, advance the LFO), then calls `renderSample()` for each channel:
+At each time step, `process()` first calls `advanceModulation()` once (smooth the parameters, record each voice's phase, advance the LFO), then calls `renderSample()` for each channel. `processSample()` and `process()` are written once, in `ModulatedEffect.h`, and `Chorus`, `Flanger` and `Phaser` inherit them; each class supplies only its own `advanceModulation()` and `renderSample()`:
 
 ```cpp
 delay_.push(ch, x);                                       // write first: read(d) = d samples ago

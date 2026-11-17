@@ -663,7 +663,7 @@ public:
 };
 ```
 
-`process()` 的每個時間點先做一次 `advanceModulation()`（平滑參數、記下每個 voice 的相位、讓 LFO 前進），再對每個 channel 呼叫 `renderSample()`：
+`process()` 的每個時間點先做一次 `advanceModulation()`（平滑參數、記下每個 voice 的相位、讓 LFO 前進），再對每個 channel 呼叫 `renderSample()`。`processSample()` 和 `process()` 只寫一次，放在 `ModulatedEffect.h`，`Chorus`、`Flanger`、`Phaser` 都繼承它們；每個 class 只提供自己的 `advanceModulation()` 和 `renderSample()`：
 
 ```cpp
 delay_.push(ch, x);                                       // 先寫入：read(d) = d 個 sample 前

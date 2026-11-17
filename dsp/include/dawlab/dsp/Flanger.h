@@ -24,13 +24,14 @@
 #include <dawlab/DspMath.h>
 #include <dawlab/dsp/FractionalDelayLine.h>
 #include <dawlab/dsp/Lfo.h>
+#include <dawlab/dsp/ModulatedEffect.h>
 
 #include <algorithm>
 #include <cmath>
 
 namespace dawlab::dsp {
 
-class Flanger {
+class Flanger : public ModulatedEffect<Flanger> {
 public:
     static constexpr float kMinDelayMs = 0.1f;
     static constexpr float kMaxDelayMs = 20.0f;
@@ -110,30 +111,11 @@ public:
     // Theoretical peak frequency: f_k = k / d
     static double peakFrequencyHz(int k, double delayMs) noexcept { return k / (delayMs * 0.001); }
 
-    // ---- Processing ----------------------------------------------------------
-    float processSample(int channel, float x) noexcept {
-        if (!prepared_)
-            return x;
-        if (channel == 0)
-            advanceModulation();
-        return renderSample(channel, x);
-    }
-
-    void process(AudioBlock block) noexcept {
-        const int n = block.getNumSamples();
-        const int nch = std::min(block.getNumChannels(), numChannels_);
-        if (!prepared_) // before prepare() the block passes through as it is: its buffers do not exist yet
-            return;
-        for (int i = 0; i < n; ++i) {
-            advanceModulation();
-            for (int ch = 0; ch < nch; ++ch) {
-                float* d = block.getChannelPointer(ch);
-                d[i] = renderSample(ch, d[i]);
-            }
-        }
-    }
+    // ---- Processing: processSample() and process() come from ModulatedEffect ---
 
 private:
+    friend class ModulatedEffect<Flanger>;
+
     void advanceModulation() noexcept {
         const float baseMs = delaySm_.next();
         const float depthMs = depthSm_.next();
