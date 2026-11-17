@@ -85,6 +85,14 @@ public:
 
 private:
     class SlotButton;
+    // The constructor's parts, in the order the controls are added (top to bottom).
+    void addNameLabel();
+    void addTrackButtons();
+    void addSendKnobs();
+    void addCeiling();
+    void addPan();
+    void addFader();
+    void addMuteAndSolo();
     engine::ChannelStrip* strip() noexcept;
     // Every control changes the project through Session::perform() (undoable, Step 9). A
     // continuous control (fader, knob) merges the steps of one drag into one entry; its drag

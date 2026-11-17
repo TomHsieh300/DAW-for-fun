@@ -117,76 +117,99 @@ private:
 ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(session), ref_(ref) {
     const bool isTrack = ref_.kind == ChannelKind::Track;
     const bool isMaster = ref_.kind == ChannelKind::Master;
-
-    name_.setJustificationType(juce::Justification::centred);
-    name_.setFont(DawLookAndFeel::uiFont(14.0f, true));
-    name_.setEditable(false, isTrack || ref_.kind == ChannelKind::Bus, false);
-    name_.setTooltip("Double-click to rename");
-    name_.onTextChange = [this] { session_.setStripName(ref_, name_.getText()); };
-    addAndMakeVisible(name_);
-
-    if (isTrack) {
-        load_.setTooltip("Load an audio file into this track (or drop files on its lane)");
-        load_.setWantsKeyboardFocus(false);
-        load_.onClick = [this] { if (onLoadRequested) onLoadRequested(ref_.index); };
-        addAndMakeVisible(load_);
-
-        format_.setWantsKeyboardFocus(false);
-        format_.setTooltip("Track format. Mono: inserts run on one channel and the pan law places it.\n"
-                           "Stereo: inserts run on both channels and pan works as balance.");
-        format_.onClick = [this] {
-            const bool mono = session_.getTrackFormat(ref_.index) == engine::TrackFormat::Mono;
-            session_.setTrackFormat(ref_.index, mono ? engine::TrackFormat::Stereo : engine::TrackFormat::Mono);
-        };
-        addAndMakeVisible(format_);
-    }
-
+    // The controls from top to bottom; a track has a few more than a bus, the master has a ceiling.
+    addNameLabel();
+    if (isTrack)
+        addTrackButtons();
     for (int s = 0; s < kInsertSlotsPerStrip; ++s) {
         slots_.push_back(std::make_unique<SlotButton>(*this, s));
         addAndMakeVisible(*slots_.back());
     }
+    if (isTrack)
+        addSendKnobs();
+    if (isMaster)
+        addCeiling();
+    addPan();
+    addFader();
+    addMuteAndSolo();
+    refreshStructure();
+    update();
+}
 
-    if (isTrack) {
-        for (int b = 0; b < engine::kNumBuses; ++b) {
-            auto knob = std::make_unique<juce::Slider>(juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox);
-            knob->setRange(FaderLaw::kBottomDb, 6.0, 0.1);
-            knob->setDoubleClickReturnValue(true, -12.0);
-            knob->setPopupDisplayEnabled(true, true, this);
-            knob->textFromValueFunction = [](double v) { return FaderLaw::format(static_cast<float>(v)); };
-            knob->setWantsKeyboardFocus(false);
-            knob->setColour(juce::Slider::rotarySliderFillColourId, DawColours::accentWarm());
-            // The tooltip and the label follow pre/post-fader and the bus name in update().
-            knob->onValueChange = [this, b, k = knob.get()] {
-                strip().setSendLevelDb(b, FaderLaw::toEngineDb(static_cast<float>(k->getValue())));
-            };
-            addAndMakeVisible(*knob);
-            sends_.push_back(std::move(knob));
-            auto label = std::make_unique<juce::Label>();
-            label->setText(juce::String::charToString(static_cast<juce::juce_wchar>('A' + b)), juce::dontSendNotification);
-            label->setJustificationType(juce::Justification::centred);
-            label->setFont(DawLookAndFeel::uiFont(11.0f));
-            label->setColour(juce::Label::textColourId, DawColours::textDim());
-            addAndMakeVisible(*label);
-            sendLabels_.push_back(std::move(label));
-        }
-    }
-    if (isMaster) {
-        ceiling_.setRange(-12.0, 0.0, 0.1);
-        ceiling_.setDoubleClickReturnValue(true, -1.0);
-        ceiling_.setPopupDisplayEnabled(true, true, this);
-        ceiling_.textFromValueFunction = [](double v) { return juce::String(v, 1) + " dBFS"; };
-        ceiling_.setWantsKeyboardFocus(false);
-        ceiling_.setColour(juce::Slider::rotarySliderFillColourId, DawColours::meterHigh());
-        ceiling_.setTooltip("Master limiter ceiling (drives the first Limiter on the master)");
-        ceiling_.onValueChange = [this] { session_.setMasterCeilingDb(static_cast<float>(ceiling_.getValue())); };
-        addAndMakeVisible(ceiling_);
-        ceilingLabel_.setText("Ceiling", juce::dontSendNotification);
-        ceilingLabel_.setJustificationType(juce::Justification::centred);
-        ceilingLabel_.setFont(DawLookAndFeel::uiFont(11.0f));
-        ceilingLabel_.setColour(juce::Label::textColourId, DawColours::textDim());
-        addAndMakeVisible(ceilingLabel_);
-    }
+// The strip's name: a track and a bus can be renamed.
+void ChannelStripView::addNameLabel() {
+    name_.setJustificationType(juce::Justification::centred);
+    name_.setFont(DawLookAndFeel::uiFont(14.0f, true));
+    name_.setEditable(false, ref_.kind == ChannelKind::Track || ref_.kind == ChannelKind::Bus, false);
+    name_.setTooltip("Double-click to rename");
+    name_.onTextChange = [this] { session_.setStripName(ref_, name_.getText()); };
+    addAndMakeVisible(name_);
+}
 
+// Load... and the track format, Mono / Stereo.
+void ChannelStripView::addTrackButtons() {
+    load_.setTooltip("Load an audio file into this track (or drop files on its lane)");
+    load_.setWantsKeyboardFocus(false);
+    load_.onClick = [this] { if (onLoadRequested) onLoadRequested(ref_.index); };
+    addAndMakeVisible(load_);
+
+    format_.setWantsKeyboardFocus(false);
+    format_.setTooltip("Track format. Mono: inserts run on one channel and the pan law places it.\n"
+                       "Stereo: inserts run on both channels and pan works as balance.");
+    format_.onClick = [this] {
+        const bool mono = session_.getTrackFormat(ref_.index) == engine::TrackFormat::Mono;
+        session_.setTrackFormat(ref_.index, mono ? engine::TrackFormat::Stereo : engine::TrackFormat::Mono);
+    };
+    addAndMakeVisible(format_);
+}
+
+// One knob and its letter per FX bus.
+void ChannelStripView::addSendKnobs() {
+    for (int b = 0; b < engine::kNumBuses; ++b) {
+        auto knob = std::make_unique<juce::Slider>(juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox);
+        knob->setRange(FaderLaw::kBottomDb, 6.0, 0.1);
+        knob->setDoubleClickReturnValue(true, -12.0);
+        knob->setPopupDisplayEnabled(true, true, this);
+        knob->textFromValueFunction = [](double v) { return FaderLaw::format(static_cast<float>(v)); };
+        knob->setWantsKeyboardFocus(false);
+        knob->setColour(juce::Slider::rotarySliderFillColourId, DawColours::accentWarm());
+        // The tooltip and the label follow pre/post-fader and the bus name in update().
+        knob->onValueChange = [this, b, k = knob.get()] {
+            strip().setSendLevelDb(b, FaderLaw::toEngineDb(static_cast<float>(k->getValue())));
+        };
+        addAndMakeVisible(*knob);
+        sends_.push_back(std::move(knob));
+        auto label = std::make_unique<juce::Label>();
+        label->setText(juce::String::charToString(static_cast<juce::juce_wchar>('A' + b)), juce::dontSendNotification);
+        label->setJustificationType(juce::Justification::centred);
+        label->setFont(DawLookAndFeel::uiFont(11.0f));
+        label->setColour(juce::Label::textColourId, DawColours::textDim());
+        addAndMakeVisible(*label);
+        sendLabels_.push_back(std::move(label));
+    }
+}
+
+// The master's limiter ceiling.
+void ChannelStripView::addCeiling() {
+    ceiling_.setRange(-12.0, 0.0, 0.1);
+    ceiling_.setDoubleClickReturnValue(true, -1.0);
+    ceiling_.setPopupDisplayEnabled(true, true, this);
+    ceiling_.textFromValueFunction = [](double v) { return juce::String(v, 1) + " dBFS"; };
+    ceiling_.setWantsKeyboardFocus(false);
+    ceiling_.setColour(juce::Slider::rotarySliderFillColourId, DawColours::meterHigh());
+    ceiling_.setTooltip("Master limiter ceiling (drives the first Limiter on the master)");
+    ceiling_.onValueChange = [this] { session_.setMasterCeilingDb(static_cast<float>(ceiling_.getValue())); };
+    addAndMakeVisible(ceiling_);
+    ceilingLabel_.setText("Ceiling", juce::dontSendNotification);
+    ceilingLabel_.setJustificationType(juce::Justification::centred);
+    ceilingLabel_.setFont(DawLookAndFeel::uiFont(11.0f));
+    ceilingLabel_.setColour(juce::Label::textColourId, DawColours::textDim());
+    addAndMakeVisible(ceilingLabel_);
+}
+
+// Pan on a track, balance on a bus and the master.
+void ChannelStripView::addPan() {
+    const bool isTrack = ref_.kind == ChannelKind::Track;
     pan_.setRange(-1.0, 1.0, 0.01);
     pan_.setDoubleClickReturnValue(true, 0.0);
     pan_.getProperties().set(DawLookAndFeel::kBipolarProperty, true);
@@ -204,7 +227,10 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
     panLabel_.setFont(DawLookAndFeel::uiFont(11.0f));
     panLabel_.setColour(juce::Label::textColourId, DawColours::textDim());
     addAndMakeVisible(panLabel_);
+}
 
+// The fader, its meter and the dB value under them.
+void ChannelStripView::addFader() {
     fader_.setRange(0.0, 1.0, 0.0);
     fader_.setDoubleClickReturnValue(true, FaderLaw::dbToPosition(0.0f));
     fader_.setPopupDisplayEnabled(true, true, this);
@@ -222,8 +248,11 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
     gainLabel_.setFont(DawLookAndFeel::uiFont(11.0f));
     gainLabel_.setColour(juce::Label::textColourId, DawColours::textDim());
     addAndMakeVisible(gainLabel_);
+}
 
-    if (!isMaster) {
+// Mute on a track and a bus, solo only on a track.
+void ChannelStripView::addMuteAndSolo() {
+    if (ref_.kind != ChannelKind::Master) {
         mute_.setClickingTogglesState(true);
         mute_.setWantsKeyboardFocus(false);
         mute_.setColour(juce::TextButton::buttonOnColourId, DawColours::mute());
@@ -231,7 +260,7 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
         mute_.onClick = [this] { strip().setMute(mute_.getToggleState()); };
         addAndMakeVisible(mute_);
     }
-    if (isTrack) { // buses are solo-safe (stage 1): no solo button
+    if (ref_.kind == ChannelKind::Track) { // buses are solo-safe (stage 1): no solo button
         solo_.setClickingTogglesState(true);
         solo_.setWantsKeyboardFocus(false);
         solo_.setColour(juce::TextButton::buttonOnColourId, DawColours::accentWarm());
@@ -239,8 +268,6 @@ ChannelStripView::ChannelStripView(Session& session, ChannelRef ref) : session_(
         solo_.onClick = [this] { strip().setSolo(solo_.getToggleState()); };
         addAndMakeVisible(solo_);
     }
-    refreshStructure();
-    update();
 }
 
 ChannelStripView::~ChannelStripView() = default;
