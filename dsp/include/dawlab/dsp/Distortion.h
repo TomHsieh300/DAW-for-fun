@@ -331,6 +331,16 @@ public:
     }
 
 private:
+    // New-type weight w(i) of a type crossfade for sample i of this block (may be fractional: oversampled samples):
+    // linear 0 → 1 while fading, 1 otherwise
+    struct FadeWeight {
+        bool fading = false;
+        float done = 0.0f;      // how many samples of this fade had elapsed before this block
+        float invLength = 1.0f; // 1 / fade length
+        float operator()(float i) const noexcept { return fading ? std::min(1.0f, (done + i + 1.0f) * invLength) : 1.0f; }
+    };
+
+    // One chunk of at most maxBlockSize_ samples, step by step (see the signal flow at the top of this file)
     void processChunk(AudioBlock block) noexcept {
         const int n = block.getNumSamples();
         const int nch = std::min(block.getNumChannels(), numChannels_);
@@ -340,126 +350,144 @@ private:
         block = block.getChannelSubset(0, nch); // channels beyond those given to prepare are left untouched
 
         updateToneCoefficients();
+        copyDry(block);                                   // 1.
+        const FadeWeight fadeWeight = typeFadeForBlock(); // 2.
+        const float g0 = driveGain_.current;
+        runCrushPath(block, g0);                          // 3a.
+        runShaperPath(block, g0, fadeWeight);             // 3b.
+        driveGain_.current = driveGain_.target;
+        selectPath(block, fadeWeight);                    // 3c.
+        applyDcBlocker(block, fadeWeight);                // 3d.
+        advanceTypeFade(n);
+        applyTone(block);                                 // 4.
+        applyOutputAndMix(block);                         // 5.
+    }
 
-        // 1. dry copy (delayed by latency samples to align with wet)
-        for (int ch = 0; ch < nch; ++ch) {
+    // 1. dry copy (delayed by latency samples to align with wet)
+    void copyDry(AudioBlock block) noexcept {
+        const int n = block.getNumSamples();
+        for (int ch = 0; ch < block.getNumChannels(); ++ch) {
             const float* x = block.getChannelPointer(ch);
             float* d = dryBuffer_.getWritePointer(ch);
             auto& delay = dryDelay_[static_cast<size_t>(ch)];
             for (int i = 0; i < n; ++i)
                 d[i] = delay.process(x[i]);
         }
+    }
 
-        // 2. type crossfade state: when not fading, fromType_ == toType_ and the weight w = 1
-        //    The first block after prepare() / reset() has no "old sound" to fade from, so the current type is used directly
-        //    (the common pattern is to call setType() after prepare(), which should not cost an extra fade).
+    // 2. type crossfade state: when not fading, fromType_ == toType_ and the weight w = 1
+    //    The first block after prepare() / reset() has no "old sound" to fade from, so the current type is used directly
+    //    (the common pattern is to call setType() after prepare(), which should not cost an extra fade).
+    FadeWeight typeFadeForBlock() noexcept {
         if (!processedSinceReset_) {
             snapTypeFade();
             processedSinceReset_ = true;
         } else if (fadeRemaining_ == 0 && type_ != toType_) {
             startTypeFade(type_);
         }
-        const bool fading = fadeRemaining_ > 0;
-        const float fadeDone = static_cast<float>(fadeLength_ - fadeRemaining_); // how many samples of this fade have elapsed
-        const float invFade = 1.0f / static_cast<float>(fadeLength_);
-        // New-type weight w(i) for sample i (may be fractional: oversampled samples): linear 0 → 1
-        auto fadeWeight = [fading, fadeDone, invFade](float i) noexcept {
-            return fading ? std::min(1.0f, (fadeDone + i + 1.0f) * invFade) : 1.0f;
-        };
+        return {fadeRemaining_ > 0, static_cast<float>(fadeLength_ - fadeRemaining_),
+                1.0f / static_cast<float>(fadeLength_)};
+    }
 
-        const float g0 = driveGain_.current;
-
-        // 3a. Bitcrush path (original sample rate): runs regardless of the current type so its state never freezes on stale audio
-        {
-            const float inc = driveGain_.incrementFor(n);
-            for (int ch = 0; ch < nch; ++ch) {
-                const float* x = block.getChannelPointer(ch);
-                float* c = crushBuffer_.getWritePointer(ch);
-                auto& delay = wetDelay_[static_cast<size_t>(ch)];
-                for (int i = 0; i < n; ++i) // does not go through the oversampler, so pad the same latency ourselves
-                    c[i] = delay.process(crush(ch, x[i] * (g0 + inc * static_cast<float>(i))));
-            }
+    // 3a. Bitcrush path (original sample rate): runs regardless of the current type so its state never freezes on stale audio
+    void runCrushPath(AudioBlock block, float g0) noexcept {
+        const int n = block.getNumSamples();
+        const float inc = driveGain_.incrementFor(n);
+        for (int ch = 0; ch < block.getNumChannels(); ++ch) {
+            const float* x = block.getChannelPointer(ch);
+            float* c = crushBuffer_.getWritePointer(ch);
+            auto& delay = wetDelay_[static_cast<size_t>(ch)];
+            for (int i = 0; i < n; ++i) // does not go through the oversampler, so pad the same latency ourselves
+                c[i] = delay.process(crush(ch, x[i] * (g0 + inc * static_cast<float>(i))));
         }
+    }
 
-        // 3b. Waveshaper path (HardClip / Foldback / Fuzz / Rectify); the result is written straight back into block.
-        //     When the type changes within this path (e.g. HardClip → Foldback), the two curves are crossfaded at the shaper output.
-        const bool shaperFading = osFromType_ != osToType_;
+    // 3b. Waveshaper path (HardClip / Foldback / Fuzz / Rectify); the result is written straight back into block.
+    void runShaperPath(AudioBlock block, float g0, const FadeWeight& fadeWeight) noexcept {
         if (oversampler_) {
-            // Process at the oversampled rate: the harmonics have more room and do not alias back
-            AudioBlock up = oversampler_->upsample(block);
-            const int un = up.getNumSamples();
-            const float inc = driveGain_.incrementFor(un);
-            const float invFactor = 1.0f / static_cast<float>(oversampler_->getFactor());
-            for (int ch = 0; ch < nch; ++ch) {
-                float* x = up.getChannelPointer(ch);
-                for (int i = 0; i < un; ++i) {
-                    const float u = x[i] * (g0 + inc * static_cast<float>(i));
-                    const float yTo = shapeMemoryless(osToType_, u);
-                    x[i] = shaperFading
-                               ? lerp(shapeMemoryless(osFromType_, u), yTo, fadeWeight(static_cast<float>(i) * invFactor))
-                               : yTo;
-                }
-            }
+            // Process at the oversampled rate: the harmonics have more room and do not alias back.
+            // Only block's channels were upsampled, so only those are shaped.
+            const AudioBlock up = oversampler_->upsample(block).getChannelSubset(0, block.getNumChannels());
+            shapeBlock(up, g0, fadeWeight, 1.0f / static_cast<float>(oversampler_->getFactor()));
             oversampler_->downsample(block);
         } else {
             // No oversampling (setOversamplingFactorLog2(0)): shape directly at the original sample rate
-            const float inc = driveGain_.incrementFor(n);
-            for (int ch = 0; ch < nch; ++ch) {
-                float* x = block.getChannelPointer(ch);
-                for (int i = 0; i < n; ++i) {
-                    const float fi = static_cast<float>(i);
-                    const float u = x[i] * (g0 + inc * fi);
-                    const float yTo = shapeMemoryless(osToType_, u);
-                    x[i] = shaperFading ? lerp(shapeMemoryless(osFromType_, u), yTo, fadeWeight(fi)) : yTo;
-                }
+            shapeBlock(block, g0, fadeWeight, 1.0f);
+        }
+    }
+
+    // Shapes block in place with the shaper path's curve. When the type changes within this path (e.g. HardClip →
+    // Foldback), the two curves are crossfaded at the shaper output. sampleTime turns an index into one at the original rate.
+    void shapeBlock(AudioBlock block, float g0, const FadeWeight& fadeWeight, float sampleTime) noexcept {
+        const int n = block.getNumSamples();
+        const float inc = driveGain_.incrementFor(n);
+        const bool shaperFading = osFromType_ != osToType_;
+        for (int ch = 0; ch < block.getNumChannels(); ++ch) {
+            float* x = block.getChannelPointer(ch);
+            for (int i = 0; i < n; ++i) {
+                const float u = x[i] * (g0 + inc * static_cast<float>(i));
+                const float yTo = shapeMemoryless(osToType_, u);
+                x[i] = shaperFading
+                           ? lerp(shapeMemoryless(osFromType_, u), yTo, fadeWeight(static_cast<float>(i) * sampleTime))
+                           : yTo;
             }
         }
-        driveGain_.current = driveGain_.target;
+    }
 
-        // 3c. Path selection: cw = the share of the Bitcrush path (moves linearly between the two paths during a fade)
+    // 3c. Path selection: cw = the share of the Bitcrush path (moves linearly between the two paths during a fade)
+    void selectPath(AudioBlock block, const FadeWeight& fadeWeight) noexcept {
         const float crushFrom = fromType_ == DistortionType::Bitcrush ? 1.0f : 0.0f;
         const float crushTo = toType_ == DistortionType::Bitcrush ? 1.0f : 0.0f;
-        if (fading || crushTo > 0.0f) {
-            for (int ch = 0; ch < nch; ++ch) {
-                float* x = block.getChannelPointer(ch);
-                const float* c = crushBuffer_.getReadPointer(ch);
-                for (int i = 0; i < n; ++i) {
-                    const float cw = lerp(crushFrom, crushTo, fadeWeight(static_cast<float>(i)));
-                    x[i] = lerp(x[i], c[i], cw);
-                }
+        if (!fadeWeight.fading && crushTo == 0.0f)
+            return; // the shaper path alone, already in block
+        const int n = block.getNumSamples();
+        for (int ch = 0; ch < block.getNumChannels(); ++ch) {
+            float* x = block.getChannelPointer(ch);
+            const float* c = crushBuffer_.getReadPointer(ch);
+            for (int i = 0; i < n; ++i) {
+                const float cw = lerp(crushFrom, crushTo, fadeWeight(static_cast<float>(i)));
+                x[i] = lerp(x[i], c[i], cw);
             }
         }
+    }
 
-        // 3d. DC blocker: asymmetric (Fuzz) and rectify both generate DC.
-        //     It runs on every block (so its state never freezes), but only Fuzz / Rectify use its output;
-        //     other types are completely unaffected (e.g. the bitcrush SNR measurement needs wet and dry aligned sample by sample).
+    // 3d. DC blocker: asymmetric (Fuzz) and rectify both generate DC.
+    //     It runs on every block (so its state never freezes), but only Fuzz / Rectify use its output;
+    //     other types are completely unaffected (e.g. the bitcrush SNR measurement needs wet and dry aligned sample by sample).
+    void applyDcBlocker(AudioBlock block, const FadeWeight& fadeWeight) noexcept {
         const float dcFrom = needsDcBlocker(fromType_) ? 1.0f : 0.0f;
         const float dcTo = needsDcBlocker(toType_) ? 1.0f : 0.0f;
-        for (int ch = 0; ch < nch; ++ch) {
+        const int n = block.getNumSamples();
+        for (int ch = 0; ch < block.getNumChannels(); ++ch) {
             float* x = block.getChannelPointer(ch);
             for (int i = 0; i < n; ++i) {
                 const float blocked = dcBlocker_.processSample(ch, x[i]);
-                if (fading)
+                if (fadeWeight.fading)
                     x[i] = lerp(x[i], blocked, lerp(dcFrom, dcTo, fadeWeight(static_cast<float>(i))));
                 else if (dcTo > 0.0f)
                     x[i] = blocked;
             }
         }
-        advanceTypeFade(n);
+    }
 
-        // 4. tone (post lowpass)
-        if (!toneBypass_) {
-            for (int ch = 0; ch < nch; ++ch) {
-                float* x = block.getChannelPointer(ch);
-                for (int i = 0; i < n; ++i)
-                    x[i] = tone_.processSample(ch, x[i]);
-            }
+    // 4. tone (post lowpass)
+    void applyTone(AudioBlock block) noexcept {
+        if (toneBypass_)
+            return;
+        const int n = block.getNumSamples();
+        for (int ch = 0; ch < block.getNumChannels(); ++ch) {
+            float* x = block.getChannelPointer(ch);
+            for (int i = 0; i < n; ++i)
+                x[i] = tone_.processSample(ch, x[i]);
         }
+    }
 
-        // 5. output gain and dry/wet mix
+    // 5. output gain and dry/wet mix
+    void applyOutputAndMix(AudioBlock block) noexcept {
+        const int n = block.getNumSamples();
         const float o0 = outputGain_.current, oInc = outputGain_.incrementFor(n);
         const float m0 = mixRamp_.current, mInc = mixRamp_.incrementFor(n);
-        for (int ch = 0; ch < nch; ++ch) {
+        for (int ch = 0; ch < block.getNumChannels(); ++ch) {
             float* x = block.getChannelPointer(ch);
             const float* d = dryBuffer_.getReadPointer(ch);
             for (int i = 0; i < n; ++i) {
