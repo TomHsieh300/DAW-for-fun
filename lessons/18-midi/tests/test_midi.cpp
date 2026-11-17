@@ -16,10 +16,12 @@
 //   6. Three threads at once - UI, audio, MIDI - for ThreadSanitizer.
 //   7. The synth by hand: stealing, the pedal, all notes off, the bend.
 //   8. Raw MIDI clip and instrument commands: what comes back as garbage.
+//   9. The clip player event by event: edges, order, pedal, mutes, too much at once.
 
 #include "TestHelpers.h"
 #include "TestTracks.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -856,6 +858,119 @@ void testRawMidiCommands() {
     std::printf("  raw MIDI clip and instrument commands: the old ones back as garbage, a bus hands them straight back\n");
 }
 
+// 9. What the clip player sends, event by event (ClipPlayer::processSegment()), through the real engine in blocks
+//    of 24 ticks (600 samples: 120 BPM, 25 samples a tick): a trimmed clip with notes and controllers on and just
+//    past its edges, the order of the events on one tick, a pedal held to a clip's end, a muted clip, a clip
+//    muted while its note and pedal sound, more notes than voices, and a segment too full for every event.
+using EventLog = std::vector<std::pair<int64_t, MidiMessage>>;
+
+// The index of (sample, m) in the log; -1 if it is not there.
+long indexOf(const EventLog& log, int64_t sample, const MidiMessage& m) {
+    for (size_t i = 0; i < log.size(); ++i)
+        if (log[i].first == sample && log[i].second == m)
+            return static_cast<long>(i);
+    return -1;
+}
+long countOf(const EventLog& log, const MidiMessage& m) {
+    return static_cast<long>(std::count_if(log.begin(), log.end(), [&m](const auto& ev) { return ev.second == m; }));
+}
+// Both in the log at `sample`, `first` before `second`.
+bool inOrder(const EventLog& log, int64_t sample, const MidiMessage& first, const MidiMessage& second) {
+    const long a = indexOf(log, sample, first);
+    const long b = indexOf(log, sample, second);
+    return a >= 0 && b > a;
+}
+
+std::unique_ptr<Engine> loggingEngine(EventLog& log) {
+    auto e = std::make_unique<Engine>();
+    setUp(*e);
+    log.reserve(4096);
+    e->setTrackInstrument(testId(0), std::make_unique<Recorder>(log));
+    return e;
+}
+
+void testClipPlayerEvents() {
+    constexpr int64_t spt = 25; // samples a tick
+    const MidiMessage pedalDown = MidiMessage::controller(0, Synth::kSustainPedal, 127);
+    const MidiMessage pedalUp = MidiMessage::controller(0, Synth::kSustainPedal, 0);
+    auto on = [](int pitch, int velocity = 100) { return MidiMessage::noteOn(0, pitch, velocity); };
+    auto off = [](int pitch) { return MidiMessage::noteOff(0, pitch); };
+    {
+        EventLog log;
+        auto e = loggingEngine(log);
+        // Material 480..2390 at timeline 0..1910 (1910: inside a block).
+        MidiClip trimmed = clipOf(1, 0, 1910, {{480, 240, 60, 100, 0}, {480, 480, 64, 100, 0}, {720, 240, 60, 90, 0},
+                                               {2385, 100, 72, 100, 0}, {2395, 10, 74, 100, 0}});
+        trimmed.offset = 480;
+        trimmed.controllers = {{0, 7, 1, 0}, {1000, 7, 2, 0}, {1480, Synth::kSustainPedal, 127, 0}, {2390, 7, 3, 0}};
+        // Ends on a block's edge (2880 = 120 blocks) with its note and the pedal down.
+        MidiClip edge = clipOf(2, 2400, 480, {{0, 480, 50, 100, 0}});
+        edge.controllers = {{0, Synth::kSustainPedal, 127, 0}};
+        MidiClip muted = clipOf(3, 3000, 480, {{0, 240, 40, 100, 0}});
+        muted.muted = true;
+        // Starts inside a block (3010); its material before `offset` is not played, though in that block.
+        MidiClip late = clipOf(7, 3010, 240, {});
+        late.offset = 100;
+        late.controllers = {{95, 7, 9, 0}, {100, 7, 10, 0}};
+        e->setTrackMidiClips(testId(0), {trimmed, edge, muted, late});
+        e->getTransport().play();
+        play(*e, 600 * 150, 600); // to tick 3600
+
+        DAWLAB_CHECK(inOrder(log, 0, on(60), on(64)));                             // one tick: as in the clip
+        DAWLAB_CHECK(inOrder(log, 240 * spt, off(60), on(60, 90)));                // a note off before a note on
+        DAWLAB_CHECK(indexOf(log, 480 * spt, off(64)) >= 0 && indexOf(log, 480 * spt, off(60)) >= 0); // on a block's edge
+        DAWLAB_CHECK(indexOf(log, 520 * spt, MidiMessage::controller(0, 7, 2)) >= 0);
+        DAWLAB_CHECK(countOf(log, MidiMessage::controller(0, 7, 3)) == 0);         // at the material's end: out
+        DAWLAB_CHECK(indexOf(log, 1000 * spt, pedalDown) >= 0);
+        DAWLAB_CHECK(indexOf(log, 1905 * spt, on(72)) >= 0 && countOf(log, on(74)) == 0); // 74 starts past the end
+        DAWLAB_CHECK(inOrder(log, 1910 * spt, off(72), pedalUp));                  // the clip's end: note, then pedal
+        DAWLAB_CHECK(indexOf(log, 2400 * spt, on(50)) >= 0 && indexOf(log, 2400 * spt, pedalDown) >= 0);
+        DAWLAB_CHECK(inOrder(log, 2880 * spt, off(50), pedalUp));                  // a clip's end on a block's edge
+        DAWLAB_CHECK(countOf(log, on(40)) == 0);                                   // the muted clip
+        DAWLAB_CHECK(countOf(log, MidiMessage::controller(0, 7, 9)) == 0 && indexOf(log, 3010 * spt, MidiMessage::controller(0, 7, 10)) >= 0);
+
+        // A clip muted while its note and its pedal sound: both end where the next block starts.
+        MidiClip held = clipOf(4, 3840, 960, {{0, 960, 55, 100, 0}});
+        held.controllers = {{0, Synth::kSustainPedal, 127, 0}};
+        e->setTrackMidiClips(testId(0), {held});
+        play(*e, 600 * 20, 600); // to tick 4080
+        held.muted = true;
+        e->setTrackMidiClips(testId(0), {held});
+        play(*e, 600 * 50, 600);
+        DAWLAB_CHECK(indexOf(log, 3840 * spt, on(55)) >= 0);
+        DAWLAB_CHECK(inOrder(log, 4080 * spt, off(55), pedalUp) && countOf(log, off(55)) == 1);
+        std::printf("  clip player: %zu events, each at its sample and in its order\n", log.size());
+    }
+    {
+        // More notes on one tick than voices to remember (one is dropped), then a segment with more controller
+        // points than its room: those past it are dropped, so that every note off still fits (no allocation).
+        EventLog log;
+        auto e = loggingEngine(log);
+        std::vector<Note> chord;
+        for (int i = 0; i <= ClipPlayer::kMaxSounding; ++i)
+            chord.push_back({0, 480, 20 + i % 100, 100, i / 100});
+        std::vector<Note> ten;
+        for (int i = 0; i < 10; ++i)
+            ten.push_back({0, 1, 60 + i, 100, 0});
+        MidiClip dense = clipOf(6, 960, 24, ten);
+        for (int i = 0; i < 1020; ++i)
+            dense.controllers.push_back({0, 1, i % 128, 0});
+        e->setTrackMidiClips(testId(0), {clipOf(5, 0, 480, chord), dense});
+        e->getTransport().play();
+        long allocs = 0;
+        play(*e, 600 * 50, 600, &allocs);
+        const long ons = static_cast<long>(std::count_if(log.begin(), log.end(), [](const auto& ev) { return ev.second.kind() == MidiKind::NoteOn; }));
+        const long controllers = static_cast<long>(std::count_if(log.begin(), log.end(), [](const auto& ev) {
+            return ev.second.kind() == MidiKind::Controller && ev.second.note() == 1;
+        }));
+        const long dropped = e->getMixer().getTrack(0).getClipPlayer()->droppedNotes();
+        std::printf("  clip player, too much at once: %ld note ons, %ld dropped, %ld controllers, %ld allocations"
+                    " (expected 138, 1, 886, 0)\n", ons, dropped, controllers, allocs);
+        DAWLAB_CHECK(ons == ClipPlayer::kMaxSounding + 10 && dropped == 1);
+        DAWLAB_CHECK(controllers == 886 && allocs == 0);
+    }
+}
+
 } // namespace
 
 int main() {
@@ -873,6 +988,7 @@ int main() {
     testMidiParser();
     testSynthByHand();
     testRawMidiCommands();
+    testClipPlayerEvents();
     testNoAllocation();
     testThreads();
     return dawlab::test::summary("l18_test_midi");

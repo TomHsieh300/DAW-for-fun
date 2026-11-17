@@ -246,54 +246,94 @@ private:
 
     void processSegment(const std::vector<MidiClip>& clips, const TimelineSegment& seg, const TempoMap& map, double sampleRate,
                         std::vector<BlockEvent>& out) noexcept {
-        // Notes whose clip has gone or been muted end now.
+        endWhatGoneClipsLeft(clips, seg.blockOffset, out);
+        const int64_t t0 = seg.tickFrom;
+        const int64_t t1 = seg.tickTo;
+        // Everything this segment plays, in [t0, t1), goes to scratch_ first; sorted, it goes out.
+        scratch_.clear();
+        for (const MidiClip& clip : clips) {
+            if (clip.muted || clip.end() <= t0 || clip.start >= t1)
+                continue;
+            pendNotes(clip, t0, t1);
+            pendControllers(clip, t0, t1);
+        }
+        pendNoteOffs(t0, t1);
+        pendPedalUps(t0, t1);
+        std::sort(scratch_.begin(), scratch_.end(), comesFirst);
+        // At a loop's edge rounding may put a tick one sample outside its segment: keep it inside.
+        for (const Pending& p : scratch_) {
+            const int64_t at = std::clamp<int64_t>(map.sampleOfTick(p.tick, sampleRate) - seg.timelineStart, 0, seg.numSamples - 1);
+            pushEvent(out, {static_cast<int>(at) + seg.blockOffset, p.message});
+        }
+    }
+
+    // True if the clip `id` is no longer in the list, or is muted: what it started must end.
+    static bool goneOrMuted(const std::vector<MidiClip>& clips, int id) noexcept {
+        const auto clip = std::find_if(clips.begin(), clips.end(), [id](const MidiClip& c) { return c.id == id; });
+        return clip == clips.end() || clip->muted;
+    }
+    // Notes whose clip has gone or been muted end now, at `offset`; so does the pedal such a clip pressed.
+    void endWhatGoneClipsLeft(const std::vector<MidiClip>& clips, int offset, std::vector<BlockEvent>& out) noexcept {
         for (int i = 0; i < numSounding_;) {
             const Sounding& n = sounding_[static_cast<size_t>(i)];
-            const auto clip = std::find_if(clips.begin(), clips.end(), [&n](const MidiClip& c) { return c.id == n.clipId; });
-            if (clip == clips.end() || clip->muted) {
-                pushEvent(out, {seg.blockOffset, MidiMessage::noteOff(n.channel, n.pitch)});
+            if (goneOrMuted(clips, n.clipId)) {
+                pushEvent(out, {offset, MidiMessage::noteOff(n.channel, n.pitch)});
                 sounding_[static_cast<size_t>(i)] = sounding_[static_cast<size_t>(--numSounding_)];
             } else {
                 ++i;
             }
         }
-        // The same for the pedal such a clip pressed.
         for (int ch = 0; ch < 16; ++ch) {
             const Pedal& p = pedals_[static_cast<size_t>(ch)];
-            const auto clip = std::find_if(clips.begin(), clips.end(), [&p](const MidiClip& c) { return c.id == p.clipId; });
-            if (p.down && (clip == clips.end() || clip->muted))
-                letPedalGo(ch, seg.blockOffset, out);
+            if (p.down && goneOrMuted(clips, p.clipId))
+                letPedalGo(ch, offset, out);
         }
-        const int64_t t0 = seg.tickFrom;
-        const int64_t t1 = seg.tickTo;
-        scratch_.clear();
-        int seq = 0;
-        auto room = [this] { return scratch_.size() + kMaxSounding < scratch_.capacity(); };
-        auto pend = [this, &seq](int64_t tick, int rank, MidiMessage m) { scratch_.push_back({tick, rank, seq++, m}); };
-        for (const MidiClip& clip : clips) {
-            if (clip.muted || clip.end() <= t0 || clip.start >= t1)
+    }
+
+    // scratch_ is reserved and never grows on the audio thread: past this point a note on or controller
+    // is dropped, so that the note offs of every sounding note still fit.
+    bool hasRoom() const noexcept { return scratch_.size() + kMaxSounding < scratch_.capacity(); }
+    // An event for scratch_; its seq is the order it came in.
+    void pend(int64_t tick, int rank, MidiMessage m) noexcept {
+        scratch_.push_back({tick, rank, static_cast<int>(scratch_.size()), m});
+    }
+    // By tick; at the same tick note offs, then controllers, then note ons; then in the order they came.
+    static bool comesFirst(const Pending& a, const Pending& b) noexcept {
+        if (a.tick != b.tick)
+            return a.tick < b.tick;
+        if (a.rank != b.rank)
+            return a.rank < b.rank;
+        return a.seq < b.seq;
+    }
+
+    // The clip's notes that start in [t0, t1): a note on each, and a place in sounding_ until the note off.
+    void pendNotes(const MidiClip& clip, int64_t t0, int64_t t1) noexcept {
+        const int64_t first = t0 - clip.start + clip.offset;
+        auto it = std::lower_bound(clip.notes.begin(), clip.notes.end(), first, [](const Note& n, int64_t t) { return n.start < t; });
+        for (; it != clip.notes.end() && clip.timelineTick(it->start) < t1; ++it) {
+            int64_t on = 0, off = 0;
+            if (!clip.place(*it, on, off))
                 continue;
-            const int64_t first = t0 - clip.start + clip.offset;
-            auto it = std::lower_bound(clip.notes.begin(), clip.notes.end(), first, [](const Note& n, int64_t t) { return n.start < t; });
-            for (; it != clip.notes.end() && clip.timelineTick(it->start) < t1; ++it) {
-                int64_t on = 0, off = 0;
-                if (!clip.place(*it, on, off))
-                    continue;
-                if (numSounding_ == kMaxSounding || !room()) {
-                    ++dropped_;
-                    continue;
-                }
-                sounding_[static_cast<size_t>(numSounding_++)] = {clip.id, it->channel, it->pitch, off};
-                pend(on, 2, MidiMessage::noteOn(it->channel, it->pitch, it->velocity));
+            if (numSounding_ == kMaxSounding || !hasRoom()) {
+                ++dropped_;
+                continue;
             }
-            for (const ControllerPoint& p : clip.controllers) {
-                const int64_t t = clip.timelineTick(p.tick);
-                if (p.tick >= clip.offset && p.tick < clip.offset + clip.length && t >= t0 && t < t1 && room()) {
-                    pend(t, 1, MidiMessage::controller(p.channel, p.number, p.value));
-                    notePedal(clip, scratch_.back().message);
-                }
+            sounding_[static_cast<size_t>(numSounding_++)] = {clip.id, it->channel, it->pitch, off};
+            pend(on, 2, MidiMessage::noteOn(it->channel, it->pitch, it->velocity));
+        }
+    }
+    // The clip's controller points in [t0, t1) that lie inside the part of its material it plays.
+    void pendControllers(const MidiClip& clip, int64_t t0, int64_t t1) noexcept {
+        for (const ControllerPoint& p : clip.controllers) {
+            const int64_t t = clip.timelineTick(p.tick);
+            if (p.tick >= clip.offset && p.tick < clip.offset + clip.length && t >= t0 && t < t1 && hasRoom()) {
+                pend(t, 1, MidiMessage::controller(p.channel, p.number, p.value));
+                notePedal(clip, scratch_.back().message);
             }
         }
+    }
+    // The note offs due before t1 (one that is already late comes at t0).
+    void pendNoteOffs(int64_t t0, int64_t t1) noexcept {
         for (int i = 0; i < numSounding_;) {
             const Sounding& n = sounding_[static_cast<size_t>(i)];
             if (n.offTick < t1) {
@@ -303,25 +343,15 @@ private:
                 ++i;
             }
         }
-        // A clip that ends with the pedal down lets it go where it ends (after its last note offs there).
+    }
+    // A clip that ends with the pedal down lets it go where it ends (after its last note offs there).
+    void pendPedalUps(int64_t t0, int64_t t1) noexcept {
         for (int ch = 0; ch < 16; ++ch) {
             Pedal& p = pedals_[static_cast<size_t>(ch)];
             if (p.down && p.endTick < t1) {
                 pend(std::max(p.endTick, t0), 0, MidiMessage::controller(ch, kSustainPedal, 0));
                 p.down = false;
             }
-        }
-        std::sort(scratch_.begin(), scratch_.end(), [](const Pending& a, const Pending& b) {
-            if (a.tick != b.tick)
-                return a.tick < b.tick;
-            if (a.rank != b.rank)
-                return a.rank < b.rank;
-            return a.seq < b.seq;
-        });
-        // At a loop's edge rounding may put a tick one sample outside its segment: keep it inside.
-        for (const Pending& p : scratch_) {
-            const int64_t at = std::clamp<int64_t>(map.sampleOfTick(p.tick, sampleRate) - seg.timelineStart, 0, seg.numSamples - 1);
-            pushEvent(out, {static_cast<int>(at) + seg.blockOffset, p.message});
         }
     }
 
