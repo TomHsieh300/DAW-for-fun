@@ -167,22 +167,30 @@ stereo bus layout prepare 的：見 [Step 17](step-17-vst3-inserts.zh-TW.md) 中
 |---|---|
 | `InsertEffect.h` | `ParameterKind`、`ParameterInfo`（+ 用於 "-18.0 dB" 標籤的 `formatParameterValue()`）、`PlayHead`、`InsertEffect`、`InsertChain` |
 | `EffectBase.h` | `EffectBase`（atomic + dirty mask + `finishPrepare`）、`PureDelayEffect` |
-| `Effects.h` | 19 個 adapter、`choices::` 標籤表、`paramFloat/Int/Bool/Choice` helper、factory |
+| `Effects.h` | `DspEffect` / `MeteredDspEffect`、19 個 adapter、`choices::` 標籤表、`paramFloat/Int/Bool/Choice` helper、factory |
 
 </div>
 
 一個完整的 adapter，作為這個模式的範例：
 
 ```cpp
-class CompressorEffect final : public EffectBase {
+template <class Dsp>
+class DspEffect : public EffectBase {     // 否則每個 adapter 都要重寫的部分
 public:
-    enum Param { Threshold, Ratio, Knee, Attack, Release, Makeup, StereoLink, kCount };
-    CompressorEffect() : EffectBase(kInfos, kCount) {}
-    const char* getName() const noexcept override { return "Compressor"; }
     void prepare(double sr, int maxBlock, int nch) override { dsp_.prepare(sr, maxBlock, nch); finishPrepare(sr); }
     void reset() noexcept override { dsp_.reset(); }
-    bool hasMeter() const noexcept override { return true; }
-    float getMeterDb() const noexcept override { return dsp_.getGainReductionDb(); }
+protected:
+    DspEffect(const ParameterInfo* infos, int count) noexcept : EffectBase(infos, count) {}
+    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
+    Dsp dsp_;
+};
+// MeteredDspEffect<Dsp> adds hasMeter() = true and getMeterDb() = dsp_.getGainReductionDb().
+
+class CompressorEffect final : public MeteredDspEffect<dsp::Compressor> {
+public:
+    enum Param { Threshold, Ratio, Knee, Attack, Release, Makeup, StereoLink, kCount };
+    CompressorEffect() : MeteredDspEffect(kInfos, kCount) {}
+    const char* getName() const noexcept override { return "Compressor"; }
 protected:
     void applyParameter(int index, float v) noexcept override {
         switch (index) {
@@ -190,22 +198,23 @@ protected:
         ...
         }
     }
-    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
 private:
     static constexpr ParameterInfo kInfos[kCount] = {
         paramFloat("Threshold", "dB", -60.0f, 0.0f, -18.0f),
         paramFloat("Ratio", ":1", 1.0f, 20.0f, 4.0f),
         ...
     };
-    dsp::Compressor dsp_;
 };
 ```
+
+只有在 DSP 物件自己的 `prepare()` 前後還有事要做時，adapter 才會覆寫 `prepare()`：
+`SaturationEffect` 先設定 oversampling 倍率，再呼叫 `DspEffect::prepare()`。
 
 ## Your turn
 
 `steps/step05-insert-effects/minidaw.h` 是你的 Step 4 engine 加上 `ParameterInfo`、
 `InsertEffect`、`EffectBase`、兩個 adapter（`GainEffect`，以及包裝第
-04 章 `dsp::Compressor` 的 `CompressorEffect` - 也就是 `Effects.h` 中全部 19 個 adapter 的模式）、一個 factory
+04 章 `dsp::Compressor` 的 `CompressorEffect`，完整寫出 - `Effects.h` 則把轉呼叫的部分移到 `DspEffect`）、一個 factory
 `createEffect("Gain" / "Compressor")` 以及 `InsertChain`。Track 與 master 會執行它們的 chain；
 `Engine::addInsertNow(strip, effect)` 會 prepare 一個 effect 並把它放進 strip - 只用於 setup，Step 7
 會把它變成 lock-free 的 command。Latency（`getLatencySamples`）會在 Step 8 出現。

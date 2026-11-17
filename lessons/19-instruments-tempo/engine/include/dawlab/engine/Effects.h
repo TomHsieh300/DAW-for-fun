@@ -24,6 +24,8 @@
 //   12       ConvolutionReverb    ConvolutionReverbEffect  -        FFT partition
 //
 // Every adapter follows the same recipe (see EffectBase.h):
+//   class XEffect : public DspEffect<dsp::X>          dsp_, prepare, reset, processDsp
+//                   (MeteredDspEffect<dsp::X>         ... plus the gain-reduction meter)
 //   enum Param { ..., kCount };                       parameter indices, in UI order
 //   static constexpr ParameterInfo kInfos[kCount];    name, unit, min, max, default, kind
 //   applyParameter(index, value)                      one switch -> DSP setter
@@ -108,49 +110,74 @@ constexpr ParameterInfo paramChoice(const char* name, const char* const (&labels
             static_cast<int>(N)};
 }
 
-// =============================================================================================
-// 01  Gain
-// =============================================================================================
-class GainEffect final : public EffectBase {
+// ---- the part every adapter repeats ------------------------------------------------------
+// The DSP object an adapter wraps, and the calls that only forward to it. An adapter adds its
+// parameters (Param enum, applyParameter(), kInfos) and overrides prepare() only when something
+// has to happen around it (an oversampling factor first, a reset after). MeteredDspEffect also
+// shows the DSP object's gain reduction as the strip's meter.
+template <class Dsp>
+class DspEffect : public EffectBase {
 public:
-    enum Param { Gain, kCount };
-    GainEffect() : EffectBase(kInfos, kCount) {}
-    const char* getName() const noexcept override { return "Gain"; }
     void prepare(double sr, int maxBlock, int nch) override {
         dsp_.prepare(sr, maxBlock, nch);
         finishPrepare(sr);
-        dsp_.reset(); // start at the configured gain instead of ramping from 0 dB
     }
     void reset() noexcept override { dsp_.reset(); }
+
+protected:
+    DspEffect(const ParameterInfo* infos, int count) noexcept : EffectBase(infos, count) {}
+    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
+
+    Dsp dsp_;
+};
+
+template <class Dsp>
+class MeteredDspEffect : public DspEffect<Dsp> {
+public:
+    bool hasMeter() const noexcept override { return true; }
+    float getMeterDb() const noexcept override { return this->dsp_.getGainReductionDb(); }
+
+protected:
+    MeteredDspEffect(const ParameterInfo* infos, int count) noexcept : DspEffect<Dsp>(infos, count) {}
+};
+
+// =============================================================================================
+// 01  Gain
+// =============================================================================================
+class GainEffect final : public DspEffect<dsp::Gain> {
+public:
+    enum Param { Gain, kCount };
+    GainEffect() : DspEffect(kInfos, kCount) {}
+    const char* getName() const noexcept override { return "Gain"; }
+    void prepare(double sr, int maxBlock, int nch) override {
+        DspEffect::prepare(sr, maxBlock, nch);
+        dsp_.reset(); // start at the configured gain instead of ramping from 0 dB
+    }
 
 protected:
     void applyParameter(int index, float v) noexcept override {
         if (index == Gain)
             dsp_.setGainDb(v);
     }
-    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
 
 private:
     static constexpr ParameterInfo kInfos[kCount] = {
         paramFloat("Gain", "dB", -60.0f, 24.0f, 0.0f),
     };
-    dsp::Gain dsp_;
 };
 
 // =============================================================================================
 // 02  StateVariableFilter  (TPT SVF: one state, four responses; cutoff may move every block)
 // =============================================================================================
-class FilterEffect final : public EffectBase {
+class FilterEffect final : public DspEffect<dsp::StateVariableFilter> {
 public:
     enum Param { Type, Cutoff, Resonance, kCount };
-    FilterEffect() : EffectBase(kInfos, kCount) {}
+    FilterEffect() : DspEffect(kInfos, kCount) {}
     const char* getName() const noexcept override { return "Filter"; }
     void prepare(double sr, int maxBlock, int nch) override {
-        dsp_.prepare(sr, maxBlock, nch);
-        finishPrepare(sr);
+        DspEffect::prepare(sr, maxBlock, nch);
         dsp_.reset();
     }
-    void reset() noexcept override { dsp_.reset(); }
 
 protected:
     void applyParameter(int index, float v) noexcept override {
@@ -161,7 +188,6 @@ protected:
         default: break;
         }
     }
-    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
 
 private:
     static constexpr ParameterInfo kInfos[kCount] = {
@@ -169,13 +195,12 @@ private:
         paramFloat("Cutoff", "Hz", 20.0f, 20000.0f, 1000.0f, true),
         paramFloat("Resonance", "Q", 0.5f, 20.0f, 0.707f, true),
     };
-    dsp::StateVariableFilter dsp_;
 };
 
 // =============================================================================================
 // 03  ParametricEq  (6 bands x {Enabled, Type, Frequency, Q, Gain} = 30 parameters)
 // =============================================================================================
-class ParametricEqEffect final : public EffectBase {
+class ParametricEqEffect final : public DspEffect<dsp::ParametricEq> {
 public:
     static constexpr int kNumBands = dsp::ParametricEq::kNumBands;
     static constexpr int kParamsPerBand = 5;
@@ -184,14 +209,12 @@ public:
 
     static constexpr int paramIndex(int band, BandParam p) noexcept { return band * kParamsPerBand + p; }
 
-    ParametricEqEffect() : EffectBase(kInfos, kCount) {}
+    ParametricEqEffect() : DspEffect(kInfos, kCount) {}
     const char* getName() const noexcept override { return "ParametricEQ"; }
     void prepare(double sr, int maxBlock, int nch) override {
-        dsp_.prepare(sr, maxBlock, nch);
-        finishPrepare(sr);
+        DspEffect::prepare(sr, maxBlock, nch);
         dsp_.reset();
     }
-    void reset() noexcept override { dsp_.reset(); }
 
     // Setup-code convenience: sets all five parameters of one band (band = 0..5).
     void setBand(int band, bool enabled, dsp::EqBandType type, float hz, float q, float gainDb) noexcept {
@@ -216,7 +239,6 @@ protected:
         }
         dsp_.setBand(band, b);
     }
-    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
 
 private:
 #define DAWLAB_EQ_BAND(n, enabled, type, hz, q)                                                         \
@@ -232,24 +254,16 @@ private:
         DAWLAB_EQ_BAND(6, false, 4, 12000.0f, 0.707f), // HighCut
     };
 #undef DAWLAB_EQ_BAND
-    dsp::ParametricEq dsp_;
 };
 
 // =============================================================================================
 // 04  Compressor
 // =============================================================================================
-class CompressorEffect final : public EffectBase {
+class CompressorEffect final : public MeteredDspEffect<dsp::Compressor> {
 public:
     enum Param { Threshold, Ratio, Knee, Attack, Release, Makeup, StereoLink, kCount };
-    CompressorEffect() : EffectBase(kInfos, kCount) {}
+    CompressorEffect() : MeteredDspEffect(kInfos, kCount) {}
     const char* getName() const noexcept override { return "Compressor"; }
-    void prepare(double sr, int maxBlock, int nch) override {
-        dsp_.prepare(sr, maxBlock, nch);
-        finishPrepare(sr);
-    }
-    void reset() noexcept override { dsp_.reset(); }
-    bool hasMeter() const noexcept override { return true; }
-    float getMeterDb() const noexcept override { return dsp_.getGainReductionDb(); }
 
 protected:
     void applyParameter(int index, float v) noexcept override {
@@ -264,7 +278,6 @@ protected:
         default: break;
         }
     }
-    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
 
 private:
     static constexpr ParameterInfo kInfos[kCount] = {
@@ -276,27 +289,19 @@ private:
         paramFloat("Makeup", "dB", 0.0f, 24.0f, 0.0f),
         paramBool("Stereo Link", true),
     };
-    dsp::Compressor dsp_;
 };
 
 // =============================================================================================
 // 05  Limiter  (lookahead = latency)
 // =============================================================================================
-class LimiterEffect final : public EffectBase {
+class LimiterEffect final : public MeteredDspEffect<dsp::Limiter> {
 public:
     enum Param { Ceiling, InputGain, Release, Lookahead, kCount };
-    LimiterEffect() : EffectBase(kInfos, kCount) {}
+    LimiterEffect() : MeteredDspEffect(kInfos, kCount) {}
     const char* getName() const noexcept override { return "Limiter"; }
-    void prepare(double sr, int maxBlock, int nch) override {
-        dsp_.prepare(sr, maxBlock, nch);
-        finishPrepare(sr);
-    }
-    void reset() noexcept override { dsp_.reset(); }
     // Asked from the DSP object: if the chapter-05 limiter caps the lookahead lower than our
     // knob range, the reported latency is still the truth.
     int getLatencySamples() const noexcept override { return dsp_.getLatencySamples(); }
-    bool hasMeter() const noexcept override { return true; }
-    float getMeterDb() const noexcept override { return dsp_.getGainReductionDb(); }
 
 protected:
     void applyParameter(int index, float v) noexcept override {
@@ -308,7 +313,6 @@ protected:
         default: break;
         }
     }
-    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
 
 private:
     static constexpr ParameterInfo kInfos[kCount] = {
@@ -317,23 +321,20 @@ private:
         paramFloat("Release", "ms", 1.0f, 1000.0f, 50.0f, true),
         paramFloat("Lookahead", "ms", 0.0f, 10.0f, 5.0f),
     };
-    dsp::Limiter dsp_;
 };
 
 // =============================================================================================
 // 06  Saturation  (oversampling is a prepare-time parameter)
 // =============================================================================================
-class SaturationEffect final : public EffectBase {
+class SaturationEffect final : public DspEffect<dsp::Saturation> {
 public:
     enum Param { Curve, Drive, Mix, Output, Oversampling, kCount };
-    SaturationEffect() : EffectBase(kInfos, kCount) {}
+    SaturationEffect() : DspEffect(kInfos, kCount) {}
     const char* getName() const noexcept override { return "Saturation"; }
     void prepare(double sr, int maxBlock, int nch) override {
         dsp_.setOversamplingFactorLog2(static_cast<int>(getParameter(Oversampling))); // before prepare
-        dsp_.prepare(sr, maxBlock, nch);
-        finishPrepare(sr);
+        DspEffect::prepare(sr, maxBlock, nch);
     }
-    void reset() noexcept override { dsp_.reset(); }
     int getLatencySamples() const noexcept override { return dsp_.getLatencySamples(); }
 
 protected:
@@ -346,7 +347,6 @@ protected:
         default: break; // Oversampling: applied at prepare()
         }
     }
-    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
 
 private:
     static constexpr ParameterInfo kInfos[kCount] = {
@@ -356,22 +356,16 @@ private:
         paramFloat("Output", "dB", -24.0f, 24.0f, 0.0f),
         paramChoice("Oversampling", choices::kOversampling, 1),
     };
-    dsp::Saturation dsp_;
 };
 
 // =============================================================================================
 // 07  Distortion
 // =============================================================================================
-class DistortionEffect final : public EffectBase {
+class DistortionEffect final : public DspEffect<dsp::Distortion> {
 public:
     enum Param { Type, Drive, Tone, Mix, Output, BitDepth, Downsample, kCount };
-    DistortionEffect() : EffectBase(kInfos, kCount) {}
+    DistortionEffect() : DspEffect(kInfos, kCount) {}
     const char* getName() const noexcept override { return "Distortion"; }
-    void prepare(double sr, int maxBlock, int nch) override {
-        dsp_.prepare(sr, maxBlock, nch);
-        finishPrepare(sr);
-    }
-    void reset() noexcept override { dsp_.reset(); }
     int getLatencySamples() const noexcept override { return dsp_.getLatencySamples(); }
 
 protected:
@@ -387,7 +381,6 @@ protected:
         default: break;
         }
     }
-    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
 
 private:
     static constexpr ParameterInfo kInfos[kCount] = {
@@ -399,14 +392,13 @@ private:
         paramFloat("Bit Depth", "bits", 1.0f, 24.0f, 8.0f),
         paramInt("Downsample", "x", 1, 64, 1),
     };
-    dsp::Distortion dsp_;
 };
 
 // =============================================================================================
 // 07  AmpChain  (input HPF -> pre-EQ -> preamp -> tone stack -> power amp -> cabinet -> output;
 //               oversampling is a prepare-time parameter, like Saturation's)
 // =============================================================================================
-class AmpChainEffect final : public EffectBase {
+class AmpChainEffect final : public DspEffect<dsp::AmpChain> {
 public:
     enum Param {
         InputHighpass,
@@ -426,15 +418,13 @@ public:
         Oversampling,
         kCount
     };
-    AmpChainEffect() : EffectBase(kInfos, kCount) {}
+    AmpChainEffect() : DspEffect(kInfos, kCount) {}
     const char* getName() const noexcept override { return "AmpChain"; }
     void prepare(double sr, int maxBlock, int nch) override {
         dsp_.setOversamplingFactorLog2(static_cast<int>(getParameter(Oversampling))); // before prepare
-        dsp_.prepare(sr, maxBlock, nch);
-        finishPrepare(sr);
+        DspEffect::prepare(sr, maxBlock, nch);
         dsp_.reset(); // start at the configured output gain instead of ramping to it
     }
-    void reset() noexcept override { dsp_.reset(); }
     // Both nonlinear stages oversample; the chain adds their two latencies.
     int getLatencySamples() const noexcept override { return dsp_.getLatencySamples(); }
 
@@ -458,7 +448,6 @@ protected:
         default: break; // Oversampling: applied at prepare()
         }
     }
-    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
 
 private:
     // Ranges follow the clamps inside dsp::AmpChain (chapter 07); the defaults are a crunchy
@@ -480,24 +469,16 @@ private:
         paramFloat("Output", "dB", -36.0f, 12.0f, -12.0f),
         paramChoice("Oversampling", choices::kOversampling, 2),
     };
-    dsp::AmpChain dsp_;
 };
 
 // =============================================================================================
 // 08  Gate / Expander / DeEsser / TransientShaper
 // =============================================================================================
-class GateEffect final : public EffectBase {
+class GateEffect final : public MeteredDspEffect<dsp::Gate> {
 public:
     enum Param { Threshold, Hysteresis, Range, Attack, Hold, Release, kCount };
-    GateEffect() : EffectBase(kInfos, kCount) {}
+    GateEffect() : MeteredDspEffect(kInfos, kCount) {}
     const char* getName() const noexcept override { return "Gate"; }
-    void prepare(double sr, int maxBlock, int nch) override {
-        dsp_.prepare(sr, maxBlock, nch);
-        finishPrepare(sr);
-    }
-    void reset() noexcept override { dsp_.reset(); }
-    bool hasMeter() const noexcept override { return true; }
-    float getMeterDb() const noexcept override { return dsp_.getGainReductionDb(); }
 
 protected:
     void applyParameter(int index, float v) noexcept override {
@@ -511,7 +492,6 @@ protected:
         default: break;
         }
     }
-    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
 
 private:
     static constexpr ParameterInfo kInfos[kCount] = {
@@ -522,21 +502,13 @@ private:
         paramFloat("Hold", "ms", 0.0f, 1000.0f, 50.0f),
         paramFloat("Release", "ms", 1.0f, 2000.0f, 100.0f, true),
     };
-    dsp::Gate dsp_;
 };
 
-class ExpanderEffect final : public EffectBase {
+class ExpanderEffect final : public MeteredDspEffect<dsp::Expander> {
 public:
     enum Param { Threshold, Ratio, Knee, Range, Attack, Release, kCount };
-    ExpanderEffect() : EffectBase(kInfos, kCount) {}
+    ExpanderEffect() : MeteredDspEffect(kInfos, kCount) {}
     const char* getName() const noexcept override { return "Expander"; }
-    void prepare(double sr, int maxBlock, int nch) override {
-        dsp_.prepare(sr, maxBlock, nch);
-        finishPrepare(sr);
-    }
-    void reset() noexcept override { dsp_.reset(); }
-    bool hasMeter() const noexcept override { return true; }
-    float getMeterDb() const noexcept override { return dsp_.getGainReductionDb(); }
 
 protected:
     void applyParameter(int index, float v) noexcept override {
@@ -550,7 +522,6 @@ protected:
         default: break;
         }
     }
-    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
 
 private:
     static constexpr ParameterInfo kInfos[kCount] = {
@@ -561,21 +532,13 @@ private:
         paramFloat("Attack", "ms", 0.1f, 100.0f, 5.0f, true),
         paramFloat("Release", "ms", 1.0f, 2000.0f, 100.0f, true),
     };
-    dsp::Expander dsp_;
 };
 
-class DeEsserEffect final : public EffectBase {
+class DeEsserEffect final : public MeteredDspEffect<dsp::DeEsser> {
 public:
     enum Param { Frequency, Threshold, Range, SplitBand, Listen, kCount };
-    DeEsserEffect() : EffectBase(kInfos, kCount) {}
+    DeEsserEffect() : MeteredDspEffect(kInfos, kCount) {}
     const char* getName() const noexcept override { return "DeEsser"; }
-    void prepare(double sr, int maxBlock, int nch) override {
-        dsp_.prepare(sr, maxBlock, nch);
-        finishPrepare(sr);
-    }
-    void reset() noexcept override { dsp_.reset(); }
-    bool hasMeter() const noexcept override { return true; }
-    float getMeterDb() const noexcept override { return dsp_.getGainReductionDb(); }
 
 protected:
     void applyParameter(int index, float v) noexcept override {
@@ -588,7 +551,6 @@ protected:
         default: break;
         }
     }
-    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
 
 private:
     static constexpr ParameterInfo kInfos[kCount] = {
@@ -598,19 +560,13 @@ private:
         paramBool("Split Band", true),
         paramBool("Listen", false),
     };
-    dsp::DeEsser dsp_;
 };
 
-class TransientShaperEffect final : public EffectBase {
+class TransientShaperEffect final : public DspEffect<dsp::TransientShaper> {
 public:
     enum Param { Attack, Sustain, kCount };
-    TransientShaperEffect() : EffectBase(kInfos, kCount) {}
+    TransientShaperEffect() : DspEffect(kInfos, kCount) {}
     const char* getName() const noexcept override { return "TransientShaper"; }
-    void prepare(double sr, int maxBlock, int nch) override {
-        dsp_.prepare(sr, maxBlock, nch);
-        finishPrepare(sr);
-    }
-    void reset() noexcept override { dsp_.reset(); }
 
 protected:
     void applyParameter(int index, float v) noexcept override {
@@ -620,31 +576,27 @@ protected:
         default: break;
         }
     }
-    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
 
 private:
     static constexpr ParameterInfo kInfos[kCount] = {
         paramFloat("Attack", "dB", -24.0f, 24.0f, 0.0f),
         paramFloat("Sustain", "dB", -24.0f, 24.0f, 0.0f),
     };
-    dsp::TransientShaper dsp_;
 };
 
 // =============================================================================================
 // 09  Delay
 // =============================================================================================
-class DelayEffect final : public EffectBase {
+class DelayEffect final : public DspEffect<dsp::Delay> {
 public:
     enum Param { Time, Feedback, Mix, PingPong, Lowpass, Highpass, kCount };
     static constexpr float kMaxDelayMs = 2000.0f;
-    DelayEffect() : EffectBase(kInfos, kCount) {}
+    DelayEffect() : DspEffect(kInfos, kCount) {}
     const char* getName() const noexcept override { return "Delay"; }
     void prepare(double sr, int maxBlock, int nch) override {
         dsp_.setMaxDelayMs(kMaxDelayMs); // prepare-time
-        dsp_.prepare(sr, maxBlock, nch);
-        finishPrepare(sr);
+        DspEffect::prepare(sr, maxBlock, nch);
     }
-    void reset() noexcept override { dsp_.reset(); }
 
     // Tempo helper: a dotted eighth (beats = 0.75) at 120 BPM is 375 ms.
     static float noteToMs(double bpm, double beats) noexcept { return dsp::Delay::noteToMs(bpm, beats); }
@@ -661,7 +613,6 @@ protected:
         default: break;
         }
     }
-    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
 
 private:
     static constexpr ParameterInfo kInfos[kCount] = {
@@ -672,22 +623,16 @@ private:
         paramFloat("Lowpass", "Hz", 200.0f, 20000.0f, 8000.0f, true),
         paramFloat("Highpass", "Hz", 20.0f, 2000.0f, 100.0f, true),
     };
-    dsp::Delay dsp_;
 };
 
 // =============================================================================================
 // 10  Chorus / Flanger / Phaser / Tremolo
 // =============================================================================================
-class ChorusEffect final : public EffectBase {
+class ChorusEffect final : public DspEffect<dsp::Chorus> {
 public:
     enum Param { Rate, Depth, Centre, Voices, Mix, Spread, kCount };
-    ChorusEffect() : EffectBase(kInfos, kCount) {}
+    ChorusEffect() : DspEffect(kInfos, kCount) {}
     const char* getName() const noexcept override { return "Chorus"; }
-    void prepare(double sr, int maxBlock, int nch) override {
-        dsp_.prepare(sr, maxBlock, nch);
-        finishPrepare(sr);
-    }
-    void reset() noexcept override { dsp_.reset(); }
 
 protected:
     void applyParameter(int index, float v) noexcept override {
@@ -701,7 +646,6 @@ protected:
         default: break;
         }
     }
-    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
 
 private:
     static constexpr ParameterInfo kInfos[kCount] = {
@@ -712,19 +656,13 @@ private:
         paramFloat("Mix", "", 0.0f, 1.0f, 0.5f),
         paramFloat("Stereo Spread", "", 0.0f, 1.0f, 1.0f),
     };
-    dsp::Chorus dsp_;
 };
 
-class FlangerEffect final : public EffectBase {
+class FlangerEffect final : public DspEffect<dsp::Flanger> {
 public:
     enum Param { Rate, Depth, Delay, Feedback, Mix, kCount };
-    FlangerEffect() : EffectBase(kInfos, kCount) {}
+    FlangerEffect() : DspEffect(kInfos, kCount) {}
     const char* getName() const noexcept override { return "Flanger"; }
-    void prepare(double sr, int maxBlock, int nch) override {
-        dsp_.prepare(sr, maxBlock, nch);
-        finishPrepare(sr);
-    }
-    void reset() noexcept override { dsp_.reset(); }
 
 protected:
     void applyParameter(int index, float v) noexcept override {
@@ -737,7 +675,6 @@ protected:
         default: break;
         }
     }
-    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
 
 private:
     static constexpr ParameterInfo kInfos[kCount] = {
@@ -747,19 +684,13 @@ private:
         paramFloat("Feedback", "", -0.95f, 0.95f, 0.5f),
         paramFloat("Mix", "", 0.0f, 1.0f, 0.5f),
     };
-    dsp::Flanger dsp_;
 };
 
-class PhaserEffect final : public EffectBase {
+class PhaserEffect final : public DspEffect<dsp::Phaser> {
 public:
     enum Param { Rate, Depth, Centre, Feedback, Stages, Mix, kCount };
-    PhaserEffect() : EffectBase(kInfos, kCount) {}
+    PhaserEffect() : DspEffect(kInfos, kCount) {}
     const char* getName() const noexcept override { return "Phaser"; }
-    void prepare(double sr, int maxBlock, int nch) override {
-        dsp_.prepare(sr, maxBlock, nch);
-        finishPrepare(sr);
-    }
-    void reset() noexcept override { dsp_.reset(); }
 
 protected:
     void applyParameter(int index, float v) noexcept override {
@@ -773,7 +704,6 @@ protected:
         default: break;
         }
     }
-    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
 
 private:
     static constexpr ParameterInfo kInfos[kCount] = {
@@ -784,19 +714,13 @@ private:
         paramInt("Stages", "", 2, 12, 4),
         paramFloat("Mix", "", 0.0f, 1.0f, 0.5f),
     };
-    dsp::Phaser dsp_;
 };
 
-class TremoloEffect final : public EffectBase {
+class TremoloEffect final : public DspEffect<dsp::Tremolo> {
 public:
     enum Param { Rate, Depth, Shape, AutoPan, kCount };
-    TremoloEffect() : EffectBase(kInfos, kCount) {}
+    TremoloEffect() : DspEffect(kInfos, kCount) {}
     const char* getName() const noexcept override { return "Tremolo"; }
-    void prepare(double sr, int maxBlock, int nch) override {
-        dsp_.prepare(sr, maxBlock, nch);
-        finishPrepare(sr);
-    }
-    void reset() noexcept override { dsp_.reset(); }
 
 protected:
     void applyParameter(int index, float v) noexcept override {
@@ -808,7 +732,6 @@ protected:
         default: break;
         }
     }
-    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
 
 private:
     static constexpr ParameterInfo kInfos[kCount] = {
@@ -817,22 +740,16 @@ private:
         paramChoice("Shape", choices::kLfoShape, 0),
         paramBool("Auto Pan", false),
     };
-    dsp::Tremolo dsp_;
 };
 
 // =============================================================================================
 // 12  Reverb / ConvolutionReverb
 // =============================================================================================
-class ReverbEffect final : public EffectBase {
+class ReverbEffect final : public DspEffect<dsp::Reverb> {
 public:
     enum Param { Decay, PreDelay, Damping, Size, Width, Mix, Freeze, kCount };
-    ReverbEffect() : EffectBase(kInfos, kCount) {}
+    ReverbEffect() : DspEffect(kInfos, kCount) {}
     const char* getName() const noexcept override { return "Reverb"; }
-    void prepare(double sr, int maxBlock, int nch) override {
-        dsp_.prepare(sr, maxBlock, nch);
-        finishPrepare(sr);
-    }
-    void reset() noexcept override { dsp_.reset(); }
 
 protected:
     void applyParameter(int index, float v) noexcept override {
@@ -847,7 +764,6 @@ protected:
         default: break;
         }
     }
-    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
 
 private:
     static constexpr ParameterInfo kInfos[kCount] = {
@@ -859,14 +775,13 @@ private:
         paramFloat("Mix", "", 0.0f, 1.0f, 0.3f),
         paramBool("Freeze", false),
     };
-    dsp::Reverb dsp_;
 };
 
-class ConvolutionReverbEffect final : public EffectBase {
+class ConvolutionReverbEffect final : public DspEffect<dsp::ConvolutionReverb> {
 public:
     enum Param { Mix, kCount };
     static constexpr double kDefaultRt60Seconds = 1.5;
-    ConvolutionReverbEffect() : EffectBase(kInfos, kCount) {}
+    ConvolutionReverbEffect() : DspEffect(kInfos, kCount) {}
     const char* getName() const noexcept override { return "ConvolutionReverb"; }
 
     // Non-audio thread only (allocates). Before the effect is handed to the engine.
@@ -884,7 +799,6 @@ public:
         dsp_.setImpulseResponse(ir_);
         finishPrepare(sr);
     }
-    void reset() noexcept override { dsp_.reset(); }
     int getLatencySamples() const noexcept override { return dsp_.getLatencySamples(); }
 
 protected:
@@ -892,13 +806,11 @@ protected:
         if (index == Mix)
             dsp_.setMix(v);
     }
-    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
 
 private:
     static constexpr ParameterInfo kInfos[kCount] = {
         paramFloat("Mix", "", 0.0f, 1.0f, 0.3f),
     };
-    dsp::ConvolutionReverb dsp_;
     AudioBuffer ir_;
     bool hasCustomIr_ = false;
 };

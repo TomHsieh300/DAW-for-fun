@@ -173,22 +173,30 @@ bus layout: see `VstInsert`'s mono fold in [Step 17](step-17-vst3-inserts.md).
 |---|---|
 | `InsertEffect.h` | `ParameterKind`, `ParameterInfo` (+ `formatParameterValue()` for "-18.0 dB" labels), `PlayHead`, `InsertEffect`, `InsertChain` |
 | `EffectBase.h` | `EffectBase` (atomics + dirty mask + `finishPrepare`), `PureDelayEffect` |
-| `Effects.h` | 19 adapters, `choices::` label tables, `paramFloat/Int/Bool/Choice` helpers, factory |
+| `Effects.h` | `DspEffect` / `MeteredDspEffect`, 19 adapters, `choices::` label tables, `paramFloat/Int/Bool/Choice` helpers, factory |
 
 </div>
 
 A complete adapter, as an example of the pattern:
 
 ```cpp
-class CompressorEffect final : public EffectBase {
+template <class Dsp>
+class DspEffect : public EffectBase {     // what every adapter would otherwise repeat
 public:
-    enum Param { Threshold, Ratio, Knee, Attack, Release, Makeup, StereoLink, kCount };
-    CompressorEffect() : EffectBase(kInfos, kCount) {}
-    const char* getName() const noexcept override { return "Compressor"; }
     void prepare(double sr, int maxBlock, int nch) override { dsp_.prepare(sr, maxBlock, nch); finishPrepare(sr); }
     void reset() noexcept override { dsp_.reset(); }
-    bool hasMeter() const noexcept override { return true; }
-    float getMeterDb() const noexcept override { return dsp_.getGainReductionDb(); }
+protected:
+    DspEffect(const ParameterInfo* infos, int count) noexcept : EffectBase(infos, count) {}
+    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
+    Dsp dsp_;
+};
+// MeteredDspEffect<Dsp> adds hasMeter() = true and getMeterDb() = dsp_.getGainReductionDb().
+
+class CompressorEffect final : public MeteredDspEffect<dsp::Compressor> {
+public:
+    enum Param { Threshold, Ratio, Knee, Attack, Release, Makeup, StereoLink, kCount };
+    CompressorEffect() : MeteredDspEffect(kInfos, kCount) {}
+    const char* getName() const noexcept override { return "Compressor"; }
 protected:
     void applyParameter(int index, float v) noexcept override {
         switch (index) {
@@ -196,22 +204,24 @@ protected:
         ...
         }
     }
-    void processDsp(AudioBlock block) noexcept override { dsp_.process(block); }
 private:
     static constexpr ParameterInfo kInfos[kCount] = {
         paramFloat("Threshold", "dB", -60.0f, 0.0f, -18.0f),
         paramFloat("Ratio", ":1", 1.0f, 20.0f, 4.0f),
         ...
     };
-    dsp::Compressor dsp_;
 };
 ```
+
+An adapter overrides `prepare()` only when something has to happen around the DSP object's own:
+`SaturationEffect` sets the oversampling factor first, then calls `DspEffect::prepare()`.
 
 ## Your turn
 
 `steps/step05-insert-effects/minidaw.h` is your Step 4 engine plus `ParameterInfo`,
 `InsertEffect`, `EffectBase`, two adapters (`GainEffect`, and `CompressorEffect` around chapter
-04's `dsp::Compressor` - the pattern of all 19 adapters in `Effects.h`), a factory
+04's `dsp::Compressor`, written out in full - `Effects.h` moves the forwarding part into
+`DspEffect`), a factory
 `createEffect("Gain" / "Compressor")` and `InsertChain`. Tracks and the master run their chain;
 `Engine::addInsertNow(strip, effect)` prepares an effect and puts it in a strip - setup only, Step 7
 turns it into a lock-free command. Latency (`getLatencySamples`) arrives in Step 8.

@@ -280,7 +280,8 @@ std::unique_ptr<InsertEffect> createEffect(const char* name);
 // SaturationEffect, DistortionEffect, GateEffect, ExpanderEffect, DeEsserEffect, TransientShaperEffect,
 // DelayEffect (+ noteToMs()), ChorusEffect, FlangerEffect, PhaserEffect, TremoloEffect, ReverbEffect,
 // ConvolutionReverbEffect (+ setImpulseResponse()), FilterEffect (chapter 02 SVF), AmpChainEffect
-// (chapter 07); each has `enum Param { ..., kCount }`.
+// (chapter 07); each has `enum Param { ..., kCount }` and derives from DspEffect<dsp::X>
+// (MeteredDspEffect<dsp::X> when it shows gain reduction), which forwards prepare, reset and process.
 ```
 
 ### Renderer.h, SpscQueue.h, Commands.h, LatencyCompensator.h
