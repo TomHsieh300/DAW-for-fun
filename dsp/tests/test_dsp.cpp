@@ -32,6 +32,7 @@
 #include <dawlab/dsp/DeEsser.h>
 #include <dawlab/dsp/Delay.h>
 #include <dawlab/dsp/Distortion.h>
+#include <dawlab/dsp/Fft.h>
 #include <dawlab/dsp/EnvelopeFollower.h>
 #include <dawlab/dsp/Expander.h>
 #include <dawlab/dsp/Flanger.h>
@@ -1350,6 +1351,107 @@ void checkSweepRule() {
 
 } // namespace
 
+// Public functions the rules above do not reach: each against what it promises.
+void checkSmallerFunctions() {
+    // Fft::coherentGain(type): the theoretical value, against the sum of a long window
+    for (const WindowType type : {WindowType::Rectangular, WindowType::Hann, WindowType::Hamming, WindowType::BlackmanHarris}) {
+        std::vector<float> w;
+        Fft::makeWindow(w, 65536, type);
+        DAWLAB_CHECK_NEAR(Fft::coherentGain(type), Fft::coherentGain(w.data(), 65536), 1e-4);
+    }
+
+    // Distortion::getOversamplingFactor(): the setting before prepare(), the factor in effect after it
+    {
+        const auto d = std::make_unique<Distortion>();
+        d->setOversamplingFactorLog2(2);
+        DAWLAB_CHECK(d->getOversamplingFactor() == 4);
+        d->prepare(kSampleRate, kBlock, 1);
+        d->setOversamplingFactorLog2(3);
+        DAWLAB_CHECK(d->getOversamplingFactor() == 4); // until the next prepare()
+        d->prepare(kSampleRate, kBlock, 1);
+        DAWLAB_CHECK(d->getOversamplingFactor() == 8);
+        d->setOversamplingFactorLog2(0);
+        d->prepare(kSampleRate, kBlock, 1);
+        DAWLAB_CHECK(d->getOversamplingFactor() == 1);
+    }
+
+    // Distortion::processSample(): dry at mix 0; hard clip at mix 1 stays within the output gain
+    for (const DistortionType type : {DistortionType::HardClip, DistortionType::Foldback, DistortionType::Fuzz,
+                                      DistortionType::Rectify, DistortionType::Bitcrush}) {
+        const auto d = std::make_unique<Distortion>();
+        d->prepare(kSampleRate, kBlock, 1);
+        d->setType(type);
+        d->setDriveDb(24.0f);
+        d->setMix(0.0f);
+        d->reset();
+        bool dry = true;
+        for (int i = 0; i < 1000; ++i) {
+            const float x = 0.5f * std::sin(0.03f * static_cast<float>(i));
+            dry = dry && d->processSample(0, x) == x;
+        }
+        DAWLAB_CHECK(dry);
+    }
+    {
+        const auto d = std::make_unique<Distortion>();
+        d->prepare(kSampleRate, kBlock, 1);
+        d->setType(DistortionType::HardClip);
+        d->setDriveDb(24.0f);
+        d->setToneHz(20000.0f);
+        d->setMix(1.0f);
+        d->setOutputGainDb(-6.0f);
+        d->reset();
+        float peak = 0.0f, sum = 0.0f;
+        for (int i = 0; i < 4800; ++i) {
+            const float y = d->processSample(0, 0.5f * std::sin(0.03f * static_cast<float>(i)));
+            peak = std::max(peak, std::abs(y));
+            sum += std::abs(y);
+        }
+        // 0.5 x 24 dB clips at 1, times -6 dB: about 0.5, with a little overshoot from the tone filter
+        std::printf("Distortion::processSample hard clip, +24 dB drive, -6 dB out: peak %.3f\n", static_cast<double>(peak));
+        DAWLAB_CHECK(peak > 0.45f && peak < 0.56f && sum > 0.3f * 4800.0f);
+    }
+
+    // Tremolo::processSample(): the same as process(), channel by channel, with autopan
+    {
+        const auto a = std::make_unique<Tremolo>();
+        const auto b = std::make_unique<Tremolo>();
+        for (Tremolo* t : {a.get(), b.get()}) {
+            t->prepare(kSampleRate, kBlock, 2);
+            t->setRateHz(5.0f);
+            t->setDepth(0.8f);
+            t->setAutoPan(true);
+            t->reset();
+        }
+        AudioBuffer block(2, 2000);
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < 2000; ++i)
+                block.setSample(ch, i, 0.25f);
+        b->process(block.toBlock());
+        bool same = true;
+        for (int i = 0; i < 2000; ++i)
+            for (int ch = 0; ch < 2; ++ch)
+                same = same && a->processSample(ch, 0.25f) == block.getSample(ch, i);
+        DAWLAB_CHECK(same);
+    }
+
+    // LoudnessMeter channel weights: what was set comes back; a channel out of range weighs nothing
+    {
+        const auto m = std::make_unique<LoudnessMeter>();
+        m->prepare(kSampleRate, 6);
+        m->setChannelWeight(3, 1.41f);
+        DAWLAB_CHECK(m->getChannelWeight(3) == 1.41f);
+        DAWLAB_CHECK(m->getChannelWeight(-1) == 0.0f && m->getChannelWeight(LoudnessMeter::kMaxChannels) == 0.0f);
+    }
+
+    // CombFilter: rt60ForFeedback() undoes feedbackForRt60(); no feedback is no tail; 1 or more never ends
+    for (const double rt60 : {0.3, 1.5, 8.0}) {
+        const float g = CombFilter::feedbackForRt60(1557, rt60, kSampleRate);
+        DAWLAB_CHECK_NEAR(CombFilter::rt60ForFeedback(1557, g, kSampleRate), rt60, rt60 * 1e-4);
+    }
+    DAWLAB_CHECK(CombFilter::rt60ForFeedback(1557, 0.0f, kSampleRate) == 0.0);
+    DAWLAB_CHECK(CombFilter::rt60ForFeedback(1557, 1.0f, kSampleRate) >= 1e30);
+}
+
 int main() {
     checkUnpreparedBlock<Chorus>("Chorus");
     checkUnpreparedBlock<Flanger>("Flanger");
@@ -1390,6 +1492,7 @@ int main() {
     checkSameValueRule();
     checkSmootherRule();
     checkSweepRule();
+    checkSmallerFunctions();
 
     return dawlab::test::summary("dsp");
 }
