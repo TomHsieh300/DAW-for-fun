@@ -559,62 +559,13 @@ public:
         }
         renderTo(numSamples);
     }
+    // One message: each kind has its own function below.
     void handle(const MidiMessage& m) noexcept {
         switch (m.kind()) {
-        case MidiKind::NoteOn: {
-            const int i = allocate(m.note());
-            Voice& v = voices_[static_cast<size_t>(i)];
-            if (v.isActive() && v.pitch() != m.note()) {
-                v.steal(m.note(), m.velocity());
-                ++stolen_;
-            } else {
-                v.start(m.note(), m.velocity());
-            }
-            slots_[static_cast<size_t>(i)] = {true, false, ++clock_, 0};
-            break;
-        }
-        case MidiKind::NoteOff:
-            for (size_t i = 0; i < voices_.size(); ++i) {
-                Slot& s = slots_[i];
-                if (!voices_[i].isActive() || voices_[i].pitch() != m.note() || !s.keyDown)
-                    continue;
-                s.keyDown = false;
-                if (pedal_) {
-                    s.sustained = true;
-                } else {
-                    voices_[i].release();
-                    s.released = ++clock_;
-                }
-            }
-            break;
-        case MidiKind::Controller:
-            if (m.note() == kSustainPedal) {
-                const bool down = m.velocity() >= 64;
-                if (!down)
-                    for (size_t i = 0; i < voices_.size(); ++i)
-                        if (slots_[i].sustained) {
-                            slots_[i].sustained = false;
-                            voices_[i].release();
-                            slots_[i].released = ++clock_;
-                        }
-                pedal_ = down;
-            } else if (m.note() == kAllNotesOff) {
-                for (size_t i = 0; i < voices_.size(); ++i) {
-                    if (voices_[i].isActive() && (!voices_[i].isReleasing() || voices_[i].isStealing())) {
-                        voices_[i].release();
-                        slots_[i].released = ++clock_;
-                    }
-                    slots_[i].keyDown = false;
-                    slots_[i].sustained = false;
-                }
-                pedal_ = false;
-            }
-            break;
-        case MidiKind::PitchBend:
-            bend_ = m.pitchBendValue() / 8192.0 * kBendRange;
-            for (Voice& v : voices_)
-                v.setBend(bend_);
-            break;
+        case MidiKind::NoteOn: noteOn(m.note(), m.velocity()); break;
+        case MidiKind::NoteOff: noteOff(m.note()); break;
+        case MidiKind::Controller: controller(m.note(), m.velocity()); break;
+        case MidiKind::PitchBend: pitchBend(m.pitchBendValue()); break;
         case MidiKind::Other: break;
         }
     }
@@ -628,6 +579,69 @@ private:
         bool keyDown = false, sustained = false;
         long started = 0, released = 0;
     };
+    // A voice for the note: the one that already plays this pitch, a free one, or one to steal.
+    void noteOn(int pitch, int velocity) noexcept {
+        const int i = allocate(pitch);
+        Voice& v = voices_[static_cast<size_t>(i)];
+        if (v.isActive() && v.pitch() != pitch) {
+            v.steal(pitch, velocity);
+            ++stolen_;
+        } else {
+            v.start(pitch, velocity);
+        }
+        slots_[static_cast<size_t>(i)] = {true, false, ++clock_, 0};
+    }
+    // The key is up: the voices that play it release, or hold on while the pedal is down.
+    void noteOff(int pitch) noexcept {
+        for (size_t i = 0; i < voices_.size(); ++i) {
+            Slot& s = slots_[i];
+            if (!voices_[i].isActive() || voices_[i].pitch() != pitch || !s.keyDown)
+                continue;
+            s.keyDown = false;
+            if (pedal_) {
+                s.sustained = true;
+            } else {
+                voices_[i].release();
+                s.released = ++clock_;
+            }
+        }
+    }
+    // The two controllers the synth knows: the sustain pedal and all notes off. Others do nothing.
+    void controller(int number, int value) noexcept {
+        if (number == kSustainPedal)
+            sustainPedal(value >= 64);
+        else if (number == kAllNotesOff)
+            allNotesOff();
+    }
+    // Letting the pedal go releases every note it held.
+    void sustainPedal(bool down) noexcept {
+        if (!down)
+            for (size_t i = 0; i < voices_.size(); ++i)
+                if (slots_[i].sustained) {
+                    slots_[i].sustained = false;
+                    voices_[i].release();
+                    slots_[i].released = ++clock_;
+                }
+        pedal_ = down;
+    }
+    // Every sounding note releases (a voice in the middle of a steal too), keys and pedal up.
+    void allNotesOff() noexcept {
+        for (size_t i = 0; i < voices_.size(); ++i) {
+            if (voices_[i].isActive() && (!voices_[i].isReleasing() || voices_[i].isStealing())) {
+                voices_[i].release();
+                slots_[i].released = ++clock_;
+            }
+            slots_[i].keyDown = false;
+            slots_[i].sustained = false;
+        }
+        pedal_ = false;
+    }
+    // The bend wheel: -8192..8191 is -kBendRange..+kBendRange semitones, for every voice.
+    void pitchBend(int value) noexcept {
+        bend_ = value / 8192.0 * kBendRange;
+        for (Voice& v : voices_)
+            v.setBend(bend_);
+    }
     int allocate(int pitch) const noexcept {
         for (size_t i = 0; i < voices_.size(); ++i)
             if (voices_[i].isActive() && voices_[i].pitch() == pitch)

@@ -14,12 +14,14 @@
 //   4c. The song's end counts the MIDI clips, so a bounce of the default length plays a song of notes only.
 //   5. The audio thread never allocates, with clips, loops, seeks and live MIDI (this file replaces operator new).
 //   6. Three threads at once - UI, audio, MIDI - for ThreadSanitizer.
+//   7. The synth by hand: stealing, the pedal, all notes off, the bend.
 
 #include "TestHelpers.h"
 #include "TestTracks.h"
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -762,6 +764,66 @@ void testMidiParser() {
     DAWLAB_CHECK(!(MidiMessage::noteOn(0, 60, 100) == MidiMessage::noteOn(1, 60, 100)));
 }
 
+// 7. The synth by hand, one message at a time (Synth::handle()): which voice a note steals, the pedal's
+//    threshold, all notes off (also of a voice in the middle of a steal), and the bend's range.
+int activeAfter(Synth& s, int numSamples) {
+    std::vector<float> out(static_cast<size_t>(numSamples), 0.0f);
+    s.render(nullptr, 0, out.data(), numSamples);
+    return s.activeVoices();
+}
+
+void testSynthByHand() {
+    const int second = static_cast<int>(kSampleRate);
+    auto s = std::make_unique<Synth>();
+    s->prepare(kSampleRate, VoiceSettings{});
+    // All 16 voices sound; 40 and 41 are let go, in that order; a second note off for 40 changes nothing.
+    for (int pitch = 40; pitch < 40 + Synth::kNumVoices; ++pitch)
+        s->handle(MidiMessage::noteOn(0, pitch, 100));
+    s->handle(MidiMessage::noteOff(0, 40));
+    s->handle(MidiMessage::noteOff(0, 41));
+    s->handle(MidiMessage::noteOff(0, 40));
+    DAWLAB_CHECK(s->activeVoices() == Synth::kNumVoices && s->stolen() == 0);
+    s->handle(MidiMessage::noteOn(0, 60, 100)); // steals 40, released first
+    DAWLAB_CHECK(s->stolen() == 1);
+    s->handle(MidiMessage::noteOn(0, 41, 100)); // 41 still rings: its own voice again, nothing stolen
+    DAWLAB_CHECK(s->stolen() == 1);
+    s->handle(MidiMessage::noteOn(0, 62, 100)); // steals again: a voice in the middle of a steal...
+    DAWLAB_CHECK(s->stolen() == 2);
+    s->handle(MidiMessage::controller(0, Synth::kAllNotesOff, 0)); // ...ends with all the others
+    DAWLAB_CHECK(activeAfter(*s, second) == 0);
+
+    // The pedal is down from 64 on; a note let go under it rings until the pedal comes up (63).
+    s->handle(MidiMessage::controller(0, Synth::kSustainPedal, 64));
+    s->handle(MidiMessage::noteOn(0, 50, 100));
+    s->handle(MidiMessage::noteOff(0, 50));
+    DAWLAB_CHECK(activeAfter(*s, second) == 1);
+    s->handle(MidiMessage::controller(0, Synth::kSustainPedal, 63));
+    DAWLAB_CHECK(activeAfter(*s, second) == 0);
+    // All notes off lets the pedal up too: the next note let go ends.
+    s->handle(MidiMessage::controller(0, Synth::kSustainPedal, 127));
+    s->handle(MidiMessage::controller(0, Synth::kAllNotesOff, 0));
+    s->handle(MidiMessage::noteOn(0, 52, 100));
+    s->handle(MidiMessage::noteOff(0, 52));
+    DAWLAB_CHECK(activeAfter(*s, second) == 0);
+
+    // The bend wheel all the way up is kBendRange (2) semitones: A4 (440 Hz) sounds as B4, 493.9 Hz.
+    VoiceSettings soft; // a low cutoff leaves little more than the fundamental: one upward zero crossing a period
+    soft.cutoffHz = 800.0;
+    soft.resonance = 0.707;
+    s->prepare(kSampleRate, soft);
+    s->handle(MidiMessage::pitchBend(0, 8191));
+    s->handle(MidiMessage::noteOn(0, 69, 100));
+    std::vector<float> out(static_cast<size_t>(second), 0.0f);
+    s->render(nullptr, 0, out.data(), second);
+    int upward = 0;
+    for (size_t i = static_cast<size_t>(second / 10) + 1; i < out.size(); ++i)
+        if (out[i - 1] < 0.0f && out[i] >= 0.0f)
+            ++upward;
+    const double hz = upward / 0.9; // crossings in the last 0.9 s
+    std::printf("  synth by hand: %ld stolen, bend up %.1f Hz (expected 2, 493.9)\n", s->stolen(), hz);
+    DAWLAB_CHECK(std::abs(hz - 493.9) < 10.0);
+}
+
 } // namespace
 
 int main() {
@@ -777,6 +839,7 @@ int main() {
     testQueuedThroughADeviceChange();
     testSongEndCountsNotes();
     testMidiParser();
+    testSynthByHand();
     testNoAllocation();
     testThreads();
     return dawlab::test::summary("l18_test_midi");
