@@ -220,6 +220,12 @@ private:
     void paintMidiClip(juce::Graphics&, engine::TrackId track, const MidiClipModel& clip, juce::Rectangle<int> bounds, bool selected);
     void paintLiveTake(juce::Graphics&, engine::TrackId track, juce::Rectangle<int> area);
     void mouseDownInAutomation(const juce::MouseEvent&, int lane);
+    // mouseDown()'s parts; a bool one returns false when the click was not for it.
+    bool mouseDownOnHeaderButton(const juce::MouseEvent&, int lane);
+    void mouseDownOnRecordButton(const juce::MouseEvent&, int lane);
+    bool mouseDownOnMidi(const juce::MouseEvent&, int lane);
+    void mouseDownOnMidiClip(const juce::MouseEvent&, int lane, int clipIndex);
+    void mouseDownOnClip(const juce::MouseEvent&, int lane, bool snap);
     void showParameterMenu(engine::TrackId track);
     void showModeMenu(engine::TrackId track);
     int rowTop(int lane) const noexcept; // in the lanes' own coordinates: without the ruler and the scrolling

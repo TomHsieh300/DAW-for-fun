@@ -685,59 +685,87 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e) {
         mouseDownInAutomation(e, lane);
         return;
     }
+    if (mouseDownOnHeaderButton(e, lane) || e.x < kHeaderWidth)
+        return;
+    if (session_.isInstrument(track) && mouseDownOnMidi(e, lane)) // chapter 18: MIDI clips first
+        return;
+    mouseDownOnClip(e, lane, snap);
+}
+
+// "A", "R" or "I" in a track's header. False if the click hit none of them.
+bool ArrangementView::mouseDownOnHeaderButton(const juce::MouseEvent& e, int lane) {
     if (getAutomationToggleBounds(lane).contains(e.x, e.y)) {
-        toggleAutomation(track);
+        toggleAutomation(session_.getTrackId(lane));
+        return true;
+    }
+    if (!getArmBounds(lane).contains(e.x, e.y) && !getMonitorBounds(lane).contains(e.x, e.y))
+        return false;
+    mouseDownOnRecordButton(e, lane);
+    repaint();
+    return true;
+}
+
+// "R" arms the track, "I" turns its monitor; a right click on either has the menu of both.
+void ArrangementView::mouseDownOnRecordButton(const juce::MouseEvent& e, int lane) {
+    const engine::TrackId track = session_.getTrackId(lane);
+    if (e.mods.isPopupMenu()) {
+        if (onRecordMenu)
+            onRecordMenu(track);
+    } else if (getArmBounds(lane).contains(e.x, e.y)) {
+        if (onArmClicked)
+            onArmClicked(track);
+    } else if (onMonitorClicked) {
+        onMonitorClicked(track);
+    }
+}
+
+// An instrument track: a click on a MIDI clip, or a double click on nothing that makes one. False if neither.
+bool ArrangementView::mouseDownOnMidi(const juce::MouseEvent& e, int lane) {
+    const int midi = midiClipAt(lane, static_cast<float>(e.x));
+    if (midi >= 0) {
+        mouseDownOnMidiClip(e, lane, midi);
+        return true;
+    }
+    if (e.getNumberOfClicks() > 1 && clipAt(lane, static_cast<float>(e.x)) < 0 && !e.mods.isPopupMenu()) {
+        // A new clip of one bar, from the bar the click is in.
+        const engine::TrackId track = session_.getTrackId(lane);
+        const int64_t barTicks = static_cast<int64_t>(session_.getEngine().getTransport().getTimeSignature().numerator) * 960;
+        const double tick = std::max(0.0, session_.exactTickOfSample(xToSample(static_cast<float>(e.x))));
+        const int added = session_.addMidiClip(track, static_cast<int64_t>(std::floor(tick / static_cast<double>(barTicks))) * barTicks, barTicks);
+        if (added >= 0 && onEditMidiClip)
+            onEditMidiClip(track, added);
+        return true;
+    }
+    return false;
+}
+
+// A MIDI clip: right click = its menu, double click = edit its notes, else drag it.
+void ArrangementView::mouseDownOnMidiClip(const juce::MouseEvent& e, int lane, int midi) {
+    const engine::TrackId track = session_.getTrackId(lane);
+    if (e.mods.isPopupMenu()) {
+        if (onMidiClipMenu)
+            onMidiClipMenu(track, midi);
         return;
     }
-    if (getArmBounds(lane).contains(e.x, e.y) || getMonitorBounds(lane).contains(e.x, e.y)) {
-        if (e.mods.isPopupMenu()) {
-            if (onRecordMenu)
-                onRecordMenu(track);
-        } else if (getArmBounds(lane).contains(e.x, e.y)) {
-            if (onArmClicked)
-                onArmClicked(track);
-        } else if (onMonitorClicked) {
-            onMonitorClicked(track);
-        }
-        repaint();
+    if (e.getNumberOfClicks() > 1) {
+        if (onEditMidiClip)
+            onEditMidiClip(track, midi);
         return;
     }
-    if (e.x < kHeaderWidth)
-        return;
-    if (session_.isInstrument(track)) { // chapter 18: MIDI clips first
-        const int midi = midiClipAt(lane, static_cast<float>(e.x));
-        if (midi >= 0 && e.mods.isPopupMenu()) {
-            if (onMidiClipMenu)
-                onMidiClipMenu(track, midi);
-            return;
-        }
-        if (midi >= 0 && e.getNumberOfClicks() > 1) {
-            if (onEditMidiClip)
-                onEditMidiClip(track, midi);
-            return;
-        }
-        if (midi >= 0) {
-            session_.getHistory().endMerge();
-            static std::uint32_t nextKey = 0x4d430000u; // "MC": every drag its own undo step
-            dragMidiKey_ = ++nextKey;
-            drag_ = Drag::MidiClip;
-            dragTrack_ = track;
-            dragClip_ = midi;
-            dragGrabOffset_ = xToSample(static_cast<float>(e.x)) -
-                              static_cast<double>(session_.sampleOfTick(session_.getMidiClips(track)[static_cast<size_t>(midi)].start));
-            repaint();
-            return;
-        }
-        if (e.getNumberOfClicks() > 1 && clipAt(lane, static_cast<float>(e.x)) < 0 && !e.mods.isPopupMenu()) {
-            // A new clip of one bar, from the bar the click is in.
-            const int64_t barTicks = static_cast<int64_t>(session_.getEngine().getTransport().getTimeSignature().numerator) * 960;
-            const double tick = std::max(0.0, session_.exactTickOfSample(xToSample(static_cast<float>(e.x))));
-            const int added = session_.addMidiClip(track, static_cast<int64_t>(std::floor(tick / static_cast<double>(barTicks))) * barTicks, barTicks);
-            if (added >= 0 && onEditMidiClip)
-                onEditMidiClip(track, added);
-            return;
-        }
-    }
+    session_.getHistory().endMerge();
+    static std::uint32_t nextKey = 0x4d430000u; // "MC": every drag its own undo step
+    dragMidiKey_ = ++nextKey;
+    drag_ = Drag::MidiClip;
+    dragTrack_ = track;
+    dragClip_ = midi;
+    dragGrabOffset_ = xToSample(static_cast<float>(e.x)) -
+                      static_cast<double>(session_.sampleOfTick(session_.getMidiClips(track)[static_cast<size_t>(midi)].start));
+    repaint();
+}
+
+// An audio clip: right click = its menu, else drag it. A double click on nothing seeks there.
+void ArrangementView::mouseDownOnClip(const juce::MouseEvent& e, int lane, bool snap) {
+    const engine::TrackId track = session_.getTrackId(lane);
     const int clip = clipAt(lane, static_cast<float>(e.x));
     if (clip >= 0 && e.mods.isPopupMenu()) {
         if (onClipMenu)

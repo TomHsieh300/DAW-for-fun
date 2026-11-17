@@ -598,25 +598,41 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e) {
         mouseDownInAutomation(e, lane);
         return;
     }
+    if (mouseDownOnHeaderButton(e, lane) || e.x < kHeaderWidth)
+        return;
+    mouseDownOnClip(e, lane, snap);
+}
+
+// "A", "R" or "I" in a track's header. False if the click hit none of them.
+bool ArrangementView::mouseDownOnHeaderButton(const juce::MouseEvent& e, int lane) {
     if (getAutomationToggleBounds(lane).contains(e.x, e.y)) {
-        toggleAutomation(track);
-        return;
+        toggleAutomation(session_.getTrackId(lane));
+        return true;
     }
-    if (getArmBounds(lane).contains(e.x, e.y) || getMonitorBounds(lane).contains(e.x, e.y)) {
-        if (e.mods.isPopupMenu()) {
-            if (onRecordMenu)
-                onRecordMenu(track);
-        } else if (getArmBounds(lane).contains(e.x, e.y)) {
-            if (onArmClicked)
-                onArmClicked(track);
-        } else if (onMonitorClicked) {
-            onMonitorClicked(track);
-        }
-        repaint();
-        return;
+    if (!getArmBounds(lane).contains(e.x, e.y) && !getMonitorBounds(lane).contains(e.x, e.y))
+        return false;
+    mouseDownOnRecordButton(e, lane);
+    repaint();
+    return true;
+}
+
+// "R" arms the track, "I" turns its monitor; a right click on either has the menu of both.
+void ArrangementView::mouseDownOnRecordButton(const juce::MouseEvent& e, int lane) {
+    const engine::TrackId track = session_.getTrackId(lane);
+    if (e.mods.isPopupMenu()) {
+        if (onRecordMenu)
+            onRecordMenu(track);
+    } else if (getArmBounds(lane).contains(e.x, e.y)) {
+        if (onArmClicked)
+            onArmClicked(track);
+    } else if (onMonitorClicked) {
+        onMonitorClicked(track);
     }
-    if (e.x < kHeaderWidth)
-        return;
+}
+
+// An audio clip: right click = its menu, else drag it. A double click on nothing seeks there.
+void ArrangementView::mouseDownOnClip(const juce::MouseEvent& e, int lane, bool snap) {
+    const engine::TrackId track = session_.getTrackId(lane);
     const int clip = clipAt(lane, static_cast<float>(e.x));
     if (clip >= 0 && e.mods.isPopupMenu()) {
         if (onClipMenu)
