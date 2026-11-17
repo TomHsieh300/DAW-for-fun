@@ -67,6 +67,7 @@
 
 #include <cstddef>
 #include <cstring>
+#include <iterator>
 #include <memory>
 
 #include "EffectBase.h"
@@ -846,30 +847,23 @@ enum class EffectType {
 constexpr int kNumEffectTypes = static_cast<int>(EffectType::PureDelay) + 1;
 constexpr int kNumUserEffectTypes = static_cast<int>(EffectType::AmpChain) + 1; // the 19 musical ones
 
+// One name per EffectType, in the enum's order. Each equals InsertEffect::getName() of the
+// effect it makes, and a project file stores it, so a name never changes once it is written.
+inline constexpr const char* kEffectTypeNames[] = {
+    "Gain", "ParametricEQ", "Compressor", "Limiter", "Saturation",
+    "Distortion", "Gate", "Expander", "DeEsser", "TransientShaper",
+    "Delay", "Chorus", "Flanger", "Phaser", "Tremolo",
+    "Reverb", "ConvolutionReverb", "Filter", "AmpChain", "PureDelay",
+};
+static_assert(std::size(kEffectTypeNames) == static_cast<std::size_t>(kNumEffectTypes), "one name per EffectType");
+
+// True if `type` is one of the enum's values (a number read from a file may not be).
+constexpr bool isEffectType(EffectType type) noexcept {
+    return static_cast<int>(type) >= 0 && static_cast<int>(type) < kNumEffectTypes;
+}
+
 inline const char* effectTypeName(EffectType type) noexcept {
-    switch (type) {
-    case EffectType::Gain: return "Gain";
-    case EffectType::ParametricEq: return "ParametricEQ";
-    case EffectType::Compressor: return "Compressor";
-    case EffectType::Limiter: return "Limiter";
-    case EffectType::Saturation: return "Saturation";
-    case EffectType::Distortion: return "Distortion";
-    case EffectType::Gate: return "Gate";
-    case EffectType::Expander: return "Expander";
-    case EffectType::DeEsser: return "DeEsser";
-    case EffectType::TransientShaper: return "TransientShaper";
-    case EffectType::Delay: return "Delay";
-    case EffectType::Chorus: return "Chorus";
-    case EffectType::Flanger: return "Flanger";
-    case EffectType::Phaser: return "Phaser";
-    case EffectType::Tremolo: return "Tremolo";
-    case EffectType::Reverb: return "Reverb";
-    case EffectType::ConvolutionReverb: return "ConvolutionReverb";
-    case EffectType::Filter: return "Filter";
-    case EffectType::AmpChain: return "AmpChain";
-    case EffectType::PureDelay: return "PureDelay";
-    }
-    return "?";
+    return isEffectType(type) ? kEffectTypeNames[static_cast<int>(type)] : "?";
 }
 
 // The name equals InsertEffect::getName() of the created effect. False if unknown.
@@ -886,31 +880,26 @@ inline bool effectTypeFromName(const char* name, EffectType& out) noexcept {
     return false;
 }
 
+// One maker per EffectType, in the enum's order: makeEffect<GainEffect> makes a GainEffect.
+template <typename Effect>
+std::unique_ptr<InsertEffect> makeEffect() {
+    return std::make_unique<Effect>();
+}
+using EffectMaker = std::unique_ptr<InsertEffect> (*)();
+inline constexpr EffectMaker kEffectMakers[] = {
+    makeEffect<GainEffect>, makeEffect<ParametricEqEffect>, makeEffect<CompressorEffect>,
+    makeEffect<LimiterEffect>, makeEffect<SaturationEffect>, makeEffect<DistortionEffect>,
+    makeEffect<GateEffect>, makeEffect<ExpanderEffect>, makeEffect<DeEsserEffect>,
+    makeEffect<TransientShaperEffect>, makeEffect<DelayEffect>, makeEffect<ChorusEffect>,
+    makeEffect<FlangerEffect>, makeEffect<PhaserEffect>, makeEffect<TremoloEffect>,
+    makeEffect<ReverbEffect>, makeEffect<ConvolutionReverbEffect>, makeEffect<FilterEffect>,
+    makeEffect<AmpChainEffect>, makeEffect<PureDelayEffect>,
+};
+static_assert(std::size(kEffectMakers) == static_cast<std::size_t>(kNumEffectTypes), "one maker per EffectType");
+
 // Allocates: UI / loading thread only. The effect is NOT prepared yet.
 inline std::unique_ptr<InsertEffect> createEffect(EffectType type) {
-    switch (type) {
-    case EffectType::Gain: return std::make_unique<GainEffect>();
-    case EffectType::ParametricEq: return std::make_unique<ParametricEqEffect>();
-    case EffectType::Compressor: return std::make_unique<CompressorEffect>();
-    case EffectType::Limiter: return std::make_unique<LimiterEffect>();
-    case EffectType::Saturation: return std::make_unique<SaturationEffect>();
-    case EffectType::Distortion: return std::make_unique<DistortionEffect>();
-    case EffectType::Gate: return std::make_unique<GateEffect>();
-    case EffectType::Expander: return std::make_unique<ExpanderEffect>();
-    case EffectType::DeEsser: return std::make_unique<DeEsserEffect>();
-    case EffectType::TransientShaper: return std::make_unique<TransientShaperEffect>();
-    case EffectType::Delay: return std::make_unique<DelayEffect>();
-    case EffectType::Chorus: return std::make_unique<ChorusEffect>();
-    case EffectType::Flanger: return std::make_unique<FlangerEffect>();
-    case EffectType::Phaser: return std::make_unique<PhaserEffect>();
-    case EffectType::Tremolo: return std::make_unique<TremoloEffect>();
-    case EffectType::Reverb: return std::make_unique<ReverbEffect>();
-    case EffectType::ConvolutionReverb: return std::make_unique<ConvolutionReverbEffect>();
-    case EffectType::Filter: return std::make_unique<FilterEffect>();
-    case EffectType::AmpChain: return std::make_unique<AmpChainEffect>();
-    case EffectType::PureDelay: return std::make_unique<PureDelayEffect>();
-    }
-    return nullptr;
+    return isEffectType(type) ? kEffectMakers[static_cast<int>(type)]() : nullptr;
 }
 
 inline std::unique_ptr<InsertEffect> createEffect(const char* name) {

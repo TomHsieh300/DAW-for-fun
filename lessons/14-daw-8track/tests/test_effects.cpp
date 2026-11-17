@@ -13,6 +13,7 @@
 #include "TestHelpers.h"
 
 #include <cstring>
+#include <iterator>
 #include <random>
 #include <set>
 #include <string>
@@ -236,6 +237,22 @@ void testParameterHandOver() {
                              "B3 Gain") == 0);
 }
 
+// The names a project file stores, in the enum's order, and what a number that is no
+// EffectType gives (a damaged file): "?" and no effect.
+void testNamesAndUnknownTypes() {
+    const char* const expected[] = {"Gain", "ParametricEQ", "Compressor", "Limiter", "Saturation",
+                                    "Distortion", "Gate", "Expander", "DeEsser", "TransientShaper",
+                                    "Delay", "Chorus", "Flanger", "Phaser", "Tremolo",
+                                    "Reverb", "ConvolutionReverb", "Filter", "AmpChain", "PureDelay"};
+    DAWLAB_CHECK(static_cast<int>(std::size(expected)) == kNumEffectTypes);
+    for (int t = 0; t < kNumEffectTypes; ++t)
+        DAWLAB_CHECK(std::strcmp(effectTypeName(static_cast<EffectType>(t)), expected[t]) == 0);
+    for (const int t : {-1, kNumEffectTypes, 1000}) {
+        DAWLAB_CHECK(std::strcmp(effectTypeName(static_cast<EffectType>(t)), "?") == 0);
+        DAWLAB_CHECK(createEffect(static_cast<EffectType>(t)) == nullptr);
+    }
+}
+
 } // namespace
 
 int main() {
@@ -268,5 +285,6 @@ int main() {
     testParameterHandOver();
     testFilterEffect();
     testAmpChainEffect();
+    testNamesAndUnknownTypes();
     return dawlab::test::summary("l14_test_effects");
 }
