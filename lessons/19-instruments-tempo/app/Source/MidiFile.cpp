@@ -167,124 +167,199 @@ std::vector<std::uint8_t> write(const Song& song) {
     return file;
 }
 
-ReadResult read(const std::vector<std::uint8_t>& file) {
+namespace {
+
+// What read() keeps across the tracks of a file.
+struct Reading {
+    ReadResult r;
+    std::vector<Tempo> tempos; // as read, from every track; settleTempos() puts them in order
+    bool haveSignature = false;
+
+    // A tick of the file's division in ours (960 a quarter), to the nearest.
+    std::int64_t toOurs(std::uint64_t tick) const {
+        return static_cast<std::int64_t>((tick * kTicks + static_cast<std::uint64_t>(r.division) / 2) / static_cast<std::uint64_t>(r.division));
+    }
+};
+
+// One track chunk, d[p .. end), read event by event.
+struct TrackReader {
+    const std::uint8_t* d = nullptr;
+    std::size_t p = 0;
+    std::size_t end = 0;
+    Track track;
+    bool named = false;
+    std::uint64_t tick = 0;
+    int running = 0; // the running status; 0: none yet
+};
+
+// The header chunk: the format, the number of tracks and the division. Returns why the file cannot be read, or
+// nullptr; `pos` is then where the first chunk after the header starts.
+const char* readHeader(const Bytes& file, ReadResult& r, int& numTracks, std::size_t& pos) {
     const std::uint8_t* d = file.data();
     const std::size_t size = file.size();
     if (size < 14 || !std::equal(d, d + 4, "MThd"))
-        return refuse("not a MIDI file: it does not start with MThd");
+        return "not a MIDI file: it does not start with MThd";
     const std::uint32_t headerLength = get32(d + 4);
     if (headerLength < 6 || headerLength > size - 8)
-        return refuse("the header chunk is cut short");
-    ReadResult r;
+        return "the header chunk is cut short";
     r.format = get16(d + 8);
-    const int numTracks = get16(d + 10);
+    numTracks = get16(d + 10);
     r.division = get16(d + 12);
     if (r.format > 1)
-        return refuse(r.format == 2 ? "format 2 (independent patterns) is not supported" : "unknown format");
+        return r.format == 2 ? "format 2 (independent patterns) is not supported" : "unknown format";
     if ((r.division & 0x8000) != 0)
-        return refuse("SMPTE time is not supported");
+        return "SMPTE time is not supported";
     if (r.division == 0)
-        return refuse("division 0");
-    const auto toOurs = [&r](std::uint64_t tick) {
-        return static_cast<std::int64_t>((tick * kTicks + static_cast<std::uint64_t>(r.division) / 2) / static_cast<std::uint64_t>(r.division));
-    };
+        return "division 0";
+    pos = 8 + headerLength;
+    return nullptr;
+}
 
-    bool haveSignature = false;
-    std::vector<Tempo> tempos;
-    std::size_t pos = 8 + headerLength;
+// The meta events a song keeps: every tempo, the file's first time signature, a track's first name.
+void keepMeta(Reading& in, TrackReader& t, int type, const std::uint8_t* m, std::uint32_t length) {
+    if (type == 0x51 && length >= 3) {
+        const double micros = static_cast<double>((m[0] << 16) | (m[1] << 8) | m[2]);
+        if (micros > 0.0)
+            in.tempos.push_back({in.toOurs(t.tick), 60000000.0 / micros});
+    } else if (type == 0x58 && length >= 2 && !in.haveSignature && m[1] < 8) {
+        in.haveSignature = true;
+        in.r.song.numerator = m[0];
+        in.r.song.denominator = 1 << m[1];
+    } else if (type == 0x03 && !t.named) {
+        t.named = true;
+        t.track.name.assign(reinterpret_cast<const char*>(m), length);
+    }
+}
+
+// A meta event (FF type length data) or a SysEx (F0 or F7, length data), which is only counted. The end-of-track
+// meta event sets `endOfTrack`.
+const char* readMetaOrSysEx(Reading& in, TrackReader& t, bool& endOfTrack) {
+    const std::uint8_t first = t.d[t.p++];
+    int type = -1;
+    if (first == 0xFF) {
+        if (t.p >= t.end)
+            return "a meta event runs past its track";
+        type = t.d[t.p++];
+    }
+    std::uint32_t length = 0;
+    if (!readVlq(t.d, t.end, t.p, length) || length > t.end - t.p)
+        return "a meta or SysEx event runs past its track";
+    const std::uint8_t* m = t.d + t.p;
+    t.p += length;
+    t.running = 0; // a meta event or a SysEx cancels running status
+    if (first != 0xFF)
+        ++in.r.skipped;
+    else if (type == 0x2F)
+        endOfTrack = true;
+    else
+        keepMeta(in, t, type, m, length);
+    return nullptr;
+}
+
+// A channel message, with its own status byte or the running status.
+const char* readChannelMessage(const Reading& in, TrackReader& t) {
+    const std::uint8_t first = t.d[t.p];
+    int status = t.running;
+    if (first >= 0x80) {
+        if (first >= 0xF0)
+            return "a system message that does not belong in a file";
+        status = first;
+        ++t.p;
+    } else if (t.running == 0) {
+        return "a data byte without a status (no running status)";
+    }
+    t.running = status;
+    const int n = dataBytes(status);
+    if (t.end - t.p < static_cast<std::size_t>(n))
+        return "a channel message runs past its track";
+    const std::uint8_t* data = t.d + t.p;
+    if (data[0] >= 0x80 || (n == 2 && data[1] >= 0x80))
+        return "a status byte where a data byte belongs";
+    t.track.events.push_back({in.toOurs(t.tick), {static_cast<std::uint8_t>(status), data[0], n == 2 ? data[1] : std::uint8_t{0}}});
+    t.p += static_cast<std::size_t>(n);
+    return nullptr;
+}
+
+// One event: its delta time, then a meta event, a SysEx or a channel message.
+const char* readEvent(Reading& in, TrackReader& t, bool& endOfTrack) {
+    std::uint32_t delta = 0;
+    if (!readVlq(t.d, t.end, t.p, delta))
+        return "a delta time runs past its track or has more than 4 bytes";
+    t.tick += delta;
+    if (t.p >= t.end)
+        return "an event runs past its track";
+    const std::uint8_t first = t.d[t.p];
+    if (first == 0xFF || first == 0xF0 || first == 0xF7)
+        return readMetaOrSysEx(in, t, endOfTrack);
+    return readChannelMessage(in, t);
+}
+
+// One track chunk's events, d[begin .. end), up to its end-of-track event or its last byte. A track with no channel
+// message is not kept.
+const char* readTrack(Reading& in, const std::uint8_t* d, std::size_t begin, std::size_t end) {
+    TrackReader t;
+    t.d = d;
+    t.p = begin;
+    t.end = end;
+    bool endOfTrack = false;
+    while (t.p < t.end && !endOfTrack)
+        if (const char* error = readEvent(in, t, endOfTrack))
+            return error;
+    if (!t.track.events.empty())
+        in.r.song.tracks.push_back(std::move(t.track));
+    return nullptr;
+}
+
+// The chunks from `pos` on, until `numTracks` track chunks are read. A chunk of another type is skipped and counted.
+const char* readChunks(Reading& in, const Bytes& file, std::size_t pos, int numTracks) {
+    const std::uint8_t* d = file.data();
+    const std::size_t size = file.size();
     for (int found = 0; found < numTracks;) {
         if (size - pos < 8)
-            return refuse("fewer tracks than the header says, or a chunk cut short");
+            return "fewer tracks than the header says, or a chunk cut short";
         const std::uint32_t length = get32(d + pos + 4);
         if (length > size - pos - 8)
-            return refuse("a chunk runs past the end of the file");
+            return "a chunk runs past the end of the file";
         const bool isTrack = std::equal(d + pos, d + pos + 4, "MTrk");
-        const std::size_t end = pos + 8 + length;
-        std::size_t p = pos + 8;
-        pos = end;
+        const std::size_t begin = pos + 8;
+        pos = begin + length;
         if (!isTrack) {
-            ++r.skipped;
+            ++in.r.skipped;
             continue;
         }
         ++found;
-
-        Track track;
-        bool named = false;
-        std::uint64_t tick = 0;
-        int running = 0;
-        while (p < end) {
-            std::uint32_t delta = 0;
-            if (!readVlq(d, end, p, delta))
-                return refuse("a delta time runs past its track or has more than 4 bytes");
-            tick += delta;
-            if (p >= end)
-                return refuse("an event runs past its track");
-            const std::uint8_t first = d[p];
-            if (first == 0xFF || first == 0xF0 || first == 0xF7) {
-                ++p;
-                int type = -1;
-                if (first == 0xFF) {
-                    if (p >= end)
-                        return refuse("a meta event runs past its track");
-                    type = d[p++];
-                }
-                std::uint32_t metaLength = 0;
-                if (!readVlq(d, end, p, metaLength) || metaLength > end - p)
-                    return refuse("a meta or SysEx event runs past its track");
-                const std::uint8_t* m = d + p;
-                p += metaLength;
-                running = 0; // a meta event or a SysEx cancels running status
-                if (first != 0xFF) {
-                    ++r.skipped;
-                } else if (type == 0x2F) {
-                    break;
-                } else if (type == 0x51 && metaLength >= 3) {
-                    const double micros = static_cast<double>((m[0] << 16) | (m[1] << 8) | m[2]);
-                    if (micros > 0.0)
-                        tempos.push_back({toOurs(tick), 60000000.0 / micros});
-                } else if (type == 0x58 && metaLength >= 2 && !haveSignature && m[1] < 8) {
-                    haveSignature = true;
-                    r.song.numerator = m[0];
-                    r.song.denominator = 1 << m[1];
-                } else if (type == 0x03 && !named) {
-                    named = true;
-                    track.name.assign(reinterpret_cast<const char*>(m), metaLength);
-                }
-                continue;
-            }
-            int status = running;
-            if (first >= 0x80) {
-                if (first >= 0xF0)
-                    return refuse("a system message that does not belong in a file");
-                status = first;
-                ++p;
-            } else if (running == 0) {
-                return refuse("a data byte without a status (no running status)");
-            }
-            running = status;
-            const int n = dataBytes(status);
-            if (end - p < static_cast<std::size_t>(n))
-                return refuse("a channel message runs past its track");
-            if (d[p] >= 0x80 || (n == 2 && d[p + 1] >= 0x80))
-                return refuse("a status byte where a data byte belongs");
-            track.events.push_back({toOurs(tick), {static_cast<std::uint8_t>(status), d[p], n == 2 ? d[p + 1] : std::uint8_t{0}}});
-            p += static_cast<std::size_t>(n);
-        }
-        if (!track.events.empty())
-            r.song.tracks.push_back(std::move(track));
+        if (const char* error = readTrack(in, d, begin, pos))
+            return error;
     }
-    // The tempos in tick order; at one tick the last one read stays. A song starts with a tempo at tick 0.
+    return nullptr;
+}
+
+// The tempos in tick order; at one tick the last one read stays. A song starts with a tempo at tick 0.
+void settleTempos(std::vector<Tempo> tempos, Song& song) {
     std::stable_sort(tempos.begin(), tempos.end(), [](const Tempo& a, const Tempo& b) { return a.tick < b.tick; });
     for (const Tempo& t : tempos) {
-        if (!r.song.tempos.empty() && r.song.tempos.back().tick == t.tick)
-            r.song.tempos.back() = t;
-        else if (r.song.tempos.empty() || r.song.tempos.back().bpm != t.bpm) // the same tempo again is no change
-            r.song.tempos.push_back(t);
+        if (!song.tempos.empty() && song.tempos.back().tick == t.tick)
+            song.tempos.back() = t;
+        else if (song.tempos.empty() || song.tempos.back().bpm != t.bpm) // the same tempo again is no change
+            song.tempos.push_back(t);
     }
-    if (r.song.tempos.empty() || r.song.tempos.front().tick != 0)
-        r.song.tempos.insert(r.song.tempos.begin(), {0, 120.0}); // MIDI's default until the first tempo
-    r.ok = true;
-    return r;
+    if (song.tempos.empty() || song.tempos.front().tick != 0)
+        song.tempos.insert(song.tempos.begin(), {0, 120.0}); // MIDI's default until the first tempo
+}
+
+} // namespace
+
+ReadResult read(const std::vector<std::uint8_t>& file) {
+    Reading in;
+    int numTracks = 0;
+    std::size_t pos = 0;
+    if (const char* error = readHeader(file, in.r, numTracks, pos))
+        return refuse(error);
+    if (const char* error = readChunks(in, file, pos, numTracks))
+        return refuse(error);
+    settleTempos(std::move(in.tempos), in.r.song);
+    in.r.ok = true;
+    return std::move(in.r);
 }
 
 } // namespace dawlab::app::midifile
