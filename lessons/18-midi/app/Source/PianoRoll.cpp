@@ -204,17 +204,34 @@ void PianoRoll::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheel
     }
 }
 
+// In the order they are drawn: rows, grid, the clip's notes, keys, ruler.
 void PianoRoll::paint(juce::Graphics& g) {
     g.fillAll(DawColours::background());
     const MidiClipModel* clip = getClip();
-    const auto area = getLocalBounds();
-    const juce::Colour colour = DawColours::track(track_);
+    paintRows(g);
+    paintGrid(g);
+    if (clip != nullptr)
+        paintNotes(g, *clip);
+    paintKeys(g);
+    paintRuler(g);
+    if (clip == nullptr) {
+        g.setColour(DawColours::textDim());
+        g.drawText("This clip is gone", getLocalBounds(), juce::Justification::centred);
+    }
+}
 
-    // rows: black keys darker, C lines brighter
+// Is the row of `pitch` (a part of it) on screen, below the ruler?
+bool PianoRoll::isRowVisible(int pitch) const noexcept {
+    const float y = pitchToY(pitch);
+    return !(y + kRowHeight < kRulerHeight || y > static_cast<float>(getHeight()));
+}
+
+// One row per pitch: black keys darker, C lines brighter.
+void PianoRoll::paintRows(juce::Graphics& g) {
     for (int pitch = 0; pitch < 128; ++pitch) {
-        const float y = pitchToY(pitch);
-        if (y + kRowHeight < kRulerHeight || y > static_cast<float>(area.getBottom()))
+        if (!isRowVisible(pitch))
             continue;
+        const float y = pitchToY(pitch);
         g.setColour(isBlackKey(pitch) ? DawColours::panel().darker(0.3f) : DawColours::background().brighter(0.04f));
         g.fillRect(juce::Rectangle<float>(static_cast<float>(kKeyWidth), y, static_cast<float>(getWidth() - kKeyWidth), kRowHeight));
         if (pitch % 12 == 0) {
@@ -222,7 +239,10 @@ void PianoRoll::paint(juce::Graphics& g) {
             g.drawHorizontalLine(static_cast<int>(y + kRowHeight), static_cast<float>(kKeyWidth), static_cast<float>(getWidth()));
         }
     }
-    // the grid and the beats
+}
+
+// A line every grid step, brighter on the beats.
+void PianoRoll::paintGrid(juce::Graphics& g) {
     for (double t = std::floor(viewTick_ / static_cast<double>(grid_)) * static_cast<double>(grid_); tickToX(t) < getWidth();
          t += static_cast<double>(grid_)) {
         const auto x = static_cast<int>(tickToX(t));
@@ -232,35 +252,41 @@ void PianoRoll::paint(juce::Graphics& g) {
         g.setColour(DawColours::outline().withAlpha(beat ? 0.9f : 0.35f));
         g.drawVerticalLine(x, static_cast<float>(kRulerHeight), static_cast<float>(getHeight()));
     }
-    if (clip != nullptr) {
-        // the clip's window: outside it nothing plays
-        g.setColour(juce::Colours::black.withAlpha(0.35f));
-        const float w0 = tickToX(static_cast<double>(clip->offset)), w1 = tickToX(static_cast<double>(clip->offset + clip->length));
-        g.fillRect(juce::Rectangle<float>(static_cast<float>(kKeyWidth), static_cast<float>(kRulerHeight), std::max(0.0f, w0 - kKeyWidth),
-                                          static_cast<float>(getHeight())));
-        g.fillRect(juce::Rectangle<float>(w1, static_cast<float>(kRulerHeight), std::max(0.0f, static_cast<float>(getWidth()) - w1),
-                                          static_cast<float>(getHeight())));
-        // where quantize makes them play, as outlines
-        if (clip->quantize.strength > 0.0) {
-            g.setColour(DawColours::text().withAlpha(0.5f));
-            for (const engine::Note& n : clip->notes())
-                g.drawRect(juce::Rectangle<float>(tickToX(static_cast<double>(n.start)), pitchToY(n.pitch),
-                                                  std::max(3.0f, tickToX(static_cast<double>(n.start + n.length)) - tickToX(static_cast<double>(n.start))),
-                                                  static_cast<float>(kRowHeight - 1)),
-                           1.0f);
-        }
-        // the notes as played, brighter the louder
-        for (int i = 0; i < static_cast<int>(clip->played.size()); ++i) {
-            const engine::Note& n = clip->played[static_cast<size_t>(i)];
-            g.setColour(colour.withAlpha(0.35f + 0.65f * static_cast<float>(n.velocity) / 127.0f));
-            g.fillRoundedRectangle(getNoteBounds(i), 2.0f);
-        }
+}
+
+// The clip: its window, where quantize puts the notes, and the notes as played.
+void PianoRoll::paintNotes(juce::Graphics& g, const MidiClipModel& clip) {
+    // the clip's window: outside it nothing plays
+    g.setColour(juce::Colours::black.withAlpha(0.35f));
+    const float w0 = tickToX(static_cast<double>(clip.offset)), w1 = tickToX(static_cast<double>(clip.offset + clip.length));
+    g.fillRect(juce::Rectangle<float>(static_cast<float>(kKeyWidth), static_cast<float>(kRulerHeight), std::max(0.0f, w0 - kKeyWidth),
+                                      static_cast<float>(getHeight())));
+    g.fillRect(juce::Rectangle<float>(w1, static_cast<float>(kRulerHeight), std::max(0.0f, static_cast<float>(getWidth()) - w1),
+                                      static_cast<float>(getHeight())));
+    // where quantize makes them play, as outlines
+    if (clip.quantize.strength > 0.0) {
+        g.setColour(DawColours::text().withAlpha(0.5f));
+        for (const engine::Note& n : clip.notes())
+            g.drawRect(juce::Rectangle<float>(tickToX(static_cast<double>(n.start)), pitchToY(n.pitch),
+                                              std::max(3.0f, tickToX(static_cast<double>(n.start + n.length)) - tickToX(static_cast<double>(n.start))),
+                                              static_cast<float>(kRowHeight - 1)),
+                       1.0f);
     }
-    // keys
+    // the notes as played, brighter the louder
+    const juce::Colour colour = DawColours::track(track_);
+    for (int i = 0; i < static_cast<int>(clip.played.size()); ++i) {
+        const engine::Note& n = clip.played[static_cast<size_t>(i)];
+        g.setColour(colour.withAlpha(0.35f + 0.65f * static_cast<float>(n.velocity) / 127.0f));
+        g.fillRoundedRectangle(getNoteBounds(i), 2.0f);
+    }
+}
+
+// The keyboard on the left, C keys named.
+void PianoRoll::paintKeys(juce::Graphics& g) {
     for (int pitch = 0; pitch < 128; ++pitch) {
-        const float y = pitchToY(pitch);
-        if (y + kRowHeight < kRulerHeight || y > static_cast<float>(area.getBottom()))
+        if (!isRowVisible(pitch))
             continue;
+        const float y = pitchToY(pitch);
         g.setColour(isBlackKey(pitch) ? juce::Colour(0xff202020) : juce::Colour(0xffe8e8e8));
         g.fillRect(juce::Rectangle<float>(0.0f, y, static_cast<float>(kKeyWidth), static_cast<float>(kRowHeight - 1)));
         if (pitch % 12 == 0) {
@@ -270,7 +296,10 @@ void PianoRoll::paint(juce::Graphics& g) {
                        juce::Justification::centredRight);
         }
     }
-    // ruler: beats of the material
+}
+
+// The ruler: beats of the material.
+void PianoRoll::paintRuler(juce::Graphics& g) {
     g.setColour(DawColours::panel());
     g.fillRect(0, 0, getWidth(), kRulerHeight);
     g.setColour(DawColours::textDim());
@@ -280,10 +309,6 @@ void PianoRoll::paint(juce::Graphics& g) {
         if (x >= kKeyWidth)
             g.drawText(juce::String(static_cast<int>(t / 960.0) + 1), juce::Rectangle<float>(x + 2.0f, 0.0f, 40.0f, kRulerHeight),
                        juce::Justification::centredLeft);
-    }
-    if (clip == nullptr) {
-        g.setColour(DawColours::textDim());
-        g.drawText("This clip is gone", area, juce::Justification::centred);
     }
 }
 

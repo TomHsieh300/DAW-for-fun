@@ -77,6 +77,13 @@ private:
     // Applies `notes` as one step of the current gesture.
     void apply(std::vector<engine::Note> notes, const juce::String& name);
     std::int64_t snap(double tick, bool free) const noexcept;
+    // paint()'s parts, in the order it draws them.
+    void paintRows(juce::Graphics&);
+    void paintGrid(juce::Graphics&);
+    void paintNotes(juce::Graphics&, const MidiClipModel& clip);
+    void paintKeys(juce::Graphics&);
+    void paintRuler(juce::Graphics&);
+    bool isRowVisible(int pitch) const noexcept;
 
     Session& session_;
     engine::TrackId track_;
