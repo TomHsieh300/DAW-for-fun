@@ -343,6 +343,21 @@ inline std::unique_ptr<InsertEffect> createDemoEffect(const DemoInsert& d, int* 
     return fx;
 }
 
+// The song's mixer settings: each track's format, gain, pan and sends, and each bus's gain.
+// Shared by applyDemoSong() below and the app's Session::applyDemoSong().
+inline void applyDemoMix(Mixer& mix, const DemoSong& song) {
+    for (int t = 0; t < kNumTracks; ++t) {
+        Track& s = mix.getTrack(t);
+        s.setFormat(song.trackFormat[static_cast<size_t>(t)]);
+        s.setGainDb(song.trackGainDb[static_cast<size_t>(t)]);
+        s.setPan(song.trackPan[static_cast<size_t>(t)]);
+        for (int b = 0; b < kNumBuses; ++b)
+            s.setSendLevelDb(b, song.sendDb[static_cast<size_t>(t)][static_cast<size_t>(b)]);
+    }
+    for (int b = 0; b < kNumBuses; ++b)
+        mix.getBus(b).setGainDb(song.busGainDb[static_cast<size_t>(b)]);
+}
+
 // Pushes the song into `engine` (prepared, empty). Returns the number of unknown parameter
 // names (0 when the effect adapters match the song). Engine producer thread.
 inline int applyDemoSong(Engine& engine, const DemoSong& song) {
@@ -361,16 +376,7 @@ inline int applyDemoSong(Engine& engine, const DemoSong& song) {
     for (const DemoInsert& d : song.inserts)
         engine.addInsert(d.channel, -1, createDemoEffect(d, &unknown));
 
-    for (int t = 0; t < kNumTracks; ++t) {
-        Track& s = mix.getTrack(t);
-        s.setFormat(song.trackFormat[static_cast<size_t>(t)]);
-        s.setGainDb(song.trackGainDb[static_cast<size_t>(t)]);
-        s.setPan(song.trackPan[static_cast<size_t>(t)]);
-        for (int b = 0; b < kNumBuses; ++b)
-            s.setSendLevelDb(b, song.sendDb[static_cast<size_t>(t)][static_cast<size_t>(b)]);
-    }
-    for (int b = 0; b < kNumBuses; ++b)
-        mix.getBus(b).setGainDb(song.busGainDb[static_cast<size_t>(b)]);
+    applyDemoMix(mix, song);
     return unknown;
 }
 

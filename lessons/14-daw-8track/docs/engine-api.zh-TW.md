@@ -309,6 +309,7 @@ struct DemoSong {   // the 8-track song of l14_render_song (Step 9), as data
 };
 DemoSong makeDemoSong(double sampleRate);                                       // any non-audio thread; allocates
 std::unique_ptr<InsertEffect> createDemoEffect(const DemoInsert&, int* unknown = nullptr);
+void applyDemoMix(Mixer& mix, const DemoSong& song);                          // formats, faders, pans, sends, bus gains
 int applyDemoSong(Engine& engine, const DemoSong& song);                       // producer thread; returns unknown parameter names
 ```
 

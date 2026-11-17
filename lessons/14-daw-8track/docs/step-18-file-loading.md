@@ -164,7 +164,7 @@ lists, the insert list (effect type + parameters *by name*), track formats, fade
 function, run on the loader thread (it allocates about 40 MB at 48 kHz). The message thread then
 calls `Session::applyDemoSong(song)`, which puts every insert into the next free GUI slot of its
 strip and sends everything to the engine. `applyDemoSong(engine, song)` in the same header does
-the same without a GUI (for console programs).
+the same without a GUI (for console programs). Both set the mixer through `applyDemoMix(mixer, song)`.
 
 Because the song is generated at the engine's sample rate, a 44.1 kHz device gets a 44.1 kHz
 song - no resampling needed. If the device changes while the song is being generated, the result

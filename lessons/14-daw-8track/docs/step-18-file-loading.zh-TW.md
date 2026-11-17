@@ -111,7 +111,7 @@ Kernel 只製表一次（每個 zero crossing 512 個點，點與點之間用 li
 
 ### 把 demo song 當成資料
 
-`engine/include/dawlab/engine/DemoSong.h` 描述的是與 `l14_render_song`（Step 9）手工建出的同一首 8-track song，只是以資料表示：`makeDemoSong(sampleRate)` 產生所有 audio 與 clip 清單、insert 清單（effect 類型 + *以名稱表示*的參數）、track format、fader、pan 與 send——一個 pure function，在 loader thread 上執行（在 48 kHz 下會 allocate 約 40 MB）。接著 message thread 呼叫 `Session::applyDemoSong(song)`，它把每個 insert 放進其 strip 下一個空閒的 GUI slot，並把一切送給 engine。同一個 header 中的 `applyDemoSong(engine, song)` 則在沒有 GUI 的情況下做同樣的事（供 console 程式使用）。
+`engine/include/dawlab/engine/DemoSong.h` 描述的是與 `l14_render_song`（Step 9）手工建出的同一首 8-track song，只是以資料表示：`makeDemoSong(sampleRate)` 產生所有 audio 與 clip 清單、insert 清單（effect 類型 + *以名稱表示*的參數）、track format、fader、pan 與 send——一個 pure function，在 loader thread 上執行（在 48 kHz 下會 allocate 約 40 MB）。接著 message thread 呼叫 `Session::applyDemoSong(song)`，它把每個 insert 放進其 strip 下一個空閒的 GUI slot，並把一切送給 engine。同一個 header 中的 `applyDemoSong(engine, song)` 則在沒有 GUI 的情況下做同樣的事（供 console 程式使用）。兩者都透過 `applyDemoMix(mixer, song)` 設定 mixer。
 
 因為 song 是以 engine 的 sample rate 產生的，44.1 kHz 的 device 會得到 44.1 kHz 的 song——不需要 resampling。如果 device 在 song 產生期間改變，結果會被丟棄並重新產生。檔案也受到同樣的保護：`loadAudioFile()` 會要求 session 的 *clip rate*（`Session::getClipSampleRate()`，通常就是 engine 的 rate，Step 11），而它的 callback 在結果抵達時，會比較 `media.targetSampleRate` 與 clip rate。如果 device 在這期間改變了 rate，檔案就直接依新的 rate 重新讀取——否則以舊 rate 表示的 audio 會進到 project 裡，永遠以錯誤的音高播放。
 

@@ -157,16 +157,7 @@ int Session::applyDemoSong(const DemoSong& song) {
                 ++unknown;
     }
 
-    for (int t = 0; t < kNumTracks; ++t) {
-        Track& s = mix.getTrack(t);
-        s.setFormat(song.trackFormat[static_cast<size_t>(t)]);
-        s.setGainDb(song.trackGainDb[static_cast<size_t>(t)]);
-        s.setPan(song.trackPan[static_cast<size_t>(t)]);
-        for (int b = 0; b < kNumBuses; ++b)
-            s.setSendLevelDb(b, song.sendDb[static_cast<size_t>(t)][static_cast<size_t>(b)]);
-    }
-    for (int b = 0; b < kNumBuses; ++b)
-        mix.getBus(b).setGainDb(song.busGainDb[static_cast<size_t>(b)]);
+    applyDemoMix(mix, song);
 
     engine_.requestReset(); // fresh meters, no tails of the previous project
     projectName_ = "Demo song";
