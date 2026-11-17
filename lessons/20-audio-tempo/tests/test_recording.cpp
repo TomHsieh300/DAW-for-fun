@@ -1057,12 +1057,44 @@ void checkEnds() {
     endBounce();
 }
 
+// Where a take goes, and the round trip a recorded click shows (Step 2), at their edges.
+void placeAndRoundTrip() {
+    Latencies l;
+    l.input = 100;
+    l.output = 150;
+    l.mix = 30;
+    l.trim = 20; // total 300
+    const auto same = [](const Placement& a, std::int64_t start, std::int64_t skip, std::int64_t frames) {
+        return a.timelineStart == start && a.skipFrames == skip && a.numFrames == frames;
+    };
+    DAWLAB_CHECK(same(place(1000, l, 5000), 700, 0, 5000));
+    DAWLAB_CHECK(same(place(300, l, 5000), 0, 0, 5000));     // exactly at zero
+    DAWLAB_CHECK(same(place(100, l, 5000), 0, 200, 4800));   // what was before zero is left out
+    DAWLAB_CHECK(same(place(100, l, 150), 0, 150, 0));       // all of it before zero
+
+    std::vector<float> take(1000, 0.002f);                   // noise below half the peak
+    take[250] = 0.3f;                                        // the click's leading edge: above half of 0.5
+    take[251] = 0.5f;
+    take[400] = -0.2f;
+    const std::int64_t rt = measureRoundTrip(take.data(), 1000, 10000, 9900);
+    std::printf("  a click sent at 9900 comes back at frame 250 of a take that began at 10000: round trip %lld\n",
+                static_cast<long long>(rt));
+    DAWLAB_CHECK(rt == 350);
+    DAWLAB_CHECK(measureRoundTrip(take.data(), 1000, 10000, 10250) == 0);  // no latency at all
+    DAWLAB_CHECK(measureRoundTrip(take.data(), 1000, 10000, 10300) == -1); // came back before it was sent
+    const std::vector<float> quiet(1000, 0.005f);
+    DAWLAB_CHECK(measureRoundTrip(quiet.data(), 1000, 10000, 9900) == -1);         // no click came back
+    DAWLAB_CHECK(measureRoundTrip(quiet.data(), 1000, 10000, 9900, 0.001f) == 100); // a lower bar: frame 0
+    DAWLAB_CHECK(measureRoundTrip(take.data(), 0, 10000, 9900) == -1);             // an empty take
+}
+
 } // namespace
 
 int main() {
     std::printf("the engine with an input\n");
     checkNothingChangesWithoutArming();
     checkLoopback();
+    placeAndRoundTrip();
     checkEveryFrameArrives();
     checkChannelsAndDry();
     checkMonitorPaths();

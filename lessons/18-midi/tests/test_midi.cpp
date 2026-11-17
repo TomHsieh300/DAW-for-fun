@@ -732,6 +732,36 @@ void testThreads() {
     DAWLAB_CHECK(audioAllocs.load() == 0 && nanBlocks.load() == 0 && e.getGarbageLeaked() == 0);
 }
 
+// The parser that turns a MIDI byte stream into messages (Step 5): running status, real-time bytes inside a message,
+// system exclusive skipped, data bytes with no status counted, and a message with one data byte.
+void testMidiParser() {
+    MidiParser p;
+    std::vector<MidiMessage> got;
+    const auto feed = [&](std::initializer_list<int> bytes) {
+        for (const int b : bytes) {
+            MidiMessage m;
+            if (p.feed(static_cast<std::uint8_t>(b), m))
+                got.push_back(m);
+        }
+    };
+    feed({0x45, 0x10});                    // data with no status yet: skipped
+    feed({0x91, 60, 100});                 // a note-on on channel 2
+    feed({62, 0xF8, 90});                  // running status, with a clock tick in the middle
+    feed({0xF0, 0x7E, 0x01, 0x02, 0xF7});  // system exclusive: nothing
+    feed({64, 80});                        // after it, no running status: skipped
+    feed({0xC3, 5});                       // a program change has one data byte
+    feed({0xE0, 0x00, 0x40});              // pitch bend in the middle
+    const std::vector<MidiMessage> want = {
+        MidiMessage::noteOn(1, 60, 100), MidiMessage::noteOn(1, 62, 90),
+        MidiMessage{0xC3, 5, 0}, MidiMessage::pitchBend(0, 0)};
+    std::printf("  a byte stream: %zu messages, %ld data bytes skipped\n", got.size(), p.skipped());
+    DAWLAB_CHECK(got == want);
+    DAWLAB_CHECK(p.skipped() == 4);
+    DAWLAB_CHECK(!(MidiMessage::noteOn(0, 60, 100) == MidiMessage::noteOn(0, 60, 99)));
+    DAWLAB_CHECK(!(MidiMessage::noteOn(0, 60, 100) == MidiMessage::noteOn(0, 61, 100)));
+    DAWLAB_CHECK(!(MidiMessage::noteOn(0, 60, 100) == MidiMessage::noteOn(1, 60, 100)));
+}
+
 } // namespace
 
 int main() {
@@ -746,6 +776,7 @@ int main() {
     testAnotherInstrument();
     testQueuedThroughADeviceChange();
     testSongEndCountsNotes();
+    testMidiParser();
     testNoAllocation();
     testThreads();
     return dawlab::test::summary("l18_test_midi");

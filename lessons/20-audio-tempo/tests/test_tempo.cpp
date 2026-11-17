@@ -551,12 +551,27 @@ void testLoopUnitArrivesWhole() {
     DAWLAB_CHECK(torn == 0 && legal > 0);
 }
 
+void testMapsCompare() {
+    // Two maps are equal when every point is: tick, tempo and ramp. The engine compares them to skip a hand-over.
+    const std::vector<TempoPoint> base = {{0, 120.0, true}, {3840, 90.0, false}};
+    TempoMap a, b;
+    DAWLAB_CHECK(a.set(base) && b.set(base));
+    DAWLAB_CHECK(a == b && !(a != b));
+    TempoMap c;
+    DAWLAB_CHECK(c.set({{0, 120.0, true}}) && a != c);                           // fewer points
+    DAWLAB_CHECK(c.set({{0, 120.0, true}, {3841, 90.0, false}}) && a != c);      // a tick
+    DAWLAB_CHECK(c.set({{0, 120.0, true}, {3840, 91.0, false}}) && a != c);      // a tempo
+    DAWLAB_CHECK(c.set({{0, 120.0, false}, {3840, 90.0, false}}) && a != c);     // a ramp
+    DAWLAB_CHECK(c.set({{0, 121.0, true}, {3840, 90.0, false}}) && a != c);      // the first tempo
+}
+
 } // namespace
 
 int main() {
     std::printf("l19_test_tempo: a tempo map and instrument latency in the engine\n");
     testNotesFollowTheMap();
     testLoopInTicks();
+    testMapsCompare();
     testNewMapWhileANoteSounds();
     testInstrumentLatency();
     testLowLatencyOnTheFasterTrack();
