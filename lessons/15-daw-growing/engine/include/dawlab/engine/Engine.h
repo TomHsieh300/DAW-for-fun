@@ -359,38 +359,14 @@ private:
         }
     }
 
+    // One command, on the audio thread. A command aimed at something that is not there hands
+    // what it carries straight to the garbage. Each kind has its own small function below.
     void apply(Command& c) noexcept {
         ChannelStrip* strip = mixer_.getStrip(c.channel);
+        if (applyInsertCommand(c, strip))
+            return;
         switch (c.type) {
-        case CommandType::AddInsert: {
-            InsertEffect* rejected = strip ? strip->getInserts().insertAt(c.slot, c.effect) : c.effect;
-            if (rejected)
-                discard(Garbage::of(rejected)); // chain full or bad channel
-            break;
-        }
-        case CommandType::RemoveInsert:
-            if (strip)
-                if (InsertEffect* removed = strip->getInserts().removeAt(c.slot))
-                    discard(Garbage::of(removed));
-            break;
-        case CommandType::ReplaceInsert: {
-            InsertEffect* old = strip ? strip->getInserts().replaceAt(c.slot, c.effect) : c.effect;
-            if (old)
-                discard(Garbage::of(old));
-            break;
-        }
-        case CommandType::MoveInsert:
-            if (strip)
-                strip->getInserts().moveTo(c.slot, c.slot2);
-            break;
-        case CommandType::ReplaceClips: {
-            const std::vector<Clip>* old = c.clips; // invalid target: hand the new list straight back
-            if (c.channel.kind == ChannelKind::Track && strip != nullptr)
-                old = static_cast<Track*>(strip)->exchangeClips(c.clips);
-            if (old)
-                discard(Garbage::of(const_cast<std::vector<Clip>*>(old)));
-            break;
-        }
+        case CommandType::ReplaceClips: applyReplaceClips(c, strip); break;
         case CommandType::AddTrack:
             mixer_.activateTrack(c.channel.index, c.channel.trackId); // a wrong slot or id: nothing happens
             break;
@@ -400,8 +376,45 @@ private:
                 discard(Garbage::of(const_cast<T*>(object)));
             });
             break;
-        case CommandType::None: break;
+        default: break; // None, and the insert commands above
         }
+    }
+
+    // The four commands that change an insert chain. False if `c` is none of them.
+    bool applyInsertCommand(const Command& c, ChannelStrip* strip) noexcept {
+        switch (c.type) {
+        case CommandType::AddInsert: applyAddInsert(c, strip); return true;
+        case CommandType::RemoveInsert: applyRemoveInsert(c, strip); return true;
+        case CommandType::ReplaceInsert: applyReplaceInsert(c, strip); return true;
+        case CommandType::MoveInsert: applyMoveInsert(c, strip); return true;
+        default: return false;
+        }
+    }
+    void applyAddInsert(const Command& c, ChannelStrip* strip) noexcept {
+        InsertEffect* rejected = strip ? strip->getInserts().insertAt(c.slot, c.effect) : c.effect;
+        if (rejected)
+            discard(Garbage::of(rejected)); // chain full or bad channel
+    }
+    void applyRemoveInsert(const Command& c, ChannelStrip* strip) noexcept {
+        if (strip)
+            if (InsertEffect* removed = strip->getInserts().removeAt(c.slot))
+                discard(Garbage::of(removed));
+    }
+    void applyReplaceInsert(const Command& c, ChannelStrip* strip) noexcept {
+        InsertEffect* old = strip ? strip->getInserts().replaceAt(c.slot, c.effect) : c.effect;
+        if (old)
+            discard(Garbage::of(old));
+    }
+    void applyMoveInsert(const Command& c, ChannelStrip* strip) noexcept {
+        if (strip)
+            strip->getInserts().moveTo(c.slot, c.slot2);
+    }
+    void applyReplaceClips(const Command& c, ChannelStrip* strip) noexcept {
+        const std::vector<Clip>* old = c.clips; // invalid target: hand the new list straight back
+        if (c.channel.kind == ChannelKind::Track && strip != nullptr)
+            old = static_cast<Track*>(strip)->exchangeClips(c.clips);
+        if (old)
+            discard(Garbage::of(const_cast<std::vector<Clip>*>(old)));
     }
 
     // UI thread: the strip behind a reference, by the UI's OWN slot table (never by the audio

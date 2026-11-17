@@ -15,6 +15,7 @@
 //   5. The audio thread never allocates, with clips, loops, seeks and live MIDI (this file replaces operator new).
 //   6. Three threads at once - UI, audio, MIDI - for ThreadSanitizer.
 //   7. The synth by hand: stealing, the pedal, all notes off, the bend.
+//   8. Raw MIDI clip and instrument commands: what comes back as garbage.
 
 #include "TestHelpers.h"
 #include "TestTracks.h"
@@ -824,6 +825,37 @@ void testSynthByHand() {
     DAWLAB_CHECK(std::abs(hz - 493.9) < 10.0);
 }
 
+// 8. The MIDI clips and the instrument of a track by raw command (Engine::pushCommand(), past the UI's checks):
+//    the old ones come back as garbage, and a command aimed at a bus hands its own straight back.
+void testRawMidiCommands() {
+    Engine e;
+    setUp(e);
+    AudioBuffer block(kNumChannels, 64);
+    auto apply = [&e, &block](const Command& c) {
+        e.pushCommand(c);
+        e.processBlock(block.toBlock());
+        return e.collectGarbage();
+    };
+    auto newSynth = [] {
+        auto* s = new SynthInstrument();
+        s->prepare(kSampleRate, kBlockSize);
+        return s;
+    };
+    apply(Command::replaceMidiClips(testTrack(0), new std::vector<MidiClip>{clipOf(1, 0, kBar, {})}));
+    auto* clips = new std::vector<MidiClip>{clipOf(2, 0, kBar, {}), clipOf(3, kBar, kBar, {})};
+    DAWLAB_CHECK(apply(Command::replaceMidiClips(testTrack(0), clips)) == 1); // the list before
+    DAWLAB_CHECK(e.getMixer().getTrack(0).getMidiClips() == clips);
+    apply(Command::replaceInstrument(testTrack(0), newSynth()));
+    SynthInstrument* synth = newSynth();
+    DAWLAB_CHECK(apply(Command::replaceInstrument(testTrack(0), synth)) == 1); // the instrument before
+    DAWLAB_CHECK(e.getMixer().getTrack(0).getReplacementInstrument() == synth);
+    DAWLAB_CHECK(apply(Command::replaceMidiClips(ChannelRef::bus(0), new std::vector<MidiClip>{clipOf(4, 0, kBar, {})})) == 1);
+    DAWLAB_CHECK(apply(Command::replaceInstrument(ChannelRef::bus(0), newSynth())) == 1);
+    DAWLAB_CHECK(e.getMixer().getTrack(0).getMidiClips() == clips && e.getMixer().getTrack(0).getReplacementInstrument() == synth);
+    DAWLAB_CHECK(e.getGarbageLeaked() == 0);
+    std::printf("  raw MIDI clip and instrument commands: the old ones back as garbage, a bus hands them straight back\n");
+}
+
 } // namespace
 
 int main() {
@@ -840,6 +872,7 @@ int main() {
     testSongEndCountsNotes();
     testMidiParser();
     testSynthByHand();
+    testRawMidiCommands();
     testNoAllocation();
     testThreads();
     return dawlab::test::summary("l18_test_midi");

@@ -253,6 +253,43 @@ void testChainLength() {
     DAWLAB_CHECK(gAlive == 0);
 }
 
+// Raw commands (Engine::pushCommand()) reach the audio thread past the UI's checks (Engine::apply()):
+// where an insert goes in and moves to, and a command aimed at a channel that is not there hands what it
+// carries straight to the garbage.
+void testRawCommands() {
+    {
+        Engine e;
+        addTestTracks(e);
+        e.prepare(kSampleRate, kBlockSize);
+        AudioBuffer block(2, 64);
+        auto* a = new CountingEffect();
+        auto* b = new CountingEffect();
+        auto* c = new CountingEffect();
+        e.pushCommand(Command::addInsert(t0(), -1, a));
+        e.pushCommand(Command::addInsert(t0(), -1, b));
+        e.pushCommand(Command::addInsert(t0(), 0, c)); // in front
+        e.processBlock(block);
+        DAWLAB_CHECK(e.getInsert(t0(), 0) == c && e.getInsert(t0(), 1) == a && e.getInsert(t0(), 2) == b);
+        e.pushCommand(Command::moveInsert(t0(), 0, 2)); // the first to the end
+        e.processBlock(block);
+        DAWLAB_CHECK(e.getInsert(t0(), 0) == a && e.getInsert(t0(), 1) == b && e.getInsert(t0(), 2) == c);
+
+        const ChannelRef nowhere = ChannelRef::bus(kNumBuses);
+        e.pushCommand(Command::addInsert(nowhere, -1, new CountingEffect()));
+        e.pushCommand(Command::replaceInsert(nowhere, 0, new CountingEffect()));
+        e.pushCommand(Command::removeInsert(nowhere, 0));
+        e.pushCommand(Command::moveInsert(nowhere, 0, 1));
+        Command clips = Command::replaceClips(t0(), new std::vector<Clip>{Clip::fromBuffer(makeConstant(9.0f, 64), 0)});
+        clips.channel = ChannelRef::bus(0); // a bus has no clips
+        e.pushCommand(clips);
+        e.processBlock(block);
+        DAWLAB_CHECK(e.collectGarbage() == 3);
+        DAWLAB_CHECK(gAlive == 3 && e.getNumInserts(t0()) == 3 && e.getNumInserts(ChannelRef::bus(0)) == 0);
+        DAWLAB_CHECK(e.getGarbageLeaked() == 0);
+    }
+    DAWLAB_CHECK(gAlive == 0);
+}
+
 } // namespace
 
 int main() {
@@ -262,6 +299,7 @@ int main() {
     testQueueFull();
     testInvalidTargets();
     testChainLength();
+    testRawCommands();
     DAWLAB_CHECK(gAlive == 0);
     return dawlab::test::summary("l15_test_commands");
 }
