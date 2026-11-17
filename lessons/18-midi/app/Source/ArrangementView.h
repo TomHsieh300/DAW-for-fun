@@ -205,6 +205,15 @@ private:
     void updateScrollBar();
     void paintRuler(juce::Graphics&, juce::Rectangle<int> area);
     void paintLane(juce::Graphics&, int lane, juce::Rectangle<int> area);
+    // paintLane()'s parts, in the order it draws them.
+    void paintLaneBackground(juce::Graphics&, int lane, juce::Rectangle<int> area);
+    void paintLaneClips(juce::Graphics&, int lane);
+    void paintLaneMidiClips(juce::Graphics&, int lane);
+    void paintLaneHeader(juce::Graphics&, int lane, juce::Rectangle<int> area, const engine::ChannelStrip& strip);
+    juce::String laneInfo(engine::TrackId track, const engine::ChannelStrip& strip) const;
+    void paintAutomationToggle(juce::Graphics&, int lane);
+    void paintArmButton(juce::Graphics&, int lane);
+    void paintMonitorButton(juce::Graphics&, int lane);
     void paintClip(juce::Graphics&, engine::TrackId track, const engine::Clip& clip, juce::Rectangle<int> bounds,
                    bool selected);
     void paintAutomation(juce::Graphics&, int lane, juce::Rectangle<int> area);
@@ -233,6 +242,7 @@ private:
     // drag state
     std::vector<std::pair<engine::TrackId, LaneAddress>> shownLanes_;
     enum class Drag { None, Seek, Clip, Point, MidiClip };
+    bool isHeld(Drag kind, engine::TrackId track, int clipIndex) const noexcept; // the clip the mouse holds?
     std::uint32_t dragMidiKey_ = 0;
     Drag drag_ = Drag::None;
     engine::TrackId dragTrack_;

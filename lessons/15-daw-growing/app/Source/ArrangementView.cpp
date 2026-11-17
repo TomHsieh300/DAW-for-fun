@@ -344,14 +344,30 @@ void ArrangementView::paintRuler(juce::Graphics& g, juce::Rectangle<int> area) {
     }
 }
 
+// A track's lane, in the order it is drawn: the background, the clips (clipped to the right of the header), the
+// header, and the lines between lanes.
 void ArrangementView::paintLane(juce::Graphics& g, int lane, juce::Rectangle<int> area) {
     const engine::TrackId track = session_.getTrackId(lane);
-    const bool selected = track == selectedTrack_;
     const engine::ChannelStrip* strip = session_.getEngine().getStrip(session_.trackRef(track));
     if (strip == nullptr)
         return;
 
-    // lane background + bar grid
+    paintLaneBackground(g, lane, area);
+    {
+        juce::Graphics::ScopedSaveState save(g);
+        g.reduceClipRegion(area.withTrimmedLeft(kHeaderWidth));
+        paintLaneClips(g, lane);
+    }
+    paintLaneHeader(g, lane, area, *strip);
+
+    g.setColour(DawColours::outline());
+    g.drawHorizontalLine(area.getBottom() - 1, 0.0f, static_cast<float>(getWidth()));
+    g.drawVerticalLine(kHeaderWidth - 1, static_cast<float>(area.getY()), static_cast<float>(area.getBottom()));
+}
+
+// The selected track's lane is lighter, the others alternate; over it the ruler's bar lines.
+void ArrangementView::paintLaneBackground(juce::Graphics& g, int lane, juce::Rectangle<int> area) {
+    const bool selected = session_.getTrackId(lane) == selectedTrack_;
     g.setColour(selected ? DawColours::panelLight().withAlpha(0.6f) : (lane % 2 ? DawColours::background() : DawColours::background().brighter(0.03f)));
     g.fillRect(area);
     // The ruler's bar lines (GridSpacing.h): every bar, or every 2nd, 4th ... when they would be closer than 8 px.
@@ -363,22 +379,28 @@ void ArrangementView::paintLane(juce::Graphics& g, int lane, juce::Rectangle<int
         if (x >= kHeaderWidth)
             g.drawVerticalLine(static_cast<int>(x), static_cast<float>(area.getY()), static_cast<float>(area.getBottom()));
     }
+}
 
-    // clips
+// The track's audio clips, the one the mouse holds drawn selected.
+void ArrangementView::paintLaneClips(juce::Graphics& g, int lane) {
+    const engine::TrackId track = session_.getTrackId(lane);
     const auto& clips = session_.getClips(track);
-    {
-        juce::Graphics::ScopedSaveState save(g);
-        g.reduceClipRegion(area.withTrimmedLeft(kHeaderWidth));
-        for (int i = 0; i < static_cast<int>(clips.size()); ++i) {
-            const auto bounds = getClipBounds(lane, i);
-            if (bounds.getRight() < kHeaderWidth || bounds.getX() > getWidth())
-                continue;
-            paintClip(g, track, clips[static_cast<size_t>(i)], bounds,
-                      drag_ == Drag::Clip && dragTrack_ == track && dragClip_ == i);
-        }
+    for (int i = 0; i < static_cast<int>(clips.size()); ++i) {
+        const auto bounds = getClipBounds(lane, i);
+        if (bounds.getRight() < kHeaderWidth || bounds.getX() > getWidth())
+            continue;
+        paintClip(g, track, clips[static_cast<size_t>(i)], bounds, isHeld(Drag::Clip, track, i));
     }
+}
 
-    // header
+bool ArrangementView::isHeld(Drag kind, engine::TrackId track, int clipIndex) const noexcept {
+    return drag_ == kind && dragTrack_ == track && dragClip_ == clipIndex;
+}
+
+// The header: the track's colour, its number and name, and a line on what it holds.
+void ArrangementView::paintLaneHeader(juce::Graphics& g, int lane, juce::Rectangle<int> area, const engine::ChannelStrip& strip) {
+    const engine::TrackId track = session_.getTrackId(lane);
+    const bool selected = track == selectedTrack_;
     auto header = area.withWidth(kHeaderWidth);
     g.setColour(DawColours::panel());
     g.fillRect(header);
@@ -387,21 +409,23 @@ void ArrangementView::paintLane(juce::Graphics& g, int lane, juce::Rectangle<int
     header.reduce(8, 2);
     g.setColour(selected ? DawColours::text() : DawColours::text().withAlpha(0.8f));
     g.setFont(DawLookAndFeel::uiFont(14.0f, selected));
-    g.drawText(juce::String(lane + 1) + "  " + juce::String(strip->getName()), header.removeFromTop(header.getHeight() / 2 + 4),
+    g.drawText(juce::String(lane + 1) + "  " + juce::String(strip.getName()), header.removeFromTop(header.getHeight() / 2 + 4),
                juce::Justification::bottomLeft);
     g.setFont(DawLookAndFeel::uiFont(11.0f));
-    juce::String info;
-    if (strip->isMuted())
-        info << "M ";
-    if (strip->isSoloed())
-        info << "S ";
-    info << juce::String(static_cast<int>(clips.size())) << (clips.size() == 1 ? " clip" : " clips");
-    g.setColour(strip->isMuted() ? DawColours::mute() : (strip->isSoloed() ? DawColours::accentWarm() : DawColours::textDim()));
-    g.drawText(info, header, juce::Justification::topLeft);
+    g.setColour(strip.isMuted() ? DawColours::mute() : (strip.isSoloed() ? DawColours::accentWarm() : DawColours::textDim()));
+    g.drawText(laneInfo(track, strip), header, juce::Justification::topLeft);
+}
 
-    g.setColour(DawColours::outline());
-    g.drawHorizontalLine(area.getBottom() - 1, 0.0f, static_cast<float>(getWidth()));
-    g.drawVerticalLine(kHeaderWidth - 1, static_cast<float>(area.getY()), static_cast<float>(area.getBottom()));
+// "M S 3 clips": muted, soloed, and how many clips.
+juce::String ArrangementView::laneInfo(engine::TrackId track, const engine::ChannelStrip& strip) const {
+    juce::String info;
+    if (strip.isMuted())
+        info << "M ";
+    if (strip.isSoloed())
+        info << "S ";
+    const auto n = session_.getClips(track).size();
+    info << juce::String(static_cast<int>(n)) << (n == 1 ? " clip" : " clips");
+    return info;
 }
 
 void ArrangementView::paintClip(juce::Graphics& g, engine::TrackId track, const Clip& clip, juce::Rectangle<int> bounds,

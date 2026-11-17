@@ -130,6 +130,11 @@ private:
     void changeListenerCallback(juce::ChangeBroadcaster*) override;
     void paintRuler(juce::Graphics&, juce::Rectangle<int> area);
     void paintLane(juce::Graphics&, int track, juce::Rectangle<int> area);
+    // paintLane()'s parts, in the order it draws them.
+    void paintLaneBackground(juce::Graphics&, int track, juce::Rectangle<int> area);
+    void paintLaneClips(juce::Graphics&, int track);
+    void paintLaneHeader(juce::Graphics&, int track, juce::Rectangle<int> area);
+    juce::String laneInfo(int track, const engine::ChannelStrip& strip) const;
     void paintClip(juce::Graphics&, int track, const engine::Clip& clip, juce::Rectangle<int> bounds, bool selected);
     int clipAt(int track, float x) const;
     void seekToX(float x, bool snap);
@@ -145,6 +150,7 @@ private:
 
     // drag state
     enum class Drag { None, Seek, Clip };
+    bool isHeld(Drag kind, int track, int clipIndex) const noexcept; // the clip the mouse holds?
     Drag drag_ = Drag::None;
     int dragTrack_ = -1;
     int dragClip_ = -1;

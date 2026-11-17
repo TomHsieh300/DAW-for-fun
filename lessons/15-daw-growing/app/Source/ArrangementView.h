@@ -153,6 +153,11 @@ private:
     void updateScrollBar();
     void paintRuler(juce::Graphics&, juce::Rectangle<int> area);
     void paintLane(juce::Graphics&, int lane, juce::Rectangle<int> area);
+    // paintLane()'s parts, in the order it draws them.
+    void paintLaneBackground(juce::Graphics&, int lane, juce::Rectangle<int> area);
+    void paintLaneClips(juce::Graphics&, int lane);
+    void paintLaneHeader(juce::Graphics&, int lane, juce::Rectangle<int> area, const engine::ChannelStrip& strip);
+    juce::String laneInfo(engine::TrackId track, const engine::ChannelStrip& strip) const;
     void paintClip(juce::Graphics&, engine::TrackId track, const engine::Clip& clip, juce::Rectangle<int> bounds,
                    bool selected);
     int clipAt(int lane, float x) const;
@@ -172,6 +177,7 @@ private:
 
     // drag state
     enum class Drag { None, Seek, Clip };
+    bool isHeld(Drag kind, engine::TrackId track, int clipIndex) const noexcept; // the clip the mouse holds?
     Drag drag_ = Drag::None;
     engine::TrackId dragTrack_;
     int dragClip_ = -1;
