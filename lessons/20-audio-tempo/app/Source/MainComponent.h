@@ -115,6 +115,8 @@ public:
     // Opens (or brings to the front) the piano roll of a clip. Offline (tests) there are no windows: nullptr.
     PianoRollWindow* openPianoRoll(engine::TrackId track, int clipIndex);
     void showMidiClipMenu(engine::TrackId track, int clipIndex);
+    // Its items, each with its action (empty: no such clip): Edit Notes..., Quantize (a sub-menu), Mute, Delete.
+    juce::PopupMenu buildMidiClipMenu(engine::TrackId track, int clipIndex);
     // The menu's items, as undoable edits: quantize (strength 0 = off), mute, delete.
     bool quantizeMidiClip(engine::TrackId track, int clipIndex, QuantizeSettings settings);
     bool setMidiClipMuted(engine::TrackId track, int clipIndex, bool muted);
@@ -243,6 +245,9 @@ private:
     bool startMidiRecording();
     bool startAudioRecording(bool withMidi);
     void timerCallback() override { tick(); }
+    // An item of the MIDI clip menu: `f` with the clip's index when it runs, the clip found again by its id (the
+    // list may have changed meanwhile); nothing if the clip, or this component, is not there any more.
+    std::function<void()> midiClipAction(engine::TrackId track, int clipId, std::function<void(MainComponent&, int index)> f);
     // handleSlotMenuResult()'s parts. `entry` is an index into EffectMenu::builtinEntries().
     void insertBuiltin(engine::ChannelRef ref, int slot, int entry);
     void removeInsert(engine::ChannelRef ref, int slot);

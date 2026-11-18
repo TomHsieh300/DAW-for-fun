@@ -1232,23 +1232,30 @@ bool MainComponent::setMidiClipMuted(engine::TrackId track, int clipIndex, bool 
 }
 
 void MainComponent::showMidiClipMenu(engine::TrackId track, int clipIndex) {
+    juce::PopupMenu menu = buildMidiClipMenu(track, clipIndex);
+    if (menu.getNumItems() > 0) // none: no such clip
+        menu.showMenuAsync(juce::PopupMenu::Options{});
+}
+
+std::function<void()> MainComponent::midiClipAction(engine::TrackId track, int clipId, std::function<void(MainComponent&, int index)> f) {
+    juce::Component::SafePointer<MainComponent> safe(this);
+    return [safe, track, clipId, f] {
+        if (safe == nullptr)
+            return;
+        const auto& list = safe->session_.getMidiClips(track);
+        for (size_t i = 0; i < list.size(); ++i)
+            if (list[i].id == clipId)
+                f(*safe, static_cast<int>(i));
+    };
+}
+
+juce::PopupMenu MainComponent::buildMidiClipMenu(engine::TrackId track, int clipIndex) {
     const auto& clips = session_.getMidiClips(track);
     if (clipIndex < 0 || clipIndex >= static_cast<int>(clips.size()))
-        return;
+        return {};
     const MidiClipModel& clip = clips[static_cast<size_t>(clipIndex)];
-    const int id = clip.id;
-    juce::Component::SafePointer<MainComponent> safe(this);
     // The clip is found again by its id when an item runs: the list may have changed meanwhile.
-    auto withClip = [safe, track, id](std::function<void(MainComponent&, int index)> f) {
-        return [safe, track, id, f] {
-            if (safe == nullptr)
-                return;
-            const auto& list = safe->session_.getMidiClips(track);
-            for (size_t i = 0; i < list.size(); ++i)
-                if (list[i].id == id)
-                    f(*safe, static_cast<int>(i));
-        };
-    };
+    const auto withClip = [this, track, id = clip.id](std::function<void(MainComponent&, int index)> f) { return midiClipAction(track, id, std::move(f)); };
     juce::PopupMenu quantize;
     struct Choice {
         const char* name;
@@ -1273,7 +1280,7 @@ void MainComponent::showMidiClipMenu(engine::TrackId track, int clipIndex) {
     menu.addItem(juce::PopupMenu::Item("Delete").setAction(withClip([track](MainComponent& m, int index) {
         m.session_.removeMidiClip(track, index);
     })));
-    menu.showMenuAsync(juce::PopupMenu::Options{});
+    return menu;
 }
 
 void MainComponent::closeAllEditors() {

@@ -2943,6 +2943,74 @@ void testClipMenu() {
     engine.collectGarbage();
 }
 
+// Runs the action of the item of `menu` (or of one of its sub-menus) with this text; false if there is none.
+bool runMenuItem(const juce::PopupMenu& menu, const juce::String& text) {
+    for (juce::PopupMenu::MenuItemIterator it(menu, true); it.next();) {
+        const juce::PopupMenu::Item& item = it.getItem();
+        if (item.text == text && item.action != nullptr) {
+            item.action();
+            return true;
+        }
+    }
+    return false;
+}
+
+// The menu of a MIDI clip: MainComponent::buildMidiClipMenu(), and what each item's action does.
+void testMidiClipMenu() {
+    std::printf("the MIDI clip menu: its items, and what each one does\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    Session& session = main.getSession();
+    Engine& engine = main.getEngine();
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    const TrackId synth = main.addTrack(TrackFormat::Mono, true);
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(session.addMidiClip(synth, 0, 3840) == 0 && session.addMidiClip(synth, 3840, 3840) == 1);
+    const int secondId = session.getMidiClips(synth)[1].id;
+
+    // No such clip: no menu.
+    DAWLAB_CHECK(main.buildMidiClipMenu(synth, -1).getNumItems() == 0 && main.buildMidiClipMenu(synth, 2).getNumItems() == 0);
+    // The items; a new clip is as played, not muted.
+    juce::PopupMenu menu = main.buildMidiClipMenu(synth, 1);
+    DAWLAB_CHECK(menuItem(menu, "Edit Notes...").found && menuItem(menu, "Quantize").found && menuItem(menu, "Delete").found);
+    DAWLAB_CHECK(menuItem(menu, "Off (as played)").ticked && !menuItem(menu, "1/16").ticked && !menuItem(menu, "Mute").ticked);
+    // Quantize to 1/16 with swing: the clip's settings, and the one item ticked.
+    const QuantizeSettings swung{240, 1.0, 1.0 / 3.0};
+    DAWLAB_CHECK(runMenuItem(menu, "1/16 swing") && session.getMidiClips(synth)[1].quantize == swung);
+    menu = main.buildMidiClipMenu(synth, 1);
+    DAWLAB_CHECK(menuItem(menu, "1/16 swing").ticked && !menuItem(menu, "1/8 swing").ticked && !menuItem(menu, "Off (as played)").ticked);
+    // Any settings of strength 0 play as played: "Off" is ticked.
+    MidiClipModel coarse = session.getMidiClips(synth)[1];
+    coarse.quantize = QuantizeSettings{480, 0.0, 0.0};
+    DAWLAB_CHECK(session.replaceMidiClip(synth, 1, coarse, "Quantize") == 1);
+    DAWLAB_CHECK(menuItem(main.buildMidiClipMenu(synth, 1), "Off (as played)").ticked);
+    // A menu opened before the first clip was deleted: its items act on its own clip, now the first.
+    const juce::PopupMenu before = main.buildMidiClipMenu(synth, 1);
+    DAWLAB_CHECK(session.removeMidiClip(synth, 0));
+    DAWLAB_CHECK(runMenuItem(before, "Mute") && session.getMidiClips(synth)[0].id == secondId && session.getMidiClips(synth)[0].muted);
+    DAWLAB_CHECK(menuItem(main.buildMidiClipMenu(synth, 0), "Mute").ticked);
+    DAWLAB_CHECK(runMenuItem(main.buildMidiClipMenu(synth, 0), "Mute") && !session.getMidiClips(synth)[0].muted);
+    DAWLAB_CHECK(runMenuItem(before, "Edit Notes...") && session.getMidiClips(synth).size() == 1); // no window offline
+    // Delete; then the menu's items find no clip, and do nothing.
+    DAWLAB_CHECK(runMenuItem(before, "Delete") && session.getMidiClips(synth).empty());
+    DAWLAB_CHECK(runMenuItem(before, "1/4") && session.getMidiClips(synth).empty());
+    // The items of a menu whose window has gone do nothing.
+    DAWLAB_CHECK(session.addMidiClip(synth, 0, 3840) == 0);
+    auto gonePtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    gonePtr->getSession().newProject();
+    gonePtr->getEngine().applyPendingCommandsOffline();
+    const TrackId goneTrack = gonePtr->addTrack(TrackFormat::Mono, true);
+    DAWLAB_CHECK(gonePtr->getSession().addMidiClip(goneTrack, 0, 3840) == 0);
+    const juce::PopupMenu orphan = gonePtr->buildMidiClipMenu(goneTrack, 0);
+    gonePtr.reset();
+    DAWLAB_CHECK(runMenuItem(orphan, "Delete"));
+    std::printf("  quantize, mute, edit, delete act on the clip the menu was opened for, found again by its id\n");
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    engine.collectGarbage();
+}
+
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     constexpr double sr = 48000.0;
     std::setvbuf(stdout, nullptr, _IONBF, 0); // unbuffered: a crash must not swallow what was printed
@@ -2961,6 +3029,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testKeyboardShortcuts();
     testRecordMenu();
     testClipMenu();
+    testMidiClipMenu();
     testEngineCatchesUp();
     testMidiFiles();
     testInstrumentSound();
