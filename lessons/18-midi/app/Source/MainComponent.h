@@ -193,6 +193,14 @@ public:
 
 private:
     class ExportOverlay;
+    // toggleRecord()'s parts (chapter 18: audio and MIDI).
+    struct ArmedTracks {
+        bool audio = false, midi = false;
+    };
+    ArmedTracks findArmedTracks(); // which kinds of tracks are armed
+    void stopRecording(bool recordingAudio);
+    bool startMidiRecording();
+    bool startAudioRecording(bool withMidi);
     void timerCallback() override { tick(); }
     void handleSlotMenuResult(engine::ChannelRef ref, int slot, int result);
     void chooseVst3For(engine::ChannelRef ref, int slot);

@@ -217,6 +217,11 @@ static juce::String failedRendersText(int clips) {
            " old speed";
 }
 
+// Chapter 18: what the status line says when a MIDI recording ends.
+static juce::String recordedNotesText(int notes) {
+    return notes > 0 ? "Recorded " + juce::String(notes) + (notes == 1 ? " note" : " notes") : juce::String("No notes recorded");
+}
+
 void MainComponent::tick() {
     // Session's change messages are asynchronous; deliver pending ones now, so that a tick always
     // shows the current structure (this matters for the snapshot, which has no running message loop).
@@ -317,46 +322,61 @@ bool MainComponent::refuseProjectChange(const juce::String& what) {
 bool MainComponent::toggleRecord() {
     const bool recordingAudio = takeRecorder_.getPhase() == TakeRecorder::Phase::Recording;
     if (recordingAudio || midiRecording_.isRecording()) {
-        if (recordingAudio)
-            takeRecorder_.stop();
-        if (midiRecording_.isRecording()) { // chapter 18: one undo step for all the takes
-            const int notes = midiRecording_.stop();
-            if (!recordingAudio)
-                setStatus(notes > 0 ? "Recorded " + juce::String(notes) + (notes == 1 ? " note" : " notes")
-                                    : juce::String("No notes recorded"));
-        }
+        stopRecording(recordingAudio);
         return true;
     }
     // Chapter 18: armed audio tracks record audio, armed instrument tracks record the keyboard.
-    bool audioArmed = false, midiArmed = false;
-    for (int i = 0; i < session_.getNumTracks(); ++i) {
-        const engine::TrackId id = session_.getTrackId(i);
-        const engine::Track* t = engine_.getTrack(id);
-        if (t != nullptr && t->isArmed())
-            (session_.isInstrument(id) ? midiArmed : audioArmed) = true;
-    }
-    if (midiArmed && !audioArmed) {
-        if (isExporting() || isConvertingSampleRate()) {
-            setStatus("Not now: the project is being exported or converted");
-            return false;
-        }
-        midiRecording_.start(midiMode_);
-        status_.setColour(juce::Label::textColourId, DawColours::textDim());
-        engine_.getTransport().play();
-        setStatus(midiMode_ == MidiRecordMode::Overdub ? "Recording MIDI (overdub)" : "Recording MIDI (replace)");
-        transportBar_.update();
-        return true;
-    }
+    const ArmedTracks armed = findArmedTracks();
     if (isExporting() || isConvertingSampleRate()) {
         setStatus("Not now: the project is being exported or converted");
         return false;
     }
+    if (armed.midi && !armed.audio)
+        return startMidiRecording();
+    return startAudioRecording(armed.midi);
+}
+
+// Ends the recording that runs; the transport goes on playing. Chapter 18: one undo step for all the takes.
+void MainComponent::stopRecording(bool recordingAudio) {
+    if (recordingAudio)
+        takeRecorder_.stop();
+    if (!midiRecording_.isRecording())
+        return;
+    const int notes = midiRecording_.stop();
+    if (!recordingAudio)
+        setStatus(recordedNotesText(notes));
+}
+
+MainComponent::ArmedTracks MainComponent::findArmedTracks() {
+    ArmedTracks armed;
+    for (int i = 0; i < session_.getNumTracks(); ++i) {
+        const engine::TrackId id = session_.getTrackId(i);
+        const engine::Track* t = engine_.getTrack(id);
+        if (t != nullptr && t->isArmed())
+            (session_.isInstrument(id) ? armed.midi : armed.audio) = true;
+    }
+    return armed;
+}
+
+// Only instrument tracks are armed: the keyboard is recorded, and the transport starts.
+bool MainComponent::startMidiRecording() {
+    midiRecording_.start(midiMode_);
+    status_.setColour(juce::Label::textColourId, DawColours::textDim());
+    engine_.getTransport().play();
+    setStatus(midiMode_ == MidiRecordMode::Overdub ? "Recording MIDI (overdub)" : "Recording MIDI (replace)");
+    transportBar_.update();
+    return true;
+}
+
+// The armed audio tracks - with `withMidi`, the armed instrument tracks too - and the transport starts. False,
+// and the status line says why, if the recorder could not start.
+bool MainComponent::startAudioRecording(bool withMidi) {
     const juce::String error = takeRecorder_.start();
     if (error.isNotEmpty()) {
         setStatus(error);
         return false;
     }
-    if (midiArmed)
+    if (withMidi)
         midiRecording_.start(midiMode_);
     status_.setColour(juce::Label::textColourId, DawColours::textDim());
     engine_.getTransport().play();
