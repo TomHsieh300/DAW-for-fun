@@ -847,24 +847,24 @@ void MainComponent::loadDemoSongAsync() {
         return;
     setStatus("Generating the demo song...");
     const double sr = engine_.getSampleRate();
-    juce::Component::SafePointer<MainComponent> safe(this);
-    loader_.loadDemoSong(sr, [safe](std::shared_ptr<const engine::DemoSong> song) {
-        if (safe == nullptr)
-            return;
-        if (song->sampleRate != safe->engine_.getSampleRate()) { // the device changed meanwhile
-            safe->loadDemoSongAsync();
-            return;
-        }
-        if (safe->refuseProjectChange("Loading the demo song")) // a recording or an export started meanwhile
-            return;
-        safe->closeAllEditors();
-        safe->resumeAfterConversion_.store(false);
-        const int unknown = safe->session_.applyDemoSong(*song);
-        safe->projectFile_ = juce::File();
-        safe->arrangement_.zoomToFit();
-        safe->setStatus("Demo song loaded: 8 tracks, 19 inserts" +
-                        (unknown ? ", " + juce::String(unknown) + " unknown parameters" : juce::String()));
-    });
+    loader_.loadDemoSong(sr, whileAlive([this](std::shared_ptr<const engine::DemoSong> song) { demoSongReady(*song); }));
+}
+
+bool MainComponent::demoSongReady(const engine::DemoSong& song) {
+    if (song.sampleRate != engine_.getSampleRate()) { // the device changed meanwhile
+        loadDemoSongAsync();
+        return false;
+    }
+    if (refuseProjectChange("Loading the demo song")) // a recording or an export started meanwhile
+        return false;
+    closeAllEditors();
+    resumeAfterConversion_.store(false);
+    const int unknown = session_.applyDemoSong(song);
+    projectFile_ = juce::File();
+    arrangement_.zoomToFit();
+    setStatus("Demo song loaded: 8 tracks, 19 inserts" +
+              (unknown ? ", " + juce::String(unknown) + " unknown parameters" : juce::String()));
+    return true;
 }
 
 int MainComponent::loadDemoSongNow() {

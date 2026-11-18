@@ -79,6 +79,9 @@ public:
     bool refuseProjectChange(const juce::String& what);
     void newProject();
     void loadDemoSongAsync();       // generates on the loader thread
+    // What the song does once it is there: it replaces the project. False when the device changed the sample rate
+    // meanwhile (then it is generated again), or when a recording or an export started meanwhile.
+    bool demoSongReady(const engine::DemoSong& song);
     int loadDemoSongNow();          // synchronous (snapshot, tests); returns unknown parameter count, -1 if refused
     void chooseAudioFileForTrack(int track);
     bool loadChosenAudioFile(int track, const juce::File& file); // the chooser's answer; false: cancelled

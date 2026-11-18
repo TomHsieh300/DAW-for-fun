@@ -119,7 +119,7 @@ Kernel 只製表一次（每個 zero crossing 512 個點，點與點之間用 li
 
 - `app/Source/MediaLoader.h/.cpp`：`resampleBuffer()`、`MediaLoader::readAudioFile()`（同步的部分，可從測試使用）、`readChecked()`（「檔案可以宣告什麼」的那些檢查）、`loadFile()`、`loadDemoSong()`、`convertBuffers()`（同一個 resampler 在 loader thread 上執行，當 device 的 sample rate 改變時使用，Step 11）。
 - `app/Source/Session.cpp`：`setTrackAudio()`、`applyDemoSong()`、`applySampleRateConversion()`、`handleSampleRateChange()`（Step 11）。
-- `app/Source/MainComponent.cpp`：`chooseAudioFileForTrack()`、`loadAudioFile()` 與它的 callback `audioFileLoaded()`（依 `fileNumChannels` 設定 track format；smoke test 以自己讀好的檔案直接呼叫它）、`loadDemoSongAsync()`（啟動時與 Ctrl+D）、`loadDemoSongNow()`（同步，供測試使用）。
+- `app/Source/MainComponent.cpp`：`chooseAudioFileForTrack()`、`loadAudioFile()` 與它的 callback `audioFileLoaded()`（依 `fileNumChannels` 設定 track format；smoke test 以自己讀好的檔案直接呼叫它）、`loadDemoSongAsync()`（啟動時與 Ctrl+D）與它的 callback `demoSongReady()`、`loadDemoSongNow()`（同步，供測試使用）。
 
 ## 驗證
 

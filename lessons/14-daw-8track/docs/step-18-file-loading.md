@@ -183,7 +183,7 @@ audio at the old rate would end up in the project and play at the wrong pitch fo
   `handleSampleRateChange()` (Step 11).
 - `app/Source/MainComponent.cpp`: `chooseAudioFileForTrack()`, `loadAudioFile()` and its callback `audioFileLoaded()`
   (sets the track format from `fileNumChannels`; the smoke test calls it with a file it read itself),
-  `loadDemoSongAsync()` (startup and Ctrl+D), `loadDemoSongNow()` (synchronous, for tests).
+  `loadDemoSongAsync()` (startup and Ctrl+D) and its callback `demoSongReady()`, `loadDemoSongNow()` (synchronous, for tests).
 
 ## Verify
 

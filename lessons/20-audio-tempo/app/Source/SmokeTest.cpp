@@ -3629,10 +3629,34 @@ void testTrimDialog() {
     DAWLAB_CHECK(main->answerTrim(1, "-35") && recorder.getTrimSamples() == -35);
 }
 
+// File > Demo song: what the loader thread's song does.
+void testDemoSongLoading() {
+    DialogFolder folder;
+    auto main = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    const double rate = main->getEngine().getSampleRate();
+    // Generated for a rate the device has left meanwhile: generated again.
+    DAWLAB_CHECK(!main->demoSongReady(makeDemoSong(rate / 2)) && main->getStatus() == "Generating the demo song...");
+    // An export started meanwhile (a short clip, quick to render): it replaces nothing.
+    const juce::File tone = writeRawWav(folder.dir.getChildFile("tone.wav"), 48000, 480);
+    LoadedMedia media = MediaLoader::readAudioFile(tone, rate);
+    media.track = main->getSession().getTrackId(0);
+    DAWLAB_CHECK(main->audioFileLoaded(media, tone));
+    main->exportMixdown(folder.dir.getChildFile("mix.wav"));
+    const engine::DemoSong song = makeDemoSong(rate);
+    const bool refused = main->isExporting() && !main->demoSongReady(song) && main->getStatus().contains("export");
+    main = std::make_unique<MainComponent>(MainComponent::Mode::Offline); // the old one waits for its export
+    const bool loaded = main->demoSongReady(song);
+    std::printf("dialogs: the demo song while an export runs -> refused: %s; then -> \"%s\"\n", refused ? "yes" : "no",
+                main->getStatus().toRawUTF8());
+    DAWLAB_CHECK(refused);
+    DAWLAB_CHECK(loaded && main->getStatus() == "Demo song loaded: 8 tracks, 19 inserts" && main->getSession().getNumTracks() == 8);
+}
+
 void testDialogs() {
     testWhileAlive();
     testExportDialog();
     testAudioFileLoading();
+    testDemoSongLoading();
     testProjectDialogs();
     testTrimDialog();
 }
