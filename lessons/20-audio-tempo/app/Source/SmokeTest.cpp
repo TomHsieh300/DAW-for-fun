@@ -2715,8 +2715,6 @@ void testBarGrid() {
     DAWLAB_CHECK(view.getBarGrid(8.0).step == 1); // a short song: every bar
 }
 
-// ---- --smoke-test --------------------------------------------------------------------------------
-
 // ---- the menus: what each one shows, and what each of its items does ----------------------------------------
 // showMenuAsync() needs a person; the functions that build a menu and handle the item chosen do not.
 
@@ -3011,6 +3009,54 @@ void testMidiClipMenu() {
     engine.collectGarbage();
 }
 
+// The menus of an automation lane's header: ArrangementView::buildParameterMenu() and buildModeMenu(), and what
+// their items do.
+void testAutomationMenus() {
+    std::printf("the automation lane's menus: their items, and what each one does\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    Session& session = main.getSession();
+    Engine& engine = main.getEngine();
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    ArrangementView& view = main.getArrangement();
+    const TrackId track = session.getTrackId(0);
+    const ArrangementView::AutomatableParameters parameters = session.getAutomatableParameters(session.trackRef(track));
+    DAWLAB_CHECK(parameters.size() >= 2);
+    const int count = static_cast<int>(parameters.size());
+
+    // The track's parameters, item n for parameters[n - 1]; none ticked while no lane is shown.
+    juce::PopupMenu menu = view.buildParameterMenu(track, parameters);
+    DAWLAB_CHECK(menu.getNumItems() == count && menuItem(menu, parameters[0].first).id == 1 && !menuItem(menu, parameters[0].first).ticked);
+    // The second: its lane shown, and ticked; no item, or one past the last, changes nothing.
+    view.handleParameterMenuResult(track, parameters, 2);
+    for (const int nothing : {0, count + 1})
+        view.handleParameterMenuResult(track, parameters, nothing);
+    const LaneAddress* shown = view.getShownLane(track);
+    DAWLAB_CHECK(shown != nullptr && *shown == parameters[1].second);
+    menu = view.buildParameterMenu(track, parameters);
+    DAWLAB_CHECK(menuItem(menu, parameters[1].first).ticked && !menuItem(menu, parameters[0].first).ticked);
+    view.handleParameterMenuResult(track, parameters, count);
+    DAWLAB_CHECK(view.getShownLane(track) != nullptr && *view.getShownLane(track) == parameters.back().second);
+
+    // The modes, item = mode + 1: a lane with nothing in it reads; Latch chosen, then ticked; no item: still Latch.
+    const LaneAddress address = *view.getShownLane(track);
+    menu = view.buildModeMenu(address);
+    DAWLAB_CHECK(menuItem(menu, "Read").id == static_cast<int>(AutomationMode::Read) + 1 && menuItem(menu, "Read").ticked);
+    DAWLAB_CHECK(menuItem(menu, "Write").id == static_cast<int>(AutomationMode::Write) + 1 && !menuItem(menu, "Latch").ticked);
+    view.handleModeMenuResult(address, static_cast<int>(AutomationMode::Latch) + 1);
+    view.handleModeMenuResult(address, 0);
+    DAWLAB_CHECK(session.getLane(address) != nullptr && session.getLane(address)->mode == AutomationMode::Latch);
+    menu = view.buildModeMenu(address);
+    DAWLAB_CHECK(menuItem(menu, "Latch").ticked && !menuItem(menu, "Read").ticked);
+    std::printf("  %d parameters, the shown one ticked; 4 modes, the lane's ticked; items 0 and %d change nothing\n", count, count + 1);
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    engine.collectGarbage();
+}
+
+// ---- --smoke-test --------------------------------------------------------------------------------
+
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     constexpr double sr = 48000.0;
     std::setvbuf(stdout, nullptr, _IONBF, 0); // unbuffered: a crash must not swallow what was printed
@@ -3030,6 +3076,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testRecordMenu();
     testClipMenu();
     testMidiClipMenu();
+    testAutomationMenus();
     testEngineCatchesUp();
     testMidiFiles();
     testInstrumentSound();

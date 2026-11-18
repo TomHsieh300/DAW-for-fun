@@ -371,8 +371,6 @@ void testBarGrid() {
     DAWLAB_CHECK(view.getBarGrid(8.0).step == 1); // a short song: every bar
 }
 
-// ---- --smoke-test --------------------------------------------------------------------------------
-
 // ---- the menus: what each one shows, and what each of its items does ----------------------------------------
 // showMenuAsync() needs a person; the functions that build a menu and handle the item chosen do not.
 
@@ -501,6 +499,8 @@ void testKeyboardShortcuts() {
     DAWLAB_CHECK(without.size() == lines.size() - 1 && !without.contains("Play / Stop:  " + space) && without.contains(zoomIn));
     std::printf("  %d commands with a key listed, one line each; with its key taken away, Play / Stop is not\n", lines.size());
 }
+
+// ---- --smoke-test --------------------------------------------------------------------------------
 
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     constexpr double sr = 48000.0;

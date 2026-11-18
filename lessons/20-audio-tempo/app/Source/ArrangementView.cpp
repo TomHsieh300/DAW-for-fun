@@ -1066,18 +1066,36 @@ void ArrangementView::mouseDownInAutomation(const juce::MouseEvent& e, int lane)
         drag_ = Drag::Point;
 }
 
+namespace {
+// What a menu shown with showMenuAsync() calls with the item chosen (0: none): `handle(owner, item)`, if `owner`
+// is still there by then. A menu's own functions build it and handle the item: the smoke test calls those.
+template <typename Owner, typename Handle>
+std::function<void(int)> menuCallback(Owner* owner, Handle handle) {
+    return [safe = juce::Component::SafePointer<Owner>(owner), handle](int item) {
+        if (safe != nullptr)
+            handle(*safe.getComponent(), item);
+    };
+}
+} // namespace
+
 void ArrangementView::showParameterMenu(engine::TrackId track) {
     const auto parameters = session_.getAutomatableParameters(session_.trackRef(track));
+    buildParameterMenu(track, parameters)
+        .showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),
+                       menuCallback(this, [track, parameters](ArrangementView& v, int item) { v.handleParameterMenuResult(track, parameters, item); }));
+}
+
+juce::PopupMenu ArrangementView::buildParameterMenu(engine::TrackId track, const AutomatableParameters& parameters) const {
+    const LaneAddress* shown = getShownLane(track);
     juce::PopupMenu menu;
-    for (size_t i = 0; i < parameters.size(); ++i) {
-        const LaneAddress* shown = getShownLane(track);
+    for (size_t i = 0; i < parameters.size(); ++i)
         menu.addItem(static_cast<int>(i) + 1, parameters[i].first, true, shown != nullptr && *shown == parameters[i].second);
-    }
-    juce::Component::SafePointer<ArrangementView> safe(this);
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this), [safe, track, parameters](int chosen) {
-        if (safe != nullptr && chosen > 0)
-            safe->showAutomation(track, parameters[static_cast<size_t>(chosen) - 1].second);
-    });
+    return menu;
+}
+
+void ArrangementView::handleParameterMenuResult(engine::TrackId track, const AutomatableParameters& parameters, int item) {
+    if (item > 0 && item <= static_cast<int>(parameters.size()))
+        showAutomation(track, parameters[static_cast<size_t>(item) - 1].second);
 }
 
 void ArrangementView::showModeMenu(engine::TrackId track) {
@@ -1085,6 +1103,11 @@ void ArrangementView::showModeMenu(engine::TrackId track) {
     if (shown == nullptr)
         return;
     const LaneAddress address = *shown;
+    buildModeMenu(address).showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),
+                                         menuCallback(this, [address](ArrangementView& v, int item) { v.handleModeMenuResult(address, item); }));
+}
+
+juce::PopupMenu ArrangementView::buildModeMenu(const LaneAddress& address) const {
     const LaneContent* content = session_.getLane(address);
     const auto current = content != nullptr ? content->mode : engine::AutomationMode::Read;
     juce::PopupMenu menu;
@@ -1092,11 +1115,12 @@ void ArrangementView::showModeMenu(engine::TrackId track) {
                                             engine::AutomationMode::Write};
     for (const auto mode : modes)
         menu.addItem(static_cast<int>(mode) + 1, modeName(mode), true, mode == current);
-    juce::Component::SafePointer<ArrangementView> safe(this);
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this), [safe, address](int chosen) {
-        if (safe != nullptr && chosen > 0)
-            safe->session_.setLaneMode(address, static_cast<engine::AutomationMode>(chosen - 1));
-    });
+    return menu;
+}
+
+void ArrangementView::handleModeMenuResult(const LaneAddress& address, int item) {
+    if (item > 0)
+        session_.setLaneMode(address, static_cast<engine::AutomationMode>(item - 1));
 }
 
 } // namespace dawlab::app

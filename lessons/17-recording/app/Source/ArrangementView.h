@@ -140,6 +140,13 @@ public:
     void showAutomation(engine::TrackId track, const LaneAddress& address);
     void hideAutomation(engine::TrackId track);
     void toggleAutomation(engine::TrackId track); // first time: the track's Gain
+    // The menus of a lane's header, the parameter it shows and its mode: their items, and what the item chosen does
+    // (0, no item: nothing). Item n of the parameter menu is parameters[n - 1]; the mode menu's, a mode + 1.
+    using AutomatableParameters = std::vector<std::pair<juce::String, LaneAddress>>;
+    juce::PopupMenu buildParameterMenu(engine::TrackId track, const AutomatableParameters& parameters) const;
+    void handleParameterMenuResult(engine::TrackId track, const AutomatableParameters& parameters, int item);
+    juce::PopupMenu buildModeMenu(const LaneAddress& address) const;
+    void handleModeMenuResult(const LaneAddress& address, int item);
     const LaneAddress* getShownLane(engine::TrackId track) const noexcept; // nullptr: not shown
     juce::Rectangle<int> getAutomationBounds(int lane) const noexcept;     // empty: not shown
     juce::Rectangle<int> getAutomationToggleBounds(int lane) const noexcept;
