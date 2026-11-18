@@ -2733,6 +2733,58 @@ void testArrangementMouse() {
     DAWLAB_CHECK(view.getViewStart() == timeBefore);
 }
 
+// ---- the piano roll's wheel (chapter 18) -------------------------------------------------------------
+// Ctrl zooms around the mouse (up: in), Shift scrolls the time (never before the clip's tick 0), the
+// plain wheel scrolls the keys (within the 128 rows).
+void testPianoRollWheel() {
+    std::printf("the piano roll's wheel\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    Session& session = main.getSession();
+    session.newProject();
+    const TrackId synth = main.addTrack(TrackFormat::Mono, true);
+    DAWLAB_CHECK(session.addMidiClip(synth, 0, 4 * 960) == 0);
+    if (session.getMidiClips(synth).empty())
+        return;
+    PianoRoll roll(session, synth, session.getMidiClips(synth)[0].id);
+    roll.setView(960.0, 4.0);
+    const juce::Point<float> mouse{300.0f, 200.0f};
+    const auto turn = [&](juce::ModifierKeys mods, float deltaY) {
+        juce::MouseWheelDetails wheel{};
+        wheel.deltaY = deltaY;
+        roll.mouseWheelMove(juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), mouse, mods, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                             &roll, &roll, juce::Time::getCurrentTime(), mouse, juce::Time::getCurrentTime(), 1, false),
+                            wheel);
+    };
+    const juce::ModifierKeys ctrl(juce::ModifierKeys::ctrlModifier), shift(juce::ModifierKeys::shiftModifier), none;
+    const double underMouse = roll.xToTick(mouse.x);
+    turn(ctrl, 0.5f);
+    const double zoomedIn = roll.getTicksPerPixel();
+    DAWLAB_CHECK_NEAR(zoomedIn, 3.2, 1e-9);
+    DAWLAB_CHECK_NEAR(roll.xToTick(mouse.x), underMouse, 1e-6);
+    turn(ctrl, -0.5f);
+    DAWLAB_CHECK_NEAR(roll.getTicksPerPixel(), 4.0, 1e-9);
+
+    const double viewTick = roll.xToTick(PianoRoll::kKeyWidth);
+    turn(shift, 0.5f);
+    const double scrolled = roll.xToTick(PianoRoll::kKeyWidth);
+    turn(shift, 5.0f);
+    DAWLAB_CHECK_NEAR(scrolled, viewTick - 0.5 * 200.0 * 4.0, 1e-9);
+    DAWLAB_CHECK(roll.xToTick(PianoRoll::kKeyWidth) == 0.0);
+
+    const float top = roll.pitchToY(127);
+    turn(none, -0.5f);
+    const float down = roll.pitchToY(127);
+    turn(none, 100.0f);
+    const float topmost = roll.pitchToY(127);
+    turn(none, -100.0f);
+    std::printf("   Ctrl: 4 -> %.1f ticks per pixel; Shift: tick %.0f -> %.0f -> %.0f; keys: row 127 at y %.0f -> %.0f, up to %.0f, down to %.0f\n",
+                zoomedIn, viewTick, scrolled, roll.xToTick(PianoRoll::kKeyWidth), static_cast<double>(top), static_cast<double>(down),
+                static_cast<double>(topmost), static_cast<double>(roll.pitchToY(127)));
+    DAWLAB_CHECK(down == top - 60.0f && topmost == static_cast<float>(PianoRoll::kRulerHeight));
+    DAWLAB_CHECK(roll.pitchToY(0) + PianoRoll::kRowHeight == static_cast<float>(roll.getHeight())); // the lowest row at the bottom
+}
+
 // ---- --smoke-test --------------------------------------------------------------------------------
 
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
@@ -2743,6 +2795,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testBarGrid();
     testSlotButtons();
     testArrangementMouse();
+    testPianoRollWheel();
     testMidiModel();
     testMidiEditing();
     testMidiRecording();
