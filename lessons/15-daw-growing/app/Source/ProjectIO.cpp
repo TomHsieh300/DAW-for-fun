@@ -228,46 +228,64 @@ bool ProjectIO::save(const Session& session, const juce::File& file, juce::Strin
 
 namespace {
 
+// The end of every restored insert: the engine refused it (a warning), or it gets its bypass.
+void finishInsert(Session& session, ChannelRef ref, const InsertState& ins, InsertEffect* fx, const juce::String& where,
+                  juce::StringArray& warnings) {
+    if (fx == nullptr)
+        warnings.add(where + ": slot " + juce::String(ins.slot + 1) + " refused by the engine");
+    else
+        session.setInsertBypassed(ref, ins.slot, ins.bypassed);
+}
+
+// A VST3 insert: loaded from its file, then given its saved state. Skipped (with a warning) without a
+// plugin host or when the file does not load.
+void restorePluginInsert(Session& session, host::PluginHost* pluginHost, ChannelRef ref, const InsertState& ins,
+                         const juce::String& where, juce::StringArray& warnings) {
+    const Engine& engine = session.getEngine();
+    const juce::File pluginFile(juce::String::fromUTF8(ins.type.c_str()));
+    if (pluginHost == nullptr) {
+        warnings.add(where + ": plugin " + pluginFile.getFileName() + " skipped (no plugin host)");
+        return;
+    }
+    juce::String why;
+    auto instance = pluginHost->loadFromFile(pluginFile, engine.getSampleRate(), engine.getMaxBlockSize(), why);
+    if (instance == nullptr) {
+        warnings.add(where + ": plugin " + pluginFile.getFileName() + " not loaded (" + why + ")");
+        return;
+    }
+    auto hosted = std::make_unique<host::HostedPlugin>(std::move(instance));
+    juce::MemoryBlock state;
+    if (!ins.state.empty() && state.fromBase64Encoding(juce::String(ins.state)))
+        hosted->setState(state);
+    finishInsert(session, ref, ins, session.setVstInsert(ref, ins.slot, std::make_unique<VstInsert>(std::move(hosted))), where,
+                 warnings);
+}
+
+// A built-in insert and its parameters. Skipped (with a warning) when the effect is unknown; a parameter
+// it does not have is a warning too.
+void restoreBuiltinInsert(Session& session, ChannelRef ref, const InsertState& ins, const juce::String& where,
+                          juce::StringArray& warnings) {
+    EffectType type;
+    if (!effectTypeFromName(ins.type.c_str(), type)) {
+        warnings.add(where + ": unknown effect \"" + juce::String(ins.type) + "\" skipped");
+        return;
+    }
+    InsertEffect* fx = session.setBuiltinInsert(ref, ins.slot, type);
+    if (fx != nullptr)
+        for (const project::ParamState& prm : ins.params)
+            if (!fx->setParameterByName(prm.name.c_str(), prm.value))
+                warnings.add(where + ": " + fx->getName() + " has no parameter \"" + juce::String(prm.name) + "\"");
+    finishInsert(session, ref, ins, fx, where, warnings);
+}
+
 void restoreInserts(Session& session, host::PluginHost* pluginHost, ChannelRef ref, const StripState& s,
                     juce::StringArray& warnings) {
-    const Engine& engine = session.getEngine();
     const juce::String where = session.getStripName(ref);
     for (const InsertState& ins : s.inserts) {
-        InsertEffect* fx = nullptr;
-        if (ins.vst3) {
-            const juce::File pluginFile(juce::String::fromUTF8(ins.type.c_str()));
-            if (pluginHost == nullptr) {
-                warnings.add(where + ": plugin " + pluginFile.getFileName() + " skipped (no plugin host)");
-                continue;
-            }
-            juce::String why;
-            auto instance = pluginHost->loadFromFile(pluginFile, engine.getSampleRate(), engine.getMaxBlockSize(), why);
-            if (instance == nullptr) {
-                warnings.add(where + ": plugin " + pluginFile.getFileName() + " not loaded (" + why + ")");
-                continue;
-            }
-            auto hosted = std::make_unique<host::HostedPlugin>(std::move(instance));
-            juce::MemoryBlock state;
-            if (!ins.state.empty() && state.fromBase64Encoding(juce::String(ins.state)))
-                hosted->setState(state);
-            fx = session.setVstInsert(ref, ins.slot, std::make_unique<VstInsert>(std::move(hosted)));
-        } else {
-            EffectType type;
-            if (!effectTypeFromName(ins.type.c_str(), type)) {
-                warnings.add(where + ": unknown effect \"" + juce::String(ins.type) + "\" skipped");
-                continue;
-            }
-            fx = session.setBuiltinInsert(ref, ins.slot, type);
-            if (fx != nullptr)
-                for (const project::ParamState& prm : ins.params)
-                    if (!fx->setParameterByName(prm.name.c_str(), prm.value))
-                        warnings.add(where + ": " + fx->getName() + " has no parameter \"" + juce::String(prm.name) + "\"");
-        }
-        if (fx == nullptr) {
-            warnings.add(where + ": slot " + juce::String(ins.slot + 1) + " refused by the engine");
-            continue;
-        }
-        session.setInsertBypassed(ref, ins.slot, ins.bypassed);
+        if (ins.vst3)
+            restorePluginInsert(session, pluginHost, ref, ins, where, warnings);
+        else
+            restoreBuiltinInsert(session, ref, ins, where, warnings);
     }
 }
 

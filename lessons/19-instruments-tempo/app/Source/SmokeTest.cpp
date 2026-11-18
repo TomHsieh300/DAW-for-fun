@@ -2809,6 +2809,55 @@ void testSynthKnobs() {
     DAWLAB_CHECK(SynthPanel::valueOf(defaults, SynthPanel::kNumKnobs) == 0.0);
 }
 
+// ---- inserts a project cannot fully restore (chapter 15) ---------------------------------------------
+// Opening a project: an unknown effect is skipped with a warning, so is a plugin without a plugin host
+// or whose file does not load; a parameter the effect does not have is a warning; the rest comes back.
+void testOddInserts() {
+    std::printf("inserts a project cannot fully restore\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    Session& session = main.getSession();
+    session.newProject();
+    project::ProjectState p = ProjectIO::capture(session, "odd").state;
+    const juce::File folder = juce::File::getSpecialLocation(juce::File::tempDirectory);
+    const auto insert = [](int slot, bool vst3, const std::string& type, bool bypassed) {
+        project::InsertState ins;
+        ins.slot = slot;
+        ins.vst3 = vst3;
+        ins.type = type;
+        ins.bypassed = bypassed;
+        return ins;
+    };
+    project::InsertState compressor = insert(1, false, effectTypeName(EffectType::Compressor), true);
+    compressor.params = {{"Threshold", -30.0f}, {"No Such Parameter", 1.0f}};
+    const juce::File plugin = folder.getChildFile("dawlab_no_such_plugin.vst3");
+    p.buses[0].inserts = {insert(0, false, "No Such Effect", false), compressor,
+                          insert(2, true, plugin.getFullPathName().toStdString(), false)};
+    const juce::File file = folder.getNonexistentChildFile("dawlab_odd_inserts", ".dawlab");
+    DAWLAB_CHECK(file.replaceWithText(juce::String(project::writeProject(p))));
+
+    const ChannelRef bus = ChannelRef::bus(0);
+    const ProjectIO::OpenResult noHost = ProjectIO::open(session, nullptr, file);
+    const InsertEffect* fx = session.getSlot(bus, 1).effect;
+    std::printf("   without a plugin host: %s, %d warnings:\n", noHost.ok ? "opened" : noHost.error.toRawUTF8(), noHost.warnings.size());
+    for (const juce::String& w : noHost.warnings)
+        std::printf("     %s\n", w.toRawUTF8());
+    DAWLAB_CHECK(noHost.ok && noHost.warnings.size() == 3);
+    DAWLAB_CHECK(noHost.warnings[0].contains("unknown effect \"No Such Effect\" skipped"));
+    DAWLAB_CHECK(noHost.warnings[1].contains("Compressor has no parameter \"No Such Parameter\""));
+    DAWLAB_CHECK(noHost.warnings[2].contains("dawlab_no_such_plugin.vst3 skipped (no plugin host)"));
+    DAWLAB_CHECK(session.getSlot(bus, 0).isEmpty() && session.getSlot(bus, 2).isEmpty());
+    DAWLAB_CHECK(session.findInsertSlot(bus, "Compressor") == 1 && session.findInsertSlot(bus, "Limiter") == -1);
+    DAWLAB_CHECK(fx != nullptr && fx->isBypassed() && fx->getParameter(fx->findParameter("Threshold")) == -30.0f);
+
+    host::PluginHost pluginHost;
+    const ProjectIO::OpenResult withHost = ProjectIO::open(session, &pluginHost, file);
+    std::printf("   with one: %s\n", withHost.warnings.size() == 3 ? withHost.warnings[2].toRawUTF8() : "(not 3 warnings)");
+    DAWLAB_CHECK(withHost.ok && withHost.warnings.size() == 3 && withHost.warnings[2].contains("not loaded (File not found"));
+    DAWLAB_CHECK(session.getSlot(bus, 2).isEmpty() && session.findInsertSlot(bus, "Compressor") == 1);
+    file.deleteFile();
+}
+
 // ---- --smoke-test --------------------------------------------------------------------------------
 
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
@@ -2821,6 +2870,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testArrangementMouse();
     testPianoRollWheel();
     testSynthKnobs();
+    testOddInserts();
     testMidiModel();
     testMidiEditing();
     testMidiRecording();
