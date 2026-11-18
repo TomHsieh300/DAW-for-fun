@@ -69,6 +69,78 @@ MidiExport songOf(const Session& session) {
     return out;
 }
 
+namespace {
+
+// The notes of a clip not yet ended, by (channel, pitch): their indexes in the clip, oldest first.
+using OpenNotes = std::map<std::pair<int, int>, std::deque<size_t>>;
+
+// A note off ends the note of its key and channel that started first. One with no such note does nothing.
+void endNote(MidiClipModel& clip, OpenNotes& open, int channel, int pitch, std::int64_t tick) {
+    const auto it = open.find({channel, pitch});
+    if (it == open.end() || it->second.empty())
+        return;
+    engine::Note& n = clip.played[it->second.front()];
+    n.length = std::max<std::int64_t>(tick - n.start, 1);
+    it->second.pop_front();
+}
+
+// One event of a file's track into the clip: a note on starts a note, a note off ends one, a controller is the
+// clip's. Anything else (pitch bend, program changes) is only counted, in `dropped`.
+void addEvent(MidiClipModel& clip, OpenNotes& open, const midifile::Event& e, int& dropped) {
+    const engine::MidiMessage& m = e.message;
+    const int status = m.status & 0xF0, channel = m.status & 0x0F;
+    const bool on = status == 0x90 && m.data2 > 0, off = status == 0x80 || (status == 0x90 && m.data2 == 0);
+    if (on) {
+        open[{channel, m.data1}].push_back(clip.played.size());
+        clip.played.push_back({e.tick, 0, m.data1, m.data2, channel});
+    } else if (off) {
+        endNote(clip, open, channel, m.data1, e.tick);
+    } else if (status == 0xB0) {
+        clip.controllers.push_back({e.tick, m.data1, m.data2, channel});
+    } else {
+        ++dropped;
+    }
+}
+
+// A file's track as one clip from tick 0 to the end of its last bar. A note that is never ended ends with the
+// track.
+MidiClipModel clipOf(const midifile::Track& track, int& dropped) {
+    MidiClipModel clip;
+    OpenNotes open;
+    std::int64_t last = 0;
+    for (const midifile::Event& e : track.events) {
+        last = std::max(last, e.tick);
+        addEvent(clip, open, e, dropped);
+    }
+    for (auto& [key, notes] : open)
+        for (const size_t i : notes)
+            clip.played[i].length = std::max<std::int64_t>(last - clip.played[i].start, 1);
+    sortNotes(clip.played);
+    std::stable_sort(clip.controllers.begin(), clip.controllers.end(),
+                     [](const engine::ControllerPoint& a, const engine::ControllerPoint& b) { return a.tick < b.tick; });
+    std::int64_t end = last;
+    for (const engine::Note& n : clip.played)
+        end = std::max(end, n.start + n.length);
+    clip.length = std::max<std::int64_t>((end + kBar - 1) / kBar * kBar, kBar);
+    return clip;
+}
+
+// The song's tempos as the map's points: jumps. A tempo that only repeats the one before is dropped; more than the
+// map can hold are thinned to the fewest points that keep every tick within a tolerance (TempoThinning.h).
+tempothin::Fitted tempoMapOf(const midifile::Song& song) {
+    std::vector<engine::TempoPoint> points;
+    for (const midifile::Tempo& tempo : song.tempos) {
+        const double bpm = std::clamp(tempo.bpm, engine::TempoMap::kMinBpm, engine::TempoMap::kMaxBpm);
+        if (points.empty() || tempo.tick > points.back().tick)
+            points.push_back({points.empty() ? 0 : tempo.tick, bpm, false});
+    }
+    if (points.empty())
+        points.push_back({0, 120.0, false});
+    return tempothin::fitTempoPoints(points);
+}
+
+} // namespace
+
 MidiImport importSong(Session& session, const midifile::Song& song) {
     MidiImport result;
     if (song.tracks.empty()) {
@@ -79,40 +151,7 @@ MidiImport importSong(Session& session, const midifile::Song& song) {
     const std::uint32_t firstId = session.makeNewTrack(engine::TrackFormat::Mono).track.id.value;
     for (size_t t = 0; t < song.tracks.size(); ++t) {
         const midifile::Track& track = song.tracks[t];
-        MidiClipModel clip;
-        std::map<std::pair<int, int>, std::deque<size_t>> open; // (channel, pitch) -> notes not yet ended, oldest first
-        std::int64_t last = 0;
-        for (const midifile::Event& e : track.events) {
-            const engine::MidiMessage& m = e.message;
-            last = std::max(last, e.tick);
-            const int status = m.status & 0xF0, channel = m.status & 0x0F;
-            const bool on = status == 0x90 && m.data2 > 0, off = status == 0x80 || (status == 0x90 && m.data2 == 0);
-            if (on) {
-                open[{channel, m.data1}].push_back(clip.played.size());
-                clip.played.push_back({e.tick, 0, m.data1, m.data2, channel});
-            } else if (off) {
-                const auto it = open.find({channel, m.data1});
-                if (it != open.end() && !it->second.empty()) {
-                    engine::Note& n = clip.played[it->second.front()];
-                    n.length = std::max<std::int64_t>(e.tick - n.start, 1);
-                    it->second.pop_front();
-                }
-            } else if (status == 0xB0) {
-                clip.controllers.push_back({e.tick, m.data1, m.data2, channel});
-            } else {
-                ++result.dropped;
-            }
-        }
-        for (auto& [key, notes] : open)
-            for (const size_t i : notes)
-                clip.played[i].length = std::max<std::int64_t>(last - clip.played[i].start, 1);
-        sortNotes(clip.played);
-        std::stable_sort(clip.controllers.begin(), clip.controllers.end(),
-                         [](const engine::ControllerPoint& a, const engine::ControllerPoint& b) { return a.tick < b.tick; });
-        std::int64_t end = last;
-        for (const engine::Note& n : clip.played)
-            end = std::max(end, n.start + n.length);
-        clip.length = std::max<std::int64_t>((end + kBar - 1) / kBar * kBar, kBar);
+        MidiClipModel clip = clipOf(track, result.dropped);
         const juce::String name = track.name.empty() ? "MIDI " + juce::String(static_cast<int>(t) + 1) : juce::String(track.name);
         clip.name = name;
         clip.id = session.newMidiClipId();
@@ -125,17 +164,7 @@ MidiImport importSong(Session& session, const midifile::Song& song) {
         edits.push_back(add);
     }
 
-    // The tempos: jumps. A tempo that only repeats the one before is dropped; more than the map can hold are
-    // thinned to the fewest points that keep every tick within a tolerance (TempoThinning.h).
-    std::vector<engine::TempoPoint> points;
-    for (const midifile::Tempo& tempo : song.tempos) {
-        const double bpm = std::clamp(tempo.bpm, engine::TempoMap::kMinBpm, engine::TempoMap::kMaxBpm);
-        if (points.empty() || tempo.tick > points.back().tick)
-            points.push_back({points.empty() ? 0 : tempo.tick, bpm, false});
-    }
-    if (points.empty())
-        points.push_back({0, 120.0, false});
-    const tempothin::Fitted fitted = tempothin::fitTempoPoints(points);
+    const tempothin::Fitted fitted = tempoMapOf(song);
     result.thinned = fitted.tolerance > 0.0;
     result.tolerance = fitted.tolerance;
     result.tempos = static_cast<int>(fitted.points.size());
