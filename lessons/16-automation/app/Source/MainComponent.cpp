@@ -872,8 +872,28 @@ void MainComponent::getAllCommands(juce::Array<juce::CommandID>& c) {
     c.addArray(ids, static_cast<int>(sizeof(ids) / sizeof(ids[0])));
 }
 
-// A command of this target as the menus, the keyboard and the list of shortcuts show it, and when it can
-// run. findCommand() has them all in one table.
+// Track > Mute / Solo selected track: one undo step each; nothing in a project without tracks.
+void MainComponent::toggleMuteSelected() {
+    const engine::TrackId selected = arrangement_.getSelectedTrack();
+    if (const engine::Track* strip = engine_.getTrack(selected))
+        session_.perform(edit::SetValue{StripTarget::ofTrack(selected), edit::Field::Mute, 0, strip->isMuted() ? 0.0f : 1.0f},
+                         "Mute " + strip->getName());
+}
+
+void MainComponent::toggleSoloSelected() {
+    const engine::TrackId selected = arrangement_.getSelectedTrack();
+    if (const engine::Track* strip = engine_.getTrack(selected))
+        session_.perform(edit::SetValue{StripTarget::ofTrack(selected), edit::Field::Solo, 0, strip->isSoloed() ? 0.0f : 1.0f},
+                         "Solo " + strip->getName());
+}
+
+// View > Zoom in / out: around the middle of the lanes.
+void MainComponent::zoomArrangement(double factor) {
+    arrangement_.zoom(factor, ArrangementView::kHeaderWidth + 0.5f * (arrangement_.getWidth() - ArrangementView::kHeaderWidth));
+}
+
+// A command of this target as the menus, the keyboard and the list of shortcuts show it, what it does and
+// when it can run. findCommand() has them all in one table.
 struct MainComponent::Command {
     struct Key {
         int code = 0; // 0: no key
@@ -884,6 +904,7 @@ struct MainComponent::Command {
     const char* description;
     const char* category;
     Key keys[2];                  // its default key presses
+    void (*run)(MainComponent&);  // what it does
     bool idleOnly = false;        // not while an export renders
     Needs needs = Needs::nothing; // what else it needs to run
     Shows shows = Shows::nothing; // what its tick mark in the menu shows
@@ -898,46 +919,63 @@ const MainComponent::Command* MainComponent::findCommand(juce::CommandID id) {
     constexpr int none = juce::ModifierKeys::noModifiers;
     constexpr bool idle = true, anytime = false; // idle: not while an export renders
     static const Command commands[] = {
-        {CommandIDs::newProject, "New project", "Start an empty project", category::file, {{'n', cmd}}, idle},
-        {CommandIDs::loadDemoSong, "Load demo song", "Generate the 8-track demo song", category::file, {{'d', cmd}}, idle},
+        {CommandIDs::newProject, "New project", "Start an empty project", category::file, {{'n', cmd}},
+         [](MainComponent& m) { m.askToSaveChanges([&m] { m.newProject(); }); }, idle},
+        {CommandIDs::loadDemoSong, "Load demo song", "Generate the 8-track demo song", category::file, {{'d', cmd}},
+         [](MainComponent& m) { m.askToSaveChanges([&m] { m.loadDemoSongAsync(); }); }, idle},
         // chapter 15: Ctrl+O opens a project now
         {CommandIDs::loadAudioIntoTrack, "Load audio into selected track...", "Load a WAV / AIFF file", category::file,
-         {{'i', cmd}}, idle},
-        {CommandIDs::undo, "Undo", "Take back the last change", category::edit, {{'z', cmd}}, idle, Needs::canUndo},
-        {CommandIDs::redo, "Redo", "Do the undone change again", category::edit, {{'z', cmd | shift}, {'y', cmd}}, idle,
-         Needs::canRedo},
-        {CommandIDs::openProject, "Open project...", "Open a DawLab project file", category::file, {{'o', cmd}}, idle},
-        {CommandIDs::saveProject, "Save project", "Save the project to its file", category::file, {{'s', cmd}}, idle},
+         {{'i', cmd}}, [](MainComponent& m) { m.chooseAudioFileForTrack(m.arrangement_.getSelectedTrack()); }, idle},
+        {CommandIDs::undo, "Undo", "Take back the last change", category::edit, {{'z', cmd}}, [](MainComponent& m) { m.undo(); },
+         idle, Needs::canUndo},
+        {CommandIDs::redo, "Redo", "Do the undone change again", category::edit, {{'z', cmd | shift}, {'y', cmd}},
+         [](MainComponent& m) { m.redo(); }, idle, Needs::canRedo},
+        {CommandIDs::openProject, "Open project...", "Open a DawLab project file", category::file, {{'o', cmd}},
+         [](MainComponent& m) { m.askToSaveChanges([&m] { m.openProjectInteractive(); }); }, idle},
+        {CommandIDs::saveProject, "Save project", "Save the project to its file", category::file, {{'s', cmd}},
+         [](MainComponent& m) { m.saveProjectInteractive(false); }, idle},
         {CommandIDs::saveProjectAs, "Save project as...", "Save the project to a new file", category::file, {{'s', cmd | shift}},
-         idle},
-        {CommandIDs::exportMixdown, "Export mixdown...", "Bounce the song to a WAV file", category::file, {{'e', cmd}}, idle},
-        {CommandIDs::showAudioSettings, "Audio settings...", "Choose the audio device", category::file, {{',', cmd}}, idle},
-        {juce::StandardApplicationCommandIDs::quit, "Quit", "Quit DawLab 16", category::file, {{'q', cmd}}, anytime},
-        {CommandIDs::playStop, "Play / Stop", "Start or stop playback", category::transport, {{KeyPress::spaceKey, none}}, idle,
-         Needs::nothing, Shows::playing},
+         [](MainComponent& m) { m.saveProjectInteractive(true); }, idle},
+        {CommandIDs::exportMixdown, "Export mixdown...", "Bounce the song to a WAV file", category::file, {{'e', cmd}},
+         [](MainComponent& m) { m.exportMixdownInteractive(); }, idle},
+        {CommandIDs::showAudioSettings, "Audio settings...", "Choose the audio device", category::file, {{',', cmd}},
+         [](MainComponent& m) { m.showAudioSettings(); }, idle},
+        {juce::StandardApplicationCommandIDs::quit, "Quit", "Quit DawLab 16", category::file, {{'q', cmd}},
+         [](MainComponent&) { if (auto* app = juce::JUCEApplicationBase::getInstance()) app->systemRequestedQuit(); }, anytime},
+        {CommandIDs::playStop, "Play / Stop", "Start or stop playback", category::transport, {{KeyPress::spaceKey, none}},
+         [](MainComponent& m) { m.togglePlay(); }, idle, Needs::nothing, Shows::playing},
         {CommandIDs::returnToStart, "Return to start", "Move the playhead to bar 1", category::transport,
-         {{KeyPress::homeKey, none}}, idle},
-        {CommandIDs::toggleLoop, "Loop", "Loop on / off", category::transport, {{'l', none}}, idle, Needs::nothing, Shows::loop},
+         {{KeyPress::homeKey, none}}, [](MainComponent& m) { m.returnToStart(); }, idle},
+        {CommandIDs::toggleLoop, "Loop", "Loop on / off", category::transport, {{'l', none}},
+         [](MainComponent& m) { m.toggleLoop(); }, idle, Needs::nothing, Shows::loop},
         {CommandIDs::seekBackOneBar, "Back one bar", "Move the playhead one bar back", category::transport,
-         {{KeyPress::leftKey, none}}, idle},
+         {{KeyPress::leftKey, none}}, [](MainComponent& m) { m.seekBars(-1); }, idle},
         {CommandIDs::seekForwardOneBar, "Forward one bar", "Move the playhead one bar forward", category::transport,
-         {{KeyPress::rightKey, none}}, idle},
-        {CommandIDs::selectNextTrack, "Select next track", "", category::track, {{KeyPress::downKey, none}}, anytime},
-        {CommandIDs::selectPreviousTrack, "Select previous track", "", category::track, {{KeyPress::upKey, none}}, anytime},
-        {CommandIDs::toggleMuteSelected, "Mute selected track", "", category::track, {{'m', none}}, idle},
-        {CommandIDs::toggleSoloSelected, "Solo selected track", "", category::track, {{'s', none}}, idle},
+         {{KeyPress::rightKey, none}}, [](MainComponent& m) { m.seekBars(+1); }, idle},
+        {CommandIDs::selectNextTrack, "Select next track", "", category::track, {{KeyPress::downKey, none}},
+         [](MainComponent& m) { m.arrangement_.selectLane(m.session_.indexOf(m.arrangement_.getSelectedTrack()) + 1); }, anytime},
+        {CommandIDs::selectPreviousTrack, "Select previous track", "", category::track, {{KeyPress::upKey, none}},
+         [](MainComponent& m) { m.arrangement_.selectLane(m.session_.indexOf(m.arrangement_.getSelectedTrack()) - 1); }, anytime},
+        {CommandIDs::toggleMuteSelected, "Mute selected track", "", category::track, {{'m', none}},
+         [](MainComponent& m) { m.toggleMuteSelected(); }, idle},
+        {CommandIDs::toggleSoloSelected, "Solo selected track", "", category::track, {{'s', none}},
+         [](MainComponent& m) { m.toggleSoloSelected(); }, idle},
         {CommandIDs::toggleAutomationLane, "Show automation", "Show or hide the automation lane of the selected track",
-         category::track, {{'a', none}}, anytime, Needs::selectedTrack},
+         category::track, {{'a', none}},
+         [](MainComponent& m) { m.arrangement_.toggleAutomation(m.arrangement_.getSelectedTrack()); }, anytime,
+         Needs::selectedTrack},
         {CommandIDs::addMonoTrack, "Add mono track", "Add a mono track below the selected one", category::track, {{'t', cmd}},
-         idle, Needs::roomForTrack},
+         [](MainComponent& m) { m.addTrack(engine::TrackFormat::Mono); }, idle, Needs::roomForTrack},
         {CommandIDs::addStereoTrack, "Add stereo track", "Add a stereo track below the selected one", category::track,
-         {{'t', cmd | shift}}, idle, Needs::roomForTrack},
+         {{'t', cmd | shift}}, [](MainComponent& m) { m.addTrack(engine::TrackFormat::Stereo); }, idle, Needs::roomForTrack},
         {CommandIDs::deleteSelectedTrack, "Delete selected track", "Delete the track with its clips and inserts", category::track,
-         {{KeyPress::deleteKey, cmd}}, idle, Needs::selectedTrack},
-        {CommandIDs::zoomIn, "Zoom in", "", category::view, {{'=', none}, {'+', none}}, anytime},
-        {CommandIDs::zoomOut, "Zoom out", "", category::view, {{'-', none}}, anytime},
+         {{KeyPress::deleteKey, cmd}}, [](MainComponent& m) { m.deleteSelectedTrack(); }, idle, Needs::selectedTrack},
+        {CommandIDs::zoomIn, "Zoom in", "", category::view, {{'=', none}, {'+', none}},
+         [](MainComponent& m) { m.zoomArrangement(1.5); }, anytime},
+        {CommandIDs::zoomOut, "Zoom out", "", category::view, {{'-', none}},
+         [](MainComponent& m) { m.zoomArrangement(1.0 / 1.5); }, anytime},
         {CommandIDs::showKeyboardShortcuts, "Keyboard shortcuts...", "List all shortcuts", category::view,
-         {{KeyPress::F1Key, none}}, anytime},
+         {{KeyPress::F1Key, none}}, [](MainComponent& m) { m.showKeyboardShortcuts(); }, anytime},
     };
     for (const Command& command : commands)
         if (command.id == id)
@@ -992,50 +1030,10 @@ void MainComponent::getCommandInfo(juce::CommandID id, juce::ApplicationCommandI
 bool MainComponent::perform(const InvocationInfo& info) {
     if (isExporting() && info.commandID != juce::StandardApplicationCommandIDs::quit)
         return true; // swallow everything while rendering
-    const engine::TrackId selected = arrangement_.getSelectedTrack();
-    const int selectedLane = session_.indexOf(selected);
-    engine::Track* selectedStrip = engine_.getTrack(selected); // nullptr in a project without tracks
-    switch (info.commandID) {
-    case CommandIDs::newProject: askToSaveChanges([this] { newProject(); }); break;
-    case CommandIDs::loadDemoSong: askToSaveChanges([this] { loadDemoSongAsync(); }); break;
-    case CommandIDs::loadAudioIntoTrack: chooseAudioFileForTrack(selected); break;
-    case CommandIDs::openProject: askToSaveChanges([this] { openProjectInteractive(); }); break;
-    case CommandIDs::undo: undo(); break;
-    case CommandIDs::redo: redo(); break;
-    case CommandIDs::saveProject: saveProjectInteractive(false); break;
-    case CommandIDs::saveProjectAs: saveProjectInteractive(true); break;
-    case CommandIDs::exportMixdown: exportMixdownInteractive(); break;
-    case CommandIDs::showAudioSettings: showAudioSettings(); break;
-    case juce::StandardApplicationCommandIDs::quit:
-        if (auto* app = juce::JUCEApplicationBase::getInstance())
-            app->systemRequestedQuit();
-        break;
-    case CommandIDs::playStop: togglePlay(); break;
-    case CommandIDs::returnToStart: returnToStart(); break;
-    case CommandIDs::toggleLoop: toggleLoop(); break;
-    case CommandIDs::seekBackOneBar: seekBars(-1); break;
-    case CommandIDs::seekForwardOneBar: seekBars(+1); break;
-    case CommandIDs::selectNextTrack: arrangement_.selectLane(selectedLane + 1); break;
-    case CommandIDs::selectPreviousTrack: arrangement_.selectLane(selectedLane - 1); break;
-    case CommandIDs::toggleMuteSelected:
-        if (selectedStrip != nullptr)
-            session_.perform(edit::SetValue{StripTarget::ofTrack(selected), edit::Field::Mute, 0, selectedStrip->isMuted() ? 0.0f : 1.0f},
-                             "Mute " + selectedStrip->getName());
-        break;
-    case CommandIDs::toggleSoloSelected:
-        if (selectedStrip != nullptr)
-            session_.perform(edit::SetValue{StripTarget::ofTrack(selected), edit::Field::Solo, 0, selectedStrip->isSoloed() ? 0.0f : 1.0f},
-                             "Solo " + selectedStrip->getName());
-        break;
-    case CommandIDs::addMonoTrack: addTrack(engine::TrackFormat::Mono); break;
-    case CommandIDs::addStereoTrack: addTrack(engine::TrackFormat::Stereo); break;
-    case CommandIDs::deleteSelectedTrack: deleteSelectedTrack(); break;
-    case CommandIDs::toggleAutomationLane: arrangement_.toggleAutomation(arrangement_.getSelectedTrack()); break;
-    case CommandIDs::zoomIn: arrangement_.zoom(1.5, ArrangementView::kHeaderWidth + 0.5f * (arrangement_.getWidth() - ArrangementView::kHeaderWidth)); break;
-    case CommandIDs::zoomOut: arrangement_.zoom(1.0 / 1.5, ArrangementView::kHeaderWidth + 0.5f * (arrangement_.getWidth() - ArrangementView::kHeaderWidth)); break;
-    case CommandIDs::showKeyboardShortcuts: showKeyboardShortcuts(); break;
-    default: return false;
-    }
+    const Command* command = findCommand(info.commandID);
+    if (command == nullptr)
+        return false;
+    command->run(*this);
     return true;
 }
 

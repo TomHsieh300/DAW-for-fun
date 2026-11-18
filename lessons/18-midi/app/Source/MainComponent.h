@@ -201,7 +201,7 @@ private:
     void finishClipConversion(double fromRate, double toRate, const ConvertedBuffers& converted);
     void recoverCrashedTakes();
 
-    // ---- the command table (MainComponent.cpp): getCommandInfo() reads it -------------------------------
+    // ---- the command table (MainComponent.cpp): getCommandInfo() and perform() read it ------------------
     // What a command needs to run, besides an export that is over, and what its tick mark in the menu shows.
     enum class Needs { nothing, canUndo, canRedo, selectedTrack, roomForTrack, recorderIdle, midiNotRecording };
     enum class Shows { nothing, playing, loop, recording, punch, armed, midiReplace };
@@ -210,6 +210,13 @@ private:
     juce::String commandName(const Command& command) const;
     bool isPossible(Needs needs);
     bool isTicked(Shows shows);
+    // What the commands do that have no function of their own elsewhere.
+    void togglePunch();
+    void toggleMidiReplace();
+    void toggleArmSelected();
+    void toggleMuteSelected();
+    void toggleSoloSelected();
+    void zoomArrangement(double factor); // around the middle of the lanes
 
     Mode mode_;
     DawLookAndFeel lookAndFeel_;

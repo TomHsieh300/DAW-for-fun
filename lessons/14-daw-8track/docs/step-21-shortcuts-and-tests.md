@@ -163,14 +163,14 @@ the default map has none.
 
 | | |
 |---|---|
-| You write | the transport commands in `app/Source/MainComponent.cpp`: their rows in the command table of `findCommand()`, which `getCommandInfo()` reads (name, description, category "Transport", default keys Space, Home, L, Left and Right arrows), and their `case`s in `perform()` (`playStop`, `returnToStart`, `toggleLoop`, `seekBackOneBar`, `seekForwardOneBar`) |
+| You write | the transport commands in `app/Source/MainComponent.cpp`: their rows in the command table of `findCommand()`, which `getCommandInfo()` and `perform()` read: name, description, category "Transport", default keys Space, Home, L, Left and Right arrows, and what each one does (`playStop`, `returnToStart`, `toggleLoop`, `seekBackOneBar`, `seekForwardOneBar`) |
 | Build + check | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test` (`l14_app_smoke_test`) |
 | Expected | the smoke test's key presses pass (Space toggles the transport, L the loop, also through `invokeDirectly`); `[PASS] l14_app_smoke_test`; in the app the Transport menu and the F1 list show your names and keys |
 
 </div>
 
 To go further, add a command of your own (an ID in `AppCommands.h`, an entry in `getAllCommands()`,
-a row in `findCommand()`'s table and a `case` in `perform()`). Take it out again before you run `l14_ex13_solution`: Exercise
+and a row in `findCommand()`'s table). Take it out again before you run `l14_ex13_solution`: Exercise
 13 counts exactly the app's 18 commands plus its own 10 (32 rows in its shortcut editor).
 
 ## What you learned

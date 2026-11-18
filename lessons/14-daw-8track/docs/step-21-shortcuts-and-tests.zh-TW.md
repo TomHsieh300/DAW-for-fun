@@ -116,13 +116,13 @@ DawLab 8 smoke test (no audio device)
 
 | | |
 |---|---|
-| 你要寫 | `app/Source/MainComponent.cpp` 中的 transport command：它們在 `findCommand()` 的 command 表格中的列，由 `getCommandInfo()` 讀取（名稱、描述、類別 "Transport"、預設按鍵 Space、Home、L、Left 與 Right 方向鍵），以及在 `perform()` 中的 `case`（`playStop`、`returnToStart`、`toggleLoop`、`seekBackOneBar`、`seekForwardOneBar`） |
+| 你要寫 | `app/Source/MainComponent.cpp` 中的 transport command：它們在 `findCommand()` 的 command 表格中的列，由 `getCommandInfo()` 與 `perform()` 讀取：名稱、描述、類別 "Transport"、預設按鍵 Space、Home、L、Left 與 Right 方向鍵，以及每個 command 做什麼（`playStop`、`returnToStart`、`toggleLoop`、`seekBackOneBar`、`seekForwardOneBar`） |
 | 建置 + 檢查 | `.\scripts\build.ps1 -Only 14-daw-8track -Juce -TestLabel test`（`l14_app_smoke_test`） |
 | 預期 | smoke test 的按鍵通過（Space 切換 transport、L 切換 loop，也包括透過 `invokeDirectly`）；`[PASS] l14_app_smoke_test`；在 app 中，Transport menu 與 F1 清單顯示你的名稱與按鍵 |
 
 </div>
 
-想更進一步的話，加入你自己的 command（在 `AppCommands.h` 中加一個 ID，在 `getAllCommands()` 中加一個項目、在 `findCommand()` 的表格中加一列，並在 `perform()` 中加一個 `case`）。在執行 `l14_ex13_solution` 之前把它拿掉：Exercise 13 剛好計算 app 的 18 個 command 加上它自己的 10 個（它的 shortcut editor 中共 32 列）。
+想更進一步的話，加入你自己的 command（在 `AppCommands.h` 中加一個 ID，在 `getAllCommands()` 中加一個項目，並在 `findCommand()` 的表格中加一列）。在執行 `l14_ex13_solution` 之前把它拿掉：Exercise 13 剛好計算 app 的 18 個 command 加上它自己的 10 個（它的 shortcut editor 中共 32 列）。
 
 ## 你學到了什麼
 
