@@ -921,6 +921,18 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
             }
             DAWLAB_CHECK(panel.getToggle(comp->findParameter("Stereo Link")) != nullptr ||
                          panel.getComboBox(comp->findParameter("Stereo Link")) != nullptr);
+            // A choice is a combo box: none for the toggle, none outside the panel's controls.
+            DAWLAB_CHECK(panel.getComboBox(comp->findParameter("Stereo Link")) == nullptr);
+            DAWLAB_CHECK(panel.getComboBox(-1) == nullptr && panel.getComboBox(panel.getNumControls()) == nullptr);
+            std::unique_ptr<InsertEffect> saturation = createEffect(EffectType::Saturation);
+            ParameterPanel saturationPanel(*saturation);
+            const int curve = saturation->findParameter("Curve");
+            juce::ComboBox* curveBox = saturationPanel.getComboBox(curve);
+            DAWLAB_CHECK(curveBox != nullptr && curveBox->getNumItems() == saturation->getParameterInfo(curve).numChoices);
+            if (curveBox != nullptr) {
+                curveBox->setSelectedId(2, juce::sendNotificationSync);
+                DAWLAB_CHECK_NEAR(saturation->getParameter(curve), 1.0, 1e-6);
+            }
         }
 
         // commands: the menu / keyboard path
