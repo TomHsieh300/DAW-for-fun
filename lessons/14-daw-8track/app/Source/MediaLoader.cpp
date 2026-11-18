@@ -205,16 +205,15 @@ void MediaLoader::loadFile(int track, const juce::File& file, double targetSampl
                            std::function<void(const LoadedMedia&)> onDone) {
     ++pending_;
     std::weak_ptr<std::atomic<bool>> alive = alive_;
-    pool_.addJob([this, alive, track, file, targetSampleRate, onDone = std::move(onDone)] {
+    std::atomic<int>* pending = &pending_;
+    pool_.addJob([alive, pending, track, file, targetSampleRate, onDone = std::move(onDone)] {
         auto media = std::make_shared<LoadedMedia>(readAudioFile(file, targetSampleRate));
         media->track = track;
-        juce::MessageManager::callAsync([this, alive, media, onDone] {
-            const auto flag = alive.lock();
-            if (flag == nullptr || !flag->load())
-                return; // the loader (and probably the GUI) is gone
-            --pending_;
-            if (onDone)
-                onDone(*media);
+        juce::MessageManager::callAsync([alive, pending, media, onDone] {
+            deliverIfAlive(alive, pending, [&media, &onDone] {
+                if (onDone)
+                    onDone(*media);
+            });
         });
     });
 }
@@ -222,15 +221,14 @@ void MediaLoader::loadFile(int track, const juce::File& file, double targetSampl
 void MediaLoader::loadDemoSong(double sampleRate, std::function<void(std::shared_ptr<const engine::DemoSong>)> onDone) {
     ++pending_;
     std::weak_ptr<std::atomic<bool>> alive = alive_;
-    pool_.addJob([this, alive, sampleRate, onDone = std::move(onDone)] {
+    std::atomic<int>* pending = &pending_;
+    pool_.addJob([alive, pending, sampleRate, onDone = std::move(onDone)] {
         auto song = std::make_shared<const engine::DemoSong>(engine::makeDemoSong(sampleRate));
-        juce::MessageManager::callAsync([this, alive, song, onDone] {
-            const auto flag = alive.lock();
-            if (flag == nullptr || !flag->load())
-                return;
-            --pending_;
-            if (onDone)
-                onDone(song);
+        juce::MessageManager::callAsync([alive, pending, song, onDone] {
+            deliverIfAlive(alive, pending, [&song, &onDone] {
+                if (onDone)
+                    onDone(song);
+            });
         });
     });
 }
@@ -239,20 +237,29 @@ void MediaLoader::convertBuffers(std::vector<std::shared_ptr<const AudioBuffer>>
                                  double toRate, std::function<void(const ConvertedBuffers&)> onDone) {
     ++pending_;
     std::weak_ptr<std::atomic<bool>> alive = alive_;
-    pool_.addJob([this, alive, sources = std::move(sources), fromRate, toRate, onDone = std::move(onDone)] {
+    std::atomic<int>* pending = &pending_;
+    pool_.addJob([alive, pending, sources = std::move(sources), fromRate, toRate, onDone = std::move(onDone)] {
         auto converted = std::make_shared<ConvertedBuffers>();
         for (const auto& src : sources)
             if (src != nullptr && converted->count(src) == 0)
                 converted->emplace(src, std::make_shared<const AudioBuffer>(resampleBuffer(*src, fromRate, toRate)));
-        juce::MessageManager::callAsync([this, alive, converted, onDone] {
-            const auto flag = alive.lock();
-            if (flag == nullptr || !flag->load())
-                return;
-            --pending_;
-            if (onDone)
-                onDone(*converted);
+        juce::MessageManager::callAsync([alive, pending, converted, onDone] {
+            deliverIfAlive(alive, pending, [&converted, &onDone] {
+                if (onDone)
+                    onDone(*converted);
+            });
         });
     });
+}
+
+bool MediaLoader::deliverIfAlive(const std::weak_ptr<std::atomic<bool>>& alive, std::atomic<int>* pending,
+                                 const std::function<void()>& deliver) {
+    const auto flag = alive.lock();
+    if (flag == nullptr || !flag->load())
+        return false; // the loader (and probably the GUI) is gone
+    --*pending;
+    deliver();
+    return true;
 }
 
 } // namespace dawlab::app

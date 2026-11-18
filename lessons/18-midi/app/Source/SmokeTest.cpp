@@ -2664,7 +2664,23 @@ void testPianoRollWindow() {
         window->onClose(); // the window goes later, on the message loop; by then this window is gone
 }
 
+// The loader thread's answers (MediaLoader): they reach the message thread only while the loader exists.
+void testLoaderDelivery() {
+    auto flag = std::make_shared<std::atomic<bool>>(true);
+    std::atomic<int> pending{2};
+    int delivered = 0;
+    const std::function<void()> deliver = [&delivered] { ++delivered; };
+    DAWLAB_CHECK(MediaLoader::deliverIfAlive(flag, &pending, deliver) && delivered == 1 && pending == 1);
+    flag->store(false); // what the loader's destructor does first
+    DAWLAB_CHECK(!MediaLoader::deliverIfAlive(flag, &pending, deliver) && delivered == 1 && pending == 1);
+    const std::weak_ptr<std::atomic<bool>> gone = flag;
+    flag.reset(); // the loader is destroyed
+    DAWLAB_CHECK(!MediaLoader::deliverIfAlive(gone, nullptr, deliver) && delivered == 1);
+    std::printf("dialogs: the loader's answers: delivered while it exists, dropped once it is gone\n");
+}
+
 void testDialogs() {
+    testLoaderDelivery();
     testWhileAlive();
     testExportDialog();
     testAudioFileLoading();

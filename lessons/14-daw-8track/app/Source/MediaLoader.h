@@ -104,6 +104,11 @@ public:
 
     bool isBusy() const noexcept { return pending_.load() > 0; }
 
+    // The message-thread half of every job: `deliver` runs, and the job is no longer `pending` - unless the
+    // loader was destroyed meanwhile (`alive` expired or false), when nothing of it may be touched. False then.
+    static bool deliverIfAlive(const std::weak_ptr<std::atomic<bool>>& alive, std::atomic<int>* pending,
+                               const std::function<void()>& deliver);
+
     // The synchronous part of loadFile(), usable from any thread (tests, the smoke test).
     static LoadedMedia readAudioFile(const juce::File& file, double targetSampleRate);
 
