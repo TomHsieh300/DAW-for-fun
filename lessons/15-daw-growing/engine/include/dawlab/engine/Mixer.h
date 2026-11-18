@@ -248,83 +248,117 @@ public:
     void process(AudioBlock out, const TimelineSegment* segments, int numSegments, double bpm = 120.0) noexcept {
         const int n = out.getNumSamples();
         assert(prepared_ && n <= maxBlockSize_);
-        const bool anySolo = isAnyTrackSoloed();
-        PlayHead playHead;
-        playHead.segments = segments;
-        playHead.numSegments = numSegments;
-        playHead.bpm = bpm;
-
-        AudioBlock sum = trackSum_.toBlock().getSubBlock(0, n);
-        sum.clear();
-        std::array<AudioBlock, kNumBuses> bus;
-        for (int b = 0; b < kNumBuses; ++b) {
-            bus[static_cast<size_t>(b)] = busBuffers_[static_cast<size_t>(b)].toBlock().getSubBlock(0, n);
-            bus[static_cast<size_t>(b)].clear();
-        }
+        BlockContext block = startBlock(n, segments, numSegments, bpm);
 
         // ---- tracks ----
+        AudioBlock sum = trackSum_.toBlock().getSubBlock(0, n);
+        sum.clear();
         AudioBlock tb = scratch_.toBlock().getSubBlock(0, n);
-        for (int slot = 0; slot < kMaxTracks; ++slot) {
-            if (!trackInSlot_[static_cast<size_t>(slot)].isValid())
-                continue; // a free slot costs one comparison
-            Track& track = tracks_[static_cast<size_t>(slot)];
-            tb.clear();
-            track.renderClips(tb, segments, numSegments);
-            track.beginBlock(!track.isMuted() && (!anySolo || track.isSoloed()));
-            track.getInserts().setPlayHead(playHead);
-            if (track.getFormat() == TrackFormat::Mono) {
-                // Mono track: fold the clips to one channel ((L+R)/2: exact for a mono file,
-                // which the loader stores as L = R), run the inserts and the PDC delay on that
-                // one channel, then copy it to the right side. From here on the strip is
-                // stereo and the pan law places the mono source.
-                float* l = tb.getChannelPointer(0);
-                const float* r = tb.getChannelPointer(1);
-                for (int i = 0; i < n; ++i)
-                    l[i] = 0.5f * (l[i] + r[i]);
-                track.processInserts(tb.getChannelSubset(0, 1));
-                std::copy_n(l, n, tb.getChannelPointer(1));
-            } else {
-                track.processInserts(tb); // inserts + PDC delay on both channels
-            }
-            track.applyMuteSolo(tb);
-            for (int b = 0; b < kNumBuses; ++b)
-                if (track.isSendPreFader(b))
-                    track.addSend(b, bus[static_cast<size_t>(b)], tb);
-            track.applyFaderAndPan(tb);
-            for (int b = 0; b < kNumBuses; ++b)
-                if (!track.isSendPreFader(b))
-                    track.addSend(b, bus[static_cast<size_t>(b)], tb);
-            track.meter(tb);
-            sum.addFrom(tb);
-        }
+        for (int slot = 0; slot < kMaxTracks; ++slot)
+            processTrack(slot, tb, sum, block);
         trackSumCompensator_.process(sum);
 
         // ---- buses and master ----
         AudioBlock mb = masterBuffer_.toBlock().getSubBlock(0, n);
         mb.copyFrom(sum);
-        for (int b = 0; b < kNumBuses; ++b) {
-            ChannelStrip& strip = buses_[static_cast<size_t>(b)];
-            AudioBlock bb = bus[static_cast<size_t>(b)];
-            strip.beginBlock(!strip.isMuted());
-            strip.getInserts().setPlayHead(playHead);
-            strip.processInserts(bb);
-            strip.applyMuteSolo(bb);
-            strip.applyFaderAndPan(bb);
-            strip.meter(bb);
-            mb.addFrom(bb);
-        }
-        master_.beginBlock(!master_.isMuted());
-        master_.getInserts().setPlayHead(playHead);
-        master_.processInserts(mb);
-        master_.applyMuteSolo(mb);
-        master_.applyFaderAndPan(mb);
-        master_.meter(mb);
+        processBuses(mb, block);
+        processMaster(mb, block);
 
         out.clear();
         out.copyFrom(mb);
     }
 
 private:
+    // What every strip of one block works with: process() sets it up once, at the start of the block.
+    struct BlockContext {
+        const TimelineSegment* segments = nullptr;
+        int numSegments = 0;
+        bool anySolo = false;
+        PlayHead playHead;
+        std::array<AudioBlock, kNumBuses> bus; // the sends' sums, cleared
+    };
+
+    BlockContext startBlock(int n, const TimelineSegment* segments, int numSegments, double bpm) noexcept {
+        BlockContext block;
+        block.segments = segments;
+        block.numSegments = numSegments;
+        block.anySolo = isAnyTrackSoloed();
+        block.playHead.segments = segments;
+        block.playHead.numSegments = numSegments;
+        block.playHead.bpm = bpm;
+        for (int b = 0; b < kNumBuses; ++b) {
+            block.bus[static_cast<size_t>(b)] = busBuffers_[static_cast<size_t>(b)].toBlock().getSubBlock(0, n);
+            block.bus[static_cast<size_t>(b)].clear();
+        }
+        return block;
+    }
+
+    // The track in one slot, if any, plays into `sum`: clips -> inserts -> mute/solo -> sends and
+    // fader -> meter.
+    void processTrack(int slot, AudioBlock tb, AudioBlock sum, const BlockContext& block) noexcept {
+        if (!trackInSlot_[static_cast<size_t>(slot)].isValid())
+            return; // a free slot costs one comparison
+        Track& track = tracks_[static_cast<size_t>(slot)];
+        tb.clear();
+        track.renderClips(tb, block.segments, block.numSegments);
+        track.beginBlock(!track.isMuted() && (!block.anySolo || track.isSoloed()));
+        track.getInserts().setPlayHead(block.playHead);
+        processTrackInserts(track, tb);
+        track.applyMuteSolo(tb);
+        for (int b = 0; b < kNumBuses; ++b)
+            if (track.isSendPreFader(b))
+                track.addSend(b, block.bus[static_cast<size_t>(b)], tb);
+        track.applyFaderAndPan(tb);
+        for (int b = 0; b < kNumBuses; ++b)
+            if (!track.isSendPreFader(b))
+                track.addSend(b, block.bus[static_cast<size_t>(b)], tb);
+        track.meter(tb);
+        sum.addFrom(tb);
+    }
+
+    // The track's inserts and PDC delay.
+    static void processTrackInserts(Track& track, AudioBlock tb) noexcept {
+        if (track.getFormat() == TrackFormat::Mono) {
+            // Mono track: fold the clips to one channel ((L+R)/2: exact for a mono file,
+            // which the loader stores as L = R), run the inserts and the PDC delay on that
+            // one channel, then copy it to the right side. From here on the strip is
+            // stereo and the pan law places the mono source.
+            const int n = tb.getNumSamples();
+            float* l = tb.getChannelPointer(0);
+            const float* r = tb.getChannelPointer(1);
+            for (int i = 0; i < n; ++i)
+                l[i] = 0.5f * (l[i] + r[i]);
+            track.processInserts(tb.getChannelSubset(0, 1));
+            std::copy_n(l, n, tb.getChannelPointer(1));
+        } else {
+            track.processInserts(tb); // inserts + PDC delay on both channels
+        }
+    }
+
+    // Each bus: the sum of its sends through its strip, added to the master's input `mb`.
+    void processBuses(AudioBlock mb, const BlockContext& block) noexcept {
+        for (int b = 0; b < kNumBuses; ++b) {
+            ChannelStrip& strip = buses_[static_cast<size_t>(b)];
+            AudioBlock bb = block.bus[static_cast<size_t>(b)];
+            strip.beginBlock(!strip.isMuted());
+            strip.getInserts().setPlayHead(block.playHead);
+            strip.processInserts(bb);
+            strip.applyMuteSolo(bb);
+            strip.applyFaderAndPan(bb);
+            strip.meter(bb);
+            mb.addFrom(bb);
+        }
+    }
+
+    void processMaster(AudioBlock mb, const BlockContext& block) noexcept {
+        master_.beginBlock(!master_.isMuted());
+        master_.getInserts().setPlayHead(block.playHead);
+        master_.processInserts(mb);
+        master_.applyMuteSolo(mb);
+        master_.applyFaderAndPan(mb);
+        master_.meter(mb);
+    }
+
     bool holds(int slot, TrackId id) const noexcept {
         return slot >= 0 && slot < kMaxTracks && id.isValid() && trackInSlot_[static_cast<size_t>(slot)] == id;
     }

@@ -1088,6 +1088,36 @@ void placeAndRoundTrip() {
     DAWLAB_CHECK(measureRoundTrip(take.data(), 0, 10000, 9900) == -1);             // an empty take
 }
 
+// A stereo track on the device's last input: its right channel is one the device does not have, so it
+// hears silence there - never what lies past the device's channels (Mixer: the track's inputs).
+void checkLastInputChannel() {
+    Engine e;
+    const TrackId voice{1};
+    e.addTrack(voice, TrackFormat::Stereo);
+    e.prepare(kSampleRate, kMaxBlock);
+    e.applyPendingCommandsOffline();
+    Track* t = e.getTrack(voice);
+    t->setInputChannel(1); // inputs 1 and 2 of a device that has 0 and 1
+    t->setMonitorPath(MonitorPath::Direct);
+    t->getMonitor().setMode(MonitorMode::Always);
+    constexpr int kFrames = 4096;
+    constexpr int kBlock = 128;
+    const std::vector<float> left(kFrames, 0.0f), right(kFrames, 0.25f), past(kFrames, 0.5f);
+    AudioBuffer out(2, kFrames);
+    for (int done = 0; done < kFrames; done += kBlock) {
+        const float* channels[3] = {left.data() + done, right.data() + done, past.data() + done};
+        e.processBlock(out.toBlock().getSubBlock(done, kBlock), InputBlock{channels, 2});
+    }
+    float heardLeft = 0.0f, heardRight = 0.0f;
+    for (int i = kFrames - 1000; i < kFrames; ++i) {
+        heardLeft = std::max(heardLeft, std::abs(out.getSample(0, i)));
+        heardRight = std::max(heardRight, std::abs(out.getSample(1, i)));
+    }
+    std::printf("  a stereo track on the last input: %.3f left, %.3f right (expected 0.250, 0.000)\n", heardLeft, heardRight);
+    DAWLAB_CHECK_NEAR(heardLeft, 0.25f, 1e-4);
+    DAWLAB_CHECK(heardRight == 0.0f);
+}
+
 } // namespace
 
 int main() {
@@ -1097,6 +1127,7 @@ int main() {
     placeAndRoundTrip();
     checkEveryFrameArrives();
     checkChannelsAndDry();
+    checkLastInputChannel();
     checkMonitorPaths();
     checkAuto();
     monitorWithoutInput();

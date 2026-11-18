@@ -62,7 +62,7 @@ void setSendPreFader(int bus, bool preFader) noexcept;
 void addSend(int bus, AudioBlock dest, const AudioBlock& src) noexcept;   // dest += src * ramped gain
 ```
 
-`Mixer::process()`：
+`Mixer::process()`，在它的 `processTrack()`（每一軌）與 `processBuses()` 兩部分：
 
 ```cpp
 track.applyMuteSolo(tb);

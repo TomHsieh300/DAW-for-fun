@@ -381,6 +381,24 @@ void testPlayHeadTempo() {
     DAWLAB_CHECK(rising);
 }
 
+void testMixerGivenABpmOnly() {
+    // Mixer::process() given a bpm and no map plays at that bpm, block after block: what an insert's play head says.
+    Engine e;
+    setUp(e);
+    auto spy = std::make_unique<TempoSpy>();
+    TempoSpy* observer = spy.get();
+    e.addInsert(testTrack(0), -1, std::move(spy));
+    e.applyPendingCommandsOffline();
+    TimelineSegment seg;
+    seg.numSamples = 256;
+    seg.tickTo = 10;
+    AudioBuffer out(kNumChannels, 256);
+    for (const double bpm : {90.0, 150.0})
+        e.getMixer().process(out.toBlock(), &seg, 1, bpm);
+    const auto& b = observer->bpms;
+    DAWLAB_CHECK(b.size() == 2 && b[0] == 90.0 && b[1] == 150.0);
+}
+
 void testSwitchedOnWhilePlaying() {
     // A track that becomes an instrument while the song plays chases its controllers at once.
     Engine e;
@@ -576,6 +594,7 @@ int main() {
     testInstrumentLatency();
     testLowLatencyOnTheFasterTrack();
     testPlayHeadTempo();
+    testMixerGivenABpmOnly();
     testSwitchedOnWhilePlaying();
     testSongEndFollowsTheMap();
     testNoAllocation();

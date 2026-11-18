@@ -264,102 +264,139 @@ public:
                  int64_t playhead = 0) noexcept {
         const int n = out.getNumSamples();
         assert(prepared_ && n <= maxBlockSize_);
-        const bool anySolo = isAnyTrackSoloed();
-        PlayHead playHead;
-        playHead.segments = segments;
-        playHead.numSegments = numSegments;
-        playHead.bpm = bpm;
-
-        LaneBlock lanes;
-        lanes.segments = segments;
-        lanes.numSegments = numSegments;
-        lanes.playhead = playhead;
-        lanes.capture = capture_;
-        lanes.readOnly = lanesReadOnly_.load(std::memory_order_relaxed);
-        float* laneGains = laneGains_.data();
-        float* lanePans = lanePans_.data();
-
-        AudioBlock sum = trackSum_.toBlock().getSubBlock(0, n);
-        sum.clear();
-        std::array<AudioBlock, kNumBuses> bus;
-        for (int b = 0; b < kNumBuses; ++b) {
-            bus[static_cast<size_t>(b)] = busBuffers_[static_cast<size_t>(b)].toBlock().getSubBlock(0, n);
-            bus[static_cast<size_t>(b)].clear();
-        }
+        BlockContext block = startBlock(n, segments, numSegments, bpm, playhead);
 
         // ---- tracks ----
+        AudioBlock sum = trackSum_.toBlock().getSubBlock(0, n);
+        sum.clear();
         AudioBlock tb = scratch_.toBlock().getSubBlock(0, n);
-        for (int slot = 0; slot < kMaxTracks; ++slot) {
-            if (!trackInSlot_[static_cast<size_t>(slot)].isValid())
-                continue; // a free slot costs one comparison
-            Track& track = tracks_[static_cast<size_t>(slot)];
-            tb.clear();
-            track.renderClips(tb, segments, numSegments);
-            track.beginBlock(!track.isMuted() && (!anySolo || track.isSoloed()));
-            track.getInserts().setPlayHead(playHead);
-            const ChannelRef self = ChannelRef::track(slot, trackInSlot_[static_cast<size_t>(slot)]);
-            lanes.shift = 0;
-            track.getInserts().applyLanes(lanes, self, laneGains, n);
-            if (track.getFormat() == TrackFormat::Mono) {
-                // Mono track: fold the clips to one channel ((L+R)/2: exact for a mono file,
-                // which the loader stores as L = R), run the inserts and the PDC delay on that
-                // one channel, then copy it to the right side. From here on the strip is
-                // stereo and the pan law places the mono source.
-                float* l = tb.getChannelPointer(0);
-                const float* r = tb.getChannelPointer(1);
-                for (int i = 0; i < n; ++i)
-                    l[i] = 0.5f * (l[i] + r[i]);
-                track.processInserts(tb.getChannelSubset(0, 1));
-                std::copy_n(l, n, tb.getChannelPointer(1));
-            } else {
-                track.processInserts(tb); // inserts + PDC delay on both channels
-            }
-            track.applyMuteSolo(tb);
-            for (int b = 0; b < kNumBuses; ++b)
-                if (track.isSendPreFader(b))
-                    track.addSend(b, bus[static_cast<size_t>(b)], tb);
-            lanes.shift = track.getInsertLatencySamples() + track.getCompensator().getDelaySamples();
-            track.applyFaderAndPan(tb, lanes, self, laneGains, lanePans);
-            for (int b = 0; b < kNumBuses; ++b)
-                if (!track.isSendPreFader(b))
-                    track.addSend(b, bus[static_cast<size_t>(b)], tb);
-            track.meter(tb);
-            sum.addFrom(tb);
-        }
+        for (int slot = 0; slot < kMaxTracks; ++slot)
+            processTrack(slot, tb, sum, block);
         trackSumCompensator_.process(sum);
 
         // ---- buses and master ----
         AudioBlock mb = masterBuffer_.toBlock().getSubBlock(0, n);
         mb.copyFrom(sum);
-        for (int b = 0; b < kNumBuses; ++b) {
-            ChannelStrip& strip = buses_[static_cast<size_t>(b)];
-            AudioBlock bb = bus[static_cast<size_t>(b)];
-            strip.beginBlock(!strip.isMuted());
-            strip.getInserts().setPlayHead(playHead);
-            lanes.shift = 0;
-            strip.getInserts().applyLanes(lanes, ChannelRef::bus(b), laneGains, n);
-            strip.processInserts(bb);
-            strip.applyMuteSolo(bb);
-            lanes.shift = getMaxTrackLatencySamples() + strip.getInsertLatencySamples() + strip.getCompensator().getDelaySamples();
-            strip.applyFaderAndPan(bb, lanes, ChannelRef::bus(b), laneGains, lanePans);
-            strip.meter(bb);
-            mb.addFrom(bb);
-        }
-        master_.beginBlock(!master_.isMuted());
-        master_.getInserts().setPlayHead(playHead);
-        lanes.shift = 0;
-        master_.getInserts().applyLanes(lanes, ChannelRef::master(), laneGains, n);
-        master_.processInserts(mb);
-        master_.applyMuteSolo(mb);
-        lanes.shift = getMaxTrackLatencySamples() + getMaxBusLatencySamples() + master_.getInsertLatencySamples();
-        master_.applyFaderAndPan(mb, lanes, ChannelRef::master(), laneGains, lanePans);
-        master_.meter(mb);
+        processBuses(mb, block);
+        processMaster(mb, block);
 
         out.clear();
         out.copyFrom(mb);
     }
 
 private:
+    // What every strip of one block works with: process() sets it up once, at the start of the block.
+    struct BlockContext {
+        int n = 0;
+        const TimelineSegment* segments = nullptr;
+        int numSegments = 0;
+        bool anySolo = false;
+        PlayHead playHead;
+        std::array<AudioBlock, kNumBuses> bus; // the sends' sums, cleared
+        LaneBlock lanes;                       // chapter 16: what the lanes read
+        float* laneGains = nullptr;
+        float* lanePans = nullptr;
+    };
+
+    BlockContext startBlock(int n, const TimelineSegment* segments, int numSegments, double bpm, int64_t playhead) noexcept {
+        BlockContext block;
+        block.n = n;
+        block.segments = segments;
+        block.numSegments = numSegments;
+        block.anySolo = isAnyTrackSoloed();
+        block.playHead.segments = segments;
+        block.playHead.numSegments = numSegments;
+        block.playHead.bpm = bpm;
+        for (int b = 0; b < kNumBuses; ++b) {
+            block.bus[static_cast<size_t>(b)] = busBuffers_[static_cast<size_t>(b)].toBlock().getSubBlock(0, n);
+            block.bus[static_cast<size_t>(b)].clear();
+        }
+        block.lanes.segments = segments;
+        block.lanes.numSegments = numSegments;
+        block.lanes.playhead = playhead;
+        block.lanes.capture = capture_;
+        block.lanes.readOnly = lanesReadOnly_.load(std::memory_order_relaxed);
+        block.laneGains = laneGains_.data();
+        block.lanePans = lanePans_.data();
+        return block;
+    }
+
+    // The track in one slot, if any, plays into `sum`: clips -> inserts -> mute/solo -> sends and
+    // fader -> meter.
+    void processTrack(int slot, AudioBlock tb, AudioBlock sum, BlockContext& block) noexcept {
+        if (!trackInSlot_[static_cast<size_t>(slot)].isValid())
+            return; // a free slot costs one comparison
+        Track& track = tracks_[static_cast<size_t>(slot)];
+        tb.clear();
+        track.renderClips(tb, block.segments, block.numSegments);
+        track.beginBlock(!track.isMuted() && (!block.anySolo || track.isSoloed()));
+        track.getInserts().setPlayHead(block.playHead);
+        const ChannelRef self = ChannelRef::track(slot, trackInSlot_[static_cast<size_t>(slot)]);
+        block.lanes.shift = 0;
+        track.getInserts().applyLanes(block.lanes, self, block.laneGains, block.n);
+        processTrackInserts(track, tb);
+        track.applyMuteSolo(tb);
+        for (int b = 0; b < kNumBuses; ++b)
+            if (track.isSendPreFader(b))
+                track.addSend(b, block.bus[static_cast<size_t>(b)], tb);
+        block.lanes.shift = track.getInsertLatencySamples() + track.getCompensator().getDelaySamples();
+        track.applyFaderAndPan(tb, block.lanes, self, block.laneGains, block.lanePans);
+        for (int b = 0; b < kNumBuses; ++b)
+            if (!track.isSendPreFader(b))
+                track.addSend(b, block.bus[static_cast<size_t>(b)], tb);
+        track.meter(tb);
+        sum.addFrom(tb);
+    }
+
+    // The track's inserts and PDC delay.
+    static void processTrackInserts(Track& track, AudioBlock tb) noexcept {
+        if (track.getFormat() == TrackFormat::Mono) {
+            // Mono track: fold the clips to one channel ((L+R)/2: exact for a mono file,
+            // which the loader stores as L = R), run the inserts and the PDC delay on that
+            // one channel, then copy it to the right side. From here on the strip is
+            // stereo and the pan law places the mono source.
+            const int n = tb.getNumSamples();
+            float* l = tb.getChannelPointer(0);
+            const float* r = tb.getChannelPointer(1);
+            for (int i = 0; i < n; ++i)
+                l[i] = 0.5f * (l[i] + r[i]);
+            track.processInserts(tb.getChannelSubset(0, 1));
+            std::copy_n(l, n, tb.getChannelPointer(1));
+        } else {
+            track.processInserts(tb); // inserts + PDC delay on both channels
+        }
+    }
+
+    // Each bus: the sum of its sends through its strip, added to the master's input `mb`.
+    void processBuses(AudioBlock mb, BlockContext& block) noexcept {
+        for (int b = 0; b < kNumBuses; ++b) {
+            ChannelStrip& strip = buses_[static_cast<size_t>(b)];
+            AudioBlock bb = block.bus[static_cast<size_t>(b)];
+            strip.beginBlock(!strip.isMuted());
+            strip.getInserts().setPlayHead(block.playHead);
+            block.lanes.shift = 0;
+            strip.getInserts().applyLanes(block.lanes, ChannelRef::bus(b), block.laneGains, block.n);
+            strip.processInserts(bb);
+            strip.applyMuteSolo(bb);
+            block.lanes.shift = getMaxTrackLatencySamples() + strip.getInsertLatencySamples() + strip.getCompensator().getDelaySamples();
+            strip.applyFaderAndPan(bb, block.lanes, ChannelRef::bus(b), block.laneGains, block.lanePans);
+            strip.meter(bb);
+            mb.addFrom(bb);
+        }
+    }
+
+    void processMaster(AudioBlock mb, BlockContext& block) noexcept {
+        master_.beginBlock(!master_.isMuted());
+        master_.getInserts().setPlayHead(block.playHead);
+        block.lanes.shift = 0;
+        master_.getInserts().applyLanes(block.lanes, ChannelRef::master(), block.laneGains, block.n);
+        master_.processInserts(mb);
+        master_.applyMuteSolo(mb);
+        block.lanes.shift = getMaxTrackLatencySamples() + getMaxBusLatencySamples() + master_.getInsertLatencySamples();
+        master_.applyFaderAndPan(mb, block.lanes, ChannelRef::master(), block.laneGains, block.lanePans);
+        master_.meter(mb);
+    }
+
     bool holds(int slot, TrackId id) const noexcept {
         return slot >= 0 && slot < kMaxTracks && id.isValid() && trackInSlot_[static_cast<size_t>(slot)] == id;
     }

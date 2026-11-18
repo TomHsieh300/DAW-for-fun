@@ -62,7 +62,7 @@ void setSendPreFader(int bus, bool preFader) noexcept;
 void addSend(int bus, AudioBlock dest, const AudioBlock& src) noexcept;   // dest += src * ramped gain
 ```
 
-`Mixer::process()`:
+`Mixer::process()`, in its parts `processTrack()` (each track) and `processBuses()`:
 
 ```cpp
 track.applyMuteSolo(tb);
