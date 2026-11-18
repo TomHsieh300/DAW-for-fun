@@ -59,6 +59,14 @@ public:
     // for them; the device restarts. Returns what went wrong, empty on success. A device whose input
     // and output cannot run at one sample rate is an error here.
     juce::String ensureInputsOpen();
+    // Its decisions, static so that a test can make them without a device. The input device to choose
+    // for a device opened without inputs: the default one of its type, if that type has separate
+    // input devices and the device has neither input channels nor an input chosen; "" for none.
+    static juce::String inputDeviceToChoose(const juce::StringArray& inputChannels, const juce::String& chosenInput,
+                                            const juce::AudioIODeviceType* type);
+    // Opens all `available` input channels in `setup`. False if that is not needed: they are open
+    // (`active`), or there are none (then `error` says so).
+    static bool openAllInputs(juce::AudioDeviceManager::AudioDeviceSetup& setup, int available, int active, juce::String& error);
     juce::StringArray getInputNames() const;
     // What the driver reports, and the trim. The mix's latency is the engine's to add.
     engine::Latencies getDeviceLatencies(int trimSamples) const noexcept;
@@ -143,6 +151,8 @@ private:
     void audioDeviceStopped() override;
 
     void prepareInternal(double sampleRate, int blockSize);
+    juce::String chooseDefaultInput();    // ensureInputsOpen()'s two steps
+    juce::String openEveryInputChannel();
     void handleIncomingMidiMessage(juce::MidiInput* source, const juce::MidiMessage& message) override;
     void publishAnchor(const Anchor& a) noexcept;
     void render(float* const* outputs, int numOutputChannels, int numSamples, engine::InputBlock input) noexcept;

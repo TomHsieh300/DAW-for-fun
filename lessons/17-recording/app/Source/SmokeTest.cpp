@@ -1796,6 +1796,54 @@ void testDeviceErrors() {
                 AudioHost::deviceError({}, false, none).toRawUTF8());
 }
 
+// ---- the input, decided without a device (chapter 17) ------------------------------------------------
+// A device opened without inputs gets its type's default input device, when the type has separate
+// input devices; then all of its input channels open.
+class FakeDeviceType final : public juce::AudioIODeviceType {
+public:
+    FakeDeviceType(bool separate, juce::StringArray inputs, int defaultInput)
+        : juce::AudioIODeviceType("Fake"), separate_(separate), inputs_(std::move(inputs)), default_(defaultInput) {}
+    void scanForDevices() override {}
+    juce::StringArray getDeviceNames(bool wantInputNames) const override { return wantInputNames ? inputs_ : juce::StringArray{"Speakers"}; }
+    int getDefaultDeviceIndex(bool) const override { return default_; }
+    int getIndexOfDevice(juce::AudioIODevice*, bool) const override { return -1; }
+    bool hasSeparateInputsAndOutputs() const override { return separate_; }
+    juce::AudioIODevice* createDevice(const juce::String&, const juce::String&) override { return nullptr; }
+
+private:
+    bool separate_;
+    juce::StringArray inputs_;
+    int default_;
+};
+
+void testInputChoice() {
+    std::printf("the input device and channels\n");
+    const FakeDeviceType wasapi(true, {"Microphone", "Line In"}, 1), noDefault(true, {"Microphone"}, -1);
+    const FakeDeviceType noInputs(true, {}, -1), asio(false, {"Microphone"}, 0);
+    const juce::StringArray channels{"In 1", "In 2"};
+    const juce::String chosen = AudioHost::inputDeviceToChoose({}, {}, &wasapi);
+    DAWLAB_CHECK(chosen == "Line In" && AudioHost::inputDeviceToChoose({}, {}, &noDefault) == "Microphone");
+    DAWLAB_CHECK(AudioHost::inputDeviceToChoose({}, {}, &noInputs).isEmpty() && AudioHost::inputDeviceToChoose({}, {}, &asio).isEmpty());
+    DAWLAB_CHECK(AudioHost::inputDeviceToChoose(channels, {}, &wasapi).isEmpty() && AudioHost::inputDeviceToChoose({}, "Mic", &wasapi).isEmpty());
+    DAWLAB_CHECK(AudioHost::inputDeviceToChoose({}, {}, nullptr).isEmpty());
+
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    setup.useDefaultInputChannels = true;
+    juce::String error;
+    const bool none = AudioHost::openAllInputs(setup, 0, 0, error);
+    const juce::String noneError = error;
+    error.clear();
+    const bool allOpen = AudioHost::openAllInputs(setup, 2, 2, error);
+    DAWLAB_CHECK(!none && noneError.contains("no inputs") && !allOpen && error.isEmpty() && setup.useDefaultInputChannels);
+    const bool opened = AudioHost::openAllInputs(setup, 3, 1, error);
+    std::printf("   chosen: \"%s\"; channels: none -> \"%s\", 2 of 2 open -> %s, 1 of 3 -> %d open\n", chosen.toRawUTF8(),
+                noneError.toRawUTF8(), allOpen ? "opened" : "nothing to do", setup.inputChannels.countNumberOfSetBits());
+    DAWLAB_CHECK(opened && error.isEmpty() && !setup.useDefaultInputChannels && setup.inputChannels.countNumberOfSetBits() == 3);
+
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    DAWLAB_CHECK(mainPtr->getAudioHost().ensureInputsOpen().isEmpty()); // offline: the input comes from the caller
+}
+
 // ---- --smoke-test --------------------------------------------------------------------------------
 
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
@@ -1808,6 +1856,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testOddInserts();
     testPluginInsert();
     testDeviceErrors();
+    testInputChoice();
     testAutomation();
     testRecording();
     testSlotMenu();

@@ -119,36 +119,54 @@ void AudioHost::processOffline(float* const* outputs, int numOutputChannels, int
 // ---- the input --------------------------------------------------------------------------------------
 
 juce::String AudioHost::ensureInputsOpen() {
-    juce::AudioIODevice* device = deviceManager_.getCurrentAudioDevice();
-    if (device == nullptr)
+    if (deviceManager_.getCurrentAudioDevice() == nullptr)
         return {}; // offline: the input comes from whoever calls processOffline()
-    // Opened without inputs, a device of a type with separate input devices (WASAPI, DirectSound) has
-    // none chosen at all: choose the system's default input first.
+    const juce::String error = chooseDefaultInput();
+    return error.isNotEmpty() ? error : openEveryInputChannel();
+}
+
+// Opened without inputs, a device of a type with separate input devices (WASAPI, DirectSound) has
+// none chosen at all: choose the system's default input first.
+juce::String AudioHost::chooseDefaultInput() {
     juce::AudioDeviceManager::AudioDeviceSetup setup = deviceManager_.getAudioDeviceSetup();
-    if (device->getInputChannelNames().isEmpty() && setup.inputDeviceName.isEmpty()) {
-        if (juce::AudioIODeviceType* type = deviceManager_.getCurrentDeviceTypeObject(); type != nullptr && type->hasSeparateInputsAndOutputs()) {
-            const juce::StringArray inputs = type->getDeviceNames(true);
-            const int chosen = type->getDefaultDeviceIndex(true);
-            if (!inputs.isEmpty()) {
-                setup.inputDeviceName = inputs[std::max(0, chosen)];
-                setup.useDefaultInputChannels = true;
-                if (const juce::String error = deviceManager_.setAudioDeviceSetup(setup, true); error.isNotEmpty())
-                    return error;
-                device = deviceManager_.getCurrentAudioDevice();
-                if (device == nullptr)
-                    return "The device did not start again with its input";
-                setup = deviceManager_.getAudioDeviceSetup();
-            }
-        }
-    }
-    const int available = device->getInputChannelNames().size();
-    if (available == 0)
-        return "This audio device has no inputs. Choose another one in Audio settings";
-    if (device->getActiveInputChannels().countNumberOfSetBits() == available)
+    const juce::String input = inputDeviceToChoose(deviceManager_.getCurrentAudioDevice()->getInputChannelNames(),
+                                                   setup.inputDeviceName, deviceManager_.getCurrentDeviceTypeObject());
+    if (input.isEmpty())
         return {};
+    setup.inputDeviceName = input;
+    setup.useDefaultInputChannels = true;
+    const juce::String error = deviceManager_.setAudioDeviceSetup(setup, true);
+    return deviceError(error, deviceManager_.getCurrentAudioDevice() != nullptr, "The device did not start again with its input");
+}
+
+juce::String AudioHost::inputDeviceToChoose(const juce::StringArray& inputChannels, const juce::String& chosenInput,
+                                            const juce::AudioIODeviceType* type) {
+    if (!inputChannels.isEmpty() || chosenInput.isNotEmpty() || type == nullptr || !type->hasSeparateInputsAndOutputs())
+        return {};
+    const juce::StringArray inputs = type->getDeviceNames(true);
+    return inputs.isEmpty() ? juce::String() : inputs[std::max(0, type->getDefaultDeviceIndex(true))];
+}
+
+// Then every input channel of the device opens.
+juce::String AudioHost::openEveryInputChannel() {
+    juce::AudioIODevice* device = deviceManager_.getCurrentAudioDevice();
+    juce::AudioDeviceManager::AudioDeviceSetup setup = deviceManager_.getAudioDeviceSetup();
+    juce::String error;
+    if (!openAllInputs(setup, device->getInputChannelNames().size(), device->getActiveInputChannels().countNumberOfSetBits(), error))
+        return error;
+    return deviceManager_.setAudioDeviceSetup(setup, true);
+}
+
+bool AudioHost::openAllInputs(juce::AudioDeviceManager::AudioDeviceSetup& setup, int available, int active, juce::String& error) {
+    if (available == 0) {
+        error = "This audio device has no inputs. Choose another one in Audio settings";
+        return false;
+    }
+    if (active == available)
+        return false;
     setup.useDefaultInputChannels = false;
     setup.inputChannels.setRange(0, available, true);
-    return deviceManager_.setAudioDeviceSetup(setup, true);
+    return true;
 }
 
 juce::StringArray AudioHost::getInputNames() const {
