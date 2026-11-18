@@ -532,6 +532,94 @@ void testSlotButtons() {
     strip.onSlotClicked = realHandler;
 }
 
+// ---- the arrangement's mouse -------------------------------------------------------------------------
+// A drag on the ruler seeks, a drag on a clip moves it: to the nearest beat, or (with Alt) to where the
+// mouse is. The wheel zooms (Ctrl), scrolls the lanes when they do not fit, and scrolls the time (Shift,
+// a sideways wheel, or any wheel when the lanes fit).
+juce::MouseEvent mouseAt(ArrangementView& view, int x, int y, juce::ModifierKeys mods, juce::Point<float> down) {
+    return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), {static_cast<float>(x), static_cast<float>(y)}, mods, 1.0f, 0.0f, 0.0f, 0.0f,
+                            0.0f, &view, &view, juce::Time::getCurrentTime(), down, juce::Time::getCurrentTime(), 1, false);
+}
+
+void testArrangementMouse() {
+    std::printf("the arrangement's mouse\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    main.setSize(MainComponent::kDefaultWidth, MainComponent::kDefaultHeight);
+    DAWLAB_CHECK(main.loadDemoSongNow() == 0);
+    ArrangementView& view = main.getArrangement();
+    Session& session = main.getSession();
+    const Transport& transport = main.getEngine().getTransport();
+    const juce::ModifierKeys left(juce::ModifierKeys::leftButtonModifier);
+    const juce::ModifierKeys alt(juce::ModifierKeys::altModifier | juce::ModifierKeys::leftButtonModifier);
+    const auto point = [](int x, int y) { return juce::Point<float>(static_cast<float>(x), static_cast<float>(y)); };
+    const auto sampleAt = [&view](int x) { return view.xToSample(static_cast<float>(x)); };
+
+    // The ruler.
+    const int x0 = ArrangementView::kHeaderWidth + 201, ruler = ArrangementView::kRulerHeight / 2;
+    view.mouseDown(mouseAt(view, x0, ruler, left, point(x0, ruler)));
+    const int64_t seeked = transport.getPosition();
+    view.mouseDrag(mouseAt(view, x0 + 37, ruler, alt, point(x0, ruler)));
+    const int64_t dragged = transport.getPosition();
+    view.mouseUp(mouseAt(view, x0 + 37, ruler, alt, point(x0, ruler)));
+    std::printf("   the ruler: a click at %.0f -> %lld (the beat), Alt + drag to %.0f -> %lld\n", sampleAt(x0),
+                static_cast<long long>(seeked), sampleAt(x0 + 37), static_cast<long long>(dragged));
+    DAWLAB_CHECK(seeked == view.snapToBeat(sampleAt(x0), true) && seeked != std::llround(sampleAt(x0)));
+    DAWLAB_CHECK(dragged == view.snapToBeat(sampleAt(x0 + 37), false) && dragged == std::llround(sampleAt(x0 + 37)));
+
+    // A clip: grabbed 10 px into it, dragged 60 px (onto a beat), then 7 px more with Alt.
+    int track = 0;
+    while (track < kNumTracks - 1 && session.getClips(track).empty())
+        ++track;
+    const int lane = track;
+    DAWLAB_CHECK(!session.getClips(track).empty());
+    if (session.getClips(track).empty())
+        return;
+    const int64_t start0 = session.getClips(track)[0].start;
+    const std::size_t numClips = session.getClips(track).size();
+    const juce::Rectangle<int> box = view.getClipBounds(lane, 0);
+    const int gx = std::max(box.getX(), ArrangementView::kHeaderWidth) + 10, gy = box.getCentreY();
+    const double grab = sampleAt(gx) - static_cast<double>(start0);
+    const auto startsAt = [&](int64_t start) {
+        const auto& clips = session.getClips(track);
+        return std::any_of(clips.begin(), clips.end(), [start](const Clip& c) { return c.start == start; });
+    };
+    view.mouseDown(mouseAt(view, gx, gy, left, point(gx, gy)));
+    view.mouseDrag(mouseAt(view, gx + 60, gy, left, point(gx, gy)));
+    const int64_t onBeat = view.snapToBeat(sampleAt(gx + 60) - grab, true);
+    const bool movedToBeat = startsAt(onBeat) && !startsAt(start0);
+    view.mouseDrag(mouseAt(view, gx + 67, gy, alt, point(gx, gy)));
+    const int64_t free = view.snapToBeat(sampleAt(gx + 67) - grab, false);
+    view.mouseUp(mouseAt(view, gx + 67, gy, alt, point(gx, gy)));
+    std::printf("   a clip at %lld: dragged 60 px -> %lld (%s), 7 px more with Alt -> %lld (%s)\n", static_cast<long long>(start0),
+                static_cast<long long>(onBeat), movedToBeat ? "moved" : "NOT MOVED", static_cast<long long>(free),
+                startsAt(free) ? "moved" : "NOT MOVED");
+    DAWLAB_CHECK(movedToBeat && onBeat != free && startsAt(free) && session.getClips(track).size() == numClips);
+
+    // The wheel. Ctrl zooms in (up) and out (down) around the mouse.
+    juce::MouseWheelDetails up{}, down{}, sideways{};
+    up.deltaY = 0.5f;
+    down.deltaY = -0.5f;
+    sideways.deltaX = -0.25f;
+    const juce::ModifierKeys ctrl(juce::ModifierKeys::ctrlModifier), shift(juce::ModifierKeys::shiftModifier), none;
+    const int wy = view.getLaneBounds(0).getCentreY();
+    view.setView(10.0 * transport.getSamplesPerBar(), 900.0); // not 1000: the first layout replaces that
+    view.mouseWheelMove(mouseAt(view, x0, wy, ctrl, point(x0, wy)), up);
+    const double zoomedIn = view.getSamplesPerPixel();
+    view.mouseWheelMove(mouseAt(view, x0, wy, ctrl, point(x0, wy)), down);
+    DAWLAB_CHECK_NEAR(zoomedIn, 720.0, 1e-9);
+    DAWLAB_CHECK_NEAR(view.getSamplesPerPixel(), 900.0, 1e-9);
+    // Shift, or a wheel turned sideways: the time scrolls, 200 px per unit of the wheel.
+    const double start = view.getViewStart();
+    view.mouseWheelMove(mouseAt(view, x0, wy, shift, point(x0, wy)), up);
+    const double shifted = view.getViewStart();
+    view.mouseWheelMove(mouseAt(view, x0, wy, none, point(x0, wy)), sideways);
+    std::printf("   the wheel: Ctrl zooms 900 -> %.0f -> %.0f samples per pixel; Shift scrolls %.0f px, sideways %.0f px\n",
+                zoomedIn, view.getSamplesPerPixel(), (shifted - start) / 900.0, (view.getViewStart() - shifted) / 900.0);
+    DAWLAB_CHECK_NEAR(shifted, start - 100.0 * 900.0, 1e-6);
+    DAWLAB_CHECK_NEAR(view.getViewStart(), shifted + 50.0 * 900.0, 1e-6);
+}
+
 // ---- --smoke-test --------------------------------------------------------------------------------
 
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
@@ -541,6 +629,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testSlotMenu();
     testKeyboardShortcuts();
     testSlotButtons();
+    testArrangementMouse();
 
     // 1. The resampler used when loading files (MediaLoader.cpp)
     {

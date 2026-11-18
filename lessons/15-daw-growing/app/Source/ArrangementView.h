@@ -162,6 +162,7 @@ private:
                    bool selected);
     int clipAt(int lane, float x) const;
     void seekToX(float x, bool snap);
+    void dragClipTo(float x, bool snap); // mouseDrag()'s parts, one per kind of drag
 
     Session& session_;
     const AudioHost* audioHost_;

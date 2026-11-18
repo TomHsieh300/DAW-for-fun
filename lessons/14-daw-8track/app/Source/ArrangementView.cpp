@@ -455,16 +455,20 @@ void ArrangementView::mouseDown(const juce::MouseEvent& e) {
 
 void ArrangementView::mouseDrag(const juce::MouseEvent& e) {
     const bool snap = !e.mods.isAltDown();
-    if (drag_ == Drag::Seek) {
+    if (drag_ == Drag::Seek)
         seekToX(static_cast<float>(e.x), snap);
-    } else if (drag_ == Drag::Clip) {
-        const auto& clips = session_.getClips(dragTrack_);
-        if (dragClip_ < 0 || dragClip_ >= static_cast<int>(clips.size()))
-            return;
-        const int64_t newStart = snapToBeat(xToSample(static_cast<float>(e.x)) - dragGrabOffset_, snap);
-        if (newStart != clips[static_cast<size_t>(dragClip_)].start)
-            dragClip_ = session_.moveClip(dragTrack_, dragClip_, newStart); // -> repaint via change message
-    }
+    else if (drag_ == Drag::Clip)
+        dragClipTo(static_cast<float>(e.x), snap);
+}
+
+// The held clip follows the mouse: it starts where the mouse is, less where the clip was grabbed.
+void ArrangementView::dragClipTo(float x, bool snap) {
+    const auto& clips = session_.getClips(dragTrack_);
+    if (dragClip_ < 0 || dragClip_ >= static_cast<int>(clips.size()))
+        return;
+    const int64_t newStart = snapToBeat(xToSample(x) - dragGrabOffset_, snap);
+    if (newStart != clips[static_cast<size_t>(dragClip_)].start)
+        dragClip_ = session_.moveClip(dragTrack_, dragClip_, newStart); // -> repaint via change message
 }
 
 void ArrangementView::mouseUp(const juce::MouseEvent&) {

@@ -809,27 +809,41 @@ void ArrangementView::mouseDownOnClip(const juce::MouseEvent& e, int lane, bool 
 
 void ArrangementView::mouseDrag(const juce::MouseEvent& e) {
     const bool snap = !e.mods.isAltDown();
-    if (drag_ == Drag::Seek) {
+    if (drag_ == Drag::Seek)
         seekToX(static_cast<float>(e.x), snap);
-    } else if (drag_ == Drag::Clip) {
-        const auto& clips = session_.getClips(dragTrack_);
-        if (dragClip_ < 0 || dragClip_ >= static_cast<int>(clips.size()))
-            return;
-        const int64_t newStart = snapToBeat(xToSample(static_cast<float>(e.x)) - dragGrabOffset_, snap);
-        if (newStart != clips[static_cast<size_t>(dragClip_)].start)
-            dragClip_ = session_.moveClip(dragTrack_, dragClip_, newStart); // -> repaint via change message
-    } else if (drag_ == Drag::MidiClip) {
-        const auto& clips = session_.getMidiClips(dragTrack_);
-        if (dragClip_ < 0 || dragClip_ >= static_cast<int>(clips.size()))
-            return;
-        const int64_t newStart = session_.tickOfSample(snapToBeat(xToSample(static_cast<float>(e.x)) - dragGrabOffset_, snap));
-        if (newStart != clips[static_cast<size_t>(dragClip_)].start)
-            dragClip_ = session_.moveMidiClip(dragTrack_, dragClip_, newStart, dragMidiKey_);
-    } else if (drag_ == Drag::Point) {
-        if (const LaneAddress* address = getShownLane(dragTrack_))
-            dragPoint_ = session_.movePoint(*address, dragPoint_, snapToBeat(xToSample(static_cast<float>(e.x)), snap),
-                                            yToValue(dragLane_, static_cast<float>(e.y)), dragPointKey_);
-    }
+    else if (drag_ == Drag::Clip)
+        dragClipTo(static_cast<float>(e.x), snap);
+    else if (drag_ == Drag::MidiClip)
+        dragMidiClipTo(static_cast<float>(e.x), snap);
+    else if (drag_ == Drag::Point)
+        dragPointTo(e, snap);
+}
+
+// The held clip follows the mouse: it starts where the mouse is, less where the clip was grabbed.
+void ArrangementView::dragClipTo(float x, bool snap) {
+    const auto& clips = session_.getClips(dragTrack_);
+    if (dragClip_ < 0 || dragClip_ >= static_cast<int>(clips.size()))
+        return;
+    const int64_t newStart = snapToBeat(xToSample(x) - dragGrabOffset_, snap);
+    if (newStart != clips[static_cast<size_t>(dragClip_)].start)
+        dragClip_ = session_.moveClip(dragTrack_, dragClip_, newStart); // -> repaint via change message
+}
+
+// The held MIDI clip follows the mouse the same way, in ticks (chapter 18).
+void ArrangementView::dragMidiClipTo(float x, bool snap) {
+    const auto& clips = session_.getMidiClips(dragTrack_);
+    if (dragClip_ < 0 || dragClip_ >= static_cast<int>(clips.size()))
+        return;
+    const int64_t newStart = session_.tickOfSample(snapToBeat(xToSample(x) - dragGrabOffset_, snap));
+    if (newStart != clips[static_cast<size_t>(dragClip_)].start)
+        dragClip_ = session_.moveMidiClip(dragTrack_, dragClip_, newStart, dragMidiKey_);
+}
+
+// The held automation point follows the mouse, in time and in value (chapter 16).
+void ArrangementView::dragPointTo(const juce::MouseEvent& e, bool snap) {
+    if (const LaneAddress* address = getShownLane(dragTrack_))
+        dragPoint_ = session_.movePoint(*address, dragPoint_, snapToBeat(xToSample(static_cast<float>(e.x)), snap),
+                                        yToValue(dragLane_, static_cast<float>(e.y)), dragPointKey_);
 }
 
 void ArrangementView::mouseUp(const juce::MouseEvent&) {

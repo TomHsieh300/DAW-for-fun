@@ -138,6 +138,7 @@ private:
     void paintClip(juce::Graphics&, int track, const engine::Clip& clip, juce::Rectangle<int> bounds, bool selected);
     int clipAt(int track, float x) const;
     void seekToX(float x, bool snap);
+    void dragClipTo(float x, bool snap); // mouseDrag()'s parts, one per kind of drag
 
     Session& session_;
     const AudioHost* audioHost_;
