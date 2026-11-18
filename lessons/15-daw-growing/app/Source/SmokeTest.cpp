@@ -500,6 +500,66 @@ void testKeyboardShortcuts() {
     std::printf("  %d commands with a key listed, one line each; with its key taken away, Play / Stop is not\n", lines.size());
 }
 
+// ---- the insert slot buttons ------------------------------------------------------------------------
+// A slot button asks MainComponent for the slot's menu (a right click, its arrow, an empty slot) or for
+// the effect's editor (a click on a named slot's body). Clicked here with mouse events, through
+// juce::Component (where mouseDown() is public); the strip's own callback is swapped for a recorder.
+void testSlotButtons() {
+    std::printf("the insert slot buttons\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    main.setSize(MainComponent::kDefaultWidth, MainComponent::kDefaultHeight);
+    DAWLAB_CHECK(main.loadDemoSongNow() == 0);
+    main.getSession().dispatchPendingMessages(); // the mixer follows the new song
+    ChannelStripView& strip = main.getMixer().getStrip(0);
+    strip.refreshStructure();                    // what its slots show (otherwise at the next update)
+    const ChannelStripView& master = main.getMixer().getStrip(main.getMixer().getNumStrips() - 1);
+    DAWLAB_CHECK(strip.getSlotButton(-1) == nullptr && strip.getSlotButton(kInsertSlotsPerStrip) == nullptr);
+    DAWLAB_CHECK(strip.getSendKnob(0) != nullptr && strip.getSendKnob(-1) == nullptr);
+    DAWLAB_CHECK(strip.getSendKnob(strip.getNumSendKnobs()) == nullptr && master.getNumSendKnobs() == 0);
+    int named = -1, empty = -1;
+    for (int s = 0; s < kInsertSlotsPerStrip; ++s)
+        (main.getSession().getSlot(strip.getChannel(), s).isEmpty() ? empty : named) = s;
+    const bool found = strip.getSlotButton(named) != nullptr && strip.getSlotButton(empty) != nullptr;
+    DAWLAB_CHECK(found); // a slot with an effect, an empty one, and their buttons
+    if (!found)
+        return;
+
+    int slotGot = -1, calls = 0;
+    bool menuGot = false;
+    const auto realHandler = strip.onSlotClicked;
+    strip.onSlotClicked = [&](ChannelRef ref, int slot, juce::Component&, bool menu) {
+        DAWLAB_CHECK(ref == strip.getChannel());
+        slotGot = slot;
+        menuGot = menu;
+        ++calls;
+    };
+    // One click at x on the slot: the slot it reported and whether it asked for the menu.
+    const auto click = [&](int slot, int x, juce::ModifierKeys mods) {
+        juce::Component& button = *strip.getSlotButton(slot);
+        const juce::Point<float> at{static_cast<float>(x), static_cast<float>(button.getHeight() / 2)};
+        const juce::MouseEvent e(juce::Desktop::getInstance().getMainMouseSource(), at, mods, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 &button, &button, juce::Time::getCurrentTime(), at, juce::Time::getCurrentTime(), 1, false);
+        slotGot = -1;
+        button.mouseDown(e);
+        button.mouseUp(e);
+        return std::make_pair(slotGot, menuGot);
+    };
+    const juce::ModifierKeys left(juce::ModifierKeys::leftButtonModifier), right(juce::ModifierKeys::rightButtonModifier);
+    const int width = strip.getSlotButton(named)->getWidth();
+    DAWLAB_CHECK(width > 40);
+    const auto body = click(named, 4, left), arrow = click(named, width - 4, left);
+    const auto rightClick = click(named, 4, right), emptyBody = click(empty, 4, left);
+    std::printf("   slot %d (\"%s\"): body -> %s, arrow -> %s, right click -> %s; empty slot %d -> %s; %d calls\n", named + 1,
+                strip.getSlotButton(named)->getTooltip().upToFirstOccurrenceOf(" - ", false, false).toRawUTF8(),
+                body.second ? "menu" : "editor", arrow.second ? "menu" : "editor", rightClick.second ? "menu" : "editor",
+                empty + 1, emptyBody.second ? "menu" : "editor", calls);
+    DAWLAB_CHECK(body == std::make_pair(named, false) && arrow == std::make_pair(named, true));
+    DAWLAB_CHECK(rightClick == std::make_pair(named, true) && emptyBody == std::make_pair(empty, true));
+    DAWLAB_CHECK(calls == 4); // one call per click: a right click does not click the button as well
+    strip.onSlotClicked = realHandler;
+}
+
 // ---- --smoke-test --------------------------------------------------------------------------------
 
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
@@ -509,6 +569,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testBarGrid();
     testSlotMenu();
     testKeyboardShortcuts();
+    testSlotButtons();
 
     // 1. The resampler used when loading files (MediaLoader.cpp)
     {
