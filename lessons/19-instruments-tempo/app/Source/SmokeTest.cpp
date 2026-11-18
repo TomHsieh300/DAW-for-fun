@@ -2785,6 +2785,30 @@ void testPianoRollWheel() {
     DAWLAB_CHECK(roll.pitchToY(0) + PianoRoll::kRowHeight == static_cast<float>(roll.getHeight())); // the lowest row at the bottom
 }
 
+// ---- the synth panel's knobs (chapter 19) ------------------------------------------------------------
+// Every knob writes its own field of the sound and no other one, and reads back what it wrote.
+void testSynthKnobs() {
+    std::printf("the synth panel's knobs\n");
+    const VoiceSettings defaults;
+    int own = 0, others = 0;
+    for (int k = 0; k <= SynthPanel::kNumKnobs; ++k) {
+        VoiceSettings sound;
+        const double value = 0.25 * (k + 1); // exact as a float too (the level is one)
+        SynthPanel::setValueOf(sound, static_cast<SynthPanel::Knob>(k), value);
+        for (int other = 0; other < SynthPanel::kNumKnobs; ++other) {
+            const double read = SynthPanel::valueOf(sound, static_cast<SynthPanel::Knob>(other));
+            if (other == k)
+                own += read == value ? 1 : 0;
+            else
+                others += read == SynthPanel::valueOf(defaults, static_cast<SynthPanel::Knob>(other)) ? 1 : 0;
+        }
+    }
+    std::printf("   %d of %d knobs read back their own value, %d of %d other values unchanged\n", own,
+                static_cast<int>(SynthPanel::kNumKnobs), others, static_cast<int>(SynthPanel::kNumKnobs * SynthPanel::kNumKnobs));
+    DAWLAB_CHECK(own == SynthPanel::kNumKnobs && others == SynthPanel::kNumKnobs * SynthPanel::kNumKnobs);
+    DAWLAB_CHECK(SynthPanel::valueOf(defaults, SynthPanel::kNumKnobs) == 0.0);
+}
+
 // ---- --smoke-test --------------------------------------------------------------------------------
 
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
@@ -2796,6 +2820,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testSlotButtons();
     testArrangementMouse();
     testPianoRollWheel();
+    testSynthKnobs();
     testMidiModel();
     testMidiEditing();
     testMidiRecording();
