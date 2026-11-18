@@ -11,14 +11,20 @@ AudioHost::~AudioHost() { closeDevice(); }
 juce::String AudioHost::openDefaultDevice(int numInputChannels, int numOutputChannels) {
     // initialise() picks the default device type and device; with a null XML state it opens the
     // default output at the device's preferred sample rate and buffer size.
-    const juce::String error = deviceManager_.initialise(numInputChannels, numOutputChannels, nullptr, true);
+    const juce::String initialiseError = deviceManager_.initialise(numInputChannels, numOutputChannels, nullptr, true);
+    const juce::String error =
+        deviceError(initialiseError, deviceManager_.getCurrentAudioDevice() != nullptr, "No audio output device found");
+    if (error.isEmpty()) {
+        deviceOpen_ = true;
+        setEngineAttached(true); // -> audioDeviceAboutToStart() -> Engine::prepare()
+    }
+    return error;
+}
+
+juce::String AudioHost::deviceError(const juce::String& error, bool deviceRuns, const juce::String& whenNone) {
     if (error.isNotEmpty())
         return error;
-    if (deviceManager_.getCurrentAudioDevice() == nullptr)
-        return "No audio output device found";
-    deviceOpen_ = true;
-    setEngineAttached(true); // -> audioDeviceAboutToStart() -> Engine::prepare()
-    return {};
+    return deviceRuns ? juce::String() : whenNone;
 }
 
 void AudioHost::closeDevice() {

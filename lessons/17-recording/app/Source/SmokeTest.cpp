@@ -1784,6 +1784,18 @@ void testPluginInsert() {
     DAWLAB_CHECK(juce::TopLevelWindow::getNumTopLevelWindows() == windowsBefore);
 }
 
+// ---- opening the audio device, decided without one ---------------------------------------------------
+// JUCE's own error comes first; no error but no device running is an error of ours; else it is open.
+void testDeviceErrors() {
+    std::printf("opening the audio device\n");
+    const juce::String none = "No audio output device found";
+    const juce::String juceError = AudioHost::deviceError("No such device", false, none);
+    DAWLAB_CHECK(juceError == "No such device" && AudioHost::deviceError("No such device", true, none) == "No such device");
+    DAWLAB_CHECK(AudioHost::deviceError({}, false, none) == none && AudioHost::deviceError({}, true, none).isEmpty());
+    std::printf("   JUCE's error: \"%s\"; none, no device: \"%s\"; none, a device: open\n", juceError.toRawUTF8(),
+                AudioHost::deviceError({}, false, none).toRawUTF8());
+}
+
 // ---- --smoke-test --------------------------------------------------------------------------------
 
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
@@ -1795,6 +1807,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testArrangementMouse();
     testOddInserts();
     testPluginInsert();
+    testDeviceErrors();
     testAutomation();
     testRecording();
     testSlotMenu();

@@ -38,6 +38,9 @@ public:
     // Opens the system's default output device (stereo; `numInputChannels` inputs for
     // recording, Exercise 9). Returns an error message, empty on success.
     juce::String openDefaultDevice(int numInputChannels = 0, int numOutputChannels = 2);
+    // What a device open comes to: JUCE's error, else `whenNone` if no device runs, else "" (open).
+    // Static, so that a test can ask it without a device.
+    static juce::String deviceError(const juce::String& error, bool deviceRuns, const juce::String& whenNone);
     void closeDevice();
     bool isDeviceOpen() const;
     juce::AudioDeviceManager& getDeviceManager() noexcept { return deviceManager_; }
