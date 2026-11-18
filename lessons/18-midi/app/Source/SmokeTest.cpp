@@ -1817,6 +1817,59 @@ void testKeyboardShortcuts() {
     std::printf("  %d commands with a key listed, one line each; with its key taken away, Play / Stop is not\n", lines.size());
 }
 
+// The menu of a track's record button: MainComponent::buildRecordMenu() and handleRecordMenuResult().
+void testRecordMenu() {
+    std::printf("the record button's menu: its items, and what each one does\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    Session& session = main.getSession();
+    Engine& engine = main.getEngine();
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    const TrackId mono = session.getTrackId(0);
+    const TrackId stereo = main.addTrack(TrackFormat::Stereo);
+    engine.applyPendingCommandsOffline();
+    Track& t = *engine.getTrack(mono);
+    const juce::StringArray inputs{"In 1", "In 2", "In 3"};
+
+    // No such track: no menu, and its items do nothing.
+    DAWLAB_CHECK(main.buildRecordMenu(TrackId{}, inputs).getNumItems() == 0);
+    main.handleRecordMenuResult(TrackId{}, 1);
+    // A mono track: one input item for each input, its own ticked; how it is monitored, ticked; no feedback.
+    juce::PopupMenu menu = main.buildRecordMenu(mono, inputs);
+    DAWLAB_CHECK(menuItem(menu, "Armed").id == 1 && !menuItem(menu, "Armed").ticked);
+    DAWLAB_CHECK(menuItem(menu, "In 1").id == 100 && menuItem(menu, "In 1").ticked && menuItem(menu, "In 3").id == 102 &&
+                 !menuItem(menu, "In 3").ticked && menuItem(menu, "Input").enabled);
+    const MenuItemState direct = menuItem(menu, "Directly, dry: as early as it can be");
+    const MenuItemState through = menuItem(menu, "Through this track's effects: with the whole mix's latency");
+    DAWLAB_CHECK(direct.id == 2 && direct.ticked && through.id == 3 && !through.ticked);
+    DAWLAB_CHECK(!menuItem(menu, "Feedback was detected: listen again").found);
+    // A stereo track: pairs of inputs, as many as there are pairs; and with no inputs, the submenu is disabled.
+    menu = main.buildRecordMenu(stereo, inputs);
+    DAWLAB_CHECK(menuItem(menu, "In 1 + In 2").id == 100 && menuItem(menu, "In 2 + In 3").id == 101 && !menuItem(menu, "In 3").found);
+    DAWLAB_CHECK(!menuItem(main.buildRecordMenu(stereo, {}), "Input").enabled);
+
+    // The items: arm and disarm, the monitor path there and back, an input; no item changes nothing.
+    main.handleRecordMenuResult(mono, 1);
+    DAWLAB_CHECK(t.isArmed() && menuItem(main.buildRecordMenu(mono, inputs), "Armed").ticked);
+    main.handleRecordMenuResult(mono, 1);
+    DAWLAB_CHECK(!t.isArmed());
+    main.handleRecordMenuResult(mono, 3);
+    DAWLAB_CHECK(t.getMonitorPath() == MonitorPath::ThroughInserts &&
+                 menuItem(main.buildRecordMenu(mono, inputs), "Through this track's effects: with the whole mix's latency").ticked);
+    main.handleRecordMenuResult(mono, 2);
+    DAWLAB_CHECK(t.getMonitorPath() == MonitorPath::Direct);
+    main.handleRecordMenuResult(mono, 102);
+    DAWLAB_CHECK(t.getInputChannel() == 2 && menuItem(main.buildRecordMenu(mono, inputs), "In 3").ticked);
+    main.handleRecordMenuResult(mono, 0);
+    main.handleRecordMenuResult(mono, 4); // listen again: no feedback here, nothing to see
+    DAWLAB_CHECK(t.getInputChannel() == 2 && t.getMonitorPath() == MonitorPath::Direct && !t.isArmed());
+    std::printf("  inputs one by one (mono) and in pairs (stereo); armed, monitor path and input set by their items\n");
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    engine.collectGarbage();
+}
+
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     constexpr double sr = 48000.0;
     std::setvbuf(stdout, nullptr, _IONBF, 0); // unbuffered: a crash must not swallow what was printed
@@ -1830,6 +1883,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testRecording();
     testSlotMenu();
     testKeyboardShortcuts();
+    testRecordMenu();
 
 
     // 1. The resampler used when loading files (MediaLoader.cpp)

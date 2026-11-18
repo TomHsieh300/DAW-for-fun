@@ -477,11 +477,18 @@ std::function<void(int)> menuCallback(Owner* owner, Handle handle) {
 } // namespace
 
 void MainComponent::showRecordMenu(engine::TrackId track) {
+    juce::PopupMenu menu = buildRecordMenu(track, audioHost_.getInputNames());
+    if (menu.getNumItems() == 0)
+        return; // no such track
+    menu.showMenuAsync(juce::PopupMenu::Options{},
+                       menuCallback(this, [track](MainComponent& m, int item) { m.handleRecordMenuResult(track, item); }));
+}
+
+juce::PopupMenu MainComponent::buildRecordMenu(engine::TrackId track, const juce::StringArray& names) {
     engine::Track* t = engine_.getTrack(track);
     if (t == nullptr)
-        return;
+        return {};
     juce::PopupMenu inputs;
-    const juce::StringArray names = audioHost_.getInputNames();
     const int stereo = t->getNumProcessingChannels() == 2 ? 1 : 0;
     for (int i = 0; i + stereo < names.size(); ++i)
         inputs.addItem(100 + i, stereo != 0 ? names[i] + " + " + names[i + 1] : names[i], true, t->getInputChannel() == i);
@@ -495,25 +502,24 @@ void MainComponent::showRecordMenu(engine::TrackId track) {
     menu.addItem(3, "Through this track's effects: with the whole mix's latency", true, t->getMonitorPath() == engine::MonitorPath::ThroughInserts);
     if (t->getMonitor().feedbackDetected())
         menu.addItem(4, "Feedback was detected: listen again");
-    juce::Component::SafePointer<MainComponent> safe(this);
-    menu.showMenuAsync(juce::PopupMenu::Options{}, [safe, track](int result) {
-        if (safe == nullptr)
-            return;
-        engine::Track* track_ = safe->engine_.getTrack(track);
-        if (track_ == nullptr || result == 0)
-            return;
-        if (result == 1)
-            safe->setArmed(track, !track_->isArmed());
-        else if (result == 2)
-            track_->setMonitorPath(engine::MonitorPath::Direct);
-        else if (result == 3)
-            track_->setMonitorPath(engine::MonitorPath::ThroughInserts);
-        else if (result == 4)
-            track_->getMonitor().resetFeedback();
-        else if (result >= 100)
-            track_->setInputChannel(result - 100);
-        safe->arrangement_.repaint();
-    });
+    return menu;
+}
+
+void MainComponent::handleRecordMenuResult(engine::TrackId track, int item) {
+    engine::Track* t = engine_.getTrack(track);
+    if (t == nullptr || item == 0)
+        return;
+    if (item == 1)
+        setArmed(track, !t->isArmed());
+    else if (item == 2)
+        t->setMonitorPath(engine::MonitorPath::Direct);
+    else if (item == 3)
+        t->setMonitorPath(engine::MonitorPath::ThroughInserts);
+    else if (item == 4)
+        t->getMonitor().resetFeedback();
+    else if (item >= 100)
+        t->setInputChannel(item - 100);
+    arrangement_.repaint();
 }
 
 void MainComponent::showClipMenu(engine::TrackId track, int clipIndex) {

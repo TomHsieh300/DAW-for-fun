@@ -86,7 +86,11 @@ public:
     // track is about now, not about the song.
     bool setArmed(engine::TrackId track, bool armed);
     void cycleMonitor(engine::TrackId track); // Off, Auto, Always
-    void showRecordMenu(engine::TrackId track);
+    void showRecordMenu(engine::TrackId track); // buildRecordMenu() with the device's inputs, then:
+    // The menu of a track's record button (empty: no such track): Armed (item 1), the input (100 + its first
+    // channel), how it is monitored (2 directly, 3 through the track's effects), and after feedback 4: listen again.
+    juce::PopupMenu buildRecordMenu(engine::TrackId track, const juce::StringArray& inputNames);
+    void handleRecordMenuResult(engine::TrackId track, int item); // 0, no item, does nothing
     void showClipMenu(engine::TrackId track, int clipIndex);
     void askForTrim();
     // True, and it says so on the status line, while a recording prevents `what`.
