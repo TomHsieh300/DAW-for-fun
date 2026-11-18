@@ -606,101 +606,81 @@ void MainComponent::getAllCommands(juce::Array<juce::CommandID>& c) {
     c.addArray(ids, static_cast<int>(sizeof(ids) / sizeof(ids[0])));
 }
 
-void MainComponent::getCommandInfo(juce::CommandID id, juce::ApplicationCommandInfo& info) {
+// A command of this target as the menus, the keyboard and the list of shortcuts show it, and when it can
+// run. findCommand() has them all in one table.
+struct MainComponent::Command {
+    struct Key {
+        int code = 0; // 0: no key
+        int modifiers = 0;
+    };
+    juce::CommandID id;
+    const char* name;
+    const char* description;
+    const char* category;
+    Key keys[2];                  // its default key presses
+    bool idleOnly = false;        // not while an export renders
+    Shows shows = Shows::nothing; // what its tick mark in the menu shows
+};
+
+// The table of all commands; nullptr for an id that is none of them.
+const MainComponent::Command* MainComponent::findCommand(juce::CommandID id) {
     using juce::KeyPress;
-    using juce::ModifierKeys;
-    const auto cmd = ModifierKeys::commandModifier; // Ctrl on Windows, Cmd on macOS
-    const bool idle = !isExporting();
-    switch (id) {
-    case CommandIDs::newProject:
-        info.setInfo("New project", "Start an empty project", CommandCategories::file, 0);
-        info.addDefaultKeypress('n', cmd);
-        info.setActive(idle);
-        break;
-    case CommandIDs::loadDemoSong:
-        info.setInfo("Load demo song", "Generate the 8-track demo song", CommandCategories::file, 0);
-        info.addDefaultKeypress('d', cmd);
-        info.setActive(idle);
-        break;
-    case CommandIDs::loadAudioIntoTrack:
-        info.setInfo("Load audio into selected track...", "Load a WAV / AIFF file", CommandCategories::file, 0);
-        info.addDefaultKeypress('o', cmd);
-        info.setActive(idle);
-        break;
-    case CommandIDs::exportMixdown:
-        info.setInfo("Export mixdown...", "Bounce the song to a WAV file", CommandCategories::file, 0);
-        info.addDefaultKeypress('e', cmd);
-        info.setActive(idle);
-        break;
-    case CommandIDs::showAudioSettings:
-        info.setInfo("Audio settings...", "Choose the audio device", CommandCategories::file, 0);
-        info.addDefaultKeypress(',', cmd);
-        info.setActive(idle);
-        break;
-    case juce::StandardApplicationCommandIDs::quit:
-        info.setInfo("Quit", "Quit DawLab 8", CommandCategories::file, 0);
-        info.addDefaultKeypress('q', cmd);
-        break;
-    case CommandIDs::playStop:
-        info.setInfo("Play / Stop", "Start or stop playback", CommandCategories::transport, 0);
-        info.addDefaultKeypress(KeyPress::spaceKey, ModifierKeys::noModifiers);
-        info.setTicked(engine_.getTransport().isPlaying());
-        info.setActive(idle);
-        break;
-    case CommandIDs::returnToStart:
-        info.setInfo("Return to start", "Move the playhead to bar 1", CommandCategories::transport, 0);
-        info.addDefaultKeypress(KeyPress::homeKey, ModifierKeys::noModifiers);
-        info.setActive(idle);
-        break;
-    case CommandIDs::toggleLoop:
-        info.setInfo("Loop", "Loop on / off", CommandCategories::transport, 0);
-        info.addDefaultKeypress('l', ModifierKeys::noModifiers);
-        info.setTicked(engine_.getTransport().isLoopEnabled());
-        info.setActive(idle);
-        break;
-    case CommandIDs::seekBackOneBar:
-        info.setInfo("Back one bar", "Move the playhead one bar back", CommandCategories::transport, 0);
-        info.addDefaultKeypress(KeyPress::leftKey, ModifierKeys::noModifiers);
-        info.setActive(idle);
-        break;
-    case CommandIDs::seekForwardOneBar:
-        info.setInfo("Forward one bar", "Move the playhead one bar forward", CommandCategories::transport, 0);
-        info.addDefaultKeypress(KeyPress::rightKey, ModifierKeys::noModifiers);
-        info.setActive(idle);
-        break;
-    case CommandIDs::selectNextTrack:
-        info.setInfo("Select next track", "", CommandCategories::track, 0);
-        info.addDefaultKeypress(KeyPress::downKey, ModifierKeys::noModifiers);
-        break;
-    case CommandIDs::selectPreviousTrack:
-        info.setInfo("Select previous track", "", CommandCategories::track, 0);
-        info.addDefaultKeypress(KeyPress::upKey, ModifierKeys::noModifiers);
-        break;
-    case CommandIDs::toggleMuteSelected:
-        info.setInfo("Mute selected track", "", CommandCategories::track, 0);
-        info.addDefaultKeypress('m', ModifierKeys::noModifiers);
-        info.setActive(idle);
-        break;
-    case CommandIDs::toggleSoloSelected:
-        info.setInfo("Solo selected track", "", CommandCategories::track, 0);
-        info.addDefaultKeypress('s', ModifierKeys::noModifiers);
-        info.setActive(idle);
-        break;
-    case CommandIDs::zoomIn:
-        info.setInfo("Zoom in", "", CommandCategories::view, 0);
-        info.addDefaultKeypress('=', ModifierKeys::noModifiers);
-        info.addDefaultKeypress('+', ModifierKeys::noModifiers);
-        break;
-    case CommandIDs::zoomOut:
-        info.setInfo("Zoom out", "", CommandCategories::view, 0);
-        info.addDefaultKeypress('-', ModifierKeys::noModifiers);
-        break;
-    case CommandIDs::showKeyboardShortcuts:
-        info.setInfo("Keyboard shortcuts...", "List all shortcuts", CommandCategories::view, 0);
-        info.addDefaultKeypress(KeyPress::F1Key, ModifierKeys::noModifiers);
-        break;
-    default: break;
+    namespace category = CommandCategories;
+    constexpr int cmd = juce::ModifierKeys::commandModifier; // Ctrl on Windows, Cmd on macOS
+    constexpr int none = juce::ModifierKeys::noModifiers;
+    constexpr bool idle = true, anytime = false; // idle: not while an export renders
+    static const Command commands[] = {
+        {CommandIDs::newProject, "New project", "Start an empty project", category::file, {{'n', cmd}}, idle},
+        {CommandIDs::loadDemoSong, "Load demo song", "Generate the 8-track demo song", category::file, {{'d', cmd}}, idle},
+        {CommandIDs::loadAudioIntoTrack, "Load audio into selected track...", "Load a WAV / AIFF file", category::file,
+         {{'o', cmd}}, idle},
+        {CommandIDs::exportMixdown, "Export mixdown...", "Bounce the song to a WAV file", category::file, {{'e', cmd}}, idle},
+        {CommandIDs::showAudioSettings, "Audio settings...", "Choose the audio device", category::file, {{',', cmd}}, idle},
+        {juce::StandardApplicationCommandIDs::quit, "Quit", "Quit DawLab 8", category::file, {{'q', cmd}}, anytime},
+        {CommandIDs::playStop, "Play / Stop", "Start or stop playback", category::transport, {{KeyPress::spaceKey, none}}, idle,
+         Shows::playing},
+        {CommandIDs::returnToStart, "Return to start", "Move the playhead to bar 1", category::transport,
+         {{KeyPress::homeKey, none}}, idle},
+        {CommandIDs::toggleLoop, "Loop", "Loop on / off", category::transport, {{'l', none}}, idle, Shows::loop},
+        {CommandIDs::seekBackOneBar, "Back one bar", "Move the playhead one bar back", category::transport,
+         {{KeyPress::leftKey, none}}, idle},
+        {CommandIDs::seekForwardOneBar, "Forward one bar", "Move the playhead one bar forward", category::transport,
+         {{KeyPress::rightKey, none}}, idle},
+        {CommandIDs::selectNextTrack, "Select next track", "", category::track, {{KeyPress::downKey, none}}, anytime},
+        {CommandIDs::selectPreviousTrack, "Select previous track", "", category::track, {{KeyPress::upKey, none}}, anytime},
+        {CommandIDs::toggleMuteSelected, "Mute selected track", "", category::track, {{'m', none}}, idle},
+        {CommandIDs::toggleSoloSelected, "Solo selected track", "", category::track, {{'s', none}}, idle},
+        {CommandIDs::zoomIn, "Zoom in", "", category::view, {{'=', none}, {'+', none}}, anytime},
+        {CommandIDs::zoomOut, "Zoom out", "", category::view, {{'-', none}}, anytime},
+        {CommandIDs::showKeyboardShortcuts, "Keyboard shortcuts...", "List all shortcuts", category::view,
+         {{KeyPress::F1Key, none}}, anytime},
+    };
+    for (const Command& command : commands)
+        if (command.id == id)
+            return &command;
+    return nullptr;
+}
+
+// What a command's tick mark in the menu shows now.
+bool MainComponent::isTicked(Shows shows) {
+    switch (shows) {
+    case Shows::nothing: return false;
+    case Shows::playing: return engine_.getTransport().isPlaying();
+    case Shows::loop: return engine_.getTransport().isLoopEnabled();
     }
+    return false;
+}
+
+void MainComponent::getCommandInfo(juce::CommandID id, juce::ApplicationCommandInfo& info) {
+    const Command* command = findCommand(id);
+    if (command == nullptr)
+        return;
+    info.setInfo(command->name, command->description, command->category, 0);
+    for (const Command::Key& key : command->keys)
+        if (key.code != 0)
+            info.addDefaultKeypress(key.code, key.modifiers);
+    info.setActive(!command->idleOnly || !isExporting());
+    info.setTicked(isTicked(command->shows));
 }
 
 bool MainComponent::perform(const InvocationInfo& info) {

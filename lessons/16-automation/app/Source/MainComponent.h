@@ -168,6 +168,16 @@ private:
     void startClipConversion();
     void finishClipConversion(double fromRate, double toRate, const ConvertedBuffers& converted);
 
+    // ---- the command table (MainComponent.cpp): getCommandInfo() reads it -------------------------------
+    // What a command needs to run, besides an export that is over, and what its tick mark in the menu shows.
+    enum class Needs { nothing, canUndo, canRedo, selectedTrack, roomForTrack };
+    enum class Shows { nothing, playing, loop };
+    struct Command;
+    static const Command* findCommand(juce::CommandID id);
+    juce::String commandName(const Command& command) const;
+    bool isPossible(Needs needs);
+    bool isTicked(Shows shows);
+
     Mode mode_;
     DawLookAndFeel lookAndFeel_;
     host::PluginHost pluginHost_;

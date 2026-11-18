@@ -140,6 +140,13 @@ private:
     void startClipConversion();
     void finishClipConversion(double fromRate, double toRate, const ConvertedBuffers& converted);
 
+    // ---- the command table (MainComponent.cpp): getCommandInfo() reads it -------------------------------
+    // What a command's tick mark in the menu shows.
+    enum class Shows { nothing, playing, loop };
+    struct Command;
+    static const Command* findCommand(juce::CommandID id);
+    bool isTicked(Shows shows);
+
     Mode mode_;
     DawLookAndFeel lookAndFeel_;
     host::PluginHost pluginHost_;

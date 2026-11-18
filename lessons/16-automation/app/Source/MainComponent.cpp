@@ -872,153 +872,121 @@ void MainComponent::getAllCommands(juce::Array<juce::CommandID>& c) {
     c.addArray(ids, static_cast<int>(sizeof(ids) / sizeof(ids[0])));
 }
 
-void MainComponent::getCommandInfo(juce::CommandID id, juce::ApplicationCommandInfo& info) {
+// A command of this target as the menus, the keyboard and the list of shortcuts show it, and when it can
+// run. findCommand() has them all in one table.
+struct MainComponent::Command {
+    struct Key {
+        int code = 0; // 0: no key
+        int modifiers = 0;
+    };
+    juce::CommandID id;
+    const char* name;
+    const char* description;
+    const char* category;
+    Key keys[2];                  // its default key presses
+    bool idleOnly = false;        // not while an export renders
+    Needs needs = Needs::nothing; // what else it needs to run
+    Shows shows = Shows::nothing; // what its tick mark in the menu shows
+};
+
+// The table of all commands; nullptr for an id that is none of them.
+const MainComponent::Command* MainComponent::findCommand(juce::CommandID id) {
     using juce::KeyPress;
-    using juce::ModifierKeys;
-    const auto cmd = ModifierKeys::commandModifier; // Ctrl on Windows, Cmd on macOS
-    const bool idle = !isExporting();
-    switch (id) {
-    case CommandIDs::newProject:
-        info.setInfo("New project", "Start an empty project", CommandCategories::file, 0);
-        info.addDefaultKeypress('n', cmd);
-        info.setActive(idle);
-        break;
-    case CommandIDs::loadDemoSong:
-        info.setInfo("Load demo song", "Generate the 8-track demo song", CommandCategories::file, 0);
-        info.addDefaultKeypress('d', cmd);
-        info.setActive(idle);
-        break;
-    case CommandIDs::loadAudioIntoTrack:
-        info.setInfo("Load audio into selected track...", "Load a WAV / AIFF file", CommandCategories::file, 0);
-        info.addDefaultKeypress('i', cmd); // chapter 15: Ctrl+O opens a project now
-        info.setActive(idle);
-        break;
-    case CommandIDs::undo: {
-        const History& h = session_.getHistory();
-        info.setInfo(h.canUndo() ? "Undo " + h.getUndoName() : juce::String("Undo"), "Take back the last change",
-                     CommandCategories::edit, 0);
-        info.addDefaultKeypress('z', cmd);
-        info.setActive(idle && h.canUndo());
-        break;
+    namespace category = CommandCategories;
+    constexpr int cmd = juce::ModifierKeys::commandModifier; // Ctrl on Windows, Cmd on macOS
+    constexpr int shift = juce::ModifierKeys::shiftModifier;
+    constexpr int none = juce::ModifierKeys::noModifiers;
+    constexpr bool idle = true, anytime = false; // idle: not while an export renders
+    static const Command commands[] = {
+        {CommandIDs::newProject, "New project", "Start an empty project", category::file, {{'n', cmd}}, idle},
+        {CommandIDs::loadDemoSong, "Load demo song", "Generate the 8-track demo song", category::file, {{'d', cmd}}, idle},
+        // chapter 15: Ctrl+O opens a project now
+        {CommandIDs::loadAudioIntoTrack, "Load audio into selected track...", "Load a WAV / AIFF file", category::file,
+         {{'i', cmd}}, idle},
+        {CommandIDs::undo, "Undo", "Take back the last change", category::edit, {{'z', cmd}}, idle, Needs::canUndo},
+        {CommandIDs::redo, "Redo", "Do the undone change again", category::edit, {{'z', cmd | shift}, {'y', cmd}}, idle,
+         Needs::canRedo},
+        {CommandIDs::openProject, "Open project...", "Open a DawLab project file", category::file, {{'o', cmd}}, idle},
+        {CommandIDs::saveProject, "Save project", "Save the project to its file", category::file, {{'s', cmd}}, idle},
+        {CommandIDs::saveProjectAs, "Save project as...", "Save the project to a new file", category::file, {{'s', cmd | shift}},
+         idle},
+        {CommandIDs::exportMixdown, "Export mixdown...", "Bounce the song to a WAV file", category::file, {{'e', cmd}}, idle},
+        {CommandIDs::showAudioSettings, "Audio settings...", "Choose the audio device", category::file, {{',', cmd}}, idle},
+        {juce::StandardApplicationCommandIDs::quit, "Quit", "Quit DawLab 16", category::file, {{'q', cmd}}, anytime},
+        {CommandIDs::playStop, "Play / Stop", "Start or stop playback", category::transport, {{KeyPress::spaceKey, none}}, idle,
+         Needs::nothing, Shows::playing},
+        {CommandIDs::returnToStart, "Return to start", "Move the playhead to bar 1", category::transport,
+         {{KeyPress::homeKey, none}}, idle},
+        {CommandIDs::toggleLoop, "Loop", "Loop on / off", category::transport, {{'l', none}}, idle, Needs::nothing, Shows::loop},
+        {CommandIDs::seekBackOneBar, "Back one bar", "Move the playhead one bar back", category::transport,
+         {{KeyPress::leftKey, none}}, idle},
+        {CommandIDs::seekForwardOneBar, "Forward one bar", "Move the playhead one bar forward", category::transport,
+         {{KeyPress::rightKey, none}}, idle},
+        {CommandIDs::selectNextTrack, "Select next track", "", category::track, {{KeyPress::downKey, none}}, anytime},
+        {CommandIDs::selectPreviousTrack, "Select previous track", "", category::track, {{KeyPress::upKey, none}}, anytime},
+        {CommandIDs::toggleMuteSelected, "Mute selected track", "", category::track, {{'m', none}}, idle},
+        {CommandIDs::toggleSoloSelected, "Solo selected track", "", category::track, {{'s', none}}, idle},
+        {CommandIDs::toggleAutomationLane, "Show automation", "Show or hide the automation lane of the selected track",
+         category::track, {{'a', none}}, anytime, Needs::selectedTrack},
+        {CommandIDs::addMonoTrack, "Add mono track", "Add a mono track below the selected one", category::track, {{'t', cmd}},
+         idle, Needs::roomForTrack},
+        {CommandIDs::addStereoTrack, "Add stereo track", "Add a stereo track below the selected one", category::track,
+         {{'t', cmd | shift}}, idle, Needs::roomForTrack},
+        {CommandIDs::deleteSelectedTrack, "Delete selected track", "Delete the track with its clips and inserts", category::track,
+         {{KeyPress::deleteKey, cmd}}, idle, Needs::selectedTrack},
+        {CommandIDs::zoomIn, "Zoom in", "", category::view, {{'=', none}, {'+', none}}, anytime},
+        {CommandIDs::zoomOut, "Zoom out", "", category::view, {{'-', none}}, anytime},
+        {CommandIDs::showKeyboardShortcuts, "Keyboard shortcuts...", "List all shortcuts", category::view,
+         {{KeyPress::F1Key, none}}, anytime},
+    };
+    for (const Command& command : commands)
+        if (command.id == id)
+            return &command;
+    return nullptr;
+}
+
+// The name in the menu: Undo and Redo say what they would undo or redo.
+juce::String MainComponent::commandName(const Command& command) const {
+    const History& h = session_.getHistory();
+    if (command.id == CommandIDs::undo && h.canUndo())
+        return "Undo " + h.getUndoName();
+    if (command.id == CommandIDs::redo && h.canRedo())
+        return "Redo " + h.getRedoName();
+    return command.name;
+}
+
+// Whether what a command needs, besides an export that is over, is there now.
+bool MainComponent::isPossible(Needs needs) {
+    switch (needs) {
+    case Needs::nothing: return true;
+    case Needs::canUndo: return session_.getHistory().canUndo();
+    case Needs::canRedo: return session_.getHistory().canRedo();
+    case Needs::selectedTrack: return session_.hasTrack(arrangement_.getSelectedTrack());
+    case Needs::roomForTrack: return session_.getNumTracks() < engine::kMaxTracks;
     }
-    case CommandIDs::redo: {
-        const History& h = session_.getHistory();
-        info.setInfo(h.canRedo() ? "Redo " + h.getRedoName() : juce::String("Redo"), "Do the undone change again",
-                     CommandCategories::edit, 0);
-        info.addDefaultKeypress('z', cmd | ModifierKeys::shiftModifier);
-        info.addDefaultKeypress('y', cmd);
-        info.setActive(idle && h.canRedo());
-        break;
+    return false;
+}
+
+// What a command's tick mark in the menu shows now.
+bool MainComponent::isTicked(Shows shows) {
+    switch (shows) {
+    case Shows::nothing: return false;
+    case Shows::playing: return engine_.getTransport().isPlaying();
+    case Shows::loop: return engine_.getTransport().isLoopEnabled();
     }
-    case CommandIDs::openProject:
-        info.setInfo("Open project...", "Open a DawLab project file", CommandCategories::file, 0);
-        info.addDefaultKeypress('o', cmd);
-        info.setActive(idle);
-        break;
-    case CommandIDs::saveProject:
-        info.setInfo("Save project", "Save the project to its file", CommandCategories::file, 0);
-        info.addDefaultKeypress('s', cmd);
-        info.setActive(idle);
-        break;
-    case CommandIDs::saveProjectAs:
-        info.setInfo("Save project as...", "Save the project to a new file", CommandCategories::file, 0);
-        info.addDefaultKeypress('s', cmd | ModifierKeys::shiftModifier);
-        info.setActive(idle);
-        break;
-    case CommandIDs::exportMixdown:
-        info.setInfo("Export mixdown...", "Bounce the song to a WAV file", CommandCategories::file, 0);
-        info.addDefaultKeypress('e', cmd);
-        info.setActive(idle);
-        break;
-    case CommandIDs::showAudioSettings:
-        info.setInfo("Audio settings...", "Choose the audio device", CommandCategories::file, 0);
-        info.addDefaultKeypress(',', cmd);
-        info.setActive(idle);
-        break;
-    case juce::StandardApplicationCommandIDs::quit:
-        info.setInfo("Quit", "Quit DawLab 16", CommandCategories::file, 0);
-        info.addDefaultKeypress('q', cmd);
-        break;
-    case CommandIDs::playStop:
-        info.setInfo("Play / Stop", "Start or stop playback", CommandCategories::transport, 0);
-        info.addDefaultKeypress(KeyPress::spaceKey, ModifierKeys::noModifiers);
-        info.setTicked(engine_.getTransport().isPlaying());
-        info.setActive(idle);
-        break;
-    case CommandIDs::returnToStart:
-        info.setInfo("Return to start", "Move the playhead to bar 1", CommandCategories::transport, 0);
-        info.addDefaultKeypress(KeyPress::homeKey, ModifierKeys::noModifiers);
-        info.setActive(idle);
-        break;
-    case CommandIDs::toggleLoop:
-        info.setInfo("Loop", "Loop on / off", CommandCategories::transport, 0);
-        info.addDefaultKeypress('l', ModifierKeys::noModifiers);
-        info.setTicked(engine_.getTransport().isLoopEnabled());
-        info.setActive(idle);
-        break;
-    case CommandIDs::seekBackOneBar:
-        info.setInfo("Back one bar", "Move the playhead one bar back", CommandCategories::transport, 0);
-        info.addDefaultKeypress(KeyPress::leftKey, ModifierKeys::noModifiers);
-        info.setActive(idle);
-        break;
-    case CommandIDs::seekForwardOneBar:
-        info.setInfo("Forward one bar", "Move the playhead one bar forward", CommandCategories::transport, 0);
-        info.addDefaultKeypress(KeyPress::rightKey, ModifierKeys::noModifiers);
-        info.setActive(idle);
-        break;
-    case CommandIDs::selectNextTrack:
-        info.setInfo("Select next track", "", CommandCategories::track, 0);
-        info.addDefaultKeypress(KeyPress::downKey, ModifierKeys::noModifiers);
-        break;
-    case CommandIDs::selectPreviousTrack:
-        info.setInfo("Select previous track", "", CommandCategories::track, 0);
-        info.addDefaultKeypress(KeyPress::upKey, ModifierKeys::noModifiers);
-        break;
-    case CommandIDs::toggleMuteSelected:
-        info.setInfo("Mute selected track", "", CommandCategories::track, 0);
-        info.addDefaultKeypress('m', ModifierKeys::noModifiers);
-        info.setActive(idle);
-        break;
-    case CommandIDs::toggleSoloSelected:
-        info.setInfo("Solo selected track", "", CommandCategories::track, 0);
-        info.addDefaultKeypress('s', ModifierKeys::noModifiers);
-        info.setActive(idle);
-        break;
-    case CommandIDs::toggleAutomationLane:
-        info.setInfo("Show automation", "Show or hide the automation lane of the selected track", CommandCategories::track, 0);
-        info.addDefaultKeypress('a', 0);
-        info.setActive(session_.hasTrack(arrangement_.getSelectedTrack()));
-        break;
-    case CommandIDs::addMonoTrack:
-        info.setInfo("Add mono track", "Add a mono track below the selected one", CommandCategories::track, 0);
-        info.addDefaultKeypress('t', cmd);
-        info.setActive(idle && session_.getNumTracks() < engine::kMaxTracks);
-        break;
-    case CommandIDs::addStereoTrack:
-        info.setInfo("Add stereo track", "Add a stereo track below the selected one", CommandCategories::track, 0);
-        info.addDefaultKeypress('t', cmd | ModifierKeys::shiftModifier);
-        info.setActive(idle && session_.getNumTracks() < engine::kMaxTracks);
-        break;
-    case CommandIDs::deleteSelectedTrack:
-        info.setInfo("Delete selected track", "Delete the track with its clips and inserts", CommandCategories::track, 0);
-        info.addDefaultKeypress(KeyPress::deleteKey, cmd);
-        info.setActive(idle && session_.hasTrack(arrangement_.getSelectedTrack()));
-        break;
-    case CommandIDs::zoomIn:
-        info.setInfo("Zoom in", "", CommandCategories::view, 0);
-        info.addDefaultKeypress('=', ModifierKeys::noModifiers);
-        info.addDefaultKeypress('+', ModifierKeys::noModifiers);
-        break;
-    case CommandIDs::zoomOut:
-        info.setInfo("Zoom out", "", CommandCategories::view, 0);
-        info.addDefaultKeypress('-', ModifierKeys::noModifiers);
-        break;
-    case CommandIDs::showKeyboardShortcuts:
-        info.setInfo("Keyboard shortcuts...", "List all shortcuts", CommandCategories::view, 0);
-        info.addDefaultKeypress(KeyPress::F1Key, ModifierKeys::noModifiers);
-        break;
-    default: break;
-    }
+    return false;
+}
+
+void MainComponent::getCommandInfo(juce::CommandID id, juce::ApplicationCommandInfo& info) {
+    const Command* command = findCommand(id);
+    if (command == nullptr)
+        return;
+    info.setInfo(commandName(*command), command->description, command->category, 0);
+    for (const Command::Key& key : command->keys)
+        if (key.code != 0)
+            info.addDefaultKeypress(key.code, key.modifiers);
+    info.setActive((!command->idleOnly || !isExporting()) && isPossible(command->needs));
+    info.setTicked(isTicked(command->shows));
 }
 
 bool MainComponent::perform(const InvocationInfo& info) {
