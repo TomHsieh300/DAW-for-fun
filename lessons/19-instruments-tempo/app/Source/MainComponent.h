@@ -206,6 +206,10 @@ public:
 
 private:
     class ExportOverlay;
+    // The constructor's parts (MainComponent.cpp).
+    juce::String setUpAudio();
+    void setUpProject();
+    void setUpGui(const juce::String& deviceError);
     // tick()'s parts, in its order.
     void followArrangement();
     void pollMidiRecording();

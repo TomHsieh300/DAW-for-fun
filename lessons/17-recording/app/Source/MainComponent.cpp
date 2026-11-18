@@ -37,8 +37,40 @@ private:
 MainComponent::MainComponent(Mode mode) : mode_(mode) {
     setLookAndFeel(&lookAndFeel_);
     setOpaque(true);
+    const juce::String deviceError = setUpAudio();
+    setUpProject();
 
-    // ---- audio -------------------------------------------------------------------------------
+    // ---- commands, menu, keyboard ------------------------------------------------------------------
+    commandManager_.registerAllCommandsForTarget(this);
+    commandManager_.setFirstCommandTarget(this);
+    addKeyListener(commandManager_.getKeyMappings());
+    setWantsKeyboardFocus(true);
+    setApplicationCommandManagerToWatch(&commandManager_);
+    menuBar_.setModel(this);
+    addAndMakeVisible(menuBar_);
+
+    setUpGui(deviceError);
+    setSize(kDefaultWidth, kDefaultHeight);
+    if (mode_ == Mode::Live) {
+        juce::PropertiesFile::Options options;
+        options.applicationName = "DawLab 17";
+        options.filenameSuffix = ".settings";
+        options.osxLibrarySubFolder = "Application Support";
+        settings_ = std::make_unique<juce::PropertiesFile>(options);
+        takeRecorder_.setTrimSamples(settings_->getIntValue("recordingTrim", 0));
+        // A take that a crash left behind matters more than the demo song.
+        if (std::filesystem::exists(std::filesystem::u8path(takeRecorder_.getFolder().getFullPathName().toStdString())) &&
+            !engine::findUnfinishedTakes(std::filesystem::u8path(takeRecorder_.getFolder().getFullPathName().toStdString())).empty())
+            recoverCrashedTakes();
+        else
+            loadDemoSongAsync(); // the app starts with something to listen to
+        startTimerHz(30);
+    }
+}
+
+// The constructor's parts, in its order. The audio device first; it returns why no device could be opened
+// (empty if one was, and in Mode::Offline, which asks for none).
+juce::String MainComponent::setUpAudio() {
     audioHost_.onEnginePrepared = [this](double oldRate, double newRate) {
         // A different device sample rate: clip positions and clip audio are in samples of the old
         // rate. Until they are converted, playing them would be off in pitch and position, so stop
@@ -64,8 +96,11 @@ MainComponent::MainComponent(Mode mode) : mode_(mode) {
     if (mode_ == Mode::Offline || deviceError.isNotEmpty())
         audioHost_.prepareOffline(kOfflineSampleRate, kOfflineBlockSize);
     offlineScratch_.setSize(engine::kNumChannels, 4096);
+    return deviceError;
+}
 
-    // ---- project --------------------------------------------------------------------------------
+// The project: what the session asks of this window, and what the arrangement's clicks and drops do.
+void MainComponent::setUpProject() {
     // Undoing the removal of a VST3 insert builds the plugin again from its file and state.
     session_.createVst3 = [this](const juce::File& file, const juce::MemoryBlock& state, juce::String& error) {
         std::unique_ptr<VstInsert> vst;
@@ -100,17 +135,10 @@ MainComponent::MainComponent(Mode mode) : mode_(mode) {
         setStatus(message);
         status_.setColour(juce::Label::textColourId, alarm ? DawColours::mute() : DawColours::textDim());
     };
+}
 
-    // ---- commands, menu, keyboard ------------------------------------------------------------------
-    commandManager_.registerAllCommandsForTarget(this);
-    commandManager_.setFirstCommandTarget(this);
-    addKeyListener(commandManager_.getKeyMappings());
-    setWantsKeyboardFocus(true);
-    setApplicationCommandManagerToWatch(&commandManager_);
-    menuBar_.setModel(this);
-    addAndMakeVisible(menuBar_);
-
-    // ---- GUI ------------------------------------------------------------------------------------------
+// The components and what they call; the status line says whether there is an audio device.
+void MainComponent::setUpGui(const juce::String& deviceError) {
     transportBar_.onPlayStop = [this] { togglePlay(); };
     transportBar_.onReturnToStart = [this] { returnToStart(); };
     transportBar_.onToggleLoop = [this] { toggleLoop(); };
@@ -140,23 +168,6 @@ MainComponent::MainComponent(Mode mode) : mode_(mode) {
     deviceInfo_.setText(audioHost_.getDeviceDescription(), juce::dontSendNotification);
     setStatus(deviceError.isNotEmpty() ? "No audio device (" + deviceError + "): running offline"
                                        : juce::String("Ready. Space = play/stop, F1 = keyboard shortcuts"));
-
-    setSize(kDefaultWidth, kDefaultHeight);
-    if (mode_ == Mode::Live) {
-        juce::PropertiesFile::Options options;
-        options.applicationName = "DawLab 17";
-        options.filenameSuffix = ".settings";
-        options.osxLibrarySubFolder = "Application Support";
-        settings_ = std::make_unique<juce::PropertiesFile>(options);
-        takeRecorder_.setTrimSamples(settings_->getIntValue("recordingTrim", 0));
-        // A take that a crash left behind matters more than the demo song.
-        if (std::filesystem::exists(std::filesystem::u8path(takeRecorder_.getFolder().getFullPathName().toStdString())) &&
-            !engine::findUnfinishedTakes(std::filesystem::u8path(takeRecorder_.getFolder().getFullPathName().toStdString())).empty())
-            recoverCrashedTakes();
-        else
-            loadDemoSongAsync(); // the app starts with something to listen to
-        startTimerHz(30);
-    }
 }
 
 MainComponent::~MainComponent() {

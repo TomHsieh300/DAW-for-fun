@@ -179,6 +179,10 @@ public:
 
 private:
     class ExportOverlay;
+    // The constructor's parts (MainComponent.cpp).
+    juce::String setUpAudio();
+    void setUpProject();
+    void setUpGui(const juce::String& deviceError);
     void timerCallback() override { tick(); }
     void handleSlotMenuResult(engine::ChannelRef ref, int slot, int result);
     void chooseVst3For(engine::ChannelRef ref, int slot);
