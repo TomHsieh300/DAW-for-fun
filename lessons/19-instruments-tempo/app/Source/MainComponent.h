@@ -45,6 +45,7 @@
 #include <atomic>
 #include <map>
 #include <memory>
+#include <utility>
 
 namespace dawlab::app {
 
@@ -165,6 +166,7 @@ public:
     void importMidiInteractive();
     void exportMidiInteractive();
     void exportMixdownInteractive(); // file chooser, then exportMixdown()
+    bool exportChosenMixdown(const juce::File& file); // the chooser's answer; false: it was cancelled
     void exportMixdown(const juce::File& file);
     void showAudioSettings();
     void showKeyboardShortcuts();
@@ -192,6 +194,19 @@ public:
     // Renders `numSamples` through AudioHost::processOffline() in device-sized blocks, as if an
     // audio device were running. Offline mode only (no device may be calling the engine).
     void simulatePlayback(int64_t numSamples, int blockSize = kOfflineBlockSize, engine::InputBlock input = {});
+
+    // ---- answers that come later --------------------------------------------------------------------
+    // `f` as the callback of a file chooser, a message box or the loader thread: it runs only while this window
+    // exists, so `f` may use `this`. What an answer does is a function of its own, which the smoke test calls
+    // with the answer a person would give (exportChosenMixdown(), ...).
+    template <typename Fn>
+    auto whileAlive(Fn f) {
+        juce::Component::SafePointer<MainComponent> safe(this);
+        return [safe, f](auto&&... answer) {
+            if (safe != nullptr)
+                f(std::forward<decltype(answer)>(answer)...);
+        };
+    }
 
     // ---- extension points (Exercises 11 and 13) ------------------------------------------------
     // An extra ApplicationCommandTarget behind this one: its commands are registered with the

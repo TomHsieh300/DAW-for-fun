@@ -599,13 +599,16 @@ void MainComponent::exportMixdownInteractive() {
     fileChooser_ = std::make_unique<juce::FileChooser>(
         "Export mixdown", juce::File::getSpecialLocation(juce::File::userMusicDirectory).getChildFile("DawLab mixdown.wav"),
         "*.wav");
-    juce::Component::SafePointer<MainComponent> safe(this);
     fileChooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles |
                                   juce::FileBrowserComponent::warnAboutOverwriting,
-                              [safe](const juce::FileChooser& chooser) {
-                                  if (safe != nullptr && chooser.getResult() != juce::File())
-                                      safe->exportMixdown(chooser.getResult().withFileExtension("wav"));
-                              });
+                              whileAlive([this](const juce::FileChooser& chooser) { exportChosenMixdown(chooser.getResult()); }));
+}
+
+bool MainComponent::exportChosenMixdown(const juce::File& file) {
+    if (file == juce::File()) // the chooser was cancelled
+        return false;
+    exportMixdown(file.withFileExtension("wav"));
+    return true;
 }
 
 void MainComponent::exportMixdown(const juce::File& file) {

@@ -2967,6 +2967,52 @@ void testMidiInput() {
     DAWLAB_CHECK(mainPtr->getAudioHost().getMidiInputNames().isEmpty());
 }
 
+// ---- dialogs: what an answer does ---------------------------------------------------------------------
+// A file chooser or a message box needs a person, and answers later, on the message loop. What the answer does is a
+// function of its own: called here with the answer a person would give (a temp file for a chosen file).
+
+// A folder of its own for one test's files, deleted at the end.
+struct DialogFolder {
+    juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("dawlab_dialogs", "", false);
+    DialogFolder() { dir.createDirectory(); }
+    ~DialogFolder() { dir.deleteRecursively(); }
+    DialogFolder(const DialogFolder&) = delete;
+    DialogFolder& operator=(const DialogFolder&) = delete;
+};
+
+// whileAlive(): an answer reaches the window while it exists, and is dropped once it is gone.
+void testWhileAlive() {
+    auto main = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    int sum = 0;
+    auto answer = main->whileAlive([&sum](int n) { sum += n; });
+    answer(2);
+    const int whileThere = sum;
+    main.reset();
+    answer(3);
+    std::printf("dialogs: an answer while the window exists %s, once it is gone %s\n", whileThere == 2 ? "arrives" : "is lost",
+                sum == 2 ? "is dropped" : "arrives");
+    DAWLAB_CHECK(whileThere == 2 && sum == 2);
+}
+
+// File > Export mixdown: the chooser's answer.
+void testExportDialog() {
+    DialogFolder folder;
+    auto main = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    main->setStatus("Ready");
+    const bool cancelled = !main->exportChosenMixdown(juce::File());
+    const bool untouched = main->getStatus() == "Ready" && !main->isExporting();
+    const bool chosen = main->exportChosenMixdown(folder.dir.getChildFile("mix"));
+    std::printf("dialogs: export mixdown cancelled -> nothing done: %s; a file chosen, no clips -> \"%s\"\n",
+                untouched ? "yes" : "no", main->getStatus().toRawUTF8());
+    DAWLAB_CHECK(cancelled && untouched);
+    DAWLAB_CHECK(chosen && main->getStatus().startsWith("Nothing to export"));
+}
+
+void testDialogs() {
+    testWhileAlive();
+    testExportDialog();
+}
+
 // ---- --smoke-test --------------------------------------------------------------------------------
 
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
@@ -2984,6 +3030,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testDeviceErrors();
     testInputChoice();
     testMidiInput();
+    testDialogs();
     testMidiModel();
     testMidiEditing();
     testMidiRecording();
