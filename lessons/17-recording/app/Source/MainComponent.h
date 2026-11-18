@@ -112,9 +112,22 @@ public:
     bool saveProject(const juce::File& file);
     void openProjectInteractive();
     void saveProjectInteractive(bool saveAs, std::function<void()> afterSave = {});
+    // Their parts without a chooser. Where Open starts: the project's folder, else the documents. What Save as
+    // suggests: the project's file - or a new name next to it, when it holds what opening it left out - else
+    // <project name>.dawlab in the documents.
+    juce::File projectFolder() const;
+    juce::File suggestProjectFile() const;
+    // Save without asking for a file: true when it was tried (not `saveAs`, and the project has a file that holds
+    // all of it). The chooser's answers (no file: it was cancelled); after a save that worked, `afterSave`.
+    bool saveInPlace(bool saveAs, const std::function<void()>& afterSave);
+    bool openChosenProject(const juce::File& file);
+    bool saveChosenProject(const juce::File& file, const std::function<void()>& afterSave);
     // Step 9: when the project has unsaved changes, asks "Save / Don't save / Cancel" first (Live
     // mode only) and calls `then` unless the user cancels. New, Open, the demo song and Quit use it.
     void askToSaveChanges(std::function<void()> then);
+    // Its parts: whether to ask at all, and what the answer does (0 Cancel, 1 Save, 2 Don't save).
+    bool mustAskToSave() const;
+    void answerSaveChanges(int result, const std::function<void()>& then);
     // Edit > Undo / Redo (Step 9): false when there was nothing to do or the entry did not apply.
     bool undo();
     bool redo();

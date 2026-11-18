@@ -1198,10 +1198,67 @@ void testAudioFileLoading() {
     DAWLAB_CHECK(main->getStatus() == "2 file(s) not loaded: " + juce::String(kMaxTracks) + " tracks is the limit");
 }
 
+// File > Open, Save, Save as, and "Save changes?" (chapter 15): the choosers' and the box's answers.
+void testProjectDialogs() {
+    DialogFolder folder;
+    auto main = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    const auto& history = main->getSession().getHistory();
+    const juce::File documents = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
+    int saves = 0, goOns = 0;
+    const std::function<void()> saved = [&saves] { ++saves; };
+    const std::function<void()> goOn = [&goOns] { ++goOns; };
+    // A new project has no file: Open starts in the documents; Save asks, for <name>.dawlab there.
+    DAWLAB_CHECK(main->projectFolder() == documents);
+    DAWLAB_CHECK(main->suggestProjectFile() == documents.getChildFile(main->getSession().getProjectName() + ".dawlab"));
+    DAWLAB_CHECK(!main->saveInPlace(false, saved) && saves == 0);
+    // A chooser that was cancelled: nothing.
+    main->setStatus("Ready");
+    DAWLAB_CHECK(!main->saveChosenProject(juce::File(), saved) && !main->openChosenProject(juce::File()));
+    DAWLAB_CHECK(saves == 0 && main->getStatus() == "Ready");
+    // A file chosen: saved there, then `afterSave`; Open starts there now, and Save does not ask again.
+    const juce::File file = folder.dir.getChildFile("Song.dawlab");
+    DAWLAB_CHECK(main->saveChosenProject(file, saved) && saves == 1 && file.existsAsFile());
+    DAWLAB_CHECK(main->projectFolder() == folder.dir && main->suggestProjectFile() == file);
+    DAWLAB_CHECK(!main->saveInPlace(true, saved) && saves == 1); // Save as asks
+    main->addTrack(TrackFormat::Mono);
+    DAWLAB_CHECK(history.isModified() && main->saveInPlace(false, saved) && saves == 2 && !history.isModified());
+    // A save that fails (a file inside a file): no `afterSave`.
+    DAWLAB_CHECK(!main->saveChosenProject(file.getChildFile("x.dawlab"), saved) && saves == 2);
+    DAWLAB_CHECK(main->getStatus().startsWith("Not saved"));
+    // "Save changes?" is asked in Live mode only: here `then` runs at once. The answers.
+    main->addTrack(TrackFormat::Mono);
+    DAWLAB_CHECK(history.isModified() && !main->mustAskToSave());
+    main->askToSaveChanges(goOn);
+    DAWLAB_CHECK(goOns == 1);
+    main->answerSaveChanges(0, goOn); // Cancel
+    DAWLAB_CHECK(goOns == 1 && history.isModified());
+    main->answerSaveChanges(2, goOn); // Don't save
+    DAWLAB_CHECK(goOns == 2 && history.isModified());
+    main->answerSaveChanges(1, goOn); // Save: the project has a file, so no chooser
+    std::printf("dialogs: project choosers cancelled -> nothing done; Save -> %s; \"Save changes?\" answered "
+                "Save -> saved: %s\n",
+                file.getFileName().toRawUTF8(), history.isModified() ? "no" : "yes");
+    DAWLAB_CHECK(goOns == 3 && !history.isModified());
+    // Open: the chosen file. One that opening left something out of is saved under another name.
+    DAWLAB_CHECK(main->openChosenProject(file) && main->getProjectFile() == file);
+    const juce::File song = writeRawWav(folder.dir.getChildFile("tone.wav"), 48000, 4800);
+    LoadedMedia media = MediaLoader::readAudioFile(song, 48000.0);
+    media.track = main->getSession().getTrackId(0);
+    DAWLAB_CHECK(main->audioFileLoaded(media, song) && main->saveProject(file));
+    const juce::File alone = folder.dir.getChildFile("alone").getChildFile("Song.dawlab");
+    alone.getParentDirectory().createDirectory();
+    file.copyFileTo(alone); // without its audio
+    DAWLAB_CHECK(!main->openChosenProject(folder.dir.getChildFile("none.dawlab")) && main->getProjectFile() == file);
+    DAWLAB_CHECK(main->openChosenProject(alone) && main->getProjectFile() == alone);
+    DAWLAB_CHECK(!main->saveInPlace(false, saved) && saves == 2);
+    DAWLAB_CHECK(main->suggestProjectFile() != alone && main->suggestProjectFile().getParentDirectory() == alone.getParentDirectory());
+}
+
 void testDialogs() {
     testWhileAlive();
     testExportDialog();
     testAudioFileLoading();
+    testProjectDialogs();
 }
 
 // ---- --smoke-test --------------------------------------------------------------------------------

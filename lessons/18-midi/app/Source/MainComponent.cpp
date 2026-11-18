@@ -629,56 +629,72 @@ bool MainComponent::saveProject(const juce::File& target) {
 }
 
 void MainComponent::openProjectInteractive() {
-    const juce::File folder = projectFile_ != juce::File() ? projectFile_.getParentDirectory()
-                                                          : juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
-    fileChooser_ = std::make_unique<juce::FileChooser>("Open project", folder, juce::String("*") + ProjectIO::kFileExtension);
-    juce::Component::SafePointer<MainComponent> safe(this);
+    fileChooser_ = std::make_unique<juce::FileChooser>("Open project", projectFolder(), juce::String("*") + ProjectIO::kFileExtension);
     fileChooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                              [safe](const juce::FileChooser& chooser) {
-                                  if (safe != nullptr && chooser.getResult() != juce::File())
-                                      safe->openProject(chooser.getResult());
-                              });
+                              whileAlive([this](const juce::FileChooser& chooser) { openChosenProject(chooser.getResult()); }));
+}
+
+juce::File MainComponent::projectFolder() const {
+    return projectFile_ != juce::File() ? projectFile_.getParentDirectory()
+                                        : juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
+}
+
+bool MainComponent::openChosenProject(const juce::File& file) {
+    return file != juce::File() && openProject(file).ok; // no file: the chooser was cancelled
 }
 
 void MainComponent::saveProjectInteractive(bool saveAs, std::function<void()> afterSave) {
-    if (!saveAs && projectFile_ != juce::File() && leftOut_.isEmpty()) {
-        if (saveProject(projectFile_) && afterSave)
-            afterSave();
+    if (saveInPlace(saveAs, afterSave))
         return;
-    }
-    const juce::File suggestion =
-        projectFile_ != juce::File()
-            ? (leftOut_.isEmpty() ? projectFile_ : projectFile_.getNonexistentSibling())
-            : juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
-                  .getChildFile(session_.getProjectName() + ProjectIO::kFileExtension);
-    fileChooser_ = std::make_unique<juce::FileChooser>("Save project as", suggestion, juce::String("*") + ProjectIO::kFileExtension);
-    juce::Component::SafePointer<MainComponent> safe(this);
+    fileChooser_ = std::make_unique<juce::FileChooser>("Save project as", suggestProjectFile(), juce::String("*") + ProjectIO::kFileExtension);
     fileChooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles |
                                   juce::FileBrowserComponent::warnAboutOverwriting,
-                              [safe, afterSave](const juce::FileChooser& chooser) {
-                                  if (safe != nullptr && chooser.getResult() != juce::File() &&
-                                      safe->saveProject(chooser.getResult()) && afterSave)
-                                      afterSave();
-                              });
+                              whileAlive([this, afterSave](const juce::FileChooser& chooser) { saveChosenProject(chooser.getResult(), afterSave); }));
+}
+
+bool MainComponent::saveInPlace(bool saveAs, const std::function<void()>& afterSave) {
+    if (saveAs || projectFile_ == juce::File() || !leftOut_.isEmpty())
+        return false;
+    saveChosenProject(projectFile_, afterSave);
+    return true;
+}
+
+juce::File MainComponent::suggestProjectFile() const {
+    if (projectFile_ == juce::File())
+        return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+            .getChildFile(session_.getProjectName() + ProjectIO::kFileExtension);
+    return leftOut_.isEmpty() ? projectFile_ : projectFile_.getNonexistentSibling();
+}
+
+bool MainComponent::saveChosenProject(const juce::File& file, const std::function<void()>& afterSave) {
+    if (file == juce::File() || !saveProject(file)) // no file: the chooser was cancelled
+        return false;
+    if (afterSave)
+        afterSave();
+    return true;
 }
 
 void MainComponent::askToSaveChanges(std::function<void()> then) {
-    if (!session_.getHistory().isModified() || mode_ != Mode::Live) {
+    if (!mustAskToSave()) {
         then();
         return;
     }
     const auto options = juce::MessageBoxOptions::makeOptionsYesNoCancel(
         juce::MessageBoxIconType::QuestionIcon, "Save changes?",
         "\"" + session_.getProjectName() + "\" has changes that are not saved.", "Save", "Don't save", "Cancel", this);
-    juce::Component::SafePointer<MainComponent> safe(this);
-    juce::AlertWindow::showAsync(options, [safe, then](int result) {
-        if (safe == nullptr)
-            return;
-        if (result == 1) // Save (asks for a file if there is none), then go on
-            safe->saveProjectInteractive(false, then);
-        else if (result == 2) // Don't save
-            then();
-    }); // 0: Cancel - nothing happens
+    juce::AlertWindow::showAsync(options, whileAlive([this, then](int result) { answerSaveChanges(result, then); }));
+}
+
+bool MainComponent::mustAskToSave() const {
+    return session_.getHistory().isModified() && mode_ == Mode::Live;
+}
+
+void MainComponent::answerSaveChanges(int result, const std::function<void()>& then) {
+    if (result == 1) // Save (asks for a file if there is none), then go on
+        saveProjectInteractive(false, then);
+    else if (result == 2) // Don't save
+        then();
+    // 0: Cancel - nothing happens
 }
 
 bool MainComponent::undo() {
