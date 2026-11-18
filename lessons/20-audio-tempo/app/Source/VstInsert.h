@@ -77,6 +77,7 @@ public:
 
 private:
     bool valid(int index) const noexcept { return index >= 0 && index < getNumParameters(); }
+    void closeEditorLater(); // what the window's close button does
 
     std::unique_ptr<host::HostedPlugin> plugin_;   // destroyed last
     AudioBuffer monoScratch_;                      // stereo copy of a mono block (mono tracks)

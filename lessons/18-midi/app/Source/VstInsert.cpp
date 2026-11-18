@@ -85,19 +85,21 @@ juce::String VstInsert::getParameterText(int index, float normalizedValue) const
 void VstInsert::openEditor() {
     if (window_ == nullptr) {
         window_ = std::make_unique<host::PluginWindow>(*plugin_);
-        // Closing the window deletes it (asynchronously: we must not delete a window from inside
-        // its own closeButtonPressed()). The plugin stays in the mixer.
-        window_->onCloseRequested = [this] {
-            juce::MessageManager::callAsync([safe = juce::Component::SafePointer<juce::Component>(window_.get()), this] {
-                if (safe != nullptr)
-                    closeEditor();
-            });
-        };
+        window_->onCloseRequested = [this] { closeEditorLater(); };
     }
     window_->setVisible(true);
     window_->toFront(true);
 }
 
 void VstInsert::closeEditor() { window_.reset(); }
+
+// Closing the window deletes it (asynchronously: we must not delete a window from inside its own
+// closeButtonPressed()). The plugin stays in the mixer.
+void VstInsert::closeEditorLater() {
+    juce::MessageManager::callAsync([safe = juce::Component::SafePointer<juce::Component>(window_.get()), this] {
+        if (safe != nullptr)
+            closeEditor();
+    });
+}
 
 } // namespace dawlab::app

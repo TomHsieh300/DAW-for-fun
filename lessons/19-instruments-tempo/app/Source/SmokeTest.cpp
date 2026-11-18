@@ -2858,6 +2858,35 @@ void testOddInserts() {
     file.deleteFile();
 }
 
+// ---- a plugin insert's parameter text and editor -----------------------------------------------------
+// The panel shows a plugin parameter in the plugin's own words, and nothing for a parameter the plugin
+// does not have. Its editor window opens once (a second open shows the same window) and closes.
+void testPluginInsert() {
+    std::printf("a plugin insert's parameter text and editor\n");
+    VstInsert vst(std::make_unique<host::HostedPlugin>(createTestDelayPlugin(0)));
+    const juce::String text = vst.getParameterText(0, 0.25f); // the test plugin's gain: 2 * 0.25
+    DAWLAB_CHECK(text == "-6.0 dB");
+    DAWLAB_CHECK(vst.getParameterText(-1, 0.25f).isEmpty() && vst.getParameterText(vst.getNumParameters(), 0.25f).isEmpty());
+    const auto pluginWindow = [] { // the newest editor window
+        for (int i = juce::TopLevelWindow::getNumTopLevelWindows() - 1; i >= 0; --i)
+            if (auto* w = dynamic_cast<host::PluginWindow*>(juce::TopLevelWindow::getTopLevelWindow(i)))
+                return w;
+        return static_cast<host::PluginWindow*>(nullptr);
+    };
+    const int windowsBefore = juce::TopLevelWindow::getNumTopLevelWindows();
+    vst.openEditor();
+    const bool open = vst.isEditorOpen();
+    const host::PluginWindow* first = pluginWindow();
+    vst.openEditor();
+    const int windows = juce::TopLevelWindow::getNumTopLevelWindows() - windowsBefore;
+    const bool same = pluginWindow() == first;
+    vst.closeEditor();
+    std::printf("   gain 0.25: \"%s\"; the editor: %s, %d window after two opens (%s), %s after close\n", text.toRawUTF8(),
+                open ? "open" : "NOT OPEN", windows, same ? "the same" : "ANOTHER ONE", vst.isEditorOpen() ? "STILL OPEN" : "closed");
+    DAWLAB_CHECK(open && first != nullptr && same && windows == 1 && !vst.isEditorOpen());
+    DAWLAB_CHECK(juce::TopLevelWindow::getNumTopLevelWindows() == windowsBefore);
+}
+
 // ---- --smoke-test --------------------------------------------------------------------------------
 
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
@@ -2871,6 +2900,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testPianoRollWheel();
     testSynthKnobs();
     testOddInserts();
+    testPluginInsert();
     testMidiModel();
     testMidiEditing();
     testMidiRecording();
