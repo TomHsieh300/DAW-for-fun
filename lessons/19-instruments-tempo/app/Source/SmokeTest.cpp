@@ -3213,12 +3213,31 @@ void testInsertEditors() {
     s.createVst3 = realFactory;
 }
 
+// Edit a MIDI clip (chapter 18): its piano roll window.
+void testPianoRollWindow() {
+    auto main = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    Session& s = main->getSession();
+    const TrackId synth = main->addTrack(TrackFormat::Mono, true);
+    main->getEngine().applyPendingCommandsOffline();
+    DAWLAB_CHECK(s.addMidiClip(synth, 3840, 3840) == 0);
+    DAWLAB_CHECK(main->openPianoRoll(synth, 0) == nullptr); // offline: no windows
+    DAWLAB_CHECK(main->openPianoRollWindow(synth, 1) == nullptr && main->openPianoRollWindow(synth, -1) == nullptr);
+    PianoRollWindow* window = main->openPianoRollWindow(synth, 0);
+    std::printf("dialogs: piano roll of a clip -> window \"%s\"\n", window != nullptr ? window->getName().toRawUTF8() : "none");
+    DAWLAB_CHECK(window != nullptr && window->isVisible());
+    DAWLAB_CHECK(window != nullptr && window->getName() == s.getStripName(s.trackRef(synth)) + " - " + s.getMidiClips(synth)[0].name);
+    DAWLAB_CHECK(main->openPianoRollWindow(synth, 0) == window); // the same window, in front again
+    if (window != nullptr)
+        window->onClose(); // the window goes later, on the message loop; by then this window is gone
+}
+
 void testDialogs() {
     testWhileAlive();
     testExportDialog();
     testAudioFileLoading();
     testDemoSongLoading();
     testInsertEditors();
+    testPianoRollWindow();
     testProjectDialogs();
     testTrimDialog();
 }

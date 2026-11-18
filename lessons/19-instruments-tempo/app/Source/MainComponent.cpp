@@ -1361,8 +1361,12 @@ ParameterWindow* MainComponent::getParameterWindow(engine::InsertEffect* effect)
 // ---- MIDI clips (chapter 18) ------------------------------------------------------------------------------
 
 PianoRollWindow* MainComponent::openPianoRoll(engine::TrackId track, int clipIndex) {
+    return mode_ == Mode::Offline ? nullptr : openPianoRollWindow(track, clipIndex);
+}
+
+PianoRollWindow* MainComponent::openPianoRollWindow(engine::TrackId track, int clipIndex) {
     const auto& clips = session_.getMidiClips(track);
-    if (clipIndex < 0 || clipIndex >= static_cast<int>(clips.size()) || mode_ == Mode::Offline)
+    if (clipIndex < 0 || clipIndex >= static_cast<int>(clips.size()))
         return nullptr;
     const MidiClipModel& clip = clips[static_cast<size_t>(clipIndex)];
     auto& window = pianoRolls_[clip.id];
@@ -1370,14 +1374,9 @@ PianoRollWindow* MainComponent::openPianoRoll(engine::TrackId track, int clipInd
         const juce::String title = session_.getStripName(session_.trackRef(track)) + " - " + clip.name;
         window = std::make_unique<PianoRollWindow>(session_, track, clip.id, title, &lookAndFeel_);
         const int id = clip.id;
-        juce::Component::SafePointer<MainComponent> safe(this);
-        window->onClose = [safe, id] {
-            if (safe != nullptr)
-                juce::MessageManager::callAsync([safe, id] {
-                    if (safe != nullptr)
-                        safe->pianoRolls_.erase(id);
-                });
-        };
+        window->onClose = whileAlive([this, id] {
+            juce::MessageManager::callAsync(whileAlive([this, id] { pianoRolls_.erase(id); }));
+        });
         window->centreWithSize(900, 480);
         window->getRoll().setView(static_cast<double>(clip.offset), 4.0);
     }

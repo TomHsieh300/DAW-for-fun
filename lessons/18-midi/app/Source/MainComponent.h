@@ -104,6 +104,7 @@ public:
     // ---- MIDI clips (chapter 18, Step 8) ---------------------------------------------------------------
     // Opens (or brings to the front) the piano roll of a clip. Offline (tests) there are no windows: nullptr.
     PianoRollWindow* openPianoRoll(engine::TrackId track, int clipIndex);
+    PianoRollWindow* openPianoRollWindow(engine::TrackId track, int clipIndex); // the same in any mode (the smoke test)
     void showMidiClipMenu(engine::TrackId track, int clipIndex);
     // Its items, each with its action (empty: no such clip): Edit Notes..., Quantize (a sub-menu), Mute, Delete.
     juce::PopupMenu buildMidiClipMenu(engine::TrackId track, int clipIndex);
