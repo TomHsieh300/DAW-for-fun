@@ -976,8 +976,10 @@ void MainComponent::finishClipConversion(double from, double to, const Converted
 // ---- export -------------------------------------------------------------------------------------------
 
 SynthPanelWindow* MainComponent::showSynthPanel() {
-    if (mode_ == Mode::Offline)
-        return nullptr;
+    return mode_ == Mode::Offline ? nullptr : openSynthPanelWindow();
+}
+
+SynthPanelWindow* MainComponent::openSynthPanelWindow() {
     if (synthPanel_ == nullptr) {
         synthPanel_ = std::make_unique<SynthPanelWindow>(session_, &lookAndFeel_);
         synthPanel_->centreWithSize(synthPanel_->getWidth(), synthPanel_->getHeight());
@@ -1016,13 +1018,15 @@ bool MainComponent::useBuiltinSynth(engine::TrackId track) {
 void MainComponent::loadPluginInstrumentInteractive() {
     const engine::TrackId track = arrangement_.getSelectedTrack();
     fileChooser_ = std::make_unique<juce::FileChooser>("Load a VST3 instrument", juce::File(), "*.vst3");
-    juce::Component::SafePointer<MainComponent> safe(this);
     fileChooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles |
                                   juce::FileBrowserComponent::canSelectDirectories, // a .vst3 is a folder on some systems
-                              [safe, track](const juce::FileChooser& chooser) {
-                                  if (safe != nullptr && chooser.getResult() != juce::File())
-                                      safe->loadPluginInstrument(track, chooser.getResult());
-                              });
+                              whileAlive([this, track](const juce::FileChooser& chooser) {
+                                  loadChosenPluginInstrument(track, chooser.getResult());
+                              }));
+}
+
+bool MainComponent::loadChosenPluginInstrument(engine::TrackId track, const juce::File& file) {
+    return file != juce::File() && loadPluginInstrument(track, file); // no file: the chooser was cancelled
 }
 
 bool MainComponent::importMidi(const juce::File& file) {
@@ -1062,25 +1066,25 @@ bool MainComponent::exportMidi(const juce::File& file) {
 void MainComponent::importMidiInteractive() {
     fileChooser_ = std::make_unique<juce::FileChooser>("Import MIDI file", juce::File::getSpecialLocation(juce::File::userMusicDirectory),
                                                        "*.mid;*.midi");
-    juce::Component::SafePointer<MainComponent> safe(this);
     fileChooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                              [safe](const juce::FileChooser& chooser) {
-                                  if (safe != nullptr && chooser.getResult() != juce::File())
-                                      safe->importMidi(chooser.getResult());
-                              });
+                              whileAlive([this](const juce::FileChooser& chooser) { importChosenMidi(chooser.getResult()); }));
 }
 
 void MainComponent::exportMidiInteractive() {
     fileChooser_ = std::make_unique<juce::FileChooser>(
         "Export MIDI file", juce::File::getSpecialLocation(juce::File::userMusicDirectory).getChildFile(session_.getProjectName() + ".mid"),
         "*.mid");
-    juce::Component::SafePointer<MainComponent> safe(this);
     fileChooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles |
                                   juce::FileBrowserComponent::warnAboutOverwriting,
-                              [safe](const juce::FileChooser& chooser) {
-                                  if (safe != nullptr && chooser.getResult() != juce::File())
-                                      safe->exportMidi(chooser.getResult().withFileExtension("mid"));
-                              });
+                              whileAlive([this](const juce::FileChooser& chooser) { exportChosenMidi(chooser.getResult()); }));
+}
+
+bool MainComponent::importChosenMidi(const juce::File& file) {
+    return file != juce::File() && importMidi(file); // no file: the chooser was cancelled
+}
+
+bool MainComponent::exportChosenMidi(const juce::File& file) {
+    return file != juce::File() && exportMidi(file.withFileExtension("mid")); // no file: the chooser was cancelled
 }
 
 void MainComponent::exportMixdownInteractive() {

@@ -3231,6 +3231,35 @@ void testPianoRollWindow() {
         window->onClose(); // the window goes later, on the message loop; by then this window is gone
 }
 
+// Chapter 19: the synth panel, the plugin instrument's chooser and the MIDI file choosers.
+void testInstrumentDialogs() {
+    DialogFolder folder;
+    auto main = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    Session& s = main->getSession();
+    const TrackId synth = main->addTrack(TrackFormat::Mono, true);
+    main->getEngine().applyPendingCommandsOffline();
+    // The synth panel shows the selected track; offline there are no windows.
+    DAWLAB_CHECK(main->showSynthPanel() == nullptr);
+    main->getArrangement().setSelectedTrack(synth);
+    SynthPanelWindow* panel = main->openSynthPanelWindow();
+    DAWLAB_CHECK(panel != nullptr && panel->isVisible() && panel->getPanel().getTrack() == synth);
+    DAWLAB_CHECK(main->openSynthPanelWindow() == panel); // the same window, in front again
+    // The choosers cancelled: nothing.
+    main->setStatus("Ready");
+    DAWLAB_CHECK(!main->loadChosenPluginInstrument(synth, juce::File()) && !main->importChosenMidi(juce::File()));
+    DAWLAB_CHECK(!main->exportChosenMidi(juce::File()) && main->getStatus() == "Ready");
+    DAWLAB_CHECK(!main->loadChosenPluginInstrument(synth, folder.dir.getChildFile("None.vst3")));
+    DAWLAB_CHECK(main->getStatus().startsWith("Plugin instrument not loaded"));
+    // A MIDI file chosen without its extension is written with it, and imported again.
+    s.setMidiClips(synth, {midiClip(0, {{0, 960, 60, 100, 0}})});
+    main->getEngine().applyPendingCommandsOffline();
+    const juce::File chosen = folder.dir.getChildFile("song");
+    const bool exported = main->exportChosenMidi(chosen);
+    std::printf("dialogs: MIDI export chooser answered \"song\" -> \"%s\"\n", main->getStatus().toRawUTF8());
+    DAWLAB_CHECK(exported && folder.dir.getChildFile("song.mid").existsAsFile() && !chosen.exists());
+    DAWLAB_CHECK(main->importChosenMidi(folder.dir.getChildFile("song.mid")) && main->getStatus().startsWith("Imported song.mid"));
+}
+
 void testDialogs() {
     testWhileAlive();
     testExportDialog();
@@ -3238,6 +3267,7 @@ void testDialogs() {
     testDemoSongLoading();
     testInsertEditors();
     testPianoRollWindow();
+    testInstrumentDialogs();
     testProjectDialogs();
     testTrimDialog();
 }

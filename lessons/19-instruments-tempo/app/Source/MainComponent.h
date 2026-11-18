@@ -184,14 +184,19 @@ public:
     bool deleteSelectedTrack();
     // Chapter 19, Step 6: the selected track's instrument.
     SynthPanelWindow* showSynthPanel(); // nullptr in offline mode (no windows)
+    SynthPanelWindow* openSynthPanelWindow(); // the same in any mode (the smoke test)
     bool loadPluginInstrument(engine::TrackId track, const juce::File& file); // says on the status line what it did
     bool useBuiltinSynth(engine::TrackId track);
     void loadPluginInstrumentInteractive();
+    bool loadChosenPluginInstrument(engine::TrackId track, const juce::File& file); // the chooser's answer; false: cancelled
     // Chapter 19: MIDI files (MidiFileIO.h). They say on the status line what they did.
     bool importMidi(const juce::File& file);
     bool exportMidi(const juce::File& file);
     void importMidiInteractive();
     void exportMidiInteractive();
+    // The choosers' answers (no file: it was cancelled); the exported file gets the extension .mid.
+    bool importChosenMidi(const juce::File& file);
+    bool exportChosenMidi(const juce::File& file);
     void exportMixdownInteractive(); // file chooser, then exportMixdown()
     bool exportChosenMixdown(const juce::File& file); // the chooser's answer; false: it was cancelled
     void exportMixdown(const juce::File& file);
