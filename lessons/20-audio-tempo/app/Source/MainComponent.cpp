@@ -230,46 +230,65 @@ void MainComponent::tick() {
     if (!isExporting())
         engine_.collectGarbage();
     session_.collectAutomation();
-    // Chapter 20: renders of clips that follow the tempo arrive from the worker thread.
-    if (!isExporting() && session_.pollRenders() && session_.getNumFailedRenders() > 0)
+    pollEngineWork();
+    followArrangement();
+    if (!isConvertingSampleRate())
+        takeRecorder_.tick();
+    pollMidiRecording();
+    transportBar_.setRecording(takeRecorder_.getPhase() == TakeRecorder::Phase::Recording || midiRecording_.isRecording());
+    transportBar_.update();
+    warnAboutDropouts();
+    arrangement_.update();
+    mixer_.update();
+    if (audioHost_.isAnalyzerReady())
+        mixer_.updateSpectrum(audioHost_.getSpectrumAnalyzer());
+    updateWindowTitle();
+}
+
+// Chapter 20: renders of clips that follow the tempo arrive from the worker thread. What a full command queue
+// dropped is sent again; with no device, the commands are applied here. Not during an export.
+void MainComponent::pollEngineWork() {
+    if (isExporting())
+        return;
+    if (session_.pollRenders() && session_.getNumFailedRenders() > 0)
         setStatus(failedRendersText(session_.getNumFailedRenders()));
-    // What a full command queue dropped is sent again; with no device, the commands are applied here.
-    if (!isExporting()) {
+    applyCommandsWithoutDevice();
+    if (session_.isEngineBehind() && session_.catchUpEngine())
         applyCommandsWithoutDevice();
-        if (session_.isEngineBehind() && session_.catchUpEngine())
-            applyCommandsWithoutDevice();
-    }
-    // Chapter 19: the synth panel shows the selected track.
+}
+
+// Chapter 19: the synth panel shows the selected track; the tempo lane shares the arrangement's time axis, and
+// follows its scrolling and zooming.
+void MainComponent::followArrangement() {
     if (synthPanel_ != nullptr && synthPanel_->isVisible() && synthPanel_->getPanel().getTrack() != arrangement_.getSelectedTrack())
         synthPanel_->getPanel().showTrack(arrangement_.getSelectedTrack());
-    // Chapter 19: the tempo lane shares the arrangement's time axis, and follows its scrolling and zooming.
     if (arrangement_.getViewStart() != laneViewStart_ || arrangement_.getSamplesPerPixel() != laneSamplesPerPixel_) {
         laneViewStart_ = arrangement_.getViewStart();
         laneSamplesPerPixel_ = arrangement_.getSamplesPerPixel();
         tempoLane_.repaint();
     }
-    if (!isConvertingSampleRate())
-        takeRecorder_.tick();
-    // Chapter 18: the keyboard's keys into the takes; a transport that stopped ends a MIDI recording.
-    if (midiRecording_.isRecording()) {
-        midiRecording_.poll();
-        if (!engine_.getTransport().isPlaying()) {
-            const int notes = midiRecording_.stop();
-            setStatus(notes > 0 ? "Recorded " + juce::String(notes) + (notes == 1 ? " note" : " notes") : juce::String("No notes recorded"));
-        }
-    }
-    transportBar_.setRecording(takeRecorder_.getPhase() == TakeRecorder::Phase::Recording || midiRecording_.isRecording());
-    transportBar_.update();
-    // Chapter 15: while the CPU display is red (a dropout in the last 2 s), the status line says
-    // in words what happened and what to do; this matters more than any other message.
+}
+
+// Chapter 18: the keyboard's keys into the takes; a transport that stopped ends a MIDI recording.
+void MainComponent::pollMidiRecording() {
+    if (!midiRecording_.isRecording())
+        return;
+    midiRecording_.poll();
+    if (!engine_.getTransport().isPlaying())
+        setStatus(recordedNotesText(midiRecording_.stop()));
+}
+
+// Chapter 15: while the CPU display is red (a dropout in the last 2 s), the status line says
+// in words what happened and what to do; this matters more than any other message.
+void MainComponent::warnAboutDropouts() {
     const juce::String dropouts = "Audio dropouts: the mix takes longer to compute than it lasts. Remove tracks or "
                                   "effects, or choose a larger buffer size in Audio settings";
     if (transportBar_.getCpuStatus().state == engine::CpuState::Overload && !isExporting() && getStatus() != dropouts)
         setStatus(dropouts);
-    arrangement_.update();
-    mixer_.update();
-    if (audioHost_.isAnalyzerReady())
-        mixer_.updateSpectrum(audioHost_.getSpectrumAnalyzer());
+}
+
+// The window's title follows the project's name and its unsaved changes (onTitleChanged).
+void MainComponent::updateWindowTitle() {
     if (const juce::String title = getWindowTitle(); title != lastTitle_) {
         lastTitle_ = title;
         if (onTitleChanged)

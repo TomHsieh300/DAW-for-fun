@@ -214,6 +214,12 @@ public:
 
 private:
     class ExportOverlay;
+    // tick()'s parts, in its order.
+    void pollEngineWork();
+    void followArrangement();
+    void pollMidiRecording();
+    void warnAboutDropouts();
+    void updateWindowTitle();
     // toggleRecord()'s parts (chapter 18: audio and MIDI).
     struct ArmedTracks {
         bool audio = false, midi = false;

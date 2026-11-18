@@ -191,26 +191,37 @@ void MainComponent::tick() {
     session_.collectAutomation();
     if (!isConvertingSampleRate())
         takeRecorder_.tick();
-    // Chapter 18: the keyboard's keys into the takes; a transport that stopped ends a MIDI recording.
-    if (midiRecording_.isRecording()) {
-        midiRecording_.poll();
-        if (!engine_.getTransport().isPlaying()) {
-            const int notes = midiRecording_.stop();
-            setStatus(notes > 0 ? "Recorded " + juce::String(notes) + (notes == 1 ? " note" : " notes") : juce::String("No notes recorded"));
-        }
-    }
+    pollMidiRecording();
     transportBar_.setRecording(takeRecorder_.getPhase() == TakeRecorder::Phase::Recording || midiRecording_.isRecording());
     transportBar_.update();
-    // Chapter 15: while the CPU display is red (a dropout in the last 2 s), the status line says
-    // in words what happened and what to do; this matters more than any other message.
-    const juce::String dropouts = "Audio dropouts: the mix takes longer to compute than it lasts. Remove tracks or "
-                                  "effects, or choose a larger buffer size in Audio settings";
-    if (transportBar_.getCpuStatus().state == engine::CpuState::Overload && !isExporting() && getStatus() != dropouts)
-        setStatus(dropouts);
+    warnAboutDropouts();
     arrangement_.update();
     mixer_.update();
     if (audioHost_.isAnalyzerReady())
         mixer_.updateSpectrum(audioHost_.getSpectrumAnalyzer());
+    updateWindowTitle();
+}
+
+// Chapter 18: the keyboard's keys into the takes; a transport that stopped ends a MIDI recording.
+void MainComponent::pollMidiRecording() {
+    if (!midiRecording_.isRecording())
+        return;
+    midiRecording_.poll();
+    if (!engine_.getTransport().isPlaying())
+        setStatus(recordedNotesText(midiRecording_.stop()));
+}
+
+// Chapter 15: while the CPU display is red (a dropout in the last 2 s), the status line says
+// in words what happened and what to do; this matters more than any other message.
+void MainComponent::warnAboutDropouts() {
+    const juce::String dropouts = "Audio dropouts: the mix takes longer to compute than it lasts. Remove tracks or "
+                                  "effects, or choose a larger buffer size in Audio settings";
+    if (transportBar_.getCpuStatus().state == engine::CpuState::Overload && !isExporting() && getStatus() != dropouts)
+        setStatus(dropouts);
+}
+
+// The window's title follows the project's name and its unsaved changes (onTitleChanged).
+void MainComponent::updateWindowTitle() {
     if (const juce::String title = getWindowTitle(); title != lastTitle_) {
         lastTitle_ = title;
         if (onTitleChanged)
