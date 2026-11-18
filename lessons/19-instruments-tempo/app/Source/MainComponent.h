@@ -101,6 +101,8 @@ public:
     void setMidiRecordMode(MidiRecordMode mode) noexcept { midiMode_ = mode; }
     MidiRecordMode getMidiRecordMode() const noexcept { return midiMode_; }
     void showClipMenu(engine::TrackId track, int clipIndex);
+    // Its items (empty: no such clip, or nothing to choose): "Take n" is item n.
+    juce::PopupMenu buildClipMenu(engine::TrackId track, int clipIndex);
     // ---- MIDI clips (chapter 18, Step 8) ---------------------------------------------------------------
     // Opens (or brings to the front) the piano roll of a clip. Offline (tests) there are no windows: nullptr.
     PianoRollWindow* openPianoRoll(engine::TrackId track, int clipIndex);

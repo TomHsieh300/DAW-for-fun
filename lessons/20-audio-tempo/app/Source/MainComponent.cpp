@@ -523,9 +523,19 @@ void MainComponent::handleRecordMenuResult(engine::TrackId track, int item) {
 }
 
 void MainComponent::showClipMenu(engine::TrackId track, int clipIndex) {
+    juce::PopupMenu menu = buildClipMenu(track, clipIndex);
+    if (menu.getNumItems() == 0)
+        return; // no such clip
+    // The menu stays open while the list can change (another drag, an undo): it keeps the clip, not its index.
+    const engine::Clip shown = session_.getClips(track)[static_cast<size_t>(clipIndex)];
+    menu.showMenuAsync(juce::PopupMenu::Options{},
+                       menuCallback(this, [track, shown](MainComponent& m, int item) { m.chooseFromClipMenu(track, shown, item); }));
+}
+
+juce::PopupMenu MainComponent::buildClipMenu(engine::TrackId track, int clipIndex) {
     const auto& clips = session_.getClips(track);
     if (clipIndex < 0 || clipIndex >= static_cast<int>(clips.size()))
-        return;
+        return {};
     const engine::Clip& clip = clips[static_cast<size_t>(clipIndex)];
     const std::vector<engine::Placement>* takes = session_.getTakesOf(clip);
     const engine::FollowMode mode = engine::followModeOf(clip);
@@ -543,15 +553,12 @@ void MainComponent::showClipMenu(engine::TrackId track, int clipIndex) {
         for (int i = 0; i < static_cast<int>(takes->size()); ++i)
             menu.addItem(i + 1, "Take " + juce::String(i + 1), true, session_.getCurrentTake(clip) == i);
     }
-    // The menu stays open while the list can change (another drag, an undo): it keeps the clip, not its index.
-    juce::Component::SafePointer<MainComponent> safe(this);
-    menu.showMenuAsync(juce::PopupMenu::Options{}, [safe, track, shown = clip](int result) {
-        if (safe != nullptr && result > 0)
-            safe->chooseFromClipMenu(track, shown, result);
-    });
+    return menu;
 }
 
 bool MainComponent::chooseFromClipMenu(engine::TrackId track, const engine::Clip& shown, int item) {
+    if (item <= 0)
+        return false; // no item
     const int clipIndex = session_.findClip(track, shown);
     if (clipIndex < 0) {
         setStatus("The clip has changed since its menu was opened: nothing done");

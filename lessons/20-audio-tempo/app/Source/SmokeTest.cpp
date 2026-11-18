@@ -2899,6 +2899,50 @@ void testRecordMenu() {
     engine.collectGarbage();
 }
 
+// The menu of an audio clip: MainComponent::buildClipMenu(), and the takes of a loop recording in it.
+void testClipMenu() {
+    std::printf("the clip menu: its items\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    Session& session = main.getSession();
+    Engine& engine = main.getEngine();
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    const TrackId looped = session.getTrackId(0), plain = session.getTrackId(1);
+    // Three passes of a loop of one second: three takes, the clip plays the last.
+    auto audio = std::make_shared<AudioBuffer>(1, 3 * 48000);
+    const std::vector<Placement> takes{{96000, 0, 48000}, {96000, 48000, 48000}, {96000, 96000, 48000}};
+    DAWLAB_CHECK(session.perform(session.makeTakeEdit(looped, audio, takes, "Loop"), "Record"));
+    DAWLAB_CHECK(session.perform(edit::SetClips{plain, {session.makeAudioClip(audio, "plain", 0)}}, "Add clip"));
+    engine.applyPendingCommandsOffline();
+
+    juce::PopupMenu menu = main.buildClipMenu(looped, 0);
+    DAWLAB_CHECK(menuItem(menu, "Take 1").id == 1 && !menuItem(menu, "Take 1").ticked);
+    DAWLAB_CHECK(menuItem(menu, "Take 3").id == 3 && menuItem(menu, "Take 3").ticked && !menuItem(menu, "Take 4").found);
+    DAWLAB_CHECK(session.chooseTake(looped, 0, 0) && menuItem(main.buildClipMenu(looped, 0), "Take 1").ticked);
+    // No such clip: no menu. A clip that was not recorded in a loop: no takes.
+    DAWLAB_CHECK(main.buildClipMenu(looped, -1).getNumItems() == 0 && main.buildClipMenu(looped, 1).getNumItems() == 0);
+    DAWLAB_CHECK(!menuItem(main.buildClipMenu(plain, 0), "Take 1").found);
+
+    // Chapter 20: how the clip follows the tempo, its mode ticked; a clip that follows has no takes to choose.
+    const MenuItemState stays = menuItem(menu, "Stay where it is");
+    DAWLAB_CHECK(stays.id == MainComponent::kClipMenuFollow && stays.ticked);
+    DAWLAB_CHECK(menuItem(menu, "Follow, pitch stays (stretch)").id == MainComponent::kClipMenuFollow + 3 &&
+                 !menuItem(menu, "Follow, pitch stays (stretch)").ticked);
+    const Clip shown = session.getClips(looped)[0];
+    main.setStatus({});
+    // No item: nothing, and not a word, even for a clip that is not there any more.
+    DAWLAB_CHECK(!main.chooseFromClipMenu(looped, shown, 0) && !main.chooseFromClipMenu(looped, Clip{}, 0) && main.getStatus().isEmpty());
+    DAWLAB_CHECK(main.chooseFromClipMenu(looped, shown, MainComponent::kClipMenuFollow + static_cast<int>(engine::FollowMode::Start)));
+    menu = main.buildClipMenu(looped, 0);
+    DAWLAB_CHECK(menuItem(menu, "Keep its start on the beat").ticked && !menuItem(menu, "Stay where it is").ticked &&
+                 !menuItem(menu, "Take 1").found);
+    std::printf("  3 takes, the one it plays ticked; 4 follow modes, the clip's ticked; no takes once it follows\n");
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    engine.collectGarbage();
+}
+
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     constexpr double sr = 48000.0;
     std::setvbuf(stdout, nullptr, _IONBF, 0); // unbuffered: a crash must not swallow what was printed
@@ -2916,6 +2960,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testSlotMenu();
     testKeyboardShortcuts();
     testRecordMenu();
+    testClipMenu();
     testEngineCatchesUp();
     testMidiFiles();
     testInstrumentSound();

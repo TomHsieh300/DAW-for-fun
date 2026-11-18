@@ -489,22 +489,27 @@ void MainComponent::handleRecordMenuResult(engine::TrackId track, int item) {
 }
 
 void MainComponent::showClipMenu(engine::TrackId track, int clipIndex) {
+    juce::PopupMenu menu = buildClipMenu(track, clipIndex);
+    if (menu.getNumItems() == 0)
+        return; // no such clip, or no takes to choose from
+    menu.showMenuAsync(juce::PopupMenu::Options{}, menuCallback(this, [track, clipIndex](MainComponent& m, int item) {
+                           m.session_.chooseTake(track, clipIndex, item - 1); // no item (0): no take -1, nothing done
+                       }));
+}
+
+juce::PopupMenu MainComponent::buildClipMenu(engine::TrackId track, int clipIndex) {
     const auto& clips = session_.getClips(track);
     if (clipIndex < 0 || clipIndex >= static_cast<int>(clips.size()))
-        return;
+        return {};
     const engine::Clip& clip = clips[static_cast<size_t>(clipIndex)];
     const std::vector<engine::Placement>* takes = session_.getTakesOf(clip);
     if (takes == nullptr || takes->size() < 2 || session_.getCurrentTake(clip) < 0)
-        return;
+        return {};
     juce::PopupMenu menu;
     menu.addSectionHeader("Takes");
     for (int i = 0; i < static_cast<int>(takes->size()); ++i)
         menu.addItem(i + 1, "Take " + juce::String(i + 1), true, session_.getCurrentTake(clip) == i);
-    juce::Component::SafePointer<MainComponent> safe(this);
-    menu.showMenuAsync(juce::PopupMenu::Options{}, [safe, track, clipIndex](int result) {
-        if (safe != nullptr && result > 0)
-            safe->session_.chooseTake(track, clipIndex, result - 1);
-    });
+    return menu;
 }
 
 void MainComponent::askForTrim() {

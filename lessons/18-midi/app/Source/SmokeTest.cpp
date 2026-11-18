@@ -1870,6 +1870,36 @@ void testRecordMenu() {
     engine.collectGarbage();
 }
 
+// The menu of an audio clip: MainComponent::buildClipMenu(), and the takes of a loop recording in it.
+void testClipMenu() {
+    std::printf("the clip menu: its items\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    Session& session = main.getSession();
+    Engine& engine = main.getEngine();
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    const TrackId looped = session.getTrackId(0), plain = session.getTrackId(1);
+    // Three passes of a loop of one second: three takes, the clip plays the last.
+    auto audio = std::make_shared<AudioBuffer>(1, 3 * 48000);
+    const std::vector<Placement> takes{{96000, 0, 48000}, {96000, 48000, 48000}, {96000, 96000, 48000}};
+    DAWLAB_CHECK(session.perform(session.makeTakeEdit(looped, audio, takes, "Loop"), "Record"));
+    DAWLAB_CHECK(session.perform(edit::SetClips{plain, {session.makeAudioClip(audio, "plain", 0)}}, "Add clip"));
+    engine.applyPendingCommandsOffline();
+
+    juce::PopupMenu menu = main.buildClipMenu(looped, 0);
+    DAWLAB_CHECK(menuItem(menu, "Take 1").id == 1 && !menuItem(menu, "Take 1").ticked);
+    DAWLAB_CHECK(menuItem(menu, "Take 3").id == 3 && menuItem(menu, "Take 3").ticked && !menuItem(menu, "Take 4").found);
+    DAWLAB_CHECK(session.chooseTake(looped, 0, 0) && menuItem(main.buildClipMenu(looped, 0), "Take 1").ticked);
+    // No such clip: no menu. A clip that was not recorded in a loop: no takes.
+    DAWLAB_CHECK(main.buildClipMenu(looped, -1).getNumItems() == 0 && main.buildClipMenu(looped, 1).getNumItems() == 0);
+    DAWLAB_CHECK(!menuItem(main.buildClipMenu(plain, 0), "Take 1").found);
+    std::printf("  %d items for a clip of 3 takes, the take it plays ticked\n", menu.getNumItems());
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    engine.collectGarbage();
+}
+
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     constexpr double sr = 48000.0;
     std::setvbuf(stdout, nullptr, _IONBF, 0); // unbuffered: a crash must not swallow what was printed
@@ -1884,6 +1914,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testSlotMenu();
     testKeyboardShortcuts();
     testRecordMenu();
+    testClipMenu();
 
 
     // 1. The resampler used when loading files (MediaLoader.cpp)

@@ -92,6 +92,8 @@ public:
     juce::PopupMenu buildRecordMenu(engine::TrackId track, const juce::StringArray& inputNames);
     void handleRecordMenuResult(engine::TrackId track, int item); // 0, no item, does nothing
     void showClipMenu(engine::TrackId track, int clipIndex);
+    // Its items (empty: no such clip, or nothing to choose): "Take n" is item n.
+    juce::PopupMenu buildClipMenu(engine::TrackId track, int clipIndex);
     void askForTrim();
     // True, and it says so on the status line, while a recording prevents `what`.
     bool refuseWhileRecording(const juce::String& what);

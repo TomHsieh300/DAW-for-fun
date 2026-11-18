@@ -101,8 +101,11 @@ public:
     void setMidiRecordMode(MidiRecordMode mode) noexcept { midiMode_ = mode; }
     MidiRecordMode getMidiRecordMode() const noexcept { return midiMode_; }
     void showClipMenu(engine::TrackId track, int clipIndex);
+    // Its items (empty: no such clip): kClipMenuFollow + a FollowMode, and for a clip that stays where it is, "Take n"
+    // as item n.
+    juce::PopupMenu buildClipMenu(engine::TrackId track, int clipIndex);
     // What the clip menu does with the item chosen (an item id of the menu: a take, or kClipMenuFollow + a
-    // FollowMode). `shown` is the clip as it was when the menu opened: the item acts on that clip wherever it is in
+    // FollowMode; 0, no item, does nothing). `shown` is the clip as it was when the menu opened: the item acts on that clip wherever it is in
     // the list by now. False, and the status line says so, if it is not there any more.
     static constexpr int kClipMenuFollow = 1000;
     bool chooseFromClipMenu(engine::TrackId track, const engine::Clip& shown, int item);
