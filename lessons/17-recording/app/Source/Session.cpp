@@ -118,15 +118,6 @@ ChannelRef Session::stripRefAt(int stripIndex) const noexcept {
     return ChannelRef::master();
 }
 
-int Session::stripIndexOf(ChannelRef ref) const noexcept {
-    switch (ref.kind) {
-    case ChannelKind::Track: return engine_.getStrip(ref) != nullptr ? indexOf(ref.trackId) : -1;
-    case ChannelKind::Bus: return getNumTracks() + std::clamp(ref.index, 0, kNumBuses - 1);
-    case ChannelKind::Master: return getNumTracks() + kNumBuses;
-    }
-    return -1;
-}
-
 Session::StripModel* Session::findStrip(ChannelRef ref) noexcept {
     return const_cast<StripModel*>(static_cast<const Session*>(this)->findStrip(ref));
 }

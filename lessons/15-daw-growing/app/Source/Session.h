@@ -116,7 +116,6 @@ public:
     // ---- strips, in mixer order: the tracks (display order), the buses, the master -----------
     int getNumStrips() const noexcept { return getNumTracks() + engine::kNumBuses + 1; }
     engine::ChannelRef stripRefAt(int stripIndex) const noexcept;
-    int stripIndexOf(engine::ChannelRef ref) const noexcept; // -1 for a track that is not here
 
     // ---- clips -------------------------------------------------------------------------------
     const std::vector<engine::Clip>& getClips(engine::TrackId track) const; // empty for an unknown id
