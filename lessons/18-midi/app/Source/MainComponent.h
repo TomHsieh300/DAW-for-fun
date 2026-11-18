@@ -141,7 +141,12 @@ public:
     void loadDemoSongAsync();       // generates on the loader thread
     int loadDemoSongNow();          // synchronous (snapshot, tests); returns unknown parameter count, -1 if refused
     void chooseAudioFileForTrack(engine::TrackId track);
+    bool loadChosenAudioFile(engine::TrackId track, const juce::File& file); // the chooser's answer; false: cancelled
     void loadAudioFile(engine::TrackId track, const juce::File& file); // asynchronous (loader thread)
+    // What a file does once the loader thread has read it: one undo step - the track's format, the clip and the
+    // track's name. False, and the status line says why, when it could not be read or its track was deleted
+    // meanwhile, or when the device changed the sample rate meanwhile (then it is read again).
+    bool audioFileLoaded(const LoadedMedia& media, const juce::File& file);
     // Files dropped on a lane: the first loads into `track`, the next ones into the tracks below;
     // when no track is left below, new ones are added at the end (chapter 15).
     void loadDroppedFiles(engine::TrackId track, const juce::StringArray& files);

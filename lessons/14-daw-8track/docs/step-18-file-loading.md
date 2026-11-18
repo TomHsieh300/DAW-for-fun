@@ -75,14 +75,14 @@ crossing; Step 3 explains the click) and names the track after the file.
 Like Cubase, which asks for a mono or a stereo track and imports a file into a track of its own
 channel count, loading a file also sets the **track format** (Step 4). The reader knows the file's
 channel count before the engine copy is made, so `LoadedMedia` carries it as `fileNumChannels`, and
-`MainComponent::loadAudioFile()`'s callback sets the format before it hands over the audio:
+`MainComponent::loadAudioFile()`'s callback, `audioFileLoaded()`, sets the format before it hands over the audio:
 
 ```cpp
 // Like Cubase: a mono file makes a mono track (inserts in mono, pan law), anything with
 // two or more channels a stereo track (balance).
-safe->session_.setTrackFormat(media.track, media.fileNumChannels == 1 ? engine::TrackFormat::Mono
-                                                                       : engine::TrackFormat::Stereo);
-safe->session_.setTrackAudio(media.track, media.audio, media.name);
+session_.setTrackFormat(media.track, media.fileNumChannels == 1 ? engine::TrackFormat::Mono
+                                                                : engine::TrackFormat::Stereo);
+session_.setTrackAudio(media.track, media.audio, media.name);
 ```
 
 <div align="center">
@@ -181,7 +181,8 @@ audio at the old rate would end up in the project and play at the wrong pitch fo
   same resampler on the loader thread, used when the device's sample rate changes, Step 11).
 - `app/Source/Session.cpp`: `setTrackAudio()`, `applyDemoSong()`, `applySampleRateConversion()`,
   `handleSampleRateChange()` (Step 11).
-- `app/Source/MainComponent.cpp`: `chooseAudioFileForTrack()`, `loadAudioFile()` (sets the track format from `fileNumChannels`),
+- `app/Source/MainComponent.cpp`: `chooseAudioFileForTrack()`, `loadAudioFile()` and its callback `audioFileLoaded()`
+  (sets the track format from `fileNumChannels`; the smoke test calls it with a file it read itself),
   `loadDemoSongAsync()` (startup and Ctrl+D), `loadDemoSongNow()` (synchronous, for tests).
 
 ## Verify

@@ -2441,9 +2441,59 @@ void testExportDialog() {
     DAWLAB_CHECK(chosen && main->getStatus().startsWith("Nothing to export"));
 }
 
+// Loading an audio file (chosen or dropped): what the loader thread's answer does.
+void testAudioFileLoading() {
+    DialogFolder folder;
+    auto main = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    Session& s = main->getSession();
+    const TrackId first = s.getTrackId(0);
+    main->setStatus("Ready");
+    const bool cancelled = !main->loadChosenAudioFile(first, juce::File()) && main->getStatus() == "Ready";
+    const juce::File tone = writeRawWav(folder.dir.getChildFile("tone.wav"), 44100, 4410);
+    DAWLAB_CHECK(cancelled);
+    DAWLAB_CHECK(main->loadChosenAudioFile(first, tone) && main->getStatus() == "Loading tone.wav...");
+    // The answers, read here at once the way the loader thread reads.
+    LoadedMedia media = MediaLoader::readAudioFile(tone, s.getClipSampleRate());
+    media.track = first;
+    LoadedMedia failed = media;
+    failed.audio = nullptr;
+    failed.error = "broken";
+    DAWLAB_CHECK(!main->audioFileLoaded(failed, tone) && main->getStatus() == "Load failed: broken");
+    LoadedMedia deleted = media;
+    deleted.track = TrackId{};
+    DAWLAB_CHECK(!main->audioFileLoaded(deleted, tone) && main->getStatus() == "Not loaded: the track for tone.wav was deleted");
+    LoadedMedia oldRate = media; // read for a rate the device has left meanwhile: read again
+    oldRate.targetSampleRate = 44100.0;
+    DAWLAB_CHECK(!main->audioFileLoaded(oldRate, tone) && main->getStatus() == "Loading tone.wav...");
+    DAWLAB_CHECK(s.getClips(first).empty());
+    const std::size_t steps = s.getHistory().undoCount();
+    const bool loaded = main->audioFileLoaded(media, tone);
+    std::printf("dialogs: audio file chooser cancelled -> nothing done: %s; a mono 44.1 kHz file read -> \"%s\"\n",
+                cancelled ? "yes" : "no", main->getStatus().toRawUTF8());
+    DAWLAB_CHECK(loaded && s.getClips(first).size() == 1 && s.getHistory().undoCount() == steps + 1);
+    DAWLAB_CHECK(s.getTrackFormat(first) == TrackFormat::Mono && s.getStripName(s.trackRef(first)) == "tone");
+    DAWLAB_CHECK(main->getStatus() == "Loaded tone.wav into track 1 (resampled 44100 -> 48000 Hz)");
+    LoadedMedia stereo = media; // two channels at the engine's rate, 3 samples that were not numbers
+    stereo.fileNumChannels = 2;
+    stereo.fileSampleRate = stereo.targetSampleRate;
+    stereo.nonFiniteSamples = 3;
+    DAWLAB_CHECK(main->audioFileLoaded(stereo, tone) && s.getTrackFormat(first) == TrackFormat::Stereo);
+    DAWLAB_CHECK(main->getStatus() == "Loaded tone.wav into track 1 (" + MediaLoader::describeNonFinite(3) + ")");
+
+    // Files dropped on the last lane of a full project: the first loads there, the others find no track.
+    while (main->addTrack(TrackFormat::Mono).isValid())
+        main->getEngine().applyPendingCommandsOffline();
+    main->getEngine().applyPendingCommandsOffline();
+    main->loadDroppedFiles(s.getTrackId(s.getNumTracks() - 1), juce::StringArray{tone.getFullPathName(), "b.wav", "c.wav"});
+    std::printf("dialogs: 3 files dropped on the last of %d tracks -> \"%s\"\n", s.getNumTracks(), main->getStatus().toRawUTF8());
+    DAWLAB_CHECK(s.getNumTracks() == kMaxTracks);
+    DAWLAB_CHECK(main->getStatus() == "2 file(s) not loaded: " + juce::String(kMaxTracks) + " tracks is the limit");
+}
+
 void testDialogs() {
     testWhileAlive();
     testExportDialog();
+    testAudioFileLoading();
 }
 
 // ---- --smoke-test --------------------------------------------------------------------------------

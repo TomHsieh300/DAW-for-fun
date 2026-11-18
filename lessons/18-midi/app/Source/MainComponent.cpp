@@ -755,12 +755,15 @@ void MainComponent::chooseAudioFileForTrack(engine::TrackId track) {
     fileChooser_ = std::make_unique<juce::FileChooser>("Load audio into " + session_.getStripName(session_.trackRef(track)),
                                                        juce::File::getSpecialLocation(juce::File::userMusicDirectory),
                                                        MediaLoader::getWildcard());
-    juce::Component::SafePointer<MainComponent> safe(this);
     fileChooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                              [safe, track](const juce::FileChooser& chooser) {
-                                  if (safe != nullptr && chooser.getResult() != juce::File())
-                                      safe->loadAudioFile(track, chooser.getResult());
-                              });
+                              whileAlive([this, track](const juce::FileChooser& chooser) { loadChosenAudioFile(track, chooser.getResult()); }));
+}
+
+bool MainComponent::loadChosenAudioFile(engine::TrackId track, const juce::File& file) {
+    if (file == juce::File()) // the chooser was cancelled
+        return false;
+    loadAudioFile(track, file);
+    return true;
 }
 
 void MainComponent::loadDroppedFiles(engine::TrackId track, const juce::StringArray& files) {
@@ -822,45 +825,45 @@ bool MainComponent::deleteSelectedTrack() {
 
 void MainComponent::loadAudioFile(engine::TrackId track, const juce::File& file) {
     setStatus("Loading " + file.getFileName() + "...");
-    juce::Component::SafePointer<MainComponent> safe(this);
     // New clip audio must be at the clip rate: normally the engine rate; the old rate while a
     // device change is being converted (finishClipConversion picks the new clip up then).
-    loader_.loadFile(track, file, session_.getClipSampleRate(), [safe, file](const LoadedMedia& media) {
-        if (safe == nullptr)
-            return;
-        if (media.audio == nullptr) {
-            safe->setStatus("Load failed: " + media.error);
-            return;
-        }
-        if (!safe->session_.hasTrack(media.track)) { // deleted while the file was being read
-            safe->setStatus("Not loaded: the track for " + media.name + " was deleted");
-            return;
-        }
-        if (media.targetSampleRate != safe->session_.getClipSampleRate()) {
-            // The device changed the sample rate while the file was being read: read it again
-            // for the current rate instead of putting audio at the wrong rate into the project.
-            safe->loadAudioFile(media.track, file);
-            return;
-        }
-        // Like Cubase: a mono file makes a mono track (inserts in mono, pan law), anything with
-        // two or more channels a stereo track (balance).
-        // One undoable step: the format, the clip and the name.
-        Session& session = safe->session_;
-        std::vector<Edit> edits;
-        edits.push_back(edit::SetFormat{media.track, media.fileNumChannels == 1 ? engine::TrackFormat::Mono
-                                                                                : engine::TrackFormat::Stereo});
-        edits.push_back(edit::SetClips{media.track, {session.makeAudioClip(media.audio, media.name)}});
-        edits.push_back(edit::Rename{StripTarget::ofTrack(media.track), media.name.upToFirstOccurrenceOf(".", false, false)});
-        session.perform(std::move(edits), "Load " + media.name);
-        safe->arrangement_.setSelectedTrack(media.track);
-        safe->arrangement_.zoomToFit();
-        juce::String text = "Loaded " + media.name + " into track " + juce::String(safe->session_.indexOf(media.track) + 1);
-        if (media.fileSampleRate != media.targetSampleRate)
-            text << " (resampled " << juce::String(media.fileSampleRate, 0) << " -> " << juce::String(media.targetSampleRate, 0) << " Hz)";
-        if (media.nonFiniteSamples > 0)
-            text << " (" << MediaLoader::describeNonFinite(media.nonFiniteSamples) << ")";
-        safe->setStatus(text);
-    });
+    loader_.loadFile(track, file, session_.getClipSampleRate(),
+                     whileAlive([this, file](const LoadedMedia& media) { audioFileLoaded(media, file); }));
+}
+
+bool MainComponent::audioFileLoaded(const LoadedMedia& media, const juce::File& file) {
+    if (media.audio == nullptr) {
+        setStatus("Load failed: " + media.error);
+        return false;
+    }
+    if (!session_.hasTrack(media.track)) { // deleted while the file was being read
+        setStatus("Not loaded: the track for " + media.name + " was deleted");
+        return false;
+    }
+    if (media.targetSampleRate != session_.getClipSampleRate()) {
+        // The device changed the sample rate while the file was being read: read it again
+        // for the current rate instead of putting audio at the wrong rate into the project.
+        loadAudioFile(media.track, file);
+        return false;
+    }
+    // Like Cubase: a mono file makes a mono track (inserts in mono, pan law), anything with
+    // two or more channels a stereo track (balance).
+    // One undoable step: the format, the clip and the name.
+    std::vector<Edit> edits;
+    edits.push_back(edit::SetFormat{media.track, media.fileNumChannels == 1 ? engine::TrackFormat::Mono
+                                                                            : engine::TrackFormat::Stereo});
+    edits.push_back(edit::SetClips{media.track, {session_.makeAudioClip(media.audio, media.name)}});
+    edits.push_back(edit::Rename{StripTarget::ofTrack(media.track), media.name.upToFirstOccurrenceOf(".", false, false)});
+    session_.perform(std::move(edits), "Load " + media.name);
+    arrangement_.setSelectedTrack(media.track);
+    arrangement_.zoomToFit();
+    juce::String text = "Loaded " + media.name + " into track " + juce::String(session_.indexOf(media.track) + 1);
+    if (media.fileSampleRate != media.targetSampleRate)
+        text << " (resampled " << juce::String(media.fileSampleRate, 0) << " -> " << juce::String(media.targetSampleRate, 0) << " Hz)";
+    if (media.nonFiniteSamples > 0)
+        text << " (" << MediaLoader::describeNonFinite(media.nonFiniteSamples) << ")";
+    setStatus(text);
+    return true;
 }
 
 // ---- device sample-rate changes (Step 11) ---------------------------------------------------------------

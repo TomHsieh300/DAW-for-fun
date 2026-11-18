@@ -259,12 +259,15 @@ void MainComponent::chooseAudioFileForTrack(int track) {
     fileChooser_ = std::make_unique<juce::FileChooser>("Load audio into track " + juce::String(track + 1),
                                                        juce::File::getSpecialLocation(juce::File::userMusicDirectory),
                                                        MediaLoader::getWildcard());
-    juce::Component::SafePointer<MainComponent> safe(this);
     fileChooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                              [safe, track](const juce::FileChooser& chooser) {
-                                  if (safe != nullptr && chooser.getResult() != juce::File())
-                                      safe->loadAudioFile(track, chooser.getResult());
-                              });
+                              whileAlive([this, track](const juce::FileChooser& chooser) { loadChosenAudioFile(track, chooser.getResult()); }));
+}
+
+bool MainComponent::loadChosenAudioFile(int track, const juce::File& file) {
+    if (file == juce::File()) // the chooser was cancelled
+        return false;
+    loadAudioFile(track, file);
+    return true;
 }
 
 void MainComponent::loadDroppedFiles(int track, const juce::StringArray& files) {
@@ -278,36 +281,37 @@ void MainComponent::loadDroppedFiles(int track, const juce::StringArray& files) 
 
 void MainComponent::loadAudioFile(int track, const juce::File& file) {
     setStatus("Loading " + file.getFileName() + "...");
-    juce::Component::SafePointer<MainComponent> safe(this);
     // New clip audio must be at the clip rate: normally the engine rate; the old rate while a
     // device change is being converted (finishClipConversion picks the new clip up then).
-    loader_.loadFile(track, file, session_.getClipSampleRate(), [safe, file](const LoadedMedia& media) {
-        if (safe == nullptr)
-            return;
-        if (media.audio == nullptr) {
-            safe->setStatus("Load failed: " + media.error);
-            return;
-        }
-        if (media.targetSampleRate != safe->session_.getClipSampleRate()) {
-            // The device changed the sample rate while the file was being read: read it again
-            // for the current rate instead of putting audio at the wrong rate into the project.
-            safe->loadAudioFile(media.track, file);
-            return;
-        }
-        // Like Cubase: a mono file makes a mono track (inserts in mono, pan law), anything with
-        // two or more channels a stereo track (balance).
-        safe->session_.setTrackFormat(media.track, media.fileNumChannels == 1 ? engine::TrackFormat::Mono
-                                                                               : engine::TrackFormat::Stereo);
-        safe->session_.setTrackAudio(media.track, media.audio, media.name);
-        safe->arrangement_.setSelectedTrack(media.track);
-        safe->arrangement_.zoomToFit();
-        juce::String text = "Loaded " + media.name + " into track " + juce::String(media.track + 1);
-        if (media.fileSampleRate != media.targetSampleRate)
-            text << " (resampled " << juce::String(media.fileSampleRate, 0) << " -> " << juce::String(media.targetSampleRate, 0) << " Hz)";
-        if (media.nonFiniteSamples > 0)
-            text << " (" << MediaLoader::describeNonFinite(media.nonFiniteSamples) << ")";
-        safe->setStatus(text);
-    });
+    loader_.loadFile(track, file, session_.getClipSampleRate(),
+                     whileAlive([this, file](const LoadedMedia& media) { audioFileLoaded(media, file); }));
+}
+
+bool MainComponent::audioFileLoaded(const LoadedMedia& media, const juce::File& file) {
+    if (media.audio == nullptr) {
+        setStatus("Load failed: " + media.error);
+        return false;
+    }
+    if (media.targetSampleRate != session_.getClipSampleRate()) {
+        // The device changed the sample rate while the file was being read: read it again
+        // for the current rate instead of putting audio at the wrong rate into the project.
+        loadAudioFile(media.track, file);
+        return false;
+    }
+    // Like Cubase: a mono file makes a mono track (inserts in mono, pan law), anything with
+    // two or more channels a stereo track (balance).
+    session_.setTrackFormat(media.track, media.fileNumChannels == 1 ? engine::TrackFormat::Mono
+                                                                    : engine::TrackFormat::Stereo);
+    session_.setTrackAudio(media.track, media.audio, media.name);
+    arrangement_.setSelectedTrack(media.track);
+    arrangement_.zoomToFit();
+    juce::String text = "Loaded " + media.name + " into track " + juce::String(media.track + 1);
+    if (media.fileSampleRate != media.targetSampleRate)
+        text << " (resampled " << juce::String(media.fileSampleRate, 0) << " -> " << juce::String(media.targetSampleRate, 0) << " Hz)";
+    if (media.nonFiniteSamples > 0)
+        text << " (" << MediaLoader::describeNonFinite(media.nonFiniteSamples) << ")";
+    setStatus(text);
+    return true;
 }
 
 // ---- device sample-rate changes (Step 11) ---------------------------------------------------------------

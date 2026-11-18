@@ -81,7 +81,12 @@ public:
     void loadDemoSongAsync();       // generates on the loader thread
     int loadDemoSongNow();          // synchronous (snapshot, tests); returns unknown parameter count, -1 if refused
     void chooseAudioFileForTrack(int track);
+    bool loadChosenAudioFile(int track, const juce::File& file); // the chooser's answer; false: cancelled
     void loadAudioFile(int track, const juce::File& file); // asynchronous (loader thread)
+    // What a file does once the loader thread has read it: the track's format and its audio. False, and the
+    // status line says why, when it could not be read, or when the device changed the sample rate meanwhile
+    // (then it is read again).
+    bool audioFileLoaded(const LoadedMedia& media, const juce::File& file);
     // Files dropped on a lane: the first loads into `track`, the next ones into the tracks below.
     void loadDroppedFiles(int track, const juce::StringArray& files);
     void exportMixdownInteractive(); // file chooser, then exportMixdown()
