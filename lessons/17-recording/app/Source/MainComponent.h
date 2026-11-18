@@ -133,6 +133,7 @@ public:
     void exportMixdown(const juce::File& file);
     void showAudioSettings();
     void showKeyboardShortcuts();
+    juce::String keyboardShortcutsText(); // what it shows: "name:  key", for each command that has a key
 
     // Insert slots (MixerView callbacks)
     void showSlotMenu(engine::ChannelRef ref, int slot, juce::Component& anchor); // EffectMenu::build(), then:

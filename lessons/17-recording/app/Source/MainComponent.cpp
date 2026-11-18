@@ -911,6 +911,10 @@ void MainComponent::showAudioSettings() {
 }
 
 void MainComponent::showKeyboardShortcuts() {
+    juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::NoIcon, "Keyboard shortcuts", keyboardShortcutsText());
+}
+
+juce::String MainComponent::keyboardShortcutsText() {
     juce::String text;
     juce::Array<juce::CommandID> ids;
     getAllCommands(ids);
@@ -923,7 +927,7 @@ void MainComponent::showKeyboardShortcuts() {
             continue;
         text << info->shortName << ":  " << keys.getReference(0).getTextDescriptionWithIcons() << "\n";
     }
-    juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::NoIcon, "Keyboard shortcuts", text);
+    return text;
 }
 
 // ---- inserts ----------------------------------------------------------------------------------------------

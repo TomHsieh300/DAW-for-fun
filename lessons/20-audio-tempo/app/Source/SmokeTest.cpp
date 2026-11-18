@@ -2827,6 +2827,25 @@ void testSlotMenu() {
     engine.collectGarbage();
 }
 
+// The list of keyboard shortcuts (F1): "name:  key" for each command that has a key, with its first key.
+void testKeyboardShortcuts() {
+    std::printf("the keyboard shortcuts list (F1)\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    juce::StringArray lines;
+    lines.addLines(main.keyboardShortcutsText().trimEnd());
+    const juce::String space = juce::KeyPress(juce::KeyPress::spaceKey).getTextDescriptionWithIcons();
+    const juce::String zoomIn = "Zoom in:  " + juce::KeyPress('=').getTextDescriptionWithIcons();
+    DAWLAB_CHECK(lines.contains("Play / Stop:  " + space) && lines.contains(zoomIn));
+    DAWLAB_CHECK(lines.contains("Keyboard shortcuts...:  " + juce::KeyPress(juce::KeyPress::F1Key).getTextDescriptionWithIcons()));
+    // Without its key, a command is not listed.
+    main.getCommandManager().getKeyMappings()->clearAllKeyPresses(CommandIDs::playStop);
+    juce::StringArray without;
+    without.addLines(main.keyboardShortcutsText().trimEnd());
+    DAWLAB_CHECK(without.size() == lines.size() - 1 && !without.contains("Play / Stop:  " + space) && without.contains(zoomIn));
+    std::printf("  %d commands with a key listed, one line each; with its key taken away, Play / Stop is not\n", lines.size());
+}
+
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     constexpr double sr = 48000.0;
     std::setvbuf(stdout, nullptr, _IONBF, 0); // unbuffered: a crash must not swallow what was printed
@@ -2842,6 +2861,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testFollowingClipTooLong();
     testClipMenuAndModes();
     testSlotMenu();
+    testKeyboardShortcuts();
     testEngineCatchesUp();
     testMidiFiles();
     testInstrumentSound();
