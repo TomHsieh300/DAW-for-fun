@@ -363,31 +363,35 @@ void restoreStrip(Session& session, ChannelRef ref, const StripState& s) {
     }
 }
 
-} // namespace
+// A clip's file -> its audio (nullptr: it could not be read).
+using AudioFiles = std::map<std::string, std::shared_ptr<const AudioBuffer>>;
+// The file's track id -> the session's.
+using TrackIds = std::map<std::uint32_t, TrackId>;
 
-ProjectIO::OpenResult ProjectIO::open(Session& session, host::PluginHost* pluginHost, const juce::File& file) {
-    OpenResult r;
+// The file's text, parsed. If the file cannot be read or does not parse, `error` says why.
+project::ReadResult readProjectFile(const juce::File& file, juce::String& error) {
     juce::MemoryBlock data;
     if (!file.existsAsFile() || !file.loadFileAsData(data)) {
-        r.error = "cannot read " + file.getFullPathName();
-        return r;
+        error = "cannot read " + file.getFullPathName();
+        return {};
     }
-    const project::ReadResult parsed =
+    project::ReadResult parsed =
         project::readProject(std::string_view(static_cast<const char*>(data.getData()), data.getSize()));
-    if (!parsed.ok) {
-        r.error = file.getFileName() + ", " + juce::String::fromUTF8(parsed.error.c_str());
-        return r;
-    }
-    const ProjectState& p = parsed.project;
-    r.formatVersion = parsed.formatVersion;
+    if (!parsed.ok)
+        error = file.getFileName() + ", " + juce::String::fromUTF8(parsed.error.c_str());
+    return parsed;
+}
 
-    // Every audio file is read before the session changes (a missing one is a warning).
-    std::map<std::string, std::shared_ptr<const AudioBuffer>> audio;
+// Every audio file the clips name, read before the session changes. One that cannot be read is a warning (its clips
+// are left out); NaN or Inf samples that were set to 0 are a note.
+AudioFiles readAllAudio(const ProjectState& p, const juce::File& projectFile, ProjectIO::OpenResult& r) {
+    AudioFiles audio;
     for (const ClipState& c : p.clips) {
         if (audio.count(c.file) != 0)
             continue;
         const juce::String path = juce::String::fromUTF8(c.file.c_str());
-        const juce::File f = juce::File::isAbsolutePath(path) ? juce::File(path) : file.getParentDirectory().getChildFile(path);
+        const juce::File f =
+            juce::File::isAbsolutePath(path) ? juce::File(path) : projectFile.getParentDirectory().getChildFile(path);
         juce::String why;
         int nonFinite = 0;
         audio[c.file] = readAudio(f, p.sampleRate, why, nonFinite);
@@ -399,9 +403,11 @@ ProjectIO::OpenResult ProjectIO::open(Session& session, host::PluginHost* plugin
                 r.notes.add("audio file " + path + ": " + MediaLoader::describeNonFinite(nonFinite));
         }
     }
+    return audio;
+}
 
-    // From here on the old project is replaced.
-    session.clearProject();
+// The tempo (chapter 19: and the tempo map), the time signature and the loop.
+void restoreTransport(Session& session, const ProjectState& p) {
     Transport& tr = session.getEngine().getTransport();
     tr.setTempo(p.tempo);
     if (!p.tempoPoints.empty()) {
@@ -418,85 +424,115 @@ ProjectIO::OpenResult ProjectIO::open(Session& session, host::PluginHost* plugin
             tr.setLoopRange(p.loopStart, p.loopEnd);
     }
     tr.setLoopEnabled(p.loopEnabled);
+}
 
+// One channel: its strip, its effects and its automation.
+void restoreChannel(Session& session, host::PluginHost* pluginHost, ChannelRef ref, const StripState& s,
+                    juce::StringArray& warnings) {
+    restoreStrip(session, ref, s);
+    restoreInserts(session, pluginHost, ref, s, warnings);
+    restoreLanes(session, ref, s, warnings);
+}
+
+// The buses, then the master.
+void restoreBuses(Session& session, host::PluginHost* pluginHost, const ProjectState& p, juce::StringArray& warnings) {
     for (int b = 0; b <= kNumBuses; ++b) {
         const ChannelRef ref = b < kNumBuses ? ChannelRef::bus(b) : ChannelRef::master();
         const StripState& s = b < kNumBuses ? p.buses[static_cast<size_t>(b)] : p.master;
-        restoreStrip(session, ref, s);
-        restoreInserts(session, pluginHost, ref, s, r.warnings);
-        restoreLanes(session, ref, s, r.warnings);
+        restoreChannel(session, pluginHost, ref, s, warnings);
     }
+}
 
-    std::map<std::uint32_t, TrackId> ids; // the file's id -> the session's
+// The tracks in the file's order. One more than the session holds is left out, with a warning.
+TrackIds restoreTracks(Session& session, host::PluginHost* pluginHost, const ProjectState& p,
+                       juce::StringArray& warnings) {
+    TrackIds ids;
     for (const TrackState& t : p.tracks) {
         const TrackId id = session.addTrack(t.format, juce::String::fromUTF8(t.strip.name.c_str()));
         if (!id.isValid()) {
-            r.warnings.add("track \"" + juce::String::fromUTF8(t.strip.name.c_str()) + "\" left out: " +
-                           juce::String(kMaxTracks) + " tracks is the limit");
+            warnings.add("track \"" + juce::String::fromUTF8(t.strip.name.c_str()) + "\" left out: " +
+                         juce::String(kMaxTracks) + " tracks is the limit");
             continue;
         }
         ids[t.id.value] = id;
-        restoreStrip(session, session.trackRef(id), t.strip);
-        restoreInserts(session, pluginHost, session.trackRef(id), t.strip, r.warnings);
-        restoreLanes(session, session.trackRef(id), t.strip, r.warnings);
+        restoreChannel(session, pluginHost, session.trackRef(id), t.strip, warnings);
     }
+    return ids;
+}
 
+// The clip a ClipState is, on its audio. The text cannot know the audio: a clip may not read past the end of its
+// source. One that starts after the end is left out (false), a longer one is shortened, each with a warning.
+bool clipOf(const ClipState& cs, const std::shared_ptr<const AudioBuffer>& source, Clip& c, juce::StringArray& warnings) {
+    c.source = source;
+    c.start = cs.start;
+    c.length = cs.length;
+    c.sourceOffset = cs.sourceOffset;
+    c.gainDb = cs.gainDb;
+    c.fadeInSamples = cs.fadeIn;
+    c.fadeOutSamples = cs.fadeOut;
+    c.fadeShape = cs.equalPowerFades ? FadeShape::EqualPower : FadeShape::Linear;
+    c.muted = cs.muted;
+    c.name = cs.name;
+    const std::int64_t available = source->getNumSamples() - c.sourceOffset;
+    if (available <= 0) {
+        warnings.add("clip \"" + juce::String(cs.name) + "\" starts after the end of " + juce::String(cs.file) + ": left out");
+        return false;
+    }
+    if (c.length > available) {
+        warnings.add("clip \"" + juce::String(cs.name) + "\" was longer than " + juce::String(cs.file) + ": shortened");
+        c.length = available;
+    }
+    return true;
+}
+
+// The audio clips of the tracks that are in the session, on the audio that could be read.
+void restoreClips(Session& session, const ProjectState& p, const AudioFiles& audio, const TrackIds& ids,
+                  juce::StringArray& warnings) {
     std::map<std::uint32_t, std::vector<Clip>> clips;
     for (const ClipState& cs : p.clips) {
-        const auto source = audio[cs.file];
-        if (source == nullptr || ids.count(cs.track.value) == 0)
-            continue;
+        const std::shared_ptr<const AudioBuffer>& source = audio.at(cs.file);
         Clip c;
-        c.source = source;
-        c.start = cs.start;
-        c.length = cs.length;
-        c.sourceOffset = cs.sourceOffset;
-        c.gainDb = cs.gainDb;
-        c.fadeInSamples = cs.fadeIn;
-        c.fadeOutSamples = cs.fadeOut;
-        c.fadeShape = cs.equalPowerFades ? FadeShape::EqualPower : FadeShape::Linear;
-        c.muted = cs.muted;
-        c.name = cs.name;
-        // The text cannot know the audio: a clip may not read past the end of its source.
-        const std::int64_t available = source->getNumSamples() - c.sourceOffset;
-        if (available <= 0) {
-            r.warnings.add("clip \"" + juce::String(cs.name) + "\" starts after the end of " + juce::String(cs.file) + ": left out");
+        if (source == nullptr || ids.count(cs.track.value) == 0 || !clipOf(cs, source, c, warnings))
             continue;
-        }
-        if (c.length > available) {
-            r.warnings.add("clip \"" + juce::String(cs.name) + "\" was longer than " + juce::String(cs.file) + ": shortened");
-            c.length = available;
-        }
         clips[cs.track.value].push_back(std::move(c));
     }
     for (auto& [fileId, list] : clips)
-        session.setClips(ids[fileId], std::move(list));
-    // Chapter 18: instruments and MIDI clips. Ticks: nothing to convert at another sample rate.
+        session.setClips(ids.at(fileId), std::move(list));
+}
+
+// Chapter 19: a track's synth sound, and a plugin in its place. A plugin that cannot be loaded leaves the synth.
+void restoreSound(Session& session, TrackId id, const TrackState& t, juce::StringArray& warnings) {
+    InstrumentSnapshot sound;
+    sound.synth.cutoffHz = t.synth.cutoffHz;
+    sound.synth.resonance = t.synth.resonance;
+    sound.synth.attack = t.synth.attack;
+    sound.synth.decay = t.synth.decay;
+    sound.synth.sustain = t.synth.sustain;
+    sound.synth.release = t.synth.release;
+    sound.synth.level = static_cast<float>(t.synth.level);
+    session.setInstrumentSound(id, sound);
+    if (t.instrumentFile.empty())
+        return;
+    sound.pluginFile = juce::String::fromUTF8(t.instrumentFile.c_str());
+    sound.pluginState.fromBase64Encoding(juce::String(t.instrumentState));
+    juce::String why;
+    if (!session.setInstrumentSound(id, sound, &why))
+        warnings.add("track \"" + juce::String::fromUTF8(t.strip.name.c_str()) + "\": plugin instrument " +
+                     juce::File(sound.pluginFile).getFileName() + " not loaded (" + why + "); it plays the built-in synth");
+}
+
+// Chapter 18: which tracks are instruments; chapter 19: their sound. Ticks: nothing to convert at another sample rate.
+void restoreInstruments(Session& session, const ProjectState& p, const TrackIds& ids, juce::StringArray& warnings) {
     for (const TrackState& t : p.tracks)
         if (t.instrument && ids.count(t.id.value) != 0)
-            session.setInstrument(ids[t.id.value], true);
-    // Chapter 19: the synth's sound, and a plugin in its place. A plugin that cannot be loaded leaves the synth.
-    for (const TrackState& t : p.tracks) {
-        if (ids.count(t.id.value) == 0)
-            continue;
-        InstrumentSnapshot sound;
-        sound.synth.cutoffHz = t.synth.cutoffHz;
-        sound.synth.resonance = t.synth.resonance;
-        sound.synth.attack = t.synth.attack;
-        sound.synth.decay = t.synth.decay;
-        sound.synth.sustain = t.synth.sustain;
-        sound.synth.release = t.synth.release;
-        sound.synth.level = static_cast<float>(t.synth.level);
-        session.setInstrumentSound(ids[t.id.value], sound);
-        if (!t.instrumentFile.empty()) {
-            sound.pluginFile = juce::String::fromUTF8(t.instrumentFile.c_str());
-            sound.pluginState.fromBase64Encoding(juce::String(t.instrumentState));
-            juce::String why;
-            if (!session.setInstrumentSound(ids[t.id.value], sound, &why))
-                r.warnings.add("track \"" + juce::String::fromUTF8(t.strip.name.c_str()) + "\": plugin instrument " +
-                               juce::File(sound.pluginFile).getFileName() + " not loaded (" + why + "); it plays the built-in synth");
-        }
-    }
+            session.setInstrument(ids.at(t.id.value), true);
+    for (const TrackState& t : p.tracks)
+        if (ids.count(t.id.value) != 0)
+            restoreSound(session, ids.at(t.id.value), t, warnings);
+}
+
+// Chapter 18: the MIDI clips of the tracks that are in the session.
+void restoreMidiClips(Session& session, const ProjectState& p, const TrackIds& ids) {
     std::map<std::uint32_t, std::vector<MidiClipModel>> midi;
     for (const project::MidiClipState& ms : p.midiClips) {
         if (ids.count(ms.track.value) == 0)
@@ -513,7 +549,11 @@ ProjectIO::OpenResult ProjectIO::open(Session& session, host::PluginHost* plugin
         midi[ms.track.value].push_back(std::move(m)); // id 0: the session gives each a new one
     }
     for (auto& [fileId, list] : midi)
-        session.setMidiClips(ids[fileId], std::move(list));
+        session.setMidiClips(ids.at(fileId), std::move(list));
+}
+
+// Chapter 17: the takes of each recording a clip plays, on its audio. A take past the end of the audio is left out.
+void restoreTakeSets(Session& session, const ProjectState& p, const AudioFiles& audio) {
     for (const project::TakeSetState& set : p.takeSets) {
         const auto source = audio.find(set.file);
         if (source == audio.end() || source->second == nullptr)
@@ -524,6 +564,30 @@ ProjectIO::OpenResult ProjectIO::open(Session& session, host::PluginHost* plugin
                 takes.push_back({take.start, take.sourceOffset, take.length});
         session.registerTakes(source->second, std::move(takes));
     }
+}
+
+} // namespace
+
+ProjectIO::OpenResult ProjectIO::open(Session& session, host::PluginHost* pluginHost, const juce::File& file) {
+    OpenResult r;
+    const project::ReadResult parsed = readProjectFile(file, r.error);
+    if (!parsed.ok)
+        return r;
+    const ProjectState& p = parsed.project;
+    r.formatVersion = parsed.formatVersion;
+
+    // Every audio file is read before the session changes (a missing one is a warning).
+    const AudioFiles audio = readAllAudio(p, file, r);
+
+    // From here on the old project is replaced.
+    session.clearProject();
+    restoreTransport(session, p);
+    restoreBuses(session, pluginHost, p, r.warnings);
+    const TrackIds ids = restoreTracks(session, pluginHost, p, r.warnings);
+    restoreClips(session, p, audio, ids, r.warnings);
+    restoreInstruments(session, p, ids, r.warnings);
+    restoreMidiClips(session, p, ids);
+    restoreTakeSets(session, p, audio);
 
     // Positions and audio are at the file's rate; the engine may run at another one.
     if (p.sampleRate != session.getEngine().getSampleRate())
