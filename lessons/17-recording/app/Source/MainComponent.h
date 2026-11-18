@@ -96,6 +96,11 @@ public:
     // Its items (empty: no such clip, or nothing to choose): "Take n" is item n.
     juce::PopupMenu buildClipMenu(engine::TrackId track, int clipIndex);
     void askForTrim();
+    // Its answer (1 OK, 0 Cancel) and the number typed: the trim in samples, kept on this machine.
+    bool answerTrim(int result, const juce::String& samples);
+    // At start: the takes a crash left behind come back on new tracks, and the status line (in Live mode a box
+    // too) says where they are. Returns how many.
+    int recoverCrashedTakes();
     // True, and it says so on the status line, while a recording prevents `what`.
     bool refuseWhileRecording(const juce::String& what);
     // The same for a new tempo, from the transport bar or the tempo lane (chapter 19); the tempo slider goes back.
@@ -235,7 +240,6 @@ private:
     void finishExport(const ExportResult& result);
     void startClipConversion();
     void finishClipConversion(double fromRate, double toRate, const ConvertedBuffers& converted);
-    void recoverCrashedTakes();
 
     // ---- the command table (MainComponent.cpp): getCommandInfo() and perform() read it ------------------
     // What a command needs to run, besides an export that is over, and what its tick mark in the menu shows.

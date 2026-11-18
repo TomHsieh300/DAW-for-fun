@@ -487,22 +487,26 @@ void MainComponent::askForTrim() {
     window->addTextEditor("trim", juce::String(takeRecorder_.getTrimSamples()), "Samples:");
     window->addButton("OK", 1, juce::KeyPress(juce::KeyPress::returnKey));
     window->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
-    juce::Component::SafePointer<MainComponent> safe(this);
-    window->enterModalState(true, juce::ModalCallbackFunction::create([safe, window](int result) {
-        if (safe != nullptr && result == 1) {
-            const int trim = window->getTextEditorContents("trim").getIntValue();
-            safe->takeRecorder_.setTrimSamples(trim);
-            if (safe->settings_ != nullptr)
-                safe->settings_->setValue("recordingTrim", trim);
-            safe->setStatus("Recording trim: " + juce::String(trim) + " samples");
-        }
-    }), true);
+    window->enterModalState(true, juce::ModalCallbackFunction::create(whileAlive([this, window](int result) {
+        answerTrim(result, window->getTextEditorContents("trim"));
+    })), true);
 }
 
-void MainComponent::recoverCrashedTakes() {
+bool MainComponent::answerTrim(int result, const juce::String& samples) {
+    if (result != 1) // Cancel
+        return false;
+    const int trim = samples.getIntValue();
+    takeRecorder_.setTrimSamples(trim);
+    if (settings_ != nullptr)
+        settings_->setValue("recordingTrim", trim);
+    setStatus("Recording trim: " + juce::String(trim) + " samples");
+    return true;
+}
+
+int MainComponent::recoverCrashedTakes() {
     const int found = takeRecorder_.recover();
     if (found == 0)
-        return;
+        return 0;
     arrangement_.zoomToFit();
     const juce::String message = juce::String(found) + (found == 1 ? " take was" : " takes were") +
                                  " still being recorded when the program ended. They are on new tracks, where they were played. "
@@ -510,6 +514,7 @@ void MainComponent::recoverCrashedTakes() {
     setStatus(message);
     if (mode_ == Mode::Live)
         juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon, "Recovered takes", message);
+    return found;
 }
 
 // ---- transport ----------------------------------------------------------------------------------------

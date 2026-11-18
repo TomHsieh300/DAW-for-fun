@@ -727,7 +727,9 @@ void testRecordingWhenThingsGoWrong() {
         DAWLAB_CHECK(rig.folder.get().getNumberOfChildFiles(juce::File::findFiles, "*.recording") == 1);
         const int tracksBefore = rig.session.getNumTracks();
         rig.session.getHistory().markSaved();
-        DAWLAB_CHECK(main.getTakeRecorder().recover() == 1);
+        DAWLAB_CHECK(main.recoverCrashedTakes() == 1); // what the program does when it starts
+        DAWLAB_CHECK(main.getStatus().startsWith("1 take was still being recorded when the program ended."));
+        DAWLAB_CHECK(main.getStatus().endsWith(rig.folder.get().getFullPathName()));
         DAWLAB_CHECK(rig.session.getNumTracks() == tracksBefore + 1);
         DAWLAB_CHECK(rig.session.getHistory().isModified()); // the recovered take is in no project file yet
         DAWLAB_CHECK(rig.folder.get().getNumberOfChildFiles(juce::File::findFiles, "*.recording") == 0);
@@ -740,7 +742,8 @@ void testRecordingWhenThingsGoWrong() {
             DAWLAB_CHECK(clips[0].length == 51200);
             DAWLAB_CHECK(clips[0].source->getSample(0, 51199) == inputAt(51199));
         }
-        DAWLAB_CHECK(main.getTakeRecorder().recover() == 0); // only once
+        main.setStatus("Ready");
+        DAWLAB_CHECK(main.recoverCrashedTakes() == 0 && main.getStatus() == "Ready"); // only once; nothing to say
         // A file that is not a take stays what it is.
         const juce::File junk = rig.folder.get().getChildFile("junk.wav.recording");
         DAWLAB_CHECK(junk.replaceWithText("not a take"));
@@ -2546,11 +2549,25 @@ void testProjectDialogs() {
     DAWLAB_CHECK(main->suggestProjectFile() != alone && main->suggestProjectFile().getParentDirectory() == alone.getParentDirectory());
 }
 
+// Transport > Recording latency trim (chapter 17): the box's answers.
+void testTrimDialog() {
+    auto main = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    TakeRecorder& recorder = main->getTakeRecorder();
+    const int before = recorder.getTrimSamples();
+    main->setStatus("Ready");
+    DAWLAB_CHECK(!main->answerTrim(0, "120") && recorder.getTrimSamples() == before && main->getStatus() == "Ready");
+    DAWLAB_CHECK(main->answerTrim(1, "120") && recorder.getTrimSamples() == 120);
+    std::printf("dialogs: trim box cancelled -> nothing done; 120 typed -> \"%s\"\n", main->getStatus().toRawUTF8());
+    DAWLAB_CHECK(main->getStatus() == "Recording trim: 120 samples");
+    DAWLAB_CHECK(main->answerTrim(1, "-35") && recorder.getTrimSamples() == -35);
+}
+
 void testDialogs() {
     testWhileAlive();
     testExportDialog();
     testAudioFileLoading();
     testProjectDialogs();
+    testTrimDialog();
 }
 
 // ---- --smoke-test --------------------------------------------------------------------------------
