@@ -554,24 +554,29 @@ void MainComponent::loadChapter13Plugin(ChannelRef ref, int slot, const juce::Fi
 void MainComponent::chooseVst3For(ChannelRef ref, int slot) {
     fileChooser_ = std::make_unique<juce::FileChooser>(
         "Choose a VST3 plugin", juce::File("C:\\Program Files\\Common Files\\VST3"), "*.vst3");
-    juce::Component::SafePointer<MainComponent> safe(this);
     // A .vst3 "bundle" is a folder on Windows (older plugins: a single file), so allow both.
     fileChooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles |
                                   juce::FileBrowserComponent::canSelectDirectories,
-                              [safe, ref, slot](const juce::FileChooser& chooser) {
-                                  if (safe == nullptr || chooser.getResult() == juce::File())
-                                      return;
-                                  juce::String error;
-                                  if (!safe->loadVst3Into(ref, slot, chooser.getResult(), error))
-                                      safe->setStatus("VST3 load failed: " + error);
-                              });
+                              whileAlive([this, ref, slot](const juce::FileChooser& chooser) { loadChosenVst3(ref, slot, chooser.getResult()); }));
+}
+
+bool MainComponent::loadChosenVst3(ChannelRef ref, int slot, const juce::File& file) {
+    if (file == juce::File()) // the chooser was cancelled
+        return false;
+    juce::String error;
+    if (loadVst3Into(ref, slot, file, error))
+        return true;
+    setStatus("VST3 load failed: " + error);
+    return false;
 }
 
 bool MainComponent::loadVst3Into(ChannelRef ref, int slot, const juce::File& file, juce::String& error) {
     // Chapter 13: create the instance on the message thread, wrap it, prepare it, hand it over.
     auto instance = pluginHost_.loadFromFile(file, engine_.getSampleRate(), engine_.getMaxBlockSize(), error);
-    if (instance == nullptr)
-        return false;
+    return instance != nullptr && insertVst3(ref, slot, std::move(instance), error);
+}
+
+bool MainComponent::insertVst3(ChannelRef ref, int slot, std::unique_ptr<juce::AudioPluginInstance> instance, juce::String& error) {
     auto vst = std::make_unique<VstInsert>(std::make_unique<host::HostedPlugin>(std::move(instance)));
     if (session_.setVstInsert(ref, slot, std::move(vst)) == nullptr) {
         error = "the engine refused the insert";
@@ -591,26 +596,26 @@ void MainComponent::openInsertEditor(ChannelRef ref, int slot, bool generic) {
         s.vst->openEditor();
         return;
     }
-    auto it = parameterWindows_.find(s.effect);
-    if (it == parameterWindows_.end()) {
-        const juce::String title = session_.getStripName(ref) + " - slot " + juce::String(slot + 1) + ": " +
-                                   (s.kind == SlotKind::Builtin ? EffectMenu::labelFor(s.type) : s.name);
-        auto window = std::make_unique<ParameterWindow>(*s.effect, title, &lookAndFeel_);
-        engine::InsertEffect* key = s.effect;
-        window->onClose = [this, key] {
-            // Deleting a window inside its own callback is not allowed: do it asynchronously.
-            juce::Component::SafePointer<MainComponent> safe(this);
-            juce::MessageManager::callAsync([safe, key] {
-                if (safe != nullptr)
-                    safe->parameterWindows_.erase(key);
-            });
-        };
-        const auto size = window->getPanel().getIdealSize();
-        window->centreAroundComponent(this, size.x, size.y + 30);
-        it = parameterWindows_.emplace(key, std::move(window)).first;
-    }
-    it->second->setVisible(true);
-    it->second->toFront(true);
+    ParameterWindow& window = parameterWindowFor(ref, slot);
+    window.setVisible(true);
+    window.toFront(true);
+}
+
+ParameterWindow& MainComponent::parameterWindowFor(ChannelRef ref, int slot) {
+    const InsertSlotState& s = session_.getSlot(ref, slot);
+    if (auto it = parameterWindows_.find(s.effect); it != parameterWindows_.end())
+        return *it->second;
+    const juce::String title = session_.getStripName(ref) + " - slot " + juce::String(slot + 1) + ": " +
+                               (s.kind == SlotKind::Builtin ? EffectMenu::labelFor(s.type) : s.name);
+    auto window = std::make_unique<ParameterWindow>(*s.effect, title, &lookAndFeel_);
+    engine::InsertEffect* key = s.effect;
+    window->onClose = [this, key] {
+        // Deleting a window inside its own callback is not allowed: do it asynchronously.
+        juce::MessageManager::callAsync(whileAlive([this, key] { parameterWindows_.erase(key); }));
+    };
+    const auto size = window->getPanel().getIdealSize();
+    window->centreAroundComponent(this, size.x, size.y + 30);
+    return *parameterWindows_.emplace(key, std::move(window)).first->second;
 }
 
 ParameterWindow* MainComponent::getParameterWindow(engine::InsertEffect* effect) const {

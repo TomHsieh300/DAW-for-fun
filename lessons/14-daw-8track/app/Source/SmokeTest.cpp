@@ -764,11 +764,51 @@ void testDemoSongLoading() {
     DAWLAB_CHECK(loaded && main->getStatus() == "Demo song loaded: 8 tracks, 19 inserts" && !main->getSession().getClips(1).empty());
 }
 
+// Mixer > insert slot: the effect's parameter window, and a VST3 plugin chosen for a slot.
+void testInsertEditors() {
+    DialogFolder folder;
+    auto main = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    DAWLAB_CHECK(main->loadDemoSongNow() == 0);
+    Session& s = main->getSession();
+    const ChannelRef drums = ChannelRef::track(0);
+    InsertEffect* comp = s.getSlot(drums, 1).effect;
+    main->openInsertEditor(drums, 1, false);
+    ParameterWindow* window = main->getParameterWindow(comp);
+    DAWLAB_CHECK(window != nullptr && window->isVisible());
+    DAWLAB_CHECK(window != nullptr && window->getName() == s.getStripName(drums) + " - slot 2: " + EffectMenu::labelFor(s.getSlot(drums, 1).type));
+    main->openInsertEditor(drums, 1, true); // the same window, not a second one
+    DAWLAB_CHECK(main->getParameterWindow(comp) == window);
+    window->onClose(); // the window goes later, on the message loop; by then this window is gone
+    // A VST3 plugin chosen for an empty slot (the smoke test's own plugin: no plugin is installed here).
+    const ChannelRef last = ChannelRef::track(7);
+    int slot = 0;
+    while (slot < kInsertSlotsPerStrip - 1 && !s.getSlot(last, slot).isEmpty())
+        ++slot;
+    DAWLAB_CHECK(s.getSlot(last, slot).isEmpty());
+    main->openInsertEditor(last, slot, false); // an empty slot: nothing to open
+    DAWLAB_CHECK(main->getParameterWindow(nullptr) == nullptr);
+    main->setStatus("Ready");
+    DAWLAB_CHECK(!main->loadChosenVst3(last, slot, juce::File()) && main->getStatus() == "Ready");
+    const juce::File none = folder.dir.getChildFile("None.vst3");
+    DAWLAB_CHECK(!main->loadChosenVst3(last, slot, none) && main->getStatus().startsWith("VST3 load failed: "));
+    juce::String error;
+    DAWLAB_CHECK(!main->loadVst3Into(last, slot, none, error) && error.isNotEmpty());
+    const bool loaded = main->insertVst3(last, slot, createTestDelayPlugin(64), error);
+    std::printf("dialogs: a VST3 plugin for %s slot %d -> \"%s\"\n", s.getStripName(last).toRawUTF8(), slot + 1,
+                main->getStatus().toRawUTF8());
+    DAWLAB_CHECK(loaded && main->getStatus().startsWith("Loaded VST3") && s.getSlot(last, slot).kind == SlotKind::Vst3);
+    main->openInsertEditor(last, slot, true); // the generic panel: a parameter window named after the plugin
+    window = main->getParameterWindow(s.getSlot(last, slot).effect);
+    DAWLAB_CHECK(window != nullptr && window->getName().endsWith(": " + s.getSlot(last, slot).name));
+    DAWLAB_CHECK(!main->insertVst3(last, kInsertSlotsPerStrip, createTestDelayPlugin(64), error) && error == "the engine refused the insert");
+}
+
 void testDialogs() {
     testWhileAlive();
     testExportDialog();
     testAudioFileLoading();
     testDemoSongLoading();
+    testInsertEditors();
 }
 
 // ---- --smoke-test --------------------------------------------------------------------------------

@@ -128,12 +128,12 @@ disk; otherwise the item is not shown.
 
 - `app/Source/VstInsert.h/.cpp` - the adapter.
 - `app/Source/MainComponent.cpp` - `chooseVst3For()` (file chooser that accepts bundle folders and
-  single files), `loadVst3Into()`:
+  single files), `loadVst3Into()` and `insertVst3()`:
 
 ```cpp
 auto instance = pluginHost_.loadFromFile(file, engine_.getSampleRate(), engine_.getMaxBlockSize(), error);
-if (instance == nullptr)
-    return false;
+return instance != nullptr && insertVst3(ref, slot, std::move(instance), error);
+// insertVst3(), the half the smoke test runs with its TestDelayPlugin:
 auto vst = std::make_unique<VstInsert>(std::make_unique<host::HostedPlugin>(std::move(instance)));
 if (session_.setVstInsert(ref, slot, std::move(vst)) == nullptr) { ... }
 openInsertEditor(ref, slot, false);   // -> VstInsert::openEditor() -> host::PluginWindow

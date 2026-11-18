@@ -802,17 +802,20 @@ void MainComponent::loadChapter13Plugin(ChannelRef ref, int slot, const juce::Fi
 void MainComponent::chooseVst3For(ChannelRef ref, int slot) {
     fileChooser_ = std::make_unique<juce::FileChooser>(
         "Choose a VST3 plugin", juce::File("C:\\Program Files\\Common Files\\VST3"), "*.vst3");
-    juce::Component::SafePointer<MainComponent> safe(this);
     // A .vst3 "bundle" is a folder on Windows (older plugins: a single file), so allow both.
     fileChooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles |
                                   juce::FileBrowserComponent::canSelectDirectories,
-                              [safe, ref, slot](const juce::FileChooser& chooser) {
-                                  if (safe == nullptr || chooser.getResult() == juce::File())
-                                      return;
-                                  juce::String error;
-                                  if (!safe->loadVst3Into(ref, slot, chooser.getResult(), error))
-                                      safe->setStatus("VST3 load failed: " + error);
-                              });
+                              whileAlive([this, ref, slot](const juce::FileChooser& chooser) { loadChosenVst3(ref, slot, chooser.getResult()); }));
+}
+
+bool MainComponent::loadChosenVst3(ChannelRef ref, int slot, const juce::File& file) {
+    if (file == juce::File()) // the chooser was cancelled
+        return false;
+    juce::String error;
+    if (loadVst3Into(ref, slot, file, error))
+        return true;
+    setStatus("VST3 load failed: " + error);
+    return false;
 }
 
 bool MainComponent::loadVst3Into(ChannelRef ref, int slot, const juce::File& file, juce::String& error) {
@@ -843,40 +846,42 @@ void MainComponent::openInsertEditor(ChannelRef ref, int slot, bool generic) {
         s.vst->openEditor();
         return;
     }
-    auto it = parameterWindows_.find(s.effect);
-    if (it == parameterWindows_.end()) {
-        const juce::String title = session_.getStripName(ref) + " - slot " + juce::String(slot + 1) + ": " +
-                                   (s.kind == SlotKind::Builtin ? EffectMenu::labelFor(s.type) : s.name);
-        auto window = std::make_unique<ParameterWindow>(*s.effect, title, &lookAndFeel_);
-        engine::InsertEffect* key = s.effect;
-        // The panel's knobs make undoable edits (Step 9). The target is the track's id and the
-        // slot, both fixed for as long as this effect - and so this window - exists.
-        ParameterPanel& panel = window->getPanel();
-        const StripTarget target = StripTarget::of(ref);
-        panel.onParameterChange = [this, target, slot, key](int index, float value) {
-            session_.perform(edit::SetParameter{target, slot, index, value},
-                             juce::String(key->getName()) + " " + key->getParameterInfo(index).name,
-                             mergeKeyFor(target, 0x50000000u + static_cast<std::uint32_t>(slot) * 256u +
-                                                     static_cast<std::uint32_t>(index))); // "P", slot, parameter
-        };
-        panel.onBypassChange = [this, target, slot, key](bool bypassed) {
-            session_.perform(edit::SetBypass{target, slot, bypassed}, juce::String("Bypass ") + key->getName());
-        };
-        panel.onGesture = [this] { session_.getHistory().endMerge(); };
-        window->onClose = [this, key] {
-            // Deleting a window inside its own callback is not allowed: do it asynchronously.
-            juce::Component::SafePointer<MainComponent> safe(this);
-            juce::MessageManager::callAsync([safe, key] {
-                if (safe != nullptr)
-                    safe->parameterWindows_.erase(key);
-            });
-        };
-        const auto size = window->getPanel().getIdealSize();
-        window->centreAroundComponent(this, size.x, size.y + 30);
-        it = parameterWindows_.emplace(key, std::move(window)).first;
-    }
-    it->second->setVisible(true);
-    it->second->toFront(true);
+    ParameterWindow& window = parameterWindowFor(ref, slot);
+    window.setVisible(true);
+    window.toFront(true);
+}
+
+ParameterWindow& MainComponent::parameterWindowFor(ChannelRef ref, int slot) {
+    const InsertSlotState& s = session_.getSlot(ref, slot);
+    if (auto it = parameterWindows_.find(s.effect); it != parameterWindows_.end())
+        return *it->second;
+    const juce::String title = session_.getStripName(ref) + " - slot " + juce::String(slot + 1) + ": " +
+                               (s.kind == SlotKind::Builtin ? EffectMenu::labelFor(s.type) : s.name);
+    auto window = std::make_unique<ParameterWindow>(*s.effect, title, &lookAndFeel_);
+    engine::InsertEffect* key = s.effect;
+    connectParameterPanel(window->getPanel(), StripTarget::of(ref), slot, key);
+    window->onClose = [this, key] {
+        // Deleting a window inside its own callback is not allowed: do it asynchronously.
+        juce::MessageManager::callAsync(whileAlive([this, key] { parameterWindows_.erase(key); }));
+    };
+    const auto size = window->getPanel().getIdealSize();
+    window->centreAroundComponent(this, size.x, size.y + 30);
+    return *parameterWindows_.emplace(key, std::move(window)).first->second;
+}
+
+// The panel's knobs make undoable edits (Step 9). The target is the track's id and the
+// slot, both fixed for as long as this effect - and so this window - exists.
+void MainComponent::connectParameterPanel(ParameterPanel& panel, StripTarget target, int slot, engine::InsertEffect* key) {
+    panel.onParameterChange = [this, target, slot, key](int index, float value) {
+        session_.perform(edit::SetParameter{target, slot, index, value},
+                         juce::String(key->getName()) + " " + key->getParameterInfo(index).name,
+                         mergeKeyFor(target, 0x50000000u + static_cast<std::uint32_t>(slot) * 256u +
+                                                 static_cast<std::uint32_t>(index))); // "P", slot, parameter
+    };
+    panel.onBypassChange = [this, target, slot, key](bool bypassed) {
+        session_.perform(edit::SetBypass{target, slot, bypassed}, juce::String("Bypass ") + key->getName());
+    };
+    panel.onGesture = [this] { session_.getHistory().endMerge(); };
 }
 
 ParameterWindow* MainComponent::getParameterWindow(engine::InsertEffect* effect) const {

@@ -104,7 +104,13 @@ public:
     // What the slot menu does with the item chosen (an EffectMenu::ItemId; 0, no item, does nothing).
     void handleSlotMenuResult(engine::ChannelRef ref, int slot, int result);
     void openInsertEditor(engine::ChannelRef ref, int slot, bool generic);
+    // The parameter window of the slot's effect: the one that is open, or a new one (shown by openInsertEditor()).
+    ParameterWindow& parameterWindowFor(engine::ChannelRef ref, int slot);
     bool loadVst3Into(engine::ChannelRef ref, int slot, const juce::File& file, juce::String& error);
+    // Its second half, the part without the plugin file: the instance into the slot, and its editor opens.
+    bool insertVst3(engine::ChannelRef ref, int slot, std::unique_ptr<juce::AudioPluginInstance> instance, juce::String& error);
+    // The VST3 chooser's answer (no file: it was cancelled); a load that failed says why on the status line.
+    bool loadChosenVst3(engine::ChannelRef ref, int slot, const juce::File& file);
     ParameterWindow* getParameterWindow(engine::InsertEffect* effect) const;
     void closeAllEditors();
 

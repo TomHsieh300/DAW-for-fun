@@ -923,11 +923,71 @@ void testDemoSongLoading() {
     DAWLAB_CHECK(loaded && main->getStatus() == "Demo song loaded: 8 tracks, 19 inserts" && main->getSession().getNumTracks() == 8);
 }
 
+// Mixer > insert slot: the effect's parameter window, and a VST3 plugin chosen for a slot.
+void testInsertEditors() {
+    DialogFolder folder;
+    auto main = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    DAWLAB_CHECK(main->loadDemoSongNow() == 0);
+    Session& s = main->getSession();
+    const ChannelRef drums = s.trackRef(s.getTrackId(0));
+    InsertEffect* comp = s.getSlot(drums, 1).effect;
+    main->openInsertEditor(drums, 1, false);
+    ParameterWindow* window = main->getParameterWindow(comp);
+    DAWLAB_CHECK(window != nullptr && window->isVisible());
+    DAWLAB_CHECK(window != nullptr && window->getName() == s.getStripName(drums) + " - slot 2: " + EffectMenu::labelFor(s.getSlot(drums, 1).type));
+    main->openInsertEditor(drums, 1, true); // the same window, not a second one
+    DAWLAB_CHECK(main->getParameterWindow(comp) == window);
+    // The panel's knobs: an undo step per gesture.
+    ParameterPanel& panel = window->getPanel();
+    const std::size_t steps = s.getHistory().undoCount();
+    panel.onParameterChange(0, 0.25f);
+    panel.onParameterChange(0, 0.5f);
+    panel.onGesture();
+    panel.onParameterChange(0, 0.75f);
+    panel.onBypassChange(true);
+    main->getEngine().applyPendingCommandsOffline();
+    DAWLAB_CHECK(s.getHistory().undoCount() == steps + 3 && comp->isBypassed());
+    window->onClose(); // the window goes later, on the message loop; by then this window is gone
+    // A VST3 plugin chosen for an empty slot (the smoke test's own plugin: no plugin is installed here).
+    const ChannelRef last = s.trackRef(s.getTrackId(7));
+    int slot = 0;
+    while (slot < kInsertSlotsPerStrip - 1 && !s.getSlot(last, slot).isEmpty())
+        ++slot;
+    DAWLAB_CHECK(s.getSlot(last, slot).isEmpty());
+    main->openInsertEditor(last, slot, false); // an empty slot: nothing to open
+    DAWLAB_CHECK(main->getParameterWindow(nullptr) == nullptr);
+    main->setStatus("Ready");
+    DAWLAB_CHECK(!main->loadChosenVst3(last, slot, juce::File()) && main->getStatus() == "Ready");
+    const juce::File none = folder.dir.getChildFile("None.vst3");
+    DAWLAB_CHECK(!main->loadChosenVst3(last, slot, none) && main->getStatus().startsWith("VST3 load failed: "));
+    const auto realFactory = s.createVst3;
+    s.createVst3 = [](const juce::File&, const juce::MemoryBlock&, juce::String&) {
+        return std::make_unique<VstInsert>(std::make_unique<host::HostedPlugin>(createTestDelayPlugin(64)));
+    };
+    const juce::File plugin = folder.dir.getChildFile("Test.vst3");
+    DAWLAB_CHECK(plugin.create().wasOk());
+    const bool loaded = main->loadChosenVst3(last, slot, plugin);
+    std::printf("dialogs: a VST3 plugin chosen for %s slot %d -> \"%s\"\n", s.getStripName(last).toRawUTF8(), slot + 1,
+                main->getStatus().toRawUTF8());
+    DAWLAB_CHECK(loaded && main->getStatus().startsWith("Loaded VST3") && s.getSlot(last, slot).kind == SlotKind::Vst3);
+    main->openInsertEditor(last, slot, true); // the generic panel: a parameter window named after the plugin
+    window = main->getParameterWindow(s.getSlot(last, slot).effect);
+    DAWLAB_CHECK(window != nullptr && window->getName().endsWith(": " + s.getSlot(last, slot).name));
+    s.createVst3 = [](const juce::File&, const juce::MemoryBlock&, juce::String& error) {
+        error = "refused";
+        return std::unique_ptr<VstInsert>();
+    };
+    juce::String error;
+    DAWLAB_CHECK(!main->loadVst3Into(last, slot + 1, plugin, error) && error == "the plugin did not load, or the engine refused it");
+    s.createVst3 = realFactory;
+}
+
 void testDialogs() {
     testWhileAlive();
     testExportDialog();
     testAudioFileLoading();
     testDemoSongLoading();
+    testInsertEditors();
     testProjectDialogs();
 }
 

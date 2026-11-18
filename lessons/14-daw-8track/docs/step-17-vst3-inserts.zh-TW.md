@@ -93,12 +93,12 @@ Plugin 的 editor 必須在 plugin *之前*刪除。`VstInsert` 擁有它的 `Pl
 ## 程式碼
 
 - `app/Source/VstInsert.h/.cpp`——adapter。
-- `app/Source/MainComponent.cpp`——`chooseVst3For()`（接受 bundle 資料夾與單一檔案的 file chooser）、`loadVst3Into()`：
+- `app/Source/MainComponent.cpp`——`chooseVst3For()`（接受 bundle 資料夾與單一檔案的 file chooser）、`loadVst3Into()` 與 `insertVst3()`：
 
 ```cpp
 auto instance = pluginHost_.loadFromFile(file, engine_.getSampleRate(), engine_.getMaxBlockSize(), error);
-if (instance == nullptr)
-    return false;
+return instance != nullptr && insertVst3(ref, slot, std::move(instance), error);
+// insertVst3(), the half the smoke test runs with its TestDelayPlugin:
 auto vst = std::make_unique<VstInsert>(std::make_unique<host::HostedPlugin>(std::move(instance)));
 if (session_.setVstInsert(ref, slot, std::move(vst)) == nullptr) { ... }
 openInsertEditor(ref, slot, false);   // -> VstInsert::openEditor() -> host::PluginWindow

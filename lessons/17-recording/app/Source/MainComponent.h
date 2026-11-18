@@ -174,7 +174,11 @@ public:
     // What the slot menu does with the item chosen (an EffectMenu::ItemId; 0, no item, does nothing).
     void handleSlotMenuResult(engine::ChannelRef ref, int slot, int result);
     void openInsertEditor(engine::ChannelRef ref, int slot, bool generic);
+    // The parameter window of the slot's effect: the one that is open, or a new one (shown by openInsertEditor()).
+    ParameterWindow& parameterWindowFor(engine::ChannelRef ref, int slot);
     bool loadVst3Into(engine::ChannelRef ref, int slot, const juce::File& file, juce::String& error);
+    // The VST3 chooser's answer (no file: it was cancelled); a load that failed says why on the status line.
+    bool loadChosenVst3(engine::ChannelRef ref, int slot, const juce::File& file);
     ParameterWindow* getParameterWindow(engine::InsertEffect* effect) const;
     void closeAllEditors();
 
@@ -240,6 +244,7 @@ private:
     void toggleInsertBypass(engine::ChannelRef ref, int slot);
     void loadChapter13Plugin(engine::ChannelRef ref, int slot, const juce::File& file);
     void chooseVst3For(engine::ChannelRef ref, int slot);
+    void connectParameterPanel(ParameterPanel& panel, StripTarget target, int slot, engine::InsertEffect* key);
     void finishExport(const ExportResult& result);
     void startClipConversion();
     void finishClipConversion(double fromRate, double toRate, const ConvertedBuffers& converted);
