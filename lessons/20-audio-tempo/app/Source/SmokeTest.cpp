@@ -2717,6 +2717,116 @@ void testBarGrid() {
 
 // ---- --smoke-test --------------------------------------------------------------------------------
 
+// ---- the menus: what each one shows, and what each of its items does ----------------------------------------
+// showMenuAsync() needs a person; the functions that build a menu and handle the item chosen do not.
+
+struct MenuItemState {
+    bool found = false, enabled = false, ticked = false;
+    int id = 0;
+};
+
+// The item of `menu` (or of one of its sub-menus) with this text.
+MenuItemState menuItem(const juce::PopupMenu& menu, const juce::String& text) {
+    for (juce::PopupMenu::MenuItemIterator it(menu, true); it.next();) {
+        const juce::PopupMenu::Item& item = it.getItem();
+        if (item.text == text)
+            return {true, item.isEnabled, item.isTicked, item.itemID};
+    }
+    return {};
+}
+
+// The insert slot menu (EffectMenu::build) and MainComponent::handleSlotMenuResult().
+void testSlotMenu() {
+    std::printf("the insert slot menu: its items, and what each one does\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    Session& session = main.getSession();
+    Engine& engine = main.getEngine();
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    const ChannelRef ref = ChannelRef::master();
+    const auto& entries = EffectMenu::builtinEntries();
+    const int last = static_cast<int>(entries.size()) - 1;
+
+    // An empty slot: "(none)" ticked and disabled, every effect, "VST3..."; the chapter-13 plugins only when
+    // their files exist; nothing to bypass or open.
+    juce::PopupMenu menu = EffectMenu::build(session.getSlot(ref, 0), juce::File(), juce::File());
+    const MenuItemState none = menuItem(menu, "(none)");
+    DAWLAB_CHECK(none.found && none.id == EffectMenu::kRemove && !none.enabled && none.ticked);
+    const int emptySlotItems = menu.getNumItems();
+    DAWLAB_CHECK(emptySlotItems == last + 3 && menuItem(menu, "VST3...").id == EffectMenu::kVst3File);
+    DAWLAB_CHECK(menuItem(menu, entries[0].label).id == EffectMenu::kFirstBuiltin && !menuItem(menu, entries[0].label).ticked);
+    DAWLAB_CHECK(menuItem(menu, entries[static_cast<size_t>(last)].label).id == EffectMenu::kFirstBuiltin + last);
+    DAWLAB_CHECK(!menuItem(menu, "DawLab Compressor (chapter 13)").found && !menuItem(menu, "DawLab Limiter (chapter 13)").found);
+    DAWLAB_CHECK(!menuItem(menu, "Bypass").found && !menuItem(menu, "Open parameter panel").found);
+    const juce::File somewhere = juce::File::getCurrentWorkingDirectory(); // any file that exists
+    menu = EffectMenu::build(session.getSlot(ref, 0), somewhere, juce::File());
+    DAWLAB_CHECK(menuItem(menu, "DawLab Compressor (chapter 13)").id == EffectMenu::kChapter13Compressor &&
+                 !menuItem(menu, "DawLab Limiter (chapter 13)").found);
+    menu = EffectMenu::build(session.getSlot(ref, 0), juce::File(), somewhere);
+    DAWLAB_CHECK(menuItem(menu, "DawLab Limiter (chapter 13)").id == EffectMenu::kChapter13Limiter &&
+                 !menuItem(menu, "DawLab Compressor (chapter 13)").found);
+    DAWLAB_CHECK(EffectMenu::chapter13File(EffectMenu::kChapter13Compressor) == EffectMenu::chapter13CompressorFile() &&
+                 EffectMenu::chapter13File(EffectMenu::kChapter13Limiter) == EffectMenu::chapter13LimiterFile() &&
+                 EffectMenu::chapter13File(EffectMenu::kVst3File) == juce::File());
+
+    // No item, and ids just outside the built-in effects: nothing happens.
+    for (const int nothing : {0, EffectMenu::kFirstBuiltin - 1, EffectMenu::kFirstBuiltin + last + 1})
+        main.handleSlotMenuResult(ref, 0, nothing);
+    DAWLAB_CHECK(session.getSlot(ref, 0).isEmpty());
+    // The first and the last effect: inserted, with their parameter panel open, and ticked in the slot's menu.
+    main.handleSlotMenuResult(ref, 1, EffectMenu::kFirstBuiltin + last);
+    main.handleSlotMenuResult(ref, 0, EffectMenu::kFirstBuiltin);
+    engine.applyPendingCommandsOffline();
+    const InsertSlotState& slot = session.getSlot(ref, 0);
+    DAWLAB_CHECK(slot.kind == SlotKind::Builtin && slot.type == entries[0].type && main.getParameterWindow(slot.effect) != nullptr);
+    DAWLAB_CHECK(session.getSlot(ref, 1).type == entries[static_cast<size_t>(last)].type);
+    menu = EffectMenu::build(slot, juce::File(), juce::File());
+    DAWLAB_CHECK(menuItem(menu, entries[0].label).ticked && !menuItem(menu, entries[1].label).ticked);
+    DAWLAB_CHECK(menuItem(menu, "(none)").enabled && !menuItem(menu, "(none)").ticked);
+    DAWLAB_CHECK(menuItem(menu, "Bypass").id == EffectMenu::kToggleBypass && !menuItem(menu, "Bypass").ticked);
+    DAWLAB_CHECK(menuItem(menu, "Open parameter panel").id == EffectMenu::kOpenEditor && !menuItem(menu, "Open generic parameter panel").found);
+    // Bypass, ticked in the menu; and back.
+    main.handleSlotMenuResult(ref, 0, EffectMenu::kToggleBypass);
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(slot.effect->isBypassed() && menuItem(EffectMenu::build(slot, juce::File(), juce::File()), "Bypass").ticked);
+    main.handleSlotMenuResult(ref, 0, EffectMenu::kToggleBypass);
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(!slot.effect->isBypassed());
+    // The two "open" items, with the panel closed first.
+    main.closeAllEditors();
+    main.handleSlotMenuResult(ref, 0, EffectMenu::kOpenEditor);
+    DAWLAB_CHECK(main.getParameterWindow(slot.effect) != nullptr);
+    main.closeAllEditors();
+    main.handleSlotMenuResult(ref, 0, EffectMenu::kOpenGenericPanel);
+    DAWLAB_CHECK(main.getParameterWindow(slot.effect) != nullptr);
+    main.closeAllEditors();
+    // A VST3 in the slot: its own editor, and the generic panel.
+    InsertSlotState vst3 = slot;
+    vst3.kind = SlotKind::Vst3;
+    menu = EffectMenu::build(vst3, juce::File(), juce::File());
+    DAWLAB_CHECK(menuItem(menu, "Open plugin editor").id == EffectMenu::kOpenEditor &&
+                 menuItem(menu, "Open generic parameter panel").id == EffectMenu::kOpenGenericPanel);
+    DAWLAB_CHECK(!menuItem(menu, entries[0].label).ticked);
+    // Bypass on an empty slot does nothing; "(none)" empties the slot.
+    main.handleSlotMenuResult(ref, 2, EffectMenu::kToggleBypass);
+    main.handleSlotMenuResult(ref, 0, EffectMenu::kRemove);
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(session.getSlot(ref, 0).isEmpty() && session.getSlot(ref, 2).isEmpty());
+    // A chapter-13 plugin, when this tree has none: the status line says why nothing was loaded. (With the
+    // plugins built, they load and open their editor: not here, the smoke test opens no plugin.)
+    if (EffectMenu::chapter13CompressorFile() == juce::File()) {
+        main.handleSlotMenuResult(ref, 0, EffectMenu::kChapter13Compressor);
+        DAWLAB_CHECK(session.getSlot(ref, 0).isEmpty() && main.getStatus().startsWith("VST3 load failed"));
+    }
+    std::printf("  %d items for an empty slot; insert, bypass, open, remove; ids 0, %d and %d do nothing\n", emptySlotItems,
+                EffectMenu::kFirstBuiltin - 1, EffectMenu::kFirstBuiltin + last + 1);
+    main.closeAllEditors();
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    engine.collectGarbage();
+}
+
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     constexpr double sr = 48000.0;
     std::setvbuf(stdout, nullptr, _IONBF, 0); // unbuffered: a crash must not swallow what was printed
@@ -2731,6 +2841,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testFollowingClipsReopen();
     testFollowingClipTooLong();
     testClipMenuAndModes();
+    testSlotMenu();
     testEngineCatchesUp();
     testMidiFiles();
     testInstrumentSound();

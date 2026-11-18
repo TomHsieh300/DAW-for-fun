@@ -117,7 +117,9 @@ public:
     void showKeyboardShortcuts();
 
     // Insert slots (MixerView callbacks)
-    void showSlotMenu(engine::ChannelRef ref, int slot, juce::Component& anchor);
+    void showSlotMenu(engine::ChannelRef ref, int slot, juce::Component& anchor); // EffectMenu::build(), then:
+    // What the slot menu does with the item chosen (an EffectMenu::ItemId; 0, no item, does nothing).
+    void handleSlotMenuResult(engine::ChannelRef ref, int slot, int result);
     void openInsertEditor(engine::ChannelRef ref, int slot, bool generic);
     bool loadVst3Into(engine::ChannelRef ref, int slot, const juce::File& file, juce::String& error);
     ParameterWindow* getParameterWindow(engine::InsertEffect* effect) const;
@@ -166,7 +168,11 @@ private:
     void setUpProject();
     void setUpGui(const juce::String& deviceError);
     void timerCallback() override { tick(); }
-    void handleSlotMenuResult(engine::ChannelRef ref, int slot, int result);
+    // handleSlotMenuResult()'s parts. `entry` is an index into EffectMenu::builtinEntries().
+    void insertBuiltin(engine::ChannelRef ref, int slot, int entry);
+    void removeInsert(engine::ChannelRef ref, int slot);
+    void toggleInsertBypass(engine::ChannelRef ref, int slot);
+    void loadChapter13Plugin(engine::ChannelRef ref, int slot, const juce::File& file);
     void chooseVst3For(engine::ChannelRef ref, int slot);
     void finishExport(const ExportResult& result);
     void startClipConversion();

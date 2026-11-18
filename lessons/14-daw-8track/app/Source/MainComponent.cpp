@@ -465,47 +465,79 @@ void MainComponent::showKeyboardShortcuts() {
 
 // ---- inserts ----------------------------------------------------------------------------------------------
 
+namespace {
+// What a menu shown with showMenuAsync() calls with the item chosen (0: none): `handle(owner, item)`, if `owner`
+// is still there by then. A menu's own functions build it and handle the item: the smoke test calls those.
+template <typename Owner, typename Handle>
+std::function<void(int)> menuCallback(Owner* owner, Handle handle) {
+    return [safe = juce::Component::SafePointer<Owner>(owner), handle](int item) {
+        if (safe != nullptr)
+            handle(*safe.getComponent(), item);
+    };
+}
+} // namespace
+
 void MainComponent::showSlotMenu(ChannelRef ref, int slot, juce::Component& anchor) {
     if (isExporting())
         return;
     juce::PopupMenu menu = EffectMenu::build(session_.getSlot(ref, slot), EffectMenu::chapter13CompressorFile(),
                                              EffectMenu::chapter13LimiterFile());
-    juce::Component::SafePointer<MainComponent> safe(this);
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&anchor), [safe, ref, slot](int result) {
-        if (safe != nullptr && result != 0)
-            safe->handleSlotMenuResult(ref, slot, result);
-    });
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&anchor),
+                       menuCallback(this, [ref, slot](MainComponent& m, int result) { m.handleSlotMenuResult(ref, slot, result); }));
 }
 
 void MainComponent::handleSlotMenuResult(ChannelRef ref, int slot, int result) {
-    const auto& entries = EffectMenu::builtinEntries();
-    if (result == EffectMenu::kRemove) {
-        session_.clearInsert(ref, slot);
-    } else if (result >= EffectMenu::kFirstBuiltin && result < EffectMenu::kFirstBuiltin + static_cast<int>(entries.size())) {
-        const auto& entry = entries[static_cast<size_t>(result - EffectMenu::kFirstBuiltin)];
-        if (session_.setBuiltinInsert(ref, slot, entry.type) != nullptr)
-            openInsertEditor(ref, slot, false);
-        else
-            setStatus("Could not insert the effect (command queue full?)");
-    } else if (result == EffectMenu::kVst3File) {
+    switch (result) {
+    case EffectMenu::kRemove:
+        removeInsert(ref, slot);
+        break;
+    case EffectMenu::kVst3File:
         chooseVst3For(ref, slot);
-    } else if (result == EffectMenu::kChapter13Compressor) {
-        juce::String error;
-        if (!loadVst3Into(ref, slot, EffectMenu::chapter13CompressorFile(), error))
-            setStatus("VST3 load failed: " + error);
-    } else if (result == EffectMenu::kChapter13Limiter) {
-        juce::String error;
-        if (!loadVst3Into(ref, slot, EffectMenu::chapter13LimiterFile(), error))
-            setStatus("VST3 load failed: " + error);
-    } else if (result == EffectMenu::kToggleBypass) {
-        const auto& s = session_.getSlot(ref, slot);
-        if (!s.isEmpty())
-            session_.setInsertBypassed(ref, slot, !s.effect->isBypassed());
-    } else if (result == EffectMenu::kOpenEditor) {
+        break;
+    case EffectMenu::kChapter13Compressor:
+    case EffectMenu::kChapter13Limiter:
+        loadChapter13Plugin(ref, slot, EffectMenu::chapter13File(result));
+        break;
+    case EffectMenu::kToggleBypass:
+        toggleInsertBypass(ref, slot);
+        break;
+    case EffectMenu::kOpenEditor:
         openInsertEditor(ref, slot, false);
-    } else if (result == EffectMenu::kOpenGenericPanel) {
+        break;
+    case EffectMenu::kOpenGenericPanel:
         openInsertEditor(ref, slot, true);
+        break;
+    default: // a built-in effect, or no item (0)
+        insertBuiltin(ref, slot, result - EffectMenu::kFirstBuiltin);
+        break;
     }
+}
+
+void MainComponent::insertBuiltin(ChannelRef ref, int slot, int entry) {
+    const auto& entries = EffectMenu::builtinEntries();
+    if (entry < 0 || entry >= static_cast<int>(entries.size()))
+        return;
+    const engine::EffectType type = entries[static_cast<size_t>(entry)].type;
+    if (session_.setBuiltinInsert(ref, slot, type) != nullptr)
+        openInsertEditor(ref, slot, false);
+    else
+        setStatus("Could not insert the effect (command queue full?)");
+}
+
+void MainComponent::removeInsert(ChannelRef ref, int slot) {
+    session_.clearInsert(ref, slot);
+}
+
+void MainComponent::toggleInsertBypass(ChannelRef ref, int slot) {
+    const auto& s = session_.getSlot(ref, slot);
+    if (!s.isEmpty())
+        session_.setInsertBypassed(ref, slot, !s.effect->isBypassed());
+}
+
+void MainComponent::loadChapter13Plugin(ChannelRef ref, int slot, const juce::File& file) {
+    juce::String error;
+    if (!loadVst3Into(ref, slot, file, error))
+        setStatus("VST3 load failed: " + error);
 }
 
 void MainComponent::chooseVst3For(ChannelRef ref, int slot) {

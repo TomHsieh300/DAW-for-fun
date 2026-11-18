@@ -58,6 +58,8 @@ juce::PopupMenu build(const InsertSlotState& slot, const juce::File& chapter13Co
 // DAWLAB_L13_LIMITER_VST3), if they exist on disk.
 juce::File chapter13CompressorFile();
 juce::File chapter13LimiterFile();
+// The one of the two that item `itemId` (kChapter13Compressor, kChapter13Limiter) loads; none for any other item.
+juce::File chapter13File(int itemId);
 
 } // namespace EffectMenu
 

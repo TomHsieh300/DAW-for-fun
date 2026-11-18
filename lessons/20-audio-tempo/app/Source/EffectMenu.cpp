@@ -56,6 +56,12 @@ juce::File existingFile(const char* compiledInPath) {
 juce::File chapter13CompressorFile() { return existingFile(DAWLAB_L13_COMPRESSOR_VST3); }
 juce::File chapter13LimiterFile() { return existingFile(DAWLAB_L13_LIMITER_VST3); }
 
+juce::File chapter13File(int itemId) {
+    if (itemId == kChapter13Compressor)
+        return chapter13CompressorFile();
+    return itemId == kChapter13Limiter ? chapter13LimiterFile() : juce::File();
+}
+
 juce::PopupMenu build(const InsertSlotState& slot, const juce::File& chapter13Compressor,
                       const juce::File& chapter13Limiter) {
     juce::PopupMenu menu;
