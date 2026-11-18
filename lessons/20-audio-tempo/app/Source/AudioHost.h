@@ -80,6 +80,9 @@ public:
     juce::StringArray getMidiInputNames() const;
     // What the driver's callback does; also for tests, which play their keys this way. Any thread.
     void pushMidi(const engine::TimedMidi& message) noexcept;
+    // What the driver's callback pushes of a message: a channel message as it is; false for the others
+    // (clock, sysex...), which the engine does not play. Static, so that a test can feed it messages.
+    static bool toChannelMessage(const juce::MidiMessage& m, engine::MidiMessage& out) noexcept;
     engine::MidiFifo& getRecordFifo() noexcept { return recordFifo_; }
     // Seconds on the clock the MIDI time stamps use (JUCE's Time::getMillisecondCounterHiRes()). Tests replace it.
     double now() const;

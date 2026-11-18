@@ -3447,6 +3447,26 @@ void testInputChoice() {
     DAWLAB_CHECK(mainPtr->getAudioHost().ensureInputsOpen().isEmpty()); // offline: the input comes from the caller
 }
 
+// ---- the MIDI input (chapter 18) ---------------------------------------------------------------------
+// From the driver, a channel message goes on to the engine as it is; a system message (clock, sysex)
+// does not. Offline no MIDI input is open.
+void testMidiInput() {
+    std::printf("the MIDI input\n");
+    engine::MidiMessage note, program, clock, sysex;
+    const juce::uint8 data[] = {0x7d, 0x01};
+    DAWLAB_CHECK(AudioHost::toChannelMessage(juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(100)), note));
+    DAWLAB_CHECK(AudioHost::toChannelMessage(juce::MidiMessage::programChange(2, 5), program));
+    DAWLAB_CHECK(!AudioHost::toChannelMessage(juce::MidiMessage::midiClock(), clock));
+    DAWLAB_CHECK(!AudioHost::toChannelMessage(juce::MidiMessage::createSysExMessage(data, 2), sysex));
+    std::printf("   note on -> %02x %02x %02x, program change -> %02x %02x %02x, clock and sysex -> nothing\n", note.status, note.data1,
+                note.data2, program.status, program.data1, program.data2);
+    DAWLAB_CHECK(note.status == 0x90 && note.data1 == 60 && note.data2 == 100);
+    DAWLAB_CHECK(program.status == 0xC1 && program.data1 == 5 && program.data2 == 0);
+    DAWLAB_CHECK(clock.status == 0 && sysex.status == 0);
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    DAWLAB_CHECK(mainPtr->getAudioHost().getMidiInputNames().isEmpty());
+}
+
 // ---- --smoke-test --------------------------------------------------------------------------------
 
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
@@ -3462,6 +3482,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testPluginInsert();
     testDeviceErrors();
     testInputChoice();
+    testMidiInput();
     testSongEndAgrees();
     testMidiModel();
     testMidiEditing();

@@ -190,8 +190,7 @@ double AudioHost::now() const { return clock_ ? clock_() : juce::Time::getMillis
 juce::StringArray AudioHost::openMidiInputs() {
     juce::StringArray names;
     for (const juce::MidiDeviceInfo& device : juce::MidiInput::getAvailableDevices()) {
-        if (!deviceManager_.isMidiInputDeviceEnabled(device.identifier))
-            deviceManager_.setMidiInputDeviceEnabled(device.identifier, true);
+        deviceManager_.setMidiInputDeviceEnabled(device.identifier, true); // nothing if it is enabled
         names.add(device.name);
     }
     deviceManager_.removeMidiInputDeviceCallback({}, this); // never twice
@@ -210,14 +209,19 @@ juce::StringArray AudioHost::getMidiInputNames() const {
 void AudioHost::handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage& m) {
     // The driver's thread. JUCE has already parsed the bytes (Step 5's MidiParser does the same) and stamped
     // the message with Time::getMillisecondCounterHiRes() / 1000 - our now().
+    engine::MidiMessage message;
+    if (toChannelMessage(m, message))
+        pushMidi({m.getTimeStamp(), message});
+}
+
+bool AudioHost::toChannelMessage(const juce::MidiMessage& m, engine::MidiMessage& out) noexcept {
     const juce::uint8* raw = m.getRawData();
     if (m.getRawDataSize() < 1 || raw[0] < 0x80 || raw[0] >= 0xF0)
-        return; // only channel messages
-    engine::MidiMessage message;
-    message.status = raw[0];
-    message.data1 = m.getRawDataSize() > 1 ? raw[1] : 0;
-    message.data2 = m.getRawDataSize() > 2 ? raw[2] : 0;
-    pushMidi({m.getTimeStamp(), message});
+        return false; // only channel messages
+    out.status = raw[0];
+    out.data1 = m.getRawDataSize() > 1 ? raw[1] : 0;
+    out.data2 = m.getRawDataSize() > 2 ? raw[2] : 0;
+    return true;
 }
 
 void AudioHost::pushMidi(const engine::TimedMidi& message) noexcept {
