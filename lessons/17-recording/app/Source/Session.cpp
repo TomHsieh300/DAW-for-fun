@@ -627,12 +627,73 @@ void Session::handleSampleRateChange(double oldRate, double newRate) {
     scaleTransportPositions(oldRate, newRate);
 }
 
+namespace {
+
+// A position or a length in samples at the new rate: `v` times `ratio`, to the nearest sample.
+int64_t scaled(int64_t v, double ratio) {
+    return static_cast<int64_t>(std::llround(static_cast<double>(v) * ratio));
+}
+
+// One clip at the new rate: its audio resampled, its positions scaled. A buffer is resampled once, the first time a
+// clip has it; the clips that share it then share the new one. A buffer already in `converted` is not resampled.
+void convertClip(Clip& c, ConvertedBuffers& converted, double oldRate, double newRate) {
+    const double ratio = newRate / oldRate;
+    if (c.source) {
+        auto it = converted.find(c.source);
+        if (it == converted.end())
+            it = converted
+                     .emplace(c.source,
+                              std::make_shared<const AudioBuffer>(resampleBuffer(*c.source, oldRate, newRate)))
+                     .first;
+        c.source = it->second;
+    }
+    c.start = scaled(c.start, ratio);
+    c.sourceOffset = scaled(c.sourceOffset, ratio);
+    c.length = scaled(c.length, ratio);
+    if (c.source)
+        c.length = std::min<int64_t>(c.length, c.source->getNumSamples() - c.sourceOffset);
+    c.fadeInSamples = static_cast<int>(scaled(c.fadeInSamples, ratio));
+    c.fadeOutSamples = static_cast<int>(scaled(c.fadeOutSamples, ratio));
+}
+
+using TakeSets = std::vector<std::pair<std::shared_ptr<const AudioBuffer>, std::vector<engine::Placement>>>;
+
+// The takes at the new rate, on their new buffers. A recording that has no new buffer (no clip plays it any more)
+// is dropped.
+TakeSets scaledTakeSets(const TakeSets& takeSets, const ConvertedBuffers& converted, double ratio) {
+    TakeSets out;
+    for (const auto& [source, takes] : takeSets) {
+        const auto it = converted.find(source);
+        if (it == converted.end())
+            continue;
+        std::vector<engine::Placement> placed = takes;
+        for (engine::Placement& take : placed) {
+            take.timelineStart = scaled(take.timelineStart, ratio);
+            take.skipFrames = scaled(take.skipFrames, ratio);
+            take.numFrames = std::min<int64_t>(scaled(take.numFrames, ratio), it->second->getNumSamples() - take.skipFrames);
+        }
+        out.emplace_back(it->second, std::move(placed));
+    }
+    return out;
+}
+
+// An automation curve at the new rate: its positions scaled; values, order and jumps stay.
+engine::AutomationCurve scaledCurve(const engine::AutomationCurve& curve, double ratio) {
+    engine::AutomationCurve out(curve.defaultValue());
+    for (engine::AutomationPoint point : curve.points()) {
+        point.position = scaled(point.position, ratio);
+        out.add(point);
+    }
+    return out;
+}
+
+} // namespace
+
 void Session::applySampleRateConversion(double newRate, const ConvertedBuffers& alreadyConverted) {
     const double oldRate = getClipSampleRate();
     if (oldRate <= 0.0 || newRate <= 0.0 || oldRate == newRate)
         return;
     const double ratio = newRate / oldRate;
-    const auto scale = [ratio](int64_t v) { return static_cast<int64_t>(std::llround(static_cast<double>(v) * ratio)); };
 
     // Clips share buffers (the drum loop is one buffer used by four clips): resample each
     // buffer once and keep sharing it. Buffers the loader thread already converted are reused.
@@ -640,50 +701,16 @@ void Session::applySampleRateConversion(double newRate, const ConvertedBuffers& 
     for (TrackModel& t : tracks_) {
         if (t.clips.empty())
             continue;
-        for (Clip& c : t.clips) {
-            if (c.source) {
-                auto it = converted.find(c.source);
-                if (it == converted.end())
-                    it = converted
-                             .emplace(c.source,
-                                      std::make_shared<const AudioBuffer>(resampleBuffer(*c.source, oldRate, newRate)))
-                             .first;
-                c.source = it->second;
-            }
-            c.start = scale(c.start);
-            c.sourceOffset = scale(c.sourceOffset);
-            c.length = scale(c.length);
-            if (c.source)
-                c.length = std::min<int64_t>(c.length, c.source->getNumSamples() - c.sourceOffset);
-            c.fadeInSamples = static_cast<int>(scale(c.fadeInSamples));
-            c.fadeOutSamples = static_cast<int>(scale(c.fadeOutSamples));
-        }
+        for (Clip& c : t.clips)
+            convertClip(c, converted, oldRate, newRate);
         pushClips(t);
     }
     // The takes follow their audio. A recording no clip plays any more has no new buffer, and no undo
     // can bring it back (the history ends here).
-    std::vector<std::pair<std::shared_ptr<const AudioBuffer>, std::vector<engine::Placement>>> scaledTakes;
-    for (const auto& [source, takes] : takeSets_) {
-        const auto it = converted.find(source);
-        if (it == converted.end())
-            continue;
-        std::vector<engine::Placement> scaled = takes;
-        for (engine::Placement& take : scaled) {
-            take.timelineStart = scale(take.timelineStart);
-            take.skipFrames = scale(take.skipFrames);
-            take.numFrames = std::min<int64_t>(scale(take.numFrames), it->second->getNumSamples() - take.skipFrames);
-        }
-        scaledTakes.emplace_back(it->second, std::move(scaled));
-    }
-    takeSets_ = std::move(scaledTakes);
-    // A curve's positions are samples too; values, order and jumps stay.
+    takeSets_ = scaledTakeSets(takeSets_, converted, ratio);
+    // A curve's positions are samples too.
     for (auto& [address, content] : lanes_) {
-        engine::AutomationCurve scaled(content.curve.defaultValue());
-        for (engine::AutomationPoint point : content.curve.points()) {
-            point.position = scale(point.position);
-            scaled.add(point);
-        }
-        content.curve = std::move(scaled);
+        content.curve = scaledCurve(content.curve, ratio);
         pushLane(address);
     }
     clipSampleRate_ = newRate;
