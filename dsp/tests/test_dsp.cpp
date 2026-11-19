@@ -3084,7 +3084,7 @@ void checkDistortionProcessIsProcessSample() {
                 worst = std::max(worst, gap(b.getSample(0, i), d[1]->processSample(0, x[static_cast<size_t>(i)])));
             std::printf("Distortion %s, tone %.0f Hz: process() vs processSample() worst %.3g\n",
                         distortionTypeName(c.type), static_cast<double>(tone), worst);
-            DAWLAB_CHECK(c.type == DistortionType::Bitcrush ? worst < 1e-6 : worst == 0.0);
+            DAWLAB_CHECK(worst < 1e-6);  // not == 0: a compiler may fuse a multiply-add (FMA) on one path only
         }
     }
 }
