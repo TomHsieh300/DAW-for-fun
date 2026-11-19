@@ -1452,6 +1452,60 @@ void checkSmallerFunctions() {
     DAWLAB_CHECK(CombFilter::rt60ForFeedback(1557, 1.0f, kSampleRate) >= 1e30);
 }
 
+// ---- batch 6: dsp-filters ----
+namespace {
+
+// The RBJ cookbook as printed, before the division by a0
+struct CookbookRow {
+    double b0, b1, b2, a0, a1, a2;
+};
+
+bool followsCookbook(const BiquadCoefficients& c, const CookbookRow& r) {
+    const double tol = 1e-12;
+    return std::abs(c.b0 - r.b0 / r.a0) < tol && std::abs(c.b1 - r.b1 / r.a0) < tol &&
+           std::abs(c.b2 - r.b2 / r.a0) < tol && std::abs(c.a1 - r.a1 / r.a0) < tol &&
+           std::abs(c.a2 - r.a2 / r.a0) < tol;
+}
+
+bool sameCoefficients(const BiquadCoefficients& a, const BiquadCoefficients& b) {
+    return a.b0 == b.b0 && a.b1 == b.b1 && a.b2 == b.b2 && a.a1 == b.a1 && a.a2 == b.a2;
+}
+
+// Every factory gives the cookbook's coefficients (Q = 2 and +6 dB, so no term drops out), and a
+// frequency above Nyquist is held at 0.499 fs
+void checkBiquadFactoriesFollowTheCookbook() {
+    using C = BiquadCoefficients;
+    const double fs = kSampleRate, f = 1000.0, q = 2.0, gainDb = 6.0;
+    const double w0 = kTwoPi * f / fs;
+    const double cs = std::cos(w0), alpha = std::sin(w0) / (2.0 * q);
+    const double A = std::pow(10.0, gainDb / 40.0), sa = 2.0 * std::sqrt(A) * alpha;
+    DAWLAB_CHECK(followsCookbook(C::makeLowpass(fs, f, q),
+                                 {(1.0 - cs) / 2.0, 1.0 - cs, (1.0 - cs) / 2.0, 1.0 + alpha, -2.0 * cs, 1.0 - alpha}));
+    DAWLAB_CHECK(followsCookbook(C::makeHighpass(fs, f, q), {(1.0 + cs) / 2.0, -(1.0 + cs), (1.0 + cs) / 2.0,
+                                                             1.0 + alpha, -2.0 * cs, 1.0 - alpha}));
+    DAWLAB_CHECK(followsCookbook(C::makeBandpass(fs, f, q), {alpha, 0.0, -alpha, 1.0 + alpha, -2.0 * cs, 1.0 - alpha}));
+    DAWLAB_CHECK(followsCookbook(C::makeNotch(fs, f, q), {1.0, -2.0 * cs, 1.0, 1.0 + alpha, -2.0 * cs, 1.0 - alpha}));
+    DAWLAB_CHECK(followsCookbook(C::makeAllpass(fs, f, q),
+                                 {1.0 - alpha, -2.0 * cs, 1.0 + alpha, 1.0 + alpha, -2.0 * cs, 1.0 - alpha}));
+    DAWLAB_CHECK(followsCookbook(C::makePeak(fs, f, q, gainDb), {1.0 + alpha * A, -2.0 * cs, 1.0 - alpha * A,
+                                                                 1.0 + alpha / A, -2.0 * cs, 1.0 - alpha / A}));
+    DAWLAB_CHECK(followsCookbook(C::makeLowShelf(fs, f, q, gainDb),
+                                 {A * ((A + 1.0) - (A - 1.0) * cs + sa), 2.0 * A * ((A - 1.0) - (A + 1.0) * cs),
+                                  A * ((A + 1.0) - (A - 1.0) * cs - sa), (A + 1.0) + (A - 1.0) * cs + sa,
+                                  -2.0 * ((A - 1.0) + (A + 1.0) * cs), (A + 1.0) + (A - 1.0) * cs - sa}));
+    DAWLAB_CHECK(followsCookbook(C::makeHighShelf(fs, f, q, gainDb),
+                                 {A * ((A + 1.0) + (A - 1.0) * cs + sa), -2.0 * A * ((A - 1.0) + (A + 1.0) * cs),
+                                  A * ((A + 1.0) + (A - 1.0) * cs - sa), (A + 1.0) - (A - 1.0) * cs + sa,
+                                  2.0 * ((A - 1.0) - (A + 1.0) * cs), (A + 1.0) - (A - 1.0) * cs - sa}));
+    DAWLAB_CHECK(sameCoefficients(C::makeLowpass(fs, 30000.0, q), C::makeLowpass(fs, fs * 0.499, q)));
+}
+
+} // namespace
+
+void checkDspFilters() {
+    checkBiquadFactoriesFollowTheCookbook();
+}
+
 int main() {
     checkUnpreparedBlock<Chorus>("Chorus");
     checkUnpreparedBlock<Flanger>("Flanger");
@@ -1493,6 +1547,9 @@ int main() {
     checkSmootherRule();
     checkSweepRule();
     checkSmallerFunctions();
+
+    // ---- batch 6: dsp-filters ----
+    checkDspFilters();
 
     return dawlab::test::summary("dsp");
 }
