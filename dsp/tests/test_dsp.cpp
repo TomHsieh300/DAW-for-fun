@@ -1772,6 +1772,64 @@ void checkEqRampChangedMidway() {
 
 } // namespace
 
+// ---- batch 6: dsp-dynamics ----
+// Exact behaviour of the dynamics processors: the static curves at points inside and outside the knee, the state
+// machines sample by sample, and the smoothers step by step against the formula each header documents.
+namespace {
+
+// AttackReleaseFilter: Branching falls with the release only; Decoupled holds the peak with the release and then
+// smooths it with the attack. A value at the denormal-flush level (1e-15) is kept, below it is flushed.
+void checkAttackReleaseFilterSteps() {
+    const float a = attackReleaseCoefficient(10.0, kSampleRate);
+    const float r = attackReleaseCoefficient(100.0, kSampleRate);
+    AttackReleaseFilter branching;
+    branching.prepare(kSampleRate);
+    branching.setMode(SmoothingMode::Branching);
+    branching.setCurrentValue(1.0f);
+    DAWLAB_CHECK_NEAR(branching.process(0.0f), r, 1e-7);
+    AttackReleaseFilter decoupled;
+    decoupled.prepare(kSampleRate);
+    decoupled.setMode(SmoothingMode::Decoupled);
+    decoupled.setCurrentValue(1.0f);
+    DAWLAB_CHECK_NEAR(decoupled.process(0.0f), r + a * (1.0f - r), 1e-7);
+
+    AttackReleaseFilter instant;
+    instant.prepare(kSampleRate);
+    instant.setAttackMs(0.0f);
+    instant.setReleaseMs(0.0f);
+    DAWLAB_CHECK(instant.process(1.0e-15f) == 1.0e-15f);
+    DAWLAB_CHECK(instant.process(0.5e-15f) == 0.0f);
+
+    // The peak hold keeps 1e-15 as well: the next step decays from it, not from 0
+    AttackReleaseFilter hold;
+    hold.prepare(kSampleRate);
+    hold.setMode(SmoothingMode::Decoupled);
+    hold.setAttackMs(0.0f);
+    hold.setReleaseMs(0.0f);
+    DAWLAB_CHECK(hold.process(4.0e-15f) == 4.0e-15f);
+    hold.setAttackMs(0.03f);
+    const float a2 = hold.getAttackCoefficient();
+    const float y1 = hold.process(1.0e-15f); // peak hold = 1e-15, y between 1e-15 and 4e-15
+    DAWLAB_CHECK_NEAR(y1, 1.0e-15f + a2 * 3.0e-15f, 1e-20);
+    hold.setReleaseMs(1000.0f);
+    const float r2 = hold.getReleaseCoefficient();
+    const float held = r2 * 1.0e-15f;
+    DAWLAB_CHECK_NEAR(hold.process(0.0f), held + a2 * (y1 - held), 1e-20);
+}
+
+// EnvelopeFollower in Rms mode with instant times: sqrt(x^2) = |x|
+void checkRmsFollowerOfOneSample() {
+    EnvelopeFollower f;
+    f.prepare(kSampleRate);
+    f.setMode(DetectorMode::Rms);
+    f.setAttackMs(0.0f);
+    f.setReleaseMs(0.0f);
+    DAWLAB_CHECK_NEAR(f.processSample(0.5f), 0.5f, 1e-7);
+    DAWLAB_CHECK_NEAR(f.processSample(-0.25f), 0.25f, 1e-7);
+}
+
+} // namespace
+
 void checkDspFilters() {
     checkBiquadFactoriesFollowTheCookbook();
     checkOnePoleStepResponse();
@@ -2428,6 +2486,10 @@ int main() {
     b6_distortion::checkDistortionSampleAndHold();
     b6_distortion::checkDistortionTypeFade();
     b6_distortion::checkDistortionBlocks();
+
+    // ---- batch 6: dsp-dynamics ----
+    checkAttackReleaseFilterSteps();
+    checkRmsFollowerOfOneSample();
 
     return dawlab::test::summary("dsp");
 }
