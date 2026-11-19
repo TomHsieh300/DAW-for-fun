@@ -1580,6 +1580,72 @@ void checkPanLawsOffCentre() {
     DAWLAB_CHECK_NEAR(r, std::sqrt(0.75f * cpR), 1e-7);
 }
 
+void checkSmoothedValueRamps() {
+    // A ramp of 4 samples from 0 to 1 walks 0.25, 0.5, 0.75, 1; at rest it is not smoothing, and a new
+    // ramp length or one more sample does not start anything
+    SmoothedValue v;
+    v.reset(1000.0, 0.004);
+    v.setCurrentAndTargetValue(0.0f);
+    DAWLAB_CHECK(!v.isSmoothing());
+    v.setRampLength(4);
+    DAWLAB_CHECK(!v.isSmoothing() && v.getRemainingSamples() == 0);
+    DAWLAB_CHECK(v.getNextValue() == 0.0f && v.getRemainingSamples() == 0);
+    v.setTargetValue(1.0f);
+    DAWLAB_CHECK(v.getNextValue() == 0.25f && v.getCurrentValue() == 0.25f);
+    DAWLAB_CHECK(v.getNextValue() == 0.5f);
+    DAWLAB_CHECK(v.getNextValue() == 0.75f);
+    DAWLAB_CHECK(v.getNextValue() == 1.0f && !v.isSmoothing());
+
+    // skip(): 0 samples changes nothing (a 3-sample ramp, whose steps are not exact in float), part of
+    // the ramp leaves the rest, more than the rest arrives
+    SmoothedValue s;
+    s.reset(1000.0, 0.003);
+    s.setCurrentAndTargetValue(0.0f);
+    s.setTargetValue(1.0f);
+    s.skip(0);
+    DAWLAB_CHECK(s.getCurrentValue() == 0.0f && s.getRemainingSamples() == 3);
+    s.skip(1);
+    DAWLAB_CHECK(s.isSmoothing() && s.getRemainingSamples() == 2);
+    s.skip(5);
+    DAWLAB_CHECK(!s.isSmoothing() && s.getCurrentValue() == 1.0f);
+
+    // With no ramp a new target is taken at once, and a later ramp starts from there
+    SmoothedValue j;
+    j.reset(1000.0, 0.0);
+    j.setCurrentAndTargetValue(0.0f);
+    j.setTargetValue(1.0f);
+    DAWLAB_CHECK(j.getCurrentValue() == 1.0f && !j.isSmoothing());
+    j.setRampLength(4);
+    j.setTargetValue(2.0f);
+    DAWLAB_CHECK(j.getNextValue() == 1.25f);
+
+    // applyGain(data, n) touches exactly n samples, at rest and while ramping
+    SmoothedValue g{0.5f};
+    float d[5] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+    g.applyGain(d, 4);
+    DAWLAB_CHECK(d[0] == 0.5f && d[3] == 0.5f && d[4] == 1.0f);
+    g.reset(1000.0, 0.004);
+    g.setTargetValue(1.0f); // 0.5 -> 1: 0.625, 0.75, 0.875, 1
+    float e[3] = {1.0f, 1.0f, 1.0f};
+    g.applyGain(e, 2);
+    DAWLAB_CHECK(e[0] == 0.625f && e[1] == 0.75f && e[2] == 1.0f && g.getRemainingSamples() == 2);
+
+    // applyGain(block) while ramping: every channel of a frame gets the same value, only the block's frames
+    AudioBuffer buf(2, 3);
+    for (int ch = 0; ch < 2; ++ch)
+        for (int i = 0; i < 3; ++i)
+            buf.getWritePointer(ch)[i] = 1.0f;
+    SmoothedValue b{0.5f};
+    b.reset(1000.0, 0.004);
+    b.setTargetValue(1.0f);
+    b.applyGain(AudioBlock(buf).getSubBlock(0, 2));
+    for (int ch = 0; ch < 2; ++ch) {
+        const float* p = buf.getReadPointer(ch);
+        DAWLAB_CHECK(p[0] == 0.625f && p[1] == 0.75f && p[2] == 1.0f);
+    }
+    DAWLAB_CHECK(b.getRemainingSamples() == 2);
+}
+
 } // namespace
 
 void checkDspFilters() {
@@ -1588,6 +1654,7 @@ void checkDspFilters() {
     checkStateVariableFilterImpulse();
     checkGainPolarityInvert();
     checkPanLawsOffCentre();
+    checkSmoothedValueRamps();
 }
 
 int main() {
