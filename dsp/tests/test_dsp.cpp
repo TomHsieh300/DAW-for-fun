@@ -1896,6 +1896,33 @@ void checkCompressorMakeupGlide() {
     DAWLAB_CHECK_NEAR(y[19999], target, 1e-7);
 }
 
+// Expander static curve (T = -40, R = 2, W = 10) and the gain it returns
+void checkExpanderCurve() {
+    struct Point { float in, knee, out; };
+    const Point points[] = {
+        {-30.0f, 10.0f, -30.0f}, // above the knee: untouched
+        {-40.0f, 10.0f, -41.25f}, {-43.0f, 10.0f, -46.2f}, // inside: x + (1 - R)(x - T - W/2)^2 / (2W)
+        {-60.0f, 10.0f, -80.0f}, // below: T + R (x - T)
+        {-50.0f, 0.0f, -60.0f}, {-40.0f, 0.0f, -40.0f}, // hard knee
+    };
+    for (const Point& p : points)
+        DAWLAB_CHECK_NEAR(Expander::computeOutputDb(p.in, -40.0f, 2.0f, p.knee), p.out, 1e-4);
+    DAWLAB_CHECK_NEAR(Expander::computeGainDb(-60.0f, -40.0f, 2.0f, 10.0f), -20.0f, 1e-4);
+}
+
+// Expander: closed (silence) reads the whole range as gain reduction, after reset() and after a block
+void checkExpanderMeterReadsRange() {
+    Expander e;
+    e.prepare(kSampleRate, 64, 1);
+    e.setRangeDb(-50.0f);
+    e.reset();
+    DAWLAB_CHECK(e.getGainReductionDb() == 50.0f);
+    AudioBuffer b(1, 64);
+    b.clear();
+    e.process(b);
+    DAWLAB_CHECK(e.getGainReductionDb() == 50.0f);
+}
+
 } // namespace
 
 void checkDspFilters() {
@@ -2561,6 +2588,8 @@ int main() {
     checkCompressorCurve();
     checkCompressorAppliesGain();
     checkCompressorMakeupGlide();
+    checkExpanderCurve();
+    checkExpanderMeterReadsRange();
 
     return dawlab::test::summary("dsp");
 }
