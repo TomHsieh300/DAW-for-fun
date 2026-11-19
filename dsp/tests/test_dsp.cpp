@@ -1786,6 +1786,167 @@ void checkDspFilters() {
     checkEqRampChangedMidway();
 }
 
+// ---- batch 6: dsp-distortion ----
+// Oversampler, Saturation and Distortion: the exact values of their pieces (halfband design, polyphase paths,
+// latency, transfer curves, delay lines, ramps, type crossfade) and the rules that tie them together: without
+// oversampling process() is processSample(), one block larger than maxBlockSize is the same audio in pieces, and a
+// block with no channels changes nothing
+namespace b6_distortion {
+
+constexpr double kRate = 48000.0;
+
+// I0(x) summed to k = 60 with no early stop: the reference for the Kaiser window
+double besselI0Reference(double x) {
+    double sum = 1.0, term = 1.0;
+    for (int k = 1; k <= 60; ++k) {
+        const double ratio = 0.5 * x / static_cast<double>(k);
+        term *= ratio * ratio;
+        sum += term;
+    }
+    return sum;
+}
+
+// A fixed pseudo-random signal in [-1, 1)
+std::vector<float> noise(int n, unsigned seed) {
+    std::vector<float> v(static_cast<size_t>(n));
+    for (float& x : v) {
+        seed = seed * 1664525u + 1013904223u;
+        x = static_cast<float>(seed >> 8) / 8388608.0f - 1.0f;
+    }
+    return v;
+}
+
+float at(const std::vector<float>& v, int i) { return i >= 0 ? v[static_cast<size_t>(i)] : 0.0f; }
+
+double gap(float a, float b) { return std::abs(static_cast<double>(a) - static_cast<double>(b)); }
+
+bool sameSamples(const AudioBuffer& a, const AudioBuffer& b) {
+    for (int ch = 0; ch < a.getNumChannels(); ++ch)
+        for (int i = 0; i < a.getNumSamples(); ++i)
+            if (a.getSample(ch, i) != b.getSample(ch, i))
+                return false;
+    return true;
+}
+
+AudioBuffer monoOf(const std::vector<float>& v) {
+    AudioBuffer b(1, static_cast<int>(v.size()));
+    for (int i = 0; i < b.getNumSamples(); ++i)
+        b.setSample(0, i, v[static_cast<size_t>(i)]);
+    return b;
+}
+
+// The halfband FIR is the ideal halfband (1/2 in the centre, sin(pi n/2)/(pi n) on odd taps, 0 on the other even
+// taps) times a Kaiser window, and I0 is right to 1e-12
+void checkHalfbandDesign() {
+    for (const double x : {0.0, 1.0, 4.0, 8.0, 12.0})
+        DAWLAB_CHECK_NEAR(dsp::detail::besselI0(x), besselI0Reference(x), 1e-12 * besselI0Reference(x));
+    for (const int numOddTaps : {8, 12, 32}) {
+        const int M = numOddTaps - 1;
+        const std::vector<double> h = HalfbandStage::designHalfband(numOddTaps, 8.0);
+        DAWLAB_CHECK(static_cast<int>(h.size()) == 2 * M + 1);
+        if (static_cast<int>(h.size()) != 2 * M + 1)
+            continue;
+        double worst = 0.0;
+        for (int n = -M; n <= M; ++n) {
+            const double ideal = n == 0 ? 0.5 : (n % 2 == 0 ? 0.0 : std::sin(0.5 * kPi * n) / (kPi * n));
+            const double r = static_cast<double>(n) / static_cast<double>(M);
+            const double window = besselI0Reference(8.0 * std::sqrt(1.0 - r * r)) / besselI0Reference(8.0);
+            worst = std::max(worst, std::abs(h[static_cast<size_t>(n + M)] - ideal * window));
+        }
+        std::printf("designHalfband(%d odd taps): worst tap error %.3g\n", numOddTaps, worst);
+        DAWLAB_CHECK(worst < 1e-12);
+    }
+}
+
+// HalfbandStage: the polyphase coefficients are 2 h on the odd taps; upsample and downsample are the polyphase
+// formulas in its comments, for both decimation phases, with the history carried from one call to the next
+void checkHalfbandStage() {
+    for (const int numOddTaps : {8, 32}) {
+        for (const int phase : {0, 1}) {
+            const auto st = std::make_unique<HalfbandStage>();
+            st->prepare(numOddTaps, 8.0, 1, phase);
+            const int K = numOddTaps / 2, M = 2 * K - 1;
+            const std::vector<double> h = HalfbandStage::designHalfband(numOddTaps, 8.0);
+            const std::vector<float>& g = st->getPolyphaseCoefficients();
+            bool coefficients = static_cast<int>(g.size()) == 2 * K;
+            for (int j = 0; coefficients && j < 2 * K; ++j)
+                coefficients = g[static_cast<size_t>(j)] ==
+                               static_cast<float>(2.0 * h[static_cast<size_t>(2 * (j - K) + 1 + M)]);
+            DAWLAB_CHECK(coefficients);
+            DAWLAB_CHECK(st->getRoundTripDelay() == 2 * M - phase);
+            if (!coefficients)
+                continue;
+
+            const int n = 40, first = 15;
+            const std::vector<float> x = noise(n, 1u + static_cast<unsigned>(phase));
+            std::vector<float> up(static_cast<size_t>(2 * n));
+            st->upsample(0, x.data(), up.data(), first);
+            st->upsample(0, x.data() + first, up.data() + 2 * first, n - first);
+            double worstUp = 0.0;
+            for (int i = 0; i < n; ++i) {
+                float acc = 0.0f;
+                for (int j = 0; j < 2 * K; ++j)
+                    acc += g[static_cast<size_t>(j)] * at(x, i - j);
+                worstUp = std::max(worstUp, gap(up[static_cast<size_t>(2 * i)], acc));
+                worstUp = std::max(worstUp, gap(up[static_cast<size_t>(2 * i + 1)], at(x, i - (K - 1))));
+            }
+
+            const std::vector<float> w = noise(2 * n, 7u + static_cast<unsigned>(phase));
+            std::vector<float> down(static_cast<size_t>(n));
+            st->downsample(0, w.data(), down.data(), first);
+            st->downsample(0, w.data() + 2 * first, down.data() + first, n - first);
+            double worstDown = 0.0;
+            for (int i = 0; i < n; ++i) {
+                float acc = 0.0f;
+                for (int j = 0; j < 2 * K; ++j)
+                    acc += g[static_cast<size_t>(j)] * at(w, 2 * (i - j) + phase);
+                const float delayed = phase == 0 ? at(w, 2 * (i - K) + 1) : at(w, 2 * (i - (K - 1)));
+                worstDown = std::max(worstDown, gap(down[static_cast<size_t>(i)], 0.5f * (acc + delayed)));
+            }
+            std::printf("HalfbandStage %d odd taps, phase %d: worst error up %.3g, down %.3g\n", numOddTaps, phase,
+                        worstUp, worstDown);
+            DAWLAB_CHECK(worstUp < 1e-6 && worstDown < 1e-6);
+        }
+    }
+}
+
+// Oversampler: the stages, their decimation phases and the latency at 1x .. 8x; an impulse through upsample and
+// downsample (nothing in between) comes back (at height 0.968 when oversampled) exactly getLatencySamples() later
+void checkOversamplerLatency() {
+    struct Row {
+        int log2, latency;
+        int taps[3], phases[3];
+    };
+    const Row rows[] = {{0, 0, {0, 0, 0}, {0, 0, 0}},
+                        {1, 31, {32, 0, 0}, {0, 0, 0}},
+                        {2, 36, {32, 12, 0}, {1, 0, 0}},
+                        {3, 38, {32, 12, 8}, {0, 1, 0}}};
+    for (const Row& r : rows) {
+        const auto os = std::make_unique<Oversampler>(r.log2);
+        os->prepare(kRate, 256, 1);
+        DAWLAB_CHECK(os->getLatencySamples() == r.latency);
+        bool stages = os->getNumStages() == r.log2;
+        for (int s = 0; stages && s < r.log2; ++s)
+            stages = os->getStage(s).getNumOddTaps() == r.taps[s] && os->getStage(s).getDecimationPhase() == r.phases[s];
+        DAWLAB_CHECK(stages);
+        AudioBuffer b(1, 256);
+        b.setSample(0, 0, 1.0f);
+        os->upsample(b.toBlock());
+        os->downsample(b.toBlock());
+        int peakAt = 0;
+        for (int i = 1; i < 256; ++i)
+            if (std::abs(b.getSample(0, i)) > std::abs(b.getSample(0, peakAt)))
+                peakAt = i;
+        std::printf("Oversampler %dx: latency %d, impulse back at %d, height %.5f\n", 1 << r.log2,
+                    os->getLatencySamples(), peakAt, static_cast<double>(b.getSample(0, peakAt)));
+        DAWLAB_CHECK(peakAt == r.latency);
+        DAWLAB_CHECK_NEAR(b.getSample(0, peakAt), r.log2 == 0 ? 1.0 : 0.968, 0.001);
+    }
+}
+
+} // namespace b6_distortion
+// ---- end batch 6: dsp-distortion ----
+
 int main() {
     checkUnpreparedBlock<Chorus>("Chorus");
     checkUnpreparedBlock<Flanger>("Flanger");
@@ -1830,6 +1991,11 @@ int main() {
 
     // ---- batch 6: dsp-filters ----
     checkDspFilters();
+
+    // ---- batch 6: dsp-distortion ----
+    b6_distortion::checkHalfbandDesign();
+    b6_distortion::checkHalfbandStage();
+    b6_distortion::checkOversamplerLatency();
 
     return dawlab::test::summary("dsp");
 }
