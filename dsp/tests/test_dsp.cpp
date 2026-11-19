@@ -2143,6 +2143,69 @@ void checkDeEsserBasics() {
     DAWLAB_CHECK(peak < 0.5f * dbToGain(-6.0f));
 }
 
+EnvelopeFollower shaperFollower(float attackMs, float releaseMs) {
+    EnvelopeFollower f;
+    f.prepare(kSampleRate);
+    f.setAttackMs(attackMs);
+    f.setReleaseMs(releaseMs);
+    return f;
+}
+
+// How many samples of x the shaper (attack +12 dB, sustain -9 dB) answers with a gain other than the documented
+// formula: fast and slow peak envelopes, silence while the slow one is at or below -80 dB, the dB difference d scaled
+// by 6 dB (attack for d > 0, sustain otherwise), smoothed with a 0.5 ms one-pole
+int shaperMismatches(const std::vector<float>& x) {
+    TransientShaper t;
+    t.prepare(kSampleRate, 64, 1);
+    t.setAttackDb(12.0f);
+    t.setSustainDb(-9.0f);
+    EnvelopeFollower fast = shaperFollower(TransientShaper::kFastAttackMs, TransientShaper::kFastReleaseMs);
+    EnvelopeFollower slow = shaperFollower(TransientShaper::kSlowAttackMs, TransientShaper::kSlowReleaseMs);
+    const float k = static_cast<float>(1.0 - std::exp(-1.0 / (0.5 * 0.001 * kSampleRate)));
+    float gainDb = 0.0f;
+    int wrong = 0;
+    for (const float v : x) {
+        const float fastDb = gainToDb(fast.processSample(v));
+        const float slowDb = gainToDb(slow.processSample(v));
+        float target = 0.0f;
+        if (slowDb > -80.0f) {
+            const float diff = fastDb - slowDb;
+            target = diff > 0.0f ? 12.0f * std::min(diff / 6.0f, 1.0f) : -9.0f * std::min(-diff / 6.0f, 1.0f);
+        }
+        gainDb = smoothToward(gainDb, target, k);
+        wrong += nearRel(t.nextGain(v), dbToGain(gainDb), 1e-5f) ? 0 : 1;
+    }
+    return wrong;
+}
+
+void checkTransientShaperFormula() {
+    std::vector<float> drums(9600, 0.0f); // three hits with decaying tails, then silence
+    for (int i = 0; i < 7200; ++i) {
+        const int phase = i % 2400;
+        drums[static_cast<size_t>(i)] = phase < 24 ? 0.8f : 0.8f * std::exp(-static_cast<float>(phase) / 300.0f);
+    }
+    DAWLAB_CHECK(shaperMismatches(drums) == 0);
+
+    // One hit, then silence until the slow envelope lands exactly on -80 dB: that sample counts as silence. Search the
+    // hit level for a decay that lands exactly on it.
+    std::vector<float> landing;
+    for (int candidate = 0; candidate < 4000 && landing.empty(); ++candidate) {
+        const float hit = 0.0485f * (1.0f + static_cast<float>(candidate) * 2e-6f);
+        EnvelopeFollower slow = shaperFollower(TransientShaper::kSlowAttackMs, TransientShaper::kSlowReleaseMs);
+        float db = gainToDb(slow.processSample(hit));
+        int silent = 0;
+        while (db > -80.0f) {
+            db = gainToDb(slow.processSample(0.0f));
+            ++silent;
+        }
+        if (db == -80.0f) {
+            landing.assign(static_cast<size_t>(silent) + 1, 0.0f);
+            landing[0] = hit;
+        }
+    }
+    DAWLAB_CHECK(!landing.empty() && shaperMismatches(landing) == 0);
+}
+
 } // namespace
 
 void checkDspFilters() {
@@ -2817,6 +2880,7 @@ int main() {
     checkLevelMeterResetClearsAllChannels();
     checkLevelMeterBallistics();
     checkDeEsserBasics();
+    checkTransientShaperFormula();
 
     return dawlab::test::summary("dsp");
 }
