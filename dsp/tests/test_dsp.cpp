@@ -3662,6 +3662,136 @@ void checkReverbModulationMovesTheFirstEcho(bool rateAfterPrepare) {
     DAWLAB_CHECK(std::abs(first - expected) <= 2);
 }
 
+// ---- ConvolutionReverb -------------------------------------------------------
+void checkConvolutionMatchesDirectConvolution() {
+    ConvolutionReverb small;
+    small.prepare(48000.0, 64, 1);
+    DAWLAB_CHECK(small.getPartitionSize() == 64);
+    ConvolutionReverb big;
+    big.prepare(48000.0, 512, 1);
+    DAWLAB_CHECK(big.getPartitionSize() == 512 && big.getFftSize() == 1024);
+
+    // P = 128, an IR of exactly 3 partitions
+    const int P = 128, irLen = 3 * P, n = 8 * P;
+    AudioBuffer ir(1, irLen);
+    NoiseGenerator noise(11u);
+    for (int i = 0; i < irLen; ++i)
+        ir.getWritePointer(0)[i] = noise.next() * static_cast<float>(std::exp(-i / 100.0));
+    ConvolutionReverb conv;
+    conv.prepare(48000.0, P, 2);
+    conv.setImpulseResponse(ir);
+    DAWLAB_CHECK(conv.getPartitionSize() == P && conv.getLatencySamples() == P);
+    DAWLAB_CHECK(conv.getNumPartitions() == 3);
+    // 3 IR spectra + 3 FDL spectra per channel, each N/2 + 1 = 129 bins
+    DAWLAB_CHECK(conv.getSpectraMemoryBytes() == (3u + 2u * 3u) * 129u * sizeof(std::complex<float>));
+    AudioBuffer in(2, n);
+    fillNoise(in, 13u);
+    AudioBuffer out = in;
+    for (int start = 0; start < n; start += P)
+        conv.process(AudioBlock(out).getSubBlock(start, P));
+    double worst = 0.0;
+    for (int ch = 0; ch < 2; ++ch)
+        for (int i = 0; i < n; ++i) {
+            double want = 0.0;
+            for (int k = 0; k < irLen && k <= i - P; ++k)
+                want += static_cast<double>(ir.getReadPointer(0)[k]) * in.getReadPointer(ch)[i - P - k];
+            worst = std::max(worst, std::abs(want - out.getReadPointer(ch)[i]));
+        }
+    std::printf("Conv     P 128, 3 partitions: worst difference from direct convolution %g\n", worst);
+    DAWLAB_CHECK(worst < 1e-4);
+
+    // Mix 0.5: half the dry signal (P samples late) plus half the convolution
+    ConvolutionReverb half;
+    half.setMix(0.5f);
+    half.prepare(48000.0, P, 1);
+    half.setImpulseResponse(ir);
+    AudioBuffer hb(1, n);
+    std::copy(in.getReadPointer(0), in.getReadPointer(0) + n, hb.getWritePointer(0));
+    for (int start = 0; start < n; start += P)
+        half.process(AudioBlock(hb).getSubBlock(start, P));
+    double worstHalf = 0.0;
+    for (int i = P; i < n; ++i) {
+        double wet = 0.0;
+        for (int k = 0; k < irLen && k <= i - P; ++k)
+            wet += static_cast<double>(ir.getReadPointer(0)[k]) * in.getReadPointer(0)[i - P - k];
+        const double want = 0.5 * in.getReadPointer(0)[i - P] + 0.5 * wet;
+        worstHalf = std::max(worstHalf, std::abs(want - hb.getReadPointer(0)[i]));
+    }
+    DAWLAB_CHECK(worstHalf < 1e-4);
+}
+
+void checkConvolutionMixGlide() {
+    // No IR: the output is the dry signal P samples late, times (1 - mix); a mix change glides (20 ms)
+    const int P = 64;
+    const float k = static_cast<float>(1.0 - std::exp(-1.0 / (0.02 * 48000.0)));
+    ConvolutionReverb conv;
+    conv.prepare(48000.0, P, 1);
+    conv.setMix(0.0f);
+    AudioBuffer ones(1, 2 * P);
+    std::fill(ones.getWritePointer(0), ones.getWritePointer(0) + 2 * P, 1.0f);
+    conv.process(AudioBlock(ones).getSubBlock(0, P)); // two blocks: the glide carries across
+    conv.process(AudioBlock(ones).getSubBlock(P, P));
+    float mix = 1.0f;
+    bool ok = true;
+    for (int i = 0; i < 2 * P; ++i) {
+        mix = smoothToward(mix, 0.0f, k);
+        const float want = i < P ? 0.0f : 1.0f - mix;
+        ok = ok && std::abs(ones.getReadPointer(0)[i] - want) <= 1e-6f;
+    }
+    std::printf("Conv     mix 1 -> 0 glides across blocks: %s\n", ok ? "yes" : "no");
+    DAWLAB_CHECK(ok);
+
+    // Every channel glides from the same starting point
+    ConvolutionReverb three;
+    three.prepare(48000.0, P, 3);
+    three.setMix(0.0f);
+    AudioBuffer b3(3, 2 * P);
+    for (int ch = 0; ch < 3; ++ch)
+        std::fill(b3.getWritePointer(ch), b3.getWritePointer(ch) + 2 * P, 1.0f);
+    three.process(AudioBlock(b3).getSubBlock(0, P));
+    three.process(AudioBlock(b3).getSubBlock(P, P));
+    bool same = true;
+    for (int ch = 1; ch < 3; ++ch)
+        same = same && std::equal(b3.getReadPointer(0), b3.getReadPointer(0) + 2 * P, b3.getReadPointer(ch));
+    DAWLAB_CHECK(same);
+}
+
+double rmsOf(const float* x, int from, int to) {
+    double s = 0.0;
+    for (int i = from; i < to; ++i)
+        s += static_cast<double>(x[i]) * x[i];
+    return std::sqrt(s / (to - from));
+}
+
+void checkSyntheticImpulseResponse() {
+    const double fs = 48000.0;
+    AudioBuffer ir = ConvolutionReverb::makeSyntheticImpulseResponse(fs, 1.0, 2, 1u);
+    const int len = ir.getNumSamples();
+    DAWLAB_CHECK(len == 52800 && ir.getNumChannels() == 2); // 1.1 x RT60
+    DAWLAB_CHECK(ConvolutionReverb::makeSyntheticImpulseResponse(fs, 0.5, 1).getNumSamples() == 26400);
+    AudioBuffer other = ConvolutionReverb::makeSyntheticImpulseResponse(fs, 1.0, 1, 1u + 7919u);
+    DAWLAB_CHECK(std::equal(ir.getReadPointer(1), ir.getReadPointer(1) + len, other.getReadPointer(0)));
+    for (int ch = 0; ch < 2; ++ch) {
+        const float* h = ir.getReadPointer(ch);
+        double energy = 0.0, lag1 = 0.0;
+        for (int i = 0; i < len; ++i) {
+            energy += static_cast<double>(h[i]) * h[i];
+            if (i > 0)
+                lag1 += static_cast<double>(h[i]) * h[i - 1];
+        }
+        // -60 dB per RT60: two windows 0.5 s apart differ by about 30 dB
+        const double dropDb = 20.0 * std::log10(rmsOf(h, 24000, 28800) / rmsOf(h, 0, 4800));
+        // the fade over the last 10 %: the last 1 % is far below the 1 % just before the fade starts
+        const double fadeRatio = rmsOf(h, len - 480, len) / rmsOf(h, 48000 - 480, 48000);
+        std::printf("Synth IR ch %d: energy %g, lag-1 correlation %g, drop over 0.5 s %g dB, fade ratio %g\n", ch,
+                    energy, lag1 / energy, dropDb, fadeRatio);
+        DAWLAB_CHECK(std::abs(energy - 1.0) < 1e-4);
+        DAWLAB_CHECK(lag1 / energy > 0.25 && lag1 / energy < 0.45); // the 8 kHz one-pole lowpass
+        DAWLAB_CHECK(dropDb < -27.0 && dropDb > -33.0);
+        DAWLAB_CHECK(fadeRatio < 0.15);
+    }
+}
+
 } // namespace b6time
 
 int main() {
@@ -3768,6 +3898,9 @@ int main() {
     b6time::checkReverbProcessMixesTheWetSignal();
     b6time::checkReverbModulationMovesTheFirstEcho(false);
     b6time::checkReverbModulationMovesTheFirstEcho(true);
+    b6time::checkConvolutionMatchesDirectConvolution();
+    b6time::checkConvolutionMixGlide();
+    b6time::checkSyntheticImpulseResponse();
 
     return dawlab::test::summary("dsp");
 }
