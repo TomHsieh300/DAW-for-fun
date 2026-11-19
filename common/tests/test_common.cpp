@@ -49,6 +49,9 @@ int main() {
     DAWLAB_CHECK_NEAR(gainToDb(2.0f), 6.0206, 1e-3);
     DAWLAB_CHECK_NEAR(dbToGain(-6), 0.50119, 1e-4);
     DAWLAB_CHECK(dbToGain(-200.0f) == 0.0f);
+    // kMinusInfinityDb itself is silence, and anything above it is not
+    DAWLAB_CHECK(dbToGain(kMinusInfinityDb) == 0.0f && dbToGain(-99.9f) > 0.0f);
+    DAWLAB_CHECK(dbToGain(double(kMinusInfinityDb)) == 0.0 && dbToGain(-99.9) > 0.0);
 
     // smoothToward: a one-pole smoother arrives. Each row glides from `start` toward `target` with the step k of a
     // smoother in dsp/; it must give exactly the target within `maxSteps` steps and never a subnormal on the way.
@@ -89,6 +92,10 @@ int main() {
         // Within epsilon of the target it takes the target; the epsilon can be given (Reverb's modulation uses 1e-4)
         DAWLAB_CHECK(smoothToward(5.0e-7f, 0.0f, 0.001f) == 0.0f);
         DAWLAB_CHECK(smoothToward(5.0e-5f, 0.0f, 0.001f) != 0.0f && smoothToward(5.0e-5f, 0.0f, 0.001f, 1.0e-4f) == 0.0f);
+        // Exactly epsilon away is not there yet, and a step that lands on the target's mirror image (-target) is a
+        // plain step too
+        DAWLAB_CHECK(smoothToward(0.0f, 1.0f, 0.5f, 0.5f) == 0.5f);
+        DAWLAB_CHECK(smoothToward(-3.0f, 1.0f, 0.5f) == -1.0f);
     }
 
     // Goertzel: a 1 kHz sine wave with amplitude 0.3
