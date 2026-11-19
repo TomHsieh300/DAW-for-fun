@@ -1646,6 +1646,130 @@ void checkSmoothedValueRamps() {
     DAWLAB_CHECK(b.getRemainingSamples() == 2);
 }
 
+// A 1024 Hz tone at 0.5 (1024 Hz is a power of two, so the EQ's log2 / exp2 round trip is exact)
+float eqTone(int n) { return 0.5f * static_cast<float>(std::sin(kTwoPi * 1024.0 * n / kSampleRate)); }
+
+// The curve of a cut band is one cookbook section at 12 dB/oct and two Butterworth sections at 24
+void checkEqCutSlopesInTheCurve() {
+    using C = BiquadCoefficients;
+    ParametricEq eq;
+    eq.prepare(kSampleRate, 64, 1);
+    for (const EqBandType type : {EqBandType::LowCut, EqBandType::HighCut}) {
+        const bool low = type == EqBandType::LowCut;
+        const double at = low ? 500.0 : 2000.0;
+        const auto section = [&](double q) {
+            return (low ? C::makeHighpass(kSampleRate, 1024.0, q) : C::makeLowpass(kSampleRate, 1024.0, q))
+                .magnitudeDb(at, kSampleRate);
+        };
+        eq.setBand(0, {type, 1024.0f, 0.9f, 0.0f, true});
+        eq.setSlope(0, EqSlope::Db12);
+        DAWLAB_CHECK_NEAR(eq.getBandMagnitudeDb(0, at), section(static_cast<double>(0.9f)), 1e-9);
+        eq.setSlope(0, EqSlope::Db24);
+        DAWLAB_CHECK_NEAR(eq.getBandMagnitudeDb(0, at),
+                          section(ParametricEq::kButterworthQ1) + section(ParametricEq::kButterworthQ2), 1e-9);
+    }
+}
+
+// A slope chosen while a cut band is off is what it runs when switched on: the output is the two
+// Butterworth sections, sample for sample
+void checkEqCutSlopeReachesTheAudio() {
+    using C = BiquadCoefficients;
+    for (const EqBandType type : {EqBandType::LowCut, EqBandType::HighCut}) {
+        const bool low = type == EqBandType::LowCut;
+        ParametricEq eq;
+        eq.setSmoothingSeconds(0.0);
+        eq.prepare(kSampleRate, 64, 1);
+        eq.setBandType(0, type);
+        eq.setSlope(0, EqSlope::Db24);
+        eq.setBand(0, {type, 1024.0f, 0.707f, 0.0f, true});
+        Biquad s1, s2;
+        s1.prepare(kSampleRate, 64, 1);
+        s2.prepare(kSampleRate, 64, 1);
+        s1.setCoefficients(low ? C::makeHighpass(kSampleRate, 1024.0, ParametricEq::kButterworthQ1)
+                               : C::makeLowpass(kSampleRate, 1024.0, ParametricEq::kButterworthQ1));
+        s2.setCoefficients(low ? C::makeHighpass(kSampleRate, 1024.0, ParametricEq::kButterworthQ2)
+                               : C::makeLowpass(kSampleRate, 1024.0, ParametricEq::kButterworthQ2));
+        bool same = true;
+        for (int i = 0; i < 2000; ++i) {
+            const float x = eqTone(i);
+            same = same && eq.processSample(0, x) == s2.processSample(0, s1.processSample(0, x));
+        }
+        DAWLAB_CHECK(same);
+    }
+}
+
+// Switching a band on: from the next sample it crossfades (20 ms) from the dry signal into a filter
+// with fresh memory, then it is the filter alone; a slope change on a Peak band changes nothing
+void checkEqBandFadesIn() {
+    ParametricEq eq;
+    eq.prepare(kSampleRate, 64, 1);
+    bool dry = true;
+    for (int i = 0; i < 500; ++i)
+        dry = dry && eq.processSample(0, eqTone(i)) == eqTone(i);
+    DAWLAB_CHECK(dry);
+
+    eq.setBand(2, {EqBandType::Peak, 1024.0f, 1.0f, 12.0f, true});
+    Biquad wetPath;
+    wetPath.prepare(kSampleRate, 64, 1);
+    wetPath.setCoefficients(BiquadCoefficients::makePeak(kSampleRate, 1024.0, 1.0, 12.0));
+    SmoothedValue mix;
+    mix.reset(kSampleRate, ParametricEq::kDefaultSmoothingSeconds);
+    mix.setCurrentAndTargetValue(0.0f);
+    mix.setTargetValue(1.0f);
+    bool fade = true, on = true;
+    for (int i = 0; i < 3000; ++i) {
+        if (i == 2000)
+            eq.setSlope(2, EqSlope::Db24);
+        const float x = eqTone(500 + i);
+        const float y = eq.processSample(0, x);
+        const float wet = wetPath.processSample(0, x);
+        const float m = mix.getNextValue();
+        if (m < 1.0f)
+            fade = fade && std::abs(y - (x + m * (wet - x))) <= 1e-6f;
+        else
+            on = on && y == wet;
+    }
+    DAWLAB_CHECK(fade);
+    DAWLAB_CHECK(on);
+}
+
+float eqPeak(ParametricEq& eq, int& n, int count, int measureFrom) {
+    float peak = 0.0f;
+    for (int i = 0; i < count; ++i, ++n) {
+        const float y = std::abs(eq.processSample(0, eqTone(n)));
+        if (i >= measureFrom)
+            peak = std::max(peak, y);
+    }
+    return peak;
+}
+
+// A sounding Peak band changed to a Notch fades out, switches and fades back in as the Notch
+void checkEqTypeChangeCompletes() {
+    ParametricEq eq;
+    eq.prepare(kSampleRate, 64, 1);
+    eq.setBand(2, {EqBandType::Peak, 1024.0f, 1.0f, 0.0f, true});
+    int n = 0;
+    eqPeak(eq, n, 2000, 0);
+    eq.setBandType(2, EqBandType::Notch);
+    DAWLAB_CHECK(eq.getBand(2).type == EqBandType::Notch);
+    DAWLAB_CHECK(eqPeak(eq, n, 9600, 7200) < 0.01f);
+}
+
+// A new target in the middle of a ramp starts from where the ramp has got to, even between two
+// coefficient updates: +12 dB stopped after 900 of 960 samples is +11.25 dB
+void checkEqRampChangedMidway() {
+    ParametricEq eq;
+    eq.setCoefficientUpdateInterval(1000);
+    eq.prepare(kSampleRate, 64, 1);
+    eq.setBand(2, {EqBandType::Peak, 1024.0f, 1.0f, 0.0f, true});
+    int n = 0;
+    eqPeak(eq, n, 1000, 0);
+    eq.setBandGainDb(2, 12.0f);
+    eqPeak(eq, n, 900, 0);
+    eq.setBandGainDb(2, -12.0f);
+    DAWLAB_CHECK_NEAR(eqPeak(eq, n, 900, 500), 0.5 * std::pow(10.0, 11.25 / 20.0), 0.05);
+}
+
 } // namespace
 
 void checkDspFilters() {
@@ -1655,6 +1779,11 @@ void checkDspFilters() {
     checkGainPolarityInvert();
     checkPanLawsOffCentre();
     checkSmoothedValueRamps();
+    checkEqCutSlopesInTheCurve();
+    checkEqCutSlopeReachesTheAudio();
+    checkEqBandFadesIn();
+    checkEqTypeChangeCompletes();
+    checkEqRampChangedMidway();
 }
 
 int main() {
