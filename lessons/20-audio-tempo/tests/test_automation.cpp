@@ -967,6 +967,155 @@ void testRealThreads() {
     DAWLAB_CHECK(e.getGarbageLeaked() == 0);
 }
 
+// ---- the pieces on their own --------------------------------------------------------------------
+
+// At a point's own position the curve is that point's value; at a jump, the second one's.
+void testTheCurveAtItsOwnPoints() {
+    AutomationCurve held;
+    held.add({0, 0.2f, Shape::Hold});
+    held.add({100, 0.8f, Shape::Linear});
+    AutomationCurve jump;
+    jump.add({0, 0.1f, Shape::Linear});
+    jump.add({100, 0.3f, Shape::Linear});
+    jump.add({100, 0.9f, Shape::Linear});
+    jump.add({200, 0.5f, Shape::Linear});
+    std::printf("  at its points: held %.2f then %.2f; jump %.2f\n", held.valueAt(99), held.valueAt(100), jump.valueAt(100));
+    DAWLAB_CHECK(held.valueAt(99) == 0.2f && held.valueAt(100) == 0.8f);
+    DAWLAB_CHECK(jump.valueAt(100) == 0.9f && jump.segmentAt(100) == 2);
+}
+
+// locate() trusts the hint only where it is right, and remembers what it found instead.
+void testTheCursorIsOnlyAHint() {
+    AutomationCurve c;
+    c.add({0, 0.0f, Shape::Linear});
+    c.add({100, 1.0f, Shape::Linear});
+    c.add({200, 0.0f, Shape::Linear});
+    CurveCursor cursor;
+    cursor.segment = 0;
+    DAWLAB_CHECK(cursor.locate(c, 50) == 0);
+    DAWLAB_CHECK(cursor.locate(c, 150) == 1 && cursor.segment == 1); // past the next point
+    cursor.segment = 0;
+    DAWLAB_CHECK(cursor.locate(c, 100) == 1); // on the next point
+    cursor.segment = 0;
+    DAWLAB_CHECK(cursor.locate(c, -50) == -1 && cursor.segment == -1); // before the first point
+    float out[1] = {-1.0f};
+    cursor.segment = 1;
+    c.render(-50, out, 1, cursor); // a seek back: the first value, not the line through it
+    DAWLAB_CHECK(out[0] == 0.0f);
+}
+
+// render() writes n values and not one more.
+void testTheCurveRendersOnlyWhatIsAsked() {
+    const AutomationCurve c = ramp(0, 0.0f, 100, 1.0f);
+    float out[5] = {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f};
+    CurveCursor cursor;
+    c.render(10, out, 4, cursor);
+    DAWLAB_CHECK(out[0] == c.valueAt(10) && out[3] == c.valueAt(13));
+    DAWLAB_CHECK(out[4] == -1.0f);
+}
+
+// A point exactly `tolerance` off the line may go; one a little further must stay.
+void testThinningAtTheTolerance() {
+    const std::vector<AutomationPoint> points{{0, 0.0f, Shape::Linear}, {50, 0.5f, Shape::Linear}, {100, 0.5f, Shape::Linear}};
+    // The line from the first to the last point is at 0.25 where the middle point is at 0.5.
+    DAWLAB_CHECK(thin(points, 0.25f).size() == 2);
+    DAWLAB_CHECK(thin(points, 0.125f).size() == 3);
+}
+
+// Everything before and after a pass stays; the ends take the old curve's values, a jump's first one
+// at the start, and the old shape at the end.
+void testPunchKeepsWhatIsOutsideThePass() {
+    AutomationCurve old;
+    old.add({0, 0.0f, Shape::Linear});
+    old.add({100, 0.2f, Shape::Linear});
+    old.add({100, 0.8f, Shape::Linear});
+    old.add({300, 0.5f, Shape::Linear});
+    old.add({400, 1.0f, Shape::Linear});
+    const AutomationCurve a = punch(old, {{100, 0.3f, Shape::Linear}, {300, 0.7f, Shape::Linear}});
+    const std::vector<AutomationPoint> wantA{{0, 0.0f, Shape::Linear},   {100, 0.2f, Shape::Linear}, {100, 0.3f, Shape::Linear},
+                                             {300, 0.7f, Shape::Linear}, {300, 0.5f, Shape::Linear}, {400, 1.0f, Shape::Linear}};
+    DAWLAB_CHECK(a.points() == wantA);
+
+    AutomationCurve held;
+    held.add({0, 0.0f, Shape::Hold});
+    held.add({1000, 1.0f, Shape::Linear});
+    const AutomationCurve b = punch(held, {{100, 0.5f, Shape::Linear}, {200, 0.5f, Shape::Linear}});
+    const std::vector<AutomationPoint> wantB{{0, 0.0f, Shape::Hold},     {100, 0.0f, Shape::Linear}, {100, 0.5f, Shape::Linear},
+                                             {200, 0.5f, Shape::Linear}, {200, 0.0f, Shape::Hold},   {1000, 1.0f, Shape::Linear}};
+    DAWLAB_CHECK(b.points() == wantB);
+    std::printf("  punch: %d and %d points\n", a.size(), b.size());
+}
+
+// collect() returns how many passes it finished.
+void testTheRecorderCountsItsPasses() {
+    const LaneTarget t{};
+    CaptureQueue queue(16);
+    AutomationRecorder recorder;
+    int calls = 0;
+    auto onPass = [&](const LaneTarget&, const std::vector<AutomationPoint>&) { ++calls; };
+    queue.push({t, 0, 10, 0.5f});
+    queue.push({t, 10, 10, 0.6f});
+    queue.push({t, 20, 0, 0.6f});
+    DAWLAB_CHECK(recorder.collect(queue, onPass) == 1 && calls == 1);
+    queue.push({t, 0, 10, 0.5f});
+    queue.push({t, 50, 10, 0.6f}); // does not go on from the last one: a new pass
+    queue.push({t, 60, 0, 0.6f});
+    DAWLAB_CHECK(recorder.collect(queue, onPass) == 2 && calls == 3);
+}
+
+// A move of exactly one step lands exactly on the wanted value, up and down. At this sample rate the
+// hand's step is w - v rounded, and v + step is not w in float: only taking `wanted` gets there.
+void testTheLimitLandsExactlyOneStepAway() {
+    const float v = 0x1.964a36p-2f, w = 0x1.defefap-1f;
+    AutomationLane lane;
+    lane.prepare(37.121479512092371);
+    const LaneBlock stopped{};
+    const LaneTarget t{};
+    float out[1] = {0.0f};
+    lane.setKnobValue(v);
+    lane.render(stopped, t, out, 1);
+    DAWLAB_CHECK(out[0] == v);
+    lane.setKnobValue(w);
+    lane.render(stopped, t, out, 1);
+    DAWLAB_CHECK(out[0] == w);
+    lane.setKnobValue(v);
+    lane.render(stopped, t, out, 1);
+    DAWLAB_CHECK(out[0] == v);
+}
+
+// A block of no samples writes nothing and shows nothing new.
+void testALaneRendersNothingForNoSamples() {
+    AutomationLane lane;
+    lane.prepare(48000.0);
+    lane.setKnobValue(0.7f);
+    const LaneBlock stopped{};
+    float out[1] = {0.3f};
+    lane.render(stopped, LaneTarget{}, out, 0);
+    DAWLAB_CHECK(out[0] == 0.3f && lane.getShownValue() == 0.0f);
+    lane.render(stopped, LaneTarget{}, out, 1);
+    DAWLAB_CHECK(out[0] == 0.7f); // taken as it is: nothing was played before
+}
+
+// The lane reads the block's segments and no more.
+void testALaneReadsOnlyTheBlocksSegments() {
+    const AutomationCurve c = ramp(0, 0.0f, 1000, 1.0f);
+    AutomationLane lane;
+    lane.prepare(48000.0, true);
+    lane.exchangeCurve(new AutomationCurve(c));
+    TimelineSegment segments[2];
+    segments[0].timelineStart = 100;
+    segments[0].numSamples = 4;
+    segments[1].timelineStart = 900; // not in this block
+    segments[1].numSamples = 4;
+    LaneBlock block;
+    block.segments = segments;
+    block.numSegments = 1;
+    block.playhead = 100;
+    float out[4] = {};
+    lane.render(block, LaneTarget{}, out, 4);
+    DAWLAB_CHECK(out[0] == c.valueAt(100) && out[3] == c.valueAt(103));
+}
+
 } // namespace
 
 int main() {
@@ -995,5 +1144,14 @@ int main() {
     testBounceTwiceIsTheSame();
     testNoAllocationOnTheAudioThread();
     testRealThreads();
+    testTheCurveAtItsOwnPoints();
+    testTheCursorIsOnlyAHint();
+    testTheCurveRendersOnlyWhatIsAsked();
+    testThinningAtTheTolerance();
+    testPunchKeepsWhatIsOutsideThePass();
+    testTheRecorderCountsItsPasses();
+    testTheLimitLandsExactlyOneStepAway();
+    testALaneRendersNothingForNoSamples();
+    testALaneReadsOnlyTheBlocksSegments();
     return dawlab::test::summary("l16_test_automation");
 }
