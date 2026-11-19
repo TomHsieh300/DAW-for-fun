@@ -6,6 +6,7 @@
 // thread" sets the flag only around processBlock(). Any std::vector growth, std::string,
 // std::function, make_shared, ... inside processBlock() would show up in the counters.
 //
+// Part 0 (chapter 15, Step 3) feeds the CPU meter and its monitor made-up times.
 // Part 1 checks every effect adapter on its own (so a failure names the culprit).
 // Part 2 runs a full 8-track project on an audio thread with random block sizes (1..2048)
 // while the main thread plays "UI": faders, pans, mutes, solos, sends, effect parameters,
@@ -118,6 +119,62 @@ bool blockHasNan(const AudioBlock& b) noexcept {
                 return true;
     }
     return false;
+}
+
+// ---- part 0: the CPU meter with made-up times (chapter 15, Step 3) ---------------------------
+// At 1000 Hz a block of 500 samples has a budget of 0.5 s, so every number below is exact.
+void testCpuMeterLoadAndOverruns() {
+    CpuMeter unprepared; // no sample rate: no budget, nothing is measured
+    unprepared.addBlock(500, 0.25);
+    DAWLAB_CHECK(unprepared.blocks() == 0 && unprepared.load() == 0.0f);
+
+    CpuMeter m;
+    m.prepare(1000.0);
+    m.addBlock(0, 0.25); // an empty block has no budget either
+    DAWLAB_CHECK(m.blocks() == 0);
+
+    m.addBlock(500, 0.25); // half the budget; smoothed over 0.3 s, starting from 0
+    DAWLAB_CHECK(m.blocks() == 1 && m.overruns() == 0);
+    DAWLAB_CHECK_NEAR(m.load(), 0.5 * (1.0 - std::exp(-0.5 / CpuMeter::kTimeConstantSeconds)), 1e-6);
+
+    m.addBlock(500, 0.5); // exactly the whole budget: still in time
+    DAWLAB_CHECK(m.overruns() == 0);
+    m.addBlock(500, 0.75); // 1.5 x the budget: late
+    DAWLAB_CHECK(m.overruns() == 1 && m.blocks() == 3);
+}
+
+// One block of 1000 s at 1 Hz: the smoothing forgets everything before it (exp(-3333) = 0), so the
+// meter shows exactly `load`.
+void setCpuLoad(CpuMeter& m, double load) { m.addBlock(1000, load * 1000.0); }
+
+void testCpuMonitorStates() {
+    CpuMeter m;
+    m.prepare(1.0);
+    setCpuLoad(m, 2.0); // an overrun before the monitor exists is not news to it
+    CpuMonitor monitor(m);
+
+    setCpuLoad(m, 0.5);
+    CpuStatus s = monitor.poll(0.0);
+    DAWLAB_CHECK(s.state == CpuState::Ok && s.newOverruns == 0 && s.load == 0.5f);
+
+    setCpuLoad(m, 0.75); // High from kHighOn on ...
+    DAWLAB_CHECK(m.load() == CpuMonitor::kHighOn);
+    DAWLAB_CHECK(monitor.poll(1.0).state == CpuState::High);
+    setCpuLoad(m, 0.65); // ... and down to kHighOff
+    DAWLAB_CHECK(m.load() == CpuMonitor::kHighOff);
+    DAWLAB_CHECK(monitor.poll(2.0).state == CpuState::High);
+    setCpuLoad(m, 0.64);
+    DAWLAB_CHECK(monitor.poll(3.0).state == CpuState::Ok);
+    setCpuLoad(m, 0.7); // between the two: Ok stays Ok
+    DAWLAB_CHECK(monitor.poll(4.0).state == CpuState::Ok);
+
+    setCpuLoad(m, 1.5); // an overrun: Overload for kOverloadHoldSeconds
+    s = monitor.poll(10.0);
+    DAWLAB_CHECK(s.state == CpuState::Overload && s.newOverruns == 1);
+    setCpuLoad(m, 0.1);
+    s = monitor.poll(11.5);
+    DAWLAB_CHECK(s.state == CpuState::Overload && s.newOverruns == 0);
+    DAWLAB_CHECK(monitor.poll(10.0 + CpuMonitor::kOverloadHoldSeconds).state == CpuState::Ok);
 }
 
 // ---- part 1: every adapter on its own -------------------------------------------------------
@@ -413,6 +470,8 @@ void testTracksComeAndGo() {
 } // namespace
 
 int main() {
+    testCpuMeterLoadAndOverruns();
+    testCpuMonitorStates();
     testEachEffect();
     testEngineUnderFire();
     testTracksComeAndGo();
