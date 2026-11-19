@@ -1500,10 +1500,66 @@ void checkBiquadFactoriesFollowTheCookbook() {
     DAWLAB_CHECK(sameCoefficients(C::makeLowpass(fs, 30000.0, q), C::makeLowpass(fs, fs * 0.499, q)));
 }
 
+// The first two samples of a unit step, worked out by hand from the difference equations
+void checkOnePoleStepResponse() {
+    const double a = OnePole::coefficientForCutoff(1000.0, kSampleRate);
+    OnePole lp;
+    lp.prepare(kSampleRate, 64, 1);
+    lp.setCutoff(1000.0f);
+    DAWLAB_CHECK(lp.getCoefficient() == a);
+    DAWLAB_CHECK_NEAR(lp.processSample(0, 1.0f), 1.0 - a, 1e-7);             // (1 - a) x
+    DAWLAB_CHECK_NEAR(lp.processSample(0, 1.0f), (1.0 - a) * (1.0 + a), 1e-7); // + a y[n-1]
+
+    const double h = 0.5 * (1.0 + a);
+    OnePole hp;
+    hp.prepare(kSampleRate, 64, 1);
+    hp.setType(OnePole::Type::Highpass);
+    hp.setCutoff(1000.0f);
+    DAWLAB_CHECK_NEAR(hp.processSample(0, 1.0f), h, 1e-7);     // h (x - 0)
+    DAWLAB_CHECK_NEAR(hp.processSample(0, 1.0f), a * h, 1e-7); // h (x - x[n-1]) + a y[n-1]
+
+    // A cutoff above Nyquist is held at 0.49 fs
+    lp.setCutoff(30000.0f);
+    DAWLAB_CHECK(lp.getCoefficient() == OnePole::coefficientForCutoff(0.49 * kSampleRate, kSampleRate));
+
+    // Prepared with no sample rate there is nothing to design: the filter passes its input
+    OnePole idle;
+    idle.prepare(0.0, 64, 1);
+    idle.setCutoff(500.0f);
+    DAWLAB_CHECK(idle.getCoefficient() == 0.0);
+    DAWLAB_CHECK(idle.processSample(0, 0.25f) == 0.25f);
+}
+
+// The first sample of a unit impulse: v1 = a2, v2 = a3 (Simper's coefficients, worked out here)
+void checkStateVariableFilterImpulse() {
+    for (const float cutoff : {1000.0f, 30000.0f}) {
+        StateVariableFilter svf;
+        svf.prepare(kSampleRate, 64, 1);
+        svf.setCutoff(cutoff);
+        svf.setQ(2.0f);
+        const double fc = std::min(static_cast<double>(cutoff), 0.49 * kSampleRate);
+        const double g = std::tan(kPi * fc / kSampleRate), k = 1.0 / 2.0;
+        const double a1 = 1.0 / (1.0 + g * (g + k)), a2 = g * a1, a3 = g * a2;
+        const StateVariableFilter::Outputs o = svf.processSampleAll(0, 1.0f);
+        DAWLAB_CHECK_NEAR(o.low, a3, 1e-6);
+        DAWLAB_CHECK_NEAR(o.band, k * a2, 1e-6);
+        DAWLAB_CHECK_NEAR(o.high, 1.0 - k * a2 - a3, 1e-6);
+        DAWLAB_CHECK_NEAR(o.notch, 1.0 - k * a2, 1e-6);
+    }
+    // Prepared with no sample rate: no filtering, the highpass and notch outputs are the input
+    StateVariableFilter idle;
+    idle.prepare(0.0, 64, 1);
+    idle.setCutoff(500.0f);
+    const StateVariableFilter::Outputs o = idle.processSampleAll(0, 0.25f);
+    DAWLAB_CHECK(o.low == 0.0f && o.band == 0.0f && o.high == 0.25f && o.notch == 0.25f);
+}
+
 } // namespace
 
 void checkDspFilters() {
     checkBiquadFactoriesFollowTheCookbook();
+    checkOnePoleStepResponse();
+    checkStateVariableFilterImpulse();
 }
 
 int main() {
