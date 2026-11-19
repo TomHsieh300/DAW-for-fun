@@ -3044,6 +3044,124 @@ void checkDelayLineReadsEachChannelBack() {
     DAWLAB_CHECK(line.read(0, 9) == 5.0f); // above the maximum: clamped to 4
 }
 
+// ---- Lfo ---------------------------------------------------------------------
+void checkLfoShapesAndSteps() {
+    DAWLAB_CHECK(Lfo::shapeValue(LfoShape::Triangle, 0.125f) == 0.5f);
+    DAWLAB_CHECK(Lfo::shapeValue(LfoShape::Triangle, 0.5f) == 0.0f);
+    DAWLAB_CHECK(Lfo::shapeValue(LfoShape::Triangle, 0.875f) == -0.5f);
+    DAWLAB_CHECK(Lfo::shapeValue(LfoShape::Square, 0.25f) == 1.0f);
+    DAWLAB_CHECK(Lfo::shapeValue(LfoShape::Square, 0.5f) == -1.0f);
+    // -1e-9 wraps to 1.0f in float, which is the start of the next cycle: phase 0, not 1
+    DAWLAB_CHECK(Lfo::shapeValue(LfoShape::Saw, -1.0e-9f) == -1.0f);
+
+    // Sample & hold at fs / 4: the phase reaches exactly 1.0 every 4 samples, and each held value lasts one cycle
+    Lfo hold;
+    hold.setShape(LfoShape::SampleAndHold);
+    hold.setSmoothingMs(0.0f);
+    hold.setRateHz(12000.0f);
+    hold.prepare(48000.0);
+    std::vector<float> v(400);
+    for (float& x : v)
+        x = hold.getNextValue();
+    bool held = true;
+    for (size_t i = 0; i < v.size(); ++i)
+        held = held && (i % 4 == 0 ? (i == 0 || v[i] != v[i - 1]) : v[i] == v[i - 1]);
+    std::printf("Lfo      S&H at fs/4 holds each value for exactly 4 samples: %s\n", held ? "yes" : "no");
+    DAWLAB_CHECK(held);
+
+    // Smoothing 0: every shape returns its exact waveform value, even right after a jump
+    Lfo saw;
+    saw.setShape(LfoShape::Saw);
+    saw.setSmoothingMs(0.0f);
+    saw.setRateHz(24000.1f);
+    saw.prepare(48000.0);
+    bool exact = true;
+    for (int i = 0; i < 64; ++i) {
+        const float p = saw.getPhase();
+        exact = exact && saw.getNextValue() == Lfo::shapeValue(LfoShape::Saw, p);
+    }
+    DAWLAB_CHECK(exact);
+
+    // Default smoothing (1 ms = 48 samples): a jump moves by k = 1 - exp(-1/48) of the way in one sample
+    const float k = static_cast<float>(1.0 - std::exp(-1.0 / 48.0));
+    Lfo square;
+    square.setShape(LfoShape::Square);
+    square.setRateHz(0.0f);
+    square.prepare(48000.0); // at phase 0: +1
+    square.setPhase(0.5f);   // -1 from now on
+    DAWLAB_CHECK_NEAR(square.getNextValue(), 1.0f - 2.0f * k, 1e-6);
+    Lfo ramp;
+    ramp.setShape(LfoShape::Saw);
+    ramp.setRateHz(0.0f);
+    ramp.prepare(48000.0); // at phase 0: -1
+    ramp.setPhase(0.75f);  // +0.5 from now on
+    DAWLAB_CHECK_NEAR(ramp.getNextValue(), -1.0f + 1.5f * k, 1e-6);
+    Lfo smoothHold;
+    smoothHold.setShape(LfoShape::SampleAndHold);
+    smoothHold.setRateHz(12000.0f);
+    smoothHold.prepare(48000.0);
+    float s[7];
+    for (float& x : s)
+        x = smoothHold.getNextValue();
+    DAWLAB_CHECK(s[0] == s[3] && s[4] != s[5] && s[5] != s[6]); // a new held value is glided to
+
+    // The sample rate: 0 means the 48 kHz default, any positive rate is used as it is
+    Lfo zero, def, slow;
+    zero.setRateHz(250.0f);
+    def.setRateHz(250.0f);
+    slow.setRateHz(250.0f);
+    zero.prepare(0.0);
+    def.prepare(48000.0);
+    slow.prepare(1000.0);
+    bool sameAsDefault = true;
+    for (int i = 0; i < 8; ++i)
+        sameAsDefault = sameAsDefault && zero.getNextValue() == def.getNextValue();
+    DAWLAB_CHECK(sameAsDefault);
+    (void)slow.getNextValue();
+    DAWLAB_CHECK_NEAR(slow.getNextValue(), 1.0, 1e-6); // 250 Hz at 1 kHz: a quarter cycle per sample
+
+    // A different seed gives a different S&H sequence
+    Lfo seedA, seedB;
+    for (Lfo* l : {&seedA, &seedB}) {
+        l->setShape(LfoShape::SampleAndHold);
+        l->setSmoothingMs(0.0f);
+        l->setRateHz(12000.0f);
+    }
+    seedA.setSeed(1u);
+    seedB.setSeed(2u);
+    seedA.prepare(48000.0);
+    seedB.prepare(48000.0);
+    DAWLAB_CHECK(seedA.getNextValue() != seedB.getNextValue());
+
+    // The shared parameter smoother: tau = 20 ms = 960 samples at 48 kHz
+    dsp::detail::ModParamSmoother smoother(0.0f);
+    smoother.prepare(48000.0, 20.0);
+    smoother.setTarget(1.0f);
+    DAWLAB_CHECK_NEAR(smoother.next(), 1.0 - std::exp(-1.0 / 960.0), 1e-7);
+}
+
+// ---- Tremolo -----------------------------------------------------------------
+void checkTremoloGainAtLfoEnds() {
+    Tremolo t;
+    t.setRateHz(0.0f);
+    t.setDepth(0.6f);
+    t.setAutoPan(true);
+    t.setLfoPhase(0.75f); // sine at -1
+    t.prepare(48000.0, 16, 2);
+    AudioBuffer b(2, 4);
+    for (float phase : {0.75f, 0.25f}) {
+        t.setLfoPhase(phase);
+        for (int ch = 0; ch < 2; ++ch)
+            std::fill(b.getWritePointer(ch), b.getWritePointer(ch) + 4, 1.0f);
+        t.process(b);
+        const bool low = phase == 0.75f;
+        std::printf("Tremolo  depth 0.6, autopan, lfo %s: gains %g %g\n", low ? "-1" : "+1",
+                    static_cast<double>(b.getReadPointer(0)[0]), static_cast<double>(b.getReadPointer(1)[0]));
+        DAWLAB_CHECK_NEAR(b.getReadPointer(0)[0], low ? 0.4 : 1.0, 1e-6);
+        DAWLAB_CHECK_NEAR(b.getReadPointer(1)[0], low ? 1.0 : 0.4, 1e-6);
+    }
+}
+
 // ---- Delay -------------------------------------------------------------------
 void checkDelayEchoes() {
     // 1 ms = 48 samples, feedback 0.5, all wet, linear reads at whole samples
@@ -3149,6 +3267,163 @@ void checkDelayTimeRamp() {
     DAWLAB_CHECK(z.getCurrentDelayMs() == 10.0f);
 }
 
+// ---- Chorus / Flanger / Phaser -----------------------------------------------
+void checkChorusVoicesAndSpread() {
+    // Four voices a quarter cycle apart, rate 0: sine at 0, +1, 0, -1 -> 50, 80, 50, 20 ms
+    Chorus c;
+    c.setVoices(4);
+    c.setRateHz(0.0f);
+    c.setCentreDelayMs(50.0f);
+    c.setDepthMs(30.0f);
+    c.setMix(1.0f);
+    c.prepare(48000.0, 4096, 1);
+    DAWLAB_CHECK(c.getVoices() == 4);
+    AudioBuffer b = impulseBuffer(1, 3900);
+    c.process(b);
+    DAWLAB_CHECK(onlyAt(b, 0, {{960, 0.25f}, {2400, 0.5f}, {3840, 0.25f}}));
+
+    // One voice, full spread: the right channel's LFO is a quarter cycle ahead (sine +1)
+    Chorus s;
+    s.setVoices(1);
+    s.setRateHz(0.0f);
+    s.setCentreDelayMs(20.0f);
+    s.setDepthMs(10.0f);
+    s.setMix(1.0f);
+    s.setStereoSpread(1.0f);
+    s.prepare(48000.0, 2048, 2);
+    AudioBuffer st = impulseBuffer(2, 1500);
+    s.process(st);
+    DAWLAB_CHECK(onlyAt(st, 0, {{960, 1.0f}}));
+    DAWLAB_CHECK(onlyAt(st, 1, {{1440, 1.0f}}));
+
+    // Half spread: the right channel is an eighth of a cycle ahead, sin(pi/4) -> 20 + 10 x 0.707 ms = 1299.4 samples
+    Chorus h;
+    h.setVoices(1);
+    h.setRateHz(0.0f);
+    h.setCentreDelayMs(20.0f);
+    h.setDepthMs(10.0f);
+    h.setMix(1.0f);
+    h.setStereoSpread(0.5f);
+    h.prepare(48000.0, 2048, 2);
+    AudioBuffer hb = impulseBuffer(2, 1500);
+    h.process(hb);
+    const float* r = hb.getReadPointer(1);
+    const int peak = static_cast<int>(std::max_element(r, r + 1500) - r);
+    DAWLAB_CHECK(r[960] == 0.0f && (peak == 1299 || peak == 1300));
+}
+
+void checkFlangerSweepTop() {
+    // LFO parked at +1: delay = base + depth = 40 ms = 1920 samples, the longest the flanger can reach
+    Flanger f;
+    f.setRateHz(0.0f);
+    f.setLfoPhase(0.25f);
+    f.setDelayMs(20.0f);
+    f.setDepthMs(20.0f);
+    f.setFeedback(0.0f);
+    f.setMix(1.0f);
+    f.prepare(48000.0, 2048, 1);
+    AudioBuffer b = impulseBuffer(1, 2000);
+    f.process(b);
+    DAWLAB_CHECK(f.getCurrentDelayMs() == 40.0f);
+    DAWLAB_CHECK(onlyAt(b, 0, {{1920, 1.0f}}));
+
+    Flanger g;
+    g.setRateHz(0.0f);
+    g.setLfoPhase(0.25f);
+    g.setDelayMs(5.0f);
+    g.setDepthMs(10.0f);
+    g.prepare(48000.0, 64, 1);
+    AudioBuffer one(1, 1);
+    one.getWritePointer(0)[0] = 0.0f;
+    g.process(one);
+    DAWLAB_CHECK(g.getCurrentDelayMs() == 15.0f);
+
+    // A sample of exactly the flush threshold (1e-20) is kept in the loop
+    Flanger t;
+    t.setRateHz(0.0f);
+    t.setDelayMs(5.0f);
+    t.setDepthMs(0.0f);
+    t.setFeedback(0.0f);
+    t.setMix(1.0f);
+    t.prepare(48000.0, 512, 1);
+    AudioBuffer tb = impulseBuffer(1, 260, 1.0e-20f);
+    t.process(tb);
+    DAWLAB_CHECK(tb.getReadPointer(0)[240] == 1.0e-20f);
+}
+
+void checkPhaserCoefficientsAndStages() {
+    const double t = std::tan(kPi / 6.0);
+    DAWLAB_CHECK_NEAR(Phaser::allpassCoefficient(8000.0, 48000.0), (t - 1.0) / (t + 1.0), 1e-12);
+
+    // LFO parked at +1, depth 1, sweep 1 octave: centre 1000 Hz -> 2000 Hz
+    Phaser p;
+    p.setRateHz(0.0f);
+    p.setLfoPhase(0.25f);
+    p.setDepth(1.0f);
+    p.setSweepOctaves(1.0f);
+    p.setCentreHz(1000.0f);
+    p.prepare(48000.0, 64, 1);
+    AudioBuffer one(1, 1);
+    one.getWritePointer(0)[0] = 0.0f;
+    p.process(one);
+    DAWLAB_CHECK_NEAR(p.getCurrentCentreHz(), 2000.0, 1e-3);
+
+    // Dropping to 2 stages sounds the same as having 2 stages from the start
+    AudioBuffer noise(1, 256);
+    fillNoise(noise, 5u);
+    Phaser a, b;
+    for (Phaser* ph : {&a, &b}) {
+        ph->setRateHz(0.0f);
+        ph->setFeedback(0.0f);
+        ph->setMix(1.0f);
+    }
+    a.setStages(4);
+    a.prepare(48000.0, 256, 1);
+    AudioBuffer warm = noise;
+    a.process(warm);
+    a.setStages(2);
+    a.reset();
+    b.setStages(2);
+    b.prepare(48000.0, 256, 1);
+    AudioBuffer outA = noise, outB = noise;
+    a.process(outA);
+    b.process(outB);
+    DAWLAB_CHECK(std::equal(outA.getReadPointer(0), outA.getReadPointer(0) + 256, outB.getReadPointer(0)));
+
+    // Twelve allpass stages keep the energy of noise (allpass: flat magnitude)
+    Phaser twelve;
+    twelve.setStages(12);
+    twelve.setRateHz(0.0f);
+    twelve.setFeedback(0.0f);
+    twelve.setMix(1.0f);
+    twelve.prepare(48000.0, 4800, 1);
+    AudioBuffer n12(1, 4800);
+    fillNoise(n12, 9u);
+    double inE = 0.0, outE = 0.0;
+    for (int i = 0; i < 4800; ++i)
+        inE += static_cast<double>(n12.getReadPointer(0)[i]) * n12.getReadPointer(0)[i];
+    twelve.process(n12);
+    for (int i = 0; i < 4800; ++i)
+        outE += static_cast<double>(n12.getReadPointer(0)[i]) * n12.getReadPointer(0)[i];
+    std::printf("Phaser   12 stages: energy out / in = %g\n", outE / inE);
+    DAWLAB_CHECK(std::abs(outE / inE - 1.0) < 0.05);
+
+    // At fc = fs/4 each stage is (all but) a one-sample delay: a 1e-20 impulse comes out after 4 stages intact,
+    // and with mix 1 nothing else is heard
+    Phaser d;
+    d.setRateHz(0.0f);
+    d.setDepth(0.0f);
+    d.setCentreHz(12000.0f);
+    d.setFeedback(0.0f);
+    d.setMix(1.0f);
+    d.setStages(4);
+    d.prepare(48000.0, 8, 1);
+    AudioBuffer tb = impulseBuffer(1, 8, 1.0e-20f);
+    d.process(tb);
+    const float* o = tb.getReadPointer(0);
+    DAWLAB_CHECK(o[0] == 0.0f && o[1] == 0.0f && o[2] == 0.0f && o[3] == 0.0f && o[4] == 1.0e-20f);
+}
+
 } // namespace b6time
 
 int main() {
@@ -3240,8 +3515,13 @@ int main() {
 
     // ---- batch 6: dsp-time ----
     b6time::checkDelayLineReadsEachChannelBack();
+    b6time::checkLfoShapesAndSteps();
+    b6time::checkTremoloGainAtLfoEnds();
     b6time::checkDelayEchoes();
     b6time::checkDelayTimeRamp();
+    b6time::checkChorusVoicesAndSpread();
+    b6time::checkFlangerSweepTop();
+    b6time::checkPhaserCoefficientsAndStages();
 
     return dawlab::test::summary("dsp");
 }
