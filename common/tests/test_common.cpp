@@ -456,6 +456,10 @@ int main() {
     DAWLAB_CHECK_NEAR(a.getSample(1, 3), 0.0, 0.0);
     DAWLAB_CHECK_NEAR(a.getSample(1, 4), 1.0, 0.0);
     DAWLAB_CHECK_NEAR(a.getSample(0, 7), 1.0, 0.0);
+    // addFrom adds as many samples as the shorter block has, and not one more: b's 8 samples onto a's samples 2..5
+    // leave sample 6 alone
+    AudioBlock(a).getSubBlock(2, 4).addFrom(AudioBlock(b));
+    DAWLAB_CHECK(a.getSample(1, 5) == 3.0f && a.getSample(1, 6) == 1.0f);
 
     // Test signals must contain no NaN and must not clip
     AudioBuffer drums = makeDrumLoop(sr);
