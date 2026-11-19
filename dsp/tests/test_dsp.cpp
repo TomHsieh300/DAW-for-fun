@@ -2092,6 +2092,278 @@ void checkSaturationBlocks() {
     }
 }
 
+// Distortion's static curves at both sides of every knee
+void checkDistortionCurves() {
+    const float fold[][2] = {{0.0f, 0.0f},   {0.5f, 0.5f},   {1.0f, 1.0f},   {1.5f, 0.5f},   {2.0f, 0.0f},
+                             {2.5f, -0.5f},  {3.0f, -1.0f},  {3.5f, -0.5f},  {4.5f, 0.5f},   {-1.0f, -1.0f},
+                             {-1.5f, -0.5f}, {-2.5f, 0.5f},  {-3.5f, 0.5f},  {-4.5f, -0.5f}};
+    for (const auto& p : fold)
+        DAWLAB_CHECK_NEAR(Distortion::foldback(p[0]), p[1], 1e-6);
+    const float fuzz[][2] = {{0.0f, 0.0f},   {0.05f, 0.0f}, {-0.05f, 0.0f}, {0.3f, 0.2f},
+                             {-0.3f, -0.2f}, {2.0f, 1.0f},  {-2.0f, -0.6f}, {-0.5f, -0.4f}};
+    for (const auto& p : fuzz)
+        DAWLAB_CHECK_NEAR(Distortion::fuzz(p[0]), p[1], 1e-6);
+    DAWLAB_CHECK(Distortion::rectify(-0.5f, RectifyMode::FullWave) == 0.5f);
+    DAWLAB_CHECK(Distortion::rectify(-0.5f, RectifyMode::HalfWave) == 0.0f);
+    DAWLAB_CHECK(Distortion::rectify(0.5f, RectifyMode::HalfWave) == 0.5f);
+    DAWLAB_CHECK(Distortion::rectify(-2.0f, RectifyMode::FullWave) == 1.0f);
+    DAWLAB_CHECK(Distortion::rectify(2.0f, RectifyMode::HalfWave) == 1.0f);
+    // quantize(u, bits): steps of 2 / 2^bits, rounded to the nearest, codes -M .. M - 1 with M = floor(2^(bits - 1))
+    const float q[][3] = {{0.3f, 3.0f, 0.25f},   {0.4f, 3.0f, 0.5f},     {1.0f, 3.0f, 0.75f}, {-1.0f, 3.0f, -1.0f},
+                          {-2.0f, 3.0f, -1.0f},  {0.9f, 1.5f, 0.0f},     {0.3f, 1.0f, 0.0f},  {-0.3f, 1.0f, 0.0f},
+                          {-0.9f, 1.5f, -0.70710678f}};
+    for (const auto& p : q)
+        DAWLAB_CHECK_NEAR(Distortion::quantize(p[0], p[1]), p[2], 1e-6);
+}
+
+std::unique_ptr<Distortion> makeDistortion(int log2, DistortionType type, int maxBlock) {
+    auto d = std::make_unique<Distortion>();
+    d->setOversamplingFactorLog2(log2);
+    d->setType(type);
+    d->prepare(kRate, maxBlock, 1);
+    return d;
+}
+
+// Distortion at mix 0: the output is the input delayed by exactly getLatencySamples() (0, 31, 36 at 1x, 2x, 4x);
+// at 1x with no drive and the tone at 20 kHz (bypass), a hard clip of a quiet signal is the signal itself
+void checkDistortionDelayLines() {
+    const int expected[] = {0, 31, 36};
+    for (int log2 = 0; log2 <= 2; ++log2) {
+        const auto d = std::make_unique<Distortion>();
+        d->setOversamplingFactorLog2(log2);
+        d->setDriveDb(24.0f);
+        d->setMix(0.0f);
+        d->prepare(kRate, 256, 1);
+        DAWLAB_CHECK(d->getLatencySamples() == expected[log2]);
+        const std::vector<float> x = noise(600, 9u);
+        AudioBuffer b = monoOf(x);
+        for (int start = 0; start < 600; start += 200)
+            d->process(b.toBlock().getSubBlock(start, 200));
+        bool delayed = true;
+        for (int i = 0; i < 600; ++i)
+            delayed = delayed && b.getSample(0, i) == at(x, i - d->getLatencySamples());
+        DAWLAB_CHECK(delayed);
+    }
+    const auto d = makeDistortion(0, DistortionType::HardClip, 256);
+    d->setToneHz(Distortion::kToneBypassHz);
+    std::vector<float> x(256);
+    for (int i = 0; i < 256; ++i)
+        x[static_cast<size_t>(i)] = 0.5f * std::sin(0.3f * static_cast<float>(i));
+    AudioBuffer b = monoOf(x);
+    d->process(b.toBlock());
+    d->process(b.toBlock());
+    bool same = true;
+    for (int i = 0; i < 256; ++i)
+        same = same && b.getSample(0, i) == x[static_cast<size_t>(i)];
+    DAWLAB_CHECK(same);
+}
+
+// Without oversampling and with no parameter moving, process() gives what processSample() gives, sample for sample,
+// for every type (the type set before prepare()), with and without the tone filter; the block comes in pieces of 100
+void checkDistortionProcessIsProcessSample() {
+    const int n = 1000;
+    struct Config {
+        DistortionType type;
+        RectifyMode mode;
+    };
+    const Config configs[] = {{DistortionType::HardClip, RectifyMode::FullWave},
+                              {DistortionType::Foldback, RectifyMode::FullWave},
+                              {DistortionType::Fuzz, RectifyMode::FullWave},
+                              {DistortionType::Rectify, RectifyMode::FullWave},
+                              {DistortionType::Rectify, RectifyMode::HalfWave},
+                              {DistortionType::Bitcrush, RectifyMode::FullWave}};
+    for (const Config& c : configs) {
+        for (const float tone : {3000.0f, Distortion::kToneBypassHz}) {
+            std::unique_ptr<Distortion> d[2];
+            for (auto& one : d) {
+                one = std::make_unique<Distortion>();
+                one->setOversamplingFactorLog2(0);
+                one->setType(c.type);
+                one->setRectifyMode(c.mode);
+                one->setDriveDb(12.0f);
+                one->setToneHz(tone);
+                one->setBitDepth(6.0f);
+                one->setDownsampleFactor(3);
+                one->prepare(kRate, 512, 1);
+            }
+            std::vector<float> x(static_cast<size_t>(n));
+            for (int i = 0; i < n; ++i)
+                x[static_cast<size_t>(i)] = 0.1f + 0.3f * std::sin(0.02f * static_cast<float>(i));
+            AudioBuffer b = monoOf(x);
+            for (int start = 0; start < n; start += 100)
+                d[0]->process(b.toBlock().getSubBlock(start, 100));
+            double worst = 0.0;
+            for (int i = 0; i < n; ++i)
+                worst = std::max(worst, gap(b.getSample(0, i), d[1]->processSample(0, x[static_cast<size_t>(i)])));
+            std::printf("Distortion %s, tone %.0f Hz: process() vs processSample() worst %.3g\n",
+                        distortionTypeName(c.type), static_cast<double>(tone), worst);
+            DAWLAB_CHECK(c.type == DistortionType::Bitcrush ? worst < 1e-6 : worst == 0.0);
+        }
+    }
+}
+
+// Distortion's drive, output gain and mix move linearly across one block, on both paths (HardClip and Bitcrush)
+void checkDistortionRamps() {
+    const int n = 64;
+    for (const DistortionType type : {DistortionType::HardClip, DistortionType::Bitcrush}) {
+        const auto d = std::make_unique<Distortion>();
+        d->setOversamplingFactorLog2(0);
+        d->setType(type);
+        d->setBitDepth(24.0f);
+        d->prepare(kRate, n, 1);
+        AudioBuffer b(1, n);
+        auto run = [&] {
+            for (int i = 0; i < n; ++i)
+                b.setSample(0, i, 0.25f);
+            d->process(b.toBlock());
+        };
+        auto wet = [type](float u) { return type == DistortionType::Bitcrush ? Distortion::quantize(u, 24.0f) : u; };
+        run();
+        DAWLAB_CHECK(b.getSample(0, n - 1) == 0.25f);
+        d->setDriveDb(6.0f);
+        d->setOutputGainDb(-6.0f);
+        d->setMix(0.5f);
+        run();
+        const float g1 = dbToGain(6.0f), o1 = dbToGain(-6.0f);
+        const float gInc = (g1 - 1.0f) / static_cast<float>(n), oInc = (o1 - 1.0f) / static_cast<float>(n),
+                    mInc = (0.5f - 1.0f) / static_cast<float>(n);
+        double worst = 0.0;
+        for (int i = 0; i < n; ++i) {
+            const float fi = static_cast<float>(i);
+            const float m = 1.0f + mInc * fi;
+            const float y = 0.25f * (1.0f - m) + wet(0.25f * (1.0f + gInc * fi)) * (1.0f + oInc * fi) * m;
+            worst = std::max(worst, static_cast<double>(std::abs(b.getSample(0, i) - y)));
+        }
+        run();
+        const float settled = 0.25f * 0.5f + wet(0.25f * g1) * o1 * 0.5f;
+        std::printf("Distortion %s ramps: worst error %.3g, then %.6f (expected %.6f)\n", distortionTypeName(type),
+                    worst, static_cast<double>(b.getSample(0, 10)), static_cast<double>(settled));
+        DAWLAB_CHECK(worst < 1e-6);
+        DAWLAB_CHECK_NEAR(b.getSample(0, 10), settled, 1e-6);
+    }
+}
+
+// Distortion's sample & hold: with a factor of 3 every input is held for 3 samples, across blocks of 7
+void checkDistortionSampleAndHold() {
+    const auto d = std::make_unique<Distortion>();
+    d->setOversamplingFactorLog2(0);
+    d->setType(DistortionType::Bitcrush);
+    d->setBitDepth(24.0f);
+    d->setDownsampleFactor(3);
+    d->prepare(kRate, 64, 1);
+    std::vector<float> x(210);
+    for (size_t i = 0; i < x.size(); ++i)
+        x[i] = 0.001f * static_cast<float>(i);
+    AudioBuffer b = monoOf(x);
+    for (int start = 0; start < 210; start += 7)
+        d->process(b.toBlock().getSubBlock(start, 7));
+    double worst = 0.0;
+    for (int i = 0; i < 210; ++i)
+        worst = std::max(worst, static_cast<double>(std::abs(b.getSample(0, i) - x[static_cast<size_t>(3 * (i / 3))])));
+    DAWLAB_CHECK(worst < 1e-6);
+}
+
+// A type change crossfades the two curves linearly over kTypeFadeMs (480 samples at 48 kHz), across blocks; with
+// oversampling the fade takes as long in original samples
+void checkDistortionTypeFade() {
+    {
+        const auto d = makeDistortion(0, DistortionType::HardClip, 256);
+        AudioBuffer b(1, 256);
+        auto run = [&] {
+            for (int i = 0; i < 256; ++i)
+                b.setSample(0, i, 1.5f);
+            d->process(b.toBlock());
+        };
+        run();
+        DAWLAB_CHECK(b.getSample(0, 255) == 1.0f); // hard clip of 1.5
+        d->setType(DistortionType::Foldback);
+        double worst = 0.0;
+        for (int k = 0; k < 3; ++k) {
+            run();
+            for (int i = 0; i < 256; ++i) {
+                const float done = static_cast<float>(256 * k);
+                const float w = std::min(1.0f, (done + static_cast<float>(i) + 1.0f) * (1.0f / 480.0f));
+                worst = std::max(worst, static_cast<double>(std::abs(b.getSample(0, i) - (1.0f + (0.5f - 1.0f) * w))));
+            }
+        }
+        std::printf("Distortion HardClip -> Foldback fade at 1x: worst error %.3g\n", worst);
+        DAWLAB_CHECK(worst < 1e-6);
+    }
+    {
+        const auto d = makeDistortion(2, DistortionType::HardClip, 512);
+        AudioBuffer b(1, 512);
+        auto run = [&] {
+            for (int i = 0; i < 512; ++i)
+                b.setSample(0, i, 1.5f);
+            d->process(b.toBlock());
+        };
+        run();
+        run();
+        d->setType(DistortionType::Foldback);
+        run();
+        std::printf("Distortion HardClip -> Foldback fade at 4x: %.4f %.4f %.4f %.4f\n",
+                    static_cast<double>(b.getSample(0, 60)), static_cast<double>(b.getSample(0, 240)),
+                    static_cast<double>(b.getSample(0, 400)), static_cast<double>(b.getSample(0, 511)));
+        DAWLAB_CHECK(b.getSample(0, 60) > 0.9f);
+        DAWLAB_CHECK(b.getSample(0, 240) > 0.7f && b.getSample(0, 240) < 0.8f);
+        DAWLAB_CHECK_NEAR(b.getSample(0, 511), 0.5, 0.01);
+    }
+}
+
+// Distortion: a block larger than maxBlockSize is the same audio as the same samples in maxBlockSize pieces; a block
+// with no channels changes nothing (not even a ramp); process() before prepare() leaves the block as it is
+void checkDistortionBlocks() {
+    for (const DistortionType type : {DistortionType::HardClip, DistortionType::Bitcrush}) {
+        std::unique_ptr<Distortion> d[2];
+        for (auto& one : d) {
+            one = std::make_unique<Distortion>();
+            one->setOversamplingFactorLog2(1);
+            one->setType(type);
+            one->setDriveDb(12.0f);
+            one->setToneHz(3000.0f);
+            one->setMix(0.5f);
+            one->setBitDepth(6.0f);
+            one->setDownsampleFactor(3);
+            one->prepare(kRate, 64, 1);
+        }
+        const std::vector<float> x = noise(100, 11u);
+        AudioBuffer whole = monoOf(x);
+        d[0]->process(whole.toBlock());
+        AudioBuffer first = monoOf(std::vector<float>(x.begin(), x.begin() + 64));
+        AudioBuffer second = monoOf(std::vector<float>(x.begin() + 64, x.end()));
+        d[1]->process(first.toBlock());
+        d[1]->process(second.toBlock());
+        bool same = true;
+        for (int i = 0; i < 100; ++i)
+            same = same && whole.getSample(0, i) == (i < 64 ? first.getSample(0, i) : second.getSample(0, i - 64));
+        DAWLAB_CHECK(same);
+    }
+    {
+        const auto a = makeDistortion(0, DistortionType::HardClip, 64);
+        const auto b = makeDistortion(0, DistortionType::HardClip, 64);
+        AudioBuffer ba = monoOf(noise(64, 12u)), bb = ba;
+        a->process(ba.toBlock());
+        b->process(bb.toBlock());
+        a->setDriveDb(12.0f);
+        b->setDriveDb(12.0f);
+        a->process(AudioBlock(nullptr, 0, 64));
+        ba = monoOf(noise(64, 13u));
+        bb = ba;
+        a->process(ba.toBlock());
+        b->process(bb.toBlock());
+        DAWLAB_CHECK(sameSamples(ba, bb));
+    }
+    {
+        const auto d = std::make_unique<Distortion>();
+        AudioBuffer b = monoOf(std::vector<float>(64, 0.5f));
+        d->process(b.toBlock());
+        bool same = true;
+        for (int i = 0; i < 64; ++i)
+            same = same && b.getSample(0, i) == 0.5f;
+        DAWLAB_CHECK(same);
+    }
+}
+
 } // namespace b6_distortion
 // ---- end batch 6: dsp-distortion ----
 
@@ -2149,6 +2421,13 @@ int main() {
     b6_distortion::checkSaturationDryDelay();
     b6_distortion::checkSaturationRamp();
     b6_distortion::checkSaturationBlocks();
+    b6_distortion::checkDistortionCurves();
+    b6_distortion::checkDistortionDelayLines();
+    b6_distortion::checkDistortionProcessIsProcessSample();
+    b6_distortion::checkDistortionRamps();
+    b6_distortion::checkDistortionSampleAndHold();
+    b6_distortion::checkDistortionTypeFade();
+    b6_distortion::checkDistortionBlocks();
 
     return dawlab::test::summary("dsp");
 }
