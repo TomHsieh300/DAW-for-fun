@@ -180,6 +180,107 @@ void testFades() {
     }
 }
 
+// renderClip() itself, a few samples at a time: a fade-in only and a fade-out only clip get their fade
+// (with the clip gain, x0.5) wherever a block starts inside it.
+void testFadesWhenRendered() {
+    Clip in = Clip::fromBuffer(makeConstant(1.0f, 10), 100);
+    in.gainDb = -6.0206f;
+    in.fadeInSamples = 4;
+    Clip out = in;
+    out.fadeInSamples = 0;
+    out.fadeOutSamples = 4;
+    const float inGain[10] = {0.2f, 0.4f, 0.6f, 0.8f, 1, 1, 1, 1, 1, 1};
+    const float outGain[10] = {1, 1, 1, 1, 1, 1, 0.8f, 0.6f, 0.4f, 0.2f};
+    AudioBuffer a(1, 10), b(1, 10);
+    for (int from = 0; from < 10; from += 3) {
+        const int len = std::min(3, 10 - from);
+        renderClip(in, 100 + from, a.toBlock().getSubBlock(from, len));
+        renderClip(out, 100 + from, b.toBlock().getSubBlock(from, len));
+    }
+    for (int i = 0; i < 10; ++i) {
+        DAWLAB_CHECK_NEAR(a.getSample(0, i), 0.5 * inGain[i], 1e-5);
+        DAWLAB_CHECK_NEAR(b.getSample(0, i), 0.5 * outGain[i], 1e-5);
+    }
+}
+
+// A clip that is longer than its source plays silence after the source's last sample - not the
+// sample after it (in a stereo buffer that is where the next channel starts) - and a source with
+// no channels plays nothing at all.
+void testClipPastItsSource() {
+    auto st = std::make_shared<AudioBuffer>(2, 4);
+    for (int i = 0; i < 4; ++i) {
+        st->setSample(0, i, 0.2f);
+        st->setSample(1, i, -0.4f);
+    }
+    Clip c = Clip::fromBuffer(st, 0);
+    c.length = 6;
+    AudioBuffer dest(2, 6);
+    renderClip(c, 0, dest.toBlock());
+    DAWLAB_CHECK_NEAR(dest.getSample(0, 3), 0.2, 1e-6);
+    DAWLAB_CHECK_NEAR(dest.getSample(1, 3), -0.4, 1e-6);
+    for (int ch = 0; ch < 2; ++ch)
+        for (int i = 4; i < 6; ++i)
+            DAWLAB_CHECK(dest.getSample(ch, i) == 0.0f);
+
+    Clip none = Clip::fromBuffer(std::make_shared<AudioBuffer>(0, 100), 0);
+    AudioBuffer silent(2, 100);
+    renderClip(none, 0, silent.toBlock());
+    DAWLAB_CHECK(peakAbs(silent) == 0.0f);
+}
+
+// renderOffline(): the default length (the song's end, from startSample on), a tail rendered with
+// the transport stopped, and the latency dropped from the front of a bounce.
+void testBounceLengths() {
+    {   // numSamples 0: from startSample up to the end of the last clip
+        const auto engine = std::make_unique<Engine>();
+        Engine& e = *engine;
+        addTestTracks(e);
+        e.prepare(kSampleRate, 512);
+        e.setTrackClips(testId(0), {Clip::fromBuffer(makeConstant(0.1f, 1000), 0)});
+        RenderOptions o;
+        o.startSample = 200;
+        o.compensateLatency = false;
+        const AudioBuffer out = renderOffline(e, o);
+        DAWLAB_CHECK(out.getNumSamples() == 800);
+        DAWLAB_CHECK_NEAR(out.getSample(0, 0), 0.1 * kCentre, 1e-5);
+        DAWLAB_CHECK_NEAR(out.getSample(0, 799), 0.1 * kCentre, 1e-5);
+    }
+    {   // a 10 ms tail in blocks of 300: the clip goes on past the song's end, but the tail is silent
+        const auto engine = std::make_unique<Engine>();
+        Engine& e = *engine;
+        addTestTracks(e);
+        e.prepare(kSampleRate, 512);
+        e.setTrackClips(testId(0), {Clip::fromBuffer(makeConstant(0.1f, 3000), 0)});
+        RenderOptions o;
+        o.numSamples = 1000;
+        o.tailSeconds = 0.01;
+        o.blockSize = 300;
+        o.compensateLatency = false;
+        const AudioBuffer out = renderOffline(e, o);
+        DAWLAB_CHECK(out.getNumSamples() == 1480);
+        DAWLAB_CHECK_NEAR(out.getSample(0, 999), 0.1 * kCentre, 1e-5);
+        int loudInTail = 0;
+        for (int i = 1000; i < out.getNumSamples(); ++i)
+            loudInTail += out.getSample(0, i) != 0.0f ? 1 : 0;
+        DAWLAB_CHECK(loudInTail == 0);
+    }
+    {   // 100 samples of insert latency: the bounce is still numSamples long, and the impulse is back in place
+        const auto engine = std::make_unique<Engine>();
+        Engine& e = *engine;
+        addTestTracks(e);
+        e.prepare(kSampleRate, 512);
+        e.setTrackClips(testId(0), {Clip::fromBuffer(makeImpulseClip(1, 0, 0.5f), 1000)});
+        e.addInsert(testTrack(0), -1, std::make_unique<PureDelayEffect>(100));
+        e.applyPendingCommandsOffline();
+        const AudioBuffer out = render(e, 3000, kBlockSize, true);
+        DAWLAB_CHECK(out.getNumSamples() == 3000);
+        for (int ch = 0; ch < 2; ++ch) {
+            DAWLAB_CHECK(argMaxAbs(out, ch) == 1000);
+            DAWLAB_CHECK_NEAR(out.getSample(ch, 1000), 0.5 * kCentre, 1e-5);
+        }
+    }
+}
+
 // A clip whose value encodes the timeline position: v(t) = t * 1e-5. The output (divided by
 // the pan gain) then tells which timeline sample was played at every output sample.
 std::shared_ptr<const AudioBuffer> makeTimelineRamp(int n) {
@@ -305,6 +406,9 @@ int main() {
     testTransportMaths();
     testClipPlacement();
     testFades();
+    testFadesWhenRendered();
+    testClipPastItsSource();
+    testBounceLengths();
     testLoopPlayback();
     testSeekAndStop();
     testLoopChangeArrivesWhole();
