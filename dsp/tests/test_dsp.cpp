@@ -1944,6 +1944,154 @@ void checkOversamplerLatency() {
     }
 }
 
+// Saturation::shape(): the documented curves, at both sides of the knees
+void checkSaturationCurves() {
+    struct Point {
+        SaturationCurve curve;
+        float x;
+        double y;
+    };
+    const double cubicHalf = 0.5 - 0.125 / 3.0;
+    const Point points[] = {
+        {SaturationCurve::Cubic, 0.5f, cubicHalf},       {SaturationCurve::Cubic, -0.5f, -cubicHalf},
+        {SaturationCurve::Cubic, 1.0f, 2.0 / 3.0},       {SaturationCurve::Cubic, -1.0f, -2.0 / 3.0},
+        {SaturationCurve::Cubic, 3.0f, 2.0 / 3.0},       {SaturationCurve::Cubic, -3.0f, -2.0 / 3.0},
+        {SaturationCurve::Arctan, 0.5f, (2.0 / kPi) * std::atan(0.25 * kPi)},
+        {SaturationCurve::Arctan, -2.0f, (2.0 / kPi) * std::atan(-kPi)},
+        {SaturationCurve::Asymmetric, 0.5f, std::tanh(0.5)}, {SaturationCurve::Asymmetric, -0.5f, 0.5 * std::tanh(-1.0)},
+        {SaturationCurve::Tanh, 0.7f, std::tanh(0.7)}};
+    for (const Point& p : points)
+        DAWLAB_CHECK_NEAR(Saturation::shape(p.curve, p.x), p.y, 1e-6);
+    // from |x| = 1 on, Cubic is the hard clip itself: exactly +-2/3 (the polynomial would round to 1 ulp less)
+    DAWLAB_CHECK(Saturation::shape(SaturationCurve::Cubic, 1.0f) == 2.0f / 3.0f);
+    DAWLAB_CHECK(Saturation::shape(SaturationCurve::Cubic, -1.0f) == -2.0f / 3.0f);
+}
+
+// Saturation::process() at 1x without the DC blocker: every sample is dry + (shape(drive x) - dry) mix, on every
+// channel alike (a stereo block of exactly maxBlockSize samples that does not start at 0)
+void checkSaturationProcessCurves() {
+    const int n = 128;
+    const float drive = dbToGain(6.0f);
+    for (const SaturationCurve curve :
+         {SaturationCurve::Tanh, SaturationCurve::Cubic, SaturationCurve::Arctan, SaturationCurve::Asymmetric}) {
+        for (const float mix : {1.0f, 0.5f}) {
+            const auto s = std::make_unique<Saturation>();
+            s->setOversamplingFactorLog2(0);
+            s->setCurve(curve);
+            s->setDriveDb(6.0f);
+            s->setMix(mix);
+            s->setDcBlockerEnabled(false);
+            s->prepare(kRate, n, 2);
+            AudioBuffer b(2, n);
+            for (int i = 0; i < n; ++i)
+                for (int ch = 0; ch < 2; ++ch)
+                    b.setSample(ch, i, 0.6f * std::sin(0.05f * static_cast<float>(i) + 0.3f));
+            const AudioBuffer in = b;
+            s->process(b.toBlock());
+            double worst = 0.0;
+            bool channelsAlike = true;
+            for (int i = 0; i < n; ++i) {
+                const float x = in.getSample(0, i);
+                const float y = x + (Saturation::shape(curve, x * drive) - x) * mix;
+                worst = std::max(worst, static_cast<double>(std::abs(b.getSample(0, i) - y)));
+                channelsAlike = channelsAlike && b.getSample(0, i) == b.getSample(1, i);
+            }
+            std::printf("Saturation %s, mix %.1f at 1x: worst error %.3g\n", saturationCurveName(curve),
+                        static_cast<double>(mix), worst);
+            DAWLAB_CHECK(worst < 1e-6 && channelsAlike);
+        }
+    }
+}
+
+// Saturation at mix 0: the output is the input delayed by exactly getLatencySamples() (0, 31, 36 at 1x, 2x, 4x)
+void checkSaturationDryDelay() {
+    const int expected[] = {0, 31, 36};
+    for (int log2 = 0; log2 <= 2; ++log2) {
+        const auto s = std::make_unique<Saturation>();
+        s->setOversamplingFactorLog2(log2);
+        s->setDriveDb(12.0f);
+        s->setMix(0.0f);
+        s->prepare(kRate, 256, 1);
+        DAWLAB_CHECK(s->getLatencySamples() == expected[log2]);
+        const std::vector<float> x = noise(600, 3u);
+        AudioBuffer b = monoOf(x);
+        for (int start = 0; start < 600; start += 200)
+            s->process(b.toBlock().getSubBlock(start, 200));
+        bool delayed = true;
+        for (int i = 0; i < 600; ++i)
+            delayed = delayed && b.getSample(0, i) == at(x, i - s->getLatencySamples());
+        DAWLAB_CHECK(delayed);
+    }
+}
+
+// Saturation's mix moves over 20 ms (960 samples at 48 kHz): halfway after 480, all the way after 960
+void checkSaturationRamp() {
+    const auto s = std::make_unique<Saturation>();
+    s->setOversamplingFactorLog2(0);
+    s->setDcBlockerEnabled(false);
+    s->prepare(kRate, 256, 1);
+    AudioBuffer b(1, 256);
+    auto run = [&] {
+        for (int i = 0; i < 256; ++i)
+            b.setSample(0, i, 0.5f);
+        s->process(b.toBlock());
+    };
+    run();
+    DAWLAB_CHECK_NEAR(b.getSample(0, 255), std::tanh(0.5), 1e-6);
+    s->setMix(0.0f);
+    run();
+    run();
+    const double half = 0.5 * (std::tanh(0.5) + 0.5);
+    std::printf("Saturation mix 1 -> 0: sample 479 %.5f (halfway %.5f)\n", static_cast<double>(b.getSample(0, 479 - 256)),
+                half);
+    DAWLAB_CHECK_NEAR(b.getSample(0, 479 - 256), half, 1e-3);
+    run();
+    run();
+    DAWLAB_CHECK(b.getSample(0, 255) == 0.5f);
+}
+
+// Saturation: a block larger than maxBlockSize is the same audio as the same samples in maxBlockSize pieces, and
+// a block with no channels changes nothing (not even a ramp)
+void checkSaturationBlocks() {
+    auto make = [] {
+        auto s = std::make_unique<Saturation>();
+        s->setDriveDb(12.0f);
+        s->setMix(0.5f);
+        s->prepare(kRate, 64, 1);
+        return s;
+    };
+    {
+        const auto a = make();
+        const auto b = make();
+        const std::vector<float> x = noise(100, 5u);
+        AudioBuffer whole = monoOf(x);
+        a->process(whole.toBlock());
+        AudioBuffer first = monoOf(std::vector<float>(x.begin(), x.begin() + 64));
+        AudioBuffer second = monoOf(std::vector<float>(x.begin() + 64, x.end()));
+        b->process(first.toBlock());
+        b->process(second.toBlock());
+        bool same = true;
+        for (int i = 0; i < 100; ++i)
+            same = same && whole.getSample(0, i) == (i < 64 ? first.getSample(0, i) : second.getSample(0, i - 64));
+        DAWLAB_CHECK(same);
+    }
+    {
+        const auto a = make();
+        const auto b = make();
+        AudioBuffer ba = monoOf(noise(64, 6u)), bb = ba;
+        a->process(ba.toBlock());
+        b->process(bb.toBlock());
+        a->setDriveDb(24.0f);
+        b->setDriveDb(24.0f);
+        a->process(AudioBlock(nullptr, 0, 64));
+        ba = monoOf(noise(64, 8u));
+        bb = ba;
+        a->process(ba.toBlock());
+        b->process(bb.toBlock());
+        DAWLAB_CHECK(sameSamples(ba, bb));
+    }
+}
+
 } // namespace b6_distortion
 // ---- end batch 6: dsp-distortion ----
 
@@ -1996,6 +2144,11 @@ int main() {
     b6_distortion::checkHalfbandDesign();
     b6_distortion::checkHalfbandStage();
     b6_distortion::checkOversamplerLatency();
+    b6_distortion::checkSaturationCurves();
+    b6_distortion::checkSaturationProcessCurves();
+    b6_distortion::checkSaturationDryDelay();
+    b6_distortion::checkSaturationRamp();
+    b6_distortion::checkSaturationBlocks();
 
     return dawlab::test::summary("dsp");
 }
