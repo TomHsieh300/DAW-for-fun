@@ -2053,6 +2053,62 @@ void checkGateClosedRangeGlide() {
     DAWLAB_CHECK(nearRel(one.nextGain(0.0f), dbToGain(-90.0f), 1e-5f));
 }
 
+// LevelMeter: reset() clears the readings of every channel
+void checkLevelMeterResetClearsAllChannels() {
+    LevelMeter m;
+    m.prepare(kSampleRate, 2);
+    AudioBuffer b = constantBlock(64);
+    m.process(b);
+    DAWLAB_CHECK(m.getPeakDb(1) > -7.0f);
+    DAWLAB_CHECK(m.getPeakDb(2) == kMinusInfinityDb && m.getPeakDb(-1) == kMinusInfinityDb);
+    m.reset();
+    for (int ch = 0; ch < 2; ++ch)
+        DAWLAB_CHECK(m.getPeakDb(ch) == kMinusInfinityDb && m.getPeakHoldDb(ch) == kMinusInfinityDb &&
+                     m.getRmsDb(ch) == kMinusInfinityDb);
+}
+
+// LevelMeter ballistics: the peak jumps only on a larger sample (an equal one lets it keep falling); the hold waits
+// exactly holdMs and then falls one step; a hold of 0 falls at once
+void checkLevelMeterBallistics() {
+    const float d = LevelMeter::decayCoefficient(4800.0f, kSampleRate); // 0.1 dB per sample
+    DAWLAB_CHECK_NEAR(LevelMeter::decayCoefficient(20.0f, 1.0), 0.1, 1e-7);
+    {
+        LevelMeter m;
+        m.prepare(kSampleRate, 1);
+        m.setDecayDbPerSecond(4800.0f);
+        AudioBuffer b(1, 2);
+        std::fill_n(b.getWritePointer(0), 2, 0.5f);
+        m.process(b);
+        DAWLAB_CHECK_NEAR(m.getPeakDb(0), gainToDb(0.5f * d), 1e-4);
+    }
+    {
+        LevelMeter m;
+        m.prepare(kSampleRate, 1);
+        m.setDecayDbPerSecond(4800.0f);
+        m.setPeakHoldMs(0.0f);
+        AudioBuffer b(1, 2);
+        b.getWritePointer(0)[0] = 1.0f;
+        b.getWritePointer(0)[1] = 0.0f;
+        m.process(b);
+        DAWLAB_CHECK_NEAR(m.getPeakHoldDb(0), gainToDb(d), 1e-4);
+    }
+    {
+        LevelMeter m;
+        m.prepare(kSampleRate, 1);
+        m.setDecayDbPerSecond(4800.0f);
+        m.setPeakHoldMs(1.0f); // 48 samples
+        AudioBuffer b(1, 49);
+        b.clear();
+        b.getWritePointer(0)[0] = 1.0f;
+        m.process(b);
+        DAWLAB_CHECK(m.getPeakHoldDb(0) == 0.0f);
+        AudioBuffer one(1, 1);
+        one.clear();
+        m.process(one);
+        DAWLAB_CHECK_NEAR(m.getPeakHoldDb(0), gainToDb(d), 1e-4);
+    }
+}
+
 } // namespace
 
 void checkDspFilters() {
@@ -2724,6 +2780,8 @@ int main() {
     checkGateThresholdEdges();
     checkGateStateDurations();
     checkGateClosedRangeGlide();
+    checkLevelMeterResetClearsAllChannels();
+    checkLevelMeterBallistics();
 
     return dawlab::test::summary("dsp");
 }
