@@ -1772,6 +1772,80 @@ void checkEqRampChangedMidway() {
 
 } // namespace
 
+// ---- batch 6: dsp-analysis ----
+// Fft, SpectrumAnalyzer and LoudnessMeter against what they promise: exact values on bin centres, the edges of
+// their counters, and the gating rules of BS.1770.
+namespace {
+
+// A deterministic complex test signal with energy in every bin
+std::complex<float> analysisTestSample(int i) {
+    return {static_cast<float>(std::sin(0.7 * i + 0.3)), static_cast<float>(std::cos(1.3 * i * i))};
+}
+
+// The largest |a[i] - b[i]| over the first n elements
+template <typename A, typename B>
+double largestDifference(const std::vector<A>& a, const std::vector<B>& b, int n) {
+    double largest = 0.0;
+    for (size_t i = 0; i < static_cast<size_t>(n); ++i)
+        largest = std::max(largest, static_cast<double>(std::abs(a[i] - b[i])));
+    return largest;
+}
+
+// Fft::forward() and inverse() agree with the naive DFT at every size from 1 to 64 points
+void checkFftMatchesNaiveDft() {
+    for (int order = 0; order <= 6; ++order) {
+        const Fft fft(order);
+        const int n = fft.getSize();
+        DAWLAB_CHECK(n == 1 << order && fft.getNumRealBins() == n / 2 + 1);
+        std::vector<std::complex<float>> x(static_cast<size_t>(n)), ref(static_cast<size_t>(n));
+        for (int i = 0; i < n; ++i)
+            x[static_cast<size_t>(i)] = analysisTestSample(i);
+        naiveDft(x.data(), ref.data(), n);
+        std::vector<std::complex<float>> y = x;
+        fft.forward(y.data());
+        const double forwardError = largestDifference(y, ref, n);
+        fft.inverse(y.data());
+        const double roundTripError = largestDifference(y, x, n);
+        std::printf("Fft order %d: forward vs naive DFT %.2g, inverse(forward(x)) - x %.2g\n", order, forwardError,
+                    roundTripError);
+        DAWLAB_CHECK(forwardError < 1e-4 && roundTripError < 1e-5);
+    }
+}
+
+// forwardReal() gives the naive DFT's first N/2+1 bins (DC and Nyquist included); inverseReal() of them on a fresh
+// Fft gives the signal back and writes exactly N samples
+void checkFftRealTransforms() {
+    for (int order = 1; order <= 6; ++order) {
+        const Fft forward(order), inverse(order);
+        const int n = forward.getSize();
+        std::vector<float> x(static_cast<size_t>(n));
+        std::vector<std::complex<float>> xc(static_cast<size_t>(n)), ref(static_cast<size_t>(n));
+        for (int i = 0; i < n; ++i) {
+            x[static_cast<size_t>(i)] = 0.2f + 0.3f * analysisTestSample(i).real() + (i % 2 == 0 ? 0.5f : -0.5f);
+            xc[static_cast<size_t>(i)] = x[static_cast<size_t>(i)];
+        }
+        naiveDft(xc.data(), ref.data(), n);
+        std::vector<std::complex<float>> bins(static_cast<size_t>(forward.getNumRealBins()));
+        forward.forwardReal(x.data(), bins.data());
+        const double binError = largestDifference(bins, ref, n / 2 + 1);
+        constexpr float kSentinel = 12345.0f;
+        std::vector<float> back(static_cast<size_t>(n) + 1, kSentinel);
+        inverse.inverseReal(bins.data(), back.data());
+        const double backError = largestDifference(back, x, n);
+        std::printf("Fft order %d real: bins vs naive DFT %.2g, inverseReal - x %.2g\n", order, binError, backError);
+        DAWLAB_CHECK(binError < 1e-4 && backError < 1e-5 && back[static_cast<size_t>(n)] == kSentinel);
+    }
+}
+
+// coherentGain(window, size): no window has gain 1; only the first `size` samples count
+void checkCoherentGainEdges() {
+    const std::vector<float> w = {0.5f, 1.0f, 1.0f, 0.5f, 100.0f};
+    DAWLAB_CHECK(Fft::coherentGain(w.data(), 0) == 1.0);
+    DAWLAB_CHECK(Fft::coherentGain(w.data(), 4) == 0.75);
+}
+
+} // namespace
+
 // ---- batch 6: dsp-dynamics ----
 // Exact behaviour of the dynamics processors: the static curves at points inside and outside the knee, the state
 // machines sample by sample, and the smoothers step by step against the formula each header documents.
@@ -3794,6 +3868,12 @@ void checkSyntheticImpulseResponse() {
 
 } // namespace b6time
 
+void checkAnalysisClasses() {
+    checkFftMatchesNaiveDft();
+    checkFftRealTransforms();
+    checkCoherentGainEdges();
+}
+
 int main() {
     checkUnpreparedBlock<Chorus>("Chorus");
     checkUnpreparedBlock<Flanger>("Flanger");
@@ -3901,6 +3981,9 @@ int main() {
     b6time::checkConvolutionMatchesDirectConvolution();
     b6time::checkConvolutionMixGlide();
     b6time::checkSyntheticImpulseResponse();
+
+    // ---- batch 6: dsp-analysis ----
+    checkAnalysisClasses();
 
     return dawlab::test::summary("dsp");
 }
