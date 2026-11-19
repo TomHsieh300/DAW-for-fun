@@ -7,6 +7,8 @@
 #include "TestHelpers.h"
 #include "TestTracks.h"
 
+#include <type_traits>
+
 using namespace l15test;
 using namespace dawlab::engine::test;
 
@@ -210,6 +212,165 @@ void testFaderRampIsSmooth() {
     DAWLAB_CHECK_NEAR(out.getSample(0, 47999), 0.70711 * 0.1, 1e-4);
 }
 
+// ---- one strip on its own: blocks of 64 samples, ramps compared with a dsp::SmoothedValue -------
+constexpr int kStripBlock = 64;
+
+// A stereo buffer of kStripBlock samples of `value`, plus one sample of 10 past the block.
+AudioBuffer stripBuffer(float value) {
+    AudioBuffer b(2, kStripBlock + 1);
+    for (int ch = 0; ch < 2; ++ch) {
+        for (int i = 0; i < kStripBlock; ++i)
+            b.setSample(ch, i, value);
+        b.setSample(ch, kStripBlock, 10.0f);
+    }
+    return b;
+}
+AudioBlock stripBlock(AudioBuffer& b) { return b.toBlock().getSubBlock(0, kStripBlock); }
+
+// The ramp a strip's smoother makes from `from` to `to`.
+dsp::SmoothedValue ramp(double seconds, float from, float to) {
+    dsp::SmoothedValue v;
+    v.reset(kSampleRate, seconds);
+    v.setCurrentAndTargetValue(from);
+    v.setTargetValue(to);
+    return v;
+}
+
+void testMuteRampsOver10ms() {
+    auto s = std::make_unique<ChannelStrip>();
+    s->prepare(kSampleRate, kStripBlock);
+    s->beginBlock(true); // the first block starts at the targets
+    s->beginBlock(false); // then muted: both sides fade out over 480 samples, block after block
+    dsp::SmoothedValue expected = ramp(ChannelStrip::kMuteRampSeconds, 1.0f, 0.0f);
+    bool exact = true;
+    for (int block = 0; block < 10; ++block) {
+        AudioBuffer b = stripBuffer(1.0f);
+        s->applyMuteSolo(stripBlock(b));
+        for (int i = 0; i < kStripBlock; ++i) {
+            const float g = expected.getNextValue();
+            exact = exact && b.getSample(0, i) == g && b.getSample(1, i) == g;
+        }
+        exact = exact && b.getSample(0, kStripBlock) == 10.0f && b.getSample(1, kStripBlock) == 10.0f;
+    }
+    DAWLAB_CHECK(exact);
+    AudioBuffer after = stripBuffer(1.0f); // the ramp is over: silence
+    s->applyMuteSolo(stripBlock(after));
+    DAWLAB_CHECK(after.getSample(0, 0) == 0.0f && after.getSample(1, kStripBlock - 1) == 0.0f);
+}
+
+void testSendRampsOver50ms() {
+    auto s = std::make_unique<ChannelStrip>();
+    s->prepare(kSampleRate, kStripBlock);
+    AudioBuffer src = stripBuffer(1.0f), dest = stripBuffer(0.0f);
+    s->beginBlock(true); // sends start off: nothing reaches a bus
+    s->addSend(0, stripBlock(dest), stripBlock(src));
+    DAWLAB_CHECK(peakAbs(dest.getReadPointer(0), kStripBlock) == 0.0f);
+    DAWLAB_CHECK(peakAbs(dest.getReadPointer(1), kStripBlock) == 0.0f);
+
+    s->setSendLevelDb(0, -6.0206f); // opened while playing: a 50 ms ramp to x0.5
+    s->beginBlock(true);
+    dsp::SmoothedValue expected = ramp(ChannelStrip::kFaderRampSeconds, 0.0f, dbToGain(-6.0206f));
+    bool exact = true;
+    for (int block = 0; block < 3; ++block) {
+        dest = stripBuffer(0.0f);
+        s->addSend(0, stripBlock(dest), stripBlock(src));
+        for (int i = 0; i < kStripBlock; ++i) {
+            const float g = expected.getNextValue();
+            exact = exact && dest.getSample(0, i) == g && dest.getSample(1, i) == g;
+        }
+        exact = exact && dest.getSample(0, kStripBlock) == 10.0f;
+    }
+    DAWLAB_CHECK(exact);
+}
+
+void testFaderRampStaysInItsBlock() {
+    auto s = std::make_unique<ChannelStrip>();
+    s->prepare(kSampleRate, kStripBlock);
+    s->setPanMode(PanMode::Balance); // unity at the centre: the fader alone
+    s->setGainDb(-6.0206f);
+    s->beginBlock(true);
+    s->setGainDb(0.0f); // ramps from x0.5 up to x1
+    s->beginBlock(true);
+    AudioBuffer b = stripBuffer(1.0f);
+    s->applyFaderAndPan(stripBlock(b));
+    dsp::SmoothedValue expected = ramp(ChannelStrip::kFaderRampSeconds, dbToGain(-6.0206f), 1.0f);
+    bool exact = true;
+    for (int i = 0; i < kStripBlock; ++i) {
+        const float g = expected.getNextValue();
+        exact = exact && std::abs(b.getSample(0, i) - g) < 1e-6f && std::abs(b.getSample(1, i) - g) < 1e-6f;
+    }
+    DAWLAB_CHECK(exact);
+    DAWLAB_CHECK(b.getSample(0, kStripBlock) == 10.0f && b.getSample(1, kStripBlock) == 10.0f);
+
+    // a mono block gets the left gain
+    auto mono = std::make_unique<ChannelStrip>();
+    mono->prepare(kSampleRate, kStripBlock);
+    mono->setPanMode(PanMode::Balance);
+    mono->setGainDb(-6.0206f);
+    mono->beginBlock(true);
+    AudioBuffer m = stripBuffer(1.0f);
+    mono->applyFaderAndPan(m.toBlock().getChannelSubset(0, 1).getSubBlock(0, kStripBlock));
+    DAWLAB_CHECK_NEAR(m.getSample(0, 0), 0.5, 1e-4);
+    DAWLAB_CHECK(m.getSample(1, 0) == 1.0f);
+}
+
+void testStripStatistics() {
+    auto s = std::make_unique<ChannelStrip>();
+    s->prepare(kSampleRate, kStripBlock);
+    DAWLAB_CHECK(s->getIntegratedRmsDb() == kMinusInfinityDb); // nothing measured yet
+    AudioBuffer b = stripBuffer(0.5f);
+    for (int i = 0; i < kStripBlock; ++i)
+        b.setSample(1, i, 0.0f);
+    s->meter(stripBlock(b)); // L = 0.5, R = 0, and the 10 past the block is not measured
+    b = stripBuffer(0.5f);
+    s->meter(stripBlock(b)); // both 0.5
+    // 3 x 64 samples of 0.5 out of 4 x 64: mean square 0.1875
+    DAWLAB_CHECK(s->getMaxPeakLinear() == 0.5f);
+    DAWLAB_CHECK_NEAR(s->getIntegratedRmsDb(), gainToDb(std::sqrt(0.1875f)), 1e-4);
+}
+
+void testStripEdges() {
+    float l = 1.0f, r = 1.0f; // a fader at -inf is silent, not 10^(-100/20)
+    ChannelStrip::computeStripGains(kMinusInfinityDb, 0.0f, dsp::PanLaw::ConstantPower, PanMode::Balance, l, r);
+    DAWLAB_CHECK(l == 0.0f && r == 0.0f);
+    auto s = std::make_unique<ChannelStrip>();
+    for (const int bus : {-1, kNumBuses}) { // a bus that does not exist keeps no send
+        s->setSendLevelDb(bus, 0.0f);
+        s->setSendPreFader(bus, true);
+        DAWLAB_CHECK(s->getSendLevelDb(bus) == kMinusInfinityDb);
+        DAWLAB_CHECK(!s->isSendPreFader(bus));
+    }
+}
+
+// ---- the mixer's names and its pool of track slots ---------------------------------------------
+void testMixerNamesAndSlots() {
+    auto m = std::make_unique<Mixer>();
+    m->prepare(kSampleRate, kBlockSize);
+    DAWLAB_CHECK(m->getBus(0).getName() == "Bus A" && m->getMaster().getName() == "Master");
+    if constexpr (kNumBuses >= 2)
+        DAWLAB_CHECK(m->getBus(1).getName() == "Bus B");
+    DAWLAB_CHECK(m->getStrip(ChannelRef::bus(kNumBuses - 1)) == &m->getBus(kNumBuses - 1));
+    DAWLAB_CHECK(m->getStrip(ChannelRef::bus(kNumBuses)) == nullptr);
+
+    const TrackId id{7};
+    DAWLAB_CHECK(!m->activateTrack(kMaxTracks, id));
+    DAWLAB_CHECK(!m->trackInSlot(kMaxTracks).isValid());
+    DAWLAB_CHECK(m->activateTrack(0, id) && m->trackInSlot(0) == id);
+    m->getTrack(0).getInserts().insertAt(0, new GainEffect());
+    m->getTrack(0).getInserts().insertAt(1, new GainEffect());
+    int inserts = 0;
+    const auto discard = [&inserts](auto* p) {
+        if constexpr (std::is_same_v<decltype(p), InsertEffect*>) {
+            ++inserts;
+            delete p;
+        }
+    };
+    DAWLAB_CHECK(!m->deactivateTrack(ChannelRef::bus(0), discard));
+    DAWLAB_CHECK(m->deactivateTrack(ChannelRef::track(0, id), discard));
+    DAWLAB_CHECK(inserts == 2 && m->getTrack(0).getInserts().getNumInserts() == 0);
+    DAWLAB_CHECK(!m->trackInSlot(0).isValid());
+}
+
 } // namespace
 
 int main() {
@@ -219,5 +380,11 @@ int main() {
     testSends();
     testSoloKeepsReverbBus();
     testFaderRampIsSmooth();
+    testMuteRampsOver10ms();
+    testSendRampsOver50ms();
+    testFaderRampStaysInItsBlock();
+    testStripStatistics();
+    testStripEdges();
+    testMixerNamesAndSlots();
     return dawlab::test::summary("l15_test_mixer");
 }
