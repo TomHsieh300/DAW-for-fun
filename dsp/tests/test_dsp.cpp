@@ -2206,6 +2206,189 @@ void checkTransientShaperFormula() {
     DAWLAB_CHECK(!landing.empty() && shaperMismatches(landing) == 0);
 }
 
+// SlidingWindowMin returns the minimum of the last `window` values (checked against a plain search), with ties,
+// with the window as large as the capacity and smaller, and after the ring wraps
+void checkSlidingWindowMin() {
+    for (const int capacity : {1, 3, 8}) {
+        for (int window = 1; window <= capacity; ++window) {
+            SlidingWindowMin w;
+            w.prepare(capacity);
+            w.setWindowLength(window);
+            std::vector<float> history;
+            uint32_t seed = 12345u + static_cast<uint32_t>(capacity * 16 + window);
+            int wrong = 0;
+            for (int n = 0; n < 300; ++n) {
+                seed = seed * 1664525u + 1013904223u;
+                const float v = static_cast<float>((seed >> 24) % 5) * 0.25f; // 5 levels: many ties
+                history.push_back(v);
+                float expected = v;
+                for (int k = std::max(0, n - window + 1); k <= n; ++k)
+                    expected = std::min(expected, history[static_cast<size_t>(k)]);
+                wrong += w.push(v) == expected ? 0 : 1;
+            }
+            DAWLAB_CHECK(wrong == 0);
+        }
+    }
+}
+
+// The limiter's six steps written out plainly (README 2.4): input gain 1, g = min(1, c / peak), release
+// toward 1, minimum over L + 1 values, mean over L + 1 values, output = delayed input x mean
+std::vector<float> referenceLimiter(const std::vector<float>& x, int L, float ceiling, double releaseMs) {
+    const float cRel = static_cast<float>(1.0 - std::exp(-1.0 / (releaseMs * 0.001 * kSampleRate)));
+    std::vector<float> gr, m, y;
+    float released = 1.0f;
+    for (size_t n = 0; n < x.size(); ++n) {
+        const float peak = std::abs(x[n]);
+        const float g = peak > ceiling ? ceiling / peak : 1.0f;
+        released = std::min(g, smoothToward(released, 1.0f, cRel));
+        gr.push_back(released);
+        float mn = 1.0f;
+        double sum = 0.0;
+        for (int k = 0; k <= L; ++k)
+            if (n >= static_cast<size_t>(k))
+                mn = std::min(mn, gr[n - static_cast<size_t>(k)]);
+        m.push_back(mn);
+        for (int k = 0; k <= L; ++k)
+            sum += n >= static_cast<size_t>(k) ? static_cast<double>(m[n - static_cast<size_t>(k)]) : 1.0;
+        const float s = static_cast<float>(sum / (L + 1));
+        const float delayed = n >= static_cast<size_t>(L) ? x[n - static_cast<size_t>(L)] : 0.0f;
+        y.push_back(std::clamp(delayed * s, -ceiling, ceiling));
+    }
+    return y;
+}
+
+void checkLimiterMatchesItsSteps() {
+    std::vector<float> x(4000);
+    for (size_t n = 0; n < x.size(); ++n) {
+        const float burst = (n / 500) % 2 == 0 ? 1.6f : 0.3f;
+        x[n] = burst * static_cast<float>(std::sin(0.05 * static_cast<double>(n)));
+    }
+    struct Setup { float maxMs, lookMs; int L; };
+    for (const Setup su : {Setup{20.0f, 1.0f, 48}, Setup{1.0f, 1.0f, 48}, Setup{20.0f, 0.0f, 0}}) {
+        Limiter l;
+        l.setMaxLookaheadMs(su.maxMs);
+        l.prepare(kSampleRate, 4000, 1);
+        l.setLookaheadMs(su.lookMs);
+        l.setCeilingDb(-3.0f);
+        l.setReleaseMs(5.0f);
+        DAWLAB_CHECK(l.getLatencySamples() == su.L);
+        AudioBuffer b(1, 4000);
+        std::copy(x.begin(), x.end(), b.getWritePointer(0));
+        l.process(b);
+        const std::vector<float> ref = referenceLimiter(x, su.L, dbToGain(-3.0f), 5.0);
+        int wrong = 0;
+        for (size_t n = 0; n < x.size(); ++n)
+            wrong += std::abs(b.getReadPointer(0)[n] - ref[n]) <= 1e-6f ? 0 : 1;
+        DAWLAB_CHECK(wrong == 0);
+        DAWLAB_CHECK(l.getSafetyClipCount() == 0);
+    }
+}
+
+// Limiter input gain: a linear ramp over 20 ms that ends exactly on the target; with a one-sample ramp it lands on it
+void checkLimiterInputGainRamp() {
+    Limiter l;
+    l.prepare(kSampleRate, 4000, 1);
+    l.setLookaheadMs(0.0f);
+    l.setCeilingDb(0.0f);
+    AudioBuffer b(1, 4000);
+    std::fill_n(b.getWritePointer(0), 4000, 0.1f);
+    l.setInputGainDb(6.0f);
+    l.process(b);
+    const float target = dbToGain(6.0f);
+    const float step = (target - 1.0f) / 960.0f;
+    const float* y = b.getReadPointer(0);
+    DAWLAB_CHECK_NEAR(y[0], 0.1f * (1.0f + step), 1e-6);
+    DAWLAB_CHECK_NEAR(y[479], 0.1f * (1.0f + 480.0f * step), 1e-5);
+    DAWLAB_CHECK(y[1000] == 0.1f * target && y[3999] == 0.1f * target);
+
+    float db = -6.5f;
+    while (1.0f + (dbToGain(db) - 1.0f) == dbToGain(db))
+        db -= 0.01f; // a target that 1 + (target - 1) misses by rounding
+    Limiter one;
+    one.prepare(50.0, 64, 1); // 20 ms = 1 sample
+    one.setCeilingDb(20.0f);
+    AudioBuffer s(1, 1);
+    s.getWritePointer(0)[0] = 1.0f;
+    one.process(s);
+    one.setInputGainDb(db);
+    s.getWritePointer(0)[0] = 1.0f;
+    one.process(s);
+    DAWLAB_CHECK(s.getReadPointer(0)[0] == dbToGain(db));
+}
+
+// Limiter lookahead bound: before prepare it is the value given to setMaxLookaheadMs(); after prepare it is what
+// prepare allocated, until the next prepare
+void checkLimiterLookaheadBound() {
+    Limiter before;
+    before.setMaxLookaheadMs(2.0f);
+    before.setLookaheadMs(10.0f);
+    DAWLAB_CHECK(before.getLookaheadMs() == 2.0f);
+    Limiter after;
+    after.prepare(kSampleRate, 64, 1);
+    after.setMaxLookaheadMs(2.0f);
+    after.setLookaheadMs(10.0f);
+    DAWLAB_CHECK(after.getLookaheadMs() == 10.0f && after.getLatencySamples() == 480);
+}
+
+// Limiter safety clamp: a ceiling lowered during playback is held, positive and negative, and each clearly
+// exceeding sample is counted; an overshoot at rounding level (below 1e-6) is clamped but not counted. The gain
+// reduction reading is the largest of the block.
+void checkLimiterSafetyClamp() {
+    Limiter l;
+    l.prepare(kSampleRate, 512, 2);
+    l.setLookaheadMs(1.0f);
+    l.setCeilingDb(0.0f);
+    AudioBuffer b(2, 512);
+    const auto fill = [&b]() {
+        std::fill_n(b.getWritePointer(0), 512, 0.9f);
+        std::fill_n(b.getWritePointer(1), 512, -0.9f);
+    };
+    fill();
+    l.process(b);
+    DAWLAB_CHECK(l.getSafetyClipCount() == 0);
+    l.setCeilingDb(-12.0f);
+    fill();
+    l.process(b);
+    const float c = dbToGain(-12.0f);
+    DAWLAB_CHECK(l.getSafetyClipCount() > 0 && l.getSafetyClipCount() < 1024);
+    DAWLAB_CHECK(b.getReadPointer(0)[0] == c && b.getReadPointer(1)[0] == -c);
+
+    Limiter t;
+    t.prepare(kSampleRate, 4096, 1);
+    t.setLookaheadMs(1.0f);
+    t.setCeilingDb(-1.0f);
+    AudioBuffer x(1, 4096);
+    std::fill_n(x.getWritePointer(0), 4096, 2.0f);
+    t.process(x);
+    DAWLAB_CHECK_NEAR(t.getGainReductionDb(), -gainToDb(dbToGain(-1.0f) / 2.0f), 1e-4);
+    const float before = x.getReadPointer(0)[4095];
+    t.setCeilingDb(-1.000002f); // a few ulps lower
+    const float lower = dbToGain(-1.000002f);
+    DAWLAB_CHECK(before > lower && before < lower * (1.0f + 1.0e-6f));
+    std::fill_n(x.getWritePointer(0), 4096, 2.0f);
+    t.process(x);
+    DAWLAB_CHECK(t.getSafetyClipCount() == 0 && x.getReadPointer(0)[0] == lower);
+}
+
+#ifdef NDEBUG
+// Release build only (a Debug build asserts): an unprepared limiter clears the block, and channels beyond those
+// given to prepare() are cleared
+void checkLimiterClearsUnpreparedChannels() {
+    AudioBuffer b(2, 64);
+    std::fill_n(b.getWritePointer(0), 64, 0.5f);
+    std::fill_n(b.getWritePointer(1), 64, 0.5f);
+    Limiter unprepared;
+    unprepared.process(b);
+    DAWLAB_CHECK(b.getReadPointer(0)[63] == 0.0f && b.getReadPointer(1)[63] == 0.0f);
+    std::fill_n(b.getWritePointer(0), 64, 0.5f);
+    std::fill_n(b.getWritePointer(1), 64, 0.5f);
+    Limiter mono;
+    mono.prepare(kSampleRate, 64, 1);
+    mono.process(b);
+    DAWLAB_CHECK(std::all_of(b.getReadPointer(1), b.getReadPointer(1) + 64, [](float v) { return v == 0.0f; }));
+}
+#endif
+
 } // namespace
 
 void checkDspFilters() {
@@ -2881,6 +3064,14 @@ int main() {
     checkLevelMeterBallistics();
     checkDeEsserBasics();
     checkTransientShaperFormula();
+    checkSlidingWindowMin();
+    checkLimiterMatchesItsSteps();
+    checkLimiterInputGainRamp();
+    checkLimiterLookaheadBound();
+    checkLimiterSafetyClamp();
+#ifdef NDEBUG
+    checkLimiterClearsUnpreparedChannels();
+#endif
 
     return dawlab::test::summary("dsp");
 }
