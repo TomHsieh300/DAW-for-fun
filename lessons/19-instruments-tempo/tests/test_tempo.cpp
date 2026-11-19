@@ -583,6 +583,84 @@ void testMapsCompare() {
     DAWLAB_CHECK(c.set({{0, 121.0, true}, {3840, 90.0, false}}) && a != c);      // the first tempo
 }
 
+// What set() takes: 1 to kMaxPoints points, tempos from kMinBpm to kMaxBpm both included, ticks
+// strictly rising - checked for every point, not just the first. A refused map leaves the old one.
+void testMapRules() {
+    std::vector<TempoPoint> full;
+    double seconds = 0.0; // to the last point: one beat at each tempo before it
+    for (int i = 0; i < TempoMap::kMaxPoints; ++i) {
+        full.push_back({static_cast<int64_t>(i) * kTicksPerQuarter, 100.0 + i, false});
+        if (i + 1 < TempoMap::kMaxPoints)
+            seconds += 60.0 / (100.0 + i);
+    }
+    TempoMap m;
+    DAWLAB_CHECK(m.set(full) && m.size() == TempoMap::kMaxPoints);
+    DAWLAB_CHECK_NEAR(m.secondsAt(static_cast<double>(full.back().tick)), seconds, 1e-9);
+    full.push_back({full.back().tick + kTicksPerQuarter, 120.0, false});
+    DAWLAB_CHECK(!m.set(full) && m.size() == TempoMap::kMaxPoints); // one too many
+
+    DAWLAB_CHECK(m.set({{0, TempoMap::kMinBpm, false}, {960, TempoMap::kMaxBpm, false}}));
+    DAWLAB_CHECK(m.bpmAt(0.0) == TempoMap::kMinBpm && m.bpmAt(960.0) == TempoMap::kMaxBpm);
+    DAWLAB_CHECK(!m.set({{0, 120.0, false}, {960, TempoMap::kMinBpm - 0.1, false}}));
+    DAWLAB_CHECK(!m.set({{0, 120.0, false}, {960, TempoMap::kMaxBpm + 0.1, false}}));
+    DAWLAB_CHECK(!m.set({{0, 120.0, false}, {960, 100.0, false}, {960, 90.0, false}})); // two points at one tick
+    DAWLAB_CHECK(m.size() == 2 && m.bpmAt(960.0) == TempoMap::kMaxBpm);
+
+    // Equal maps are equal whatever an earlier, longer map left behind them.
+    TempoMap a, b;
+    DAWLAB_CHECK(a.set({{0, 120.0, false}, {960, 90.0, false}, {1920, 60.0, false}}));
+    DAWLAB_CHECK(a.set({{0, 120.0, false}, {960, 90.0, false}}) && b.set({{0, 120.0, false}, {960, 90.0, false}}));
+    DAWLAB_CHECK(a == b);
+}
+
+// The tempo along a map: a new tempo starts exactly at its point's tick, a ramp that is not the
+// first one moves from its own point, and a ramp on the last point has nothing to ramp to.
+// Before tick 0 the first tempo goes on, both ways round.
+void testTempoAlongTheMap() {
+    TempoMap m;
+    DAWLAB_CHECK(m.set({{0, 100.0, false}, {960, 120.0, true}, {1920, 180.0, true}}));
+    DAWLAB_CHECK(m.bpmAt(959.0) == 100.0);
+    DAWLAB_CHECK(m.bpmAt(960.0) == 120.0);
+    DAWLAB_CHECK_NEAR(m.bpmAt(1440.0), 150.0, 1e-9);
+    DAWLAB_CHECK(m.bpmAt(1920.0) == 180.0 && m.bpmAt(5000.0) == 180.0);
+    DAWLAB_CHECK_NEAR(m.secondsAt(1920.0 + 960.0) - m.secondsAt(1920.0), 60.0 / 180.0, 1e-12);
+
+    const TempoMap c = TempoMap::constant(120.0);
+    DAWLAB_CHECK_NEAR(c.secondsAt(-960.0), -0.5, 1e-12);
+    DAWLAB_CHECK_NEAR(c.tickAt(-0.5), -960.0, 1e-9);
+}
+
+// The edges of the transport's own values: a sample rate it cannot use, a seek to sample 0, a loop
+// set in bars, an empty loop and a playhead that stands exactly on the loop's end.
+void testTransportEdges() {
+    Transport t;
+    t.prepare(0.0);
+    DAWLAB_CHECK(t.getSampleRate() == 48000.0);
+    TimelineSegment seg[Transport::kMaxSegmentsPerBlock];
+    int covered = 0;
+    t.play();
+    t.setPosition(1000);
+    t.advance(100, seg, covered);
+    t.setPosition(0);
+    DAWLAB_CHECK(t.getPosition() == 0); // pending: what a UI shows
+    DAWLAB_CHECK(t.advance(100, seg, covered) == 1 && seg[0].timelineStart == 0);
+
+    t.setLoopRangeBars(3, 2); // 4/4: bars 3 and 4
+    DAWLAB_CHECK(t.isLoopInTicks());
+    DAWLAB_CHECK(t.getLoopStartValue() == 2 * kBar && t.getLoopEndValue() == 4 * kBar);
+
+    t.setLoopRange(1000, 1000); // empty: no loop
+    t.setLoopEnabled(true);
+    t.setPosition(500);
+    DAWLAB_CHECK(t.advance(1000, seg, covered) == 1 && seg[0].numSamples == 1000 && covered == 1000);
+    DAWLAB_CHECK(t.getPosition() == 1500);
+
+    t.setLoopRange(0, 2000); // on the loop's end: it plays on, as past it
+    t.setPosition(2000);
+    DAWLAB_CHECK(t.advance(256, seg, covered) == 1 && seg[0].timelineStart == 2000 && seg[0].numSamples == 256);
+    DAWLAB_CHECK(t.getPosition() == 2256);
+}
+
 } // namespace
 
 int main() {
@@ -590,6 +668,9 @@ int main() {
     testNotesFollowTheMap();
     testLoopInTicks();
     testMapsCompare();
+    testMapRules();
+    testTempoAlongTheMap();
+    testTransportEdges();
     testNewMapWhileANoteSounds();
     testInstrumentLatency();
     testLowLatencyOnTheFasterTrack();
