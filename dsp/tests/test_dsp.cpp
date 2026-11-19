@@ -1923,6 +1923,136 @@ void checkExpanderMeterReadsRange() {
     DAWLAB_CHECK(e.getGainReductionDb() == 50.0f);
 }
 
+// Gate: close threshold = threshold - hysteresis; a closed gate reads the whole range as gain reduction
+void checkGateThresholdsAndMeter() {
+    Gate g;
+    g.prepare(kSampleRate, 64, 1);
+    DAWLAB_CHECK(g.getGainReductionDb() == 80.0f);
+    g.setThresholdDb(-30.0f);
+    DAWLAB_CHECK(g.getCloseThresholdDb() == -36.0f);
+    g.setHysteresisDb(10.0f);
+    DAWLAB_CHECK(g.getCloseThresholdDb() == -40.0f);
+    AudioBuffer b(1, 64);
+    b.clear();
+    g.process(b);
+    DAWLAB_CHECK(g.getGainReductionDb() == 80.0f);
+}
+
+// An envelope follower set up like the gate's detector, to know the envelope the gate sees
+EnvelopeFollower gateDetector(double sampleRate) {
+    EnvelopeFollower f;
+    f.prepare(sampleRate);
+    f.setMode(DetectorMode::Peak);
+    f.setAttackMs(Gate::kDetectorAttackMs);
+    f.setReleaseMs(20.0f);
+    return f;
+}
+
+// Gate: opens on the sample whose envelope reaches the threshold; stays open while the envelope equals the close
+// threshold and goes to Release (hold 0) on the next sample below it
+void checkGateThresholdEdges() {
+    EnvelopeFollower f = gateDetector(kSampleRate);
+    f.processSample(0.5f);
+    f.processSample(0.5f);
+    const float third = f.processSample(0.5f);
+    Gate g;
+    g.prepare(kSampleRate, 64, 1);
+    g.setThresholdDb(gainToDb(third));
+    g.nextGain(0.5f);
+    g.nextGain(0.5f);
+    DAWLAB_CHECK(g.getState() == GateState::Closed);
+    g.nextGain(0.5f);
+    DAWLAB_CHECK(g.getState() == GateState::Attack);
+
+    EnvelopeFollower f2 = gateDetector(kSampleRate);
+    for (int i = 0; i < 200; ++i)
+        f2.processSample(1.0f);
+    float env = 0.0f;
+    for (int i = 0; i < 5; ++i)
+        env = f2.processSample(0.0f);
+    Gate h;
+    h.prepare(kSampleRate, 64, 1);
+    h.setHoldMs(0.0f);
+    h.setThresholdDb(gainToDb(env));
+    h.setHysteresisDb(0.0f);
+    for (int i = 0; i < 200; ++i)
+        h.nextGain(1.0f);
+    DAWLAB_CHECK(h.getState() == GateState::Open);
+    for (int i = 0; i < 5; ++i)
+        h.nextGain(0.0f);
+    DAWLAB_CHECK(h.getState() == GateState::Open);
+    h.nextGain(0.0f);
+    DAWLAB_CHECK(h.getState() == GateState::Release);
+}
+
+// Gate: hold lasts exactly holdMs; with 1 dB steps attack and release take exactly range / step samples
+void checkGateStateDurations() {
+    Gate g;
+    g.prepare(kSampleRate, 64, 1);
+    g.setDetectorReleaseMs(0.1f);
+    g.setHoldMs(1.0f);
+    for (int i = 0; i < 200; ++i)
+        g.nextGain(1.0f);
+    int holdSamples = 0;
+    for (int i = 0; i < 400; ++i) {
+        g.nextGain(0.0f);
+        holdSamples += g.getState() == GateState::Hold ? 1 : 0;
+    }
+    DAWLAB_CHECK(holdSamples == 48);
+
+    // 32 kHz, 2 ms = 64 samples, range -64 dB: 1 dB per sample
+    Gate s;
+    s.prepare(32000.0, 64, 1);
+    s.setDetectorReleaseMs(0.1f);
+    s.setHoldMs(0.0f);
+    s.setRangeDb(-64.0f);
+    s.setAttackMs(2.0f);
+    s.setReleaseMs(2.0f);
+    s.reset();
+    int attack = 0, open = 0;
+    for (int i = 0; i < 200; ++i) {
+        s.nextGain(1.0f);
+        attack += s.getState() == GateState::Attack ? 1 : 0;
+        open += s.getState() == GateState::Open ? 1 : 0;
+    }
+    DAWLAB_CHECK(attack == 64 && open == 136);
+    int release = 0;
+    float lastGain = 1.0f;
+    for (int i = 0; i < 400; ++i) {
+        lastGain = s.nextGain(0.0f);
+        release += s.getState() == GateState::Release ? 1 : 0;
+    }
+    DAWLAB_CHECK(release == 64);
+    DAWLAB_CHECK(s.getState() == GateState::Closed && lastGain == dbToGain(-64.0f));
+}
+
+// Gate: a range changed while closed is reached by gliding, up with the attack slope and down with the release slope
+void checkGateClosedRangeGlide() {
+    Gate up;
+    up.prepare(kSampleRate, 64, 1);
+    up.nextGain(0.0f);
+    up.setRangeDb(-40.0f); // attack slope = 40 dB / 48 samples
+    DAWLAB_CHECK(nearRel(up.nextGain(0.0f), dbToGain(-80.0f + 40.0f / 48.0f), 1e-5f));
+
+    Gate down;
+    down.prepare(kSampleRate, 64, 1);
+    down.setRangeDb(-40.0f);
+    down.reset();
+    down.nextGain(0.0f);
+    down.setRangeDb(-80.0f); // release slope = 80 dB / 4800 samples
+    DAWLAB_CHECK(nearRel(down.nextGain(0.0f), dbToGain(-40.0f - 80.0f / 4800.0f), 1e-5f));
+
+    // An attack of exactly one sample climbs range-span dB in that sample, not more
+    Gate one;
+    one.prepare(1000.0, 64, 1);
+    one.setAttackMs(1.0f);
+    one.setRangeDb(-100.0f);
+    one.reset();
+    one.nextGain(0.0f);
+    one.setRangeDb(-10.0f); // span 10 dB per sample
+    DAWLAB_CHECK(nearRel(one.nextGain(0.0f), dbToGain(-90.0f), 1e-5f));
+}
+
 } // namespace
 
 void checkDspFilters() {
@@ -2590,6 +2720,10 @@ int main() {
     checkCompressorMakeupGlide();
     checkExpanderCurve();
     checkExpanderMeterReadsRange();
+    checkGateThresholdsAndMeter();
+    checkGateThresholdEdges();
+    checkGateStateDurations();
+    checkGateClosedRangeGlide();
 
     return dawlab::test::summary("dsp");
 }
