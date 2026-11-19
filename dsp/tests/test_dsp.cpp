@@ -1554,12 +1554,40 @@ void checkStateVariableFilterImpulse() {
     DAWLAB_CHECK(o.low == 0.0f && o.band == 0.0f && o.high == 0.25f && o.notch == 0.25f);
 }
 
+void checkGainPolarityInvert() {
+    Gain gain;
+    gain.prepare(kSampleRate, 64, 1);
+    gain.setGainDb(-6.0f);
+    gain.setPolarityInverted(true);
+    gain.reset();
+    DAWLAB_CHECK(gain.getCurrentGainLinear() == -dbToGain(-6.0f));
+    DAWLAB_CHECK(gain.processSample(0, 0.5f) == 0.5f * -dbToGain(-6.0f));
+}
+
+// Pan +0.5 (theta = 0.75) under each law, worked out from the formulas in Panner.h
+void checkPanLawsOffCentre() {
+    const float theta = 0.75f, halfPi = static_cast<float>(kPi) * 0.5f;
+    const float cpL = std::sin((1.0f - theta) * halfPi), cpR = std::sin(theta * halfPi);
+    float l = 0.0f, r = 0.0f;
+    Panner::computeGains(0.5f, PanLaw::Linear, l, r);
+    DAWLAB_CHECK_NEAR(l, 0.25, 1e-7);
+    DAWLAB_CHECK_NEAR(r, 0.75, 1e-7);
+    Panner::computeGains(0.5f, PanLaw::ConstantPower, l, r);
+    DAWLAB_CHECK_NEAR(l, cpL, 1e-7);
+    DAWLAB_CHECK_NEAR(r, cpR, 1e-7);
+    Panner::computeGains(0.5f, PanLaw::Minus4_5dB, l, r);
+    DAWLAB_CHECK_NEAR(l, std::sqrt(0.25f * cpL), 1e-7);
+    DAWLAB_CHECK_NEAR(r, std::sqrt(0.75f * cpR), 1e-7);
+}
+
 } // namespace
 
 void checkDspFilters() {
     checkBiquadFactoriesFollowTheCookbook();
     checkOnePoleStepResponse();
     checkStateVariableFilterImpulse();
+    checkGainPolarityInvert();
+    checkPanLawsOffCentre();
 }
 
 int main() {
