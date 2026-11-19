@@ -110,6 +110,89 @@ static void checkThd() {
     DAWLAB_CHECK(thdPercent(silence.data(), 480, 1000.0, sr) == 0.0);
 }
 
+// Sign changes in [from, to) of channel 0
+static int zeroCrossings(const dawlab::AudioBuffer& b, int from, int to) {
+    int count = 0;
+    for (int i = from + 1; i < to; ++i)
+        count += (b.getSample(0, i - 1) < 0.0f) != (b.getSample(0, i) < 0.0f);
+    return count;
+}
+
+static double rmsOf(const dawlab::AudioBuffer& b, int from, int to) {
+    return dawlab::rms(b.getReadPointer(0) + from, to - from);
+}
+
+// The drum loop at its defaults (48 kHz): 2 bars of 4 beats at 120 bpm, one step an eighth note (0.25 s = 12000
+// samples). Each window below holds one sound alone.
+static void checkDrumLoop(const dawlab::AudioBuffer& drums) {
+    DAWLAB_CHECK(drums.getNumSamples() == 192000);
+    // A hit lasts exactly its length: the kick at 1.0 s (step 4) lasts 0.45 s, and nothing sounds after it until the
+    // hi-hat of the next eighth at 1.5 s
+    DAWLAB_CHECK(drums.getSample(0, 69599) != 0.0f && dawlab::peakAbs(drums.getReadPointer(0) + 69600, 2400) == 0.0f);
+    // The kick's pitch drops to 45 Hz: from 0.31 s (the hi-hat of step 1 is over) to 0.45 s it is a 45 Hz tone,
+    // about 12.6 sign changes in those 0.14 s
+    const int crossings = zeroCrossings(drums, 14880, 21600);
+    std::printf("kick from 0.31 to 0.45 s: %d sign changes\n", crossings);
+    DAWLAB_CHECK(crossings >= 11 && crossings <= 14);
+    // The snare (0.5 s, step 2) decays: from 0.56 s, when its hi-hat is over, to its end at 0.75 s
+    DAWLAB_CHECK(rmsOf(drums, 33600, 36000) < 0.25 * rmsOf(drums, 26880, 29280));
+    // The hi-hat of step 7 (1.75 s, 0.06 s long, alone) decays, and it is a first difference of noise: next samples
+    // are anti-correlated (-0.5 for white noise)
+    const int hat = 84000;
+    DAWLAB_CHECK(rmsOf(drums, hat + 2400, hat + 2880) < 0.2 * rmsOf(drums, hat, hat + 480));
+    double lag1 = 0.0, energy = 0.0;
+    for (int i = hat + 1; i < hat + 960; ++i) {
+        lag1 += double(drums.getSample(0, i)) * drums.getSample(0, i - 1);
+        energy += double(drums.getSample(0, i)) * drums.getSample(0, i);
+    }
+    DAWLAB_CHECK(energy > 0.0 && lag1 / energy < -0.3);
+    // At 480 bpm a bar is 0.5 s and the kicks and snare outlast it: they are cut at the end of the loop
+    const dawlab::AudioBuffer fast = dawlab::makeDrumLoop(48000.0, 1, 480.0);
+    DAWLAB_CHECK(fast.getNumSamples() == 24000 && fast.getSample(0, 23999) != 0.0f && !dawlab::hasNanOrInf(fast));
+}
+
+// The generators' recipes, so that every run (and every chapter's printed numbers) gets the same signals
+static void checkGeneratorRecipes() {
+    using namespace dawlab;
+    constexpr double sr = 48000.0;
+    // White noise: channel ch is the xorshift stream of seed + 7919 * ch, times the amplitude
+    const AudioBuffer noise = makeWhiteNoise(sr, 0.001, 0.5f, 2, 5);
+    NoiseGenerator left(5), right(5 + 7919);
+    bool same = noise.getNumSamples() == 48;
+    for (int i = 0; i < noise.getNumSamples(); ++i)
+        same = same && noise.getSample(0, i) == 0.5f * left.next() && noise.getSample(1, i) == 0.5f * right.next();
+    DAWLAB_CHECK(same);
+
+    // A Karplus-Strong pluck (480 Hz: a period of 100 samples): its first period is the noise burst itself, and every
+    // later sample is 0.996 x the average of the two samples one period back
+    const AudioBuffer pluck = makePluck(480.0, sr, 0.01, 1.0f, 1, 7);
+    NoiseGenerator burst(7);
+    bool ks = pluck.getNumSamples() == 480;
+    for (int i = 0; i < 100; ++i)
+        ks = ks && pluck.getSample(0, i) == burst.next();
+    for (int i = 100; i < pluck.getNumSamples(); ++i) {
+        const float twoBack = pluck.getSample(0, i - 100) + pluck.getSample(0, i - 99);
+        ks = ks && std::abs(pluck.getSample(0, i) - 0.996f * 0.5f * twoBack) < 1e-6f;
+    }
+    DAWLAB_CHECK(ks);
+
+    // The pluck sequence: note n starts at n * 0.25 s; it is A2 (110 Hz) then E3 (164.81 Hz), each a pluck with its
+    // own seed 99 + n, cut at the end of the sequence
+    const AudioBuffer seq = makePluckSequence(sr, 0.5, 0.4f, 1);
+    const AudioBuffer a2 = makePluck(110.0, sr, 0.5, 0.4f, 1, 99);
+    const AudioBuffer e3 = makePluck(164.81, sr, 0.25, 0.4f, 1, 100);
+    bool sum = seq.getNumSamples() == 24000;
+    for (int i = 0; i < seq.getNumSamples(); ++i) {
+        const float both = a2.getSample(0, i) + (i >= 12000 ? e3.getSample(0, i - 12000) : 0.0f);
+        sum = sum && std::abs(seq.getSample(0, i) - both) < 1e-6f;
+    }
+    DAWLAB_CHECK(sum);
+    // At 22050 Hz a quarter second is 5512.5 samples: the second note starts at 5513 but is 5513 long, and it is
+    // cut to the 5512 samples left
+    const AudioBuffer at22k = makePluckSequence(22050.0, 0.5, 0.4f, 1);
+    DAWLAB_CHECK(at22k.getNumSamples() == 11025 && !hasNanOrInf(at22k) && at22k.getSample(0, 11024) != 0.0f);
+}
+
 int main() {
     using namespace dawlab;
     constexpr double sr = 48000.0;
@@ -261,6 +344,8 @@ int main() {
     DAWLAB_CHECK(peakAbs(plucks) < 1.0f && peakAbs(plucks) > 0.1f);
     std::printf("drum loop peak = %.2f dBFS, pluck sequence peak = %.2f dBFS\n", gainToDb(peakAbs(drums)),
                 gainToDb(peakAbs(plucks)));
+    checkDrumLoop(drums);
+    checkGeneratorRecipes();
 
     checkSummaryRule();
     checkCounting();
