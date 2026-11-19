@@ -31,6 +31,7 @@
 #include <new>
 #include <random>
 #include <thread>
+#include <tuple>
 
 // ---- allocation counting (as in test_realtime_safety.cpp) --------------------------------------------------
 namespace {
@@ -610,6 +611,78 @@ void testAnotherInstrument() {
     std::printf("  the synth again, its settings changed while a note sounds, a new track with the default sound\n");
 }
 
+// What an armed instrument track hands its instrument in one block: the clips' events and every live
+// one merged by offset - at one offset the clip's first. A sustain pedal at value 64 is down: one
+// lifted after the track was disarmed still gets through.
+void testMergedEvents() {
+    Engine e;
+    setUp(e);
+    std::vector<std::pair<int64_t, MidiMessage>> log;
+    log.reserve(64);
+    e.setTrackMidiClips(testId(0), {clipOf(1, 0, kBar, {{4, 2, 60, 100, 0}})}); // samples 100 to 150
+    e.setTrackInstrument(testId(0), std::make_unique<Recorder>(log));
+    e.applyPendingCommandsOffline();
+    Track& inst = e.getMixer().getTrack(0);
+    inst.setArmed(true);
+    e.getTransport().setPosition(0);
+    e.getTransport().play();
+    const std::vector<std::pair<int64_t, MidiMessage>> live{{50, MidiMessage::noteOn(0, 62, 100)},
+                                                            {100, MidiMessage::noteOn(0, 64, 100)},
+                                                            {120, MidiMessage::noteOff(0, 62)},
+                                                            {511, MidiMessage::controller(0, Synth::kSustainPedal, 64)}};
+    play(e, 512, 512, nullptr, nullptr, &live);
+    const std::vector<std::tuple<int64_t, MidiKind, int>> expected{{50, MidiKind::NoteOn, 62},  {100, MidiKind::NoteOn, 60},
+                                                                   {100, MidiKind::NoteOn, 64}, {120, MidiKind::NoteOff, 62},
+                                                                   {150, MidiKind::NoteOff, 60}, {511, MidiKind::Controller, 64}};
+    bool same = log.size() == expected.size();
+    for (size_t i = 0; same && i < log.size(); ++i)
+        same = log[i].first == std::get<0>(expected[i]) && log[i].second.kind() == std::get<1>(expected[i]) &&
+               log[i].second.note() == std::get<2>(expected[i]);
+    DAWLAB_CHECK(same);
+
+    inst.setArmed(false);
+    const std::vector<std::pair<int64_t, MidiMessage>> lift{{10, MidiMessage::controller(0, Synth::kSustainPedal, 0)}};
+    play(e, 512, 512, nullptr, nullptr, &lift);
+    DAWLAB_CHECK(log.size() == expected.size() + 1 && log.back().first == 512 + 10 && log.back().second.velocity() == 0);
+}
+
+// An instrument that counts its living instances.
+int gInstruments = 0;
+class CountedInstrument final : public Instrument {
+public:
+    CountedInstrument() { ++gInstruments; }
+    ~CountedInstrument() override { --gInstruments; }
+    void prepare(double, int) override {}
+    void reset() noexcept override {}
+    void render(const BlockEvent*, int, float* const*, int, int) noexcept override {}
+};
+
+// Every new effect gets an id of its own, after any id an effect brought back (undo) already has;
+// and an instrument whose command finds the queue full is deleted at once.
+void testEffectIdsAndADroppedInstrument() {
+    {
+        Engine e(4);
+        setUp(e);
+        InsertEffect* a = e.addInsert(testTrack(1), -1, createEffect(EffectType::Gain));
+        InsertEffect* b = e.addInsert(testTrack(1), -1, createEffect(EffectType::Gain));
+        auto back = createEffect(EffectType::Gain);
+        back->setEffectId(EffectId{7});
+        InsertEffect* c = e.addInsert(testTrack(2), -1, std::move(back));
+        InsertEffect* d = e.addInsert(testTrack(2), -1, createEffect(EffectType::Gain));
+        DAWLAB_CHECK(a != nullptr && b != nullptr && c != nullptr && d != nullptr);
+        DAWLAB_CHECK(a->getEffectId().value == 1 && b->getEffectId().value == 2);
+        DAWLAB_CHECK(c->getEffectId().value == 7 && d->getEffectId().value == 8);
+        // the queue (4) is full now
+        DAWLAB_CHECK(e.setTrackInstrument(testId(0), std::make_unique<CountedInstrument>()) == nullptr);
+        DAWLAB_CHECK(gInstruments == 0 && e.getCommandsDropped() == 1);
+        e.applyPendingCommandsOffline();
+        DAWLAB_CHECK(e.setTrackInstrument(testId(0), std::make_unique<CountedInstrument>()) != nullptr);
+        e.applyPendingCommandsOffline();
+        DAWLAB_CHECK(gInstruments == 1);
+    }
+    DAWLAB_CHECK(gInstruments == 0);
+}
+
 void testQueuedThroughADeviceChange() {
     // An instrument and an insert are still in the queue when the device changes to 96 kHz and blocks of 1024:
     // Engine::prepare() applies the queue first and then prepares everything, so both play at the new settings.
@@ -983,6 +1056,8 @@ int main() {
     testLiveMidi();
     testGarbageOfAFullTrack();
     testAnotherInstrument();
+    testMergedEvents();
+    testEffectIdsAndADroppedInstrument();
     testQueuedThroughADeviceChange();
     testSongEndCountsNotes();
     testMidiParser();
