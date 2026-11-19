@@ -1118,6 +1118,343 @@ void checkLastInputChannel() {
     DAWLAB_CHECK(heardRight == 0.0f);
 }
 
+// ---- the pieces on their own --------------------------------------------------------------------
+
+// First in, first out; 16 gaps fit, and a removed one makes room again.
+void gapQueueKeepsItsOrder() {
+    GapQueue q;
+    Gap g;
+    DAWLAB_CHECK(!q.peek(g));
+    DAWLAB_CHECK(q.push({1, 2}) && q.push({5, 3}));
+    DAWLAB_CHECK(q.peek(g) && g.atFrame == 1 && g.frames == 2);
+    q.removeFirst();
+    DAWLAB_CHECK(q.peek(g) && g.atFrame == 5 && g.frames == 3);
+    q.removeFirst();
+    DAWLAB_CHECK(!q.peek(g));
+    bool all = true;
+    for (std::uint64_t i = 0; i < GapQueue::kCapacity; ++i)
+        all = q.push({i, 1}) && all;
+    DAWLAB_CHECK(all && !q.push({99, 1}));
+    q.removeFirst();
+    DAWLAB_CHECK(q.push({99, 1}) && q.peek(g) && g.atFrame == 1);
+}
+
+// A ring holds exactly the frames it was made for, minus what is still unread.
+void inputRingHoldsWhatItWasMadeFor() {
+    const std::vector<float> a{1, 2, 3, 4, 5, 6, 7, 8};
+    const float* in[1] = {a.data()};
+    std::vector<float> got(16, -1.0f);
+    float* out[1] = {got.data()};
+
+    InputRing ring;
+    ring.prepare(1, 8);
+    DAWLAB_CHECK(ring.push(in, 1, 8));
+    DAWLAB_CHECK(!ring.push(in, 1, 1) && ring.droppedFrames() == 1); // full
+
+    ring.prepare(1, 8);
+    DAWLAB_CHECK(ring.push(in, 1, 4) && !ring.push(in, 1, 5)); // room for 4 more
+
+    ring.prepare(1, 8);
+    DAWLAB_CHECK(ring.push(in, 1, 4) && ring.pop(out, 4) == 4);
+    DAWLAB_CHECK(ring.push(in, 1, 8)); // what was read is room again
+
+    ring.prepare(0, 8);
+    DAWLAB_CHECK(ring.numChannels() == 1);
+}
+
+// The ring's channels that the input lacks are silent; and the frames come out whole across its end.
+void inputRingChannelsAndWrap() {
+    const std::vector<float> ones(4, 1.0f), twos(4, 2.0f);
+    const float* in[2] = {ones.data(), twos.data()};
+    std::vector<float> left(8, -1.0f), right(8, -1.0f);
+    float* out[2] = {left.data(), right.data()};
+    InputRing ring;
+    ring.prepare(2, 8);
+    DAWLAB_CHECK(ring.push(in, 1, 4) && ring.pop(out, 8) == 4);
+    DAWLAB_CHECK(left[0] == 1.0f && left[3] == 1.0f && right[0] == 0.0f && right[3] == 0.0f);
+
+    const std::vector<float> first{0, 1, 2, 3, 4, 5}, second{10, 11, 12, 13, 14, 15};
+    std::vector<float> got(8, -1.0f);
+    float* mono[1] = {got.data()};
+    ring.prepare(1, 8);
+    const float* f[1] = {first.data()};
+    const float* s[1] = {second.data()};
+    DAWLAB_CHECK(ring.push(f, 1, 6) && ring.pop(mono, 6) == 6);
+    DAWLAB_CHECK(ring.push(s, 1, 6) && ring.pop(mono, 6) == 6); // frames 6..11: across the end
+    DAWLAB_CHECK(std::equal(second.begin(), second.end(), got.begin()));
+}
+
+// Dropped frames come out as silence, exactly where they were, and pop() never gives more than asked.
+void inputRingGapsArriveInPlace() {
+    const std::vector<float> a{1, 2, 3, 4, 5, 6, 7, 8}, b{11, 12, 13, 14};
+    const float* inA[2] = {a.data(), a.data()};
+    const float* inB[2] = {b.data(), b.data()};
+    std::vector<float> left(16, -1.0f), right(16, -1.0f);
+    float* out[2] = {left.data(), right.data()};
+    InputRing ring;
+    ring.prepare(2, 8);
+    DAWLAB_CHECK(ring.push(inA, 2, 8));
+    DAWLAB_CHECK(!ring.push(inA, 2, 2)); // dropped: a gap of 2 after frame 8
+    DAWLAB_CHECK(ring.pop(out, 4) == 4 && left[3] == 4.0f);
+    DAWLAB_CHECK(ring.push(inB, 2, 4));
+    std::fill(left.begin(), left.end(), -1.0f);
+    std::fill(right.begin(), right.end(), -1.0f);
+    const int n = ring.pop(out, 7);
+    const std::vector<float> want{5, 6, 7, 8, 0, 0, 11};
+    std::printf("  a gap in the ring: %d frames, %.0f %.0f %.0f %.0f %.0f %.0f %.0f\n", n, left[0], left[1], left[2], left[3], left[4],
+                left[5], left[6]);
+    DAWLAB_CHECK(n == 7 && std::equal(want.begin(), want.end(), left.begin()) && std::equal(want.begin(), want.end(), right.begin()));
+    DAWLAB_CHECK(left[7] == -1.0f);
+    DAWLAB_CHECK(ring.pop(out, 10) == 3 && left[0] == 12.0f && left[2] == 14.0f);
+}
+
+// The round trip counts from the first frame at half the peak, inclusive, and reads only the take.
+void roundTripAtItsEdges() {
+    const float take[5] = {0.0f, 0.25f, 0.5f, 0.0f, 10.0f}; // the last one is not part of the take
+    DAWLAB_CHECK(measureRoundTrip(take, 4, 1000, 900) == 101);
+    const float quiet[2] = {0.0f, 0.01f};
+    DAWLAB_CHECK(measureRoundTrip(quiet, 2, 1000, 900, 0.01f) == 101); // a peak just at the bar
+}
+
+void recordRangeLoopsOnlyWhereItCan() {
+    RecordRange none;
+    none.loopStart = none.loopEnd = 1000;
+    DAWLAB_CHECK(!none.loopsFrom(500)); // an empty loop is no loop
+    RecordRange loop;
+    loop.loopEnd = 1000;
+    DAWLAB_CHECK(loop.loopsFrom(999) && !loop.loopsFrom(1000));
+}
+
+bool samePlacement(const Placement& p, std::int64_t start, std::int64_t skip, std::int64_t frames) {
+    return p.timelineStart == start && p.skipFrames == skip && p.numFrames == frames;
+}
+
+// Three passes of a loop, the last one short; minFrames keeps a take exactly that long; a punch at the
+// loop's end leaves an empty window, so no takes at all.
+void takesOfALoop() {
+    Latencies latencies;
+    latencies.input = 100; // frame i was heard at 900 + i
+    RecordRange range;
+    range.loopStart = 1000;
+    range.loopEnd = 2000;
+    const auto takes = takesOf(1000, latencies, range, 2600);
+    std::printf("  takes of a loop: %d\n", static_cast<int>(takes.size()));
+    DAWLAB_CHECK(takes.size() == 3);
+    if (takes.size() == 3) {
+        DAWLAB_CHECK(samePlacement(takes[0], 1000, 100, 1000));
+        DAWLAB_CHECK(samePlacement(takes[1], 1000, 1100, 1000));
+        DAWLAB_CHECK(samePlacement(takes[2], 1000, 2100, 500));
+    }
+    DAWLAB_CHECK(takesOf(1000, latencies, range, 2600, 500).size() == 3);
+    DAWLAB_CHECK(takesOf(1000, latencies, range, 2600, 501).size() == 2);
+    range.punchIn = 2000;
+    range.punchOut = 3000;
+    DAWLAB_CHECK(takesOf(1000, latencies, range, 2600).empty());
+}
+
+void monitorLatencyOfBothPaths() {
+    Latencies latencies;
+    latencies.input = 10;
+    latencies.output = 20;
+    latencies.mix = 30;
+    DAWLAB_CHECK(monitorLatency(latencies, MonitorPath::Direct) == 30);
+    DAWLAB_CHECK(monitorLatency(latencies, MonitorPath::ThroughInserts) == 60);
+}
+
+// The header says how many bytes a second holds, and takes any sample rate a WAV file can say.
+void takeHeaderFields() {
+    TakeInfo info;
+    info.numChannels = 2;
+    info.sampleRate = 48000;
+    DAWLAB_CHECK(getU32(makeHeader(info).data() + 28) == 384000u);
+    info.sampleRate = std::numeric_limits<std::int32_t>::max();
+    TakeInfo parsed;
+    DAWLAB_CHECK(parseHeader(makeHeader(info), parsed) && parsed.sampleRate == info.sampleRate);
+    WavHeader tooFast = makeHeader(info);
+    putU32(tooFast.data() + 24, 0x80000000u);
+    DAWLAB_CHECK(!parseHeader(tooFast, parsed));
+}
+
+// A take of exactly maxDataBytes seals; a partial frame at the end is cut off, and the sizes in the
+// header are the real ones.
+void sealTakeAtItsLimits() {
+    const TempFolder folder;
+    const fs::path recording = folder.path() / "limit.wav.recording";
+    {
+        const WavHeader header = makeHeader(TakeInfo{});
+        std::ofstream file(recording, std::ios::binary);
+        file.write(reinterpret_cast<const char*>(header.data()), static_cast<std::streamsize>(header.size()));
+        const unsigned char data[9] = {}; // two mono frames and one byte of a third
+        file.write(reinterpret_cast<const char*>(data), 9);
+    }
+    DAWLAB_CHECK(!sealTake(recording, 7).ok && fs::file_size(recording) == kHeaderBytes + 9u);
+    const SealedTake sealed = sealTake(recording, 8);
+    DAWLAB_CHECK(sealed.ok && sealed.numFrames == 2);
+    if (!sealed.ok)
+        return;
+    DAWLAB_CHECK(fs::file_size(sealed.path) == kHeaderBytes + 8u);
+    WavHeader header{};
+    std::ifstream file(sealed.path, std::ios::binary);
+    file.read(reinterpret_cast<char*>(header.data()), static_cast<std::streamsize>(header.size()));
+    DAWLAB_CHECK(getU32(header.data() + 4) == kHeaderBytes - 8u + 8u && getU32(header.data() + kHeaderBytes - 4) == 8u);
+}
+
+// A take file writes nothing for no frames, syncs once a second's worth (exactly) has gone out, stops at
+// maxDataBytes, and says when it cannot seal.
+void takeFileWritesAndSyncs() {
+    const TempFolder folder;
+    int writes = 0, syncs = 0;
+    DiskOps ops;
+    ops.write = [&](const void* bytes, std::size_t numBytes, std::FILE* file) {
+        ++writes;
+        return std::fwrite(bytes, 1, numBytes, file);
+    };
+    ops.sync = [&](std::FILE*) {
+        ++syncs;
+        return true;
+    };
+    ops.maxDataBytes = 16; // four mono frames
+    TakeInfo info;
+    info.sampleRate = 4; // a sync every 4 frames
+    const std::vector<float> frames{0.1f, 0.2f, 0.3f};
+    const float* channels[1] = {frames.data()};
+    {
+        TakeFile file(ops);
+        DAWLAB_CHECK(file.open(folder.path() / "a.wav", info) && writes == 1);
+        file.write(channels, 0);
+        DAWLAB_CHECK(writes == 1);
+        file.write(channels, 3);
+        DAWLAB_CHECK(writes == 2 && syncs == 0 && file.problem() == TakeProblem::None);
+        file.write(channels, 3); // only one more fits
+        DAWLAB_CHECK(syncs == 1 && file.problem() == TakeProblem::TooLong);
+        const SealedTake sealed = file.finish();
+        DAWLAB_CHECK(sealed.ok && sealed.numFrames == 4);
+    }
+    {
+        TakeFile file;
+        DAWLAB_CHECK(file.open(folder.path() / "b.wav", info));
+        file.write(channels, 1);
+        std::ofstream(folder.path() / "b.wav") << "taken"; // the name is taken by now
+        DAWLAB_CHECK(!file.finish().ok && file.problem() == TakeProblem::CannotFinish);
+    }
+}
+
+// One window of 4 frames (a guard prepared at 80 Hz) at each of these peaks.
+void feed(FeedbackGuard& guard, const std::vector<float>& peaks) {
+    for (const float peak : peaks)
+        for (int i = 0; i < 4; ++i)
+            guard.listen(peak);
+}
+
+// Exactly kPinnedWindows pinned windows trip it, exactly kRisingWindows rising ones too (a rise of
+// exactly kRise from exactly kLoud counts); a steady loud signal does not.
+void feedbackGuardAtItsLimits() {
+    FeedbackGuard guard;
+    guard.prepare(80);
+    feed(guard, std::vector<float>(4, FeedbackGuard::kPinned));
+    for (int i = 0; i < 3; ++i)
+        guard.listen(FeedbackGuard::kPinned);
+    DAWLAB_CHECK(!guard.tripped());
+    guard.listen(FeedbackGuard::kPinned); // the fifth window is full
+    DAWLAB_CHECK(guard.tripped());
+
+    std::vector<float> rising{FeedbackGuard::kLoud};
+    while (rising.size() < static_cast<std::size_t>(FeedbackGuard::kRisingWindows))
+        rising.push_back(FeedbackGuard::kRise * rising.back());
+    guard.prepare(80);
+    feed(guard, std::vector<float>(rising.begin(), rising.end() - 1));
+    DAWLAB_CHECK(!guard.tripped());
+    feed(guard, {rising.back()});
+    DAWLAB_CHECK(guard.tripped());
+
+    guard.prepare(80);
+    feed(guard, std::vector<float>(20, 0.5f));
+    DAWLAB_CHECK(!guard.tripped());
+}
+
+// A monitor at 100 Hz: its ramp is one frame, its guard's windows 5 frames.
+struct MonitorRig {
+    Monitor monitor;
+    std::vector<float> in = std::vector<float>(32, 1.0f), out = std::vector<float>(32, 0.0f);
+    const float* inputs[1] = {in.data()};
+    float* outputs[1] = {out.data()};
+    MonitorRig() { monitor.prepare(100); }
+};
+
+// Each segment is at its own place in the block and on the timeline, and only the block's segments count.
+void monitorSegmentsInTheBlock() {
+    MonitorRig rig;
+    rig.monitor.setMode(MonitorMode::Auto);
+    RecordRange range;
+    range.punchIn = 10;
+    range.punchOut = 20;
+    rig.monitor.setRange(range);
+    TimelineSegment segments[2];
+    segments[0].timelineStart = 8; // frames 4..7 of the block play 8..11
+    segments[0].blockOffset = 4;
+    segments[0].numSamples = 4;
+    segments[1].numSamples = 4; // not in this block
+    rig.monitor.process(rig.inputs, 1, rig.outputs, 1, nullptr, 0, segments, 1, 8);
+    std::printf("  a monitor in a punch at 10: %.0f %.0f %.0f %.0f | %.0f %.0f %.0f %.0f\n", rig.out[0], rig.out[1], rig.out[2], rig.out[3],
+                rig.out[4], rig.out[5], rig.out[6], rig.out[7]);
+    DAWLAB_CHECK(rig.out[0] == 0.0f && rig.out[3] == 0.0f);                          // segment 1 is not played
+    DAWLAB_CHECK(rig.out[4] == 0.0f && rig.out[5] == 0.0f && rig.out[6] == 1.0f && rig.out[7] == 1.0f); // 10 is the punch in
+
+    MonitorRig always;
+    always.monitor.setMode(MonitorMode::Always);
+    always.monitor.process(always.inputs, 1, always.outputs, 1, nullptr, 0, segments, 1, 8);
+    DAWLAB_CHECK(always.out[0] == 0.0f && always.out[4] == 1.0f);
+}
+
+// What the monitor touches: only the replaced channels it is given, only the input channels it is
+// given, and nothing it does not hear.
+void monitorTouchesOnlyWhatItIsGiven() {
+    {
+        MonitorRig rig;
+        rig.monitor.setMode(MonitorMode::Always);
+        std::vector<float> old0(4, 1.0f), old1(4, 1.0f);
+        float* replaced[2] = {old0.data(), old1.data()};
+        rig.monitor.process(rig.inputs, 1, rig.outputs, 1, replaced, 1, nullptr, 0, 4);
+        DAWLAB_CHECK(old0[3] == 0.0f && old1[0] == 1.0f && old1[3] == 1.0f);
+    }
+    {
+        MonitorRig rig; // Off: the input is not heard, so not listened to either
+        rig.monitor.process(rig.inputs, 1, rig.outputs, 1, nullptr, 0, nullptr, 0, 30);
+        DAWLAB_CHECK(!rig.monitor.feedbackDetected() && rig.out[0] == 0.0f);
+    }
+    {
+        MonitorRig rig;
+        rig.monitor.setMode(MonitorMode::Always);
+        const std::vector<float> silent(32, 0.0f);
+        const float* inputs[2] = {silent.data(), rig.in.data()}; // only the first is the input
+        rig.monitor.process(inputs, 1, rig.outputs, 1, nullptr, 0, nullptr, 0, 30);
+        DAWLAB_CHECK(!rig.monitor.feedbackDetected() && rig.out[29] == 0.0f);
+    }
+    {
+        MonitorRig rig;
+        rig.monitor.setMode(MonitorMode::Always);
+        rig.monitor.process(nullptr, 0, rig.outputs, 1, nullptr, 0, nullptr, 0, 8); // no input at all
+        DAWLAB_CHECK(rig.out[7] == 0.0f);
+    }
+}
+
+void checkPieces() {
+    gapQueueKeepsItsOrder();
+    inputRingHoldsWhatItWasMadeFor();
+    inputRingChannelsAndWrap();
+    inputRingGapsArriveInPlace();
+    roundTripAtItsEdges();
+    recordRangeLoopsOnlyWhereItCan();
+    takesOfALoop();
+    monitorLatencyOfBothPaths();
+    takeHeaderFields();
+    sealTakeAtItsLimits();
+    takeFileWritesAndSyncs();
+    feedbackGuardAtItsLimits();
+    monitorSegmentsInTheBlock();
+    monitorTouchesOnlyWhatItIsGiven();
+}
+
 } // namespace
 
 int main() {
@@ -1141,5 +1478,6 @@ int main() {
     checkFeedback();
     checkLive();
     checkEnds();
+    checkPieces();
     return dawlab::test::summary("l17_test_recording");
 }
