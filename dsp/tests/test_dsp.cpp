@@ -1828,6 +1828,74 @@ void checkRmsFollowerOfOneSample() {
     DAWLAB_CHECK_NEAR(f.processSample(-0.25f), 0.25f, 1e-7);
 }
 
+// Compressor static curve: below, inside and above a 6 dB knee, and a hard knee
+void checkCompressorCurve() {
+    struct Point { float in, knee, out; };
+    const Point points[] = {
+        {-10.0f, 0.0f, -17.5f}, {-30.0f, 0.0f, -30.0f},  // hard knee: T + (x - T) / R above, x below
+        {-10.0f, 6.0f, -17.5f}, {-25.0f, 6.0f, -25.0f},  // outside the knee
+        {-21.0f, 6.0f, -21.25f}, {-19.0f, 6.0f, -20.0f}, // inside: x + (1/R - 1)(x - T + W/2)^2 / (2W)
+    };
+    for (const Point& p : points)
+        DAWLAB_CHECK_NEAR(Compressor::computeOutputDb(p.in, -20.0f, 4.0f, p.knee), p.out, 1e-5);
+    DAWLAB_CHECK_NEAR(Compressor::computeGainReductionDb(-10.0f, -20.0f, 4.0f, 0.0f), 7.5f, 1e-5);
+}
+
+bool nearRel(float a, float b, float rel) {
+    return std::abs(a - b) <= rel * std::max(std::abs(a), std::abs(b));
+}
+
+// Compressor with instant times: every sample is multiplied by dbToGain(-GR) and the makeup gain, linked (one GR from
+// the louder channel) or not (each channel its own GR)
+void checkCompressorAppliesGain() {
+    for (const bool link : {true, false}) {
+        Compressor c;
+        c.prepare(kSampleRate, 64, 2);
+        c.setThresholdDb(-20.0f);
+        c.setRatio(4.0f);
+        c.setKneeDb(0.0f);
+        c.setAttackMs(0.0f);
+        c.setReleaseMs(0.0f);
+        c.setMakeupGainDb(6.0f);
+        c.setStereoLink(link);
+        c.reset();
+        AudioBuffer b(2, 16);
+        for (int i = 0; i < 16; ++i) {
+            b.getWritePointer(0)[i] = 0.5f;
+            b.getWritePointer(1)[i] = -0.25f;
+        }
+        c.process(b);
+        const float grL = Compressor::computeGainReductionDb(gainToDb(0.5f), -20.0f, 4.0f, 0.0f);
+        const float grR = link ? grL : Compressor::computeGainReductionDb(gainToDb(0.25f), -20.0f, 4.0f, 0.0f);
+        const float makeup = dbToGain(6.0f);
+        DAWLAB_CHECK(nearRel(b.getReadPointer(0)[15], 0.5f * dbToGain(-grL) * makeup, 1e-5f));
+        DAWLAB_CHECK(nearRel(b.getReadPointer(1)[15], -0.25f * dbToGain(-grR) * makeup, 1e-5f));
+        DAWLAB_CHECK_NEAR(c.getGainReductionDb(), grL, 1e-4);
+
+        // A main block without channels processes nothing and leaves the meter as it was
+        AudioBlock none(nullptr, 0, 16);
+        c.process(none, b);
+        DAWLAB_CHECK_NEAR(c.getGainReductionDb(), grL, 1e-4);
+    }
+}
+
+// Compressor makeup gain: glides up to the new value without passing it
+void checkCompressorMakeupGlide() {
+    Compressor c;
+    c.prepare(kSampleRate, 512, 1);
+    AudioBuffer b(1, 20000);
+    std::fill_n(b.getWritePointer(0), 20000, 0.01f); // -40 dB, far below the threshold: no compression
+    c.setMakeupGainDb(6.0f);
+    c.process(b);
+    const float target = 0.01f * dbToGain(6.0f);
+    const float* y = b.getReadPointer(0);
+    bool rising = y[0] > 0.01f;
+    for (int i = 1; i < 20000; ++i)
+        rising = rising && y[i] >= y[i - 1] && y[i] <= target * 1.000001f;
+    DAWLAB_CHECK(rising);
+    DAWLAB_CHECK_NEAR(y[19999], target, 1e-7);
+}
+
 } // namespace
 
 void checkDspFilters() {
@@ -2490,6 +2558,9 @@ int main() {
     // ---- batch 6: dsp-dynamics ----
     checkAttackReleaseFilterSteps();
     checkRmsFollowerOfOneSample();
+    checkCompressorCurve();
+    checkCompressorAppliesGain();
+    checkCompressorMakeupGlide();
 
     return dawlab::test::summary("dsp");
 }
