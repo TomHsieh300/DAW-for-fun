@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
+#include <iterator>
 #include <limits>
 #include <string>
 #include <vector>
@@ -193,6 +194,123 @@ static void checkGeneratorRecipes() {
     DAWLAB_CHECK(at22k.getNumSamples() == 11025 && !hasNanOrInf(at22k) && at22k.getSample(0, 11024) != 0.0f);
 }
 
+// A WAV file made by hand, for readWav's formats and refusals
+struct HandWav {
+    uint16_t format = 1, channels = 1;
+    uint32_t rate = 48000;
+    uint16_t blockAlign = 2, bits = 16;
+    uint32_t fmtSize = 16;  // 26 or 40 for WAVE_FORMAT_EXTENSIBLE, whose SubFormat starts at byte 24 of the fmt body
+    uint16_t subFormat = 1; // the first two bytes of that SubFormat GUID
+    std::vector<uint8_t> samples;
+    int64_t declared = -1;     // the data chunk's size field; -1: samples.size()
+    std::vector<uint8_t> head; // chunks before the fmt chunk
+    std::vector<uint8_t> tail; // bytes after the data chunk
+};
+
+static std::string writeHandWav(const std::string& name, const HandWav& w) {
+    std::vector<uint8_t> b;
+    const auto u16 = [&b](uint32_t v) { b.push_back(uint8_t(v & 0xff)), b.push_back(uint8_t((v >> 8) & 0xff)); };
+    const auto u32 = [&u16](uint32_t v) { u16(v & 0xffff), u16(v >> 16); };
+    const auto tag = [&b](const char* t) { b.insert(b.end(), t, t + 4); };
+    tag("RIFF"), u32(uint32_t(4 + w.head.size() + 8 + w.fmtSize + 8 + w.samples.size() + w.tail.size())), tag("WAVE");
+    b.insert(b.end(), w.head.begin(), w.head.end());
+    tag("fmt "), u32(w.fmtSize), u16(w.format), u16(w.channels), u32(w.rate), u32(w.rate * w.blockAlign);
+    u16(w.blockAlign), u16(w.bits);
+    for (uint32_t i = 16; i < w.fmtSize; ++i) // cbSize, valid bits and channel mask are left 0
+        b.push_back(uint8_t(i == 24 ? w.subFormat & 0xff : i == 25 ? w.subFormat >> 8 : 0));
+    tag("data"), u32(uint32_t(w.declared < 0 ? int64_t(w.samples.size()) : w.declared));
+    b.insert(b.end(), w.samples.begin(), w.samples.end());
+    b.insert(b.end(), w.tail.begin(), w.tail.end());
+    const std::string path = dawlab::outputPath("common_" + name + ".wav");
+    std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char*>(b.data()), std::streamsize(b.size()));
+    return path;
+}
+
+// readWav reads the file, and its first channel is `expected`
+static bool readsAs(const HandWav& w, const std::string& name, const std::vector<float>& expected) {
+    dawlab::WavData wav;
+    if (!dawlab::readWav(writeHandWav(name, w), wav))
+        return false;
+    const float* x = wav.buffer.getReadPointer(0);
+    return std::vector<float>(x, x + wav.buffer.getNumSamples()) == expected;
+}
+
+static bool refused(const HandWav& w, const std::string& name) {
+    dawlab::WavData wav;
+    return !dawlab::readWav(writeHandWav(name, w), wav);
+}
+
+// The formats readWav reads (each sample decoded to its exact value) and the ones it refuses
+static void checkWavFormats() {
+    HandWav u8;
+    u8.bits = 8, u8.blockAlign = 1, u8.samples = {0, 128, 255}; // 8-bit is unsigned, 128 = 0
+    DAWLAB_CHECK(readsAs(u8, "pcm8", {-1.0f, 0.0f, 127.0f / 128.0f}));
+    HandWav s32;
+    s32.bits = 32, s32.blockAlign = 4, s32.samples = {0, 0, 0, 0x40, 0, 0, 0, 0x80};
+    DAWLAB_CHECK(readsAs(s32, "pcm32", {0.5f, -1.0f}));
+    HandWav f64;
+    f64.format = 3, f64.bits = 64, f64.blockAlign = 8, f64.samples = {0, 0, 0, 0, 0, 0, 0xD8, 0x3F}; // 0.375
+    DAWLAB_CHECK(readsAs(f64, "float64", {0.375f}));
+    // WAVE_FORMAT_EXTENSIBLE: the format is the SubFormat's, in a fmt chunk of 40 bytes or just long enough (26)
+    HandWav ext;
+    ext.format = 0xFFFE, ext.fmtSize = 40, ext.samples = {0, 0x40}; // 16-bit PCM 0.5
+    DAWLAB_CHECK(readsAs(ext, "extensible40", {0.5f}));
+    ext.fmtSize = 26;
+    DAWLAB_CHECK(readsAs(ext, "extensible26", {0.5f}));
+    HandWav pcm12;
+    pcm12.bits = 12, pcm12.samples = {0, 0};
+    HandWav float16;
+    float16.format = 3, float16.samples = {0, 0};
+    HandWav narrow; // stereo 16-bit needs 4 bytes a frame
+    narrow.channels = 2, narrow.samples = {0, 0, 0, 0};
+    DAWLAB_CHECK(refused(pcm12, "pcm12") && refused(float16, "float16") && refused(narrow, "narrow_frame"));
+
+    // The chunk walk: a chunk of an odd size is followed by its pad byte; a data chunk 2 bytes short of what it says
+    // is refused; an empty data chunk that ends the file is read (0 samples); stray bytes after the last chunk, fewer
+    // than a chunk header, are ignored
+    HandWav afterOdd;
+    afterOdd.head = {'L', 'I', 'S', 'T', 3, 0, 0, 0, 'a', 'b', 'c', 0}, afterOdd.samples = {0, 0x40};
+    DAWLAB_CHECK(readsAs(afterOdd, "after_odd_chunk", {0.5f}));
+    HandWav shortBy2;
+    shortBy2.samples = {0, 0, 0, 0}, shortBy2.declared = 6;
+    HandWav empty;
+    HandWav stray;
+    stray.samples = {0, 0x40}, stray.tail = {'f', 'm', 't', ' ', 16, 0, 0};
+    DAWLAB_CHECK(refused(shortBy2, "short_by_2"));
+    DAWLAB_CHECK(readsAs(empty, "empty_data", {}) && readsAs(stray, "stray_tail", {0.5f}));
+    // A RIFF/WAVE header of 12 bytes with no chunk: a WAVE without its fmt and data, not "not a WAVE"
+    const std::string bare = dawlab::outputPath("common_bare.wav");
+    std::ofstream(bare, std::ios::binary).write("RIFF\x04\0\0\0WAVE", 12);
+    dawlab::WavData wav;
+    std::string why;
+    DAWLAB_CHECK(!dawlab::readWav(bare, wav, &why) && why.find("not found") != std::string::npos);
+}
+
+static std::vector<uint8_t> fileBytes(const std::string& path) {
+    std::ifstream f(path, std::ios::binary);
+    return {std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>()};
+}
+
+// writeWav's header: the RIFF size is the file size less 8 (with the pad byte of an odd data chunk), the byte rate
+// is rate x channels x bytes per sample, and it must fit in 32 bits
+static void checkWavHeader() {
+    using dawlab::writeWav;
+    const std::string path = dawlab::outputPath("common_header.wav");
+    DAWLAB_CHECK(writeWav(path, dawlab::AudioBuffer(1, 1), 44100.0, 24)); // 3 bytes of data and a pad byte
+    std::vector<uint8_t> b = fileBytes(path);
+    DAWLAB_CHECK(b.size() == 48 && dawlab::detail::readU32(&b[4]) == 40 && dawlab::detail::readU32(&b[28]) == 132300);
+    DAWLAB_CHECK(writeWav(path, dawlab::AudioBuffer(2, 2), 8000.0, 16));
+    b = fileBytes(path);
+    DAWLAB_CHECK(b.size() == 52 && dawlab::detail::readU32(&b[4]) == 44 && dawlab::detail::readU32(&b[28]) == 32000);
+    // 0xFFFFFFFF = 1431655765 x 3: a mono 24-bit file at that rate is the largest byte rate there is
+    DAWLAB_CHECK(writeWav(path, dawlab::AudioBuffer(1, 1), 1431655765.0, 24) &&
+                 !writeWav(path, dawlab::AudioBuffer(1, 1), 1431655766.0, 24));
+    // The sample rates a WAV can say: 1 Hz up to 0xFFFFFFFF Hz
+    using dawlab::detail::isWavSampleRate;
+    DAWLAB_CHECK(isWavSampleRate(1.0) && !isWavSampleRate(0.999));
+    DAWLAB_CHECK(isWavSampleRate(4294967295.0) && !isWavSampleRate(4294967296.0));
+}
+
 int main() {
     using namespace dawlab;
     constexpr double sr = 48000.0;
@@ -324,6 +442,9 @@ int main() {
     // are 9e9 bytes, which wrapped to 410065408 in 32 bits. The size is counted in 64 bits and checked first.
     DAWLAB_CHECK(detail::wavDataBytes(1500000000, 2, 3) == 9000000000ull && !detail::fitsWav(9000000000ull));
     DAWLAB_CHECK(detail::fitsWav(0xFFFFFFFFull - 37) && !detail::fitsWav(0xFFFFFFFFull - 36)); // 36 header bytes, a pad byte
+
+    checkWavFormats();
+    checkWavHeader();
 
     // AudioBlock sub-blocks and mixing
     AudioBuffer a(2, 8), b(2, 8);
