@@ -515,6 +515,33 @@ void testMasterFaderWaitsForTheBuses() {
     DAWLAB_CHECK(a == out.getSample(0, 9000) && b > a);
 }
 
+// A bus fader also waits for its own PDC delay (bus A waits 30 samples for bus B), and the master's for
+// the master's own inserts (40 samples).
+void testFadersWaitForTheirOwnDelay() {
+    for (const bool master : {false, true}) {
+        Engine e;
+        setUp(e);
+        Track* t = e.getTrack(kTrack);
+        if (master) {
+            e.addInsert(ChannelRef::master(), -1, std::make_unique<TestEffect>(40));
+        } else {
+            e.addInsert(ChannelRef::bus(1), -1, std::make_unique<TestEffect>(30));
+            t->setGainDb(kMinusInfinityDb); // only the send to bus A reaches the output
+            t->setSendPreFader(0, true);
+            t->setSendLevelDb(0, 0.0f);
+        }
+        AutomationCurve curve;
+        curve.add({0, 0.5f, Shape::Hold});
+        curve.add({10000, 0.75f, Shape::Linear});
+        e.setLaneCurve(LaneTarget{master ? ChannelRef::master() : ChannelRef::bus(0), EffectId{}, kLaneGain}, curve);
+        e.applyPendingCommandsOffline();
+        DAWLAB_CHECK(e.getLatencySamples() == (master ? 40 : 30));
+        const AudioBuffer out = render(e, 12000, kBlockSize, true);
+        const float a = out.getSample(0, 9999), b = out.getSample(0, 10000);
+        DAWLAB_CHECK(a == out.getSample(0, 9000) && b > a);
+    }
+}
+
 void testFaderWaitsForDelayedAudio() {
     for (const int lane : {0, 1, 2}) { // on the track with the latency, on a track with its PDC delay, on the master
         Engine e;
@@ -1129,6 +1156,7 @@ int main() {
     testShownValue();
     testEffectParameters();
     testFaderWaitsForDelayedAudio();
+    testFadersWaitForTheirOwnDelay();
     testBusFaderWaitsToo();
     testMasterFaderWaitsForTheBuses();
     testModes();

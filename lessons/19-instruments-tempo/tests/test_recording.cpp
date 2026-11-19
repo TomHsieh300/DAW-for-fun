@@ -1089,7 +1089,8 @@ void placeAndRoundTrip() {
 }
 
 // A stereo track on the device's last input: its right channel is one the device does not have, so it
-// hears silence there - never what lies past the device's channels (Mixer: the track's inputs).
+// hears silence there - never what lies past the device's channels (Mixer: the track's inputs). The
+// mixer is given the input directly, so that something does lie past them: a pointer to 0.5.
 void checkLastInputChannel() {
     Engine e;
     const TrackId voice{1};
@@ -1106,7 +1107,7 @@ void checkLastInputChannel() {
     AudioBuffer out(2, kFrames);
     for (int done = 0; done < kFrames; done += kBlock) {
         const float* channels[3] = {left.data() + done, right.data() + done, past.data() + done};
-        e.processBlock(out.toBlock().getSubBlock(done, kBlock), InputBlock{channels, 2});
+        e.getMixer().process(out.toBlock().getSubBlock(done, kBlock), nullptr, 0, 120.0, 0, InputBlock{channels, 2});
     }
     float heardLeft = 0.0f, heardRight = 0.0f;
     for (int i = kFrames - 1000; i < kFrames; ++i) {
