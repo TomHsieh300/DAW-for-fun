@@ -2986,6 +2986,171 @@ void checkDistortionBlocks() {
 } // namespace b6_distortion
 // ---- end batch 6: dsp-distortion ----
 
+// ---- batch 6: dsp-time ----
+// Exact behaviour of the time-based effects: delay lines and echo timing, the LFO's shapes and steps, the modulated
+// effects' sweep ends, the FDN reverb against its own formulas, partitioned convolution against direct convolution,
+// and the reverb building blocks.
+#include <dawlab/dsp/DelayLine.h>
+#include <dawlab/dsp/Lfo.h>
+
+namespace b6time {
+
+AudioBuffer impulseBuffer(int numChannels, int numSamples, float amplitude = 1.0f) {
+    AudioBuffer b(numChannels, numSamples);
+    for (int ch = 0; ch < numChannels; ++ch) {
+        std::fill(b.getWritePointer(ch), b.getWritePointer(ch) + numSamples, 0.0f);
+        b.getWritePointer(ch)[0] = amplitude;
+    }
+    return b;
+}
+
+// Every sample of channel ch is 0 except those listed (index, value), which match within tol
+bool onlyAt(const AudioBuffer& b, int ch, std::vector<std::pair<int, float>> expected, double tol = 1.0e-5) {
+    const float* d = b.getReadPointer(ch);
+    for (int i = 0; i < b.getNumSamples(); ++i) {
+        float want = 0.0f;
+        for (const auto& e : expected)
+            if (e.first == i)
+                want = e.second;
+        if (!(std::abs(static_cast<double>(d[i]) - static_cast<double>(want)) <= tol)) {
+            std::printf("  ch %d sample %d: %g, expected %g\n", ch, i, static_cast<double>(d[i]),
+                        static_cast<double>(want));
+            return false;
+        }
+    }
+    return true;
+}
+
+void fillNoise(AudioBuffer& b, uint32_t seed) {
+    NoiseGenerator noise(seed);
+    for (int ch = 0; ch < b.getNumChannels(); ++ch)
+        for (int i = 0; i < b.getNumSamples(); ++i)
+            b.getWritePointer(ch)[i] = 0.5f * noise.next();
+}
+
+// ---- DelayLine ---------------------------------------------------------------
+void checkDelayLineReadsEachChannelBack() {
+    DelayLine line;
+    line.prepare(4, 2);
+    for (int i = 1; i <= 9; ++i) {
+        line.push(0, static_cast<float>(i));
+        line.push(1, static_cast<float>(100 + i));
+    }
+    bool ok = true;
+    for (int d = 0; d <= 4; ++d)
+        ok = ok && line.read(0, d) == static_cast<float>(9 - d) && line.read(1, d) == static_cast<float>(109 - d);
+    std::printf("DelayLine reads d = 0..4 back on both channels: %s\n", ok ? "yes" : "no");
+    DAWLAB_CHECK(ok);
+    DAWLAB_CHECK(line.read(0, 9) == 5.0f); // above the maximum: clamped to 4
+}
+
+// ---- Delay -------------------------------------------------------------------
+void checkDelayEchoes() {
+    // 1 ms = 48 samples, feedback 0.5, all wet, linear reads at whole samples
+    Delay d;
+    d.setDelayMs(1.0f);
+    d.setFeedback(0.5f);
+    d.setMix(1.0f);
+    d.setInterpolation(Delay::Interpolation::Linear);
+    d.prepare(48000.0, 256, 2);
+    DAWLAB_CHECK(d.getMaxDelaySamples() == msToSamples(2000.0, 48000.0) + 2);
+    AudioBuffer b = impulseBuffer(2, 160);
+    d.process(b);
+    DAWLAB_CHECK(onlyAt(b, 0, {{48, 1.0f}, {96, 0.5f}, {144, 0.25f}}));
+
+    // Ping-pong: (L+R)/2 goes left, then each echo crosses over
+    Delay p;
+    p.setDelayMs(1.0f);
+    p.setFeedback(0.5f);
+    p.setMix(1.0f);
+    p.setInterpolation(Delay::Interpolation::Linear);
+    p.setPingPong(true);
+    p.prepare(48000.0, 256, 2);
+    AudioBuffer pp(2, 161);
+    for (int ch = 0; ch < 2; ++ch)
+        std::fill(pp.getWritePointer(ch), pp.getWritePointer(ch) + 161, 0.0f);
+    pp.getWritePointer(0)[0] = 0.5f;
+    pp.getWritePointer(1)[0] = 0.25f;
+    pp.getWritePointer(0)[160] = 7.0f; // just past the processed block: must stay as it is
+    pp.getWritePointer(1)[160] = 7.0f;
+    p.process(AudioBlock(pp).getSubBlock(0, 160));
+    DAWLAB_CHECK(pp.getReadPointer(0)[160] == 7.0f && pp.getReadPointer(1)[160] == 7.0f);
+    pp.getWritePointer(0)[160] = 0.0f;
+    pp.getWritePointer(1)[160] = 0.0f;
+    DAWLAB_CHECK(onlyAt(pp, 0, {{48, 0.375f}, {144, 0.09375f}}));
+    DAWLAB_CHECK(onlyAt(pp, 1, {{96, 0.1875f}}));
+
+    // Linear and cubic reads differ between whole samples: 10.5 samples
+    for (auto interp : {Delay::Interpolation::Linear, Delay::Interpolation::Cubic}) {
+        Delay f;
+        f.setDelayMs(0.21875f); // 10.5 samples
+        f.setFeedback(0.0f);
+        f.setMix(1.0f);
+        f.setInterpolation(interp);
+        f.prepare(48000.0, 64, 1);
+        AudioBuffer m = impulseBuffer(1, 16);
+        f.process(m);
+        if (interp == Delay::Interpolation::Linear)
+            DAWLAB_CHECK(onlyAt(m, 0, {{10, 0.5f}, {11, 0.5f}}));
+        else
+            DAWLAB_CHECK(onlyAt(m, 0, {{9, -0.0625f}, {10, 0.5625f}, {11, 0.5625f}, {12, -0.0625f}}));
+    }
+
+    // Filters at the "off" ends of their ranges leave the feedback untouched
+    Delay off;
+    off.setDelayMs(1.0f);
+    off.setFeedback(0.5f);
+    off.setMix(1.0f);
+    off.setInterpolation(Delay::Interpolation::Linear);
+    off.setLowpassHz(20000.0f);
+    off.setHighpassHz(20.0f);
+    off.prepare(48000.0, 256, 1);
+    AudioBuffer o = impulseBuffer(1, 100);
+    off.process(o);
+    DAWLAB_CHECK(onlyAt(o, 0, {{48, 1.0f}, {96, 0.5f}}, 1e-6));
+
+    // A tiny echo at exactly the flush threshold (1e-15) is still heard
+    Delay tiny;
+    tiny.setDelayMs(1.0f);
+    tiny.setFeedback(0.0f);
+    tiny.setMix(1.0f);
+    tiny.setInterpolation(Delay::Interpolation::Linear);
+    tiny.prepare(48000.0, 64, 1);
+    AudioBuffer t = impulseBuffer(1, 64, 1.0e-15f);
+    tiny.process(t);
+    DAWLAB_CHECK(t.getReadPointer(0)[48] > 0.0f);
+}
+
+void checkDelayTimeRamp() {
+    Delay d;
+    d.setDelayMs(10.0f);
+    d.setDelayRampSeconds(0.01); // 480 samples
+    d.prepare(48000.0, 512, 1);
+    d.setDelayMs(20.0f);
+    AudioBuffer b(1, 240);
+    std::fill(b.getWritePointer(0), b.getWritePointer(0) + 240, 0.0f);
+    d.process(b);
+    std::printf("Delay    10 -> 20 ms over 480 samples, after 240: %g ms\n",
+                static_cast<double>(d.getCurrentDelayMs()));
+    DAWLAB_CHECK_NEAR(d.getCurrentDelayMs(), 15.0, 1e-4);
+    d.process(b);
+    d.process(b); // 240 samples past the end of the ramp
+    DAWLAB_CHECK(d.getCurrentDelayMs() == 20.0f);
+    d.setDelayRampSeconds(0.0); // no ramp: the delay jumps
+    d.setDelayMs(5.0f);
+    DAWLAB_CHECK(d.getCurrentDelayMs() == 5.0f);
+
+    // A block with no channels moves nothing
+    Delay z;
+    z.setDelayMs(10.0f);
+    z.prepare(48000.0, 512, 2);
+    z.setDelayMs(20.0f);
+    z.process(AudioBlock(nullptr, 0, 64));
+    DAWLAB_CHECK(z.getCurrentDelayMs() == 10.0f);
+}
+
+} // namespace b6time
+
 int main() {
     checkUnpreparedBlock<Chorus>("Chorus");
     checkUnpreparedBlock<Flanger>("Flanger");
@@ -3072,6 +3237,11 @@ int main() {
 #ifdef NDEBUG
     checkLimiterClearsUnpreparedChannels();
 #endif
+
+    // ---- batch 6: dsp-time ----
+    b6time::checkDelayLineReadsEachChannelBack();
+    b6time::checkDelayEchoes();
+    b6time::checkDelayTimeRamp();
 
     return dawlab::test::summary("dsp");
 }
