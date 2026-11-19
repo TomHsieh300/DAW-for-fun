@@ -1844,6 +1844,103 @@ void checkCoherentGainEdges() {
     DAWLAB_CHECK(Fft::coherentGain(w.data(), 4) == 0.75);
 }
 
+// Sample i of a 64-point frame: 0.25 DC + a sine on bin 4 (0.5 by default) + 0.125 at Nyquist
+float analyzerTestSample(int i, float sineAmplitude = 0.5f) {
+    const float nyquist = i % 2 == 0 ? 0.125f : -0.125f;
+    return 0.25f + sineAmplitude * static_cast<float>(std::sin(kTwoPi * 4.0 * (i % 16) / 64.0)) + nyquist;
+}
+
+// A sine on a bin centre reads its amplitude in dBFS with a rectangular window; DC and Nyquist count once
+void checkSpectrumReadsBinCentres() {
+    const auto a = std::make_unique<SpectrumAnalyzer>();
+    a->prepare(kSampleRate, 6);
+    a->setWindowType(WindowType::Rectangular);
+    a->setSmoothing(0.0f);
+    DAWLAB_CHECK(a->getHopSize() == 32);
+    std::vector<float> x(64);
+    for (int i = 0; i < 64; ++i)
+        x[static_cast<size_t>(i)] = analyzerTestSample(i);
+    std::vector<float> db;
+    a->pushSamples(x.data(), 63);
+    DAWLAB_CHECK(!a->computeSpectrum(db)); // one sample short of a frame
+    a->pushSamples(x.data() + 63, 1);
+    DAWLAB_CHECK(a->computeSpectrum(db)); // exactly one frame
+    DAWLAB_CHECK(db.size() == 33u);
+    if (db.size() == 33u) {
+        std::printf("SpectrumAnalyzer bins: DC %.3f, bin 4 %.3f, Nyquist %.3f, bin 10 %.1f dB\n",
+                    static_cast<double>(db[0]), static_cast<double>(db[4]), static_cast<double>(db[32]),
+                    static_cast<double>(db[10]));
+        DAWLAB_CHECK_NEAR(db[0], gainToDb(0.25f), 0.01);
+        DAWLAB_CHECK_NEAR(db[4], gainToDb(0.5f), 0.01);
+        DAWLAB_CHECK_NEAR(db[32], gainToDb(0.125f), 0.01);
+        DAWLAB_CHECK(db[10] < -80.0f);
+    }
+    // The next frame needs exactly one hop of new samples
+    a->pushSamples(x.data(), 31);
+    DAWLAB_CHECK(!a->computeSpectrum(db));
+    a->pushSamples(x.data() + 31, 1);
+    DAWLAB_CHECK(a->computeSpectrum(db));
+    a->setOverlap(0.75f);
+    DAWLAB_CHECK(a->getHopSize() == 16);
+}
+
+// The default Hann window is normalized by its coherent gain: a sine on a bin centre still reads its amplitude
+void checkSpectrumHannReadsAmplitude() {
+    const auto a = std::make_unique<SpectrumAnalyzer>();
+    a->prepare(kSampleRate, 6);
+    std::vector<float> x(64), db;
+    for (int i = 0; i < 64; ++i)
+        x[static_cast<size_t>(i)] = 0.5f * static_cast<float>(std::sin(kTwoPi * 8.0 * i / 64.0));
+    a->pushSamples(x.data(), 64);
+    DAWLAB_CHECK(a->computeSpectrum(db));
+    DAWLAB_CHECK(db.size() == 33u && std::abs(db[8] - gainToDb(0.5f)) < 0.1f);
+}
+
+// Smoothing: the second frame is alpha * old + (1 - alpha) * new, in linear amplitude
+void checkSpectrumSmoothing() {
+    const auto a = std::make_unique<SpectrumAnalyzer>();
+    a->prepare(kSampleRate, 6);
+    a->setWindowType(WindowType::Rectangular);
+    a->setSmoothing(0.5f);
+    std::vector<float> x(64), db;
+    for (int i = 0; i < 64; ++i)
+        x[static_cast<size_t>(i)] = analyzerTestSample(i, 0.5f);
+    a->pushSamples(x.data(), 64);
+    DAWLAB_CHECK(a->computeSpectrum(db));
+    for (int i = 0; i < 64; ++i)
+        x[static_cast<size_t>(i)] = analyzerTestSample(i, 0.25f);
+    a->pushSamples(x.data(), 64);
+    DAWLAB_CHECK(a->computeSpectrum(db));
+    DAWLAB_CHECK(db.size() == 33u && std::abs(db[4] - gainToDb(0.375f)) < 0.01f);
+}
+
+// pushBlock() averages the channels: (2x, 0) reads like x pushed alone; a block with no channels pushes nothing
+void checkSpectrumAveragesChannels() {
+    const auto mono = std::make_unique<SpectrumAnalyzer>();
+    const auto stereo = std::make_unique<SpectrumAnalyzer>();
+    AudioBuffer block(2, 64);
+    std::vector<float> x(64);
+    for (int i = 0; i < 64; ++i) {
+        x[static_cast<size_t>(i)] = analyzerTestSample(i);
+        block.setSample(0, i, 2.0f * x[static_cast<size_t>(i)]);
+        block.setSample(1, i, 0.0f);
+    }
+    for (SpectrumAnalyzer* a : {mono.get(), stereo.get()}) {
+        a->prepare(kSampleRate, 6);
+        a->setWindowType(WindowType::Rectangular);
+    }
+    mono->pushSamples(x.data(), 64);
+    stereo->pushBlock(block.toBlock());
+    std::vector<float> monoDb, stereoDb;
+    DAWLAB_CHECK(mono->computeSpectrum(monoDb) && stereo->computeSpectrum(stereoDb));
+    bool same = monoDb.size() == stereoDb.size();
+    for (size_t k = 0; same && k < monoDb.size(); ++k)
+        same = monoDb[k] < -80.0f ? stereoDb[k] < -80.0f : std::abs(monoDb[k] - stereoDb[k]) < 1e-3f;
+    DAWLAB_CHECK(same);
+    stereo->pushBlock(AudioBlock(nullptr, 0, 64));
+    DAWLAB_CHECK(stereo->getPendingSamples() == 0u);
+}
+
 } // namespace
 
 // ---- batch 6: dsp-dynamics ----
@@ -3872,6 +3969,10 @@ void checkAnalysisClasses() {
     checkFftMatchesNaiveDft();
     checkFftRealTransforms();
     checkCoherentGainEdges();
+    checkSpectrumReadsBinCentres();
+    checkSpectrumHannReadsAmplitude();
+    checkSpectrumSmoothing();
+    checkSpectrumAveragesChannels();
 }
 
 int main() {
