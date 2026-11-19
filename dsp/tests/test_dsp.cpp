@@ -1941,6 +1941,103 @@ void checkSpectrumAveragesChannels() {
     DAWLAB_CHECK(stereo->getPendingSamples() == 0u);
 }
 
+// K-weighting stage 1 at 48 kHz is the standard's Table 1; the conversions and the 100 ms step
+void checkLoudnessConstants() {
+    const BiquadCoefficients c = LoudnessMeter::makeKWeightingStage1(48000.0);
+    const double* t = LoudnessMeter::kStage1Table48k;
+    DAWLAB_CHECK(std::abs(c.b0 - t[0]) < 1e-9 && std::abs(c.b1 - t[1]) < 1e-9 && std::abs(c.b2 - t[2]) < 1e-9 &&
+                 std::abs(c.a1 - t[3]) < 1e-9 && std::abs(c.a2 - t[4]) < 1e-9);
+    DAWLAB_CHECK_NEAR(LoudnessMeter::powerToLufs(10.0), 10.0 - 0.691, 1e-5);
+    DAWLAB_CHECK_NEAR(LoudnessMeter::powerToLufs(0.01), -20.0 - 0.691, 1e-5);
+    const auto m = std::make_unique<LoudnessMeter>();
+    DAWLAB_CHECK(m->getChannelWeight(0) == 1.0f);
+    m->prepare(48000.0, 1);
+    DAWLAB_CHECK(m->getStepSamples() == 4800);
+    m->prepare(44100.0, 1);
+    DAWLAB_CHECK(m->getStepSamples() == 4410);
+}
+
+// One 100 ms step of a 1 kHz sine (48 kHz, exactly 100 periods) into a mono meter
+void loudnessStep(LoudnessMeter& m, AudioBuffer& step, float amplitude) {
+    for (int i = 0; i < step.getNumSamples(); ++i)
+        step.setSample(0, i, amplitude * static_cast<float>(std::sin(kTwoPi * (i % 48) / 48.0)));
+    m.process(step.toBlock());
+}
+
+// A steady tone: momentary = short-term = the integrated value of its one block; maxima follow once windows fill
+void checkLoudnessSteadyTone() {
+    const auto m = std::make_unique<LoudnessMeter>();
+    m->prepare(kSampleRate, 1);
+    AudioBuffer step(1, 4800);
+    for (int s = 0; s < 3; ++s)
+        loudnessStep(*m, step, 0.5f);
+    DAWLAB_CHECK(m->getIntegratedLufs() == kMinusInfinityDb); // no complete 400 ms block yet
+    loudnessStep(*m, step, 0.5f);
+    std::printf("LoudnessMeter after 400 ms: momentary %.3f, integrated %.3f LUFS\n",
+                static_cast<double>(m->getMomentaryLufs()), static_cast<double>(m->getIntegratedLufs()));
+    DAWLAB_CHECK_NEAR(m->getIntegratedLufs(), m->getMomentaryLufs(), 1e-4);
+    for (int s = 4; s < 31; ++s)
+        loudnessStep(*m, step, 0.5f);
+    // 1 kHz sine of 0.5: mean square 0.125, K-weighting +0.691 dB at 1 kHz -> -9.03 LUFS
+    std::printf("LoudnessMeter steady 0.5 sine: momentary %.3f, short-term %.3f, integrated %.3f, max S %.3f LUFS\n",
+                static_cast<double>(m->getMomentaryLufs()), static_cast<double>(m->getShortTermLufs()),
+                static_cast<double>(m->getIntegratedLufs()), static_cast<double>(m->getMaxShortTermLufs()));
+    DAWLAB_CHECK_NEAR(m->getMomentaryLufs(), -9.03, 0.05);
+    DAWLAB_CHECK_NEAR(m->getShortTermLufs(), m->getMomentaryLufs(), 0.01);
+    DAWLAB_CHECK_NEAR(m->getIntegratedLufs(), m->getMomentaryLufs(), 0.01);
+    DAWLAB_CHECK_NEAR(m->getMaxShortTermLufs(), m->getShortTermLufs(), 0.01);
+}
+
+// Short-term spans exactly the last 30 steps: 30 silent steps then one tone step read 10 log10(30 / 4) below momentary
+void checkLoudnessShortTermWindow() {
+    const auto m = std::make_unique<LoudnessMeter>();
+    m->prepare(kSampleRate, 1);
+    AudioBuffer step(1, 4800);
+    for (int s = 0; s < 30; ++s)
+        loudnessStep(*m, step, 0.0f);
+    loudnessStep(*m, step, 0.5f);
+    DAWLAB_CHECK_NEAR(m->getMomentaryLufs() - m->getShortTermLufs(), 10.0 * std::log10(30.0 / 4.0), 1e-3);
+}
+
+// Integrated = the BS.1770 gates applied to the momentary blocks, with the relative gate judged at the centre of the
+// block's 0.1 LU histogram bin. A steady tone is weighted 1 for 12 steps and q for 16; the q sweep puts the quiet
+// blocks on both sides of the relative gate, some of them in the bin where the bin centre decides.
+void checkLoudnessGatesAtBinCentres() {
+    const auto m = std::make_unique<LoudnessMeter>();
+    AudioBuffer step(1, 4800);
+    int nearGate = 0;
+    double worst = 0.0;
+    for (int c = 0; c <= 20; ++c) {
+        const float qDb = -13.0f - 0.05f * static_cast<float>(c);
+        m->prepare(kSampleRate, 1);
+        std::vector<float> blocks;
+        for (int s = 0; s < 28; ++s) {
+            m->setChannelWeight(0, s < 12 ? 1.0f : std::pow(10.0f, 0.1f * qDb)); // a weight scales power
+            loudnessStep(*m, step, 0.5f);
+            if (s >= 3)
+                blocks.push_back(m->getMomentaryLufs());
+        }
+        double sum = 0.0;
+        for (const float l : blocks)
+            sum += LoudnessMeter::lufsToPower(l);
+        const double gate = LoudnessMeter::powerToLufs(sum / static_cast<double>(blocks.size())) - 10.0;
+        double gatedSum = 0.0;
+        int gatedCount = 0;
+        for (const float l : blocks) {
+            const double centre = -70.0 + (std::floor((l + 70.0) / 0.1) + 0.5) * 0.1;
+            nearGate += centre >= gate + 0.01 && centre < gate + 0.09 ? 1 : 0;
+            if (centre >= gate) {
+                gatedSum += LoudnessMeter::lufsToPower(l);
+                ++gatedCount;
+            }
+        }
+        const double expected = LoudnessMeter::powerToLufs(gatedSum / gatedCount);
+        worst = std::max(worst, std::abs(static_cast<double>(m->getIntegratedLufs()) - expected));
+    }
+    std::printf("LoudnessMeter gating: %d blocks just above the relative gate, worst error %.2g LU\n", nearGate, worst);
+    DAWLAB_CHECK(nearGate > 0 && worst < 1e-3);
+}
+
 } // namespace
 
 // ---- batch 6: dsp-dynamics ----
@@ -3973,6 +4070,10 @@ void checkAnalysisClasses() {
     checkSpectrumHannReadsAmplitude();
     checkSpectrumSmoothing();
     checkSpectrumAveragesChannels();
+    checkLoudnessConstants();
+    checkLoudnessSteadyTone();
+    checkLoudnessShortTermWindow();
+    checkLoudnessGatesAtBinCentres();
 }
 
 int main() {
