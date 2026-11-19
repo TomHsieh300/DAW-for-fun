@@ -3424,6 +3424,244 @@ void checkPhaserCoefficientsAndStages() {
     DAWLAB_CHECK(o[0] == 0.0f && o[1] == 0.0f && o[2] == 0.0f && o[3] == 0.0f && o[4] == 1.0e-20f);
 }
 
+// ---- Reverb building blocks --------------------------------------------------
+void checkReverbBuildingBlocks() {
+    CombFilter comb;
+    comb.prepare(10);
+    comb.setDelaySamples(99);
+    DAWLAB_CHECK(comb.getDelaySamples() == 10); // the capacity is exactly the prepared maximum
+    comb.setDelaySamples(10);
+    DAWLAB_CHECK(comb.getDelaySamples() == 10);
+
+    // D = 3 in a ring of exactly 3: delta[n-3] + g * lp(...) with damping 0.5
+    CombFilter c3;
+    c3.prepare(3);
+    c3.setDelaySamples(3);
+    c3.setFeedback(0.5f);
+    c3.setDamping(0.5f);
+    float y[10];
+    for (int i = 0; i < 10; ++i)
+        y[i] = c3.processSample(i == 0 ? 1.0f : 0.0f);
+    std::printf("Comb     D 3, g 0.5, damping 0.5: y[3] %g y[6] %g y[9] %g\n", static_cast<double>(y[3]),
+                static_cast<double>(y[6]), static_cast<double>(y[9]));
+    // at n = 3 the lowpass gives 1 x (1 - 0.5) = 0.5, so 0.5 x 0.5 = 0.25 is written back and heard at n = 6
+    DAWLAB_CHECK(y[0] == 0.0f && y[1] == 0.0f && y[2] == 0.0f && y[3] == 1.0f && y[4] == 0.0f && y[6] == 0.25f);
+
+    AllpassDiffuser ap;
+    ap.prepare(8);
+    ap.setDelaySamples(3);
+    ap.setGain(0.5f);
+    float a[7];
+    for (int i = 0; i < 7; ++i)
+        a[i] = ap.processSample(i == 0 ? 1.0f : 0.0f);
+    // -g, then (1 - g^2) at D, then g(1 - g^2) at 2D
+    DAWLAB_CHECK(a[0] == -0.5f && a[1] == 0.0f && a[3] == 0.75f && a[6] == 0.375f);
+
+    AllpassDiffuser tiny;
+    tiny.prepare(4);
+    tiny.setDelaySamples(2);
+    tiny.setGain(0.0f);
+    (void)tiny.processSample(1.0e-20f);
+    (void)tiny.processSample(0.0f);
+    DAWLAB_CHECK(tiny.processSample(0.0f) == 1.0e-20f); // exactly at the flush threshold: kept
+
+    DAWLAB_CHECK(CombFilter::feedbackForRt60(0, 0.0, 48000.0) == 0.0f);
+
+    DAWLAB_CHECK(nextPrime(2) == 2);
+    DAWLAB_CHECK(nextPrime(4) == 5);
+    DAWLAB_CHECK(nextPrime(8) == 11);
+    DAWLAB_CHECK(nextPrime(31400) == 31469);
+}
+
+// ---- Reverb ------------------------------------------------------------------
+const double kRevBaseMs[Reverb::kNumLines] = {29.7, 37.1, 41.1, 43.7, 53.3, 59.9, 67.3, 73.1};
+const double kRevDiffuserMs[Reverb::kNumInputDiffusers] = {4.77, 3.60, 12.73, 9.31};
+
+int expectedLineSamples(int k, float size, double fs) {
+    return nextPrime(msToSamples(kRevBaseMs[k] * (0.5f + size), fs));
+}
+
+void checkReverbLinesAndGains() {
+    Reverb before; // the lengths are known before prepare(), at the default 48 kHz
+    before.setSize(0.5f);
+    bool lengths = true;
+    for (int k = 0; k < Reverb::kNumLines; ++k)
+        lengths = lengths && before.getLineDelaySamples(k) == static_cast<float>(expectedLineSamples(k, 0.5f, 48000.0));
+    DAWLAB_CHECK(lengths);
+
+    Reverb rv;
+    rv.setDecaySeconds(1.5f);
+    rv.prepare(48000.0, 512, 2);
+    for (float size : {0.5f, 1.0f}) {
+        rv.setSize(size);
+        bool ok = true;
+        for (int k = 0; k < Reverb::kNumLines; ++k) {
+            const int len = expectedLineSamples(k, size, 48000.0);
+            const double g = std::pow(10.0, -3.0 * len / (1.5 * 48000.0));
+            ok = ok && rv.getLineDelaySamples(k) == static_cast<float>(len) &&
+                 std::abs(rv.getLineGain(k) - g) < 1e-6;
+        }
+        std::printf("Reverb   size %g: line lengths are the next primes, gains 10^(-3L/(RT60 fs)): %s\n",
+                    static_cast<double>(size), ok ? "yes" : "no");
+        DAWLAB_CHECK(ok);
+    }
+
+    // The longest line at size 1 has 64 samples of room above its length for the step up to a prime. At this rate
+    // the next prime is 69 samples away (31400 -> 31469, a prime gap), so the line stops at the room's end.
+    const double fs = 286366.0;
+    const int n = msToSamples(kRevBaseMs[7] * 1.5f, fs);
+    DAWLAB_CHECK(n == 31400 && nextPrime(n) - n > 64);
+    Reverb wide;
+    wide.setSize(1.0f);
+    wide.prepare(fs, 512, 2);
+    std::printf("Reverb   size 1 at %g Hz: longest line %g samples\n", fs,
+                static_cast<double>(wide.getLineDelaySamples(7)));
+    DAWLAB_CHECK(wide.getLineDelaySamples(7) == static_cast<float>(n + 64));
+}
+
+// The FDN written out from its formulas (no modulation): pre-delay, 4 allpass diffusers per side (x1.07 on the
+// right), input gain 0.35, v_k = u_k delayed by L_k, u_k = damp(v_k - (2/N) sum v) * g_k + (even ? L : R),
+// wetL = v0 - v2 + v4 - v6, wetR = v1 - v3 + v5 - v7. The reverb's processSampleStereo() must give the same.
+void checkReverbMatchesFdnFormula(double fs, float dampingHz, float preDelayMs, int numSamples) {
+    Reverb rv;
+    rv.setDampingHz(dampingHz);
+    rv.setPreDelayMs(preDelayMs);
+    rv.prepare(fs, 512, 2);
+    const int P = msToSamples(preDelayMs, fs);
+    const float inL = 1.0f, inR = 0.5f;
+    int L[Reverb::kNumLines];
+    float g[Reverb::kNumLines];
+    for (int k = 0; k < Reverb::kNumLines; ++k) {
+        L[k] = static_cast<int>(rv.getLineDelaySamples(k));
+        g[k] = rv.getLineGain(k);
+    }
+    const bool bypass = dampingHz >= 20000.0f;
+    OnePole damping;
+    damping.prepare(fs, 1, Reverb::kNumLines);
+    damping.setType(OnePole::Type::Lowpass);
+    damping.setCutoff(std::min(dampingHz, static_cast<float>(fs * 0.45)));
+    std::vector<AllpassDiffuser> diffusers(2 * Reverb::kNumInputDiffusers);
+    for (int ch = 0; ch < 2; ++ch)
+        for (int k = 0; k < Reverb::kNumInputDiffusers; ++k) {
+            const double ms = kRevDiffuserMs[k] * (ch == 0 ? 1.0 : 1.07);
+            AllpassDiffuser& ap = diffusers[static_cast<size_t>(ch * Reverb::kNumInputDiffusers + k)];
+            ap.prepare(msToSamples(ms, fs) + 1);
+            ap.setDelaySamples(msToSamples(ms, fs));
+            ap.setGain(0.5f);
+        }
+    std::vector<std::vector<float>> pushed(Reverb::kNumLines, std::vector<float>(static_cast<size_t>(numSamples)));
+    int mismatches = 0;
+    for (int i = 0; i < numSamples; ++i) {
+        float d[2] = {i == P ? inL : 0.0f, i == P ? inR : 0.0f};
+        for (int ch = 0; ch < 2; ++ch) {
+            for (int k = 0; k < Reverb::kNumInputDiffusers; ++k)
+                d[ch] = diffusers[static_cast<size_t>(ch * Reverb::kNumInputDiffusers + k)].processSample(d[ch]);
+            d[ch] *= 0.35f;
+        }
+        float v[Reverb::kNumLines];
+        float sum = 0.0f;
+        for (int k = 0; k < Reverb::kNumLines; ++k) {
+            v[k] = i >= L[k] ? pushed[static_cast<size_t>(k)][static_cast<size_t>(i - L[k])] : 0.0f;
+            sum += v[k];
+        }
+        for (int k = 0; k < Reverb::kNumLines; ++k) {
+            float u = v[k] - 0.25f * sum;
+            if (!bypass)
+                u = damping.processSample(k, u);
+            u *= g[k];
+            u += d[k % 2];
+            pushed[static_cast<size_t>(k)][static_cast<size_t>(i)] = reverb_detail::flushDenormal(u);
+        }
+        const float wantL = v[0] - v[2] + v[4] - v[6];
+        const float wantR = v[1] - v[3] + v[5] - v[7];
+        float wetL = 0.0f, wetR = 0.0f;
+        rv.processSampleStereo(i == 0 ? inL : 0.0f, i == 0 ? inR : 0.0f, wetL, wetR);
+        if (!(std::abs(wetL - wantL) <= 1e-6f && std::abs(wetR - wantR) <= 1e-6f)) {
+            if (mismatches == 0)
+                std::printf("  sample %d: wet %g %g, formula %g %g\n", i, static_cast<double>(wetL),
+                            static_cast<double>(wetR), static_cast<double>(wantL), static_cast<double>(wantR));
+            ++mismatches;
+        }
+    }
+    std::printf("Reverb   %g Hz, damping %g Hz, pre-delay %g ms: %d of %d samples differ from the FDN formula\n", fs,
+                static_cast<double>(dampingHz), static_cast<double>(preDelayMs), mismatches, numSamples);
+    DAWLAB_CHECK(mismatches == 0);
+}
+
+// process() = processSampleStereo() + width (mid/side) + dry/wet mix; mono uses the left input for both sides
+void checkReverbProcessMixesTheWetSignal() {
+    const int n = 3000;
+    AudioBuffer in(2, n);
+    fillNoise(in, 3u);
+    Reverb blockFx, sampleFx, monoFx, twinFx;
+    for (Reverb* r : {&blockFx, &sampleFx, &monoFx, &twinFx}) {
+        r->setMix(0.5f);
+        r->setWidth(0.5f);
+        r->prepare(48000.0, n, 2);
+    }
+    AudioBuffer out = in;
+    blockFx.process(out);
+    int mismatches = 0;
+    for (int i = 0; i < n; ++i) {
+        const float dl = in.getReadPointer(0)[i], dr = in.getReadPointer(1)[i];
+        float wl = 0.0f, wr = 0.0f;
+        sampleFx.processSampleStereo(dl, dr, wl, wr);
+        const float mid = 0.5f * (wl + wr);
+        const float side = 0.5f * (wl - wr) * 0.5f;
+        const float wantL = dl * 0.5f + (mid + side) * 0.5f;
+        const float wantR = dr * 0.5f + (mid - side) * 0.5f;
+        if (!(std::abs(out.getReadPointer(0)[i] - wantL) <= 1e-6f && std::abs(out.getReadPointer(1)[i] - wantR) <= 1e-6f))
+            ++mismatches;
+    }
+    std::printf("Reverb   process() vs wet + width 0.5 + mix 0.5: %d of %d samples differ\n", mismatches, n);
+    DAWLAB_CHECK(mismatches == 0);
+
+    AudioBuffer mono(1, n), twin(2, n);
+    for (int i = 0; i < n; ++i)
+        mono.getWritePointer(0)[i] = twin.getWritePointer(0)[i] = twin.getWritePointer(1)[i] = in.getReadPointer(0)[i];
+    monoFx.process(mono);
+    twinFx.process(twin);
+    DAWLAB_CHECK(std::equal(mono.getReadPointer(0), mono.getReadPointer(0) + n, twin.getReadPointer(0)));
+
+    // A mix change glides with a 30 ms time constant
+    Reverb glide;
+    glide.prepare(48000.0, 512, 2); // mix 0.3
+    glide.setMix(1.0f);
+    AudioBuffer dc(2, 1);
+    dc.getWritePointer(0)[0] = dc.getWritePointer(1)[0] = 1.0f;
+    glide.process(dc);
+    const float k = static_cast<float>(1.0 - std::exp(-1.0 / (0.03 * 48000.0)));
+    DAWLAB_CHECK_NEAR(dc.getReadPointer(0)[0], 1.0f - smoothToward(0.3f, 1.0f, k), 1e-6);
+}
+
+// With modulation, line 0 is read at L0 - 1 + depth sin(phase), the phase advancing 2 pi rate / fs per sample:
+// at 5 Hz and 1 ms the first echo arrives about 38 samples after L0
+void checkReverbModulationMovesTheFirstEcho(bool rateAfterPrepare) {
+    const double fs = 48000.0;
+    Reverb rv;
+    rv.setModulationDepthMs(1.0f);
+    if (!rateAfterPrepare)
+        rv.setModulationRateHz(5.0f);
+    rv.prepare(fs, 512, 2);
+    if (rateAfterPrepare)
+        rv.setModulationRateHz(5.0f);
+    const int l0 = static_cast<int>(rv.getLineDelaySamples(0));
+    int expected = -1;
+    for (int i = 0; i < 3 * l0 && expected < 0; ++i)
+        if (i >= l0 + 48.0 * std::sin(kTwoPi * 5.0 * (i + 1) / fs))
+            expected = i;
+    int first = -1;
+    for (int i = 0; i < 3 * l0 && first < 0; ++i) {
+        float wl = 0.0f, wr = 0.0f;
+        rv.processSampleStereo(i == 0 ? 1.0f : 0.0f, 0.0f, wl, wr);
+        if (wl != 0.0f)
+            first = i;
+    }
+    std::printf("Reverb   modulation 1 ms at 5 Hz (rate set %s prepare): first echo at %d, L0 %d, expected about %d\n",
+                rateAfterPrepare ? "after" : "before", first, l0, expected);
+    DAWLAB_CHECK(std::abs(first - expected) <= 2);
+}
+
 } // namespace b6time
 
 int main() {
@@ -3522,6 +3760,14 @@ int main() {
     b6time::checkChorusVoicesAndSpread();
     b6time::checkFlangerSweepTop();
     b6time::checkPhaserCoefficientsAndStages();
+    b6time::checkReverbBuildingBlocks();
+    b6time::checkReverbLinesAndGains();
+    b6time::checkReverbMatchesFdnFormula(48000.0, 20000.0f, 250.0f, 12000 + 4000);
+    b6time::checkReverbMatchesFdnFormula(22050.0, 15000.0f, 0.0f, 3000);
+    b6time::checkReverbMatchesFdnFormula(48000.0, 6000.0f, 0.0f, 5000);
+    b6time::checkReverbProcessMixesTheWetSignal();
+    b6time::checkReverbModulationMovesTheFirstEcho(false);
+    b6time::checkReverbModulationMovesTheFirstEcho(true);
 
     return dawlab::test::summary("dsp");
 }
