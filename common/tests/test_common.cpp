@@ -18,6 +18,28 @@ static void checkSummaryRule() {
     DAWLAB_CHECK(summaryOf(Counters{3, 1}, "summary_probe_one_fails") == 1);
 }
 
+// Every check is counted, and every failed one, by DAWLAB_CHECK and by DAWLAB_CHECK_NEAR. The probes run on the global
+// Counters (the ones the macros use) and put them back before checking what they saw.
+static void checkCounting() {
+    using dawlab::test::Counters;
+    using dawlab::test::counters;
+    const Counters before = counters();
+    std::printf("(the two [FAIL] lines below are probes: a failed check must be counted)\n");
+    dawlab::test::report(true, "probe: a check that holds", __FILE__, __LINE__);
+    const Counters afterPass = counters();
+    dawlab::test::report(false, "probe: a check that fails", __FILE__, __LINE__);
+    const Counters afterFail = counters();
+    dawlab::test::reportNear(1.0, 1.05, 0.1, "probe: within the tolerance", __FILE__, __LINE__);
+    const Counters afterNearPass = counters();
+    dawlab::test::reportNear(1.0, 1.5, 0.1, "probe: outside the tolerance", __FILE__, __LINE__);
+    const Counters afterNearFail = counters();
+    counters() = before;
+    DAWLAB_CHECK(afterPass.checks == before.checks + 1 && afterPass.failures == before.failures);
+    DAWLAB_CHECK(afterFail.checks == before.checks + 2 && afterFail.failures == before.failures + 1);
+    DAWLAB_CHECK(afterNearPass.checks == before.checks + 3 && afterNearPass.failures == before.failures + 1);
+    DAWLAB_CHECK(afterNearFail.checks == before.checks + 4 && afterNearFail.failures == before.failures + 2);
+}
+
 int main() {
     using namespace dawlab;
     constexpr double sr = 48000.0;
@@ -160,6 +182,11 @@ int main() {
                 gainToDb(peakAbs(plucks)));
 
     checkSummaryRule();
+    checkCounting();
 
-    return dawlab::test::summary("common");
+    // The verdict rests on the counters, not on summaryOf alone: summaryOf is under test above, and a summaryOf that
+    // got its rule backwards would pass a run whose probes of it failed.
+    const int verdict = dawlab::test::summary("common");
+    const dawlab::test::Counters& counted = dawlab::test::counters();
+    return verdict == 0 && counted.checks > 0 && counted.failures == 0 ? 0 : 1;
 }
