@@ -298,6 +298,101 @@ void testCpuMeter() {
     DAWLAB_CHECK(m.load() >= 0.0f && m.load() < 100.0f);
 }
 
+// Ids and slots: an id that is here cannot come again, its strip is its slot's, and an id that
+// is not here has no slot and no strip - whatever else the engine holds, and also behind a
+// reference to a slot past the pool's end.
+void testIdsAndSlots() {
+    Engine e;
+    e.prepare(kSampleRate, kBlockSize);
+    const ChannelRef first = e.addTrack(TrackId{1});
+    for (int i = 0; i < 3; ++i) // the UI counts 3 inserts on slot 0
+        e.addInsert(first, -1, std::make_unique<CountingEffect>());
+    DAWLAB_CHECK(first.index == 0 && e.addTrack(TrackId{1}).index == -1);
+    DAWLAB_CHECK(e.getTrack(TrackId{1}) == &e.getMixer().getTrack(0));
+    DAWLAB_CHECK(e.slotOf(TrackId{3}) == -1 && e.getTrack(TrackId{3}) == nullptr);
+    DAWLAB_CHECK(e.getStrip(ChannelRef::track(kMaxTracks, TrackId{3})) == nullptr);
+    e.applyPendingCommandsOffline();
+    e.collectGarbage();
+}
+
+// A new track in a reused slot starts with every send off and post-fader.
+void testNewTrackHasNoSends() {
+    Engine e;
+    e.prepare(kSampleRate, kBlockSize);
+    e.addTrack(TrackId{1});
+    for (int b = 0; b < kNumBuses; ++b) {
+        e.getTrack(TrackId{1})->setSendLevelDb(b, -6.0f);
+        e.getTrack(TrackId{1})->setSendPreFader(b, true);
+    }
+    e.removeTrack(TrackId{1});
+    DAWLAB_CHECK(e.addTrack(TrackId{2}).index == 0);
+    int left = 0;
+    for (int b = 0; b < kNumBuses; ++b)
+        left += (e.getTrack(TrackId{2})->getSendLevelDb(b) != kMinusInfinityDb || e.getTrack(TrackId{2})->isSendPreFader(b)) ? 1 : 0;
+    DAWLAB_CHECK(left == 0);
+    e.applyPendingCommandsOffline();
+    e.collectGarbage();
+}
+
+// Every channel counts its own chain: a full bus 1 leaves the track in the last slot, bus 0 and
+// the master room for more.
+void testChainsCountedApart() {
+    {
+        Engine e;
+        e.prepare(kSampleRate, kBlockSize);
+        for (std::uint32_t id = 1; id <= kMaxTracks; ++id) {
+            e.addTrack(TrackId{id});
+            e.applyPendingCommandsOffline();
+        }
+        for (int i = 0; i < kMaxInserts; ++i)
+            DAWLAB_CHECK(e.addInsert(ChannelRef::bus(1), -1, std::make_unique<CountingEffect>()) != nullptr);
+        DAWLAB_CHECK(e.addInsert(ChannelRef::bus(1), -1, std::make_unique<CountingEffect>()) == nullptr);
+        DAWLAB_CHECK(e.addInsert(e.trackRef(TrackId{kMaxTracks}), -1, std::make_unique<CountingEffect>()) != nullptr);
+        DAWLAB_CHECK(e.addInsert(ChannelRef::bus(0), -1, std::make_unique<CountingEffect>()) != nullptr);
+        DAWLAB_CHECK(e.addInsert(ChannelRef::master(), -1, std::make_unique<CountingEffect>()) != nullptr);
+        e.applyPendingCommandsOffline();
+    }
+    DAWLAB_CHECK(gAlive.load() == 0);
+}
+
+// A bounce of the default length ends where the last clip ends, on whichever track it is.
+void testBounceToTheLastClip() {
+    Engine e;
+    e.prepare(kSampleRate, kBlockSize);
+    for (std::uint32_t id = 1; id <= 4; ++id)
+        e.addTrack(TrackId{id});
+    e.setTrackClips(TrackId{3}, {Clip::fromBuffer(makeConstant(0.5f, 500), 1000, "late")});
+    RenderOptions o;
+    o.compensateLatency = false;
+    DAWLAB_CHECK(renderOffline(e, o).getNumSamples() == 1500);
+}
+
+// A loop far shorter than a block: the engine processes the block in as many passes as the loop
+// needs, each one where the last ended.
+void testShortLoopInOneBlock() {
+    Engine e;
+    e.prepare(kSampleRate, kBlockSize);
+    e.addTrack(TrackId{1});
+    auto ramp = std::make_shared<AudioBuffer>(1, 100);
+    for (int i = 0; i < 100; ++i)
+        ramp->setSample(0, i, static_cast<float>(i) * 0.01f);
+    e.setTrackClips(TrackId{1}, {Clip::fromBuffer(ramp, 0, "ramp")});
+    e.applyPendingCommandsOffline();
+    Transport& t = e.getTransport();
+    t.setLoopRange(10, 15);
+    t.setLoopEnabled(true);
+    t.setPosition(10);
+    t.play();
+    AudioBuffer block(2, 100); // 20 passes of the loop: more than one advance() can describe
+    e.processBlock(block);
+    const float unit = 0.01f * 0.70710678f;
+    int wrong = 0;
+    for (int i = 0; i < 100; ++i)
+        wrong += std::abs(block.getSample(0, i) - static_cast<float>(10 + i % 5) * unit) > 1e-5f ? 1 : 0;
+    DAWLAB_CHECK(wrong == 0);
+    DAWLAB_CHECK(t.getPosition() == 10);
+}
+
 } // namespace
 
 int main() {
@@ -311,6 +406,11 @@ int main() {
     testSoloOfRemovedTrack();
     testUiStripLookup();
     testCpuMeter();
+    testIdsAndSlots();
+    testNewTrackHasNoSends();
+    testChainsCountedApart();
+    testBounceToTheLastClip();
+    testShortLoopInOneBlock();
     DAWLAB_CHECK(gAlive.load() == 0);
     return dawlab::test::summary("l15_test_track_pool");
 }

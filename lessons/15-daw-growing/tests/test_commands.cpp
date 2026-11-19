@@ -168,6 +168,12 @@ void testQueueFull() {
         DAWLAB_CHECK(accepted == 4);
         DAWLAB_CHECK(e.getCommandsDropped() == 6);
         DAWLAB_CHECK(gAlive == 4); // the 6 dropped effects were deleted right away
+        // what a replacement or a clip list carries is freed with its dropped command too
+        auto buffer = makeConstant(1.0f, 64);
+        DAWLAB_CHECK(e.replaceInsert(t0(), 0, std::make_unique<CountingEffect>()) == nullptr);
+        DAWLAB_CHECK(!e.setTrackClips(testId(0), {Clip::fromBuffer(buffer, 0)}));
+        DAWLAB_CHECK(e.getCommandsDropped() == 8);
+        DAWLAB_CHECK(gAlive == 4 && buffer.use_count() == 1);
         AudioBuffer block(2, 64);
         e.processBlock(block);
         DAWLAB_CHECK(e.getNumInserts(t0()) == 4);
@@ -290,6 +296,36 @@ void testRawCommands() {
     DAWLAB_CHECK(gAlive == 0);
 }
 
+// Two references are equal when kind, index and track id all are.
+void testChannelRefEquality() {
+    const ChannelRef a = ChannelRef::track(2, TrackId{5});
+    DAWLAB_CHECK(a == ChannelRef::track(2, TrackId{5}));
+    DAWLAB_CHECK(!(a == ChannelRef::track(3, TrackId{5})));
+    DAWLAB_CHECK(!(a == ChannelRef::track(2, TrackId{6})));
+    DAWLAB_CHECK(!(ChannelRef::bus(0) == ChannelRef::master())); // both index 0
+    DAWLAB_CHECK(ChannelRef::bus(1) == ChannelRef::bus(1) && !(ChannelRef::bus(1) == ChannelRef::bus(0)));
+}
+
+// A second prepare() (a device change) prepares every insert again for the new sample rate: on a
+// track, a bus and the master.
+void testPrepareAgain() {
+    {
+        Engine e;
+        addTestTracks(e);
+        e.prepare(kSampleRate, kBlockSize);
+        const auto* onTrack = static_cast<const EffectBase*>(e.addInsert(testTrack(kTestTracks - 1), -1, std::make_unique<CountingEffect>()));
+        const auto* onBus = static_cast<const EffectBase*>(e.addInsert(ChannelRef::bus(kNumBuses - 1), -1, std::make_unique<CountingEffect>()));
+        const auto* onMaster = static_cast<const EffectBase*>(e.addInsert(ChannelRef::master(), -1, std::make_unique<CountingEffect>()));
+        e.applyPendingCommandsOffline();
+        DAWLAB_CHECK(onTrack->getSampleRate() == kSampleRate && onBus->getSampleRate() == kSampleRate);
+        e.prepare(44100.0, 256);
+        DAWLAB_CHECK(onTrack->getSampleRate() == 44100.0);
+        DAWLAB_CHECK(onBus->getSampleRate() == 44100.0);
+        DAWLAB_CHECK(onMaster->getSampleRate() == 44100.0);
+    }
+    DAWLAB_CHECK(gAlive == 0);
+}
+
 } // namespace
 
 int main() {
@@ -300,6 +336,8 @@ int main() {
     testInvalidTargets();
     testChainLength();
     testRawCommands();
+    testChannelRefEquality();
+    testPrepareAgain();
     DAWLAB_CHECK(gAlive == 0);
     return dawlab::test::summary("l15_test_commands");
 }
