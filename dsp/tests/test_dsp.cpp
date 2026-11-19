@@ -2109,6 +2109,40 @@ void checkLevelMeterBallistics() {
     }
 }
 
+// DeEsser: the frequency is capped at 0.45 fs, the crossover sits at 0.7208 f, a non-finite sample is replaced by 0,
+// and loud sibilance is turned down (never up)
+void checkDeEsserBasics() {
+    DeEsser e;
+    e.prepare(kSampleRate, 512, 1);
+    e.setFrequency(30000.0f);
+    DAWLAB_CHECK_NEAR(e.getFrequency(), 21600.0f, 0.01);
+    e.setFrequency(5000.0f);
+    DAWLAB_CHECK_NEAR(e.getCrossoverHz(), 5000.0f * 0.7208f, 0.01);
+
+    DeEsser n;
+    n.prepare(kSampleRate, 512, 1);
+    AudioBuffer bad(1, 4);
+    std::fill_n(bad.getWritePointer(0), 4, 0.1f);
+    bad.getWritePointer(0)[0] = kNaN;
+    n.process(bad);
+    DAWLAB_CHECK(bad.getReadPointer(0)[0] == 0.0f);
+
+    DeEsser s;
+    s.prepare(kSampleRate, 512, 1);
+    s.setFrequency(7000.0f);
+    s.setThresholdDb(-30.0f);
+    s.setRangeDb(12.0f);
+    AudioBuffer b(1, 4800);
+    for (int i = 0; i < 4800; ++i)
+        b.getWritePointer(0)[i] = 0.5f * static_cast<float>(std::sin(2.0 * kPi * 7000.0 * i / kSampleRate));
+    s.process(b);
+    DAWLAB_CHECK(s.getGainReductionDb() > 6.0f);
+    float peak = 0.0f;
+    for (int i = 4320; i < 4800; ++i)
+        peak = std::max(peak, std::abs(b.getReadPointer(0)[i]));
+    DAWLAB_CHECK(peak < 0.5f * dbToGain(-6.0f));
+}
+
 } // namespace
 
 void checkDspFilters() {
@@ -2782,6 +2816,7 @@ int main() {
     checkGateClosedRangeGlide();
     checkLevelMeterResetClearsAllChannels();
     checkLevelMeterBallistics();
+    checkDeEsserBasics();
 
     return dawlab::test::summary("dsp");
 }
