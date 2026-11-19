@@ -14,9 +14,11 @@
 //   4c. The song's end counts the MIDI clips, so a bounce of the default length plays a song of notes only.
 //   5. The audio thread never allocates, with clips, loops, seeks and live MIDI (this file replaces operator new).
 //   6. Three threads at once - UI, audio, MIDI - for ThreadSanitizer.
-//   7. The synth by hand: stealing, the pedal, all notes off, the bend.
+//   7. The synth by hand: stealing, the pedal, all notes off, the bend; its parts value by value, which voice a
+//      note gets; the MIDI FIFO and drainMidi().
 //   8. Raw MIDI clip and instrument commands: what comes back as garbage.
-//   9. The clip player event by event: edges, order, pedal, mutes, too much at once.
+//   9. The clip player event by event: edges, order, pedal, mutes, chased controllers, a loop wrap inside a
+//      block, too much at once.
 
 #include "TestHelpers.h"
 #include "TestTracks.h"
@@ -829,9 +831,10 @@ void testMidiParser() {
     feed({64, 80});                        // after it, no running status: skipped
     feed({0xC3, 5});                       // a program change has one data byte
     feed({0xE0, 0x00, 0x40});              // pitch bend in the middle
+    feed({0x80, 60, 0});                   // 0x80, the lowest status byte: a note-off on channel 1
     const std::vector<MidiMessage> want = {
         MidiMessage::noteOn(1, 60, 100), MidiMessage::noteOn(1, 62, 90),
-        MidiMessage{0xC3, 5, 0}, MidiMessage::pitchBend(0, 0)};
+        MidiMessage{0xC3, 5, 0}, MidiMessage::pitchBend(0, 0), MidiMessage::noteOff(0, 60)};
     std::printf("  a byte stream: %zu messages, %ld data bytes skipped\n", got.size(), p.skipped());
     DAWLAB_CHECK(got == want);
     DAWLAB_CHECK(p.skipped() == 4);
@@ -898,6 +901,167 @@ void testSynthByHand() {
     const double hz = upward / 0.9; // crossings in the last 0.9 s
     std::printf("  synth by hand: %ld stolen, bend up %.1f Hz (expected 2, 493.9)\n", s->stolen(), hz);
     DAWLAB_CHECK(std::abs(hz - 493.9) < 10.0);
+}
+
+// 7b. The synth's parts, value by value: the PolyBLEP correction, the saw, the envelope's stages, the
+//     velocity curve, and a voice that is stolen (it fades over kStealSeconds, then plays the new note).
+void testSynthParts() {
+    // polyBlep(): -1..0 in the sample after the wrap, 0..1 in the one before it, 0 in between.
+    DAWLAB_CHECK_NEAR(polyBlep(0.005, 0.01), -0.25, 1e-12);
+    DAWLAB_CHECK_NEAR(polyBlep(0.995, 0.01), 0.25, 1e-9);
+    DAWLAB_CHECK(polyBlep(0.5, 0.01) == 0.0);
+
+    // A saw at a quarter of the sample rate: 0, -0.5, 0, 0.5, and again (the jump smoothed to 0).
+    Saw saw;
+    saw.setFrequency(12000.0, 48000.0);
+    bool sawOk = true;
+    for (const float want : {0.0f, -0.5f, 0.0f, 0.5f, 0.0f, -0.5f, 0.0f, 0.5f})
+        sawOk = sawOk && saw.next() == want;
+    DAWLAB_CHECK(sawOk);
+
+    // An envelope at 1024 Hz: attack 4 samples, decay 4 to a sustain of 0.5, release 8.
+    Adsr env;
+    env.set(1024.0, 4.0 / 1024, 4.0 / 1024, 0.5, 8.0 / 1024);
+    env.noteOn();
+    bool envOk = true;
+    for (const float want : {0.0f, 0.25f, 0.5f, 0.75f})
+        envOk = envOk && env.next() == want;
+    envOk = envOk && env.stage() == Adsr::Stage::Decay;
+    for (const float want : {1.0f, 0.875f, 0.75f, 0.625f})
+        envOk = envOk && env.next() == want;
+    envOk = envOk && env.stage() == Adsr::Stage::Sustain && env.next() == 0.5f && env.next() == 0.5f;
+    env.noteOff();
+    for (const float want : {0.5f, 0.4375f, 0.375f, 0.3125f, 0.25f, 0.1875f, 0.125f, 0.0625f})
+        envOk = envOk && env.next() == want;
+    envOk = envOk && !env.isActive() && env.next() == 0.0f;
+    DAWLAB_CHECK(envOk);
+
+    // Velocity is squared: 64 is a quarter of the level of 127.
+    DAWLAB_CHECK(velocityGain(127) == 1.0f && std::abs(velocityGain(64) - (64.0f / 127.0f) * (64.0f / 127.0f)) < 1e-6f);
+
+    // A stolen voice fades out over 2 ms (96 samples at 48 kHz), and only then starts the new note.
+    auto voice = std::make_unique<Voice>();
+    voice->prepare(kSampleRate, VoiceSettings{});
+    std::vector<float> out(4800, 0.0f);
+    voice->start(60, 100);
+    voice->render(out.data(), 4800);
+    voice->steal(64, 100);
+    voice->render(out.data(), 48);
+    const bool fading = voice->isStealing() && voice->isActive();
+    voice->render(out.data(), 96);
+    std::printf("  synth parts: a stolen voice still fades after 48 samples: %s; plays the new note after 144: %s\n",
+                fading ? "yes" : "no", !voice->isStealing() && voice->pitch() == 64 ? "yes" : "no");
+    DAWLAB_CHECK(fading && !voice->isStealing() && voice->isActive() && voice->pitch() == 64);
+}
+
+// 7c. Which voice a note gets. Each case ends with a note on for a pitch that sounded before: if that pitch
+//     still sounds, its own voice takes it (nothing stolen); if the note before took its voice, it steals again.
+void testVoiceChoice() {
+    auto s = std::make_unique<Synth>();
+    s->prepare(kSampleRate, VoiceSettings{});
+    auto allSixteen = [&s] {
+        s->reset();
+        for (int pitch = 40; pitch < 40 + Synth::kNumVoices; ++pitch)
+            s->handle(MidiMessage::noteOn(0, pitch, 100));
+    };
+    auto stolenBy = [&s](std::initializer_list<int> pitches) {
+        const long before = s->stolen();
+        for (const int p : pitches)
+            s->handle(MidiMessage::noteOn(0, p, 100));
+        return s->stolen() - before;
+    };
+    // A pitch that sounds gets its own voice again, not a second one.
+    s->reset();
+    s->handle(MidiMessage::noteOn(0, 40, 100));
+    s->handle(MidiMessage::noteOn(0, 41, 100));
+    s->handle(MidiMessage::noteOn(0, 41, 100));
+    DAWLAB_CHECK(s->activeVoices() == 2);
+    // A free voice comes before any steal, also when it is not the first.
+    allSixteen();
+    s->handle(MidiMessage::noteOff(0, 45));
+    DAWLAB_CHECK(activeAfter(*s, static_cast<int>(kSampleRate)) == Synth::kNumVoices - 1);
+    DAWLAB_CHECK(stolenBy({60}) == 0 && s->activeVoices() == Synth::kNumVoices);
+    // A released note is stolen before the oldest held one.
+    allSixteen();
+    s->handle(MidiMessage::noteOff(0, 45));
+    DAWLAB_CHECK(stolenBy({60, 45}) == 2);
+    // Of two released notes, the one released first.
+    allSixteen();
+    s->handle(MidiMessage::noteOff(0, 44));
+    s->handle(MidiMessage::noteOff(0, 45));
+    DAWLAB_CHECK(stolenBy({60, 44}) == 2);
+    // The first voice released, though it is not the oldest.
+    allSixteen();
+    s->handle(MidiMessage::noteOn(0, 40, 100)); // 40 again: now the newest
+    s->handle(MidiMessage::noteOff(0, 40));
+    DAWLAB_CHECK(stolenBy({60, 40}) == 2);
+    // All held: the oldest note, which is not the first voice's.
+    allSixteen();
+    s->handle(MidiMessage::noteOn(0, 40, 100));
+    DAWLAB_CHECK(stolenBy({60, 41}) == 2);
+    allSixteen(); // the same, the first two voices played again: the oldest is the third
+    s->handle(MidiMessage::noteOn(0, 40, 100));
+    s->handle(MidiMessage::noteOn(0, 41, 100));
+    DAWLAB_CHECK(stolenBy({60, 42}) == 2);
+    // Notes the pedal let go were released after one let go before it.
+    allSixteen();
+    s->handle(MidiMessage::noteOff(0, 40));
+    s->handle(MidiMessage::controller(0, Synth::kSustainPedal, 127));
+    for (int pitch = 41; pitch < 40 + Synth::kNumVoices; ++pitch)
+        s->handle(MidiMessage::noteOff(0, pitch));
+    s->handle(MidiMessage::controller(0, Synth::kSustainPedal, 0));
+    DAWLAB_CHECK(stolenBy({60, 40}) == 2);
+    // So were the notes all notes off released.
+    allSixteen();
+    s->handle(MidiMessage::noteOff(0, 40));
+    s->handle(MidiMessage::controller(0, Synth::kAllNotesOff, 0));
+    DAWLAB_CHECK(stolenBy({60, 40}) == 2);
+    std::printf("  voice choice: same pitch, free voice, released first, oldest held - %ld stolen in all\n", s->stolen());
+}
+
+// 7d. The MIDI thread's FIFO and drainMidi(): order, full and empty, and each message's offset in the block.
+void testFifoAndDrain() {
+    auto fifo = std::make_unique<MidiFifo>();
+    TimedMidi m;
+    DAWLAB_CHECK(fifo->peek() == nullptr && !fifo->pop(m));
+    DAWLAB_CHECK(fifo->push({1.0, MidiMessage::noteOn(0, 60, 100)}) && fifo->push({2.0, MidiMessage::noteOn(0, 61, 100)}));
+    DAWLAB_CHECK(fifo->peek() != nullptr && fifo->peek()->message == MidiMessage::noteOn(0, 60, 100));
+    DAWLAB_CHECK(fifo->pop(m) && m.time == 1.0 && fifo->pop(m) && m.time == 2.0 && !fifo->pop(m) && fifo->peek() == nullptr);
+    // Full at kCapacity: the next push is dropped and counted; after one pop there is room for one.
+    int pushed = 0;
+    for (std::size_t i = 0; i < MidiFifo::kCapacity; ++i)
+        pushed += fifo->push({static_cast<double>(i), MidiMessage::noteOn(0, 60, 100)}) ? 1 : 0;
+    DAWLAB_CHECK(pushed == static_cast<int>(MidiFifo::kCapacity) && !fifo->push({0.0, MidiMessage{}}) && fifo->dropped() == 1);
+    DAWLAB_CHECK(fifo->pop(m) && m.time == 0.0 && fifo->push({0.0, MidiMessage{}}) && !fifo->push({0.0, MidiMessage{}}));
+    DAWLAB_CHECK(fifo->dropped() == 2);
+    while (fifo->pop(m)) {
+    }
+
+    // Scheduled, 1024 Hz, a block of 100 heard at 8.0 s, 0.5 s delay: a message from 7.0 s is late (offset 0,
+    // counted), 7.5 s is on time at 0, 50 samples later at 50, 100 samples later waits for the next block.
+    std::vector<BlockEvent> out;
+    out.reserve(16);
+    long late = 0;
+    const double sr = 1024.0;
+    for (const auto& [time, pitch] : {std::pair<double, int>{7.0, 60}, {7.5, 61}, {7.5 + 50 / sr, 62}, {7.5 + 100 / sr, 63}})
+        fifo->push({time, MidiMessage::noteOn(0, pitch, 100)});
+    drainMidi(*fifo, 8.0, 100, sr, MidiTiming::Scheduled, 0.5, out, late);
+    const bool scheduled = out.size() == 3 && out[0].offset == 0 && out[0].message.note() == 60 && out[1].offset == 0 &&
+                           out[1].message.note() == 61 && out[2].offset == 50 && out[2].message.note() == 62;
+    DAWLAB_CHECK(scheduled && late == 1 && fifo->peek() != nullptr && fifo->peek()->message.note() == 63);
+    // As soon as possible: whatever waits, at offset 0, whenever it was meant for.
+    drainMidi(*fifo, 0.0, 100, sr, MidiTiming::AsSoonAsPossible, 0.0, out, late);
+    DAWLAB_CHECK(out.size() == 1 && out[0].offset == 0 && out[0].message.note() == 63 && fifo->peek() == nullptr && late == 1);
+    // Either way no more than `out` has room for: the rest stays in the FIFO.
+    std::vector<BlockEvent> small;
+    small.reserve(2);
+    const std::size_t room = small.capacity();
+    for (const MidiTiming timing : {MidiTiming::Scheduled, MidiTiming::AsSoonAsPossible}) {
+        for (std::size_t i = 0; i <= room; ++i)
+            fifo->push({8.0, MidiMessage::noteOn(0, 70, 100)});
+        drainMidi(*fifo, 8.0, 100, sr, timing, 0.0, small, late);
+        DAWLAB_CHECK(small.size() == room && small.capacity() == room && fifo->pop(m) && !fifo->pop(m));
+    }
 }
 
 // 8. The MIDI clips and the instrument of a track by raw command (Engine::pushCommand(), past the UI's checks):
@@ -973,9 +1137,9 @@ void testClipPlayerEvents() {
         auto e = loggingEngine(log);
         // Material 480..2390 at timeline 0..1910 (1910: inside a block).
         MidiClip trimmed = clipOf(1, 0, 1910, {{480, 240, 60, 100, 0}, {480, 480, 64, 100, 0}, {720, 240, 60, 90, 0},
-                                               {2385, 100, 72, 100, 0}, {2395, 10, 74, 100, 0}});
+                                               {2385, 100, 72, 100, 0}, {2390, 10, 76, 100, 0}, {2395, 10, 74, 100, 0}});
         trimmed.offset = 480;
-        trimmed.controllers = {{0, 7, 1, 0}, {1000, 7, 2, 0}, {1480, Synth::kSustainPedal, 127, 0}, {2390, 7, 3, 0}};
+        trimmed.controllers = {{0, 7, 1, 0}, {960, 7, 4, 0}, {1000, 7, 2, 0}, {1480, Synth::kSustainPedal, 127, 0}, {2390, 7, 3, 0}};
         // Ends on a block's edge (2880 = 120 blocks) with its note and the pedal down.
         MidiClip edge = clipOf(2, 2400, 480, {{0, 480, 50, 100, 0}});
         edge.controllers = {{0, Synth::kSustainPedal, 127, 0}};
@@ -993,9 +1157,12 @@ void testClipPlayerEvents() {
         DAWLAB_CHECK(inOrder(log, 240 * spt, off(60), on(60, 90)));                // a note off before a note on
         DAWLAB_CHECK(indexOf(log, 480 * spt, off(64)) >= 0 && indexOf(log, 480 * spt, off(60)) >= 0); // on a block's edge
         DAWLAB_CHECK(indexOf(log, 520 * spt, MidiMessage::controller(0, 7, 2)) >= 0);
+        DAWLAB_CHECK(indexOf(log, 480 * spt, MidiMessage::controller(0, 7, 4)) >= 0 &&
+                     countOf(log, MidiMessage::controller(0, 7, 4)) == 1);         // on a block's edge: once
         DAWLAB_CHECK(countOf(log, MidiMessage::controller(0, 7, 3)) == 0);         // at the material's end: out
         DAWLAB_CHECK(indexOf(log, 1000 * spt, pedalDown) >= 0);
         DAWLAB_CHECK(indexOf(log, 1905 * spt, on(72)) >= 0 && countOf(log, on(74)) == 0); // 74 starts past the end
+        DAWLAB_CHECK(countOf(log, on(76)) == 0);                                   // 76 starts on the end: out too
         DAWLAB_CHECK(inOrder(log, 1910 * spt, off(72), pedalUp));                  // the clip's end: note, then pedal
         DAWLAB_CHECK(indexOf(log, 2400 * spt, on(50)) >= 0 && indexOf(log, 2400 * spt, pedalDown) >= 0);
         DAWLAB_CHECK(inOrder(log, 2880 * spt, off(50), pedalUp));                  // a clip's end on a block's edge
@@ -1012,7 +1179,79 @@ void testClipPlayerEvents() {
         play(*e, 600 * 50, 600);
         DAWLAB_CHECK(indexOf(log, 3840 * spt, on(55)) >= 0);
         DAWLAB_CHECK(inOrder(log, 4080 * spt, off(55), pedalUp) && countOf(log, off(55)) == 1);
+        // Within each block the events come in the order of their samples (1905 and 1910 share one).
+        DAWLAB_CHECK(std::is_sorted(log.begin(), log.end(), [](const auto& a, const auto& b) { return a.first < b.first; }));
         std::printf("  clip player: %zu events, each at its sample and in its order\n", log.size());
+    }
+    {
+        // The pedal is down from 64 on, as the synth has it: a clip that leaves it at 64 lets it go where it ends.
+        EventLog log;
+        auto e = loggingEngine(log);
+        MidiClip c = clipOf(1, 0, 480, {{0, 100, 60, 100, 0}});
+        c.controllers = {{0, Synth::kSustainPedal, 64, 0}};
+        e->setTrackMidiClips(testId(0), {c});
+        e->getTransport().play();
+        play(*e, 600 * 40, 600);
+        DAWLAB_CHECK(indexOf(log, 480 * spt, pedalUp) >= 0);
+    }
+    {
+        // Controllers are chased from where the playhead lands in the clip's material: a clip at tick 960, its
+        // material trimmed by 100, a controller on MIDI channel 3 set to 11, 0 and 33 at material ticks 50, 150, 300.
+        EventLog log;
+        auto e = loggingEngine(log);
+        MidiClip c = clipOf(1, 960, 960, {});
+        c.offset = 100;
+        c.controllers = {{50, 7, 11, 2}, {150, 7, 0, 2}, {300, 7, 33, 2}};
+        e->setTrackMidiClips(testId(0), {c});
+        e->getTransport().play();
+        auto valuesAfterSeekTo = [&](int64_t tick) {
+            log.clear();
+            e->getTransport().setPosition(tick * spt);
+            play(*e, 600, 600);
+            std::vector<int> values;
+            for (const auto& ev : log)
+                if (ev.second.kind() == MidiKind::Controller && ev.second.note() == 7 && ev.second.channel() == 2)
+                    values.push_back(ev.second.velocity());
+            return values;
+        };
+        DAWLAB_CHECK(valuesAfterSeekTo(960) == std::vector<int>{11});       // the clip's start: what was set before its window
+        DAWLAB_CHECK(valuesAfterSeekTo(960 + 100) == std::vector<int>{0});  // material 200: the value 0 is sent too
+        DAWLAB_CHECK(valuesAfterSeekTo(960 + 200) == (std::vector<int>{0, 33})); // on a point: chased before it, sent once
+        DAWLAB_CHECK(valuesAfterSeekTo(1920).empty());                      // the clip's end: nothing of it
+    }
+    {
+        // A loop wrap inside a block: a note 25 samples after the loop's start comes 25 samples after the wrap.
+        EventLog log;
+        auto e = loggingEngine(log);
+        e->setTrackMidiClips(testId(0), {clipOf(1, 0, kBar, {{961, 100, 60, 100, 0}})});
+        Transport& tr = e->getTransport();
+        tr.setLoopRange(24000, 48000);
+        tr.setLoopEnabled(true);
+        tr.setPosition(46000);
+        tr.play();
+        play(*e, 4096, 512); // the wrap: 2000 samples in, inside the fourth block
+        DAWLAB_CHECK(indexOf(log, 2000 + 25, on(60)) >= 0);
+    }
+    {
+        // A short loop over many chased controllers: every wrap chases all 2048, more than a block has room for.
+        // What does not fit is dropped; nothing allocates.
+        const auto engine = std::make_unique<Engine>();
+        Engine& e = *engine;
+        setUp(e);
+        MidiClip c = clipOf(1, 0, kBar, {});
+        for (int ch = 0; ch < 16; ++ch)
+            for (int number = 0; number < 128; ++number)
+                c.controllers.push_back({0, number, 1, ch});
+        e.setTrackMidiClips(testId(0), {c});
+        e.applyPendingCommandsOffline();
+        Transport& tr = e.getTransport();
+        tr.setLoopRange(100, 200);
+        tr.setLoopEnabled(true);
+        tr.setPosition(100);
+        tr.play();
+        long allocs = 0;
+        play(e, 2048, 512, &allocs);
+        DAWLAB_CHECK(allocs == 0);
     }
     {
         // More notes on one tick than voices to remember (one is dropped), then a segment with more controller
@@ -1062,6 +1301,9 @@ int main() {
     testSongEndCountsNotes();
     testMidiParser();
     testSynthByHand();
+    testSynthParts();
+    testVoiceChoice();
+    testFifoAndDrain();
     testRawMidiCommands();
     testClipPlayerEvents();
     testNoAllocation();
