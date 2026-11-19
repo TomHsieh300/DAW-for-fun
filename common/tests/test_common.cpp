@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -38,6 +39,75 @@ static void checkCounting() {
     DAWLAB_CHECK(afterFail.checks == before.checks + 2 && afterFail.failures == before.failures + 1);
     DAWLAB_CHECK(afterNearPass.checks == before.checks + 3 && afterNearPass.failures == before.failures + 1);
     DAWLAB_CHECK(afterNearFail.checks == before.checks + 4 && afterNearFail.failures == before.failures + 2);
+}
+
+// The analysis tools read exactly the n samples they are given: a loud sample just past the end changes nothing.
+// Too few samples to measure give 0, not NaN.
+static void checkAnalysisReadsNSamples() {
+    using namespace dawlab;
+    constexpr double sr = 48000.0;
+    constexpr int n = 4800;
+    std::vector<float> x(n + 1);
+    for (int i = 0; i < n; ++i)
+        x[size_t(i)] = static_cast<float>(0.3 * std::sin(kTwoPi * 1000.0 * i / sr));
+    x[n] = 100.0f;
+    DAWLAB_CHECK_NEAR(peakAbs(x.data(), n), 0.3, 1e-4);
+    DAWLAB_CHECK_NEAR(rms(x.data(), n), 0.3 / std::sqrt(2.0), 1e-4);
+    DAWLAB_CHECK_NEAR(goertzelAmplitude(x.data(), n, 1000.0, sr), 0.3, 1e-3);
+    DAWLAB_CHECK(rms(x.data(), 0) == 0.0f);
+    DAWLAB_CHECK(goertzelAmplitude(x.data(), 1, 1000.0, sr) == 0.0);
+    // A Hann window of 3 samples is {0, 1, 0}: only the middle sample counts, and a sine's peak there is 2 x it
+    const float three[] = {0.9f, 0.25f, -0.7f};
+    DAWLAB_CHECK_NEAR(goertzelAmplitude(three, 3, 1000.0, sr), 0.5, 1e-9);
+
+    // hasNanOrInf looks at every sample of every channel, up to the last one
+    AudioBuffer b(2, 4);
+    DAWLAB_CHECK(!hasNanOrInf(b));
+    b.setSample(1, 3, std::numeric_limits<float>::infinity());
+    DAWLAB_CHECK(hasNanOrInf(b));
+    b.setSample(1, 3, std::nanf(""));
+    DAWLAB_CHECK(hasNanOrInf(b));
+}
+
+// measureGainDb feeds amplitude * sin(2 pi f i / fs) for skip + n samples and measures only what comes after the
+// skip, so a system that is silent for its first 0.1 s still measures 0 dB.
+static void checkMeasureGainDb() {
+    using namespace dawlab;
+    constexpr double sr = 48000.0;
+    std::vector<float> fed;
+    const double db = measureGainDb(
+        [&fed](float x) {
+            fed.push_back(x);
+            return fed.size() > 4800 ? x : 0.0f;
+        },
+        1000.0, sr);
+    DAWLAB_CHECK_NEAR(db, 0.0, 1e-3);
+    DAWLAB_CHECK(fed.size() == 33600); // (0.2 + 0.5) s
+    // 1 kHz at 48 kHz: a quarter period is 12 samples, so sample 12 is the peak and sample 24 a zero crossing
+    DAWLAB_CHECK(fed.size() > 24 && std::abs(fed[12] - 0.25f) < 1e-6f && std::abs(fed[24]) < 1e-6f);
+}
+
+// thdPercent: harmonics 2..numHarmonics, up to but not including Nyquist, relative to the fundamental
+static void checkThd() {
+    using namespace dawlab;
+    constexpr double sr = 48000.0;
+    // A fundamental of 0.5 with a 2nd harmonic of 0.05 and a 3rd of 0.025: THD = 100 * sqrt(0.05^2 + 0.025^2) / 0.5
+    std::vector<float> x(24000);
+    for (size_t i = 0; i < x.size(); ++i) {
+        const double w = kTwoPi * 1000.0 * double(i) / sr;
+        x[i] = static_cast<float>(0.5 * std::sin(w) + 0.05 * std::sin(2.0 * w) + 0.025 * std::sin(3.0 * w));
+    }
+    const int n = int(x.size());
+    const double expected = 100.0 * std::sqrt(0.05 * 0.05 + 0.025 * 0.025) / 0.5;
+    DAWLAB_CHECK_NEAR(thdPercent(x.data(), n, 1000.0, sr, 3), expected, 0.01);
+    DAWLAB_CHECK_NEAR(thdPercent(x.data(), n, 1000.0, sr, 2), 10.0, 0.01);
+    // A fundamental of 12 kHz at 48 kHz: its 2nd harmonic is Nyquist, which is not counted (a tone there is ignored)
+    for (size_t i = 0; i < x.size(); ++i)
+        x[i] = static_cast<float>(std::sin(kTwoPi * 0.25 * double(i)) + ((i & 1) ? -0.1 : 0.1));
+    DAWLAB_CHECK(thdPercent(x.data(), n, 12000.0, sr) == 0.0);
+    // Silence has no fundamental: 0 %, not NaN
+    const std::vector<float> silence(480, 0.0f);
+    DAWLAB_CHECK(thdPercent(silence.data(), 480, 1000.0, sr) == 0.0);
 }
 
 int main() {
@@ -110,6 +180,10 @@ int main() {
 
     // THD of a pure sine wave should be close to 0
     DAWLAB_CHECK(thdPercent(sine.getReadPointer(0), sine.getNumSamples(), 1000.0, sr) < 0.01);
+
+    checkAnalysisReadsNSamples();
+    checkMeasureGainDb();
+    checkThd();
 
     // WAV round trip: 32-bit float must match exactly, 24-bit error < 1 LSB
     AudioBuffer noise = makeWhiteNoise(sr, 0.1, 0.5f, 2);
