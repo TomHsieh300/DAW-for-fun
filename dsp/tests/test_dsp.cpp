@@ -4076,6 +4076,79 @@ void checkAnalysisClasses() {
     checkLoudnessGatesAtBinCentres();
 }
 
+// ---- batch 7: FractionalDelayLine ----
+#include <dawlab/dsp/FractionalDelayLine.h>
+
+namespace b7fdl {
+
+// A line of 14 samples taken from p at x = 0 .. 13: the sample "D pushes ago" is p(13 - D), so a read at a
+// fractional delay D should give p(13 - D) whenever the interpolation can reproduce p exactly
+template <typename P>
+std::unique_ptr<FractionalDelayLine> lineOf(P p) {
+    auto line = std::make_unique<FractionalDelayLine>();
+    line->prepare(8, 1);
+    for (int k = 0; k < 14; ++k)
+        line->push(0, static_cast<float>(p(static_cast<double>(k))));
+    return line;
+}
+
+// Linear reads reproduce a straight line, Catmull-Rom (readCubic) a parabola, Lagrange a cubic, at any fraction
+void checkInterpolationReproducesPolynomials() {
+    const auto straight = [](double x) { return 0.5 + 0.25 * x; };
+    const auto parabola = [](double x) { return 2.0 - 0.4 * x + 0.05 * x * x; };
+    const auto cubic = [](double x) { return 1.0 + 0.3 * x - 0.02 * x * x + 0.001 * x * x * x; };
+    const auto lin = lineOf(straight);
+    const auto par = lineOf(parabola);
+    const auto cub = lineOf(cubic);
+    double worst[4] = {0.0, 0.0, 0.0, 0.0};
+    for (const float delay : {1.25f, 2.5f, 3.75f, 6.6f}) {
+        const double x = 13.0 - static_cast<double>(delay);
+        worst[0] = std::max(worst[0], std::abs(lin->readLinear(0, delay) - straight(x)));
+        worst[1] = std::max(worst[1], std::abs(par->readCubic(0, delay) - parabola(x)));
+        worst[2] = std::max(worst[2], std::abs(cub->readLagrange(0, delay) - cubic(x)));
+        const int d = static_cast<int>(delay);
+        const float t = delay - static_cast<float>(d);
+        worst[3] = std::max(worst[3], std::abs(par->readCubicSplit(0, d, t) - parabola(x)));
+    }
+    std::printf("FractionalDelayLine polynomial reads: linear %.2g, cubic %.2g, Lagrange %.2g, cubic split %.2g\n",
+                worst[0], worst[1], worst[2], worst[3]);
+    for (const double w : worst)
+        DAWLAB_CHECK(w < 1e-5);
+}
+
+// The split reads clamp (d, frac): a fraction is kept at the smallest delay and dropped at the largest, and a
+// fraction of exactly 1 carries into the next sample (not a + 1 * (b - a), which can round away from b)
+void checkSplitReadEdges() {
+    auto line = std::make_unique<FractionalDelayLine>();
+    line->prepare(4, 1); // 8 slots
+    for (int k = 0; k < 10; ++k)
+        line->push(0, static_cast<float>(k + 1)); // d pushes ago: 10 - d
+    DAWLAB_CHECK(line->readLinearSplit(0, 0, 0.5f) == 9.5f);
+    DAWLAB_CHECK(line->readCubicSplit(0, 1, 0.5f) == 8.5f);
+    DAWLAB_CHECK(line->readLinearSplit(0, 4, 0.5f) == 6.0f);
+    DAWLAB_CHECK(line->readCubicSplit(0, 4, 0.5f) == 6.0f);
+
+    line->reset();
+    line->push(0, 1e-8f);
+    line->push(0, 1.0f);
+    DAWLAB_CHECK(line->readLinearSplit(0, 0, 1.0f) == 1e-8f);
+}
+
+// The buffer is the next power of two that holds the largest delay plus 4 samples of headroom
+void checkBufferSize() {
+    DAWLAB_CHECK(FractionalDelayLine::nextPowerOfTwo(1) == 1);
+    DAWLAB_CHECK(FractionalDelayLine::nextPowerOfTwo(3) == 4);
+    DAWLAB_CHECK(FractionalDelayLine::nextPowerOfTwo(8) == 8);
+    DAWLAB_CHECK(FractionalDelayLine::nextPowerOfTwo(9) == 16);
+    FractionalDelayLine line;
+    line.prepare(6, 1);
+    DAWLAB_CHECK(line.getBufferSize() == 16);
+    line.prepare(4, 1);
+    DAWLAB_CHECK(line.getBufferSize() == 8);
+}
+
+} // namespace b7fdl
+
 int main() {
     checkUnpreparedBlock<Chorus>("Chorus");
     checkUnpreparedBlock<Flanger>("Flanger");
@@ -4186,6 +4259,11 @@ int main() {
 
     // ---- batch 6: dsp-analysis ----
     checkAnalysisClasses();
+
+    // ---- batch 7: FractionalDelayLine ----
+    b7fdl::checkInterpolationReproducesPolynomials();
+    b7fdl::checkSplitReadEdges();
+    b7fdl::checkBufferSize();
 
     return dawlab::test::summary("dsp");
 }
