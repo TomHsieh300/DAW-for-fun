@@ -313,43 +313,14 @@ public:
     // ramps back to the knob from where it was.
     void applyFaderAndPan(AudioBlock block, const LaneBlock& lanes, ChannelRef self, float* gains, float* pans) noexcept {
         const LaneTarget gainTarget{self, EffectId{}, kLaneGain}, panTarget{self, EffectId{}, kLanePan};
-        const bool gainActive = gainLane_.isActive(), panActive = panLane_.isActive();
-        if (!gainActive)
-            gainLane_.idle(faderInfo().toNormalized(getGainDb()), lanes, gainTarget);
-        if (!panActive)
-            panLane_.idle(panInfo().toNormalized(getPan()), lanes, panTarget);
+        const int n = block.getNumSamples();
+        const bool gainActive = laneForBlock(gainLane_, faderInfo().toNormalized(getGainDb()), lanes, gainTarget, gains, n);
+        const bool panActive = laneForBlock(panLane_, panInfo().toNormalized(getPan()), lanes, panTarget, pans, n);
         if (!gainActive && !panActive) {
             applyFaderAndPan(block);
             return;
         }
-        const int n = block.getNumSamples();
-        if (gainActive)
-            gainLane_.render(lanes, gainTarget, gains, n);
-        if (panActive)
-            panLane_.render(lanes, panTarget, pans, n);
-        const ParameterInfo fader = faderInfo(), panner = panInfo();
-        const float fixedDb = getGainDb(), fixedPan = getPan();
-        const dsp::PanLaw law = getPanLaw();
-        const PanMode mode = getPanMode();
-        float* left = block.getNumChannels() >= 1 ? block.getChannelPointer(0) : nullptr;
-        float* right = block.getNumChannels() >= 2 ? block.getChannelPointer(1) : nullptr;
-        float lastGain = -1.0f, lastPan = -1.0f, l = 0.0f, r = 0.0f;
-        for (int i = 0; i < n; ++i) {
-            const float g = gainActive ? gains[i] : 0.0f;
-            const float p = panActive ? pans[i] : 0.0f;
-            if (g != lastGain || p != lastPan) { // a held curve costs no pow() and no sin()
-                computeStripGains(gainActive ? fader.fromNormalized(g) : fixedDb, panActive ? panner.fromNormalized(p) : fixedPan,
-                                  law, mode, l, r);
-                lastGain = g;
-                lastPan = p;
-            }
-            if (left != nullptr)
-                left[i] *= l;
-            if (right != nullptr)
-                right[i] *= r;
-        }
-        gainL_.setCurrentAndTargetValue(l);
-        gainR_.setCurrentAndTargetValue(r);
+        applyLaneGains(block, gainActive ? gains : nullptr, panActive ? pans : nullptr);
     }
 
     // dest += src * sendGain[bus], ramped per sample. Cheap no-op when the send is off.
@@ -410,6 +381,53 @@ private:
         }
         for (int i = 0; i < n; ++i)
             x[i] *= g.getNextValue();
+    }
+
+    // One lane for one block: true, and its curve in out[0..n), while it is active; otherwise it
+    // follows the knob (AutomationLane::idle()) and out is not touched.
+    static bool laneForBlock(AutomationLane& lane, float knob, const LaneBlock& lanes, const LaneTarget& target, float* out,
+                             int n) noexcept {
+        if (!lane.isActive()) {
+            lane.idle(knob, lanes, target);
+            return false;
+        }
+        lane.render(lanes, target, out, n);
+        return true;
+    }
+
+    // Fader x pan of every sample: the curve where there is one (gains, pans: normalized, one per
+    // sample; nullptr = no curve), the knob where there is not. At the end the smoothers take over
+    // where the curves stopped.
+    void applyLaneGains(AudioBlock block, const float* gains, const float* pans) noexcept {
+        const ParameterInfo fader = faderInfo(), panner = panInfo();
+        const float fixedDb = getGainDb(), fixedPan = getPan();
+        const dsp::PanLaw law = getPanLaw();
+        const PanMode mode = getPanMode();
+        float* left = channelOrNull(block, 0);
+        float* right = channelOrNull(block, 1);
+        float lastGain = -1.0f, lastPan = -1.0f, l = 0.0f, r = 0.0f;
+        for (int i = 0; i < block.getNumSamples(); ++i) {
+            const float g = gains != nullptr ? gains[i] : 0.0f;
+            const float p = pans != nullptr ? pans[i] : 0.0f;
+            if (g != lastGain || p != lastPan) { // a held curve costs no pow() and no sin()
+                computeStripGains(gains != nullptr ? fader.fromNormalized(g) : fixedDb,
+                                  pans != nullptr ? panner.fromNormalized(p) : fixedPan, law, mode, l, r);
+                lastGain = g;
+                lastPan = p;
+            }
+            scaleFrame(left, right, i, l, r);
+        }
+        gainL_.setCurrentAndTargetValue(l);
+        gainR_.setCurrentAndTargetValue(r);
+    }
+    static float* channelOrNull(AudioBlock block, int ch) noexcept {
+        return block.getNumChannels() > ch ? block.getChannelPointer(ch) : nullptr;
+    }
+    static void scaleFrame(float* left, float* right, int i, float l, float r) noexcept {
+        if (left != nullptr)
+            left[i] *= l;
+        if (right != nullptr)
+            right[i] *= r;
     }
 
     std::string name_;

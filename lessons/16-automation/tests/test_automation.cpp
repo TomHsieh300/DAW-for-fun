@@ -336,6 +336,33 @@ void testCurveArrivesAndLeavesWithoutAClick() {
     DAWLAB_CHECK(e.getLane(gainOf(e))->getCurve() == nullptr);
 }
 
+// A pan curve that goes away: the right side, like the left, goes on from where the curve left it and
+// ramps back to the knob - it does not jump back to where its smoother was before the curve.
+void testPanCurveLeavesWithoutAClick() {
+    Engine e;
+    setUp(e);
+    e.getTransport().play();
+    play(e, 4800);
+    const LaneTarget pan{e.trackRef(kTrack), EffectId{}, kLanePan};
+    AutomationCurve right;
+    right.add({0, 1.0f, Shape::Linear});
+    e.setLaneCurve(pan, right);
+    play(e, 4800);
+    float l = 0.0f, r = 0.0f;
+    ChannelStrip::computeStripGains(0.0f, 1.0f, dsp::PanLaw::ConstantPower, PanMode::PanLaw, l, r);
+    float knobL = 0.0f, knobR = 0.0f;
+    ChannelStrip::computeStripGains(0.0f, 0.0f, dsp::PanLaw::ConstantPower, PanMode::PanLaw, knobL, knobR);
+    e.clearLaneCurve(pan);
+    const AudioBuffer leaving = play(e, 512);
+    const AudioBuffer later = play(e, 4800);
+    std::printf("  a hard-right pan curve leaves: first right sample %.5f (the curve's %.5f), 100 ms later %.5f (the knob's %.5f)\n",
+                static_cast<double>(leaving.getSample(1, 0)), static_cast<double>(r), static_cast<double>(later.getSample(1, 4799)),
+                static_cast<double>(knobR));
+    DAWLAB_CHECK(std::abs(leaving.getSample(1, 0) - r) < 0.002f);
+    DAWLAB_CHECK(std::abs(leaving.getSample(0, 0) - l) < 0.002f);
+    DAWLAB_CHECK(std::abs(later.getSample(1, 4799) - knobR) < 1e-5f);
+}
+
 void testShownValue() {
     Engine e;
     setUp(e);
@@ -975,6 +1002,7 @@ int main() {
     testBlockSizeChangesNothing();
     testPanAndTheOtherStrips();
     testCurveArrivesAndLeavesWithoutAClick();
+    testPanCurveLeavesWithoutAClick();
     testShownValue();
     testEffectParameters();
     testFaderWaitsForDelayedAudio();
