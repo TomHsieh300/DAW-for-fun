@@ -239,17 +239,13 @@ struct DecayMeasurement {
     bool valid = false;            // false if there are too few points or the slope is not negative
 };
 
-inline DecayMeasurement measureRt60(const float* x, int n, double sampleRate, double windowMs = 10.0,
-                                    double fitStartDb = -5.0, double fitEndDb = -35.0) {
-    DecayMeasurement m;
-    const int w = std::max(1, static_cast<int>(windowMs * 0.001 * sampleRate));
-    const int numWindows = n / w;
-    if (numWindows < 3)
-        return m;
+namespace reverb_detail {
 
-    std::vector<double> envDb(static_cast<size_t>(numWindows));
+// Step 1: the RMS envelope of envDb.size() windows of w samples, in dB (-200 for silence); returns the index of
+// the loudest window
+inline int rmsEnvelopeDb(const float* x, int w, std::vector<double>& envDb) {
     int peakIndex = 0;
-    for (int k = 0; k < numWindows; ++k) {
+    for (int k = 0; k < static_cast<int>(envDb.size()); ++k) {
         double sum = 0.0;
         for (int i = 0; i < w; ++i) {
             const double v = x[k * w + i];
@@ -260,15 +256,24 @@ inline DecayMeasurement measureRt60(const float* x, int n, double sampleRate, do
         if (envDb[static_cast<size_t>(k)] > envDb[static_cast<size_t>(peakIndex)])
             peakIndex = k;
     }
-    m.peakDb = envDb[static_cast<size_t>(peakIndex)];
+    return peakIndex;
+}
 
-    // Collect the regression points: from the first time after the peak that the envelope falls below fitStartDb,
-    // until the first time it falls below fitEndDb
+// The sums of a least-squares line through (t, dB) points
+struct LineFitSums {
     double sx = 0.0, sy = 0.0, sxx = 0.0, sxy = 0.0;
     int count = 0;
+};
+
+// Step 2: collect the regression points: from the first time after the peak that the envelope falls below
+// fitStartDb, until the first time it falls below fitEndDb (both relative to the peak)
+inline LineFitSums decayFitSums(const std::vector<double>& envDb, int peakIndex, int w, double sampleRate,
+                                double fitStartDb, double fitEndDb) {
+    LineFitSums f;
+    const double peakDb = envDb[static_cast<size_t>(peakIndex)];
     bool started = false;
-    for (int k = peakIndex; k < numWindows; ++k) {
-        const double rel = envDb[static_cast<size_t>(k)] - m.peakDb;
+    for (int k = peakIndex; k < static_cast<int>(envDb.size()); ++k) {
+        const double rel = envDb[static_cast<size_t>(k)] - peakDb;
         if (!started && rel <= fitStartDb)
             started = true;
         if (!started)
@@ -276,19 +281,39 @@ inline DecayMeasurement measureRt60(const float* x, int n, double sampleRate, do
         if (rel < fitEndDb)
             break;
         const double t = (k + 0.5) * w / sampleRate;
-        sx += t;
-        sy += rel;
-        sxx += t * t;
-        sxy += t * rel;
-        ++count;
+        f.sx += t;
+        f.sy += rel;
+        f.sxx += t * t;
+        f.sxy += t * rel;
+        ++f.count;
     }
-    m.numPoints = count;
-    if (count < 3)
+    return f;
+}
+
+} // namespace reverb_detail
+
+inline DecayMeasurement measureRt60(const float* x, int n, double sampleRate, double windowMs = 10.0,
+                                    double fitStartDb = -5.0, double fitEndDb = -35.0) {
+    DecayMeasurement m;
+    const int w = std::max(1, static_cast<int>(windowMs * 0.001 * sampleRate));
+    const int numWindows = n / w;
+    if (numWindows < 3)
         return m;
-    const double denom = count * sxx - sx * sx;
+
+    std::vector<double> envDb(static_cast<size_t>(numWindows));
+    const int peakIndex = reverb_detail::rmsEnvelopeDb(x, w, envDb);
+    m.peakDb = envDb[static_cast<size_t>(peakIndex)];
+
+    // Step 3: a straight line through the points; its slope (dB/s) extrapolated to -60 dB
+    const reverb_detail::LineFitSums f =
+        reverb_detail::decayFitSums(envDb, peakIndex, w, sampleRate, fitStartDb, fitEndDb);
+    m.numPoints = f.count;
+    if (f.count < 3)
+        return m;
+    const double denom = f.count * f.sxx - f.sx * f.sx;
     if (denom <= 0.0)
         return m;
-    m.slopeDbPerSecond = (count * sxy - sx * sy) / denom;
+    m.slopeDbPerSecond = (f.count * f.sxy - f.sx * f.sy) / denom;
     if (m.slopeDbPerSecond >= 0.0)
         return m;
     m.rt60Seconds = -60.0 / m.slopeDbPerSecond;
