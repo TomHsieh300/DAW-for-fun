@@ -231,7 +231,13 @@ private:
     void paintWaveform(juce::Graphics&, const engine::Clip& clip, juce::Rectangle<int> bounds, juce::Rectangle<float> r,
                        juce::Colour colour); // paintClip()'s waveform
     void paintAutomation(juce::Graphics&, int lane, juce::Rectangle<int> area);
+    // paintAutomation()'s parts: the curve with its points, the lane's header.
+    void paintAutomationCurve(juce::Graphics&, int lane, const LaneContent& content, juce::Colour colour);
+    void paintAutomationHeader(juce::Graphics&, engine::TrackId track, juce::Rectangle<int> area, const LaneAddress& address,
+                               engine::AutomationMode mode, bool live);
     void paintMidiClip(juce::Graphics&, engine::TrackId track, const MidiClipModel& clip, juce::Rectangle<int> bounds, bool selected);
+    void paintMidiNotes(juce::Graphics&, const MidiClipModel& clip, const std::vector<engine::Note>& notes, juce::Rectangle<float> r,
+                        juce::Colour colour); // paintMidiClip()'s notes
     void paintLiveTake(juce::Graphics&, engine::TrackId track, juce::Rectangle<int> area);
     void mouseDownInAutomation(const juce::MouseEvent&, int lane);
     // mouseDown()'s parts; a bool one returns false when the click was not for it.

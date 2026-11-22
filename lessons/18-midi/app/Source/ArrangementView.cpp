@@ -238,11 +238,14 @@ void ArrangementView::paintMidiClip(juce::Graphics& g, engine::TrackId track, co
     if (clip.quantize.strength > 0.0)
         label << "  Q";
     g.drawText(label, r.reduced(4.0f, 1.0f).toNearestInt(), juce::Justification::topLeft, true);
-
-    // The notes as they play (quantized), as bars, the clip's pitch range over its height.
     const std::vector<engine::Note> notes = clip.notes();
-    if (notes.empty())
-        return;
+    if (!notes.empty())
+        paintMidiNotes(g, clip, notes, r, colour.withAlpha(clip.muted ? 0.3f : 0.95f));
+}
+
+namespace {
+// The lowest and the highest pitch of `notes` (not empty), widened to an octave around their middle if closer.
+std::pair<int, int> pitchRange(const std::vector<engine::Note>& notes) {
     int lo = 127, hi = 0;
     for (const engine::Note& n : notes) {
         lo = std::min(lo, n.pitch);
@@ -252,9 +255,17 @@ void ArrangementView::paintMidiClip(juce::Graphics& g, engine::TrackId track, co
         lo = std::max(0, (lo + hi) / 2 - 6);
         hi = std::min(127, lo + 12);
     }
+    return {lo, hi};
+}
+} // namespace
+
+// The notes as they play (quantized), as bars, the clip's pitch range over its height.
+void ArrangementView::paintMidiNotes(juce::Graphics& g, const MidiClipModel& clip, const std::vector<engine::Note>& notes,
+                                     juce::Rectangle<float> r, juce::Colour colour) {
+    const auto [lo, hi] = pitchRange(notes);
     const float top = r.getY() + 14.0f, height = std::max(4.0f, r.getHeight() - 17.0f);
     const float row = height / static_cast<float>(hi - lo + 1);
-    g.setColour(colour.withAlpha(clip.muted ? 0.3f : 0.95f));
+    g.setColour(colour);
     for (const engine::Note& n : notes) {
         if (n.start < clip.offset || n.start >= clip.offset + clip.length)
             continue; // before a trimmed start, or after the end: not played
@@ -1001,44 +1012,51 @@ void ArrangementView::paintAutomation(juce::Graphics& g, int lane, juce::Rectang
         const float middle = valueToY(lane, 0.5f);
         g.drawHorizontalLine(static_cast<int>(middle), static_cast<float>(kHeaderWidth), static_cast<float>(getWidth()));
         if (content != nullptr && content->curve.size() > 0) {
-            // One value per two pixels: the same curve the audio thread reads, Hold and jumps included.
-            juce::Path line;
-            for (int x = kHeaderWidth; x <= getWidth(); x += 2) {
-                const auto position = static_cast<std::int64_t>(xToSample(static_cast<float>(x)));
-                const float y = valueToY(lane, content->curve.valueAt(position));
-                if (x == kHeaderWidth)
-                    line.startNewSubPath(static_cast<float>(x), y);
-                else
-                    line.lineTo(static_cast<float>(x), y);
-            }
-            const juce::Colour colour = live ? DawColours::track(track) : DawColours::textDim();
-            g.setColour(colour);
-            g.strokePath(line, juce::PathStrokeType(1.5f));
-            for (const engine::AutomationPoint& point : content->curve.points()) {
-                const float x = sampleToX(static_cast<double>(point.position));
-                const float y = valueToY(lane, point.value);
-                g.setColour(colour.brighter(0.4f));
-                g.fillEllipse(x - kPointRadius, y - kPointRadius, 2.0f * kPointRadius, 2.0f * kPointRadius);
-            }
+            paintAutomationCurve(g, lane, *content, live ? DawColours::track(track) : DawColours::textDim());
         } else {
             g.setColour(DawColours::textDim());
             g.setFont(DawLookAndFeel::uiFont(11.0f));
             g.drawText("Click to add a point", area.withTrimmedLeft(kHeaderWidth + 8), juce::Justification::centredLeft);
         }
     }
+    paintAutomationHeader(g, track, area, *address, content != nullptr ? content->mode : engine::AutomationMode::Read, live);
+}
 
+// One value per two pixels: the same curve the audio thread reads, Hold and jumps included; a dot on every point.
+void ArrangementView::paintAutomationCurve(juce::Graphics& g, int lane, const LaneContent& content, juce::Colour colour) {
+    juce::Path line;
+    for (int x = kHeaderWidth; x <= getWidth(); x += 2) {
+        const auto position = static_cast<std::int64_t>(xToSample(static_cast<float>(x)));
+        const float y = valueToY(lane, content.curve.valueAt(position));
+        if (x == kHeaderWidth)
+            line.startNewSubPath(static_cast<float>(x), y);
+        else
+            line.lineTo(static_cast<float>(x), y);
+    }
+    g.setColour(colour);
+    g.strokePath(line, juce::PathStrokeType(1.5f));
+    for (const engine::AutomationPoint& point : content.curve.points()) {
+        const float x = sampleToX(static_cast<double>(point.position));
+        const float y = valueToY(lane, point.value);
+        g.setColour(colour.brighter(0.4f));
+        g.fillEllipse(x - kPointRadius, y - kPointRadius, 2.0f * kPointRadius, 2.0f * kPointRadius);
+    }
+}
+
+// The lane's header: whose parameter it is ("(unknown)" if no effect has it now) and the mode.
+void ArrangementView::paintAutomationHeader(juce::Graphics& g, engine::TrackId track, juce::Rectangle<int> area, const LaneAddress& address,
+                                            engine::AutomationMode mode, bool live) {
     auto header = area.withWidth(kHeaderWidth);
     g.setColour(DawColours::panel().darker(0.15f));
     g.fillRect(header);
     g.setColour(DawColours::track(track).withAlpha(0.5f));
     g.fillRect(header.removeFromLeft(5));
     header.reduce(8, 4);
-    const int effectSlot = session_.slotOfEffect(session_.trackRef(track), address->effect);
+    const int effectSlot = session_.slotOfEffect(session_.trackRef(track), address.effect);
     const juce::String owner = effectSlot >= 0 ? session_.getSlot(session_.trackRef(track), effectSlot).name + ": " : juce::String();
     g.setColour(live ? DawColours::text() : DawColours::mute());
     g.setFont(DawLookAndFeel::uiFont(12.0f));
-    g.drawText(owner + address->parameter + (live ? "" : " (unknown)"), header.removeFromTop(header.getHeight() / 2), juce::Justification::centredLeft, true);
-    const auto mode = content != nullptr ? content->mode : engine::AutomationMode::Read;
+    g.drawText(owner + address.parameter + (live ? "" : " (unknown)"), header.removeFromTop(header.getHeight() / 2), juce::Justification::centredLeft, true);
     g.setColour(mode == engine::AutomationMode::Read ? DawColours::textDim() : DawColours::accentWarm());
     g.drawText(modeName(mode), header, juce::Justification::centredLeft);
     g.setColour(DawColours::outline());
