@@ -99,20 +99,33 @@ struct ParameterInfo {
 };
 
 // "-18.0 dB", "Peak", "On", "4". UI thread helper (snprintf is not for the audio thread).
+namespace detail {
+// formatParameterValue(), one part at a time.
+inline bool hasChoiceLabels(const ParameterInfo& info) noexcept {
+    return (info.kind == ParameterKind::Choice || info.kind == ParameterKind::Bool) && info.choices != nullptr;
+}
+// "4.00:1" for a ratio, "-18.0 dB" for everything else.
+inline const char* unitSeparator(const ParameterInfo& info) noexcept {
+    return (info.unit[0] != '\0' && info.unit[0] != ':') ? " " : "";
+}
+// Three significant digits or so: 0 decimals from 100 up, 1 from 10 up, else 2.
+inline const char* numberFormat(float v) noexcept {
+    return std::abs(v) >= 100.0f ? "%.0f%s%s" : (std::abs(v) >= 10.0f ? "%.1f%s%s" : "%.2f%s%s");
+}
+} // namespace detail
+
 inline int formatParameterValue(const ParameterInfo& info, float value, char* buffer, int size) noexcept {
     if (buffer == nullptr || size <= 0)
         return 0;
     const float v = info.clamp(value);
-    if ((info.kind == ParameterKind::Choice || info.kind == ParameterKind::Bool) && info.choices != nullptr) {
+    if (detail::hasChoiceLabels(info)) {
         const int idx = std::clamp(static_cast<int>(v - info.min), 0, std::max(0, info.numChoices - 1));
         return std::snprintf(buffer, static_cast<size_t>(size), "%s", info.choices[idx]);
     }
-    // "4.00:1" for a ratio, "-18.0 dB" for everything else.
-    const char* sep = (info.unit[0] != '\0' && info.unit[0] != ':') ? " " : "";
+    const char* sep = detail::unitSeparator(info);
     if (info.kind == ParameterKind::Int)
         return std::snprintf(buffer, static_cast<size_t>(size), "%d%s%s", static_cast<int>(v), sep, info.unit);
-    const char* fmt = std::abs(v) >= 100.0f ? "%.0f%s%s" : (std::abs(v) >= 10.0f ? "%.1f%s%s" : "%.2f%s%s");
-    return std::snprintf(buffer, static_cast<size_t>(size), fmt, static_cast<double>(v), sep, info.unit);
+    return std::snprintf(buffer, static_cast<size_t>(size), detail::numberFormat(v), static_cast<double>(v), sep, info.unit);
 }
 
 class InsertEffect {
