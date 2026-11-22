@@ -1262,6 +1262,51 @@ void monitorLatencyOfBothPaths() {
     DAWLAB_CHECK(monitorLatency(latencies, MonitorPath::ThroughInserts) == 60);
 }
 
+// A recording that begins exactly at the loop's end plays straight on (the transport does too): its stream is
+// not broken by the loop it does not have.
+void recordingFromTheLoopsEnd() {
+    Recorder r;
+    RecordRange range;
+    range.loopEnd = 1000;
+    DAWLAB_CHECK(r.start(Latencies{}, range, 1, 4096));
+    std::vector<float> samples(512, 0.5f);
+    const float* input[1] = {samples.data()};
+    for (std::int64_t at = 1000; at < 2000; at += 500) {
+        const TimelineSegment segment{at, 0, 500};
+        r.process(input, 1, &segment, 1, 0);
+    }
+    DAWLAB_CHECK(r.state() == Recorder::State::Recording && r.wasStarted() && r.stampedPosition() == 1000 && r.streamFrames() == 1000);
+    r.stop();
+    r.process(input, 1, nullptr, 0, 0);
+    DAWLAB_CHECK(r.state() == Recorder::State::Idle);
+}
+
+// Each of the five chunk names and each format field must be a take's, or the header is not one.
+void takeHeaderNamesAndFormat() {
+    TakeInfo info;
+    info.numChannels = 2;
+    info.sampleRate = 48000;
+    TakeInfo parsed;
+    int refused = 0;
+    for (int at : {0, 8, 12, 36, 100}) {
+        WavHeader h = makeHeader(info);
+        h[static_cast<size_t>(at)] = 'x';
+        refused += parseHeader(h, parsed) ? 0 : 1;
+    }
+    const std::pair<int, std::uint32_t> fields[] = {{16, 18}, {20, 1}, {34, 16}, {40, 52}, {22, 0}, {24, 0}, {32, 4}};
+    for (const auto& f : fields) {
+        WavHeader h = makeHeader(info);
+        if (f.first == 16 || f.first == 40 || f.first == 24)
+            putU32(h.data() + f.first, f.second);
+        else
+            putU16(h.data() + f.first, static_cast<std::uint16_t>(f.second));
+        refused += parseHeader(h, parsed) ? 0 : 1;
+    }
+    std::printf("  a take's header with one name or format field changed: %d of 12 refused\n", refused);
+    DAWLAB_CHECK(refused == 12);
+    DAWLAB_CHECK(parseHeader(makeHeader(info), parsed) && parsed.numChannels == 2);
+}
+
 // The header says how many bytes a second holds, and takes any sample rate a WAV file can say.
 void takeHeaderFields() {
     TakeInfo info;
@@ -1337,6 +1382,27 @@ void takeFileWritesAndSyncs() {
         file.write(channels, 1);
         std::ofstream(folder.path() / "b.wav") << "taken"; // the name is taken by now
         DAWLAB_CHECK(!file.finish().ok && file.problem() == TakeProblem::CannotFinish);
+    }
+    { // one frame that does not fit is enough to be too long
+        TakeFile file(ops);
+        DAWLAB_CHECK(file.open(folder.path() / "c.wav", info));
+        file.write(channels, 3);
+        file.write(channels, 2);
+        DAWLAB_CHECK(file.problem() == TakeProblem::TooLong);
+    }
+    { // a sync that fails is a failed write, even when the frames fit
+        DiskOps failing = ops;
+        int failed = 0;
+        failing.sync = [&](std::FILE*) {
+            ++failed;
+            return false;
+        };
+        TakeFile file(failing);
+        DAWLAB_CHECK(file.open(folder.path() / "d.wav", info));
+        file.write(channels, 3);
+        DAWLAB_CHECK(file.problem() == TakeProblem::None);
+        file.write(channels, 1); // the fourth frame: a sync is due
+        DAWLAB_CHECK(failed == 1 && file.problem() == TakeProblem::WriteFailed);
     }
 }
 
@@ -1449,6 +1515,8 @@ void checkPieces() {
     takesOfALoop();
     monitorLatencyOfBothPaths();
     takeHeaderFields();
+    takeHeaderNamesAndFormat();
+    recordingFromTheLoopsEnd();
     sealTakeAtItsLimits();
     takeFileWritesAndSyncs();
     feedbackGuardAtItsLimits();

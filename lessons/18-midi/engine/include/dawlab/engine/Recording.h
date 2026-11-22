@@ -132,22 +132,12 @@ public:
 
             Gap gap;
             const bool hasGap = gaps_.peek(gap);
-            if (gapLeft_ == 0 && hasGap && gap.atFrame == read) {
-                gaps_.removeFirst();
-                gapLeft_ = gap.frames;
-            }
+            startGapAt(read, hasGap, gap);
             if (gapLeft_ > 0) {
-                const std::uint64_t silence = std::min(gapLeft_, room);
-                for (std::size_t ch = 0; ch < channels_.size(); ++ch)
-                    std::fill_n(out[ch] + done, silence, 0.0f);
-                gapLeft_ -= silence;
-                done += static_cast<int>(silence);
+                done += popSilence(out, done, room);
                 continue;
             }
-
-            std::uint64_t ready = written - read;
-            if (hasGap && gap.atFrame > read)
-                ready = std::min(ready, gap.atFrame - read);
+            const std::uint64_t ready = framesBefore(written, read, hasGap, gap);
             if (ready == 0)
                 break;
             const int n = static_cast<int>(std::min(ready, room));
@@ -162,6 +152,29 @@ public:
     std::uint64_t droppedFrames() const noexcept { return droppedFrames_.load(std::memory_order_relaxed); }
 
 private:
+    // ---- pop(), one part at a time ----
+    // A gap that starts where the reader is begins now (unless one is still being given out).
+    void startGapAt(std::uint64_t read, bool hasGap, const Gap& gap) noexcept {
+        if (gapLeft_ == 0 && hasGap && gap.atFrame == read) {
+            gaps_.removeFirst();
+            gapLeft_ = gap.frames;
+        }
+    }
+    // Silence for the gap being given out, up to `room` frames from out[..] + done. Returns how many.
+    int popSilence(float* const* out, int done, std::uint64_t room) noexcept {
+        const std::uint64_t silence = std::min(gapLeft_, room);
+        for (std::size_t ch = 0; ch < channels_.size(); ++ch)
+            std::fill_n(out[ch] + done, silence, 0.0f);
+        gapLeft_ -= silence;
+        return static_cast<int>(silence);
+    }
+    // The frames that can be read now: those written, up to the next gap.
+    static std::uint64_t framesBefore(std::uint64_t written, std::uint64_t read, bool hasGap, const Gap& gap) noexcept {
+        std::uint64_t ready = written - read;
+        if (hasGap && gap.atFrame > read)
+            ready = std::min(ready, gap.atFrame - read);
+        return ready;
+    }
     void copyIn(std::size_t channel, const float* source, std::uint64_t frame, int n) noexcept {
         float* storage = channels_[channel].data();
         const std::size_t start = static_cast<std::size_t>(frame) & mask_;
@@ -326,40 +339,10 @@ public:
     // A loop so short that advance() needs a second call is simply a second call to this.
     void process(const float* const* input, int numInputChannels, const TimelineSegment* segments, int numSegments,
                            int mixLatency) noexcept {
-        State state = state_.load(std::memory_order_acquire);
-        if (state == State::Idle)
+        if (!recordsThisBlock(segments, numSegments, mixLatency))
             return;
-        if (state == State::Stopping) {
-            state_.store(State::Idle, std::memory_order_release);
-            return;
-        }
-        if (state == State::Armed) {
-            if (numSegments == 0)
-                return;
-            if (!state_.compare_exchange_strong(state, State::Recording, std::memory_order_acq_rel))
-                return; // stop() came first; the next block confirms it
-            latencies_.mix = mixLatency;
-            stampedPosition_ = segments[0].timelineStart;
-            nextPosition_ = segments[0].timelineStart;
-            started_ = true;
-        } else if (numSegments == 0) {
-            state_.store(State::Idle, std::memory_order_release);
-            return;
-        }
-
-        // A wrap of the loop continues the stream. Anything else that is not the next position ends it,
-        // and so does running past the loop's end: takesOf() would take those frames for a next pass.
-        const bool loops = range_.loopsFrom(stampedPosition_);
-        int frames = 0;
         bool unbroken = true;
-        for (int s = 0; s < numSegments && unbroken; ++s) {
-            const std::int64_t expected = loops && nextPosition_ == range_.loopEnd ? range_.loopStart : nextPosition_;
-            unbroken = segments[s].timelineStart == expected;
-            if (unbroken) {
-                frames += segments[s].numSamples;
-                nextPosition_ = segments[s].timelineStart + segments[s].numSamples;
-            }
-        }
+        const int frames = unbrokenFrames(segments, numSegments, unbroken);
         ring_.push(input, numInputChannels, frames);
         streamFrames_ += frames;
         if (!unbroken)
@@ -374,6 +357,54 @@ public:
     void endReading() noexcept { beingRead_.store(false, std::memory_order_release); }
 
 private:
+    // ---- process(), one part at a time ----
+    // The state's step for this block. True if the block's frames belong to the recording: it is Recording,
+    // or has just begun (Armed, and the transport plays: the first segment is the take's first frame).
+    bool recordsThisBlock(const TimelineSegment* segments, int numSegments, int mixLatency) noexcept {
+        State state = state_.load(std::memory_order_acquire);
+        if (state == State::Idle)
+            return false;
+        if (state == State::Stopping) {
+            state_.store(State::Idle, std::memory_order_release);
+            return false;
+        }
+        if (state == State::Armed)
+            return beginRecording(state, segments, numSegments, mixLatency);
+        if (numSegments == 0) {
+            state_.store(State::Idle, std::memory_order_release);
+            return false;
+        }
+        return true;
+    }
+    bool beginRecording(State& state, const TimelineSegment* segments, int numSegments, int mixLatency) noexcept {
+        if (numSegments == 0)
+            return false;
+        if (!state_.compare_exchange_strong(state, State::Recording, std::memory_order_acq_rel))
+            return false; // stop() came first; the next block confirms it
+        latencies_.mix = mixLatency;
+        stampedPosition_ = segments[0].timelineStart;
+        nextPosition_ = segments[0].timelineStart;
+        started_ = true;
+        return true;
+    }
+    // The frames of the segments that continue the stream. A wrap of the loop continues it. Anything else that is
+    // not the next position ends it (`unbroken` false), and so does running past the loop's end: takesOf() would
+    // take those frames for a next pass.
+    int unbrokenFrames(const TimelineSegment* segments, int numSegments, bool& unbroken) noexcept {
+        const bool loops = range_.loopsFrom(stampedPosition_);
+        int frames = 0;
+        unbroken = true;
+        for (int s = 0; s < numSegments && unbroken; ++s) {
+            const std::int64_t expected = loops && nextPosition_ == range_.loopEnd ? range_.loopStart : nextPosition_;
+            unbroken = segments[s].timelineStart == expected;
+            if (unbroken) {
+                frames += segments[s].numSamples;
+                nextPosition_ = segments[s].timelineStart + segments[s].numSamples;
+            }
+        }
+        return frames;
+    }
+
     std::atomic<State> state_{State::Idle};
     std::atomic<bool> beingRead_{false};
     InputRing ring_;
@@ -484,16 +515,28 @@ inline WavHeader makeHeader(const TakeInfo& info) noexcept {
     return header; // both sizes are still 0
 }
 
+namespace detail {
+// parseHeader(), one part at a time.
+inline bool hasTag(const unsigned char* h, int at, const char* expected) noexcept { return std::memcmp(h + at, expected, 4) == 0; }
+// The chunk names of a take's header in their places.
+inline bool hasTakeTags(const unsigned char* h) noexcept {
+    return hasTag(h, 0, "RIFF") && hasTag(h, 8, "WAVE") && hasTag(h, 12, "fmt ") && hasTag(h, 36, "dlab") && hasTag(h, 100, "data");
+}
+// The format a take is written in: 32-bit float, at least one channel, a rate that fits an int.
+inline bool hasTakeFormat(const unsigned char* h, int numChannels, std::uint32_t sampleRate) noexcept {
+    return getU32(h + 16) == 16 && getU16(h + 20) == 3 && getU16(h + 34) == 32 && getU32(h + 40) == 56 && numChannels != 0 &&
+           sampleRate != 0 && sampleRate <= 0x7fffffffu && getU16(h + 32) == numChannels * 4;
+}
+} // namespace detail
+
 // False if this is not the header of a take: any other WAV, or a torn or damaged file.
 inline bool parseHeader(const WavHeader& header, TakeInfo& info) noexcept {
     const unsigned char* h = header.data();
-    const auto tag = [h](int at, const char* expected) { return std::memcmp(h + at, expected, 4) == 0; };
-    if (!tag(0, "RIFF") || !tag(8, "WAVE") || !tag(12, "fmt ") || !tag(36, "dlab") || !tag(100, "data"))
+    if (!detail::hasTakeTags(h))
         return false;
     const int numChannels = getU16(h + 22);
     const std::uint32_t sampleRate = getU32(h + 24);
-    if (getU32(h + 16) != 16 || getU16(h + 20) != 3 || getU16(h + 34) != 32 || getU32(h + 40) != 56 ||
-        numChannels == 0 || sampleRate == 0 || sampleRate > 0x7fffffffu || getU16(h + 32) != numChannels * 4)
+    if (!detail::hasTakeFormat(h, numChannels, sampleRate))
         return false;
     info.numChannels = numChannels;
     info.sampleRate = static_cast<int>(sampleRate);
@@ -559,49 +602,58 @@ struct SealedTake {
 //
 // Not ok, and the file stays what it is, if the header is not a take's, if it holds more than
 // maxDataBytes, or if the new name is taken. Doing it twice is safe, so a crash in here is too.
+namespace detail {
+// sealTake(), one part at a time. Each is false, and leaves the file as it is, where sealing stops.
+inline bool readTakeHeader(const std::filesystem::path& recording, WavHeader& header, TakeInfo& info) {
+    const FilePtr file = openFile(recording, "rb");
+    return file && std::fread(header.data(), 1, header.size(), file.get()) == header.size() && parseHeader(header, info);
+}
+// The real length is the truth. A crash or a full disk can leave part of a frame at the end: the file is cut to a
+// whole number of frames, which are `numFrames`.
+inline bool cutToWholeFrames(const std::filesystem::path& recording, const TakeInfo& info, std::uint64_t maxDataBytes,
+                             std::uint64_t& numFrames) {
+    std::error_code ec;
+    const std::uint64_t fileBytes = std::filesystem::file_size(recording, ec);
+    if (ec)
+        return false;
+    const std::uint64_t bytesPerFrame = static_cast<std::uint64_t>(info.numChannels) * sizeof(float);
+    numFrames = (fileBytes - kHeaderBytes) / bytesPerFrame;
+    const std::uint64_t dataBytes = numFrames * bytesPerFrame;
+    if (dataBytes > maxDataBytes)
+        return false;
+    if (kHeaderBytes + dataBytes != fileBytes)
+        std::filesystem::resize_file(recording, kHeaderBytes + dataBytes, ec);
+    return !ec;
+}
+// The real sizes into the header, on the disk.
+inline bool writeTakeSizes(const std::filesystem::path& recording, WavHeader& header, std::uint64_t dataBytes) {
+    putU32(header.data() + 4, static_cast<std::uint32_t>(kHeaderBytes - 8 + dataBytes));
+    putU32(header.data() + kHeaderBytes - 4, static_cast<std::uint32_t>(dataBytes));
+    const FilePtr file = openFile(recording, "r+b");
+    return file && std::fwrite(header.data(), 1, header.size(), file.get()) == header.size() && std::fflush(file.get()) == 0 &&
+           syncToDisk(file.get());
+}
+// The name without `.recording`, never over another take.
+inline bool renameTake(const std::filesystem::path& recording, std::filesystem::path& finalPath) {
+    finalPath = recording;
+    finalPath.replace_extension();
+    std::error_code ec;
+    if (std::filesystem::exists(finalPath, ec))
+        return false;
+    std::filesystem::rename(recording, finalPath, ec);
+    return !ec;
+}
+} // namespace detail
+
 inline SealedTake sealTake(const std::filesystem::path& recording, std::uint64_t maxDataBytes = kMaxDataBytes) {
-    namespace fs = std::filesystem;
     SealedTake sealed;
     TakeInfo info;
     WavHeader header{};
-    {
-        const FilePtr file = openFile(recording, "rb");
-        if (!file || std::fread(header.data(), 1, header.size(), file.get()) != header.size() ||
-            !parseHeader(header, info))
-            return sealed;
-    }
-
-    std::error_code ec;
-    const std::uint64_t fileBytes = fs::file_size(recording, ec);
-    if (ec)
-        return sealed;
-    // The real length is the truth. A crash or a full disk can leave part of a frame at the end.
-    const std::uint64_t bytesPerFrame = static_cast<std::uint64_t>(info.numChannels) * sizeof(float);
-    const std::uint64_t numFrames = (fileBytes - kHeaderBytes) / bytesPerFrame;
-    const std::uint64_t dataBytes = numFrames * bytesPerFrame;
-    if (dataBytes > maxDataBytes)
-        return sealed;
-    if (kHeaderBytes + dataBytes != fileBytes) {
-        fs::resize_file(recording, kHeaderBytes + dataBytes, ec);
-        if (ec)
-            return sealed;
-    }
-
-    putU32(header.data() + 4, static_cast<std::uint32_t>(kHeaderBytes - 8 + dataBytes));
-    putU32(header.data() + kHeaderBytes - 4, static_cast<std::uint32_t>(dataBytes));
-    {
-        const FilePtr file = openFile(recording, "r+b");
-        if (!file || std::fwrite(header.data(), 1, header.size(), file.get()) != header.size() ||
-            std::fflush(file.get()) != 0 || !syncToDisk(file.get()))
-            return sealed;
-    }
-
-    fs::path finalPath = recording;
-    finalPath.replace_extension();
-    if (fs::exists(finalPath, ec)) // never over another take
-        return sealed;
-    fs::rename(recording, finalPath, ec);
-    if (ec)
+    std::uint64_t numFrames = 0;
+    std::filesystem::path finalPath;
+    if (!detail::readTakeHeader(recording, header, info) || !detail::cutToWholeFrames(recording, info, maxDataBytes, numFrames) ||
+        !detail::writeTakeSizes(recording, header, numFrames * static_cast<std::uint64_t>(info.numChannels) * sizeof(float)) ||
+        !detail::renameTake(recording, finalPath))
         return sealed;
 
     sealed.ok = true;
@@ -646,6 +698,11 @@ public:
     TakeProblem problem() const noexcept { return problem_.load(std::memory_order_relaxed); }
 
 private:
+    // write(), one part at a time: the frames into interleaved_; then, once they are written, counted and, a
+    // second of them after the last time, put on the disk (false if that failed).
+    void interleave(const float* const* channels, std::size_t frames);
+    bool syncEverySecond(std::size_t frames);
+
     DiskOps ops_;
     FilePtr file_;
     std::filesystem::path recording_;
@@ -738,28 +795,31 @@ inline void TakeFile::write(const float* const* channels, int n) {
     const std::uint64_t room = (ops_.maxDataBytes - dataBytes_) / bytesPerFrame;
     const auto frames = static_cast<std::size_t>(std::min(room, static_cast<std::uint64_t>(n)));
 
+    interleave(channels, frames);
+    const std::size_t numBytes = interleaved_.size() * sizeof(float);
+    if (ops_.write(interleaved_.data(), numBytes, file_.get()) != numBytes || !syncEverySecond(frames)) {
+        problem_.store(TakeProblem::WriteFailed, std::memory_order_relaxed);
+        return;
+    }
+    if (frames < static_cast<std::size_t>(n))
+        problem_.store(TakeProblem::TooLong, std::memory_order_relaxed);
+}
+
+inline void TakeFile::interleave(const float* const* channels, std::size_t frames) {
+    const auto numChannels = static_cast<std::size_t>(info_.numChannels);
     interleaved_.resize(frames * numChannels);
     for (std::size_t ch = 0; ch < numChannels; ++ch)
         for (std::size_t i = 0; i < frames; ++i)
             interleaved_[i * numChannels + ch] = channels[ch][i];
+}
 
-    const std::size_t numBytes = interleaved_.size() * sizeof(float);
-    if (ops_.write(interleaved_.data(), numBytes, file_.get()) != numBytes) {
-        problem_.store(TakeProblem::WriteFailed, std::memory_order_relaxed);
-        return;
-    }
-    dataBytes_ += numBytes;
-
+inline bool TakeFile::syncEverySecond(std::size_t frames) {
+    dataBytes_ += interleaved_.size() * sizeof(float);
     framesSinceSync_ += static_cast<int>(frames);
-    if (framesSinceSync_ >= info_.sampleRate) {
-        framesSinceSync_ = 0;
-        if (!ops_.sync(file_.get())) {
-            problem_.store(TakeProblem::WriteFailed, std::memory_order_relaxed);
-            return;
-        }
-    }
-    if (frames < static_cast<std::size_t>(n))
-        problem_.store(TakeProblem::TooLong, std::memory_order_relaxed);
+    if (framesSinceSync_ < info_.sampleRate)
+        return true;
+    framesSinceSync_ = 0;
+    return ops_.sync(file_.get());
 }
 
 inline SealedTake TakeFile::finish() {
@@ -992,6 +1052,11 @@ private:
     void run(const float* const* input, int numInputChannels, float* const* output, int numOutputChannels,
              float* const* replaced, int numReplacedChannels, int offset, int count, std::int64_t position, bool playing,
              MonitorMode mode, float level, const RecordRange& range) noexcept;
+    // run(), one part at a time, for frame i.
+    static void fadeReplaced(float* const* replaced, int numReplacedChannels, int i, float share) noexcept;
+    static float inputPeak(const float* const* input, int numInputChannels, int i) noexcept;
+    static void addInput(const float* const* input, int numInputChannels, float* const* output, int numOutputChannels, int i,
+                         float gain) noexcept;
 
     static constexpr int kRampMs = 5;
     std::atomic<MonitorMode> mode_{MonitorMode::Off};
@@ -1029,25 +1094,35 @@ inline void Monitor::run(const float* const* input, int numInputChannels, float*
         share_ += std::clamp((on ? 1.0f : 0.0f) - share_, -rampStep_, rampStep_);
 
         // The old takes fade out first: with the same channels as `output`, the input must not fade.
-        if (share_ > 0.0f)
-            for (int ch = 0; ch < numReplacedChannels; ++ch)
-                replaced[ch][i] *= 1.0f - share_;
-
+        fadeReplaced(replaced, numReplacedChannels, i, share_);
         if (gain_ <= 0.0f)
             continue; // not heard, so it cannot come back: nothing to listen for
+        guard_.listen(inputPeak(input, numInputChannels, i));
+        addInput(input, numInputChannels, output, numOutputChannels, i, gain_);
+    }
+}
 
-        float peak = 0.0f;
-        for (int ch = 0; ch < numInputChannels; ++ch)
-            if (input[ch] != nullptr)
-                peak = std::max(peak, std::abs(input[ch][i]));
-        guard_.listen(peak);
+inline void Monitor::fadeReplaced(float* const* replaced, int numReplacedChannels, int i, float share) noexcept {
+    if (share > 0.0f)
+        for (int ch = 0; ch < numReplacedChannels; ++ch)
+            replaced[ch][i] *= 1.0f - share;
+}
 
-        // A mono input goes to every output channel.
-        for (int ch = 0; ch < numOutputChannels && numInputChannels > 0; ++ch) {
-            const float* source = input[std::min(ch, numInputChannels - 1)];
-            if (source != nullptr)
-                output[ch][i] += gain_ * source[i];
-        }
+inline float Monitor::inputPeak(const float* const* input, int numInputChannels, int i) noexcept {
+    float peak = 0.0f;
+    for (int ch = 0; ch < numInputChannels; ++ch)
+        if (input[ch] != nullptr)
+            peak = std::max(peak, std::abs(input[ch][i]));
+    return peak;
+}
+
+// A mono input goes to every output channel.
+inline void Monitor::addInput(const float* const* input, int numInputChannels, float* const* output, int numOutputChannels, int i,
+                              float gain) noexcept {
+    for (int ch = 0; ch < numOutputChannels && numInputChannels > 0; ++ch) {
+        const float* source = input[std::min(ch, numInputChannels - 1)];
+        if (source != nullptr)
+            output[ch][i] += gain * source[i];
     }
 }
 
