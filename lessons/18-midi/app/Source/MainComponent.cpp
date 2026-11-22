@@ -352,25 +352,39 @@ bool MainComponent::setArmed(engine::TrackId track, bool armed) {
     engine::Track* t = engine_.getTrack(track);
     if (t == nullptr)
         return false;
-    if (armed && session_.isInstrument(track)) {
-        // Chapter 18: an instrument track listens to the keyboard, not to the audio input.
-        if (mode_ == Mode::Live) {
-            const juce::StringArray keyboards = audioHost_.openMidiInputs();
-            setStatus(keyboards.isEmpty() ? juce::String("No MIDI keyboard found: connect one and arm the track again")
-                                          : "Playing " + session_.getStripName(session_.trackRef(track)) + " from " + keyboards.joinIntoString(", "));
-        }
-    } else if (armed) {
-        if (const juce::String error = audioHost_.ensureInputsOpen(); error.isNotEmpty()) {
-            setStatus("Cannot open the input: " + error);
-            return false;
-        }
-        deviceInfo_.setText(audioHost_.getDeviceDescription(), juce::dontSendNotification);
-    }
+    if (armed && !openInputFor(track))
+        return false;
     t->setArmed(armed);
     if (!armed) // nothing would explain why an unarmed track goes on being heard
         t->getMonitor().setMode(engine::MonitorMode::Off);
     arrangement_.repaint();
     return true;
+}
+
+// What a track armed to record listens to: the audio inputs, or (chapter 18) for an instrument track the keyboard,
+// not the audio input. False: the inputs did not open.
+bool MainComponent::openInputFor(engine::TrackId track) {
+    if (!session_.isInstrument(track))
+        return openAudioInputs();
+    if (mode_ == Mode::Live)
+        openKeyboardsFor(track);
+    return true;
+}
+
+bool MainComponent::openAudioInputs() {
+    if (const juce::String error = audioHost_.ensureInputsOpen(); error.isNotEmpty()) {
+        setStatus("Cannot open the input: " + error);
+        return false;
+    }
+    deviceInfo_.setText(audioHost_.getDeviceDescription(), juce::dontSendNotification);
+    return true;
+}
+
+// The keyboards the device has (only a live device has any).
+void MainComponent::openKeyboardsFor(engine::TrackId track) {
+    const juce::StringArray keyboards = audioHost_.openMidiInputs();
+    setStatus(keyboards.isEmpty() ? juce::String("No MIDI keyboard found: connect one and arm the track again")
+                                  : "Playing " + session_.getStripName(session_.trackRef(track)) + " from " + keyboards.joinIntoString(", "));
 }
 
 void MainComponent::cycleMonitor(engine::TrackId track) {

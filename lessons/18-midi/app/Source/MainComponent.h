@@ -283,6 +283,9 @@ private:
     void connectParameterPanel(ParameterPanel& panel, StripTarget target, int slot, engine::InsertEffect* key);
     void finishExport(const ExportResult& result);
     void startClipConversion();
+    bool openInputFor(engine::TrackId track); // setArmed()'s parts
+    bool openAudioInputs();
+    void openKeyboardsFor(engine::TrackId track);
     void finishClipConversion(double fromRate, double toRate, const ConvertedBuffers& converted);
     void convertMissing(double fromRate, double toRate, const ConvertedBuffers& converted,
                         std::vector<std::shared_ptr<const AudioBuffer>> missing);

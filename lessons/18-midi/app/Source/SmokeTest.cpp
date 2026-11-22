@@ -2846,11 +2846,34 @@ void testSoloCommand() {
     DAWLAB_CHECK(session.getHistory().undoCount() == stepsWithout);
 }
 
+// Transport > MIDI Loop Replaces: flips between replace and overdub, says which, and the menu ticks it.
+void testMidiReplaceCommand() {
+    std::printf("the app's logic: MIDI Loop Replaces\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    auto& cm = main.getCommandManager();
+    const auto ticked = [&main] {
+        juce::ApplicationCommandInfo info(CommandIDs::toggleMidiReplace);
+        main.getCommandInfo(CommandIDs::toggleMidiReplace, info);
+        return (info.flags & juce::ApplicationCommandInfo::isTicked) != 0;
+    };
+    const bool before = ticked();
+    cm.invokeDirectly(CommandIDs::toggleMidiReplace, false);
+    DAWLAB_CHECK(ticked() != before);
+    DAWLAB_CHECK(main.getStatus() == (before ? "MIDI loop recording: overdub, every pass is kept" : "MIDI loop recording: each pass replaces the last"));
+    cm.invokeDirectly(CommandIDs::toggleMidiReplace, false);
+    DAWLAB_CHECK(ticked() == before);
+    DAWLAB_CHECK(main.getStatus() == (before ? "MIDI loop recording: each pass replaces the last" : "MIDI loop recording: overdub, every pass is kept"));
+    // Arming a track that is not there does nothing.
+    DAWLAB_CHECK(!main.setArmed(TrackId{}, true) && !main.setArmed(TrackId{}, false));
+}
+
 void testAppLogic() {
     testMidiClipEquality();
     testDemoSongCounts();
     testMissingSources();
     testSoloCommand();
+    testMidiReplaceCommand();
 }
 
 // ---- --smoke-test --------------------------------------------------------------------------------
