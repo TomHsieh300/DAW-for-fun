@@ -94,49 +94,64 @@ inline AudioBuffer makeToneBursts(double frequency, double sampleRate, const std
     return b;
 }
 
+namespace detail {
+
+// Adds one drum hit to every channel of b: voice(s) for s = 0 .. lengthSec seconds, from startSec on (cut at the end of b)
+template <typename Voice>
+void addDrumHit(AudioBuffer& b, double sampleRate, double startSec, double lengthSec, Voice&& voice) {
+    const int total = b.getNumSamples();
+    const int start = secondsToSamples(startSec, sampleRate);
+    const int len = secondsToSamples(lengthSec, sampleRate);
+    for (int i = 0; i < len && start + i < total; ++i) {
+        const float v = voice(i / sampleRate);
+        for (int ch = 0; ch < b.getNumChannels(); ++ch)
+            b.addSample(ch, start + i, v);
+    }
+}
+
+inline void addKick(AudioBuffer& b, double sampleRate, double t) {
+    double phase = 0.0;
+    addDrumHit(b, sampleRate, t, 0.45, [&](double s) {
+        const double f = 45.0 + 75.0 * std::exp(-s * 30.0); // pitch drops from 120 Hz to 45 Hz
+        phase += kTwoPi * f / sampleRate;
+        return static_cast<float>(0.9 * std::sin(phase) * std::exp(-s * 8.0));
+    });
+}
+
+inline void addSnare(AudioBuffer& b, double sampleRate, double t, NoiseGenerator& noise) {
+    addDrumHit(b, sampleRate, t, 0.25, [&](double s) {
+        const double body = std::sin(kTwoPi * 185.0 * s) * std::exp(-s * 25.0);
+        const double rattle = noise.next() * std::exp(-s * 18.0);
+        return static_cast<float>(0.35 * body + 0.45 * rattle);
+    });
+}
+
+inline void addHiHat(AudioBuffer& b, double sampleRate, double t, NoiseGenerator& noise) {
+    float prev = 0.0f; // a first-order difference tilts the noise toward high frequencies
+    addDrumHit(b, sampleRate, t, 0.06, [&](double s) {
+        const float n = noise.next();
+        const float hp = n - prev;
+        prev = n;
+        return static_cast<float>(0.12 * hp * std::exp(-s * 60.0));
+    });
+}
+
+} // namespace detail
+
 // A synthesized drum loop (kick / snare / hi-hat) with a wide dynamic range, well suited to compressor, limiter and saturation demos
 inline AudioBuffer makeDrumLoop(double sampleRate, int bars = 2, double bpm = 120.0, float amplitude = 0.8f,
                                 int numChannels = 2) {
     const double beat = 60.0 / bpm;
-    const int total = secondsToSamples(bars * 4 * beat, sampleRate);
-    AudioBuffer b(numChannels, total);
+    AudioBuffer b(numChannels, secondsToSamples(bars * 4 * beat, sampleRate));
     NoiseGenerator noise(12345);
-
-    auto addHit = [&](double startSec, auto&& voice, double lengthSec) {
-        const int start = secondsToSamples(startSec, sampleRate);
-        const int len = secondsToSamples(lengthSec, sampleRate);
-        for (int i = 0; i < len && start + i < total; ++i) {
-            const float v = voice(i / sampleRate);
-            for (int ch = 0; ch < numChannels; ++ch)
-                b.addSample(ch, start + i, v);
-        }
-    };
-
     for (int step = 0; step < bars * 8; ++step) { // one step = one eighth note
         const double t = step * beat * 0.5;
         const int inBar = step % 8;
-        if (inBar == 0 || inBar == 3 || inBar == 4) { // kick
-            double phase = 0.0;
-            addHit(t, [&](double s) {
-                const double f = 45.0 + 75.0 * std::exp(-s * 30.0); // pitch drops from 120 Hz to 45 Hz
-                phase += kTwoPi * f / sampleRate;
-                return static_cast<float>(0.9 * std::sin(phase) * std::exp(-s * 8.0));
-            }, 0.45);
-        }
-        if (inBar == 2 || inBar == 6) { // snare
-            addHit(t, [&](double s) {
-                const double body = std::sin(kTwoPi * 185.0 * s) * std::exp(-s * 25.0);
-                const double rattle = noise.next() * std::exp(-s * 18.0);
-                return static_cast<float>(0.35 * body + 0.45 * rattle);
-            }, 0.25);
-        }
-        float prev = 0.0f; // hi-hat: a first-order difference tilts the noise toward high frequencies
-        addHit(t, [&](double s) {
-            const float n = noise.next();
-            const float hp = n - prev;
-            prev = n;
-            return static_cast<float>(0.12 * hp * std::exp(-s * 60.0));
-        }, 0.06);
+        if (inBar == 0 || inBar == 3 || inBar == 4)
+            detail::addKick(b, sampleRate, t);
+        if (inBar == 2 || inBar == 6)
+            detail::addSnare(b, sampleRate, t, noise);
+        detail::addHiHat(b, sampleRate, t, noise); // on every step
     }
     b.applyGain(amplitude / 1.2f);
     return b;
