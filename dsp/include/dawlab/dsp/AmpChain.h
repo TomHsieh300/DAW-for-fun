@@ -170,40 +170,40 @@ public:
             return;
 
         // 1. input HPF + pre-EQ: first remove the unwanted low end, then lift the mids that will be pushed into the preamp
-        for (int ch = 0; ch < nch; ++ch) {
-            float* x = block.getChannelPointer(ch);
-            for (int i = 0; i < n; ++i)
-                x[i] = preEq_.processSample(ch, inputHp_.processSample(ch, x[i]));
-        }
+        forEachSample(block, nch, n, [this](int ch, int, float x) {
+            return preEq_.processSample(ch, inputHp_.processSample(ch, x));
+        });
         // 2. preamp (soft clip)
         preamp_.process(block);
         // 3. tone stack (between the two nonlinear stages, like a real amp)
-        for (int ch = 0; ch < nch; ++ch) {
-            float* x = block.getChannelPointer(ch);
-            for (int i = 0; i < n; ++i)
-                x[i] = treble_.processSample(ch, mid_.processSample(ch, bass_.processSample(ch, x[i])));
-        }
+        forEachSample(block, nch, n, [this](int ch, int, float x) {
+            return treble_.processSample(ch, mid_.processSample(ch, bass_.processSample(ch, x)));
+        });
         // 4. power amp (hard clip)
         powerAmp_.process(block);
         // 5. cabinet: a speaker driver cannot reproduce anything above 5 kHz, and it resonates in the low end
         if (cabinetEnabled_) {
-            for (int ch = 0; ch < nch; ++ch) {
-                float* x = block.getChannelPointer(ch);
-                for (int i = 0; i < n; ++i)
-                    x[i] = cabResonance_.processSample(ch, cabLp2_.processSample(ch, cabLp1_.processSample(ch, x[i])));
-            }
+            forEachSample(block, nch, n, [this](int ch, int, float x) {
+                return cabResonance_.processSample(ch, cabLp2_.processSample(ch, cabLp1_.processSample(ch, x)));
+            });
         }
         // 6. output gain (linear ramp per block)
         const float g0 = outputGain_.current, inc = outputGain_.incrementFor(n);
-        for (int ch = 0; ch < nch; ++ch) {
-            float* x = block.getChannelPointer(ch);
-            for (int i = 0; i < n; ++i)
-                x[i] *= g0 + inc * static_cast<float>(i);
-        }
+        forEachSample(block, nch, n, [g0, inc](int, int i, float x) { return x * (g0 + inc * static_cast<float>(i)); });
         outputGain_.current = outputGain_.target;
     }
 
 private:
+    // Channel by channel, sample by sample: x = stage(ch, i, x) (one stage of process() over the whole block)
+    template <typename Stage>
+    static void forEachSample(AudioBlock& block, int nch, int n, Stage&& stage) noexcept {
+        for (int ch = 0; ch < nch; ++ch) {
+            float* x = block.getChannelPointer(ch);
+            for (int i = 0; i < n; ++i)
+                x[i] = stage(ch, i, x[i]);
+        }
+    }
+
     BiquadCoefficients preEqCoefficients() const noexcept {
         return BiquadCoefficients::makePeak(sampleRate_, preEqHz_, kPreEqQ, preEqGainDb_);
     }
