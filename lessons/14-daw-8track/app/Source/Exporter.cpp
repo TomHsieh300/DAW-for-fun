@@ -8,9 +8,43 @@
 
 namespace dawlab::app {
 
+namespace {
+
+bool isBitDepth(int bitDepth) noexcept {
+    return bitDepth == 16 || bitDepth == 24 || bitDepth == 32;
+}
+
+// A WAV writer onto `stream`: 32 bits are float, 16 and 24 integer.
+std::unique_ptr<juce::AudioFormatWriter> wavWriter(std::unique_ptr<juce::OutputStream>& stream, int numChannels, double sampleRate,
+                                                   int bitDepth) {
+    juce::WavAudioFormat wav;
+    const auto options = juce::AudioFormatWriterOptions{}
+                             .withSampleRate(sampleRate)
+                             .withNumChannels(numChannels)
+                             .withBitsPerSample(bitDepth)
+                             .withSampleFormat(bitDepth == 32 ? juce::AudioFormatWriterOptions::SampleFormat::floatingPoint
+                                                              : juce::AudioFormatWriterOptions::SampleFormat::automatic);
+    return wav.createWriterFor(stream, options);
+}
+
+// Every sample of `buffer`, then the header (the writer is closed here). False when the writer says so, or when
+// `written` came out shorter than the samples: a failure while closing shows only in the file's size.
+bool writeAllSamples(std::unique_ptr<juce::AudioFormatWriter> writer, const AudioBuffer& buffer, const juce::File& written, int bitDepth) {
+    // AudioFormatWriter wants an array of const float* (non-interleaved), like AudioBlock.
+    std::vector<const float*> channels;
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        channels.push_back(buffer.getReadPointer(ch));
+    const bool samplesWritten = writer->writeFromFloatArrays(channels.data(), buffer.getNumChannels(), buffer.getNumSamples());
+    writer.reset(); // writes the header and closes the file
+    const juce::int64 dataBytes = static_cast<juce::int64>(buffer.getNumSamples()) * buffer.getNumChannels() * (bitDepth / 8);
+    return samplesWritten && written.getSize() >= dataBytes;
+}
+
+} // namespace
+
 bool Exporter::writeWavFile(const juce::File& file, const AudioBuffer& buffer, double sampleRate, int bitDepth,
                             juce::String& error) {
-    if (bitDepth != 16 && bitDepth != 24 && bitDepth != 32) {
+    if (!isBitDepth(bitDepth)) {
         error = "Bit depth must be 16, 24 or 32";
         return false;
     }
@@ -23,26 +57,12 @@ bool Exporter::writeWavFile(const juce::File& file, const AudioBuffer& buffer, d
         error = "Cannot write " + file.getFullPathName();
         return false;
     }
-    juce::WavAudioFormat wav;
-    const auto options = juce::AudioFormatWriterOptions{}
-                             .withSampleRate(sampleRate)
-                             .withNumChannels(buffer.getNumChannels())
-                             .withBitsPerSample(bitDepth)
-                             .withSampleFormat(bitDepth == 32 ? juce::AudioFormatWriterOptions::SampleFormat::floatingPoint
-                                                              : juce::AudioFormatWriterOptions::SampleFormat::automatic);
-    std::unique_ptr<juce::AudioFormatWriter> writer = wav.createWriterFor(stream, options);
+    std::unique_ptr<juce::AudioFormatWriter> writer = wavWriter(stream, buffer.getNumChannels(), sampleRate, bitDepth);
     if (writer == nullptr) {
         error = "The WAV writer refused the format";
         return false;
     }
-    // AudioFormatWriter wants an array of const float* (non-interleaved), like AudioBlock.
-    std::vector<const float*> channels;
-    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-        channels.push_back(buffer.getReadPointer(ch));
-    const bool samplesWritten = writer->writeFromFloatArrays(channels.data(), buffer.getNumChannels(), buffer.getNumSamples());
-    writer.reset(); // writes the header and closes the file; a failure there shows only in the file's size
-    const juce::int64 dataBytes = static_cast<juce::int64>(buffer.getNumSamples()) * buffer.getNumChannels() * (bitDepth / 8);
-    if (!samplesWritten || tmp.getFile().getSize() < dataBytes) {
+    if (!writeAllSamples(std::move(writer), buffer, tmp.getFile(), bitDepth)) {
         error = "Writing the samples failed (disk full?)";
         return false;
     }

@@ -695,6 +695,28 @@ void testWhileAlive() {
     DAWLAB_CHECK(whileThere == 2 && sum == 2);
 }
 
+// Exporter::writeWavFile refuses what it cannot write: a bit depth WAV does not have here, a folder it cannot make,
+// a target that is a folder (which stays as it was).
+void testWavWriteErrors() {
+    std::printf("writing a WAV that cannot be written\n");
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("dawlab_wav", "");
+    dir.createDirectory();
+    AudioBuffer mono(1, 100);
+    juce::String depth, folder, target;
+    DAWLAB_CHECK(!Exporter::writeWavFile(dir.getChildFile("a.wav"), mono, 48000.0, 20, depth));
+    const juce::File notAFolder = dir.getChildFile("file.txt");
+    DAWLAB_CHECK(notAFolder.replaceWithText("x"));
+    DAWLAB_CHECK(!Exporter::writeWavFile(notAFolder.getChildFile("a.wav"), mono, 48000.0, 16, folder));
+    const juce::File busy = dir.getChildFile("busy.wav");
+    DAWLAB_CHECK(busy.createDirectory().wasOk() && busy.getChildFile("keep.txt").replaceWithText("a folder that is not empty"));
+    DAWLAB_CHECK(!Exporter::writeWavFile(busy, mono, 48000.0, 24, target));
+    std::printf("  20 bits: %s\n  in a file: %s\n  onto a folder: %s\n", depth.toRawUTF8(), folder.toRawUTF8(), target.toRawUTF8());
+    DAWLAB_CHECK(depth.startsWith("Bit depth") && folder.startsWith("Cannot write"));
+    DAWLAB_CHECK(target.startsWith("Cannot replace") && busy.isDirectory());
+    DAWLAB_CHECK(Exporter::writeWavFile(dir.getChildFile("ok.wav"), mono, 48000.0, 32, target));
+    dir.deleteRecursively();
+}
+
 // File > Export mixdown: the chooser's answer.
 void testExportDialog() {
     DialogFolder folder;
@@ -847,6 +869,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testPluginInsert();
     testDeviceErrors();
     testDialogs();
+    testWavWriteErrors();
 
     // 1. The resampler used when loading files (MediaLoader.cpp)
     {
