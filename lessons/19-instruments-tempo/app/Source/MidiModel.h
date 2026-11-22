@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <tuple>
 #include <vector>
 
 namespace dawlab::app {
@@ -69,16 +70,17 @@ struct MidiClipModel {
         return c;
     }
     bool operator==(const MidiClipModel& o) const noexcept {
-        auto sameControllers = [](const std::vector<engine::ControllerPoint>& a, const std::vector<engine::ControllerPoint>& b) {
-            if (a.size() != b.size())
-                return false;
-            for (size_t i = 0; i < a.size(); ++i)
-                if (a[i].tick != b[i].tick || a[i].number != b[i].number || a[i].value != b[i].value || a[i].channel != b[i].channel)
-                    return false;
-            return true;
+        return std::tie(id, start, length, offset, muted, name, quantize, played) ==
+                   std::tie(o.id, o.start, o.length, o.offset, o.muted, o.name, o.quantize, o.played) &&
+               sameControllers(controllers, o.controllers);
+    }
+
+    // engine::ControllerPoint has no ==: field by field.
+    static bool sameControllers(const std::vector<engine::ControllerPoint>& a, const std::vector<engine::ControllerPoint>& b) noexcept {
+        const auto same = [](const engine::ControllerPoint& x, const engine::ControllerPoint& y) {
+            return std::tie(x.tick, x.number, x.value, x.channel) == std::tie(y.tick, y.number, y.value, y.channel);
         };
-        return id == o.id && start == o.start && length == o.length && offset == o.offset && muted == o.muted && name == o.name &&
-               quantize == o.quantize && played == o.played && sameControllers(controllers, o.controllers);
+        return std::equal(a.begin(), a.end(), b.begin(), b.end(), same);
     }
 };
 

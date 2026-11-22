@@ -3333,6 +3333,48 @@ void testDialogs() {
     testTrimDialog();
 }
 
+// ---- the app's logic at its edges ------------------------------------------------------------
+
+// MidiClipModel::operator==: every field counts, and the controller points field by field.
+void testMidiClipEquality() {
+    std::printf("the app's logic: MIDI clips compare every field\n");
+    MidiClipModel a = midiClip(960, {{0, 480, 60, 100, 0}});
+    a.id = 3;
+    a.offset = 120;
+    a.controllers = {{0, 1, 64, 0}, {480, 7, 100, 1}};
+    const MidiClipModel same = a;
+    DAWLAB_CHECK(a == same);
+    const std::vector<std::function<void(MidiClipModel&)>> changes = {
+        [](MidiClipModel& c) { c.id = 4; },
+        [](MidiClipModel& c) { c.start += 1; },
+        [](MidiClipModel& c) { c.length += 1; },
+        [](MidiClipModel& c) { c.offset += 1; },
+        [](MidiClipModel& c) { c.muted = true; },
+        [](MidiClipModel& c) { c.name = "Other"; },
+        [](MidiClipModel& c) { c.quantize.grid = 480; },
+        [](MidiClipModel& c) { c.quantize.strength = 0.5; },
+        [](MidiClipModel& c) { c.quantize.swing = 0.25; },
+        [](MidiClipModel& c) { c.played[0].velocity = 90; },
+        [](MidiClipModel& c) { c.played.clear(); },
+        [](MidiClipModel& c) { c.controllers.pop_back(); },
+        [](MidiClipModel& c) { c.controllers[1].tick += 1; },
+        [](MidiClipModel& c) { c.controllers[1].number = 8; },
+        [](MidiClipModel& c) { c.controllers[1].value = 99; },
+        [](MidiClipModel& c) { c.controllers[1].channel = 2; },
+    };
+    int differ = 0;
+    for (const auto& change : changes) {
+        MidiClipModel b = a;
+        change(b);
+        differ += a == b ? 0 : 1;
+    }
+    DAWLAB_CHECK(differ == static_cast<int>(changes.size()));
+}
+
+void testAppLogic() {
+    testMidiClipEquality();
+}
+
 // ---- --smoke-test --------------------------------------------------------------------------------
 
 // ---- the arrangement's clicks on buttons and MIDI clips (batch 8) -------------------------------------
@@ -3427,6 +3469,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     constexpr double sr = 48000.0;
     std::setvbuf(stdout, nullptr, _IONBF, 0); // unbuffered: a crash must not swallow what was printed
     std::printf("DawLab 19 smoke test (no audio device)\n\n");
+    testAppLogic();
     testSongEndAgrees();
     testBarGrid();
     testSlotButtons();
