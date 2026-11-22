@@ -152,6 +152,11 @@ private:
     void scrollBarMoved(juce::ScrollBar*, double start) override { setScrollY(static_cast<int>(start)); }
     void updateScrollBar();
     void paintRuler(juce::Graphics&, juce::Rectangle<int> area);
+    // paintRuler()'s parts: the loop range, the bar lines with their numbers and beat ticks.
+    void paintLoopRange(juce::Graphics&, juce::Rectangle<int> area);
+    void paintBarLines(juce::Graphics&, juce::Rectangle<int> area);
+    void paintBarLine(juce::Graphics&, juce::Rectangle<int> area, float x, int64_t bar, bool numbered);
+    void paintBeatTicks(juce::Graphics&, juce::Rectangle<int> area, int64_t bar, int beatsPerBar);
     void paintLane(juce::Graphics&, int lane, juce::Rectangle<int> area);
     // paintLane()'s parts, in the order it draws them.
     void paintLaneBackground(juce::Graphics&, int lane, juce::Rectangle<int> area);

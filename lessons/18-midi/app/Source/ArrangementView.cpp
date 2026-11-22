@@ -398,24 +398,31 @@ void ArrangementView::filesDropped(const juce::StringArray& files, int, int y) {
 }
 
 void ArrangementView::paintRuler(juce::Graphics& g, juce::Rectangle<int> area) {
-    const auto& tr = session_.getEngine().getTransport();
     g.setColour(DawColours::panel());
     g.fillRect(area);
     g.setColour(DawColours::textDim());
     g.setFont(DawLookAndFeel::uiFont(12.0f));
     g.drawText("bar", area.withWidth(kHeaderWidth).reduced(8, 0), juce::Justification::centredLeft);
+    paintLoopRange(g, area);
+    paintBarLines(g, area);
+}
 
-    // loop range
+// The loop range: a strip along the ruler's bottom, brighter while the loop is on.
+void ArrangementView::paintLoopRange(juce::Graphics& g, juce::Rectangle<int> area) {
+    const auto& tr = session_.getEngine().getTransport();
     const float lx0 = std::max<float>(kHeaderWidth, sampleToX(static_cast<double>(tr.getLoopStart())));
     const float lx1 = sampleToX(static_cast<double>(tr.getLoopEnd()));
     if (lx1 > lx0) {
         g.setColour(DawColours::accentWarm().withAlpha(tr.isLoopEnabled() ? 0.45f : 0.12f));
         g.fillRect(juce::Rectangle<float>(lx0, static_cast<float>(area.getBottom() - 8), lx1 - lx0, 8.0f));
     }
+}
 
-    // bar lines and numbers, beat ticks. getBarGrid() says which bars get a line (8 px apart at least) and a
-    // number (30 px), so the loop runs over the lines drawn, not over every bar in view (GridSpacing.h).
-    // Beat ticks only when every bar has its line and beats are more than 6 px apart.
+// Bar lines and numbers, beat ticks. getBarGrid() says which bars get a line (8 px apart at least) and a
+// number (30 px), so the loop runs over the lines drawn, not over every bar in view (GridSpacing.h).
+// Beat ticks only when every bar has its line and beats are more than 6 px apart.
+void ArrangementView::paintBarLines(juce::Graphics& g, juce::Rectangle<int> area) {
+    const auto& tr = session_.getEngine().getTransport();
     const double barSamples = tr.getSamplesPerBar();
     const int beatsPerBar = tr.getTimeSignature().numerator;
     const grid::BarGrid lines = getBarGrid(8.0);
@@ -426,24 +433,33 @@ void ArrangementView::paintRuler(juce::Graphics& g, juce::Rectangle<int> area) {
         const int64_t bar = lines.first + i * lines.step; // 0-based: bar 1 is 0
         if (bar < 0)
             continue;
-        const double start = static_cast<double>(bar) * barSamples;
-        const float x = sampleToX(start);
-        if (i >= 0 && x >= kHeaderWidth) {
-            g.setColour(DawColours::textDim());
-            g.drawVerticalLine(static_cast<int>(x), static_cast<float>(area.getY() + 4), static_cast<float>(area.getBottom()));
-            if (bar % numbers.step == 0) {
-                g.setColour(DawColours::text());
-                g.drawText(juce::String(bar + 1), static_cast<int>(x) + 3, area.getY() + 2, 40, 14, juce::Justification::left);
-            }
-        }
-        if (!beatTicks)
-            continue;
-        g.setColour(DawColours::outline());
-        for (int b = 1; b < beatsPerBar; ++b) {
-            const float bx = sampleToX(start + barSamples * b / beatsPerBar);
-            if (bx >= kHeaderWidth && bx < static_cast<float>(getWidth()))
-                g.drawVerticalLine(static_cast<int>(bx), static_cast<float>(area.getBottom() - 6), static_cast<float>(area.getBottom()));
-        }
+        const float x = sampleToX(static_cast<double>(bar) * barSamples);
+        if (i >= 0 && x >= kHeaderWidth)
+            paintBarLine(g, area, x, bar, bar % numbers.step == 0);
+        if (beatTicks)
+            paintBeatTicks(g, area, bar, beatsPerBar);
+    }
+}
+
+// The line of `bar` (0-based) at x, and its number if it has one.
+void ArrangementView::paintBarLine(juce::Graphics& g, juce::Rectangle<int> area, float x, int64_t bar, bool numbered) {
+    g.setColour(DawColours::textDim());
+    g.drawVerticalLine(static_cast<int>(x), static_cast<float>(area.getY() + 4), static_cast<float>(area.getBottom()));
+    if (numbered) {
+        g.setColour(DawColours::text());
+        g.drawText(juce::String(bar + 1), static_cast<int>(x) + 3, area.getY() + 2, 40, 14, juce::Justification::left);
+    }
+}
+
+// The ticks of the beats after the first of `bar`, those in view.
+void ArrangementView::paintBeatTicks(juce::Graphics& g, juce::Rectangle<int> area, int64_t bar, int beatsPerBar) {
+    const double barSamples = session_.getEngine().getTransport().getSamplesPerBar();
+    const double start = static_cast<double>(bar) * barSamples;
+    g.setColour(DawColours::outline());
+    for (int b = 1; b < beatsPerBar; ++b) {
+        const float bx = sampleToX(start + barSamples * b / beatsPerBar);
+        if (bx >= kHeaderWidth && bx < static_cast<float>(getWidth()))
+            g.drawVerticalLine(static_cast<int>(bx), static_cast<float>(area.getBottom() - 6), static_cast<float>(area.getBottom()));
     }
 }
 
