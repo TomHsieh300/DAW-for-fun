@@ -45,6 +45,29 @@ juce::String mediaFileName(const AudioBuffer& b) {
     return name;
 }
 
+// A plugin insert: its file and its state. No test loads a plugin, so this part is kept this small.
+void captureVst3(InsertState& ins, const InsertSlotState& st) {
+    ins.vst3 = true;
+    host::HostedPlugin& plugin = st.vst->getPlugin();
+    ins.type = plugin.getInstance().getPluginDescription().fileOrIdentifier.toStdString();
+    ins.state = plugin.getState().toBase64Encoding().toStdString();
+}
+
+// The effect in one slot: a plugin, or a built-in effect with each of its knobs.
+InsertState captureInsert(const InsertSlotState& st, int slot) {
+    InsertState ins;
+    ins.slot = slot;
+    ins.bypassed = st.effect->isBypassed();
+    if (st.kind == SlotKind::Vst3 && st.vst != nullptr) {
+        captureVst3(ins, st);
+    } else {
+        ins.type = effectTypeName(st.type);
+        for (int i = 0; i < st.effect->getNumParameters(); ++i)
+            ins.params.push_back({st.effect->getParameterInfo(i).name, st.effect->getParameter(i)});
+    }
+    return ins;
+}
+
 StripState captureStrip(const Session& session, ChannelRef ref) {
     StripState s;
     const ChannelStrip* cs = session.getEngine().getStrip(ref);
@@ -61,20 +84,7 @@ StripState captureStrip(const Session& session, ChannelRef ref) {
         const InsertSlotState& st = session.getSlot(ref, slot);
         if (st.isEmpty())
             continue;
-        InsertState ins;
-        ins.slot = slot;
-        ins.bypassed = st.effect->isBypassed();
-        if (st.kind == SlotKind::Vst3 && st.vst != nullptr) {
-            ins.vst3 = true;
-            host::HostedPlugin& plugin = st.vst->getPlugin();
-            ins.type = plugin.getInstance().getPluginDescription().fileOrIdentifier.toStdString();
-            ins.state = plugin.getState().toBase64Encoding().toStdString();
-        } else {
-            ins.type = effectTypeName(st.type);
-            for (int i = 0; i < st.effect->getNumParameters(); ++i)
-                ins.params.push_back({st.effect->getParameterInfo(i).name, st.effect->getParameter(i)});
-        }
-        s.inserts.push_back(std::move(ins));
+        s.inserts.push_back(captureInsert(st, slot));
     }
     return s;
 }
@@ -133,9 +143,13 @@ juce::File ProjectIO::mediaFolderFor(const juce::File& projectFile) {
 
 // ---- save ---------------------------------------------------------------------------------------------
 
-ProjectIO::Captured ProjectIO::capture(const Session& session, const juce::String& mediaFolderName) {
-    Captured out;
-    ProjectState& p = out.state;
+namespace {
+
+// Each buffer's file in the media folder, by the buffer.
+using MediaNames = std::map<const AudioBuffer*, juce::String>;
+
+// The song: the rate the clips are at, the tempo and the time signature, the loop.
+void captureSong(const Session& session, ProjectState& p) {
     const Transport& tr = session.getEngine().getTransport();
     p.sampleRate = session.getClipSampleRate(); // the rate the clips are at (= the engine's, normally)
     p.tempo = tr.getTempo();
@@ -144,38 +158,63 @@ ProjectIO::Captured ProjectIO::capture(const Session& session, const juce::Strin
     p.loopStart = tr.getLoopStart();
     p.loopEnd = tr.getLoopEnd();
     p.loopEnabled = tr.isLoopEnabled();
+}
 
-    std::map<const AudioBuffer*, juce::String> names;
+// The track in display position `lane`, with the file's own id for it: lane + 1.
+TrackState captureTrack(const Session& session, int lane) {
+    const TrackId id = session.getTrackId(lane);
+    TrackState t;
+    t.id = TrackId{static_cast<std::uint32_t>(lane + 1)}; // the file's own references, 1..N
+    t.format = session.getTrackFormat(id);
+    t.strip = captureStrip(session, session.trackRef(id));
+    return t;
+}
+
+// The file of a clip's audio, in the media folder. The first clip that plays a buffer names it and adds it to
+// `media`, once even when two buffers hold the same samples.
+juce::String mediaNameOf(const Clip& c, const juce::String& mediaFolderName, MediaNames& names, ProjectIO::Captured& out) {
+    auto it = names.find(c.source.get());
+    if (it == names.end()) {
+        const juce::String name = mediaFolderName + "/" + mediaFileName(*c.source);
+        it = names.emplace(c.source.get(), name).first;
+        if (std::none_of(out.media.begin(), out.media.end(), [&name](const auto& m) { return m.first == name; }))
+            out.media.emplace_back(name, c.source);
+    }
+    return it->second;
+}
+
+// An audio clip on `track` that plays `file`.
+ClipState captureClip(const Clip& c, TrackId track, const juce::String& file) {
+    ClipState cs;
+    cs.track = track;
+    cs.start = c.start;
+    cs.length = c.length;
+    cs.file = file.toStdString();
+    cs.sourceOffset = c.sourceOffset;
+    cs.fadeIn = c.fadeInSamples;
+    cs.fadeOut = c.fadeOutSamples;
+    cs.equalPowerFades = c.fadeShape == FadeShape::EqualPower;
+    cs.gainDb = c.gainDb;
+    cs.muted = c.muted;
+    cs.name = c.name;
+    return cs;
+}
+
+} // namespace
+
+ProjectIO::Captured ProjectIO::capture(const Session& session, const juce::String& mediaFolderName) {
+    Captured out;
+    ProjectState& p = out.state;
+    captureSong(session, p);
+
+    MediaNames names;
     for (int lane = 0; lane < session.getNumTracks(); ++lane) {
         const TrackId id = session.getTrackId(lane);
-        TrackState t;
-        t.id = TrackId{static_cast<std::uint32_t>(lane + 1)}; // the file's own references, 1..N
-        t.format = session.getTrackFormat(id);
-        t.strip = captureStrip(session, session.trackRef(id));
-        p.tracks.push_back(std::move(t));
+        p.tracks.push_back(captureTrack(session, lane));
         for (const Clip& c : session.getClips(id)) {
             if (c.source == nullptr)
                 continue;
-            auto it = names.find(c.source.get());
-            if (it == names.end()) {
-                const juce::String name = mediaFolderName + "/" + mediaFileName(*c.source);
-                it = names.emplace(c.source.get(), name).first;
-                if (std::none_of(out.media.begin(), out.media.end(), [&name](const auto& m) { return m.first == name; }))
-                    out.media.emplace_back(name, c.source);
-            }
-            ClipState cs;
-            cs.track = p.tracks.back().id;
-            cs.start = c.start;
-            cs.length = c.length;
-            cs.file = it->second.toStdString();
-            cs.sourceOffset = c.sourceOffset;
-            cs.fadeIn = c.fadeInSamples;
-            cs.fadeOut = c.fadeOutSamples;
-            cs.equalPowerFades = c.fadeShape == FadeShape::EqualPower;
-            cs.gainDb = c.gainDb;
-            cs.muted = c.muted;
-            cs.name = c.name;
-            p.clips.push_back(std::move(cs));
+            p.clips.push_back(captureClip(c, p.tracks.back().id, mediaNameOf(c, mediaFolderName, names, out)));
         }
     }
     p.nextTrackId = static_cast<std::uint32_t>(p.tracks.size() + 1);
@@ -185,20 +224,22 @@ ProjectIO::Captured ProjectIO::capture(const Session& session, const juce::Strin
     return out;
 }
 
-bool ProjectIO::save(const Session& session, const juce::File& file, juce::String& error) {
-    const juce::File mediaDir = mediaFolderFor(file);
-    const Captured c = capture(session, mediaDir.getFileName());
-    if (!c.media.empty()) {
-        const juce::Result made = mediaDir.createDirectory();
-        if (made.failed()) {
-            error = "cannot create " + mediaDir.getFullPathName() + ": " + made.getErrorMessage();
-            return false;
-        }
+namespace {
+
+bool makeMediaFolder(const juce::File& mediaDir, juce::String& error) {
+    const juce::Result made = mediaDir.createDirectory();
+    if (made.failed()) {
+        error = "cannot create " + mediaDir.getFullPathName() + ": " + made.getErrorMessage();
+        return false;
     }
-    // 1. The audio. A file with this content's name is already there: nothing to write.
-    std::set<juce::String> used;
+    return true;
+}
+
+// Each buffer whose file is not there yet, written next to it and moved in when complete. `used` gets the name of
+// every file the new version plays.
+bool writeMedia(const ProjectIO::Captured& c, const juce::File& projectFolder, std::set<juce::String>& used, juce::String& error) {
     for (const auto& [name, buffer] : c.media) {
-        const juce::File target = file.getParentDirectory().getChildFile(name);
+        const juce::File target = projectFolder.getChildFile(name);
         used.insert(target.getFileName());
         if (target.existsAsFile())
             continue;
@@ -210,17 +251,36 @@ bool ProjectIO::save(const Session& session, const juce::File& file, juce::Strin
             return false;
         }
     }
+    return true;
+}
+
+// The files of the media folder that are not `used`, and the folder itself once a project without audio left it empty.
+void removeUnusedMedia(const juce::File& mediaDir, const std::set<juce::String>& used, bool noMedia) {
+    if (!mediaDir.isDirectory())
+        return;
+    for (const juce::File& f : mediaDir.findChildFiles(juce::File::findFiles, false, "*.wav"))
+        if (used.count(f.getFileName()) == 0)
+            f.deleteFile();
+    if (noMedia && mediaDir.getNumberOfChildFiles(juce::File::findFilesAndDirectories) == 0)
+        mediaDir.deleteFile();
+}
+
+} // namespace
+
+bool ProjectIO::save(const Session& session, const juce::File& file, juce::String& error) {
+    const juce::File mediaDir = mediaFolderFor(file);
+    const Captured c = capture(session, mediaDir.getFileName());
+    if (!c.media.empty() && !makeMediaFolder(mediaDir, error))
+        return false;
+    // 1. The audio. A file with this content's name is already there: nothing to write.
+    std::set<juce::String> used;
+    if (!writeMedia(c, file.getParentDirectory(), used, error))
+        return false;
     // 2. The text: from here on the new version is complete.
     if (!writeTextFile(file, project::writeProject(c.state), error))
         return false;
     // 3. Audio the new version does not use any more.
-    if (mediaDir.isDirectory()) {
-        for (const juce::File& f : mediaDir.findChildFiles(juce::File::findFiles, false, "*.wav"))
-            if (used.count(f.getFileName()) == 0)
-                f.deleteFile();
-        if (c.media.empty() && mediaDir.getNumberOfChildFiles(juce::File::findFilesAndDirectories) == 0)
-            mediaDir.deleteFile();
-    }
+    removeUnusedMedia(mediaDir, used, c.media.empty());
     return true;
 }
 

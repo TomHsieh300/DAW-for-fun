@@ -2819,6 +2819,44 @@ void testSynthKnobs() {
     DAWLAB_CHECK(SynthPanel::valueOf(defaults, SynthPanel::kNumKnobs) == 0.0);
 }
 
+// ProjectIO::save when the files cannot go where they belong: a file where the media folder would be, a folder
+// where a media file would be. Neither leaves a project file. And a project without audio any more takes its media
+// folder away once it is empty.
+void testSaveFailures() {
+    std::printf("saving where the files cannot go\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    DAWLAB_CHECK(main.loadDemoSongNow() == 0);
+    const Session& session = main.getSession();
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("dawlab_save", "");
+    dir.createDirectory();
+    juce::String error;
+    const juce::File blocked = dir.getChildFile("Blocked.dawlab");
+    DAWLAB_CHECK(ProjectIO::mediaFolderFor(blocked).replaceWithText("not a folder"));
+    const bool blockedSaved = ProjectIO::save(session, blocked, error);
+    std::printf("  a file in the media folder's place: %s\n", blockedSaved ? "saved" : error.toRawUTF8());
+    DAWLAB_CHECK(!blockedSaved && error.startsWith("cannot create") && !blocked.exists());
+
+    const juce::File file = dir.getChildFile("Song.dawlab");
+    const ProjectIO::Captured c = ProjectIO::capture(session, ProjectIO::mediaFolderFor(file).getFileName());
+    DAWLAB_CHECK(!c.media.empty());
+    const juce::File inTheWay = dir.getChildFile(c.media.empty() ? juce::String("x.wav") : c.media.back().first);
+    DAWLAB_CHECK(inTheWay.createDirectory().wasOk() && inTheWay.getChildFile("keep.txt").replaceWithText("a folder that is not empty"));
+    error.clear();
+    const bool written = ProjectIO::save(session, file, error);
+    std::printf("  a folder in a media file's place: %s\n", written ? "saved" : error.toRawUTF8());
+    DAWLAB_CHECK(!written && error.startsWith("cannot write") && !file.exists());
+
+    DAWLAB_CHECK(inTheWay.deleteRecursively());
+    DAWLAB_CHECK(ProjectIO::save(session, file, error) && ProjectIO::mediaFolderFor(file).isDirectory());
+    auto emptyPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    emptyPtr->getSession().newProject();
+    const bool emptySaved = ProjectIO::save(emptyPtr->getSession(), file, error);
+    std::printf("  saved again without audio: media folder %s\n", ProjectIO::mediaFolderFor(file).exists() ? "KEPT" : "gone");
+    DAWLAB_CHECK(emptySaved && file.existsAsFile() && !ProjectIO::mediaFolderFor(file).exists());
+    dir.deleteRecursively();
+}
+
 // ---- inserts a project cannot fully restore (chapter 15) ---------------------------------------------
 // Opening a project: an unknown effect is skipped with a warning, so is a plugin without a plugin host
 // or whose file does not load; a parameter the effect does not have is a warning; the rest comes back.
@@ -3397,6 +3435,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testPianoRollWheel();
     testSynthKnobs();
     testOddInserts();
+    testSaveFailures();
     testPluginInsert();
     testDeviceErrors();
     testInputChoice();
