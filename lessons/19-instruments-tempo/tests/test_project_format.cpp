@@ -194,6 +194,17 @@ void testErrors() {
         {head + "tempo 120 4 4\ntempo 90 3 4\n", "line 5: tempo given twice"},
         {head + "loop 0 0 0\nloop 0 48000 1\n", "line 5: loop given twice"},
         {head + "master \"M\" 0 0 0\nmaster \"N\" 0 0 0\n", "line 5: master given twice"},
+        // Each value of a track and a clip line in turn.
+        {head + "track 0 \"B\" 0 0 mono 0 0\n", "line 4: bad track id \"0\""},
+        {head + "track 2 B 0 0 mono 0 0\n", "line 4: the track name must be in quotes"},
+        {head + "track 2 \"B\" loud 0 mono 0 0\n", "line 4: bad gain \"loud\""},
+        {head + "track 2 \"B\" 0 1.5 mono 0 0\n", "line 4: pan must be a number from -1 to 1"},
+        {head + "track 2 \"B\" 0 0 mono 2 0\n", "line 4: mute and solo must be 0 or 1"},
+        {head + "clip x 0 100 \"a.wav\"\n", "line 4: bad track id \"x\""},
+        {head + "clip 1 -1 100 \"a.wav\"\n", "line 4: clip start must be"},
+        {head + "clip 1 0 100 a.wav\n", "line 4: the file name must be in quotes"},
+        {head + "clip 1 0 100 \"a.wav\" -1 0 0 linear 0 0 \"x\"\n", "line 4: source offset and fades"},
+        {head + "clip 1 0 100 \"a.wav\" 0 0 0 linear 0 2 \"x\"\n", "line 4: clip needs a gain"},
         // A channel or a number that is not one: in quotes, without its colon, empty, or negative where it cannot be.
         {head + "send \"master\" 0 -6 0\n", "line 4: send needs"},
         {head + "send track 0 -6 0\n", "line 4: send needs"},

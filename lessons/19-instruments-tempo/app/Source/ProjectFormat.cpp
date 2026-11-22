@@ -666,6 +666,17 @@ private:
         if (tok_.size() != expected)
             return "track needs " + std::to_string(expected - 1) + " values in format " + std::to_string(version_);
         TrackState t;
+        const std::string problem = readTrackValues(t);
+        if (!problem.empty())
+            return problem;
+        if (hasTrack(t.id))
+            return "track id " + tok_[1].text + " used twice";
+        p_.tracks.push_back(std::move(t));
+        return "";
+    }
+
+    // A track's id, name and gain; from format 2 on its pan, from format 3 on its switches.
+    std::string readTrackValues(TrackState& t) {
         if (!parseTrackId(tok_[1], t.id))
             return "bad track id \"" + tok_[1].text + "\"";
         if (!tok_[2].quoted)
@@ -675,15 +686,7 @@ private:
             return "bad gain \"" + tok_[3].text + "\"";
         if (version_ >= 2 && !parsePan(tok_[4], t.strip.pan))
             return "pan must be a number from -1 to 1";
-        if (version_ >= 3) {
-            const std::string problem = readTrackSwitches(t);
-            if (!problem.empty())
-                return problem;
-        }
-        if (hasTrack(t.id))
-            return "track id " + tok_[1].text + " used twice";
-        p_.tracks.push_back(std::move(t));
-        return "";
+        return version_ >= 3 ? readTrackSwitches(t) : std::string();
     }
 
     // Format 3: the track's format, mute and solo.
@@ -791,6 +794,18 @@ private:
         if (tok_.size() != 5 && !(version_ >= 3 && full))
             return version_ >= 3 ? "clip needs 4 or 11 values" : "clip needs 4 values";
         ClipState c;
+        std::string problem = readClipPlace(c);
+        if (problem.empty() && full)
+            problem = readClipDetails(c);
+        if (!problem.empty())
+            return problem;
+        p_.clips.push_back(std::move(c));
+        clipLines_.push_back(lineNo_);
+        return "";
+    }
+
+    // Where a clip is: its track, start and length, and its file.
+    std::string readClipPlace(ClipState& c) const {
         if (!parseTrackId(tok_[1], c.track))
             return "bad track id \"" + tok_[1].text + "\"";
         if (!parseNumber(tok_[2], c.start) || !isPosition(c.start))
@@ -800,20 +815,12 @@ private:
         if (!tok_[4].quoted)
             return "the file name must be in quotes";
         c.file = tok_[4].text;
-        if (full) {
-            const std::string problem = readClipDetails(c);
-            if (!problem.empty())
-                return problem;
-        }
-        p_.clips.push_back(std::move(c));
-        clipLines_.push_back(lineNo_);
         return "";
     }
 
     // Format 3: a clip's source offset, fades, gain, muted and name.
     std::string readClipDetails(ClipState& c) {
-        if (!parseNumber(tok_[5], c.sourceOffset) || !isPosition(c.sourceOffset) || !parseNumber(tok_[6], c.fadeIn) ||
-            !parseNumber(tok_[7], c.fadeOut) || !isFade(c.fadeIn, p_.sampleRate) || !isFade(c.fadeOut, p_.sampleRate))
+        if (!parseOffsetAndFades(c))
             return "source offset and fades must be 0 or more samples (the offset at most 2^40, a fade at most 60 s)";
         if (!isEither(tok_[8], "linear", "equalPower"))
             return "the fade shape must be linear or equalPower";
@@ -822,6 +829,12 @@ private:
             return "clip needs a gain, 0/1 for muted and a name in quotes";
         c.name = tok_[11].text;
         return "";
+    }
+
+    // The source offset (at most 2^40) and the two fades (at most 60 s each) of a format 3 clip.
+    bool parseOffsetAndFades(ClipState& c) const {
+        return parseNumber(tok_[5], c.sourceOffset) && isPosition(c.sourceOffset) && parseNumber(tok_[6], c.fadeIn) &&
+               parseNumber(tok_[7], c.fadeOut) && isFade(c.fadeIn, p_.sampleRate) && isFade(c.fadeOut, p_.sampleRate);
     }
 
     std::string readTakes() {
