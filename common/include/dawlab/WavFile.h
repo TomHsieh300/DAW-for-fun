@@ -190,6 +190,70 @@ inline void decodeWavSamples(const WavLayout& wav, WavData& out) {
     }
 }
 
+// ---- writeWav, one step per function ----
+
+// The sizes writeWav puts in the header, worked out before the file is opened
+struct WavWriteSizes {
+    int numChannels = 0, bytesPerSample = 0;
+    uint64_t rate = 0, byteRate = 0, dataBytes = 0;
+};
+
+// Works out the sizes and returns what makes the WAV impossible ("" = nothing): checked before the file is opened,
+// so a refused WAV leaves nothing behind, not a truncated file.
+inline std::string wavWriteProblem(const std::string& path, const AudioBuffer& buffer, double sampleRate, int bitDepth,
+                                   WavWriteSizes& sizes) {
+    if (bitDepth != 16 && bitDepth != 24 && bitDepth != 32)
+        return "bitDepth must be 16, 24 or 32";
+    sizes.numChannels = buffer.getNumChannels();
+    sizes.bytesPerSample = bitDepth / 8;
+    sizes.dataBytes = wavDataBytes(uint64_t(buffer.getNumSamples()), uint64_t(sizes.numChannels),
+                                   uint64_t(sizes.bytesPerSample));
+    sizes.rate = isWavSampleRate(sampleRate) ? uint64_t(std::llround(sampleRate)) : 0;
+    sizes.byteRate = sizes.rate * uint64_t(sizes.numChannels) * uint64_t(sizes.bytesPerSample);
+    if (sizes.rate == 0 || sizes.byteRate > 0xFFFFFFFFull)
+        return "A WAV file cannot hold a sample rate of " + std::to_string(sampleRate) + " Hz: " + path;
+    if (!fitsWav(sizes.dataBytes))
+        return "Too large for a WAV file (4 GiB): " + path;
+    return {};
+}
+
+// The 44-byte header: RIFF, the fmt chunk (format 3 = IEEE float for 32 bits, else 1 = PCM) and the data chunk's size
+inline void writeWavHeader(std::ofstream& f, const WavWriteSizes& sizes, int bitDepth) {
+    const auto dataSize = uint32_t(sizes.dataBytes);
+    f.write("RIFF", 4);
+    writeU32(f, 36 + dataSize + (dataSize & 1));
+    f.write("WAVE", 4);
+    f.write("fmt ", 4);
+    writeU32(f, 16);
+    writeU16(f, bitDepth == 32 ? 3 : 1);
+    writeU16(f, uint16_t(sizes.numChannels));
+    writeU32(f, uint32_t(sizes.rate));
+    writeU32(f, uint32_t(sizes.byteRate));
+    writeU16(f, uint16_t(sizes.numChannels * sizes.bytesPerSample));
+    writeU16(f, uint16_t(bitDepth));
+    f.write("data", 4);
+    writeU32(f, dataSize);
+}
+
+// One sample, little-endian: 32-bit float as it is; 16 / 24-bit integer clipped to ±1 and rounded
+inline void encodeWavSample(char* p, float v, int bitDepth) noexcept {
+    if (bitDepth == 32) {
+        std::memcpy(p, &v, 4);
+        return;
+    }
+    const float c = std::clamp(v, -1.0f, 1.0f);
+    if (bitDepth == 16) {
+        const auto s = int16_t(std::lround(c * 32767.0f));
+        p[0] = char(s & 0xff);
+        p[1] = char((s >> 8) & 0xff);
+    } else {
+        const auto s = int32_t(std::lround(double(c) * 8388607.0));
+        p[0] = char(s & 0xff);
+        p[1] = char((s >> 8) & 0xff);
+        p[2] = char((s >> 16) & 0xff);
+    }
+}
+
 } // namespace detail
 
 // Reads the whole file, finds its fmt and data chunks, checks the format, then converts the samples to float
@@ -226,23 +290,10 @@ inline bool readWav(const std::string& path, WavData& out, std::string* error = 
 // bitDepth: 16, 24 (integer PCM) or 32 (IEEE float)
 inline bool writeWav(const std::string& path, const AudioBuffer& buffer, double sampleRate, int bitDepth = 24,
                      std::string* error = nullptr) {
-    if (bitDepth != 16 && bitDepth != 24 && bitDepth != 32) {
-        detail::setError(error, "bitDepth must be 16, 24 or 32");
-        return false;
-    }
-    const int numChannels = buffer.getNumChannels();
-    const int numFrames = buffer.getNumSamples();
-    const int bytesPerSample = bitDepth / 8;
-    const uint64_t dataBytes = detail::wavDataBytes(uint64_t(numFrames), uint64_t(numChannels), uint64_t(bytesPerSample));
-    // Checked before the file is opened: a refused WAV leaves nothing behind, not a truncated file.
-    const uint64_t rate = detail::isWavSampleRate(sampleRate) ? uint64_t(std::llround(sampleRate)) : 0;
-    const uint64_t byteRate = rate * uint64_t(numChannels) * uint64_t(bytesPerSample);
-    if (rate == 0 || byteRate > 0xFFFFFFFFull) {
-        detail::setError(error, "A WAV file cannot hold a sample rate of " + std::to_string(sampleRate) + " Hz: " + path);
-        return false;
-    }
-    if (!detail::fitsWav(dataBytes)) {
-        detail::setError(error, "Too large for a WAV file (4 GiB): " + path);
+    detail::WavWriteSizes sizes;
+    const std::string problem = detail::wavWriteProblem(path, buffer, sampleRate, bitDepth, sizes);
+    if (!problem.empty()) {
+        detail::setError(error, problem);
         return false;
     }
     const auto parent = std::filesystem::path(path).parent_path();
@@ -256,45 +307,15 @@ inline bool writeWav(const std::string& path, const AudioBuffer& buffer, double 
         return false;
     }
 
-    const auto dataSize = uint32_t(dataBytes);
-    f.write("RIFF", 4);
-    detail::writeU32(f, 36 + dataSize + (dataSize & 1));
-    f.write("WAVE", 4);
-    f.write("fmt ", 4);
-    detail::writeU32(f, 16);
-    detail::writeU16(f, bitDepth == 32 ? 3 : 1);
-    detail::writeU16(f, uint16_t(numChannels));
-    detail::writeU32(f, uint32_t(rate));
-    detail::writeU32(f, uint32_t(byteRate));
-    detail::writeU16(f, uint16_t(numChannels * bytesPerSample));
-    detail::writeU16(f, uint16_t(bitDepth));
-    f.write("data", 4);
-    detail::writeU32(f, dataSize);
-
-    std::vector<char> frame(size_t(numChannels) * size_t(bytesPerSample));
-    for (int i = 0; i < numFrames; ++i) {
-        for (int ch = 0; ch < numChannels; ++ch) {
-            const float v = buffer.getSample(ch, i);
-            char* p = frame.data() + size_t(ch) * size_t(bytesPerSample);
-            if (bitDepth == 32) {
-                std::memcpy(p, &v, 4);
-            } else {
-                const float c = std::clamp(v, -1.0f, 1.0f);
-                if (bitDepth == 16) {
-                    const auto s = int16_t(std::lround(c * 32767.0f));
-                    p[0] = char(s & 0xff);
-                    p[1] = char((s >> 8) & 0xff);
-                } else {
-                    const auto s = int32_t(std::lround(double(c) * 8388607.0));
-                    p[0] = char(s & 0xff);
-                    p[1] = char((s >> 8) & 0xff);
-                    p[2] = char((s >> 16) & 0xff);
-                }
-            }
-        }
+    detail::writeWavHeader(f, sizes, bitDepth);
+    const size_t bytesPerSample = size_t(sizes.bytesPerSample);
+    std::vector<char> frame(size_t(sizes.numChannels) * bytesPerSample);
+    for (int i = 0; i < buffer.getNumSamples(); ++i) {
+        for (int ch = 0; ch < sizes.numChannels; ++ch)
+            detail::encodeWavSample(frame.data() + size_t(ch) * bytesPerSample, buffer.getSample(ch, i), bitDepth);
         f.write(frame.data(), std::streamsize(frame.size()));
     }
-    if (dataSize & 1)
+    if (sizes.dataBytes & 1)
         f.put(0);
     return bool(f);
 }

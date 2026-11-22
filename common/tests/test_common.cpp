@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <limits>
@@ -438,6 +439,15 @@ int main() {
     DAWLAB_CHECK(!writeWav(rated, one, 0.0, 24, &why) && !writeWav(rated, one, -48000.0) && !writeWav(rated, one, std::nan("")));
     std::printf("writeWav at 0 Hz: %s\n", why.c_str());
     DAWLAB_CHECK(writeWav(rated, one, 48000.0) && readWav(rated, wav) && wav.buffer.getNumSamples() == 1);
+    // A bit depth other than 16, 24 or 32 is refused before the file is opened, and a path that cannot be opened
+    // (here a folder) says so.
+    const std::string depth = outputPath("common_depth8.wav");
+    std::filesystem::remove(depth);
+    DAWLAB_CHECK(!writeWav(depth, one, 48000.0, 8, &why) && why == "bitDepth must be 16, 24 or 32" &&
+                 !std::filesystem::exists(depth));
+    const std::string folder = outputPath("common_wav_folder");
+    std::filesystem::create_directories(folder);
+    DAWLAB_CHECK(!writeWav(folder, one, 48000.0, 16, &why) && why == "Cannot write file: " + folder);
     // And more than 4 GiB of samples, which the RIFF header's 32-bit size cannot say: 1.5e9 stereo 24-bit frames
     // are 9e9 bytes, which wrapped to 410065408 in 32 bits. The size is counted in 64 bits and checked first.
     DAWLAB_CHECK(detail::wavDataBytes(1500000000, 2, 3) == 9000000000ull && !detail::fitsWav(9000000000ull));
