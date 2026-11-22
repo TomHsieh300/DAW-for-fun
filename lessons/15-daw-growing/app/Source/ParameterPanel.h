@@ -72,6 +72,12 @@ public:
 
 private:
     struct Control;
+    // The constructor's parts: the header, then one control per parameter.
+    void addHeader();
+    std::unique_ptr<Control> makeControl(int index);
+    void addComboBox(Control& c, float current);
+    void addToggle(Control& c, float current);
+    void addSlider(Control& c, float current);
     void timerCallback() override { refreshFromEffect(); }
     void changeParameter(int index, float value);
     void changeAsOneGesture(int index, float value); // onGesture, changeParameter, onGesture

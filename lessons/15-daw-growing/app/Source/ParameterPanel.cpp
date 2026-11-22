@@ -30,6 +30,21 @@ juce::String ParameterPanel::formatValue(const engine::InsertEffect& effect, int
 }
 
 ParameterPanel::ParameterPanel(engine::InsertEffect& effect) : effect_(effect) {
+    addHeader();
+    for (int i = 0; i < effect_.getNumParameters(); ++i)
+        controls_.push_back(makeControl(i));
+
+    viewport_.setViewedComponent(&content_, false);
+    viewport_.setScrollBarsShown(true, false);
+    addAndMakeVisible(viewport_);
+    const auto ideal = getIdealSize();
+    setSize(ideal.x, ideal.y);
+    refreshFromEffect();
+    startTimerHz(15);
+}
+
+// The Bypass switch and the latency.
+void ParameterPanel::addHeader() {
     bypass_.setToggleState(effect_.isBypassed(), juce::dontSendNotification);
     bypass_.onClick = [this] {
         if (onBypassChange)
@@ -41,70 +56,79 @@ ParameterPanel::ParameterPanel(engine::InsertEffect& effect) : effect_(effect) {
     latencyLabel_.setJustificationType(juce::Justification::centredRight);
     latencyLabel_.setColour(juce::Label::textColourId, DawColours::textDim());
     addAndMakeVisible(latencyLabel_);
+}
 
-    for (int i = 0; i < effect_.getNumParameters(); ++i) {
-        auto c = std::make_unique<Control>();
-        c->index = i;
-        c->info = effect_.getParameterInfo(i);
-        const ParameterInfo info = c->info;
-        const float current = effect_.getParameter(i);
-        c->caption.setText(juce::String::fromUTF8(info.name), juce::dontSendNotification);
-        c->caption.setJustificationType(juce::Justification::centred);
-        c->caption.setFont(DawLookAndFeel::uiFont(12.0f));
-        c->caption.setColour(juce::Label::textColourId, DawColours::textDim());
-        content_.addAndMakeVisible(c->caption);
+// Parameter i: its caption, and a list for a choice, a switch for a bool, a knob for the rest.
+std::unique_ptr<ParameterPanel::Control> ParameterPanel::makeControl(int i) {
+    auto c = std::make_unique<Control>();
+    c->index = i;
+    c->info = effect_.getParameterInfo(i);
+    const ParameterInfo info = c->info;
+    const float current = effect_.getParameter(i);
+    c->caption.setText(juce::String::fromUTF8(info.name), juce::dontSendNotification);
+    c->caption.setJustificationType(juce::Justification::centred);
+    c->caption.setFont(DawLookAndFeel::uiFont(12.0f));
+    c->caption.setColour(juce::Label::textColourId, DawColours::textDim());
+    content_.addAndMakeVisible(c->caption);
 
-        if (info.kind == ParameterKind::Choice && info.choices != nullptr && info.numChoices > 0) {
-            c->combo = std::make_unique<juce::ComboBox>();
-            for (int k = 0; k < info.numChoices; ++k)
-                c->combo->addItem(juce::String::fromUTF8(info.choices[k]), k + 1);
-            c->combo->setSelectedId(static_cast<int>(current - info.min) + 1, juce::dontSendNotification);
-            c->combo->onChange = [this, i, info, combo = c->combo.get()] {
-                changeAsOneGesture(i, info.min + static_cast<float>(combo->getSelectedId() - 1));
-            };
-            content_.addAndMakeVisible(*c->combo);
-        } else if (info.kind == ParameterKind::Bool) {
-            c->toggle = std::make_unique<juce::ToggleButton>(current >= 0.5f ? "On" : "Off");
-            c->toggle->setToggleState(current >= 0.5f, juce::dontSendNotification);
-            c->toggle->onClick = [this, i, t = c->toggle.get()] {
-                changeAsOneGesture(i, t->getToggleState() ? 1.0f : 0.0f);
-                t->setButtonText(t->getToggleState() ? "On" : "Off");
-            };
-            content_.addAndMakeVisible(*c->toggle);
-        } else {
-            auto s = std::make_unique<juce::Slider>(juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::TextBoxBelow);
-            // Slider values are real parameter values; the 0..1 knob travel uses the engine's taper.
-            juce::NormalisableRange<double> range(
-                info.min, info.max,
-                [info](double, double, double n) { return static_cast<double>(info.fromNormalized(static_cast<float>(n))); },
-                [info](double, double, double v) { return static_cast<double>(info.toNormalized(static_cast<float>(v))); },
-                [info](double, double, double v) { return static_cast<double>(info.clamp(static_cast<float>(v))); });
-            s->setNormalisableRange(range);
-            s->setDoubleClickReturnValue(true, info.defaultValue);
-            s->setTextBoxStyle(juce::Slider::TextBoxBelow, false, kCellWidth - 6, 16);
-            s->textFromValueFunction = [this, i](double v) { return formatValue(effect_, i, static_cast<float>(v)); };
-            s->valueFromTextFunction = [](const juce::String& text) { return text.getDoubleValue(); };
-            if (info.min < 0.0f && info.max > 0.0f)
-                s->getProperties().set(DawLookAndFeel::kBipolarProperty, true);
-            s->setValue(current, juce::dontSendNotification);
-            s->onValueChange = [this, i, sl = s.get()] { changeParameter(i, static_cast<float>(sl->getValue())); };
-            s->onDragStart = s->onDragEnd = [this] {
-                if (onGesture)
-                    onGesture();
-            };
-            c->slider = std::move(s);
-            content_.addAndMakeVisible(*c->slider);
-        }
-        controls_.push_back(std::move(c));
-    }
+    if (info.kind == ParameterKind::Choice && info.choices != nullptr && info.numChoices > 0)
+        addComboBox(*c, current);
+    else if (info.kind == ParameterKind::Bool)
+        addToggle(*c, current);
+    else
+        addSlider(*c, current);
+    return c;
+}
 
-    viewport_.setViewedComponent(&content_, false);
-    viewport_.setScrollBarsShown(true, false);
-    addAndMakeVisible(viewport_);
-    const auto ideal = getIdealSize();
-    setSize(ideal.x, ideal.y);
-    refreshFromEffect();
-    startTimerHz(15);
+void ParameterPanel::addComboBox(Control& c, float current) {
+    const int i = c.index;
+    const ParameterInfo info = c.info;
+    c.combo = std::make_unique<juce::ComboBox>();
+    for (int k = 0; k < info.numChoices; ++k)
+        c.combo->addItem(juce::String::fromUTF8(info.choices[k]), k + 1);
+    c.combo->setSelectedId(static_cast<int>(current - info.min) + 1, juce::dontSendNotification);
+    c.combo->onChange = [this, i, info, combo = c.combo.get()] {
+        changeAsOneGesture(i, info.min + static_cast<float>(combo->getSelectedId() - 1));
+    };
+    content_.addAndMakeVisible(*c.combo);
+}
+
+void ParameterPanel::addToggle(Control& c, float current) {
+    const int i = c.index;
+    c.toggle = std::make_unique<juce::ToggleButton>(current >= 0.5f ? "On" : "Off");
+    c.toggle->setToggleState(current >= 0.5f, juce::dontSendNotification);
+    c.toggle->onClick = [this, i, t = c.toggle.get()] {
+        changeAsOneGesture(i, t->getToggleState() ? 1.0f : 0.0f);
+        t->setButtonText(t->getToggleState() ? "On" : "Off");
+    };
+    content_.addAndMakeVisible(*c.toggle);
+}
+
+void ParameterPanel::addSlider(Control& c, float current) {
+    const int i = c.index;
+    const ParameterInfo info = c.info;
+    auto s = std::make_unique<juce::Slider>(juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::TextBoxBelow);
+    // Slider values are real parameter values; the 0..1 knob travel uses the engine's taper.
+    juce::NormalisableRange<double> range(
+        info.min, info.max,
+        [info](double, double, double n) { return static_cast<double>(info.fromNormalized(static_cast<float>(n))); },
+        [info](double, double, double v) { return static_cast<double>(info.toNormalized(static_cast<float>(v))); },
+        [info](double, double, double v) { return static_cast<double>(info.clamp(static_cast<float>(v))); });
+    s->setNormalisableRange(range);
+    s->setDoubleClickReturnValue(true, info.defaultValue);
+    s->setTextBoxStyle(juce::Slider::TextBoxBelow, false, kCellWidth - 6, 16);
+    s->textFromValueFunction = [this, i](double v) { return formatValue(effect_, i, static_cast<float>(v)); };
+    s->valueFromTextFunction = [](const juce::String& text) { return text.getDoubleValue(); };
+    if (info.min < 0.0f && info.max > 0.0f)
+        s->getProperties().set(DawLookAndFeel::kBipolarProperty, true);
+    s->setValue(current, juce::dontSendNotification);
+    s->onValueChange = [this, i, sl = s.get()] { changeParameter(i, static_cast<float>(sl->getValue())); };
+    s->onDragStart = s->onDragEnd = [this] {
+        if (onGesture)
+            onGesture();
+    };
+    c.slider = std::move(s);
+    content_.addAndMakeVisible(*c.slider);
 }
 
 ParameterPanel::~ParameterPanel() { stopTimer(); }
