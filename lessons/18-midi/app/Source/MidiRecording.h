@@ -84,6 +84,12 @@ public:
 
 private:
     int64_t unwrappedTick(double time) const noexcept;
+    LoopTicks loopOf(const engine::Transport& tr);
+    void addArmedTakes(LoopTicks loop);
+    int addTakeEdit(engine::TrackId track, const NoteRecorder& recorder, std::vector<Edit>& edits);
+    std::vector<engine::Note> takeNotes(const NoteRecorder& recorder) const;
+    MidiClipModel takeClip(const NoteRecorder& recorder, const std::vector<engine::Note>& notes);
+    void eraseCovered(std::vector<MidiClipModel>& list, const NoteRecorder& recorder) const;
 
     Session& session_;
     AudioHost& host_;

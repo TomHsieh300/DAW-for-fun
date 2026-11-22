@@ -81,23 +81,8 @@ bool MidiRecording::start(MidiRecordMode mode) {
     engine::Engine& engine = session_.getEngine();
     const engine::Transport& tr = engine.getTransport();
     startTick_ = session_.tickOfSample(tr.getPosition());
-    LoopTicks loop;
-    loopStartSample_ = loopEndSample_ = 0;
-    if (tr.isLoopEnabled() && tr.getLoopEnd() > tr.getLoopStart()) {
-        loop = {session_.tickOfSample(tr.getLoopStart()), session_.tickOfSample(tr.getLoopEnd())};
-        loopStartSample_ = tr.getLoopStart();
-        loopEndSample_ = tr.getLoopEnd();
-    }
-    loopTicks_ = loop;
-    for (int i = 0; i < session_.getNumTracks(); ++i) {
-        const engine::TrackId id = session_.getTrackId(i);
-        const engine::Track* t = engine.getTrack(id);
-        if (session_.isInstrument(id) && t != nullptr && t->isArmed()) {
-            NoteRecorder r;
-            r.start(startTick_, loop);
-            takes_.emplace_back(id, std::move(r));
-        }
-    }
+    const LoopTicks loop = loopOf(tr);
+    addArmedTakes(loop);
     if (takes_.empty())
         return false;
     // What came before is not part of it.
@@ -113,6 +98,33 @@ bool MidiRecording::start(MidiRecordMode mode) {
     mode_ = mode;
     recording_ = true;
     return true;
+}
+
+// The transport's loop, in ticks; from chapter 19 on kept in samples too (none: equal) for unwrappedTick().
+LoopTicks MidiRecording::loopOf(const engine::Transport& tr) {
+    LoopTicks loop;
+    loopStartSample_ = loopEndSample_ = 0;
+    if (tr.isLoopEnabled() && tr.getLoopEnd() > tr.getLoopStart()) {
+        loop = {session_.tickOfSample(tr.getLoopStart()), session_.tickOfSample(tr.getLoopEnd())};
+        loopStartSample_ = tr.getLoopStart();
+        loopEndSample_ = tr.getLoopEnd();
+    }
+    loopTicks_ = loop;
+    return loop;
+}
+
+// A recorder for each armed instrument track, from startTick_.
+void MidiRecording::addArmedTakes(LoopTicks loop) {
+    engine::Engine& engine = session_.getEngine();
+    for (int i = 0; i < session_.getNumTracks(); ++i) {
+        const engine::TrackId id = session_.getTrackId(i);
+        const engine::Track* t = engine.getTrack(id);
+        if (session_.isInstrument(id) && t != nullptr && t->isArmed()) {
+            NoteRecorder r;
+            r.start(startTick_, loop);
+            takes_.emplace_back(id, std::move(r));
+        }
+    }
 }
 
 int64_t MidiRecording::unwrappedTick(double time) const noexcept {
@@ -164,49 +176,71 @@ int MidiRecording::stop() {
     int numNotes = 0;
     for (auto& [track, recorder] : takes_) {
         recorder.stop(end);
-        if (!session_.hasTrack(track) || recorder.notes().empty() || recorder.passes().empty())
-            continue;
-        // The take: in Replace, a later pass erases what an earlier one played there.
-        std::vector<engine::Note> notes;
-        for (const TakeNote& n : recorder.notes())
-            if (mode_ == MidiRecordMode::Overdub || !recorder.covered(n.note.start, n.pass))
-                notes.push_back(n.note);
-        if (notes.empty())
-            continue;
-        int64_t from = std::numeric_limits<int64_t>::max(), to = 0;
-        for (const Coverage& c : recorder.passes()) {
-            from = std::min(from, c.from);
-            to = std::max(to, c.to);
-        }
-        MidiClipModel clip;
-        clip.id = session_.newMidiClipId();
-        clip.start = from;
-        clip.length = std::max<int64_t>(1, to - from);
-        clip.name = "Take " + juce::String(clip.id);
-        for (engine::Note n : notes) {
-            n.start -= from;
-            clip.played.push_back(n);
-        }
-        sortNotes(clip.played);
-        numNotes += static_cast<int>(clip.played.size());
-
-        // The old clips: in Replace, the notes of the places the take played over are gone.
-        std::vector<MidiClipModel> list = session_.getMidiClips(track);
-        if (mode_ == MidiRecordMode::Replace)
-            for (MidiClipModel& old : list) {
-                std::vector<engine::Note> kept;
-                for (const engine::Note& n : old.played)
-                    if (!recorder.covered(old.start + n.start - old.offset, -1))
-                        kept.push_back(n);
-                old.played = std::move(kept);
-            }
-        list.push_back(std::move(clip));
-        edits.push_back(edit::SetMidiClips{track, std::move(list)});
+        numNotes += addTakeEdit(track, recorder, edits);
     }
     if (!edits.empty())
         session_.perform(std::move(edits), "Record MIDI");
     takes_.clear();
     return numNotes;
+}
+
+// One track's take as an edit in `edits`, if it played any notes and the track is still there. Returns the
+// number of notes.
+int MidiRecording::addTakeEdit(engine::TrackId track, const NoteRecorder& recorder, std::vector<Edit>& edits) {
+    if (!session_.hasTrack(track) || recorder.notes().empty() || recorder.passes().empty())
+        return 0;
+    const std::vector<engine::Note> notes = takeNotes(recorder);
+    if (notes.empty())
+        return 0;
+    MidiClipModel clip = takeClip(recorder, notes);
+    const int numNotes = static_cast<int>(clip.played.size());
+    std::vector<MidiClipModel> list = session_.getMidiClips(track);
+    eraseCovered(list, recorder);
+    list.push_back(std::move(clip));
+    edits.push_back(edit::SetMidiClips{track, std::move(list)});
+    return numNotes;
+}
+
+// The take: in Replace, a later pass erases what an earlier one played there.
+std::vector<engine::Note> MidiRecording::takeNotes(const NoteRecorder& recorder) const {
+    std::vector<engine::Note> notes;
+    for (const TakeNote& n : recorder.notes())
+        if (mode_ == MidiRecordMode::Overdub || !recorder.covered(n.note.start, n.pass))
+            notes.push_back(n.note);
+    return notes;
+}
+
+// A new clip over the song ticks the passes played, with `notes` (song ticks) in it.
+MidiClipModel MidiRecording::takeClip(const NoteRecorder& recorder, const std::vector<engine::Note>& notes) {
+    int64_t from = std::numeric_limits<int64_t>::max(), to = 0;
+    for (const Coverage& c : recorder.passes()) {
+        from = std::min(from, c.from);
+        to = std::max(to, c.to);
+    }
+    MidiClipModel clip;
+    clip.id = session_.newMidiClipId();
+    clip.start = from;
+    clip.length = std::max<int64_t>(1, to - from);
+    clip.name = "Take " + juce::String(clip.id);
+    for (engine::Note n : notes) {
+        n.start -= from;
+        clip.played.push_back(n);
+    }
+    sortNotes(clip.played);
+    return clip;
+}
+
+// The old clips: in Replace, the notes of the places the take played over are gone.
+void MidiRecording::eraseCovered(std::vector<MidiClipModel>& list, const NoteRecorder& recorder) const {
+    if (mode_ != MidiRecordMode::Replace)
+        return;
+    for (MidiClipModel& old : list) {
+        std::vector<engine::Note> kept;
+        for (const engine::Note& n : old.played)
+            if (!recorder.covered(old.start + n.start - old.offset, -1))
+                kept.push_back(n);
+        old.played = std::move(kept);
+    }
 }
 
 } // namespace dawlab::app
