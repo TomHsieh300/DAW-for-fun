@@ -55,54 +55,77 @@ inline std::vector<double> pointTimes(const std::vector<TempoPoint>& points) {
     return times;
 }
 
-// False (out stays as it was): the tolerance is negative, or the list is not jumps a map could be made of.
-inline bool thinTempo(const std::vector<TempoPoint>& points, double toleranceSeconds, std::vector<TempoPoint>& out) {
-    if (!(toleranceSeconds >= 0.0) || !isJumpList(points))
-        return false;
-    const size_t n = points.size();
-    const std::vector<double> times = pointTimes(points);
-    const auto secondsPerTick = [&](size_t i, size_t j) { return (times[j] - times[i]) / static_cast<double>(points[j].tick - points[i].tick); };
+// The search of thinTempo(), point by point. A run from i to j fits when every point between them stays within
+// the tolerance of its old time on the line from i to j. Each such point allows the line only the slopes of an
+// interval, so the slopes that fit a run from i are the intersection of its points' intervals: it narrows as j
+// moves on, and once it is empty no longer run from i fits. Each i walks forward only as far as runs from it can
+// fit, and looks at each j once, instead of checking every point between i and j again for every pair (20 000
+// tempos took over a minute). The choice is the same: the fewest points; of the runs that give them, the one from
+// the point just before j, or else from the first point that does.
+struct RunSearch {
+    const std::vector<TempoPoint>& points;
+    double tolerance;
+    std::vector<double> times = pointTimes(points);
+    std::vector<int> fewest = std::vector<int>(points.size(), 0);     // the fewest points before j when j stays
+    std::vector<size_t> from = std::vector<size_t>(points.size(), 0); // and the point that stays before j then
+    std::vector<int> overPoints = std::vector<int>(points.size(), std::numeric_limits<int>::max()); // the same through
+    std::vector<size_t> overFrom = std::vector<size_t>(points.size(), 0); // a run with points between, from here
 
-    // A run from i to j fits when every point between them stays within the tolerance of its old time on the
-    // line from i to j. Each such point allows the line only the slopes of an interval, so the slopes that fit a
-    // run from i are the intersection of its points' intervals: it narrows as j moves on, and once it is empty no
-    // longer run from i fits. Each i walks forward only as far as runs from it can fit, and looks at each j once,
-    // instead of checking every point between i and j again for every pair (20 000 tempos took over a minute).
-    // The choice is the same: the fewest points; of the runs that give them, the one from the point just before
-    // j, or else from the first point that does.
-    std::vector<int> fewest(n, 0);                                // the fewest points before j when j stays
-    std::vector<size_t> from(n, 0);                               // and the point that stays before j then
-    std::vector<int> overPoints(n, std::numeric_limits<int>::max()); // the same through a run with points between ...
-    std::vector<size_t> overFrom(n, 0);                           // ... from here
-    for (size_t i = 0; i < n; ++i) {
-        if (i > 0) { // all runs that end at i are known now
-            const bool fewer = overPoints[i] < fewest[i - 1] + 1;
-            fewest[i] = fewer ? overPoints[i] : fewest[i - 1] + 1;
-            from[i] = fewer ? overFrom[i] : i - 1;
-        }
+    RunSearch(const std::vector<TempoPoint>& list, double toleranceSeconds) : points(list), tolerance(toleranceSeconds) {}
+
+    double secondsPerTick(size_t i, size_t j) const { return (times[j] - times[i]) / static_cast<double>(points[j].tick - points[i].tick); }
+
+    void step(size_t i) {
+        if (i > 0)
+            settle(i);
+        walkFrom(i);
+    }
+
+    // All runs that end at i are known now.
+    void settle(size_t i) {
+        const bool fewer = overPoints[i] < fewest[i - 1] + 1;
+        fewest[i] = fewer ? overPoints[i] : fewest[i - 1] + 1;
+        from[i] = fewer ? overFrom[i] : i - 1;
+    }
+
+    // The runs from i, as far as they can fit.
+    void walkFrom(size_t i) {
         double low = -HUGE_VAL, high = HUGE_VAL; // the slopes that keep every point between i and j in place
-        for (size_t j = i + 1; j < n; ++j) {
+        for (size_t j = i + 1; j < points.size(); ++j) {
             const double slope = secondsPerTick(i, j);
             if (j > i + 1 && slope >= low && slope <= high && fewest[i] + 1 < overPoints[j]) {
                 overPoints[j] = fewest[i] + 1;
                 overFrom[j] = i;
             }
             const double dt = static_cast<double>(points[j].tick - points[i].tick); // j is between i and what follows
-            low = std::max(low, (times[j] - times[i] - toleranceSeconds - kSlack) / dt);
-            high = std::min(high, (times[j] - times[i] + toleranceSeconds + kSlack) / dt);
+            low = std::max(low, (times[j] - times[i] - tolerance - kSlack) / dt);
+            high = std::min(high, (times[j] - times[i] + tolerance + kSlack) / dt);
             if (low > high)
                 break;
         }
     }
 
-    std::vector<TempoPoint> result{points.back()};
-    for (size_t j = n - 1; j > 0; j = from[j]) {
-        const size_t i = from[j];
-        const double bpm = i + 1 == j ? points[i].bpm : 60.0 / (static_cast<double>(TempoMap::kTicksPerBeat) * secondsPerTick(i, j));
-        result.push_back({points[i].tick, std::clamp(bpm, TempoMap::kMinBpm, TempoMap::kMaxBpm), false});
+    // The points that stay, walking back from the last one, each with the tempo of its run.
+    std::vector<TempoPoint> kept() const {
+        std::vector<TempoPoint> result{points.back()};
+        for (size_t j = points.size() - 1; j > 0; j = from[j]) {
+            const size_t i = from[j];
+            const double bpm = i + 1 == j ? points[i].bpm : 60.0 / (static_cast<double>(TempoMap::kTicksPerBeat) * secondsPerTick(i, j));
+            result.push_back({points[i].tick, std::clamp(bpm, TempoMap::kMinBpm, TempoMap::kMaxBpm), false});
+        }
+        std::reverse(result.begin(), result.end());
+        return result;
     }
-    std::reverse(result.begin(), result.end());
-    out = std::move(result);
+};
+
+// False (out stays as it was): the tolerance is negative, or the list is not jumps a map could be made of.
+inline bool thinTempo(const std::vector<TempoPoint>& points, double toleranceSeconds, std::vector<TempoPoint>& out) {
+    if (!(toleranceSeconds >= 0.0) || !isJumpList(points))
+        return false;
+    RunSearch search(points, toleranceSeconds);
+    for (size_t i = 0; i < points.size(); ++i)
+        search.step(i);
+    out = search.kept();
     return true;
 }
 
