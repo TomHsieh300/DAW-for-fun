@@ -50,47 +50,70 @@ int TempoLane::pointAt(juce::Point<float> p) const {
     return -1;
 }
 
+namespace {
+// Every gesture its own undo step: the merge key of the next one ("TP").
+std::uint32_t nextDragKey() noexcept {
+    static std::uint32_t key = 0x54500000u;
+    return ++key;
+}
+} // namespace
+
 void TempoLane::press(juce::Point<float> p, juce::ModifierKeys mods, int clicks) {
     session_.getHistory().endMerge();
     dragPoint_ = -1;
     if (refuseEdit && refuseEdit())
         return;
-    std::vector<engine::TempoPoint> points = session_.getTempoMap().points();
     const int hit = pointAt(p);
-    if (hit >= 0 && mods.isPopupMenu()) {
-        if (hit > 0) { // the first point is the song's tempo: it stays
-            points.erase(points.begin() + hit);
-            session_.setTempoPoints(std::move(points), "Delete tempo point");
-        }
-        return;
+    if (hit < 0)
+        addPointAt(p, mods, clicks);
+    else if (mods.isPopupMenu())
+        deletePoint(hit);
+    else if (mods.isAltDown())
+        toggleRamp(hit);
+    else
+        beginDrag(hit);
+}
+
+// A right click: the point goes - unless it is the first, the song's tempo.
+void TempoLane::deletePoint(int index) {
+    std::vector<engine::TempoPoint> points = session_.getTempoMap().points();
+    if (index > 0) {
+        points.erase(points.begin() + index);
+        session_.setTempoPoints(std::move(points), "Delete tempo point");
     }
-    if (hit >= 0 && mods.isAltDown()) {
-        if (hit + 1 < static_cast<int>(points.size())) { // the last point has nothing to ramp to
-            points[static_cast<size_t>(hit)].rampToNext = !points[static_cast<size_t>(hit)].rampToNext;
-            session_.setTempoPoints(std::move(points), "Tempo ramp");
-        }
-        return;
+}
+
+// Alt + click: the point ramps to the next one, or holds again. The last point has nothing to ramp to.
+void TempoLane::toggleRamp(int index) {
+    std::vector<engine::TempoPoint> points = session_.getTempoMap().points();
+    if (index + 1 < static_cast<int>(points.size())) {
+        points[static_cast<size_t>(index)].rampToNext = !points[static_cast<size_t>(index)].rampToNext;
+        session_.setTempoPoints(std::move(points), "Tempo ramp");
     }
-    static std::uint32_t nextKey = 0x54500000u; // "TP": every drag its own undo step
-    if (hit < 0) {
-        if (clicks < 2 || mods.isPopupMenu() || p.x < static_cast<float>(ArrangementView::kHeaderWidth))
-            return;
-        // A new point on the nearest beat - unless one is there already.
-        const int64_t tick = xToTick(p.x, session_.getTempoMap(), true);
-        const auto after = std::find_if(points.begin(), points.end(), [tick](const engine::TempoPoint& t) { return t.tick >= tick; });
-        if ((after != points.end() && after->tick == tick) || static_cast<int>(points.size()) >= engine::TempoMap::kMaxPoints)
-            return;
-        dragKey_ = ++nextKey;
-        dragMap_ = session_.getTempoMap();
-        dragPoint_ = static_cast<int>(after - points.begin());
-        points.insert(after, {tick, std::round(yToBpm(p.y)), false});
-        if (!session_.setTempoPoints(std::move(points), "Add tempo point", dragKey_))
-            dragPoint_ = -1;
+}
+
+// A double click on nothing: a new point on the nearest beat - unless one is there already - which the drag
+// that follows moves.
+void TempoLane::addPointAt(juce::Point<float> p, juce::ModifierKeys mods, int clicks) {
+    if (clicks < 2 || mods.isPopupMenu() || p.x < static_cast<float>(ArrangementView::kHeaderWidth))
         return;
-    }
-    dragKey_ = ++nextKey;
+    std::vector<engine::TempoPoint> points = session_.getTempoMap().points();
+    const int64_t tick = xToTick(p.x, session_.getTempoMap(), true);
+    const auto after = std::find_if(points.begin(), points.end(), [tick](const engine::TempoPoint& t) { return t.tick >= tick; });
+    if ((after != points.end() && after->tick == tick) || static_cast<int>(points.size()) >= engine::TempoMap::kMaxPoints)
+        return;
+    dragKey_ = nextDragKey();
     dragMap_ = session_.getTempoMap();
-    dragPoint_ = hit;
+    dragPoint_ = static_cast<int>(after - points.begin());
+    points.insert(after, {tick, std::round(yToBpm(p.y)), false});
+    if (!session_.setTempoPoints(std::move(points), "Add tempo point", dragKey_))
+        dragPoint_ = -1;
+}
+
+void TempoLane::beginDrag(int index) {
+    dragKey_ = nextDragKey();
+    dragMap_ = session_.getTempoMap();
+    dragPoint_ = index;
 }
 
 void TempoLane::dragTo(juce::Point<float> p, juce::ModifierKeys mods) {
@@ -104,16 +127,25 @@ void TempoLane::dragTo(juce::Point<float> p, juce::ModifierKeys mods) {
     }
     engine::TempoPoint& point = points[static_cast<size_t>(dragPoint_)];
     const engine::TempoPoint before = point;
-    if (dragPoint_ > 0) { // between its neighbours, a tick from each
-        const int64_t low = points[static_cast<size_t>(dragPoint_ - 1)].tick + 1;
-        const int64_t high = dragPoint_ + 1 < static_cast<int>(points.size()) ? points[static_cast<size_t>(dragPoint_ + 1)].tick - 1 : INT64_MAX;
-        point.tick = std::clamp(xToTick(p.x, dragMap_, !mods.isShiftDown()), low, high);
-    }
-    const double bpm = yToBpm(p.y);
-    point.bpm = std::clamp(mods.isShiftDown() ? bpm : std::round(bpm), engine::TempoMap::kMinBpm, engine::TempoMap::kMaxBpm);
+    if (dragPoint_ > 0)
+        point.tick = draggedTick(points, p.x, mods);
+    point.bpm = draggedBpm(p.y, mods);
     if (point.tick == before.tick && point.bpm == before.bpm)
         return;
     session_.setTempoPoints(std::move(points), "Move tempo point", dragKey_);
+}
+
+// Where the dragged point (not the first) goes in time: between its neighbours, a tick from each.
+int64_t TempoLane::draggedTick(const std::vector<engine::TempoPoint>& points, float x, juce::ModifierKeys mods) const noexcept {
+    const int64_t low = points[static_cast<size_t>(dragPoint_ - 1)].tick + 1;
+    const int64_t high = dragPoint_ + 1 < static_cast<int>(points.size()) ? points[static_cast<size_t>(dragPoint_ + 1)].tick - 1 : INT64_MAX;
+    return std::clamp(xToTick(x, dragMap_, !mods.isShiftDown()), low, high);
+}
+
+// Its tempo: a whole BPM (Shift: any), within the map's limits.
+double TempoLane::draggedBpm(float y, juce::ModifierKeys mods) const noexcept {
+    const double bpm = yToBpm(y);
+    return std::clamp(mods.isShiftDown() ? bpm : std::round(bpm), engine::TempoMap::kMinBpm, engine::TempoMap::kMaxBpm);
 }
 
 void TempoLane::release() {

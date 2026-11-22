@@ -59,6 +59,14 @@ private:
     void changeListenerCallback(juce::ChangeBroadcaster*) override { repaint(); }
     // The tick at x through `map` (the session's now, or a drag's).
     int64_t xToTick(float x, const engine::TempoMap& map, bool snapToBeat) const noexcept;
+    // press()'s gestures: a right click, Alt + click, a double click on nothing, a click on a point.
+    void deletePoint(int index);
+    void toggleRamp(int index);
+    void addPointAt(juce::Point<float> p, juce::ModifierKeys mods, int clicks);
+    void beginDrag(int index);
+    // dragTo()'s answers: the dragged point's tick (between its neighbours) and its tempo.
+    int64_t draggedTick(const std::vector<engine::TempoPoint>& points, float x, juce::ModifierKeys mods) const noexcept;
+    double draggedBpm(float y, juce::ModifierKeys mods) const noexcept;
 
     Session& session_;
     ArrangementView& arrangement_;
