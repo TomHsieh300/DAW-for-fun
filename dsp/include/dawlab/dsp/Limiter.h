@@ -245,18 +245,8 @@ public:
 
         for (int i = 0; i < numSamples; ++i) {
             // (1) Input gain (linear ramp) -> push into the delay line -> take |peak| over all channels (stereo link)
-            if (currentInputGain_ != targetInputGain_) {
-                if (std::abs(targetInputGain_ - currentInputGain_) <= inputGainRampStep_)
-                    currentInputGain_ = targetInputGain_;
-                else
-                    currentInputGain_ += (targetInputGain_ > currentInputGain_) ? inputGainRampStep_ : -inputGainRampStep_;
-            }
-            float peak = 0.0f;
-            for (int ch = 0; ch < numChannels; ++ch) {
-                const float xs = block.getSample(ch, i) * currentInputGain_;
-                delay_.push(ch, xs);
-                peak = std::max(peak, std::abs(xs)); // max ignores NaN; the delay line stores 0 for it
-            }
+            advanceInputGain();
+            const float peak = pushInput(block, i, numChannels);
 
             // (2) The gain this sample needs: g = min(1, ceiling / peak)
             const float g = (peak > ceiling) ? ceiling / peak : 1.0f;
@@ -269,30 +259,12 @@ public:
             const float m = windowMin_.push(releasedGain_);
 
             // (5) Moving average of length L+1 -> linear attack ramp; by the time the peak reaches the output, the gain has just reached its target
-            float& oldest = averageRing_[static_cast<size_t>(averageIndex_)];
-            averageSum_ += static_cast<double>(m) - static_cast<double>(oldest);
-            oldest = m;
-            if (++averageIndex_ >= averageLength_)
-                averageIndex_ = 0;
-            // s = the average itself (README 2.4 step 4). Every term of the average lies in [0, 1], so s does too;
-            // the clamp only guards against floating-point rounding of the running sum (accumulated in double,
-            // so the error is far below the safety clamp's 1e-6 tolerance).
-            // Note: the lower bound must not be m -- during release gr keeps rising, so m[n] = gr[n-L] is
-            // actually larger than the average; using m as a lower bound would remove the box smoothing on the
-            // release side, and with a very short release the gain would jump back in one sample (a click).
-            const float s = std::clamp(static_cast<float>(averageSum_ * invLen), 0.0f, 1.0f);
+            const float s = pushAverage(m, invLen);
             minSmoothedGain = std::min(minSmoothedGain, s);
 
             // (6) Output = delayed audio x smoothed gain; the safety clamp is the last line of defense
-            for (int ch = 0; ch < numChannels; ++ch) {
-                float y = delay_.read(ch, L) * s;
-                if (!(std::abs(y) <= ceiling)) { // this also catches NaN (every comparison with NaN is false)
-                    if (!(std::abs(y) <= ceilingTolerance))
-                        ++clips;
-                    y = std::isnan(y) ? 0.0f : std::clamp(y, -ceiling, ceiling);
-                }
-                block.setSample(ch, i, y);
-            }
+            for (int ch = 0; ch < numChannels; ++ch)
+                block.setSample(ch, i, clampToCeiling(delay_.read(ch, L) * s, ceiling, ceilingTolerance, clips));
         }
 
         // gainToDb(1) = 0 -> negating gives -0.0, which printf prints as "-0.00"; max turns it back into +0.0
@@ -302,6 +274,54 @@ public:
     }
 
 private:
+    // ---- The steps of process(), one sample at a time ---------------------------------------
+    // (1) The input gain ramps linearly toward its target and lands on it exactly
+    void advanceInputGain() noexcept {
+        if (currentInputGain_ == targetInputGain_)
+            return;
+        if (std::abs(targetInputGain_ - currentInputGain_) <= inputGainRampStep_)
+            currentInputGain_ = targetInputGain_;
+        else
+            currentInputGain_ += (targetInputGain_ > currentInputGain_) ? inputGainRampStep_ : -inputGainRampStep_;
+    }
+
+    // (1) Push sample i of every channel (times the input gain) into the delay line; returns |peak| over the channels
+    float pushInput(const AudioBlock& block, int i, int numChannels) noexcept {
+        float peak = 0.0f;
+        for (int ch = 0; ch < numChannels; ++ch) {
+            const float xs = block.getSample(ch, i) * currentInputGain_;
+            delay_.push(ch, xs);
+            peak = std::max(peak, std::abs(xs)); // max ignores NaN; the delay line stores 0 for it
+        }
+        return peak;
+    }
+
+    // (5) Push m into the moving average of length L+1 and return the average
+    float pushAverage(float m, double invLen) noexcept {
+        float& oldest = averageRing_[static_cast<size_t>(averageIndex_)];
+        averageSum_ += static_cast<double>(m) - static_cast<double>(oldest);
+        oldest = m;
+        if (++averageIndex_ >= averageLength_)
+            averageIndex_ = 0;
+        // s = the average itself (README 2.4 step 4). Every term of the average lies in [0, 1], so s does too;
+        // the clamp only guards against floating-point rounding of the running sum (accumulated in double,
+        // so the error is far below the safety clamp's 1e-6 tolerance).
+        // Note: the lower bound must not be m -- during release gr keeps rising, so m[n] = gr[n-L] is
+        // actually larger than the average; using m as a lower bound would remove the box smoothing on the
+        // release side, and with a very short release the gain would jump back in one sample (a click).
+        return std::clamp(static_cast<float>(averageSum_ * invLen), 0.0f, 1.0f);
+    }
+
+    // (6) The safety clamp: y limited to +-ceiling (NaN becomes 0); an overshoot beyond the tolerance is counted
+    static float clampToCeiling(float y, float ceiling, float ceilingTolerance, uint64_t& clips) noexcept {
+        if (std::abs(y) <= ceiling)
+            return y;
+        // NaN lands here too (every comparison with NaN is false)
+        if (!(std::abs(y) <= ceilingTolerance))
+            ++clips;
+        return std::isnan(y) ? 0.0f : std::clamp(y, -ceiling, ceiling);
+    }
+
     void updateDerived() noexcept {
         if (sampleRate_ <= 0.0)
             return;
