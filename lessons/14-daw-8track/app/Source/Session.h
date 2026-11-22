@@ -169,6 +169,8 @@ private:
 
     StripModel& strip(engine::ChannelRef ref);
     const StripModel& strip(engine::ChannelRef ref) const;
+    int firstFreeSlot(engine::ChannelRef ref) const;
+    int applyDemoInsert(const engine::DemoInsert& d, engine::ChannelRef ref);
     void removeAllInserts();
     void resetMixerSettings();
     void pushClips(int track);

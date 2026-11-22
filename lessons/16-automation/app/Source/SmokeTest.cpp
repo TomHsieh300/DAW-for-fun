@@ -1408,12 +1408,48 @@ void testDialogs() {
     testProjectDialogs();
 }
 
+// ---- the app's logic at its edges ------------------------------------------------------------
+
+// Session::applyDemoSong(): what it cannot apply it counts - an insert past a strip's last slot, a parameter name
+// the effect does not have - and applies the rest; an insert on a song track lands on the track the session made.
+void testDemoSongCounts() {
+    std::printf("the app's logic: the demo song counts what it cannot apply\n");
+    Engine engine;
+    engine.prepare(48000.0, 512);
+    Session session(engine);
+    session.newProject();
+    DemoSong song = makeDemoSong(8000.0);
+    DAWLAB_CHECK(session.applyDemoSong(song) == 0); // once, so that the second time gets new track ids
+    engine.applyPendingCommandsOffline();
+    song.inserts.clear();
+    for (int i = 0; i < kInsertSlotsPerStrip + 2; ++i)
+        song.inserts.push_back({ChannelRef::bus(1), EffectType::Gain, {}});
+    song.inserts.push_back({ChannelRef::bus(0), EffectType::Gain, {{"No such knob", 1.0f}, {"Gain", -6.0f}}});
+    song.inserts.push_back({ChannelRef::track(2, demoTrackId(2)), EffectType::Gain, {{"Gain", -3.0f}}});
+    DAWLAB_CHECK(session.applyDemoSong(song) == 3);
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(session.getNumUsedSlots(ChannelRef::bus(1)) == kInsertSlotsPerStrip);
+    DAWLAB_CHECK(session.getNumUsedSlots(ChannelRef::bus(0)) == 1);
+    const TrackId third = session.getTrackId(2);
+    DAWLAB_CHECK(third.isValid() && third != demoTrackId(2));
+    DAWLAB_CHECK(session.getNumUsedSlots(session.trackRef(third)) == 1);
+    int onTracks = 0;
+    for (int t = 0; t < session.getNumTracks(); ++t)
+        onTracks += session.getNumUsedSlots(session.trackRef(session.getTrackId(t)));
+    DAWLAB_CHECK(onTracks == 1);
+}
+
+void testAppLogic() {
+    testDemoSongCounts();
+}
+
 // ---- --smoke-test --------------------------------------------------------------------------------
 
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     constexpr double sr = 48000.0;
     std::setvbuf(stdout, nullptr, _IONBF, 0); // unbuffered: a crash must not swallow what was printed
     std::printf("DawLab 16 smoke test (no audio device)\n\n");
+    testAppLogic();
     testBarGrid();
     testSlotButtons();
     testArrangementMouse();

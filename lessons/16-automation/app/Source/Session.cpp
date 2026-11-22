@@ -221,8 +221,28 @@ int Session::applyDemoSong(const DemoSong& song) {
 
     // The song names its tracks demoTrackId(0..7); here they get new ids from addTrack(), like
     // any track the user adds. `ids` translates.
-    int unknown = 0;
     std::array<TrackId, kDemoTracks> ids{};
+    int unknown = addDemoTracks(song, ids);
+    for (int b = 0; b < kNumBuses; ++b) {
+        engine_.getStrip(ChannelRef::bus(b))->setName(song.busNames[static_cast<size_t>(b)]);
+        engine_.getStrip(ChannelRef::bus(b))->setGainDb(song.busGainDb[static_cast<size_t>(b)]);
+    }
+
+    // Inserts go into the next free GUI slot of their strip, in the song's order.
+    for (const DemoInsert& d : song.inserts)
+        unknown += applyDemoInsert(d, demoChannel(d.channel, ids));
+
+    engine_.requestReset(); // fresh meters, no tails of the previous project
+    projectName_ = "Demo song";
+    history_.clear();
+    sendChangeMessage();
+    return unknown;
+}
+
+// The demo song's tracks, with their mix and clips; `ids` gets the id each one got. Returns the number of
+// tracks not added (the pool is smaller than the song).
+int Session::addDemoTracks(const DemoSong& song, std::array<TrackId, kDemoTracks>& ids) {
+    int unknown = 0;
     for (int t = 0; t < kDemoTracks; ++t) {
         const auto i = static_cast<size_t>(t);
         ids[i] = addTrack(song.trackFormat[i], juce::String(song.trackNames[i]));
@@ -237,39 +257,40 @@ int Session::applyDemoSong(const DemoSong& song) {
             s.setSendLevelDb(b, song.sendDb[i][static_cast<size_t>(b)]);
         setClips(ids[i], song.clips[i]);
     }
-    for (int b = 0; b < kNumBuses; ++b) {
-        engine_.getStrip(ChannelRef::bus(b))->setName(song.busNames[static_cast<size_t>(b)]);
-        engine_.getStrip(ChannelRef::bus(b))->setGainDb(song.busGainDb[static_cast<size_t>(b)]);
-    }
+    return unknown;
+}
 
-    // Inserts go into the next free GUI slot of their strip, in the song's order.
-    for (const DemoInsert& d : song.inserts) {
-        ChannelRef ref = d.channel;
-        if (ref.kind == ChannelKind::Track)
-            for (int t = 0; t < kDemoTracks; ++t)
-                if (demoTrackId(t) == d.channel.trackId)
-                    ref = trackRef(ids[static_cast<size_t>(t)]);
-        int slot = 0;
-        while (slot < kInsertSlotsPerStrip && !getSlot(ref, slot).isEmpty())
-            ++slot;
-        if (slot == kInsertSlotsPerStrip) {
-            ++unknown; // more inserts than GUI slots: count it as "not applied"
-            continue;
-        }
-        InsertEffect* fx = setBuiltinInsert(ref, slot, d.type);
-        if (fx == nullptr) {
+// A strip the demo song names, as it is in the session: its tracks have the ids addDemoTracks() gave them.
+ChannelRef Session::demoChannel(ChannelRef channel, const std::array<TrackId, kDemoTracks>& ids) const {
+    if (channel.kind != ChannelKind::Track)
+        return channel;
+    for (int t = 0; t < kDemoTracks; ++t)
+        if (demoTrackId(t) == channel.trackId)
+            return trackRef(ids[static_cast<size_t>(t)]);
+    return channel;
+}
+
+// The first empty GUI slot of a strip; kInsertSlotsPerStrip: none.
+int Session::firstFreeSlot(ChannelRef ref) const {
+    int slot = 0;
+    while (slot < kInsertSlotsPerStrip && !getSlot(ref, slot).isEmpty())
+        ++slot;
+    return slot;
+}
+
+// One insert of the demo song into the next free GUI slot of `ref`. Returns what was not applied: the insert
+// (no free slot, or not made), or else the number of its unknown parameter names.
+int Session::applyDemoInsert(const DemoInsert& d, ChannelRef ref) {
+    const int slot = firstFreeSlot(ref);
+    if (slot == kInsertSlotsPerStrip)
+        return 1; // more inserts than GUI slots: count it as "not applied"
+    InsertEffect* fx = setBuiltinInsert(ref, slot, d.type);
+    if (fx == nullptr)
+        return 1;
+    int unknown = 0;
+    for (const auto& p : d.parameters)
+        if (!fx->setParameterByName(p.first, p.second))
             ++unknown;
-            continue;
-        }
-        for (const auto& p : d.parameters)
-            if (!fx->setParameterByName(p.first, p.second))
-                ++unknown;
-    }
-
-    engine_.requestReset(); // fresh meters, no tails of the previous project
-    projectName_ = "Demo song";
-    history_.clear();
-    sendChangeMessage();
     return unknown;
 }
 

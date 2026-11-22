@@ -856,11 +856,39 @@ void testDialogs() {
     testInsertEditors();
 }
 
+// ---- the app's logic at its edges ------------------------------------------------------------
+
+// Session::applyDemoSong(): what it cannot apply it counts - an insert past a strip's last slot, a parameter name
+// the effect does not have - and applies the rest.
+void testDemoSongCounts() {
+    std::printf("the app's logic: the demo song counts what it cannot apply\n");
+    Engine engine;
+    engine.prepare(48000.0, 512);
+    Session session(engine);
+    DemoSong song = makeDemoSong(8000.0);
+    song.inserts.clear();
+    for (int i = 0; i < kInsertSlotsPerStrip + 2; ++i)
+        song.inserts.push_back({ChannelRef::bus(1), EffectType::Gain, {}});
+    song.inserts.push_back({ChannelRef::bus(0), EffectType::Gain, {{"No such knob", 1.0f}, {"Gain", -6.0f}}});
+    song.inserts.push_back({ChannelRef::track(2), EffectType::Gain, {{"Gain", -3.0f}}});
+    DAWLAB_CHECK(session.applyDemoSong(song) == 3);
+    engine.applyPendingCommandsOffline();
+    DAWLAB_CHECK(session.getNumUsedSlots(ChannelRef::bus(1)) == kInsertSlotsPerStrip);
+    DAWLAB_CHECK(session.getNumUsedSlots(ChannelRef::bus(0)) == 1);
+    DAWLAB_CHECK(session.getNumUsedSlots(ChannelRef::track(2)) == 1);
+    DAWLAB_CHECK(session.getNumUsedSlots(ChannelRef::track(1)) == 0);
+}
+
+void testAppLogic() {
+    testDemoSongCounts();
+}
+
 // ---- --smoke-test --------------------------------------------------------------------------------
 
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     constexpr double sr = 48000.0;
     std::printf("DawLab 8 smoke test (no audio device)\n\n");
+    testAppLogic();
     testBarGrid();
     testSlotMenu();
     testKeyboardShortcuts();

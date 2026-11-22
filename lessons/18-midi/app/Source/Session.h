@@ -323,6 +323,10 @@ private:
     const TrackModel* findTrack(engine::TrackId id) const noexcept;
     StripModel* findStrip(engine::ChannelRef ref) noexcept;
     const StripModel* findStrip(engine::ChannelRef ref) const noexcept;
+    int addDemoTracks(const engine::DemoSong& song, std::array<engine::TrackId, engine::kDemoTracks>& ids);
+    engine::ChannelRef demoChannel(engine::ChannelRef channel, const std::array<engine::TrackId, engine::kDemoTracks>& ids) const;
+    int firstFreeSlot(engine::ChannelRef ref) const;
+    int applyDemoInsert(const engine::DemoInsert& d, engine::ChannelRef ref);
     void removeAllTracks();
     engine::TrackId addTrackWithId(engine::TrackId id, engine::TrackFormat format, const juce::String& name, int index);
     bool applyInsertSnapshot(engine::ChannelRef ref, int uiSlot, const InsertSnapshot& insert);

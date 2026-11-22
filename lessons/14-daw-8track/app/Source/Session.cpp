@@ -139,29 +139,38 @@ int Session::applyDemoSong(const DemoSong& song) {
 
     // Inserts go into the next free GUI slot of their strip, in the song's order.
     int unknown = 0;
-    for (const DemoInsert& d : song.inserts) {
-        int slot = 0;
-        while (slot < kInsertSlotsPerStrip && !getSlot(d.channel, slot).isEmpty())
-            ++slot;
-        if (slot == kInsertSlotsPerStrip) {
-            ++unknown; // more inserts than GUI slots: count it as "not applied"
-            continue;
-        }
-        InsertEffect* fx = setBuiltinInsert(d.channel, slot, d.type);
-        if (fx == nullptr) {
-            ++unknown;
-            continue;
-        }
-        for (const auto& p : d.parameters)
-            if (!fx->setParameterByName(p.first, p.second))
-                ++unknown;
-    }
+    for (const DemoInsert& d : song.inserts)
+        unknown += applyDemoInsert(d, d.channel);
 
     applyDemoMix(mix, song);
 
     engine_.requestReset(); // fresh meters, no tails of the previous project
     projectName_ = "Demo song";
     sendChangeMessage();
+    return unknown;
+}
+
+// The first empty GUI slot of a strip; kInsertSlotsPerStrip: none.
+int Session::firstFreeSlot(ChannelRef ref) const {
+    int slot = 0;
+    while (slot < kInsertSlotsPerStrip && !getSlot(ref, slot).isEmpty())
+        ++slot;
+    return slot;
+}
+
+// One insert of the demo song into the next free GUI slot of `ref`. Returns what was not applied: the insert
+// (no free slot, or not made), or else the number of its unknown parameter names.
+int Session::applyDemoInsert(const DemoInsert& d, ChannelRef ref) {
+    const int slot = firstFreeSlot(ref);
+    if (slot == kInsertSlotsPerStrip)
+        return 1; // more inserts than GUI slots: count it as "not applied"
+    InsertEffect* fx = setBuiltinInsert(ref, slot, d.type);
+    if (fx == nullptr)
+        return 1;
+    int unknown = 0;
+    for (const auto& p : d.parameters)
+        if (!fx->setParameterByName(p.first, p.second))
+            ++unknown;
     return unknown;
 }
 
