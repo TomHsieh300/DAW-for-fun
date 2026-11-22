@@ -74,6 +74,9 @@ public:
     // played. Returns the number of takes found. Not while busy.
     int recover();
 
+    // The status line after a recording: how many takes, what went wrong, how many frames the disk lost.
+    static juce::String resultMessage(int numTakes, const juce::StringArray& notes, std::uint64_t droppedFrames, double sampleRate);
+
 private:
     struct Loaded {
         engine::TrackId track;
@@ -86,7 +89,10 @@ private:
     };
 
     void run() override;
+    bool anyAudioTrackArmed() const;
+    engine::RecordRange rangeToRecord() const;
     void applyResults();
+    int addTakeEdit(const Loaded& loaded, std::vector<Edit>& edits, juce::StringArray& notes) const;
     // The take's clips at the clip rate: takesOf() in frames of the file, scaled to where they belong.
     std::vector<engine::Placement> placementsOf(const Loaded& loaded, std::shared_ptr<const AudioBuffer>& audio) const;
     void say(const juce::String& message, bool alarm = false) const {

@@ -4012,6 +4012,33 @@ void testTrackCommandNeeds() {
     DAWLAB_CHECK(!enabled(CommandIDs::showSynthPanel) && !enabled(CommandIDs::deleteSelectedTrack));
 }
 
+// TakeRecorder::resultMessage(): the status line after a recording.
+void testTakeResultMessage() {
+    std::printf("the app's logic: the status line after a recording\n");
+    DAWLAB_CHECK(TakeRecorder::resultMessage(0, {}, 0, 48000.0) == "Nothing recorded");
+    DAWLAB_CHECK(TakeRecorder::resultMessage(1, {}, 0, 48000.0) == "Recorded 1 take");
+    DAWLAB_CHECK(TakeRecorder::resultMessage(3, juce::StringArray{"one", "two"}, 0, 48000.0) == "Recorded 3 takes: one; two");
+    DAWLAB_CHECK(TakeRecorder::resultMessage(2, {}, 4800, 48000.0) == "Recorded 2 takes. The disk could not keep up: 100 ms are silence");
+    DAWLAB_CHECK(TakeRecorder::resultMessage(0, juce::StringArray{"why"}, 441, 44100.0) ==
+                 "Nothing recorded: why. The disk could not keep up: 10 ms are silence");
+}
+
+// TakeRecorder::addTakeEdit(): the take of a track deleted while it recorded is not put anywhere.
+void testTakeOfGoneTrack() {
+    std::printf("the app's logic: the take of a track deleted while recording\n");
+    RecordingRig rig;
+    MainComponent& main = *rig.main;
+    DAWLAB_CHECK(main.setArmed(rig.first, true));
+    DAWLAB_CHECK(main.toggleRecord());
+    playInput(main, 24000);
+    DAWLAB_CHECK(rig.session.removeTrack(rig.first));
+    playInput(main, 512);
+    rig.engine.stopRecording();
+    playInput(main, 512);
+    DAWLAB_CHECK(waitForTakes(main));
+    DAWLAB_CHECK(rig.said.startsWith("Nothing recorded: the track is gone; its take is kept in "));
+}
+
 void testAppLogic() {
     testMidiClipEquality();
     testDemoSongCounts();
@@ -4020,6 +4047,8 @@ void testAppLogic() {
     testMidiReplaceCommand();
     testInstrumentSoundRefusals();
     testTrackCommandNeeds();
+    testTakeResultMessage();
+    testTakeOfGoneTrack();
 }
 
 // ---- --smoke-test --------------------------------------------------------------------------------

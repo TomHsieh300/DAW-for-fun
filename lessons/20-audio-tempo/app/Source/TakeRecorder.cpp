@@ -48,30 +48,15 @@ juce::File TakeRecorder::defaultFolder() {
 juce::String TakeRecorder::start() {
     if (isBusy())
         return "A recording is still running";
-    Engine& engine = session_.getEngine();
-    bool anyArmed = false;
-    for (int i = 0; i < session_.getNumTracks(); ++i) // an instrument track records MIDI (chapter 18)
-        anyArmed = anyArmed || (engine.getTrack(session_.getTrackId(i))->isArmed() && !session_.isInstrument(session_.getTrackId(i)));
-    if (!anyArmed)
+    if (!anyAudioTrackArmed())
         return "Nothing to record: arm a track first (R in its header)";
     if (const juce::Result made = folder_.createDirectory(); made.failed())
         return "Cannot create " + folder_.getFullPathName() + ": " + made.getErrorMessage();
 
-    const Transport& tr = engine.getTransport();
-    RecordRange range;
-    if (tr.isLoopEnabled() && tr.getLoopEnd() > tr.getLoopStart()) {
-        range.loopStart = tr.getLoopStart();
-        range.loopEnd = tr.getLoopEnd();
-    }
-    if (punch_ && tr.getLoopEnd() > tr.getLoopStart()) {
-        range.punchIn = tr.getLoopStart();
-        range.punchOut = tr.getLoopEnd();
-    }
-
     auto recording = std::make_unique<RecordingSession>();
     const juce::String name = juce::File::createLegalFileName(session_.getProjectName());
-    if (recording->begin(engine, pathOf(folder_), name.toStdString(), audioHost_.getDeviceLatencies(trimSamples_), range,
-                         ringSeconds_, diskOps_) == 0)
+    if (recording->begin(session_.getEngine(), pathOf(folder_), name.toStdString(), audioHost_.getDeviceLatencies(trimSamples_),
+                         rangeToRecord(), ringSeconds_, diskOps_) == 0)
         return "The last recording is still ending";
     recording_ = std::move(recording);
     results_.clear();
@@ -81,6 +66,29 @@ juce::String TakeRecorder::start() {
     phase_ = Phase::Recording;
     startThread(juce::Thread::Priority::high);
     return {};
+}
+
+bool TakeRecorder::anyAudioTrackArmed() const {
+    Engine& engine = session_.getEngine();
+    bool anyArmed = false;
+    for (int i = 0; i < session_.getNumTracks(); ++i) // an instrument track records MIDI (chapter 18)
+        anyArmed = anyArmed || (engine.getTrack(session_.getTrackId(i))->isArmed() && !session_.isInstrument(session_.getTrackId(i)));
+    return anyArmed;
+}
+
+// What the transport asks for now: the loop's passes, and with Punch on only between its locators.
+RecordRange TakeRecorder::rangeToRecord() const {
+    const Transport& tr = session_.getEngine().getTransport();
+    RecordRange range;
+    if (tr.isLoopEnabled() && tr.getLoopEnd() > tr.getLoopStart()) {
+        range.loopStart = tr.getLoopStart();
+        range.loopEnd = tr.getLoopEnd();
+    }
+    if (punch_ && tr.getLoopEnd() > tr.getLoopStart()) {
+        range.punchIn = tr.getLoopStart();
+        range.punchOut = tr.getLoopEnd();
+    }
+    return range;
 }
 
 void TakeRecorder::stop() {
@@ -172,37 +180,44 @@ void TakeRecorder::applyResults() {
     std::vector<Edit> edits;
     int numTakes = 0;
     juce::StringArray notes;
-    for (const Loaded& loaded : results_) {
-        if (const juce::String problem = describe(loaded.problem); problem.isNotEmpty() && !stopAsked_)
-            notes.add(problem);
-        if (!loaded.take.ok)
-            continue;
-        const juce::String path = fileOf(loaded.take.path).getFullPathName();
-        if (loaded.audio == nullptr) {
-            notes.add("could not read " + path + ": " + loaded.error);
-            continue;
-        }
-        if (!session_.hasTrack(loaded.track)) {
-            notes.add("the track is gone; its take is kept in " + path);
-            continue;
-        }
-        std::shared_ptr<const AudioBuffer> audio;
-        const std::vector<Placement> takes = placementsOf(loaded, audio);
-        if (takes.empty())
-            continue; // a punch that was never reached
-        edits.push_back(session_.makeTakeEdit(loaded.track, audio, takes, fileOf(loaded.take.path).getFileNameWithoutExtension()));
-        numTakes += static_cast<int>(takes.size());
-    }
+    for (const Loaded& loaded : results_)
+        numTakes += addTakeEdit(loaded, edits, notes);
     if (!edits.empty())
         session_.perform(std::move(edits), "Record");
+    say(resultMessage(numTakes, notes, droppedShown_, session_.getEngine().getSampleRate()), !notes.isEmpty() || droppedShown_ > 0);
+}
+
+// One track's result: its take as an edit in `edits`, or why not in `notes`. Returns the number of clips.
+int TakeRecorder::addTakeEdit(const Loaded& loaded, std::vector<Edit>& edits, juce::StringArray& notes) const {
+    if (const juce::String problem = describe(loaded.problem); problem.isNotEmpty() && !stopAsked_)
+        notes.add(problem);
+    if (!loaded.take.ok)
+        return 0;
+    const juce::String path = fileOf(loaded.take.path).getFullPathName();
+    if (loaded.audio == nullptr) {
+        notes.add("could not read " + path + ": " + loaded.error);
+        return 0;
+    }
+    if (!session_.hasTrack(loaded.track)) {
+        notes.add("the track is gone; its take is kept in " + path);
+        return 0;
+    }
+    std::shared_ptr<const AudioBuffer> audio;
+    const std::vector<Placement> takes = placementsOf(loaded, audio);
+    if (takes.empty())
+        return 0; // a punch that was never reached
+    edits.push_back(session_.makeTakeEdit(loaded.track, audio, takes, fileOf(loaded.take.path).getFileNameWithoutExtension()));
+    return static_cast<int>(takes.size());
+}
+
+juce::String TakeRecorder::resultMessage(int numTakes, const juce::StringArray& notes, std::uint64_t droppedFrames, double sampleRate) {
     juce::String message = numTakes == 0 ? juce::String("Nothing recorded") : "Recorded " + juce::String(numTakes) + (numTakes == 1 ? " take" : " takes");
     if (!notes.isEmpty())
         message << ": " << notes.joinIntoString("; ");
-    if (droppedShown_ > 0)
-        message << ". The disk could not keep up: "
-                << juce::String(static_cast<double>(droppedShown_) * 1000.0 / session_.getEngine().getSampleRate(), 0)
+    if (droppedFrames > 0)
+        message << ". The disk could not keep up: " << juce::String(static_cast<double>(droppedFrames) * 1000.0 / sampleRate, 0)
                 << " ms are silence";
-    say(message, !notes.isEmpty() || droppedShown_ > 0);
+    return message;
 }
 
 int TakeRecorder::recover() {
