@@ -176,40 +176,22 @@ public:
     // synth, ADDED to both channels of dest. Disarmed, the live events that end what the keyboard held on this
     // track still come through (LiveKeys).
     void renderInstrument(AudioBlock dest, const TimelineSegment* segments, int numSegments, double bpm, MidiBlock live) noexcept {
-        if (state_ == nullptr)
-            return; // not prepared
-        InstrumentState& in = *state_;
-        if (!isInstrument()) {
-            if (in.wasOn)
-                resetInstrument();
+        InstrumentState* state = instrumentForBlock();
+        if (state == nullptr)
             return;
-        }
-        in.wasOn = true;
-        const int n = dest.getNumSamples();
+        InstrumentState& in = *state;
         in.events.clear();
         in.player.process(getMidiClips(), segments, numSegments, in.sampleRate, bpm, in.events);
         // The clips' events are in order within each segment, and the segments follow each other; the live
         // ones are in order. Merge: at one offset the clips' first.
-        in.live.clear();
-        const bool armed = isArmed();
-        for (int i = 0; i < live.numEvents && in.live.size() < in.live.capacity(); ++i)
-            if (in.keys.pass(live.events[i].message, armed))
-                in.live.push_back(live.events[i]);
-        in.merged.clear();
-        size_t a = 0;
-        size_t b = 0;
-        while ((a < in.events.size() || b < in.live.size()) && in.merged.size() < in.merged.capacity()) {
-            if (b >= in.live.size() || (a < in.events.size() && in.events[a].offset <= in.live[b].offset))
-                in.merged.push_back(in.events[a++]);
-            else
-                in.merged.push_back(in.live[b++]);
-        }
+        takeLiveEvents(in, live);
+        mergeEvents(in);
         float* channels[kNumChannels] = {};
         const int numChannels = std::min(dest.getNumChannels(), kNumChannels);
         for (int ch = 0; ch < numChannels; ++ch)
             channels[ch] = dest.getChannelPointer(ch);
         Instrument& instrument = in.replacement != nullptr ? *in.replacement : static_cast<Instrument&>(in.builtin);
-        instrument.render(in.merged.data(), static_cast<int>(in.merged.size()), channels, numChannels, n);
+        instrument.render(in.merged.data(), static_cast<int>(in.merged.size()), channels, numChannels, dest.getNumSamples());
     }
     // For tests and meters; nullptr before prepare().
     const Synth* getSynth() const noexcept { return state_ != nullptr ? &state_->builtin.synth() : nullptr; }
@@ -228,28 +210,29 @@ private:
             const size_t ch = static_cast<size_t>(m.channel());
             const size_t note = static_cast<size_t>(m.note());
             switch (m.kind()) {
-            case MidiKind::NoteOn:
-                if (armed)
-                    key[ch][note] = true;
-                return armed;
-            case MidiKind::NoteOff: {
-                const bool held = key[ch][note];
-                key[ch][note] = false;
-                return armed || held;
-            }
-            case MidiKind::Controller:
-                if (m.note() == Synth::kSustainPedal) {
-                    const bool up = m.velocity() < 64;
-                    const bool wasDown = pedal[ch];
-                    if (armed || up)
-                        pedal[ch] = !up;
-                    return armed || (wasDown && up);
-                }
-                return armed;
+            case MidiKind::NoteOn: return noteOn(ch, note, armed);
+            case MidiKind::NoteOff: return noteOff(ch, note, armed);
+            case MidiKind::Controller: return m.note() == Synth::kSustainPedal ? sustainPedal(ch, m.velocity() < 64, armed) : armed;
             case MidiKind::PitchBend:
             case MidiKind::Other: return armed;
             }
             return armed;
+        }
+        bool noteOn(size_t ch, size_t note, bool armed) noexcept {
+            if (armed)
+                key[ch][note] = true;
+            return armed;
+        }
+        bool noteOff(size_t ch, size_t note, bool armed) noexcept {
+            const bool held = key[ch][note];
+            key[ch][note] = false;
+            return armed || held;
+        }
+        bool sustainPedal(size_t ch, bool up, bool armed) noexcept {
+            const bool wasDown = pedal[ch];
+            if (armed || up)
+                pedal[ch] = !up;
+            return armed || (wasDown && up);
         }
     };
     struct InstrumentState {
@@ -267,6 +250,42 @@ private:
         // The engine is going away, and with it the audio thread: an instrument still in the synth's place goes too.
         ~InstrumentState() { delete replacement; }
     };
+    // ---- renderInstrument(), one part at a time ----
+    // The instrument's state if the track plays one in this block; nullptr if it is not prepared or not an
+    // instrument (an instrument that stopped being one is reset once, so nothing hangs when it comes back).
+    InstrumentState* instrumentForBlock() noexcept {
+        if (state_ == nullptr)
+            return nullptr; // not prepared
+        if (!isInstrument()) {
+            if (state_->wasOn)
+                resetInstrument();
+            return nullptr;
+        }
+        state_->wasOn = true;
+        return state_.get();
+    }
+    // The live events that pass LiveKeys, as many as there is room for.
+    void takeLiveEvents(InstrumentState& in, MidiBlock live) noexcept {
+        in.live.clear();
+        const bool armed = isArmed();
+        for (int i = 0; i < live.numEvents && in.live.size() < in.live.capacity(); ++i)
+            if (in.keys.pass(live.events[i].message, armed))
+                in.live.push_back(live.events[i]);
+    }
+    // The clips' events and the live ones, in order of offset (at one offset the clips' first), as many as there is
+    // room for.
+    static void mergeEvents(InstrumentState& in) noexcept {
+        in.merged.clear();
+        size_t a = 0;
+        size_t b = 0;
+        while ((a < in.events.size() || b < in.live.size()) && in.merged.size() < in.merged.capacity()) {
+            if (b >= in.live.size() || (a < in.events.size() && in.events[a].offset <= in.live[b].offset))
+                in.merged.push_back(in.events[a++]);
+            else
+                in.merged.push_back(in.live[b++]);
+        }
+    }
+
     std::atomic<bool> instrument_{false};
     std::atomic<const std::vector<MidiClip>*> midiClips_{nullptr};
     std::unique_ptr<InstrumentState> state_;

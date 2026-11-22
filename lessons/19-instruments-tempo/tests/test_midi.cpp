@@ -648,6 +648,40 @@ void testMergedEvents() {
     DAWLAB_CHECK(log.size() == expected.size() + 1 && log.back().first == 512 + 10 && log.back().second.velocity() == 0);
 }
 
+// Which live messages reach a track's instrument besides notes and the pedal: armed, a pitch bend, another
+// controller and any other message (a program change) all do; disarmed, none of them does, nor a new note,
+// a pedal pressed, or a key let go or a pedal lifted that this track never heard pressed.
+void testLiveKeysOtherMessages() {
+    Engine e;
+    setUp(e);
+    std::vector<std::pair<int64_t, MidiMessage>> log;
+    log.reserve(64);
+    e.setTrackInstrument(testId(0), std::make_unique<Recorder>(log));
+    e.applyPendingCommandsOffline();
+    Track& inst = e.getMixer().getTrack(0);
+    const std::vector<std::pair<int64_t, MidiMessage>> others{{10, MidiMessage::pitchBend(0, 4000)},
+                                                              {20, MidiMessage::controller(0, 1, 90)},
+                                                              {30, MidiMessage{0xC3, 5, 0}}};
+    inst.setArmed(true);
+    e.getTransport().setPosition(0);
+    e.getTransport().play();
+    play(e, 512, 512, nullptr, nullptr, &others);
+    const bool armedPass = log.size() == 3 && log[0].second.kind() == MidiKind::PitchBend && log[1].second.kind() == MidiKind::Controller &&
+                           log[1].second.note() == 1 && log[2].second.kind() == MidiKind::Other;
+    DAWLAB_CHECK(armedPass);
+
+    inst.setArmed(false);
+    std::vector<std::pair<int64_t, MidiMessage>> disarmed = others;
+    disarmed.push_back({40, MidiMessage::noteOn(0, 70, 100)});
+    disarmed.push_back({50, MidiMessage::controller(0, Synth::kSustainPedal, 127)});
+    disarmed.push_back({60, MidiMessage::noteOff(0, 71)});
+    disarmed.push_back({70, MidiMessage::controller(0, Synth::kSustainPedal, 0)}); // up, but it was never down here
+    play(e, 512, 512, nullptr, nullptr, &disarmed);
+    DAWLAB_CHECK(log.size() == 3);
+    std::printf("  armed: bend, controller and program change pass; disarmed: %zu of %zu live messages pass\n", log.size() - 3,
+                disarmed.size());
+}
+
 // An instrument that counts its living instances.
 int gInstruments = 0;
 class CountedInstrument final : public Instrument {
@@ -1296,6 +1330,7 @@ int main() {
     testGarbageOfAFullTrack();
     testAnotherInstrument();
     testMergedEvents();
+    testLiveKeysOtherMessages();
     testEffectIdsAndADroppedInstrument();
     testQueuedThroughADeviceChange();
     testSongEndCountsNotes();
