@@ -189,7 +189,13 @@ private:
         if (n <= 0 || numChannels <= 0)
             return;
 
-        // 1. Copy dry into scratch (needed later for the mix) and apply drive on the wet path (the ramp advances once per sample)
+        copyDryAndDrive(block, n, numChannels);
+        shapeOversampled(block, numChannels);
+        mixWithDry(block, n, numChannels);
+    }
+
+    // 1. Copy dry into scratch (needed later for the mix) and apply drive on the wet path (the ramp advances once per sample)
+    void copyDryAndDrive(AudioBlock& block, int n, int numChannels) noexcept {
         for (int ch = 0; ch < numChannels; ++ch)
             std::copy_n(block.getChannelPointer(ch), n, dryScratch_.getWritePointer(ch));
         for (int i = 0; i < n; ++i) {
@@ -197,8 +203,10 @@ private:
             for (int ch = 0; ch < numChannels; ++ch)
                 block.getChannelPointer(ch)[i] *= drive;
         }
+    }
 
-        // 2. Upsample -> nonlinearity -> downsample (at 1x the Oversampler just copies)
+    // 2. Upsample -> nonlinearity -> downsample (at 1x the Oversampler just copies)
+    void shapeOversampled(AudioBlock& block, int numChannels) noexcept {
         AudioBlock up = oversampler_.upsample(block);
         const int upLen = up.getNumSamples();
         for (int ch = 0; ch < numChannels; ++ch) {
@@ -213,8 +221,10 @@ private:
             }
         }
         oversampler_.downsample(block);
+    }
 
-        // 3. DC blocker -> output gain -> mix with the delayed dry signal
+    // 3. DC blocker -> output gain -> mix with the delayed dry signal
+    void mixWithDry(AudioBlock& block, int n, int numChannels) noexcept {
         for (int i = 0; i < n; ++i) {
             const float outGain = outputGain_.getNextValue();
             const float mix = mix_.getNextValue();
