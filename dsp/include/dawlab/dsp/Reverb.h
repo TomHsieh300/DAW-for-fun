@@ -220,12 +220,26 @@ public:
             wetL = wetR = 0.0f;
             return;
         }
+        float dL = inL, dR = inR;
+        preDelayAndDiffuse(dL, dR); // 1. pre-delay, 2. input diffusion
+        const float sum = readLines(); // 3. read every delay line
+        feedBack(sum, dL, dR);         // 4. Householder feedback, written back into the lines
+
+        // 5. Output: take 4 lines each for left and right with alternating signs, which decorrelates L/R
+        wetL = lineOut_[0] - lineOut_[2] + lineOut_[4] - lineOut_[6];
+        wetR = lineOut_[1] - lineOut_[3] + lineOut_[5] - lineOut_[7];
+    }
+
+private:
+    // ---- The steps of processSampleStereo() ---------------------------------------------------
+    // dL / dR come in as the input and leave as what is fed into the delay lines
+    void preDelayAndDiffuse(float& dL, float& dR) noexcept {
         // 1. Pre-delay (a fractional delay whose changes are smoothed)
         currentPreDelay_ = smoothToward(currentPreDelay_, targetPreDelay_, smoothCoef_);
-        preDelay_.push(0, inL);
-        preDelay_.push(1, inR);
-        float dL = preDelay_.readLinear(0, currentPreDelay_);
-        float dR = preDelay_.readLinear(1, currentPreDelay_);
+        preDelay_.push(0, dL);
+        preDelay_.push(1, dR);
+        dL = preDelay_.readLinear(0, currentPreDelay_);
+        dR = preDelay_.readLinear(1, currentPreDelay_);
 
         // 2. Input diffusion: 4 series allpass stages that scatter a single pulse into a small cluster
         for (auto& ap : diffusers_[0])
@@ -237,8 +251,11 @@ public:
         const float inputGain = freeze_ ? 0.0f : kInputGain;
         dL *= inputGain;
         dR *= inputGain;
+    }
 
-        // 3. Read the output v_i of every delay line (including modulation and smoothed length changes)
+    // 3. Read the output v_i of every delay line into lineOut_ (including modulation and smoothed length changes);
+    // returns their sum
+    float readLines() noexcept {
         lfoPhase_ += lfoIncrement_;
         if (lfoPhase_ >= static_cast<float>(kTwoPi))
             lfoPhase_ -= static_cast<float>(kTwoPi);
@@ -262,8 +279,11 @@ public:
             lineOut_[i] = v;
             sum += v;
         }
+        return sum;
+    }
 
-        // 4. Householder feedback: u_i = v_i - (2/N)·Σ v_j, then damping + decay gain, then add the input and write back
+    // 4. Householder feedback: u_i = v_i - (2/N)·Σ v_j, then damping + decay gain, then add the input and write back
+    void feedBack(float sum, float dL, float dR) noexcept {
         const float scale = 2.0f / static_cast<float>(kNumLines);
         for (int k = 0; k < kNumLines; ++k) {
             const size_t i = static_cast<size_t>(k);
@@ -274,13 +294,8 @@ public:
             u += (k % 2 == 0) ? dL : dR; // even lines take the left input, odd lines the right
             lines_.push(k, reverb_detail::flushDenormal(u));
         }
-
-        // 5. Output: take 4 lines each for left and right with alternating signs, which decorrelates L/R
-        wetL = lineOut_[0] - lineOut_[2] + lineOut_[4] - lineOut_[6];
-        wetR = lineOut_[1] - lineOut_[3] + lineOut_[5] - lineOut_[7];
     }
 
-private:
     // size -> delay-length scale factor 0.5 .. 1.5
     static float sizeToScale(float size) noexcept { return 0.5f + size; }
 
