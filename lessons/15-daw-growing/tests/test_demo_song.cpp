@@ -133,7 +133,7 @@ void testLayout(const DemoSong& song) {
 
 // An insert's parameter names the effect does not know are counted, and the engine gets
 // exactly the song's 8 tracks, its bus names and its bus faders.
-void testApplied(Engine& engine) {
+void testApplied(Engine& engine, const DemoSong& song) {
     int unknown = 0;
     const DemoInsert odd{ChannelRef::master(), EffectType::Gain, {{"Gain", -3.0f}, {"No such parameter", 1.0f}}};
     DAWLAB_CHECK(createDemoEffect(odd, &unknown) != nullptr && unknown == 1);
@@ -142,6 +142,16 @@ void testApplied(Engine& engine) {
     DAWLAB_CHECK(engine.getTrack(demoTrackId(kDemoTracks - 1)) != nullptr && engine.getTrack(demoTrackId(kDemoTracks)) == nullptr);
     DAWLAB_CHECK(m.getBus(0).getName() == "Reverb" && m.getBus(kNumBuses - 1).getName() == "Delay");
     DAWLAB_CHECK(m.getBus(0).getGainDb() == -2.0f && m.getBus(kNumBuses - 1).getGainDb() == -4.0f);
+    // Every track's fader, pan and sends are the song's.
+    int wrong = 0;
+    for (int t = 0; t < kDemoTracks; ++t) {
+        const Track* track = engine.getTrack(demoTrackId(t));
+        const auto at = static_cast<size_t>(t);
+        wrong += track->getGainDb() == song.trackGainDb[at] && track->getPan() == song.trackPan[at] ? 0 : 1;
+        for (int b = 0; b < kNumBuses; ++b)
+            wrong += track->getSendLevelDb(b) == song.sendDb[at][static_cast<size_t>(b)] ? 0 : 1;
+    }
+    DAWLAB_CHECK(wrong == 0);
 }
 
 } // namespace
@@ -176,7 +186,7 @@ int main() {
     DAWLAB_CHECK(unknownParameters == 0);
     DAWLAB_CHECK(engine.getLatencySamples() == 752); // convolution 512 (track 8) + limiter 240 (master)
     DAWLAB_CHECK(engine.getMixer().getSongEndSample() >= song.songEndSample());
-    testApplied(engine);
+    testApplied(engine, song);
 
     RenderOptions o;
     o.numSamples = song.songEndSample();

@@ -160,110 +160,122 @@ inline AudioBuffer makeBurst(double sr, double seconds, double decayPerSecond, f
     return b;
 }
 
-} // namespace demo
+// ---- makeDemoSong(), one part at a time ----
 
-// Generates the whole song for `sampleRate`. Non-audio thread (allocates ~40 MB at 48 kHz).
-inline DemoSong makeDemoSong(double sampleRate) {
-    using namespace demo;
-    DemoSong song;
-    song.sampleRate = sampleRate;
-    const double sr = sampleRate;
+// The song's bars:beats -> samples conversions (a Transport at its tempo and metre).
+struct SongGrid {
+    explicit SongGrid(const DemoSong& song) {
+        tr.prepare(song.sampleRate);
+        tr.setTempo(song.bpm);
+        tr.setTimeSignature(song.beatsPerBar, 4);
+    }
+    int64_t at(int bar, int beat, int tick = 0) const { return tr.barsBeatsToSamples({bar, beat, tick}); }
+    double samplesPerBeat() const { return tr.getSamplesPerBeat(); }
+    double samplesPerBar() const { return tr.getSamplesPerBar(); }
+    int64_t eighth() const { return static_cast<int64_t>(samplesPerBeat() / 2); }
 
-    Transport tr; // only for the bars:beats -> samples conversions
-    tr.prepare(sr);
-    tr.setTempo(song.bpm);
-    tr.setTimeSignature(song.beatsPerBar, 4);
-    const auto at = [&](int bar, int beat, int tick = 0) { return tr.barsBeatsToSamples({bar, beat, tick}); };
-    const int64_t eighth = static_cast<int64_t>(tr.getSamplesPerBeat() / 2);
-    const int64_t sixteenth = eighth / 2;
-    const int kBars = song.bars;
+    Transport tr;
+};
 
+// Track and bus names (bus A = reverb, bus B = delay).
+inline void nameDemoChannels(DemoSong& song) {
     song.trackNames = {"Drums", "Bass", "Arp", "Pad", "Wind", "Lead", "Shaker", "Hits"};
     for (int b = 0; b < kNumBuses; ++b)
         song.busNames[static_cast<size_t>(b)] = std::string("Bus ") + static_cast<char>('A' + b);
     song.busNames[0] = "Reverb";
     if constexpr (kNumBuses > 1)
         song.busNames[static_cast<size_t>(std::min(1, kNumBuses - 1))] = "Delay";
+}
 
-    // 1 Drums: one 2-bar buffer, four clips
-    {
-        BufferPtr loop = share(makeDrumLoop(sr, 2, song.bpm, 0.8f));
-        for (int k = 0; k < 4; ++k)
-            song.clips[0].push_back(Clip::fromBuffer(loop, at(1 + 2 * k, 1), "drums"));
-    }
-    // 2 Bass: root on beats 1 and 3 (A1 F1 C2 G1)
-    {
-        const double roots[4] = {55.0, 43.65, 65.41, 49.0};
-        BufferPtr notes[4];
-        for (int k = 0; k < 4; ++k)
-            notes[k] = share(makePluck(roots[k], sr, 1.0, 0.6f, 1, 300u + static_cast<uint32_t>(k)));
-        for (int bar = 1; bar <= kBars; ++bar)
-            for (int beat : {1, 3}) {
-                Clip c = Clip::fromBuffer(notes[(bar - 1) % 4], at(bar, beat), "bass");
-                c.length = 2 * static_cast<int64_t>(tr.getSamplesPerBeat()) - 240; // a hair shorter than 2 beats
-                c.fadeOutSamples = 960;                                            // 20 ms release at 48 kHz
-                c.gainDb = beat == 1 ? 0.0f : -3.0f;
-                song.clips[1].push_back(c);
-            }
-    }
-    // 3 Arp: the 12 s arpeggio as one clip, entering at bar 3 with a one-bar fade-in
-    {
-        Clip c = Clip::fromBuffer(share(makePluckSequence(sr, 12.0, 0.35f)), at(3, 1), "arp");
-        c.fadeInSamples = static_cast<int>(tr.getSamplesPerBar());
-        c.fadeOutSamples = static_cast<int>(eighth);
-        song.clips[2].push_back(c);
-    }
-    // 4 Pad: one chord per bar
-    {
-        const std::vector<std::vector<double>> chords = {
-            {220.0, 261.63, 329.63}, {174.61, 220.0, 261.63}, {196.0, 261.63, 329.63}, {196.0, 246.94, 293.66}};
-        for (int bar = 1; bar <= kBars; ++bar)
-            song.clips[3].push_back(
-                Clip::fromBuffer(share(makePadChord(sr, chords[static_cast<size_t>((bar - 1) % 4)], 2.0)), at(bar, 1),
-                                 "pad"));
-    }
-    // 5 Wind: bars 5-8
-    {
-        Clip c = Clip::fromBuffer(share(makeWind(sr, 8.0)), at(5, 1), "wind");
-        c.fadeInSamples = static_cast<int>(std::lround(0.5 * sr));
-        c.fadeOutSamples = static_cast<int>(std::lround(1.0 * sr));
-        c.fadeShape = FadeShape::EqualPower;
-        song.clips[4].push_back(c);
-    }
-    // 6 Lead: a little melody in bars 5-8
-    {
-        struct Note {
-            int bar, beat;
-            double freq;
-            double beats;
-        };
-        const Note melody[] = {{5, 1, 440.0, 1.5}, {5, 3, 523.25, 1.0}, {5, 4, 659.26, 1.0}, {6, 1, 587.33, 2.0},
-                               {6, 3, 523.25, 2.0}, {7, 1, 523.25, 1.5}, {7, 3, 659.26, 1.0}, {7, 4, 783.99, 1.0},
-                               {8, 1, 739.99, 1.0}, {8, 2, 659.26, 3.0}};
-        for (const Note& n : melody) {
-            const double secs = n.beats * 60.0 / song.bpm;
-            song.clips[5].push_back(Clip::fromBuffer(share(makeLeadNote(sr, n.freq, secs)), at(n.bar, n.beat), "lead"));
-        }
-    }
-    // 7 Shaker: 16ths, accent on the off-beat eighths, from bar 3
-    {
-        BufferPtr soft = share(makeBurst(sr, 0.05, 70.0, 0.15f, true, 11u));
-        BufferPtr loud = share(makeBurst(sr, 0.07, 50.0, 0.35f, true, 12u));
-        for (int64_t pos = at(3, 1); pos < at(kBars + 1, 1); pos += sixteenth) {
-            const bool accent = ((pos - at(3, 1)) / sixteenth) % 4 == 2;
-            song.clips[6].push_back(Clip::fromBuffer(accent ? loud : soft, pos, "shaker"));
-        }
-    }
-    // 8 Hits: beat 1 of bars 1, 3, 5, 7
-    {
-        BufferPtr hit = share(makeBurst(sr, 0.12, 30.0, 0.6f, false, 21u));
-        for (int bar = 1; bar <= kBars; bar += 2)
-            song.clips[7].push_back(Clip::fromBuffer(hit, at(bar, 1), "hit"));
-    }
+// 1 Drums: one 2-bar buffer, four clips
+inline void addDemoDrums(DemoSong& song, const SongGrid& grid) {
+    BufferPtr loop = share(makeDrumLoop(song.sampleRate, 2, song.bpm, 0.8f));
+    for (int k = 0; k < 4; ++k)
+        song.clips[0].push_back(Clip::fromBuffer(loop, grid.at(1 + 2 * k, 1), "drums"));
+}
 
-    // ---- inserts (17 effect types: all but Filter and AmpChain, which came later) ----
+// 2 Bass: root on beats 1 and 3 (A1 F1 C2 G1)
+inline void addDemoBass(DemoSong& song, const SongGrid& grid) {
+    const double roots[4] = {55.0, 43.65, 65.41, 49.0};
+    BufferPtr notes[4];
+    for (int k = 0; k < 4; ++k)
+        notes[k] = share(makePluck(roots[k], song.sampleRate, 1.0, 0.6f, 1, 300u + static_cast<uint32_t>(k)));
+    for (int bar = 1; bar <= song.bars; ++bar)
+        for (int beat : {1, 3}) {
+            Clip c = Clip::fromBuffer(notes[(bar - 1) % 4], grid.at(bar, beat), "bass");
+            c.length = 2 * static_cast<int64_t>(grid.samplesPerBeat()) - 240; // a hair shorter than 2 beats
+            c.fadeOutSamples = 960;                                           // 20 ms release at 48 kHz
+            c.gainDb = beat == 1 ? 0.0f : -3.0f;
+            song.clips[1].push_back(c);
+        }
+}
+
+// 3 Arp: the 12 s arpeggio as one clip, entering at bar 3 with a one-bar fade-in
+inline void addDemoArp(DemoSong& song, const SongGrid& grid) {
+    Clip c = Clip::fromBuffer(share(makePluckSequence(song.sampleRate, 12.0, 0.35f)), grid.at(3, 1), "arp");
+    c.fadeInSamples = static_cast<int>(grid.samplesPerBar());
+    c.fadeOutSamples = static_cast<int>(grid.eighth());
+    song.clips[2].push_back(c);
+}
+
+// 4 Pad: one chord per bar
+inline void addDemoPad(DemoSong& song, const SongGrid& grid) {
+    const std::vector<std::vector<double>> chords = {
+        {220.0, 261.63, 329.63}, {174.61, 220.0, 261.63}, {196.0, 261.63, 329.63}, {196.0, 246.94, 293.66}};
+    for (int bar = 1; bar <= song.bars; ++bar)
+        song.clips[3].push_back(Clip::fromBuffer(
+            share(makePadChord(song.sampleRate, chords[static_cast<size_t>((bar - 1) % 4)], 2.0)), grid.at(bar, 1), "pad"));
+}
+
+// 5 Wind: bars 5-8
+inline void addDemoWind(DemoSong& song, const SongGrid& grid) {
+    const double sr = song.sampleRate;
+    Clip c = Clip::fromBuffer(share(makeWind(sr, 8.0)), grid.at(5, 1), "wind");
+    c.fadeInSamples = static_cast<int>(std::lround(0.5 * sr));
+    c.fadeOutSamples = static_cast<int>(std::lround(1.0 * sr));
+    c.fadeShape = FadeShape::EqualPower;
+    song.clips[4].push_back(c);
+}
+
+// 6 Lead: a little melody in bars 5-8
+inline void addDemoLead(DemoSong& song, const SongGrid& grid) {
+    struct Note {
+        int bar, beat;
+        double freq;
+        double beats;
+    };
+    const Note melody[] = {{5, 1, 440.0, 1.5}, {5, 3, 523.25, 1.0}, {5, 4, 659.26, 1.0}, {6, 1, 587.33, 2.0},
+                           {6, 3, 523.25, 2.0}, {7, 1, 523.25, 1.5}, {7, 3, 659.26, 1.0}, {7, 4, 783.99, 1.0},
+                           {8, 1, 739.99, 1.0}, {8, 2, 659.26, 3.0}};
+    for (const Note& n : melody) {
+        const double secs = n.beats * 60.0 / song.bpm;
+        song.clips[5].push_back(Clip::fromBuffer(share(makeLeadNote(song.sampleRate, n.freq, secs)), grid.at(n.bar, n.beat), "lead"));
+    }
+}
+
+// 7 Shaker: 16ths, accent on the off-beat eighths, from bar 3
+inline void addDemoShaker(DemoSong& song, const SongGrid& grid) {
+    const double sr = song.sampleRate;
+    const int64_t sixteenth = grid.eighth() / 2;
+    BufferPtr soft = share(makeBurst(sr, 0.05, 70.0, 0.15f, true, 11u));
+    BufferPtr loud = share(makeBurst(sr, 0.07, 50.0, 0.35f, true, 12u));
+    for (int64_t pos = grid.at(3, 1); pos < grid.at(song.bars + 1, 1); pos += sixteenth) {
+        const bool accent = ((pos - grid.at(3, 1)) / sixteenth) % 4 == 2;
+        song.clips[6].push_back(Clip::fromBuffer(accent ? loud : soft, pos, "shaker"));
+    }
+}
+
+// 8 Hits: beat 1 of bars 1, 3, 5, 7
+inline void addDemoHits(DemoSong& song, const SongGrid& grid) {
+    BufferPtr hit = share(makeBurst(song.sampleRate, 0.12, 30.0, 0.6f, false, 21u));
+    for (int bar = 1; bar <= song.bars; bar += 2)
+        song.clips[7].push_back(Clip::fromBuffer(hit, grid.at(bar, 1), "hit"));
+}
+
+// The inserts (17 effect types: all but Filter and AmpChain, which came later).
+inline std::vector<DemoInsert> demoInserts(double bpm) {
     const auto T = [](int t) { return ChannelRef::track(t, demoTrackId(t)); }; // slot t in an empty engine
-    song.inserts = {
+    return {
         {T(0), EffectType::TransientShaper, {{"Attack", 4.0f}, {"Sustain", -3.0f}}},
         {T(0), EffectType::Compressor,
          {{"Threshold", -20.0f}, {"Ratio", 4.0f}, {"Attack", 10.0f}, {"Release", 120.0f}, {"Makeup", 3.0f}}},
@@ -286,7 +298,7 @@ inline DemoSong makeDemoSong(double sampleRate) {
         {ChannelRef::bus(0), EffectType::Reverb, {{"Mix", 1.0f}, {"Decay", 2.2f}, {"Pre-delay", 25.0f}}},
         {ChannelRef::bus(1), EffectType::Delay,
          {{"Mix", 1.0f},
-          {"Time", DelayEffect::noteToMs(song.bpm, 0.75)},
+          {"Time", DelayEffect::noteToMs(bpm, 0.75)},
           {"Feedback", 0.35f},
           {"Ping Pong", 1.0f},
           {"Lowpass", 5000.0f}}},
@@ -294,13 +306,15 @@ inline DemoSong makeDemoSong(double sampleRate) {
          {{"Threshold", -12.0f}, {"Ratio", 2.0f}, {"Attack", 30.0f}, {"Release", 200.0f}}},
         {ChannelRef::master(), EffectType::Limiter, {{"Ceiling", -1.0f}, {"Lookahead", 5.0f}, {"Input Gain", 2.0f}}},
     };
+}
 
-    // ---- faders, pans, sends (bus A = reverb, bus B = delay) ----
-    // Track formats follow the material: mono sources on mono tracks (pan law), the stereo pad
-    // and wind on stereo tracks (balance). Hits is a mono source on a stereo track on purpose:
-    // its convolution reverb insert can then stay wide, the usual reason to put a mono source
-    // on a stereo track. A stereo track has no -3 dB pan-law centre, so those faders sit 3 dB
-    // lower to keep the mix balance.
+// Faders, pans, sends (bus A = reverb, bus B = delay).
+// Track formats follow the material: mono sources on mono tracks (pan law), the stereo pad
+// and wind on stereo tracks (balance). Hits is a mono source on a stereo track on purpose:
+// its convolution reverb insert can then stay wide, the usual reason to put a mono source
+// on a stereo track. A stereo track has no -3 dB pan-law centre, so those faders sit 3 dB
+// lower to keep the mix balance.
+inline void setDemoMix(DemoSong& song) {
     struct StripSetup {
         TrackFormat format;
         float gainDb, pan, sendReverbDb, sendDelayDb;
@@ -332,6 +346,27 @@ inline DemoSong makeDemoSong(double sampleRate) {
     song.busGainDb[0] = -2.0f;
     if constexpr (kNumBuses > 1)
         song.busGainDb[static_cast<size_t>(std::min(1, kNumBuses - 1))] = -4.0f;
+}
+
+} // namespace demo
+
+// Generates the whole song for `sampleRate`. Non-audio thread (allocates ~40 MB at 48 kHz).
+inline DemoSong makeDemoSong(double sampleRate) {
+    using namespace demo;
+    DemoSong song;
+    song.sampleRate = sampleRate;
+    const SongGrid grid(song); // only for the bars:beats -> samples conversions
+    nameDemoChannels(song);
+    addDemoDrums(song, grid);
+    addDemoBass(song, grid);
+    addDemoArp(song, grid);
+    addDemoPad(song, grid);
+    addDemoWind(song, grid);
+    addDemoLead(song, grid);
+    addDemoShaker(song, grid);
+    addDemoHits(song, grid);
+    song.inserts = demoInserts(song.bpm);
+    setDemoMix(song);
     return song;
 }
 
@@ -348,6 +383,33 @@ inline std::unique_ptr<InsertEffect> createDemoEffect(const DemoInsert& d, int* 
     return fx;
 }
 
+namespace demo {
+
+// ---- applyDemoSong(), one part at a time ----
+
+// Every insert of the song, with its parameters. Returns the number of unknown parameter names.
+inline int addDemoInserts(Engine& engine, const DemoSong& song) {
+    int unknown = 0;
+    for (const DemoInsert& d : song.inserts) {
+        // A track insert names its track by id; ask the engine which slot that is.
+        const ChannelRef ref = d.channel.kind == ChannelKind::Track ? engine.trackRef(d.channel.trackId) : d.channel;
+        engine.addInsert(ref, -1, createDemoEffect(d, &unknown));
+    }
+    return unknown;
+}
+
+// Song track t's fader, pan and sends on `track` (nullptr: the pool is smaller than the song).
+inline void setDemoStrip(Track* track, const DemoSong& song, int t) {
+    if (track == nullptr)
+        return;
+    track->setGainDb(song.trackGainDb[static_cast<size_t>(t)]);
+    track->setPan(song.trackPan[static_cast<size_t>(t)]);
+    for (int b = 0; b < kNumBuses; ++b)
+        track->setSendLevelDb(b, song.sendDb[static_cast<size_t>(t)][static_cast<size_t>(b)]);
+}
+
+} // namespace demo
+
 // Pushes the song into `engine` (prepared, empty: it adds tracks 1..8 itself). Returns the
 // number of unknown parameter names (0 when the effect adapters match the song). Engine
 // producer thread.
@@ -362,24 +424,9 @@ inline int applyDemoSong(Engine& engine, const DemoSong& song) {
         mix.getBus(b).setName(song.busNames[static_cast<size_t>(b)]);
     for (int t = 0; t < kDemoTracks; ++t)
         engine.setTrackClips(demoTrackId(t), song.clips[static_cast<size_t>(t)]);
-
-    int unknown = 0;
-    for (const DemoInsert& d : song.inserts) {
-        // A track insert names its track by id; ask the engine which slot that is.
-        const ChannelRef ref = d.channel.kind == ChannelKind::Track ? engine.trackRef(d.channel.trackId) : d.channel;
-        engine.addInsert(ref, -1, createDemoEffect(d, &unknown));
-    }
-
-    for (int t = 0; t < kDemoTracks; ++t) {
-        Track* track = engine.getTrack(demoTrackId(t));
-        if (track == nullptr)
-            continue; // the pool is smaller than the song
-        Track& s = *track;
-        s.setGainDb(song.trackGainDb[static_cast<size_t>(t)]);
-        s.setPan(song.trackPan[static_cast<size_t>(t)]);
-        for (int b = 0; b < kNumBuses; ++b)
-            s.setSendLevelDb(b, song.sendDb[static_cast<size_t>(t)][static_cast<size_t>(b)]);
-    }
+    const int unknown = demo::addDemoInserts(engine, song);
+    for (int t = 0; t < kDemoTracks; ++t)
+        demo::setDemoStrip(engine.getTrack(demoTrackId(t)), song, t);
     for (int b = 0; b < kNumBuses; ++b)
         mix.getBus(b).setGainDb(song.busGainDb[static_cast<size_t>(b)]);
     return unknown;
