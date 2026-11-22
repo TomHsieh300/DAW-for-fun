@@ -3965,12 +3965,34 @@ void testMidiReplaceCommand() {
     DAWLAB_CHECK(!main.setArmed(TrackId{}, true) && !main.setArmed(TrackId{}, false));
 }
 
+// Session::setInstrumentSound(): the reasons it gives when nothing changes.
+void testInstrumentSoundRefusals() {
+    std::printf("the app's logic: why an instrument's sound was not set\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    Session& session = main.getSession();
+    session.newProject();
+    main.getEngine().applyPendingCommandsOffline();
+    const TrackId synth = main.addTrack(TrackFormat::Mono, true);
+    main.getEngine().applyPendingCommandsOffline();
+    InstrumentSnapshot sound = session.getInstrumentSound(synth);
+    juce::String error;
+    DAWLAB_CHECK(!session.setInstrumentSound(TrackId{}, sound, &error) && error == "the track is gone");
+    sound.pluginFile = "/nowhere/Some Synth.vst3";
+    session.createPluginInstrument = nullptr;
+    DAWLAB_CHECK(!session.setInstrumentSound(synth, sound, &error) && error == "no plugin host");
+    session.createPluginInstrument = [](const juce::File&, const juce::MemoryBlock&, juce::String&) { return std::unique_ptr<PluginInstrument>(); };
+    DAWLAB_CHECK(!session.setInstrumentSound(synth, sound, &error) && error == "the plugin could not be loaded");
+    DAWLAB_CHECK(session.getPluginInstrument(synth) == nullptr && session.getInstrumentSound(synth).pluginFile.isEmpty());
+}
+
 void testAppLogic() {
     testMidiClipEquality();
     testDemoSongCounts();
     testMissingSources();
     testSoloCommand();
     testMidiReplaceCommand();
+    testInstrumentSoundRefusals();
 }
 
 // ---- --smoke-test --------------------------------------------------------------------------------

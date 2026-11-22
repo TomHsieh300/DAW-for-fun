@@ -432,35 +432,8 @@ PluginInstrument* Session::getPluginInstrument(TrackId track) const noexcept {
 }
 
 bool Session::setInstrumentSound(TrackId track, const InstrumentSnapshot& sound, juce::String* error) {
-    juce::String why;
     TrackModel* t = findTrack(track);
-    if (t == nullptr)
-        why = "the track is gone";
-    else if (sound.pluginFile != t->pluginFile) {
-        if (sound.pluginFile.isEmpty()) {
-            engine_.setTrackInstrument(track, nullptr); // the synth again; the plugin comes back as garbage
-            t->plugin = nullptr;
-        } else {
-            std::unique_ptr<PluginInstrument> plugin;
-            if (!createPluginInstrument)
-                why = "no plugin host";
-            else
-                plugin = createPluginInstrument(juce::File(sound.pluginFile), sound.pluginState, why);
-            PluginInstrument* observer = plugin.get();
-            if (plugin != nullptr && engine_.setTrackInstrument(track, std::move(plugin)) == nullptr) {
-                observer = nullptr;
-                why = "the engine is busy";
-            }
-            if (observer != nullptr)
-                t->plugin = observer;
-            else if (why.isEmpty())
-                why = "the plugin could not be loaded";
-        }
-        if (why.isEmpty())
-            t->pluginFile = sound.pluginFile;
-    } else if (t->plugin != nullptr) {
-        t->plugin->setState(sound.pluginState); // the same plugin: only its state (an undo)
-    }
+    const juce::String why = t == nullptr ? juce::String("the track is gone") : setPluginOf(*t, sound);
     if (why.isNotEmpty()) {
         if (error != nullptr)
             *error = why;
@@ -471,6 +444,46 @@ bool Session::setInstrumentSound(TrackId track, const InstrumentSnapshot& sound,
         synth->setSettings(sound.synth);
     sendChangeMessage();
     return true;
+}
+
+// setInstrumentSound()'s plugin: another file is built and takes the synth's place (none: the synth again); the
+// same file only takes the state. Returns why not, or nothing.
+juce::String Session::setPluginOf(TrackModel& t, const InstrumentSnapshot& sound) {
+    if (sound.pluginFile == t.pluginFile) {
+        if (t.plugin != nullptr)
+            t.plugin->setState(sound.pluginState); // the same plugin: only its state (an undo)
+        return {};
+    }
+    juce::String why;
+    if (sound.pluginFile.isEmpty()) {
+        engine_.setTrackInstrument(t.id, nullptr); // the synth again; the plugin comes back as garbage
+        t.plugin = nullptr;
+    } else {
+        why = loadPluginInstrument(t, sound);
+    }
+    if (why.isEmpty())
+        t.pluginFile = sound.pluginFile;
+    return why;
+}
+
+// The plugin of `sound`, built and put in the synth's place. Returns why not, or nothing.
+juce::String Session::loadPluginInstrument(TrackModel& t, const InstrumentSnapshot& sound) {
+    juce::String why;
+    std::unique_ptr<PluginInstrument> plugin;
+    if (!createPluginInstrument)
+        why = "no plugin host";
+    else
+        plugin = createPluginInstrument(juce::File(sound.pluginFile), sound.pluginState, why);
+    PluginInstrument* observer = plugin.get();
+    if (plugin != nullptr && engine_.setTrackInstrument(t.id, std::move(plugin)) == nullptr) {
+        observer = nullptr;
+        why = "the engine is busy";
+    }
+    if (observer != nullptr)
+        t.plugin = observer;
+    else if (why.isEmpty())
+        why = "the plugin could not be loaded";
+    return why;
 }
 
 bool Session::setSynthSettings(TrackId track, const engine::VoiceSettings& settings, std::uint32_t mergeKey) {
