@@ -1028,26 +1028,37 @@ void MainComponent::finishClipConversion(double from, double to, const Converted
     }
     // A file that finished loading meanwhile (at the old clip rate) is not in `converted` yet:
     // convert it in one more round instead of resampling it here on the message thread.
-    std::vector<std::shared_ptr<const AudioBuffer>> missing;
-    for (const auto& src : session_.getClipSources())
-        if (converted.count(src) == 0)
-            missing.push_back(src);
-    if (!missing.empty()) {
-        conversionRunning_ = true;
-        juce::Component::SafePointer<MainComponent> safe(this);
-        loader_.convertBuffers(std::move(missing), from, to, [safe, from, to, converted](const ConvertedBuffers& more) {
-            if (safe == nullptr)
-                return;
-            ConvertedBuffers all = converted;
-            all.insert(more.begin(), more.end());
-            safe->finishClipConversion(from, to, all);
-        });
+    if (std::vector<std::shared_ptr<const AudioBuffer>> missing = missingSources(session_.getClipSources(), converted); !missing.empty()) {
+        convertMissing(from, to, converted, std::move(missing));
         return;
     }
     session_.applySampleRateConversion(to, converted); // swaps sources, scales positions, pushes clips
     setStatus("Sample rate changed to " + juce::String(to, 0) + " Hz: clips converted");
     if (resumeAfterConversion_.exchange(false))
         engine_.getTransport().play();
+}
+
+std::vector<std::shared_ptr<const AudioBuffer>> MainComponent::missingSources(const std::vector<std::shared_ptr<const AudioBuffer>>& sources,
+                                                                             const ConvertedBuffers& converted) {
+    std::vector<std::shared_ptr<const AudioBuffer>> missing;
+    for (const auto& src : sources)
+        if (converted.count(src) == 0)
+            missing.push_back(src);
+    return missing;
+}
+
+// One more round on the loader thread for `missing`; then finishClipConversion() with all of them.
+void MainComponent::convertMissing(double from, double to, const ConvertedBuffers& converted,
+                                   std::vector<std::shared_ptr<const AudioBuffer>> missing) {
+    conversionRunning_ = true;
+    juce::Component::SafePointer<MainComponent> safe(this);
+    loader_.convertBuffers(std::move(missing), from, to, [safe, from, to, converted](const ConvertedBuffers& more) {
+        if (safe == nullptr)
+            return;
+        ConvertedBuffers all = converted;
+        all.insert(more.begin(), more.end());
+        safe->finishClipConversion(from, to, all);
+    });
 }
 
 // ---- export -------------------------------------------------------------------------------------------

@@ -3900,9 +3900,23 @@ void testDemoSongCounts() {
     DAWLAB_CHECK(onTracks == 1);
 }
 
+// MainComponent::missingSources(): the clip sources a device change's conversion has not done yet, in their order.
+void testMissingSources() {
+    std::printf("the app's logic: the sources a conversion still has to do\n");
+    const auto a = std::make_shared<const AudioBuffer>(1, 10);
+    const auto b = std::make_shared<const AudioBuffer>(1, 20);
+    const auto c = std::make_shared<const AudioBuffer>(2, 30);
+    const ConvertedBuffers converted{{b, std::make_shared<const AudioBuffer>(1, 40)}};
+    const auto missing = MainComponent::missingSources({a, b, c, a}, converted);
+    DAWLAB_CHECK(missing.size() == 3 && missing[0] == a && missing[1] == c && missing[2] == a);
+    DAWLAB_CHECK(MainComponent::missingSources({b}, converted).empty());
+    DAWLAB_CHECK(MainComponent::missingSources({}, converted).empty());
+}
+
 void testAppLogic() {
     testMidiClipEquality();
     testDemoSongCounts();
+    testMissingSources();
 }
 
 // ---- --smoke-test --------------------------------------------------------------------------------

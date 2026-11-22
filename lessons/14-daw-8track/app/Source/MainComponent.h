@@ -163,6 +163,10 @@ public:
     juce::PopupMenu getMenuForIndex(int topLevelMenuIndex, const juce::String& menuName) override;
     void menuItemSelected(int menuItemID, int topLevelMenuIndex) override;
 
+    // Step 11: the clip sources a device change's conversion has not converted yet, in their order.
+    static std::vector<std::shared_ptr<const AudioBuffer>> missingSources(const std::vector<std::shared_ptr<const AudioBuffer>>& sources,
+                                                                          const ConvertedBuffers& converted);
+
 private:
     class ExportOverlay;
     // The constructor's parts (MainComponent.cpp).
@@ -179,6 +183,8 @@ private:
     void finishExport(const ExportResult& result);
     void startClipConversion();
     void finishClipConversion(double fromRate, double toRate, const ConvertedBuffers& converted);
+    void convertMissing(double fromRate, double toRate, const ConvertedBuffers& converted,
+                        std::vector<std::shared_ptr<const AudioBuffer>> missing);
 
     // ---- the command table (MainComponent.cpp): getCommandInfo() and perform() read it ------------------
     // What a command's tick mark in the menu shows.
