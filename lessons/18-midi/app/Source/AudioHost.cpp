@@ -285,10 +285,22 @@ void AudioHost::render(float* const* outputs, int numOutputChannels, int numSamp
     // memory: AudioBlock is just a view of JUCE's channel pointer array.
     const int engineChannels = std::min(numOutputChannels, engine::kNumChannels);
 
-    // Chapter 18: the keyboard. This block's first sample is heard after the device's output latency; a key is
-    // played a fixed delay after it arrived - two blocks and that latency, the worst case of Step 5 - so every
-    // note is late by the same amount instead of by however the block periods fell.
     const double rate = sampleRate_.load(std::memory_order_relaxed);
+    const double blockTime = takeMidiForBlock(rate, numSamples);
+    publishBlock(blockTime, rate, numSamples);
+
+    engine_.processBlock(AudioBlock(outputs, engineChannels, numSamples), input,
+                         engine::MidiBlock{midiEvents_.data(), static_cast<int>(midiEvents_.size())});
+    silenceExtraChannels(outputs, engineChannels, numOutputChannels, numSamples);
+    analyzeMaster(outputs, engineChannels, numSamples);
+
+    callbacks_.fetch_add(1, std::memory_order_relaxed);
+}
+
+// Chapter 18: the keyboard. This block's first sample is heard after the device's output latency; a key is
+// played a fixed delay after it arrived - two blocks and that latency, the worst case of Step 5 - so every
+// note is late by the same amount instead of by however the block periods fell. Returns when the block is heard.
+double AudioHost::takeMidiForBlock(double rate, int numSamples) noexcept {
     const double outputSeconds = rate > 0.0 ? outputLatency_.load(std::memory_order_relaxed) / rate : 0.0;
     const double blockTime = now() + outputSeconds;
     long late = 0;
@@ -299,34 +311,40 @@ void AudioHost::render(float* const* outputs, int numOutputChannels, int numSamp
         midiEvents_.clear();
     if (late > 0)
         lateMidi_.fetch_add(late, std::memory_order_relaxed);
+    return blockTime;
+}
+
+// Where this block is in the song and when it is heard, for the recording (Anchor).
+void AudioHost::publishBlock(double blockTime, double rate, int numSamples) noexcept {
     const engine::Transport& tr = engine_.getTransport();
     const bool playing = tr.isPlaying();
-    publishAnchor({blockTime, tr.getPosition(), rate, engine_.getLatencySamples(), playing, callbacks_.load(std::memory_order_relaxed) + 1,
-                   renderedWhilePlaying_, numSamples});
+    publishAnchor({blockTime, tr.getPosition(), rate, engine_.getLatencySamples(), playing,
+                   callbacks_.load(std::memory_order_relaxed) + 1, renderedWhilePlaying_, numSamples});
     if (playing)
         renderedWhilePlaying_ += numSamples;
+}
 
-    engine_.processBlock(AudioBlock(outputs, engineChannels, numSamples), input,
-                         engine::MidiBlock{midiEvents_.data(), static_cast<int>(midiEvents_.size())});
+// The device channels past the engine's stereo get silence.
+void AudioHost::silenceExtraChannels(float* const* outputs, int engineChannels, int numOutputChannels, int numSamples) noexcept {
     for (int ch = engineChannels; ch < numOutputChannels; ++ch)
         if (outputs[ch] != nullptr)
             std::fill_n(outputs[ch], numSamples, 0.0f);
+}
 
-    // Spectrum of the master (mono sum), in chunks of the preallocated scratch buffer.
-    if (analyzerReady_.load(std::memory_order_acquire) && !monoScratch_.empty()) {
-        const float* left = outputs[0];
-        const float* right = outputs[engineChannels > 1 ? 1 : 0];
-        int done = 0;
-        while (done < numSamples) {
-            const int n = std::min(numSamples - done, static_cast<int>(monoScratch_.size()));
-            for (int i = 0; i < n; ++i)
-                monoScratch_[static_cast<size_t>(i)] = 0.5f * (left[done + i] + right[done + i]);
-            analyzer_.pushSamples(monoScratch_.data(), n);
-            done += n;
-        }
+// Spectrum of the master (mono sum), in chunks of the preallocated scratch buffer.
+void AudioHost::analyzeMaster(const float* const* outputs, int engineChannels, int numSamples) noexcept {
+    if (!analyzerReady_.load(std::memory_order_acquire) || monoScratch_.empty())
+        return;
+    const float* left = outputs[0];
+    const float* right = outputs[engineChannels > 1 ? 1 : 0];
+    int done = 0;
+    while (done < numSamples) {
+        const int n = std::min(numSamples - done, static_cast<int>(monoScratch_.size()));
+        for (int i = 0; i < n; ++i)
+            monoScratch_[static_cast<size_t>(i)] = 0.5f * (left[done + i] + right[done + i]);
+        analyzer_.pushSamples(monoScratch_.data(), n);
+        done += n;
     }
-
-    callbacks_.fetch_add(1, std::memory_order_relaxed);
 }
 
 } // namespace dawlab::app

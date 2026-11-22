@@ -892,9 +892,18 @@ void testMissingSources() {
     DAWLAB_CHECK(MainComponent::missingSources({}, converted).empty());
 }
 
+// AudioHost::render() measures its own CPU load (chapter 14): rendered blocks move it above 0.
+void testCpuLoadMoves() {
+    std::printf("the app's logic: the audio callback's CPU load\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    mainPtr->simulatePlayback(48000);
+    DAWLAB_CHECK(mainPtr->getAudioHost().getCpuLoad() > 0.0f);
+}
+
 void testAppLogic() {
     testDemoSongCounts();
     testMissingSources();
+    testCpuLoadMoves();
 }
 
 // ---- --smoke-test --------------------------------------------------------------------------------

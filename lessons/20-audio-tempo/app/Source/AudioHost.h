@@ -159,6 +159,10 @@ private:
     void handleIncomingMidiMessage(juce::MidiInput* source, const juce::MidiMessage& message) override;
     void publishAnchor(const Anchor& a) noexcept;
     void render(float* const* outputs, int numOutputChannels, int numSamples, engine::InputBlock input) noexcept;
+    double takeMidiForBlock(double rate, int numSamples) noexcept;
+    void publishBlock(double blockTime, double rate, int numSamples) noexcept;
+    void silenceExtraChannels(float* const* outputs, int engineChannels, int numOutputChannels, int numSamples) noexcept;
+    void analyzeMaster(const float* const* outputs, int engineChannels, int numSamples) noexcept;
 
     engine::Engine& engine_;
     juce::AudioDeviceManager deviceManager_;

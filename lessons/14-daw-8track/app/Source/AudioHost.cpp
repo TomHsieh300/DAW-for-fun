@@ -130,34 +130,46 @@ void AudioHost::render(float* const* outputs, int numOutputChannels, int numSamp
     // memory: AudioBlock is just a view of JUCE's channel pointer array.
     const int engineChannels = std::min(numOutputChannels, engine::kNumChannels);
     engine_.processBlock(AudioBlock(outputs, engineChannels, numSamples));
+    silenceExtraChannels(outputs, engineChannels, numOutputChannels, numSamples);
+    analyzeMaster(outputs, engineChannels, numSamples);
+
+    measureLoad(t0, numSamples);
+    callbacks_.fetch_add(1, std::memory_order_relaxed);
+}
+
+// The device channels past the engine's stereo get silence.
+void AudioHost::silenceExtraChannels(float* const* outputs, int engineChannels, int numOutputChannels, int numSamples) noexcept {
     for (int ch = engineChannels; ch < numOutputChannels; ++ch)
         if (outputs[ch] != nullptr)
             std::fill_n(outputs[ch], numSamples, 0.0f);
+}
 
-    // Spectrum of the master (mono sum), in chunks of the preallocated scratch buffer.
-    if (analyzerReady_.load(std::memory_order_acquire) && !monoScratch_.empty()) {
-        const float* left = outputs[0];
-        const float* right = outputs[engineChannels > 1 ? 1 : 0];
-        int done = 0;
-        while (done < numSamples) {
-            const int n = std::min(numSamples - done, static_cast<int>(monoScratch_.size()));
-            for (int i = 0; i < n; ++i)
-                monoScratch_[static_cast<size_t>(i)] = 0.5f * (left[done + i] + right[done + i]);
-            analyzer_.pushSamples(monoScratch_.data(), n);
-            done += n;
-        }
+// Spectrum of the master (mono sum), in chunks of the preallocated scratch buffer.
+void AudioHost::analyzeMaster(const float* const* outputs, int engineChannels, int numSamples) noexcept {
+    if (!analyzerReady_.load(std::memory_order_acquire) || monoScratch_.empty())
+        return;
+    const float* left = outputs[0];
+    const float* right = outputs[engineChannels > 1 ? 1 : 0];
+    int done = 0;
+    while (done < numSamples) {
+        const int n = std::min(numSamples - done, static_cast<int>(monoScratch_.size()));
+        for (int i = 0; i < n; ++i)
+            monoScratch_[static_cast<size_t>(i)] = 0.5f * (left[done + i] + right[done + i]);
+        analyzer_.pushSamples(monoScratch_.data(), n);
+        done += n;
     }
+}
 
-    // CPU load = time spent / time available, smoothed (one-pole, ~10 callbacks).
+// CPU load = time spent since `startTicks` / time available, smoothed (one-pole, ~10 callbacks).
+void AudioHost::measureLoad(juce::int64 startTicks, int numSamples) noexcept {
     const double sr = sampleRate_.load(std::memory_order_relaxed);
-    if (sr > 0.0) {
-        const double spent = juce::Time::highResolutionTicksToSeconds(juce::Time::getHighResolutionTicks() - t0);
-        const double available = numSamples / sr;
-        const float load = static_cast<float>(spent / available);
-        const float old = cpuLoad_.load(std::memory_order_relaxed);
-        cpuLoad_.store(old + 0.1f * (load - old), std::memory_order_relaxed);
-    }
-    callbacks_.fetch_add(1, std::memory_order_relaxed);
+    if (sr <= 0.0)
+        return;
+    const double spent = juce::Time::highResolutionTicksToSeconds(juce::Time::getHighResolutionTicks() - startTicks);
+    const double available = numSamples / sr;
+    const float load = static_cast<float>(spent / available);
+    const float old = cpuLoad_.load(std::memory_order_relaxed);
+    cpuLoad_.store(old + 0.1f * (load - old), std::memory_order_relaxed);
 }
 
 } // namespace dawlab::app

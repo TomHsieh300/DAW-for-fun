@@ -99,6 +99,9 @@ private:
 
     void prepareInternal(double sampleRate, int blockSize);
     void render(float* const* outputs, int numOutputChannels, int numSamples) noexcept;
+    void silenceExtraChannels(float* const* outputs, int engineChannels, int numOutputChannels, int numSamples) noexcept;
+    void analyzeMaster(const float* const* outputs, int engineChannels, int numSamples) noexcept;
+    void measureLoad(juce::int64 startTicks, int numSamples) noexcept;
 
     engine::Engine& engine_;
     juce::AudioDeviceManager deviceManager_;
