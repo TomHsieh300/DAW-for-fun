@@ -386,6 +386,8 @@ private:
     bool restoreLanes(const StripTarget& strip, engine::EffectId effect, const std::vector<OwnedLane>& lanes);
     bool editLane(const LaneAddress& address, LaneContent content, const juce::String& name, std::uint32_t mergeKey);
     LaneContent contentOrNew(const LaneAddress& address) const;
+    LaneAddress laneAddressOf(const engine::LaneTarget& target) const;
+    void recordPass(const LaneAddress& address, std::vector<engine::AutomationPoint> points);
     void removeBusAndMasterInserts();
     void resetBusAndMasterSettings();
     void pushClips(const TrackModel& track);

@@ -1083,30 +1083,38 @@ std::vector<std::pair<juce::String, LaneAddress>> Session::getAutomatableParamet
 int Session::collectAutomation() {
     return recorder_.collect(engine_.getCaptureQueue(), [this](const engine::LaneTarget& target, std::vector<engine::AutomationPoint> points) {
         // The name of the lane, now: a track or an effect deleted since then ends the recording here.
-        const LaneAddress address = [&] {
-            LaneAddress a{StripTarget::of(target.channel), target.effect, {}};
-            if (!target.effect.isValid())
-                a.parameter = target.parameter == engine::kLaneGain ? "Gain" : "Pan";
-            else if (const InsertEffect* effect = effectOf(a); effect != nullptr && target.parameter < effect->getNumParameters())
-                a.parameter = effect->getParameterInfo(target.parameter).name;
-            return a;
-        }();
+        const LaneAddress address = laneAddressOf(target);
         if (address.parameter.isEmpty() || !isLaneLive(address))
             return;
-        // A fader behind latency hears the start of the song before position 0: that is position 0.
-        for (engine::AutomationPoint& point : points)
-            point.position = std::max<std::int64_t>(0, point.position);
-        LaneContent content = contentOrNew(address);
-        if (content.curve.size() == 0) { // the first recording IS the curve: there is nothing to return to
-            engine::AutomationCurve first(content.curve.defaultValue());
-            for (const engine::AutomationPoint& point : points)
-                first.add(point);
-            content.curve = std::move(first);
-        } else {
-            content.curve = engine::punch(content.curve, points);
-        }
-        editLane(address, std::move(content), "Record", 0);
+        recordPass(address, std::move(points));
     });
+}
+
+// The lane the audio thread recorded, by name; no parameter name: its effect, or that parameter, is gone.
+LaneAddress Session::laneAddressOf(const engine::LaneTarget& target) const {
+    LaneAddress a{StripTarget::of(target.channel), target.effect, {}};
+    if (!target.effect.isValid())
+        a.parameter = target.parameter == engine::kLaneGain ? "Gain" : "Pan";
+    else if (const InsertEffect* effect = effectOf(a); effect != nullptr && target.parameter < effect->getNumParameters())
+        a.parameter = effect->getParameterInfo(target.parameter).name;
+    return a;
+}
+
+// One finished pass into its lane's curve, as one undo step.
+void Session::recordPass(const LaneAddress& address, std::vector<engine::AutomationPoint> points) {
+    // A fader behind latency hears the start of the song before position 0: that is position 0.
+    for (engine::AutomationPoint& point : points)
+        point.position = std::max<std::int64_t>(0, point.position);
+    LaneContent content = contentOrNew(address);
+    if (content.curve.size() == 0) { // the first recording IS the curve: there is nothing to return to
+        engine::AutomationCurve first(content.curve.defaultValue());
+        for (const engine::AutomationPoint& point : points)
+            first.add(point);
+        content.curve = std::move(first);
+    } else {
+        content.curve = engine::punch(content.curve, points);
+    }
+    editLane(address, std::move(content), "Record", 0);
 }
 
 } // namespace dawlab::app
