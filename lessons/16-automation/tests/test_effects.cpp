@@ -229,6 +229,60 @@ void testAmpChainEffect() {
     DAWLAB_CHECK_NEAR(rmsB - rmsA, -6.0, 0.05);
 }
 
+// Every AmpChain parameter reaches its own setter of dsp::AmpChain: the effect with one
+// parameter moved off its default sounds like a chain given that value through that setter,
+// and the other parameters at their defaults through theirs.
+void testAmpChainParameterSetters() {
+    using P = AmpChainEffect;
+    const auto setOnChain = [](dsp::AmpChain& c, int index, float v) {
+        switch (index) {
+        case P::InputHighpass: c.setInputHighpassHz(v); break;
+        case P::PreEqFrequency: c.setPreEqHz(v); break;
+        case P::PreEqGain: c.setPreEqGainDb(v); break;
+        case P::PreampDrive: c.setPreampDriveDb(v); break;
+        case P::Bass: c.setBassDb(v); break;
+        case P::Mid: c.setMidDb(v); break;
+        case P::Treble: c.setTrebleDb(v); break;
+        case P::PowerAmpDrive: c.setPowerAmpDriveDb(v); break;
+        case P::PowerAmpType: c.setPowerAmpType(static_cast<dsp::DistortionType>(static_cast<int>(v))); break;
+        case P::Cabinet: c.setCabinetEnabled(v > 0.5f); break;
+        case P::CabinetCutoff: c.setCabinetCutoffHz(v); break;
+        case P::CabinetResonance: c.setCabinetResonanceHz(v); break;
+        case P::CabinetResonanceGain: c.setCabinetResonanceDb(v); break;
+        case P::Output: c.setOutputGainDb(v); break;
+        default: break;
+        }
+    };
+    const float moved[P::Oversampling] = {300.0f, 2000.0f, -9.0f, 36.0f, 9.0f,   -8.0f, 7.0f,
+                                          24.0f,  2.0f,    0.0f,  2000.0f, 300.0f, 10.0f, -15.0f};
+    double worst = 0.0;
+    for (int p = 0; p < P::Oversampling; ++p) {
+        P fx;
+        fx.setParameter(p, moved[p]);
+        fx.prepare(kSampleRate, kBlockSize, 2);
+        dsp::AmpChain ref;
+        ref.setOversamplingFactorLog2(static_cast<int>(fx.getParameter(P::Oversampling)));
+        ref.prepare(kSampleRate, kBlockSize, 2);
+        for (int i = 0; i < P::Oversampling; ++i)
+            setOnChain(ref, i, i == p ? moved[p] : fx.getParameterInfo(i).defaultValue);
+        ref.reset();
+        AudioBuffer a = makeSine(110.0, kSampleRate, 0.2, 0.3f, 2);
+        AudioBuffer b = makeSine(110.0, kSampleRate, 0.2, 0.3f, 2);
+        for (int pos = 0; pos < a.getNumSamples(); pos += kBlockSize) {
+            const int n = std::min(kBlockSize, a.getNumSamples() - pos);
+            fx.process(a.toBlock().getSubBlock(pos, n));
+            ref.process(b.toBlock().getSubBlock(pos, n));
+        }
+        double diff = 0.0;
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < a.getNumSamples(); ++i)
+                diff = std::max(diff, static_cast<double>(std::fabs(a.getSample(ch, i) - b.getSample(ch, i))));
+        DAWLAB_CHECK(diff < 1e-6);
+        worst = std::max(worst, diff);
+    }
+    std::printf("  AmpChain: each of the 14 parameters moved alone matches its setter (worst %.2g)\n", worst);
+}
+
 void testParameterHandOver() {
     // setParameter() from "the UI" only reaches the DSP object at the next process():
     // a GainEffect at 0 dB, set to -6.02 dB, then processed -> x0.5 after the ramp.
@@ -539,6 +593,7 @@ int main() {
     testParameterHandOver();
     testFilterEffect();
     testAmpChainEffect();
+    testAmpChainParameterSetters();
     testNamesAndUnknownTypes();
     testNormalizedEdgeCases();
     testParameterText();

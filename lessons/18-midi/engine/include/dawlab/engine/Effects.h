@@ -430,7 +430,16 @@ public:
     int getLatencySamples() const noexcept override { return dsp_.getLatencySamples(); }
 
 protected:
+    // One switch per half of the chain: the stages up to the tone stack, then the power amp on.
     void applyParameter(int index, float v) noexcept override {
+        if (index < PowerAmpDrive)
+            applyPreampParameter(index, v);
+        else
+            applyPowerAmpParameter(index, v);
+    }
+
+private:
+    void applyPreampParameter(int index, float v) noexcept {
         switch (index) {
         case InputHighpass: dsp_.setInputHighpassHz(v); break;
         case PreEqFrequency: dsp_.setPreEqHz(v); break;
@@ -439,6 +448,11 @@ protected:
         case Bass: dsp_.setBassDb(v); break;
         case Mid: dsp_.setMidDb(v); break;
         case Treble: dsp_.setTrebleDb(v); break;
+        default: break;
+        }
+    }
+    void applyPowerAmpParameter(int index, float v) noexcept {
+        switch (index) {
         case PowerAmpDrive: dsp_.setPowerAmpDriveDb(v); break;
         case PowerAmpType: dsp_.setPowerAmpType(static_cast<dsp::DistortionType>(static_cast<int>(v))); break;
         case Cabinet: dsp_.setCabinetEnabled(v > 0.5f); break;
@@ -450,7 +464,6 @@ protected:
         }
     }
 
-private:
     // Ranges follow the clamps inside dsp::AmpChain (chapter 07); the defaults are a crunchy
     // rhythm sound.
     static constexpr ParameterInfo kInfos[kCount] = {
