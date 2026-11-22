@@ -122,24 +122,8 @@ public:
     void setBand(int index, const EqBand& band) noexcept {
         assert(index >= 0 && index < kNumBands);
         Band& b = bands_[static_cast<size_t>(index)];
-        EqBand t = band;
-        // Ignore NaN / inf fields (keep the old value; acceptParameter in DspMath.h, -inf dB = the floor):
-        // std::clamp(NaN, lo, hi) returns NaN unchanged, and once a NaN gets into a smoother, the whole band is
-        // broken after log2 / exp2.
-        if (!acceptParameter(t.frequency))
-            t.frequency = b.target.frequency;
-        if (!acceptParameter(t.q))
-            t.q = b.target.q;
-        if (!acceptParameter(t.gainDb, ParameterUnit::Decibels))
-            t.gainDb = b.target.gainDb;
-        // The target keeps the user's setting (clamped only to ranges that do not depend on the
-        // sample rate); the 0.49·fs upper limit is applied later in targetLogFreq() /
-        // makeCoefficients().
-        t.frequency = std::clamp(t.frequency, kMinFrequency, kMaxFrequency);
-        t.q = std::clamp(t.q, kMinQ, kMaxQ);
-        t.gainDb = std::clamp(t.gainDb, -kMaxGainDb, kMaxGainDb);
-        const bool paramsChanged =
-            t.frequency != b.target.frequency || t.q != b.target.q || t.gainDb != b.target.gainDb;
+        const EqBand t = acceptedBand(band, b.target);
+        const bool paramsChanged = parametersDiffer(t, b.target);
         if (!paramsChanged && t.type == b.target.type && t.enabled == b.target.enabled)
             return; // Nothing changed (e.g. the host resends the same parameters every block): do nothing, the ramps keep their speed.
         if (paramsChanged)
@@ -384,6 +368,30 @@ private:
         }
     }
 
+    // What setBand() takes from `band`: NaN / inf fields are ignored and keep the old value (acceptParameter in
+    // DspMath.h, -inf dB = the floor): std::clamp(NaN, lo, hi) returns NaN unchanged, and once a NaN gets into a
+    // smoother, the whole band is broken after log2 / exp2.
+    // The target keeps the user's setting (clamped only to ranges that do not depend on the sample rate); the
+    // 0.49·fs upper limit is applied later in targetLogFreq() / makeCoefficients().
+    static EqBand acceptedBand(const EqBand& band, const EqBand& old) noexcept {
+        EqBand t = band;
+        if (!acceptParameter(t.frequency))
+            t.frequency = old.frequency;
+        if (!acceptParameter(t.q))
+            t.q = old.q;
+        if (!acceptParameter(t.gainDb, ParameterUnit::Decibels))
+            t.gainDb = old.gainDb;
+        t.frequency = std::clamp(t.frequency, kMinFrequency, kMaxFrequency);
+        t.q = std::clamp(t.q, kMinQ, kMaxQ);
+        t.gainDb = std::clamp(t.gainDb, -kMaxGainDb, kMaxGainDb);
+        return t;
+    }
+
+    // Whether frequency, Q or gain differ (the fields the smoothers ramp)
+    static bool parametersDiffer(const EqBand& a, const EqBand& b) noexcept {
+        return a.frequency != b.frequency || a.q != b.q || a.gainDb != b.gainDb;
+    }
+
     // The smoother's frequency target: log2(Hz), clamped to the valid range for the current sample rate
     float targetLogFreq(const EqBand& t) const noexcept { return std::log2(clampFrequency(t.frequency, sampleRate_)); }
 
@@ -483,39 +491,50 @@ private:
     // recomputes the coefficients when needed.
     void tick(int numSamples) noexcept {
         for (auto& b : bands_) {
-            // Structural switch: once faded out to bypass -> swap type / slope, clear the filter memory, then fade back in
-            if (b.pendingSwitch && !b.mix.isSmoothing() && b.mix.getCurrentValue() <= 0.0f) {
-                b.pendingSwitch = false;
-                b.runningType = b.target.type;
-                b.runningSlope = b.slope;
-                snapParameters(b); // mix = 0 right now: the new type fades in directly with the final parameters, with no need to sweep while fading in
-                b.dirty = true;
-                b.active = false; // Lets the !wasActive branch below clear the old filter memory
-                b.mix.setTargetValue(b.target.enabled ? 1.0f : 0.0f);
-            }
-            const bool wasActive = b.active;
-            b.logFreq.skip(numSamples); // skip does nothing when not smoothing
-            b.q.skip(numSamples);
-            b.gainDb.skip(numSamples);
-            b.mixCurrent = b.mix.getCurrentValue();
-            b.active = b.mixCurrent > 0.0f || b.mix.isSmoothing();
-            if (!b.active)
-                continue;
-            if (!wasActive) { // Just went from fully bypassed to active: the filter memory is stale, so clear it before crossfading in
-                b.stage1.reset();
-                b.stage2.reset();
-            }
-            // Recompute only when "the parameter values differ from those used at the last
-            // coefficient computation": this holds at every tick for a band that is smoothing;
-            // with smoothing = 0, setTargetValue makes the value jump to the target, and this
-            // condition is also what applies it to the filter.
-            const bool paramsMoved = b.logFreq.getCurrentValue() != b.coeffLogFreq ||
-                                     b.q.getCurrentValue() != b.coeffQ || b.gainDb.getCurrentValue() != b.coeffGainDb;
-            if (paramsMoved || !wasActive || b.dirty) {
-                updateCoefficients(b);
-                b.dirty = false;
-            }
+            finishSwitchIfFadedOut(b);
+            tickBand(b, numSamples);
         }
+    }
+
+    // Structural switch: once faded out to bypass -> swap type / slope, clear the filter memory, then fade back in
+    void finishSwitchIfFadedOut(Band& b) noexcept {
+        if (!(b.pendingSwitch && !b.mix.isSmoothing() && b.mix.getCurrentValue() <= 0.0f))
+            return;
+        b.pendingSwitch = false;
+        b.runningType = b.target.type;
+        b.runningSlope = b.slope;
+        snapParameters(b); // mix = 0 right now: the new type fades in directly with the final parameters, with no need to sweep while fading in
+        b.dirty = true;
+        b.active = false; // Lets the !wasActive branch of tickBand() clear the old filter memory
+        b.mix.setTargetValue(b.target.enabled ? 1.0f : 0.0f);
+    }
+
+    void tickBand(Band& b, int numSamples) noexcept {
+        const bool wasActive = b.active;
+        b.logFreq.skip(numSamples); // skip does nothing when not smoothing
+        b.q.skip(numSamples);
+        b.gainDb.skip(numSamples);
+        b.mixCurrent = b.mix.getCurrentValue();
+        b.active = b.mixCurrent > 0.0f || b.mix.isSmoothing();
+        if (!b.active)
+            return;
+        if (!wasActive) { // Just went from fully bypassed to active: the filter memory is stale, so clear it before crossfading in
+            b.stage1.reset();
+            b.stage2.reset();
+        }
+        if (parametersMoved(b) || !wasActive || b.dirty) {
+            updateCoefficients(b);
+            b.dirty = false;
+        }
+    }
+
+    // Recompute only when "the parameter values differ from those used at the last
+    // coefficient computation": this holds at every tick for a band that is smoothing;
+    // with smoothing = 0, setTargetValue makes the value jump to the target, and this
+    // condition is also what applies it to the filter.
+    static bool parametersMoved(const Band& b) noexcept {
+        return b.logFreq.getCurrentValue() != b.coeffLogFreq || b.q.getCurrentValue() != b.coeffQ ||
+               b.gainDb.getCurrentValue() != b.coeffGainDb;
     }
 
     float processChain(int ch, float x) noexcept {
