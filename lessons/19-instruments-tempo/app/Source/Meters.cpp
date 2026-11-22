@@ -34,53 +34,63 @@ void MeterBar::setLevels(float peakLeftDb, float peakRightDb, float holdLeftDb, 
         repaint();
 }
 
+namespace {
+// Colour zones: green below -18 dBFS, yellow up to -6, red above.
+juce::Colour zoneColour(float db) {
+    return db > -6.0f ? DawColours::meterHigh() : (db > -18.0f ? DawColours::meterMid() : DawColours::meterLow());
+}
+
+// Channel ch's bar in `area`: side by side when vertical, one above the other when horizontal.
+juce::Rectangle<float> channelBar(juce::Rectangle<float> area, int ch, bool vertical) {
+    const float gap = 2.0f;
+    if (vertical) {
+        const float w = (area.getWidth() - gap) * 0.5f;
+        return {area.getX() + static_cast<float>(ch) * (w + gap), area.getY(), w, area.getHeight()};
+    }
+    const float h = (area.getHeight() - gap) * 0.5f;
+    return {area.getX(), area.getY() + static_cast<float>(ch) * (h + gap), area.getWidth(), h};
+}
+
+// The level (0..1 along the bar) in three segments, so each zone keeps its colour.
+void paintLevel(juce::Graphics& g, juce::Rectangle<float> bar, float level, bool vertical) {
+    const float zones[] = {MeterBar::dbToProportion(-18.0f), MeterBar::dbToProportion(-6.0f), 1.0f};
+    float from = 0.0f;
+    for (float to : zones) {
+        const float a = from, b = std::min(level, to);
+        if (b > a) {
+            g.setColour(zoneColour(MeterBar::kMinDb + (a + b) * 0.5f * (MeterBar::kMaxDb - MeterBar::kMinDb)));
+            if (vertical)
+                g.fillRect(bar.getX(), bar.getBottom() - b * bar.getHeight(), bar.getWidth(), (b - a) * bar.getHeight());
+            else
+                g.fillRect(bar.getX() + a * bar.getWidth(), bar.getY(), (b - a) * bar.getWidth(), bar.getHeight());
+        }
+        from = to;
+    }
+}
+
+// The peak hold line, red above 0 dBFS.
+void paintHold(juce::Graphics& g, juce::Rectangle<float> bar, float holdDb, bool vertical) {
+    const float hold = MeterBar::dbToProportion(holdDb);
+    if (hold <= 0.0f)
+        return;
+    g.setColour(holdDb > 0.0f ? DawColours::meterHigh() : DawColours::text());
+    if (vertical)
+        g.fillRect(bar.getX(), bar.getBottom() - hold * bar.getHeight() - 1.0f, bar.getWidth(), 2.0f);
+    else
+        g.fillRect(bar.getX() + hold * bar.getWidth() - 1.0f, bar.getY(), 2.0f, bar.getHeight());
+}
+} // namespace
+
 void MeterBar::paint(juce::Graphics& g) {
     g.fillAll(DawColours::background());
     const auto area = getLocalBounds().toFloat().reduced(1.0f);
     const bool vertical = orientation_ == Orientation::Vertical;
-    const float gap = 2.0f;
-
-    // Colour zones: green below -18 dBFS, yellow up to -6, red above.
-    const auto zoneColour = [](float db) {
-        return db > -6.0f ? DawColours::meterHigh() : (db > -18.0f ? DawColours::meterMid() : DawColours::meterLow());
-    };
-
     for (int ch = 0; ch < 2; ++ch) {
-        juce::Rectangle<float> bar;
-        if (vertical) {
-            const float w = (area.getWidth() - gap) * 0.5f;
-            bar = {area.getX() + static_cast<float>(ch) * (w + gap), area.getY(), w, area.getHeight()};
-        } else {
-            const float h = (area.getHeight() - gap) * 0.5f;
-            bar = {area.getX(), area.getY() + static_cast<float>(ch) * (h + gap), area.getWidth(), h};
-        }
+        const juce::Rectangle<float> bar = channelBar(area, ch, vertical);
         g.setColour(DawColours::panel());
         g.fillRect(bar);
-
-        // Draw the level in three segments so each zone keeps its colour.
-        const float level = dbToProportion(peak_[static_cast<size_t>(ch)]);
-        const float zones[] = {dbToProportion(-18.0f), dbToProportion(-6.0f), 1.0f};
-        float from = 0.0f;
-        for (float to : zones) {
-            const float a = from, b = std::min(level, to);
-            if (b > a) {
-                g.setColour(zoneColour(MeterBar::kMinDb + (a + b) * 0.5f * (MeterBar::kMaxDb - MeterBar::kMinDb)));
-                if (vertical)
-                    g.fillRect(bar.getX(), bar.getBottom() - b * bar.getHeight(), bar.getWidth(), (b - a) * bar.getHeight());
-                else
-                    g.fillRect(bar.getX() + a * bar.getWidth(), bar.getY(), (b - a) * bar.getWidth(), bar.getHeight());
-            }
-            from = to;
-        }
-        // Peak hold line
-        const float hold = dbToProportion(hold_[static_cast<size_t>(ch)]);
-        if (hold > 0.0f) {
-            g.setColour(hold_[static_cast<size_t>(ch)] > 0.0f ? DawColours::meterHigh() : DawColours::text());
-            if (vertical)
-                g.fillRect(bar.getX(), bar.getBottom() - hold * bar.getHeight() - 1.0f, bar.getWidth(), 2.0f);
-            else
-                g.fillRect(bar.getX() + hold * bar.getWidth() - 1.0f, bar.getY(), 2.0f, bar.getHeight());
-        }
+        paintLevel(g, bar, dbToProportion(peak_[static_cast<size_t>(ch)]), vertical);
+        paintHold(g, bar, hold_[static_cast<size_t>(ch)], vertical);
     }
     // 0 dBFS tick
     g.setColour(DawColours::textDim());
