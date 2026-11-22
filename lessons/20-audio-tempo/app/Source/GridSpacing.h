@@ -40,17 +40,27 @@ struct BarGrid {
 inline constexpr double kMaxBar = 1099511627776.0;
 inline constexpr int64_t kMaxStep = int64_t{1} << 40; // one line for the whole of that range
 
+// Can barGrid() draw this range at all? Not with a NaN or an infinity, with no pixels, with no
+// distance between lines, with nothing in the range, or with a range past kMaxBar.
+inline bool isDrawableRange(double firstBar, double lastBar, double widthPx, double minPx) {
+    return std::isfinite(firstBar) && std::isfinite(lastBar) && std::isfinite(widthPx) && std::isfinite(minPx) &&
+           widthPx > 0.0 && minPx > 0.0 && lastBar > firstBar && lastBar <= kMaxBar;
+}
+
+// The smallest power of 2 that is at least barsPerLine, at most kMaxStep.
+inline int64_t lineStep(double barsPerLine) {
+    int64_t step = 1;
+    while (static_cast<double>(step) < barsPerLine && step < kMaxStep)
+        step *= 2;
+    return step;
+}
+
 inline BarGrid barGrid(double firstBar, double lastBar, double widthPx, double minPx) {
     BarGrid grid;
-    const bool usable = std::isfinite(firstBar) && std::isfinite(lastBar) && std::isfinite(widthPx) &&
-                        std::isfinite(minPx) && widthPx > 0.0 && minPx > 0.0 && lastBar > firstBar &&
-                        lastBar <= kMaxBar;
-    if (!usable)
+    if (!isDrawableRange(firstBar, lastBar, widthPx, minPx))
         return grid;
     grid.pxPerBar = widthPx / (lastBar - firstBar);
-    const double barsPerLine = minPx / grid.pxPerBar; // bars that fit into minPx pixels
-    while (static_cast<double>(grid.step) < barsPerLine && grid.step < kMaxStep)
-        grid.step *= 2;
+    grid.step = lineStep(minPx / grid.pxPerBar); // minPx / pxPerBar: the bars that fit into minPx pixels
     grid.first = static_cast<int64_t>(std::ceil(std::max(0.0, firstBar) / static_cast<double>(grid.step))) * grid.step;
     const int64_t last = static_cast<int64_t>(std::floor(lastBar / static_cast<double>(grid.step))) * grid.step;
     grid.count = last >= grid.first ? (last - grid.first) / grid.step + 1 : 0;
