@@ -77,6 +77,9 @@ private:
     // Applies `notes` as one step of the current gesture.
     void apply(std::vector<engine::Note> notes, const juce::String& name);
     std::int64_t snap(double tick, bool free) const noexcept;
+    // dragTo()'s parts: the grabbed note as the gesture makes it, and the name of its undo step.
+    engine::Note draggedNote(juce::Point<float> p, bool free) const;
+    static juce::String gestureName(Gesture gesture);
     // paint()'s parts, in the order it draws them.
     void paintRows(juce::Graphics&);
     void paintGrid(juce::Graphics&);

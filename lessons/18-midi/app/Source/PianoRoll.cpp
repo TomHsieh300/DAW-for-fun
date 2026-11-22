@@ -144,32 +144,7 @@ void PianoRoll::dragTo(juce::Point<float> p, juce::ModifierKeys mods) {
     if (clip == nullptr || gesture_ == Gesture::None || grabbedIndex_ < 0 || grabbedIndex_ >= static_cast<int>(clip->played.size()))
         return;
     std::vector<engine::Note> notes = clip->played;
-    engine::Note n = grabbed_;
-    const bool free = mods.isAltDown();
-    juce::String name;
-    switch (gesture_) {
-    case Gesture::Draw:
-    case Gesture::Resize: {
-        // The end follows the mouse, on the grid (rounded up to the line after it); at least one tick.
-        const double end = xToTick(p.x);
-        const std::int64_t snappedEnd =
-            free ? static_cast<std::int64_t>(std::round(end))
-                 : static_cast<std::int64_t>(std::ceil(end / static_cast<double>(grid_)) * static_cast<double>(grid_));
-        n.length = std::max<std::int64_t>(1, snappedEnd - n.start);
-        name = gesture_ == Gesture::Draw ? "Add note" : "Note length";
-        break;
-    }
-    case Gesture::Move:
-        n.start = snap(xToTick(p.x) - grabOffset_ + (free ? 0.0 : static_cast<double>(grid_) / 2.0), free);
-        n.pitch = yToPitch(p.y);
-        name = "Move note";
-        break;
-    case Gesture::Velocity:
-        n.velocity = std::clamp(grabbed_.velocity + static_cast<int>(std::lround((start_.y - p.y) / 2.0f)), 1, 127);
-        name = "Note velocity";
-        break;
-    case Gesture::None: return;
-    }
+    const engine::Note n = draggedNote(p, mods.isAltDown());
     if (n == notes[static_cast<size_t>(grabbedIndex_)])
         return;
     notes[static_cast<size_t>(grabbedIndex_)] = n;
@@ -180,7 +155,45 @@ void PianoRoll::dragTo(juce::Point<float> p, juce::ModifierKeys mods) {
             grabbedIndex_ = i;
             break;
         }
-    apply(std::move(notes), name);
+    apply(std::move(notes), gestureName(gesture_));
+}
+
+// The grabbed note as the gesture makes it with the mouse at p (free: off the grid).
+engine::Note PianoRoll::draggedNote(juce::Point<float> p, bool free) const {
+    engine::Note n = grabbed_;
+    switch (gesture_) {
+    case Gesture::Draw:
+    case Gesture::Resize: {
+        // The end follows the mouse, on the grid (rounded up to the line after it); at least one tick.
+        const double end = xToTick(p.x);
+        const std::int64_t snappedEnd =
+            free ? static_cast<std::int64_t>(std::round(end))
+                 : static_cast<std::int64_t>(std::ceil(end / static_cast<double>(grid_)) * static_cast<double>(grid_));
+        n.length = std::max<std::int64_t>(1, snappedEnd - n.start);
+        break;
+    }
+    case Gesture::Move:
+        n.start = snap(xToTick(p.x) - grabOffset_ + (free ? 0.0 : static_cast<double>(grid_) / 2.0), free);
+        n.pitch = yToPitch(p.y);
+        break;
+    case Gesture::Velocity:
+        n.velocity = std::clamp(grabbed_.velocity + static_cast<int>(std::lround((start_.y - p.y) / 2.0f)), 1, 127);
+        break;
+    case Gesture::None: break;
+    }
+    return n;
+}
+
+// The undo step's name.
+juce::String PianoRoll::gestureName(Gesture gesture) {
+    switch (gesture) {
+    case Gesture::Draw: return "Add note";
+    case Gesture::Resize: return "Note length";
+    case Gesture::Move: return "Move note";
+    case Gesture::Velocity: return "Note velocity";
+    case Gesture::None: break;
+    }
+    return {};
 }
 
 void PianoRoll::release() {
