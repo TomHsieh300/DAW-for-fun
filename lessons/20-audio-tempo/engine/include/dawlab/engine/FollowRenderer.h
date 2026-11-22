@@ -138,39 +138,51 @@ private:
     void run() {
         std::unique_lock<std::mutex> lock(mutex_);
         for (;;) {
-            wake_.wait(lock, [this] { return stop_ || !waiting_.empty(); });
+            wake_.wait(lock, [this] { return hasWork(); });
             if (stop_)
                 return;
-            Job job = std::move(waiting_.front());
-            waiting_.pop_front();
-            busy_ = true;
-            current_ = job.key;
-            cancel_.store(false, std::memory_order_relaxed);
-            started_.fetch_add(1, std::memory_order_relaxed);
+            Job job = startJob();
             lock.unlock();
-
-            // A render that is not done was cancelled - a newer request follows, or nobody wants it - or it cannot
-            // be made: that comes back too, as one that failed, or its track would wait for it for ever. An
-            // exception must not leave this thread: it would end the program.
             Result result{job.key, job.generation, {}};
-            bool done = false;
-            try {
-                done = renderFollowClip(job.clip, job.map, job.sampleRate, result.clip, &cancel_);
-                result.ok = done || cancel_.load(std::memory_order_relaxed);
-            } catch (const std::bad_alloc&) {
-                result.ok = false;
-            }
+            const bool done = render(job, result);
             job = Job{}; // the clip's buffers are let go outside the lock
-
             lock.lock();
-            busy_ = false;
-            if (done)
-                completed_.fetch_add(1, std::memory_order_relaxed);
-            if ((done || !result.ok) && !stop_)
-                finished_.push_back(std::move(result));
-            if (waiting_.empty())
-                idle_.notify_all();
+            finishJob(std::move(result), done);
         }
+    }
+
+    // ---- run(), one part at a time (the first and the last under the lock) ----
+    bool hasWork() const noexcept { return stop_ || !waiting_.empty(); }
+    Job startJob() {
+        Job job = std::move(waiting_.front());
+        waiting_.pop_front();
+        busy_ = true;
+        current_ = job.key;
+        cancel_.store(false, std::memory_order_relaxed);
+        started_.fetch_add(1, std::memory_order_relaxed);
+        return job;
+    }
+    // A render that is not done was cancelled - a newer request follows, or nobody wants it - or it cannot be
+    // made: that comes back too, as one that failed, or its track would wait for it for ever. An exception must
+    // not leave this thread: it would end the program. True if done.
+    bool render(const Job& job, Result& result) {
+        bool done = false;
+        try {
+            done = renderFollowClip(job.clip, job.map, job.sampleRate, result.clip, &cancel_);
+            result.ok = done || cancel_.load(std::memory_order_relaxed);
+        } catch (const std::bad_alloc&) {
+            result.ok = false;
+        }
+        return done;
+    }
+    void finishJob(Result result, bool done) {
+        busy_ = false;
+        if (done)
+            completed_.fetch_add(1, std::memory_order_relaxed);
+        if ((done || !result.ok) && !stop_)
+            finished_.push_back(std::move(result));
+        if (waiting_.empty())
+            idle_.notify_all();
     }
 
     mutable std::mutex mutex_;
@@ -207,40 +219,14 @@ public:
         const bool mapIsTheSame = hasMap_ && sampleRate == sampleRate_ && sameMap(map, map_);
         std::vector<Entry> next;
         next.reserve(clips.size());
-        for (size_t i = 0; i < clips.size(); ++i) {
-            Entry e;
-            int found = takeOver(clips[i], true);
-            const bool same = found >= 0;
-            if (!same)
-                found = takeOver(clips[i], false); // the same audio somewhere else: a move
-            if (found >= 0) {
-                e = std::move(entries_[static_cast<size_t>(found)]);
-                entries_[static_cast<size_t>(found)].key = 0; // taken over
-            } else {
-                e.key = renderer_.newKey();
-            }
-            e.clip = std::move(clips[i]);
-            if (e.clip.isWarped() && e.clip.clip.source) {
-                if (same && mapIsTheSame && (e.waiting || e.hasRender || e.failed)) {
-                    carryOver(e.clip.clip, e.playing); // the render, the request on its way, or the failure still holds
-                } else {
-                    e.playing = placeholderFor(e.clip, e.hasRender ? &e.rendered : nullptr, map, sampleRate);
-                    carryOver(e.clip.clip, e.playing);
-                    e.generation = renderer_.request(e.key, e.clip, map, sampleRate);
-                    e.waiting = true;
-                    e.failed = false;
-                }
-            } else {
-                renderFollowClip(e.clip, map, sampleRate, e.playing); // Off, Start: no buffer to make
-                e.waiting = false;
-                e.hasRender = false;
-                e.failed = false;
-            }
+        for (FollowClip& clip : clips) {
+            bool same = false;
+            Entry e = entryFor(clip, same);
+            e.clip = std::move(clip);
+            place(e, same && mapIsTheSame, map, sampleRate);
             next.push_back(std::move(e));
         }
-        for (const Entry& old : entries_)
-            if (old.key != 0)
-                renderer_.forget(old.key);
+        forgetLeftovers();
         entries_ = std::move(next);
         map_ = map;
         sampleRate_ = sampleRate;
@@ -338,6 +324,49 @@ private:
         to.fadeShape = from.fadeShape;
         to.muted = from.muted;
         to.name = from.name;
+    }
+
+    // ---- update(), one part at a time ----
+    // The entry of the last update() that the clip takes over - the same audio with the same markers (`same`), else
+    // the same audio somewhere else: a move - or a new one with a new key.
+    Entry entryFor(const FollowClip& clip, bool& same) {
+        int found = takeOver(clip, true);
+        same = found >= 0;
+        if (!same)
+            found = takeOver(clip, false);
+        if (found < 0) {
+            Entry e;
+            e.key = renderer_.newKey();
+            return e;
+        }
+        Entry e = std::move(entries_[static_cast<size_t>(found)]);
+        entries_[static_cast<size_t>(found)].key = 0; // taken over
+        return e;
+    }
+    // What the entry plays now. `unchanged`: its markers and the map are the ones of its last render.
+    void place(Entry& e, bool unchanged, const TempoMap& map, double sampleRate) {
+        if (!e.clip.isWarped() || !e.clip.clip.source) {
+            renderFollowClip(e.clip, map, sampleRate, e.playing); // Off, Start: no buffer to make
+            e.waiting = false;
+            e.hasRender = false;
+            e.failed = false;
+            return;
+        }
+        if (unchanged && (e.waiting || e.hasRender || e.failed)) {
+            carryOver(e.clip.clip, e.playing); // the render, the request on its way, or the failure still holds
+            return;
+        }
+        e.playing = placeholderFor(e.clip, e.hasRender ? &e.rendered : nullptr, map, sampleRate);
+        carryOver(e.clip.clip, e.playing);
+        e.generation = renderer_.request(e.key, e.clip, map, sampleRate);
+        e.waiting = true;
+        e.failed = false;
+    }
+    // The entries of the last update() that no clip took over: their renders are not wanted any more.
+    void forgetLeftovers() {
+        for (const Entry& old : entries_)
+            if (old.key != 0)
+                renderer_.forget(old.key);
     }
 
     FollowRenderer& renderer_;
