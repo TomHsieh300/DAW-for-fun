@@ -94,6 +94,10 @@ private:
     void addFader();
     void addMuteAndSolo();
     engine::ChannelStrip* strip() noexcept;
+    // update()'s parts: the fader and its dB value, a send knob and its tooltip, a send's letter.
+    void updateFader(const engine::ChannelStrip& s);
+    void updateSendKnob(int bus, const engine::ChannelStrip& s);
+    void updateSendLabel(int bus, bool preFader);
     // Every control changes the project through Session::perform() (undoable, Step 9). A
     // continuous control (fader, knob) merges the steps of one drag into one entry; its drag
     // start and end close the merge, so two drags are two undo steps.

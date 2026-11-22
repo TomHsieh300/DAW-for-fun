@@ -93,6 +93,10 @@ private:
     void addFader();
     void addMuteAndSolo();
     engine::ChannelStrip& strip() noexcept;
+    // update()'s parts: the fader and its dB value, a send knob and its tooltip, a send's letter.
+    void updateFader(const engine::ChannelStrip& s);
+    void updateSendKnob(int bus, const engine::ChannelStrip& s);
+    void updateSendLabel(int bus, bool preFader);
 
     Session& session_;
     engine::ChannelRef ref_;

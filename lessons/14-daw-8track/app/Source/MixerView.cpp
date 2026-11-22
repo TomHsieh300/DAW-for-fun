@@ -75,26 +75,14 @@ public:
     }
 
     void paintButton(juce::Graphics& g, bool highlighted, bool down) override {
-        auto r = getLocalBounds().toFloat().reduced(0.5f);
-        const bool empty = text_.isEmpty();
-        auto bg = empty ? DawColours::background() : DawColours::panelLight();
-        if (kind_ == SlotKind::Vst3 && !empty)
-            bg = bg.interpolatedWith(DawColours::accent(), 0.15f);
-        if (highlighted)
-            bg = bg.brighter(0.08f);
-        if (down)
-            bg = bg.brighter(0.15f);
-        g.setColour(bg);
+        const auto r = getLocalBounds().toFloat().reduced(0.5f);
+        g.setColour(background(highlighted, down));
         g.fillRoundedRectangle(r, 2.5f);
         g.setColour(DawColours::outline());
         g.drawRoundedRectangle(r, 2.5f, 1.0f);
         auto textArea = getLocalBounds().reduced(4, 0);
         auto arrow = textArea.removeFromRight(kArrowWidth - 4);
-        g.setFont(DawLookAndFeel::uiFont(12.0f));
-        g.setColour(empty ? DawColours::textDim().withAlpha(0.5f) : (bypassed_ ? DawColours::textDim() : DawColours::text()));
-        g.drawText(empty ? juce::String("-") : text_, textArea, juce::Justification::centredLeft, true);
-        if (bypassed_)
-            g.drawLine(static_cast<float>(textArea.getX()), r.getCentreY(), static_cast<float>(textArea.getRight()), r.getCentreY(), 1.0f);
+        paintText(g, textArea, r.getCentreY());
         juce::Path tri;
         const auto c = arrow.toFloat().getCentre();
         tri.addTriangle(c.x - 3.5f, c.y - 2.0f, c.x + 3.5f, c.y - 2.0f, c.x, c.y + 2.5f);
@@ -103,6 +91,29 @@ public:
     }
 
 private:
+    // An empty slot is dark, a VST3 a little blue; lighter under the mouse, lighter still while held.
+    juce::Colour background(bool highlighted, bool down) const {
+        const bool empty = text_.isEmpty();
+        auto bg = empty ? DawColours::background() : DawColours::panelLight();
+        if (kind_ == SlotKind::Vst3 && !empty)
+            bg = bg.interpolatedWith(DawColours::accent(), 0.15f);
+        if (highlighted)
+            bg = bg.brighter(0.08f);
+        if (down)
+            bg = bg.brighter(0.15f);
+        return bg;
+    }
+
+    // The effect's name ("-" for none), dimmed and struck through when bypassed.
+    void paintText(juce::Graphics& g, juce::Rectangle<int> textArea, float centreY) const {
+        const bool empty = text_.isEmpty();
+        g.setFont(DawLookAndFeel::uiFont(12.0f));
+        g.setColour(empty ? DawColours::textDim().withAlpha(0.5f) : (bypassed_ ? DawColours::textDim() : DawColours::text()));
+        g.drawText(empty ? juce::String("-") : text_, textArea, juce::Justification::centredLeft, true);
+        if (bypassed_)
+            g.drawLine(static_cast<float>(textArea.getX()), centreY, static_cast<float>(textArea.getRight()), centreY, 1.0f);
+    }
+
     static constexpr int kArrowWidth = 16;
     ChannelStripView& owner_;
     int slot_;
@@ -301,43 +312,54 @@ void ChannelStripView::refreshStructure() {
 }
 
 void ChannelStripView::update() {
-    engine::ChannelStrip& s = strip();
+    const engine::ChannelStrip& s = strip();
     meter_.setLevels(s.getPeakDb(0), s.getPeakDb(1), s.getPeakHoldDb(0), s.getPeakHoldDb(1));
 
     // Values can change elsewhere (project load, keyboard shortcut, exercise code): follow them
     // unless the user is holding the control right now.
-    if (!fader_.isMouseButtonDown()) {
-        const float pos = FaderLaw::dbToPosition(s.getGainDb());
-        if (std::abs(static_cast<float>(fader_.getValue()) - pos) > 1e-4f) {
-            fader_.setValue(pos, juce::dontSendNotification);
-        }
-        gainLabel_.setText(FaderLaw::format(FaderLaw::positionToDb(static_cast<float>(fader_.getValue()))), juce::dontSendNotification);
-    }
+    updateFader(s);
     if (!pan_.isMouseButtonDown() && std::abs(pan_.getValue() - s.getPan()) > 1e-4)
         pan_.setValue(s.getPan(), juce::dontSendNotification);
     for (int b = 0; b < static_cast<int>(sends_.size()); ++b) {
-        auto& k = *sends_[static_cast<size_t>(b)];
-        const float db = std::max(FaderLaw::kBottomDb, s.getSendLevelDb(b));
-        if (!k.isMouseButtonDown() && std::abs(k.getValue() - db) > 0.05)
-            k.setValue(db, juce::dontSendNotification);
-        // A pre-fader send (Exercise 12's doubler bus, a cue mix) ignores the fader: say so.
-        const bool pre = s.isSendPreFader(b);
-        const juce::String tip = "Send to " + session_.getStripName(ChannelRef::bus(b)) +
-                                 (pre ? " (pre-fader: independent of the fader)" : " (post-fader)");
-        if (k.getTooltip() != tip)
-            k.setTooltip(tip);
-        const juce::String letter = juce::String::charToString(static_cast<juce::juce_wchar>('A' + b));
-        auto& label = *sendLabels_[static_cast<size_t>(b)];
-        const juce::String text = pre ? letter + " pre" : letter;
-        if (label.getText() != text) {
-            label.setText(text, juce::dontSendNotification);
-            label.setColour(juce::Label::textColourId, pre ? DawColours::accentWarm() : DawColours::textDim());
-        }
+        updateSendKnob(b, s);
+        updateSendLabel(b, s.isSendPreFader(b));
     }
     mute_.setToggleState(s.isMuted(), juce::dontSendNotification);
     solo_.setToggleState(s.isSoloed(), juce::dontSendNotification);
     if (ref_.kind == ChannelKind::Master && !ceiling_.isMouseButtonDown() && session_.hasMasterLimiter())
         ceiling_.setValue(session_.getMasterCeilingDb(), juce::dontSendNotification);
+}
+
+void ChannelStripView::updateFader(const engine::ChannelStrip& s) {
+    if (fader_.isMouseButtonDown())
+        return;
+    const float pos = FaderLaw::dbToPosition(s.getGainDb());
+    if (std::abs(static_cast<float>(fader_.getValue()) - pos) > 1e-4f) {
+        fader_.setValue(pos, juce::dontSendNotification);
+    }
+    gainLabel_.setText(FaderLaw::format(FaderLaw::positionToDb(static_cast<float>(fader_.getValue()))), juce::dontSendNotification);
+}
+
+void ChannelStripView::updateSendKnob(int bus, const engine::ChannelStrip& s) {
+    auto& k = *sends_[static_cast<size_t>(bus)];
+    const float db = std::max(FaderLaw::kBottomDb, s.getSendLevelDb(bus));
+    if (!k.isMouseButtonDown() && std::abs(k.getValue() - db) > 0.05)
+        k.setValue(db, juce::dontSendNotification);
+    // A pre-fader send (Exercise 12's doubler bus, a cue mix) ignores the fader: say so.
+    const juce::String tip = "Send to " + session_.getStripName(ChannelRef::bus(bus)) +
+                             (s.isSendPreFader(bus) ? " (pre-fader: independent of the fader)" : " (post-fader)");
+    if (k.getTooltip() != tip)
+        k.setTooltip(tip);
+}
+
+void ChannelStripView::updateSendLabel(int bus, bool preFader) {
+    const juce::String letter = juce::String::charToString(static_cast<juce::juce_wchar>('A' + bus));
+    auto& label = *sendLabels_[static_cast<size_t>(bus)];
+    const juce::String text = preFader ? letter + " pre" : letter;
+    if (label.getText() != text) {
+        label.setText(text, juce::dontSendNotification);
+        label.setColour(juce::Label::textColourId, preFader ? DawColours::accentWarm() : DawColours::textDim());
+    }
 }
 
 void ChannelStripView::paint(juce::Graphics& g) {
