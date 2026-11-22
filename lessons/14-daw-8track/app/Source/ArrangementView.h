@@ -141,6 +141,8 @@ private:
     void paintLaneHeader(juce::Graphics&, int track, juce::Rectangle<int> area);
     juce::String laneInfo(int track, const engine::ChannelStrip& strip) const;
     void paintClip(juce::Graphics&, int track, const engine::Clip& clip, juce::Rectangle<int> bounds, bool selected);
+    void paintWaveform(juce::Graphics&, const engine::Clip& clip, juce::Rectangle<int> bounds, juce::Rectangle<float> r,
+                       juce::Colour colour); // paintClip()'s waveform
     int clipAt(int track, float x) const;
     void seekToX(float x, bool snap);
     void dragClipTo(float x, bool snap); // mouseDrag()'s parts, one per kind of drag

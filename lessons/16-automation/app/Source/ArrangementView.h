@@ -200,6 +200,8 @@ private:
     void paintAutomationToggle(juce::Graphics&, int lane);
     void paintClip(juce::Graphics&, engine::TrackId track, const engine::Clip& clip, juce::Rectangle<int> bounds,
                    bool selected);
+    void paintWaveform(juce::Graphics&, const engine::Clip& clip, juce::Rectangle<int> bounds, juce::Rectangle<float> r,
+                       juce::Colour colour); // paintClip()'s waveform
     void paintAutomation(juce::Graphics&, int lane, juce::Rectangle<int> area);
     void mouseDownInAutomation(const juce::MouseEvent&, int lane);
     void showParameterMenu(engine::TrackId track);

@@ -534,39 +534,43 @@ void ArrangementView::paintClip(juce::Graphics& g, engine::TrackId track, const 
     g.setColour(selected ? DawColours::text() : colour.withAlpha(0.8f));
     g.drawRoundedRectangle(r, 3.0f, selected ? 1.5f : 1.0f);
 
-    // waveform: one vertical line per pixel column from the min to the max of the buckets it covers
-    if (clip.source != nullptr && clip.source->getNumSamples() > 0) {
-        const auto& peaks = waveforms_.get(clip.source);
-        const float gain = dbToGain(clip.gainDb);
-        const float midY = r.getCentreY() + 5.0f;
-        const float halfH = (r.getHeight() - 14.0f) * 0.5f;
-        const int x0 = std::max(bounds.getX(), kHeaderWidth);
-        const int x1 = std::min(bounds.getRight(), getWidth());
-        g.setColour(colour.withAlpha(0.85f));
-        const int numBuckets = static_cast<int>(peaks.minimum.size());
-        for (int px = x0; px < x1; ++px) {
-            const double t0 = xToSample(static_cast<float>(px)) - static_cast<double>(clip.start) + static_cast<double>(clip.sourceOffset);
-            const double t1 = t0 + samplesPerPixel_;
-            int b0 = static_cast<int>(std::floor(t0 / WaveformCache::kSamplesPerBucket));
-            int b1 = static_cast<int>(std::ceil(t1 / WaveformCache::kSamplesPerBucket));
-            b0 = std::clamp(b0, 0, numBuckets);
-            b1 = std::clamp(std::max(b1, b0 + 1), 0, numBuckets);
-            if (b0 >= b1)
-                continue;
-            float lo = 0.0f, hi = 0.0f;
-            for (int b = b0; b < b1; ++b) {
-                lo = std::min(lo, peaks.minimum[static_cast<size_t>(b)]);
-                hi = std::max(hi, peaks.maximum[static_cast<size_t>(b)]);
-            }
-            const float yTop = midY - std::min(1.0f, hi * gain) * halfH;
-            const float yBottom = midY - std::max(-1.0f, lo * gain) * halfH;
-            g.drawVerticalLine(px, yTop, std::max(yBottom, yTop + 1.0f));
-        }
-    }
+    if (clip.source != nullptr && clip.source->getNumSamples() > 0)
+        paintWaveform(g, clip, bounds, r, colour.withAlpha(0.85f));
     if (bounds.getWidth() > 30) {
         g.setColour(DawColours::text().withAlpha(0.9f));
         g.setFont(DawLookAndFeel::uiFont(11.0f));
         g.drawText(juce::String(clip.name), bounds.reduced(4, 1).withHeight(13), juce::Justification::topLeft, true);
+    }
+}
+
+// The clip's waveform in r: one vertical line per pixel column from the min to the max of the buckets it covers.
+void ArrangementView::paintWaveform(juce::Graphics& g, const Clip& clip, juce::Rectangle<int> bounds, juce::Rectangle<float> r,
+                                    juce::Colour colour) {
+    const auto& peaks = waveforms_.get(clip.source);
+    const float gain = dbToGain(clip.gainDb);
+    const float midY = r.getCentreY() + 5.0f;
+    const float halfH = (r.getHeight() - 14.0f) * 0.5f;
+    const int x0 = std::max(bounds.getX(), kHeaderWidth);
+    const int x1 = std::min(bounds.getRight(), getWidth());
+    g.setColour(colour);
+    const int numBuckets = static_cast<int>(peaks.minimum.size());
+    for (int px = x0; px < x1; ++px) {
+        const double t0 = xToSample(static_cast<float>(px)) - static_cast<double>(clip.start) + static_cast<double>(clip.sourceOffset);
+        const double t1 = t0 + samplesPerPixel_;
+        int b0 = static_cast<int>(std::floor(t0 / WaveformCache::kSamplesPerBucket));
+        int b1 = static_cast<int>(std::ceil(t1 / WaveformCache::kSamplesPerBucket));
+        b0 = std::clamp(b0, 0, numBuckets);
+        b1 = std::clamp(std::max(b1, b0 + 1), 0, numBuckets);
+        if (b0 >= b1)
+            continue;
+        float lo = 0.0f, hi = 0.0f;
+        for (int b = b0; b < b1; ++b) {
+            lo = std::min(lo, peaks.minimum[static_cast<size_t>(b)]);
+            hi = std::max(hi, peaks.maximum[static_cast<size_t>(b)]);
+        }
+        const float yTop = midY - std::min(1.0f, hi * gain) * halfH;
+        const float yBottom = midY - std::max(-1.0f, lo * gain) * halfH;
+        g.drawVerticalLine(px, yTop, std::max(yBottom, yTop + 1.0f));
     }
 }
 
