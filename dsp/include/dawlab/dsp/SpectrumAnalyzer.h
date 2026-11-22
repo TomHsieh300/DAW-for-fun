@@ -136,18 +136,12 @@ public:
         if (!ring_)
             return false;
         const uint64_t written = writePos_.load(std::memory_order_acquire);
-        const uint64_t n = static_cast<uint64_t>(fftSize_);
-        if (written < n)
-            return false; // a complete frame has not accumulated yet
-        if (written - lastFramePos_ < static_cast<uint64_t>(hop_))
-            return false; // fewer than one hop of new samples, so no new frame
+        if (!hasNewFrame(written))
+            return false;
 
         // Copy the latest N samples and multiply by the window
-        const uint64_t start = written - n;
-        for (uint64_t i = 0; i < n; ++i)
-            frame_[static_cast<size_t>(i)] =
-                ring_[static_cast<size_t>((start + i) & ringMask_)].load(std::memory_order_relaxed) *
-                window_[static_cast<size_t>(i)];
+        const uint64_t start = written - static_cast<uint64_t>(fftSize_);
+        copyWindowedFrame(start);
 
         // After reading, check whether the producer wrapped around and overwrote the region we just read.
         // What matters is writeEnd_ ("how far writing has started"), not writePos_ ("how far writing has finished"):
@@ -165,17 +159,7 @@ public:
         lastFramePos_ = written;
 
         fft_.forwardReal(frame_.data(), spectrum_.data());
-        const int bins = fft_.getNumRealBins();
-        magnitudesDb.resize(static_cast<size_t>(bins)); // UI thread, so allocating is fine
-        for (int k = 0; k < bins; ++k) {
-            const float scale = (k == 0 || k == bins - 1) ? normalization_ : 2.0f * normalization_;
-            const float magnitude = std::abs(spectrum_[static_cast<size_t>(k)]) * scale;
-            float& s = smoothed_[static_cast<size_t>(k)];
-            // Adopt the first frame as-is (otherwise the smoothing state starts at 0 and the first few frames read too low)
-            s = primed_ ? smoothing_ * s + (1.0f - smoothing_) * magnitude : magnitude;
-            magnitudesDb[static_cast<size_t>(k)] = gainToDb(s);
-        }
-        primed_ = true;
+        smoothMagnitudes(magnitudesDb);
         return true;
     }
 
@@ -192,6 +176,38 @@ public:
     uint64_t getPendingSamples() const noexcept { return writePos_.load(std::memory_order_acquire) - lastFramePos_; }
 
 private:
+    // ---- The steps of computeSpectrum() ---------------------------------------------------------
+    // Whether `written` samples make a new frame: a complete one, and at least one hop since the last
+    bool hasNewFrame(uint64_t written) const noexcept {
+        if (written < static_cast<uint64_t>(fftSize_))
+            return false; // a complete frame has not accumulated yet
+        return written - lastFramePos_ >= static_cast<uint64_t>(hop_); // else fewer than one hop of new samples
+    }
+
+    // frame_ = the N samples from `start` on, times the window
+    void copyWindowedFrame(uint64_t start) noexcept {
+        const uint64_t n = static_cast<uint64_t>(fftSize_);
+        for (uint64_t i = 0; i < n; ++i)
+            frame_[static_cast<size_t>(i)] =
+                ring_[static_cast<size_t>((start + i) & ringMask_)].load(std::memory_order_relaxed) *
+                window_[static_cast<size_t>(i)];
+    }
+
+    // magnitudesDb = the smoothed magnitude of every bin of spectrum_, in dBFS
+    void smoothMagnitudes(std::vector<float>& magnitudesDb) {
+        const int bins = fft_.getNumRealBins();
+        magnitudesDb.resize(static_cast<size_t>(bins)); // UI thread, so allocating is fine
+        for (int k = 0; k < bins; ++k) {
+            const float scale = (k == 0 || k == bins - 1) ? normalization_ : 2.0f * normalization_;
+            const float magnitude = std::abs(spectrum_[static_cast<size_t>(k)]) * scale;
+            float& s = smoothed_[static_cast<size_t>(k)];
+            // Adopt the first frame as-is (otherwise the smoothing state starts at 0 and the first few frames read too low)
+            s = primed_ ? smoothing_ * s + (1.0f - smoothing_) * magnitude : magnitude;
+            magnitudesDb[static_cast<size_t>(k)] = gainToDb(s);
+        }
+        primed_ = true;
+    }
+
     // The producer's two-phase write (seqlock style):
     //   beginWrite: first announce "I am going to write up to pos + n" (writeEnd_), then place a release fence, and
     //               only then write the samples;
