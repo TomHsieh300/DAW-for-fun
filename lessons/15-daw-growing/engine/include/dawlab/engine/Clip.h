@@ -84,8 +84,34 @@ inline float clipFadeAt(const Clip& clip, int64_t i) noexcept {
 //
 // Sample accuracy: timeline sample T lands at dest index (T - timelineStart), exactly. There
 // is no rounding anywhere, because clip positions and the transport are both integers.
+namespace detail {
+// renderClip(), one part at a time.
+inline bool hasSound(const Clip& clip) noexcept {
+    return !clip.muted && clip.source && clip.length > 0 && clip.source->getNumChannels() > 0;
+}
+// The part of a clip that one block plays: n samples, from clipIndex0 inside the clip and srcIndex0 inside the
+// source buffer.
+struct ClipSpan {
+    int n = 0;
+    int64_t clipIndex0 = 0;
+    int64_t srcIndex0 = 0;
+    float gain = 1.0f;
+    bool hasFades = false;
+};
+// One channel of the span, added to d[0..n). Past the ends of the source (a clip longer than its source): silence.
+inline void addClipChannel(const Clip& clip, const ClipSpan& span, const float* s, int64_t srcLen, float* d) noexcept {
+    for (int i = 0; i < span.n; ++i) {
+        const int64_t si = span.srcIndex0 + i;
+        if (si < 0 || si >= srcLen)
+            continue;
+        const float g = span.hasFades ? span.gain * clipFadeAt(clip, span.clipIndex0 + i) : span.gain;
+        d[i] += s[si] * g;
+    }
+}
+} // namespace detail
+
 inline void renderClip(const Clip& clip, int64_t timelineStart, AudioBlock dest) noexcept {
-    if (clip.muted || !clip.source || clip.length <= 0 || clip.source->getNumChannels() <= 0)
+    if (!detail::hasSound(clip))
         return;
     const AudioBuffer& src = *clip.source;
     const int64_t blockEnd = timelineStart + dest.getNumSamples();
@@ -94,25 +120,16 @@ inline void renderClip(const Clip& clip, int64_t timelineStart, AudioBlock dest)
     if (to <= from)
         return;
 
-    const float gain = dbToGain(clip.gainDb);
-    const int n = static_cast<int>(to - from);
+    detail::ClipSpan span;
+    span.n = static_cast<int>(to - from);
+    span.clipIndex0 = from - clip.start;                  // index inside the clip
+    span.srcIndex0 = clip.sourceOffset + span.clipIndex0; // index inside the source buffer
+    span.gain = dbToGain(clip.gainDb);
+    span.hasFades = clip.fadeInSamples > 0 || clip.fadeOutSamples > 0;
     const int destOffset = static_cast<int>(from - timelineStart);
-    const int64_t clipIndex0 = from - clip.start;             // index inside the clip
-    const int64_t srcIndex0 = clip.sourceOffset + clipIndex0; // index inside the source buffer
-    const bool hasFades = clip.fadeInSamples > 0 || clip.fadeOutSamples > 0;
-    const int64_t srcLen = src.getNumSamples();
-
     for (int ch = 0; ch < dest.getNumChannels(); ++ch) {
-        const int srcCh = std::min(ch, src.getNumChannels() - 1);
-        const float* s = src.getReadPointer(srcCh);
-        float* d = dest.getChannelPointer(ch) + destOffset;
-        for (int i = 0; i < n; ++i) {
-            const int64_t si = srcIndex0 + i;
-            if (si < 0 || si >= srcLen)
-                continue; // the clip is longer than its source: silence
-            const float g = hasFades ? gain * clipFadeAt(clip, clipIndex0 + i) : gain;
-            d[i] += s[si] * g;
-        }
+        const float* s = src.getReadPointer(std::min(ch, src.getNumChannels() - 1));
+        detail::addClipChannel(clip, span, s, src.getNumSamples(), dest.getChannelPointer(ch) + destOffset);
     }
 }
 
