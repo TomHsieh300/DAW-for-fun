@@ -181,74 +181,13 @@ public:
         // is just a plain mov on x86)
         GateState state = state_.load(std::memory_order_relaxed);
 
+        // One function per state: each moves the gain one sample and returns the state for the next sample
         switch (state) {
-        case GateState::Closed:
-            if (gainDb_ == rangeDb_) {
-                gain_ = rangeGain_;
-            } else {
-                // The range was changed while the gate was closed: glide there using the attack slope going up and the release
-                // slope going down (at least 0.01 dB/sample)
-                if (gainDb_ < rangeDb_)
-                    gainDb_ = std::min(rangeDb_, gainDb_ + std::max(attackStepDb_, kMinRangeGlideDbPerSample));
-                else
-                    gainDb_ = std::max(rangeDb_, gainDb_ - std::max(releaseStepDb_, kMinRangeGlideDbPerSample));
-                gain_ = gainDb_ == rangeDb_ ? rangeGain_ : dbToGain(gainDb_);
-            }
-            if (aboveOpen)
-                state = GateState::Attack;
-            break;
-
-        case GateState::Attack:
-            // Once triggered, open all the way (so the transient passes completely); the threshold is only looked at again
-            // after reaching 0 dB
-            gainDb_ += attackStepDb_;
-            if (gainDb_ >= 0.0f) {
-                gainDb_ = 0.0f;
-                gain_ = 1.0f;
-                state = GateState::Open;
-            } else {
-                gain_ = dbToGain(gainDb_);
-            }
-            break;
-
-        case GateState::Open:
-            gainDb_ = 0.0f;
-            gain_ = 1.0f;
-            if (belowClose) {
-                if (holdSamples_ > 0) {
-                    holdCounter_ = holdSamples_;
-                    state = GateState::Hold;
-                } else {
-                    state = GateState::Release;
-                }
-            }
-            break;
-
-        case GateState::Hold:
-            // During hold the gain stays at 0 dB; if the signal returns above the threshold, go back to Open (the counter is voided)
-            if (aboveOpen)
-                state = GateState::Open;
-            else if (--holdCounter_ <= 0)
-                state = GateState::Release;
-            break;
-
-        case GateState::Release:
-            if (aboveOpen) {
-                state = GateState::Attack; // climb from the current gain, no jump
-            } else if (gainDb_ <= rangeDb_) {
-                // This only happens when the range is raised (less attenuation) in the middle of a release: hand over to the
-                // Closed state to glide up slowly, with no jump
-                state = GateState::Closed;
-            } else {
-                gainDb_ = std::max(rangeDb_, gainDb_ - releaseStepDb_);
-                if (gainDb_ <= rangeDb_) {
-                    gain_ = rangeGain_;
-                    state = GateState::Closed;
-                } else {
-                    gain_ = dbToGain(gainDb_);
-                }
-            }
-            break;
+        case GateState::Closed: state = stepClosed(aboveOpen); break;
+        case GateState::Attack: state = stepAttack(); break;
+        case GateState::Open: state = stepOpen(belowClose); break;
+        case GateState::Hold: state = stepHold(aboveOpen); break;
+        case GateState::Release: state = stepRelease(aboveOpen); break;
         }
         state_.store(state, std::memory_order_relaxed);
         return gain_;
@@ -265,6 +204,72 @@ public:
     }
 
 private:
+    // ---- The five states of nextGain() ----------------------------------------------------
+    GateState stepClosed(bool aboveOpen) noexcept {
+        if (gainDb_ == rangeDb_)
+            gain_ = rangeGain_;
+        else
+            glideToRange();
+        return aboveOpen ? GateState::Attack : GateState::Closed;
+    }
+
+    // The range was changed while the gate was closed: glide there using the attack slope going up and the release
+    // slope going down (at least 0.01 dB/sample)
+    void glideToRange() noexcept {
+        if (gainDb_ < rangeDb_)
+            gainDb_ = std::min(rangeDb_, gainDb_ + std::max(attackStepDb_, kMinRangeGlideDbPerSample));
+        else
+            gainDb_ = std::max(rangeDb_, gainDb_ - std::max(releaseStepDb_, kMinRangeGlideDbPerSample));
+        gain_ = gainDb_ == rangeDb_ ? rangeGain_ : dbToGain(gainDb_);
+    }
+
+    // Once triggered, open all the way (so the transient passes completely); the threshold is only looked at again
+    // after reaching 0 dB
+    GateState stepAttack() noexcept {
+        gainDb_ += attackStepDb_;
+        if (gainDb_ >= 0.0f) {
+            gainDb_ = 0.0f;
+            gain_ = 1.0f;
+            return GateState::Open;
+        }
+        gain_ = dbToGain(gainDb_);
+        return GateState::Attack;
+    }
+
+    GateState stepOpen(bool belowClose) noexcept {
+        gainDb_ = 0.0f;
+        gain_ = 1.0f;
+        if (!belowClose)
+            return GateState::Open;
+        if (holdSamples_ <= 0)
+            return GateState::Release;
+        holdCounter_ = holdSamples_;
+        return GateState::Hold;
+    }
+
+    // During hold the gain stays at 0 dB; if the signal returns above the threshold, go back to Open (the counter is voided)
+    GateState stepHold(bool aboveOpen) noexcept {
+        if (aboveOpen)
+            return GateState::Open;
+        return --holdCounter_ <= 0 ? GateState::Release : GateState::Hold;
+    }
+
+    GateState stepRelease(bool aboveOpen) noexcept {
+        if (aboveOpen)
+            return GateState::Attack; // climb from the current gain, no jump
+        // gainDb_ <= rangeDb_ before the step only happens when the range is raised (less attenuation) in the middle
+        // of a release: hand over to the Closed state to glide up slowly, with no jump
+        if (gainDb_ <= rangeDb_)
+            return GateState::Closed;
+        gainDb_ = std::max(rangeDb_, gainDb_ - releaseStepDb_);
+        if (gainDb_ <= rangeDb_) {
+            gain_ = rangeGain_;
+            return GateState::Closed;
+        }
+        gain_ = dbToGain(gainDb_);
+        return GateState::Release;
+    }
+
     void copyFrom(const Gate& o) {
         sampleRate_ = o.sampleRate_;
         numChannels_ = o.numChannels_;

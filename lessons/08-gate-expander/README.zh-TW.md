@@ -447,7 +447,7 @@ threshold、ratio、knee、range 都直接出現在 gain 公式 $`g = \max(\text
 
 ### 3.2 `Gate.h`
 
-`enum class GateState { Closed, Attack, Open, Hold, Release }` 與 `gateStateName()`（印時間軸用）。`nextGain()` 是 2.4.2 節狀態機的 `switch`。幾個實作重點：
+`enum class GateState { Closed, Attack, Open, Hold, Release }` 與 `gateStateName()`（印時間軸用）。`nextGain()` 是 2.4.2 節狀態機的 `switch`：每個狀態一個私有函式（`stepClosed()`、`stepAttack()`、`stepOpen()`、`stepHold()`、`stepRelease()`），把 gain 推進一個 sample，並回傳下一個 sample 的狀態。幾個實作重點：
 
 - 偵測器固定 peak 模式、attack `Gate::kDetectorAttackMs` = 0.1 ms（要能抓到 transient），release 預設 20 ms，可用 `setDetectorReleaseMs()` 改。偵測器的 release 和 gate 的 release 是兩回事：前者決定 envelope 的漣漪大小（2.4.1 節，影響 hysteresis 要設多少），後者決定門關上的 fade 時間。
 - `setRangeDb()` 對正負號防呆：一律視為「衰減 |db| dB」。它的上限是 100 dB，`dbToGain` 在那裡已經給出靜音（−100 dB = `kMinusInfinityDb`）；更大的 range 聽不出差別，卻會讓 attack / release 的步幅（每 sample 幾 dB）變得極大，所以 −1e30 會讓門一步就打開，−inf 則讓步幅變成 inf − inf = NaN，門從此一直關著。`Gate`、`Expander`、`DeEsser` 共用這條規則：`DspMath.h` 的 `acceptRangeDb()`。門關著時改 range 不會瞬間跳變：Closed 狀態每個 sample 把 gain 往新的 range 滑一步（往上用 attack 斜率、往下用 release 斜率，至少 0.01 dB/sample），這樣第 14 章的 DAW 自動化 range 也不會有 click。
