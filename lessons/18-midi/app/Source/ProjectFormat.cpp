@@ -781,13 +781,18 @@ private:
         s.file = tok_[1].text;
         for (size_t i = 2; i < tok_.size(); i += 3) {
             TakeState t;
-            if (!parseNumber(tok_[i], t.start) || !isPosition(t.start) || !parseNumber(tok_[i + 1], t.sourceOffset) || !isPosition(t.sourceOffset) ||
-                !parseNumber(tok_[i + 2], t.length) || !isPosition(t.length, 1))
+            if (!parseTake(i, t))
                 return "a take needs a start and a source offset of 0 or more, and a length of at least 1 (each at most 2^40)";
             s.takes.push_back(t);
         }
         p_.takeSets.push_back(std::move(s));
         return "";
+    }
+
+    // The take whose start is tok_[first]: its start, source offset and length.
+    bool parseTake(size_t first, TakeState& t) const {
+        return parseNumber(tok_[first], t.start) && isPosition(t.start) && parseNumber(tok_[first + 1], t.sourceOffset) &&
+               isPosition(t.sourceOffset) && parseNumber(tok_[first + 2], t.length) && isPosition(t.length, 1);
     }
 
     // ---- instruments and MIDI clips (format 6) ----
@@ -843,14 +848,19 @@ private:
             return needsFormat(6);
         PendingNote e;
         e.line = lineNo_;
-        engine::Note& n = e.note;
-        if (tok_.size() != 7 || !parseNumber(tok_[1], e.clip) || !parseNumber(tok_[2], n.start) || !parseNumber(tok_[3], n.length) ||
-            !parseNumber(tok_[4], n.pitch) || !parseNumber(tok_[5], n.velocity) || !parseNumber(tok_[6], n.channel))
+        if (!parseNote(e))
             return "note needs a clip number, start, length, pitch, velocity and channel";
-        if (!noteInRange(n))
+        if (!noteInRange(e.note))
             return "a note needs a start of 0 or more, a length of at least 1 (both at most 2^40), a pitch 0-127, a velocity 1-127 and a channel 0-15";
         notes_.push_back(e);
         return "";
+    }
+
+    // A note line's seven tokens: the clip's number, then the note's start, length, pitch, velocity and channel.
+    bool parseNote(PendingNote& e) const {
+        engine::Note& n = e.note;
+        return tok_.size() == 7 && parseNumber(tok_[1], e.clip) && parseNumber(tok_[2], n.start) && parseNumber(tok_[3], n.length) &&
+               parseNumber(tok_[4], n.pitch) && parseNumber(tok_[5], n.velocity) && parseNumber(tok_[6], n.channel);
     }
 
     std::string readCc() {
@@ -875,8 +885,7 @@ private:
             return needsFormat(4);
         PendingLane l;
         l.line = lineNo_;
-        if (tok_.size() != 7 || !parseNumber(tok_[1], l.number) || l.number <= 0 || !parseChannel(tok_[2], l.channel) || !tok_[4].quoted ||
-            tok_[5].quoted)
+        if (!parseLaneHead(l))
             return "lane needs a number, a channel, a slot or -, a parameter in quotes, a mode and a default";
         if (tok_[3].text != "-" && !parseSlot(tok_[3], l.lane.slot))
             return "slot must be - or 0 .. " + std::to_string(kInsertSlotsPerStrip - 1);
@@ -889,6 +898,12 @@ private:
         return "";
     }
 
+    // A lane line's seven tokens: its number (1 or more), its channel, a parameter in quotes and a mode not in quotes.
+    bool parseLaneHead(PendingLane& l) const {
+        return tok_.size() == 7 && parseNumber(tok_[1], l.number) && l.number > 0 && parseChannel(tok_[2], l.channel) && tok_[4].quoted &&
+               !tok_[5].quoted;
+    }
+
     std::string readPoint() {
         if (version_ < 4)
             return needsFormat(4);
@@ -896,14 +911,22 @@ private:
         e.line = lineNo_;
         if (tok_.size() != 5 || !parseNumber(tok_[1], e.number) || tok_[4].quoted)
             return "point needs a lane number, a position, a value and a shape";
-        if (!parseNumber(tok_[2], e.point.position) || !isPosition(e.point.position))
+        const std::string problem = readPointValues(e.point);
+        if (!problem.empty())
+            return problem;
+        points_.push_back(e);
+        return "";
+    }
+
+    // A point's position, value and shape.
+    std::string readPointValues(PointState& point) const {
+        if (!parseNumber(tok_[2], point.position) || !isPosition(point.position))
             return "a point's position must be 0 to 2^40 samples";
-        if (!parseNumber(tok_[3], e.point.value) || !inRange(e.point.value, 0.0f, 1.0f))
+        if (!parseNumber(tok_[3], point.value) || !inRange(point.value, 0.0f, 1.0f))
             return "a point's value must be a number from 0 to 1";
         if (tok_[4].text != "linear" && tok_[4].text != "hold")
             return "unknown shape \"" + tok_[4].text + "\"";
-        e.point.hold = tok_[4].text == "hold";
-        points_.push_back(e);
+        point.hold = tok_[4].text == "hold";
         return "";
     }
 

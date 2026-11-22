@@ -710,8 +710,7 @@ private:
             return needsFormat(4);
         PendingLane l;
         l.line = lineNo_;
-        if (tok_.size() != 7 || !parseNumber(tok_[1], l.number) || l.number <= 0 || !parseChannel(tok_[2], l.channel) || !tok_[4].quoted ||
-            tok_[5].quoted)
+        if (!parseLaneHead(l))
             return "lane needs a number, a channel, a slot or -, a parameter in quotes, a mode and a default";
         if (tok_[3].text != "-" && !parseSlot(tok_[3], l.lane.slot))
             return "slot must be - or 0 .. " + std::to_string(kInsertSlotsPerStrip - 1);
@@ -724,6 +723,12 @@ private:
         return "";
     }
 
+    // A lane line's seven tokens: its number (1 or more), its channel, a parameter in quotes and a mode not in quotes.
+    bool parseLaneHead(PendingLane& l) const {
+        return tok_.size() == 7 && parseNumber(tok_[1], l.number) && l.number > 0 && parseChannel(tok_[2], l.channel) && tok_[4].quoted &&
+               !tok_[5].quoted;
+    }
+
     std::string readPoint() {
         if (version_ < 4)
             return needsFormat(4);
@@ -731,14 +736,22 @@ private:
         e.line = lineNo_;
         if (tok_.size() != 5 || !parseNumber(tok_[1], e.number) || tok_[4].quoted)
             return "point needs a lane number, a position, a value and a shape";
-        if (!parseNumber(tok_[2], e.point.position) || !isPosition(e.point.position))
+        const std::string problem = readPointValues(e.point);
+        if (!problem.empty())
+            return problem;
+        points_.push_back(e);
+        return "";
+    }
+
+    // A point's position, value and shape.
+    std::string readPointValues(PointState& point) const {
+        if (!parseNumber(tok_[2], point.position) || !isPosition(point.position))
             return "a point's position must be 0 to 2^40 samples";
-        if (!parseNumber(tok_[3], e.point.value) || !inRange(e.point.value, 0.0f, 1.0f))
+        if (!parseNumber(tok_[3], point.value) || !inRange(point.value, 0.0f, 1.0f))
             return "a point's value must be a number from 0 to 1";
         if (tok_[4].text != "linear" && tok_[4].text != "hold")
             return "unknown shape \"" + tok_[4].text + "\"";
-        e.point.hold = tok_[4].text == "hold";
-        points_.push_back(e);
+        point.hold = tok_[4].text == "hold";
         return "";
     }
 

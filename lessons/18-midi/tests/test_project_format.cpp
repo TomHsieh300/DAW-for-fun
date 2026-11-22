@@ -194,6 +194,7 @@ void testErrors() {
         {head + "tempo 120 4 4\ntempo 90 3 4\n", "line 5: tempo given twice"},
         {head + "loop 0 0 0\nloop 0 48000 1\n", "line 5: loop given twice"},
         {head + "master \"M\" 0 0 0\nmaster \"N\" 0 0 0\n", "line 5: master given twice"},
+        {head + "note 1 0 480 60 100 0\n", "line 4: \"note\" needs format 6"},
         // Each value of a track and a clip line in turn.
         {head + "track 0 \"B\" 0 0 mono 0 0\n", "line 4: bad track id \"0\""},
         {head + "track 2 B 0 0 mono 0 0\n", "line 4: the track name must be in quotes"},

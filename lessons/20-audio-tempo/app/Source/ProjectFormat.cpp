@@ -261,13 +261,16 @@ std::string markersProblem(const std::vector<engine::WarpMarker>& markers) {
     return "";
 }
 
-std::string followProblem(const ClipState& c) {
-    if (c.follow == engine::FollowMode::Off || c.follow == engine::FollowMode::Start) {
-        if (c.length <= 0)
-            return "clip length must be at least 1 sample";
-        const bool inSong = c.follow == engine::FollowMode::Off || (c.startTick >= 0.0 && c.startTick <= kMaxFollowValue);
-        return inSong ? "" : "a clip's start in ticks must be 0 or more (and at most 2^40)";
-    }
+// A clip that does not follow, or follows by its start: at least a sample long, and its tick within the song.
+std::string startClipProblem(const ClipState& c) {
+    if (c.length <= 0)
+        return "clip length must be at least 1 sample";
+    const bool inSong = c.follow == engine::FollowMode::Off || (c.startTick >= 0.0 && c.startTick <= kMaxFollowValue);
+    return inSong ? "" : "a clip's start in ticks must be 0 or more (and at most 2^40)";
+}
+
+// A clip that follows by varispeed or stretch: markers that make sense and cover what it plays.
+std::string warpedClipProblem(const ClipState& c) {
     if (c.markers.size() < 2)
         return "a clip that follows by varispeed or stretch needs at least two markers";
     const std::string problem = markersProblem(c.markers);
@@ -278,6 +281,12 @@ std::string followProblem(const ClipState& c) {
     if (from < c.markers.front().source - 1.0 || to > c.markers.back().source + 1.0)
         return "the markers must cover the part of the source that the clip plays";
     return "";
+}
+
+std::string followProblem(const ClipState& c) {
+    if (c.follow == engine::FollowMode::Off || c.follow == engine::FollowMode::Start)
+        return startClipProblem(c);
+    return warpedClipProblem(c);
 }
 
 // ---- writing --------------------------------------------------------------------------------------
@@ -701,20 +710,24 @@ private:
 
     std::string readLoop() {
         const bool ticks = version_ >= 7 && tok_.size() == 5 && tok_[4].text == "ticks";
-        if ((tok_.size() != 4 && !ticks) || !parseNumber(tok_[1], p_.loopStart) || !parseNumber(tok_[2], p_.loopEnd) ||
-            !parseFlag(tok_[3], p_.loopEnabled) || !isPosition(p_.loopStart) || !isPosition(p_.loopEnd, p_.loopStart))
+        if ((tok_.size() != 4 && !ticks) || !parseLoopValues())
             return version_ >= 7 ? "loop needs start >= 0, end >= start (at most 2^40), 0/1 and, for a loop in ticks, \"ticks\""
                                  : "loop needs start >= 0, end >= start (samples, at most 2^40) and 0/1";
         p_.loopInTicks = ticks;
         return "";
     }
 
+    // The loop's start and end (within 2^40, the end not before the start) and 0/1 for on.
+    bool parseLoopValues() {
+        return parseNumber(tok_[1], p_.loopStart) && parseNumber(tok_[2], p_.loopEnd) && parseFlag(tok_[3], p_.loopEnabled) &&
+               isPosition(p_.loopStart) && isPosition(p_.loopEnd, p_.loopStart);
+    }
+
     std::string readTempoPoint() {
         if (version_ < 7)
             return "tempopoint needs format 7";
         TempoPointState t;
-        if (tok_.size() != 4 || !parseNumber(tok_[1], t.tick) || !parseNumber(tok_[2], t.bpm) || !parseFlag(tok_[3], t.ramp) ||
-            !inRange(t.bpm, 20.0, 999.0) || !isPosition(t.tick))
+        if (!parseTempoPoint(t))
             return "tempopoint needs a tick (at most 2^40), BPM (20 .. 999) and 0/1";
         if (p_.tempoPoints.empty() ? t.tick != 0 : t.tick <= p_.tempoPoints.back().tick)
             return "tempo points start at tick 0, each after the one before";
@@ -722,6 +735,12 @@ private:
             return "more than " + std::to_string(kMaxTempoPoints) + " tempo points";
         p_.tempoPoints.push_back(t);
         return "";
+    }
+
+    // A tempopoint line's tick (within 2^40), BPM (20 .. 999) and 0/1 for a ramp.
+    bool parseTempoPoint(TempoPointState& t) const {
+        return tok_.size() == 4 && parseNumber(tok_[1], t.tick) && parseNumber(tok_[2], t.bpm) && parseFlag(tok_[3], t.ramp) &&
+               inRange(t.bpm, 20.0, 999.0) && isPosition(t.tick);
     }
 
     // ---- channels: tracks, buses, the master, and what is on them ----
@@ -912,6 +931,17 @@ private:
         return "";
     }
 
+    // Format 8: a marker or a cut needs a clip above it that follows by varispeed or stretch.
+    std::string checkWarpedClipAbove(const char* line) const {
+        const std::string problem = checkClipAbove();
+        if (!problem.empty())
+            return problem;
+        const engine::FollowMode follow = p_.clips.back().follow;
+        if (follow != engine::FollowMode::Varispeed && follow != engine::FollowMode::Stretch)
+            return std::string("a ") + line + " needs a clip above it that follows by varispeed or stretch";
+        return "";
+    }
+
     std::string readFollow() {
         const std::string problem = checkClipAbove();
         if (!problem.empty())
@@ -944,15 +974,12 @@ private:
     }
 
     std::string readMarker() {
-        const std::string problem = checkClipAbove();
+        const std::string problem = checkWarpedClipAbove("marker");
         if (!problem.empty())
             return problem;
         ClipState& c = p_.clips.back();
-        if (c.follow != engine::FollowMode::Varispeed && c.follow != engine::FollowMode::Stretch)
-            return "a marker needs a clip above it that follows by varispeed or stretch";
         engine::WarpMarker m;
-        if (tok_.size() != 3 || !parseNumber(tok_[1], m.source) || !parseNumber(tok_[2], m.tick) || !std::isfinite(m.source) ||
-            !std::isfinite(m.tick))
+        if (!parseMarker(m))
             return "marker needs a position in the source and a tick";
         if (!c.markers.empty() && (m.source <= c.markers.back().source || m.tick <= c.markers.back().tick))
             return "a marker must be after the one before it, in the source and in ticks";
@@ -960,25 +987,34 @@ private:
         return "";
     }
 
+    // A marker line's position in the source and tick, both finite.
+    bool parseMarker(engine::WarpMarker& m) const {
+        return tok_.size() == 3 && parseNumber(tok_[1], m.source) && parseNumber(tok_[2], m.tick) && std::isfinite(m.source) &&
+               std::isfinite(m.tick);
+    }
+
     // Format 9: what a cut left of a warped clip's first and last sample of the source.
     std::string readCut() {
         if (version_ < 9)
             return needsFormat(9);
-        const std::string problem = checkClipAbove();
+        const std::string problem = checkWarpedClipAbove("cut");
         if (!problem.empty())
             return problem;
         ClipState& c = p_.clips.back();
-        if (c.follow != engine::FollowMode::Varispeed && c.follow != engine::FollowMode::Stretch)
-            return "a cut needs a clip above it that follows by varispeed or stretch";
         if (cutOfClip_ == p_.clips.size())
             return "the clip above already has a \"cut\"";
-        if (tok_.size() != 3 || !parseNumber(tok_[1], c.headCut) || !parseNumber(tok_[2], c.tailCut) || !(c.headCut >= 0.0 && c.headCut < 1.0) ||
-            !(c.tailCut >= 0.0 && c.tailCut < 1.0))
+        if (!parseCut(c))
             return "cut needs two fractions of a sample, each 0 or more and less than 1";
         if (!(c.headCut + c.tailCut < static_cast<double>(c.sourceLength)))
             return "a cut must leave something of the source";
         cutOfClip_ = p_.clips.size();
         return "";
+    }
+
+    // A cut line's head and tail, each a fraction of a sample: 0 or more and less than 1.
+    bool parseCut(ClipState& c) const {
+        return tok_.size() == 3 && parseNumber(tok_[1], c.headCut) && parseNumber(tok_[2], c.tailCut) && c.headCut >= 0.0 && c.headCut < 1.0 &&
+               c.tailCut >= 0.0 && c.tailCut < 1.0;
     }
 
     std::string readTakes() {
@@ -990,13 +1026,18 @@ private:
         s.file = tok_[1].text;
         for (size_t i = 2; i < tok_.size(); i += 3) {
             TakeState t;
-            if (!parseNumber(tok_[i], t.start) || !isPosition(t.start) || !parseNumber(tok_[i + 1], t.sourceOffset) || !isPosition(t.sourceOffset) ||
-                !parseNumber(tok_[i + 2], t.length) || !isPosition(t.length, 1))
+            if (!parseTake(i, t))
                 return "a take needs a start and a source offset of 0 or more, and a length of at least 1 (each at most 2^40)";
             s.takes.push_back(t);
         }
         p_.takeSets.push_back(std::move(s));
         return "";
+    }
+
+    // The take whose start is tok_[first]: its start, source offset and length.
+    bool parseTake(size_t first, TakeState& t) const {
+        return parseNumber(tok_[first], t.start) && isPosition(t.start) && parseNumber(tok_[first + 1], t.sourceOffset) &&
+               isPosition(t.sourceOffset) && parseNumber(tok_[first + 2], t.length) && isPosition(t.length, 1);
     }
 
     // ---- instruments and MIDI clips ----
@@ -1096,14 +1137,19 @@ private:
             return needsFormat(6);
         PendingNote e;
         e.line = lineNo_;
-        engine::Note& n = e.note;
-        if (tok_.size() != 7 || !parseNumber(tok_[1], e.clip) || !parseNumber(tok_[2], n.start) || !parseNumber(tok_[3], n.length) ||
-            !parseNumber(tok_[4], n.pitch) || !parseNumber(tok_[5], n.velocity) || !parseNumber(tok_[6], n.channel))
+        if (!parseNote(e))
             return "note needs a clip number, start, length, pitch, velocity and channel";
-        if (!noteInRange(n))
+        if (!noteInRange(e.note))
             return "a note needs a start of 0 or more, a length of at least 1 (both at most 2^40), a pitch 0-127, a velocity 1-127 and a channel 0-15";
         notes_.push_back(e);
         return "";
+    }
+
+    // A note line's seven tokens: the clip's number, then the note's start, length, pitch, velocity and channel.
+    bool parseNote(PendingNote& e) const {
+        engine::Note& n = e.note;
+        return tok_.size() == 7 && parseNumber(tok_[1], e.clip) && parseNumber(tok_[2], n.start) && parseNumber(tok_[3], n.length) &&
+               parseNumber(tok_[4], n.pitch) && parseNumber(tok_[5], n.velocity) && parseNumber(tok_[6], n.channel);
     }
 
     std::string readCc() {
@@ -1128,8 +1174,7 @@ private:
             return needsFormat(4);
         PendingLane l;
         l.line = lineNo_;
-        if (tok_.size() != 7 || !parseNumber(tok_[1], l.number) || l.number <= 0 || !parseChannel(tok_[2], l.channel) || !tok_[4].quoted ||
-            tok_[5].quoted)
+        if (!parseLaneHead(l))
             return "lane needs a number, a channel, a slot or -, a parameter in quotes, a mode and a default";
         if (tok_[3].text != "-" && !parseSlot(tok_[3], l.lane.slot))
             return "slot must be - or 0 .. " + std::to_string(kInsertSlotsPerStrip - 1);
@@ -1142,6 +1187,12 @@ private:
         return "";
     }
 
+    // A lane line's seven tokens: its number (1 or more), its channel, a parameter in quotes and a mode not in quotes.
+    bool parseLaneHead(PendingLane& l) const {
+        return tok_.size() == 7 && parseNumber(tok_[1], l.number) && l.number > 0 && parseChannel(tok_[2], l.channel) && tok_[4].quoted &&
+               !tok_[5].quoted;
+    }
+
     std::string readPoint() {
         if (version_ < 4)
             return needsFormat(4);
@@ -1149,14 +1200,22 @@ private:
         e.line = lineNo_;
         if (tok_.size() != 5 || !parseNumber(tok_[1], e.number) || tok_[4].quoted)
             return "point needs a lane number, a position, a value and a shape";
-        if (!parseNumber(tok_[2], e.point.position) || !isPosition(e.point.position))
+        const std::string problem = readPointValues(e.point);
+        if (!problem.empty())
+            return problem;
+        points_.push_back(e);
+        return "";
+    }
+
+    // A point's position, value and shape.
+    std::string readPointValues(PointState& point) const {
+        if (!parseNumber(tok_[2], point.position) || !isPosition(point.position))
             return "a point's position must be 0 to 2^40 samples";
-        if (!parseNumber(tok_[3], e.point.value) || !inRange(e.point.value, 0.0f, 1.0f))
+        if (!parseNumber(tok_[3], point.value) || !inRange(point.value, 0.0f, 1.0f))
             return "a point's value must be a number from 0 to 1";
         if (tok_[4].text != "linear" && tok_[4].text != "hold")
             return "unknown shape \"" + tok_[4].text + "\"";
-        e.point.hold = tok_[4].text == "hold";
-        points_.push_back(e);
+        point.hold = tok_[4].text == "hold";
         return "";
     }
 
