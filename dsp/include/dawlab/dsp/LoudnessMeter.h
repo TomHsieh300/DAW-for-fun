@@ -217,6 +217,21 @@ private:
     // A 100 ms sub-block has ended: weight and sum the per-channel sums of squares, put the result into the
     // ring, and update the three loudness values
     void finishStep() noexcept {
+        pushStep();
+        // momentary: the latest 4 sub-blocks; short-term: the latest 30 (fewer if not that many have accumulated yet)
+        double momentaryPower = 0.0, shortTermPower = 0.0;
+        windowPowers(momentaryPower, shortTermPower);
+        const float momentaryLufs = powerToLufs(momentaryPower);
+        const float shortTermLufs = powerToLufs(shortTermPower);
+        momentary_.store(momentaryLufs, std::memory_order_relaxed);
+        shortTerm_.store(shortTermLufs, std::memory_order_relaxed);
+        updateMaxima(momentaryLufs, shortTermLufs);
+        addGatingBlock(momentaryLufs, momentaryPower);
+        updateCount_.fetch_add(1u, std::memory_order_relaxed);
+    }
+
+    // Weight and sum the per-channel sums of squares of the sub-block that ended, and put the result into the ring
+    void pushStep() noexcept {
         double weighted = 0.0;
         for (int ch = 0; ch < numChannels_; ++ch) {
             weighted += static_cast<double>(channelWeights_[static_cast<size_t>(ch)]) *
@@ -228,8 +243,11 @@ private:
         ringPos_ = (ringPos_ + 1) % kShortTermSteps;
         if (stepsSeen_ < kShortTermSteps)
             ++stepsSeen_;
+    }
 
-        // momentary: the latest 4 sub-blocks; short-term: the latest 30 (fewer if not that many have accumulated yet)
+    // The mean power of the latest 4 sub-blocks (momentary) and of the latest 30 (short-term), each over as many as
+    // have accumulated so far
+    void windowPowers(double& momentaryPower, double& shortTermPower) const noexcept {
         const int momentarySteps = std::min(stepsSeen_, kBlockSteps);
         const int shortTermSteps = stepsSeen_;
         double sumM = 0.0, sumS = 0.0;
@@ -240,31 +258,31 @@ private:
             if (k < momentarySteps)
                 sumM += v;
         }
-        const double momentaryPower = sumM / (static_cast<double>(momentarySteps) * stepSamples_);
-        const double shortTermPower = sumS / (static_cast<double>(shortTermSteps) * stepSamples_);
-        const float momentaryLufs = powerToLufs(momentaryPower);
-        const float shortTermLufs = powerToLufs(shortTermPower);
-        momentary_.store(momentaryLufs, std::memory_order_relaxed);
-        shortTerm_.store(shortTermLufs, std::memory_order_relaxed);
-        // The maxima are updated only once the window is full: in the first 400 ms / 3 s only 1-3 (or fewer
-        // than 30) sub-blocks are averaged, so a strong transient right at the start would be overestimated
-        // (e.g. a 100 ms burst averaged over 100 ms instead of 400 ms reads 6 dB too high), and the result
-        // would depend on where the content sits in the stream. The live momentary / short-term readings are
-        // still shown as usual so the UI reacts from the very beginning.
+        momentaryPower = sumM / (static_cast<double>(momentarySteps) * stepSamples_);
+        shortTermPower = sumS / (static_cast<double>(shortTermSteps) * stepSamples_);
+    }
+
+    // The maxima are updated only once the window is full: in the first 400 ms / 3 s only 1-3 (or fewer
+    // than 30) sub-blocks are averaged, so a strong transient right at the start would be overestimated
+    // (e.g. a 100 ms burst averaged over 100 ms instead of 400 ms reads 6 dB too high), and the result
+    // would depend on where the content sits in the stream. The live momentary / short-term readings are
+    // still shown as usual so the UI reacts from the very beginning.
+    void updateMaxima(float momentaryLufs, float shortTermLufs) noexcept {
         if (stepsSeen_ >= kBlockSteps && momentaryLufs > maxMomentary_.load(std::memory_order_relaxed))
             maxMomentary_.store(momentaryLufs, std::memory_order_relaxed);
         if (stepsSeen_ >= kShortTermSteps && shortTermLufs > maxShortTerm_.load(std::memory_order_relaxed))
             maxShortTerm_.store(shortTermLufs, std::memory_order_relaxed);
+    }
 
-        // integrated: only a complete 400 ms block counts as a gating block
-        if (stepsSeen_ >= kBlockSteps && momentaryLufs > kAbsoluteGateLufs) {
-            int bin = static_cast<int>(std::floor((momentaryLufs - kHistogramMinLufs) / kHistogramStepLu));
-            bin = std::clamp(bin, 0, kHistogramBins - 1);
-            ++histogramCount_[static_cast<size_t>(bin)];
-            histogramPower_[static_cast<size_t>(bin)] += momentaryPower;
-            integrated_.store(computeIntegrated(), std::memory_order_relaxed);
-        }
-        updateCount_.fetch_add(1u, std::memory_order_relaxed);
+    // integrated: only a complete 400 ms block counts as a gating block
+    void addGatingBlock(float momentaryLufs, double momentaryPower) noexcept {
+        if (!(stepsSeen_ >= kBlockSteps && momentaryLufs > kAbsoluteGateLufs))
+            return;
+        int bin = static_cast<int>(std::floor((momentaryLufs - kHistogramMinLufs) / kHistogramStepLu));
+        bin = std::clamp(bin, 0, kHistogramBins - 1);
+        ++histogramCount_[static_cast<size_t>(bin)];
+        histogramPower_[static_cast<size_t>(bin)] += momentaryPower;
+        integrated_.store(computeIntegrated(), std::memory_order_relaxed);
     }
 
     float computeIntegrated() const noexcept {
