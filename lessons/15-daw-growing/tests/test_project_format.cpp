@@ -193,6 +193,13 @@ void testErrors() {
         {head + "tempo 120 4 4\ntempo 90 3 4\n", "line 5: tempo given twice"},
         {head + "loop 0 0 0\nloop 0 48000 1\n", "line 5: loop given twice"},
         {head + "master \"M\" 0 0 0\nmaster \"N\" 0 0 0\n", "line 5: master given twice"},
+        // A channel or a number that is not one: in quotes, without its colon, empty, or negative where it cannot be.
+        {head + "send \"master\" 0 -6 0\n", "line 4: send needs"},
+        {head + "send track 0 -6 0\n", "line 4: send needs"},
+        {head + "send track: 0 -6 0\n", "line 4: send needs"},
+        {head + "send bus:2 0 -6 0\n", "line 4: send needs"},
+        {head + "tempo \"120\" 4 4\n", "line 4: tempo needs"},
+        {head + "nextTrackId -1\n", "line 4: nextTrackId needs one whole number"},
     };
     int ok = 0;
     for (const Case& c : cases) {

@@ -74,6 +74,14 @@ bool readQuoted(std::string_view line, size_t& i, Token& t, std::string& error) 
     return false;
 }
 
+// The bare token that starts at line[i]: `i` moves to the blank, quote or comment that ends it.
+Token readBare(std::string_view line, size_t& i) {
+    const size_t start = i;
+    while (i < line.size() && line[i] != ' ' && line[i] != '\t' && line[i] != '"' && line[i] != '#')
+        ++i;
+    return Token{std::string(line.substr(start, i - start)), false};
+}
+
 bool splitLine(std::string_view line, std::vector<Token>& out, std::string& error) {
     out.clear();
     size_t i = 0;
@@ -89,10 +97,7 @@ bool splitLine(std::string_view line, std::vector<Token>& out, std::string& erro
                 return false;
             out.push_back(std::move(t));
         } else {
-            const size_t start = i;
-            while (i < line.size() && line[i] != ' ' && line[i] != '\t' && line[i] != '"' && line[i] != '#')
-                ++i;
-            out.push_back(Token{std::string(line.substr(start, i - start)), false});
+            out.push_back(readBare(line, i));
         }
     }
     return true;
@@ -155,6 +160,19 @@ std::string channelText(ChannelName c) {
     return "?";
 }
 
+// The two sides of "track:17" or "bus:1": a track id of 1 or more, or a bus index below kNumBuses.
+bool parseNumberedChannel(const std::string& kind, const Token& number, ChannelName& out) {
+    if (kind == "track" && parseNumber(number, out.index) && out.index != 0) {
+        out.kind = ChannelName::Kind::Track;
+        return true;
+    }
+    if (kind == "bus" && parseNumber(number, out.index) && out.index < static_cast<std::uint32_t>(engine::kNumBuses)) {
+        out.kind = ChannelName::Kind::Bus;
+        return true;
+    }
+    return false;
+}
+
 bool parseChannel(const Token& token, ChannelName& out) {
     if (token.quoted)
         return false;
@@ -166,17 +184,7 @@ bool parseChannel(const Token& token, ChannelName& out) {
     const auto colon = t.find(':');
     if (colon == std::string::npos)
         return false;
-    const std::string kind = t.substr(0, colon);
-    Token number{t.substr(colon + 1), false};
-    if (kind == "track" && parseNumber(number, out.index) && out.index != 0) {
-        out.kind = ChannelName::Kind::Track;
-        return true;
-    }
-    if (kind == "bus" && parseNumber(number, out.index) && out.index < static_cast<std::uint32_t>(engine::kNumBuses)) {
-        out.kind = ChannelName::Kind::Bus;
-        return true;
-    }
-    return false;
+    return parseNumberedChannel(t.substr(0, colon), Token{t.substr(colon + 1), false}, out);
 }
 
 // ---- writing --------------------------------------------------------------------------------------
