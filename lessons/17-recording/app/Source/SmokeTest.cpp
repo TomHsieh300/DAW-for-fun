@@ -2118,6 +2118,52 @@ void testDialogs() {
 
 // ---- --smoke-test --------------------------------------------------------------------------------
 
+// ---- the arrangement's clicks on buttons and MIDI clips (batch 8) -------------------------------------
+// "R" arms a track, "I" turns its monitor, a right click on either asks for the record menu, and without a
+// callback a click does nothing.
+juce::MouseEvent arrangementClickEvent(ArrangementView& view, juce::Point<int> at, juce::ModifierKeys mods, int clicks) {
+    const juce::Point<float> p = at.toFloat();
+    return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), p, mods, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &view, &view,
+                            juce::Time::getCurrentTime(), p, juce::Time::getCurrentTime(), clicks, false);
+}
+
+void arrangementClick(ArrangementView& view, juce::Point<int> at, juce::ModifierKeys mods, int clicks = 1) {
+    view.mouseDown(arrangementClickEvent(view, at, mods, clicks));
+    view.mouseUp(arrangementClickEvent(view, at, mods, clicks));
+}
+
+void testRecordButtonClicks() {
+    std::printf("the arrangement's R and I buttons\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    main.setSize(MainComponent::kDefaultWidth, MainComponent::kDefaultHeight);
+    DAWLAB_CHECK(main.loadDemoSongNow() == 0);
+    ArrangementView& view = main.getArrangement();
+    const TrackId track = main.getSession().getTrackId(1);
+    const juce::ModifierKeys left(juce::ModifierKeys::leftButtonModifier), right(juce::ModifierKeys::rightButtonModifier);
+    std::vector<std::pair<std::string, TrackId>> calls;
+    view.onArmClicked = [&calls](TrackId t) { calls.emplace_back("arm", t); };
+    view.onMonitorClicked = [&calls](TrackId t) { calls.emplace_back("monitor", t); };
+    view.onRecordMenu = [&calls](TrackId t) { calls.emplace_back("menu", t); };
+    const juce::Point<int> arm = view.getArmBounds(1).getCentre(), monitor = view.getMonitorBounds(1).getCentre();
+    arrangementClick(view, arm, left);
+    arrangementClick(view, monitor, left);
+    arrangementClick(view, arm, right);
+    arrangementClick(view, monitor, right);
+    std::printf("   R, I, right click on R and on I: %d calls\n", static_cast<int>(calls.size()));
+    const std::vector<std::pair<std::string, TrackId>> expected{{"arm", track}, {"monitor", track}, {"menu", track}, {"menu", track}};
+    DAWLAB_CHECK(calls == expected);
+    view.onArmClicked = view.onMonitorClicked = view.onRecordMenu = nullptr;
+    arrangementClick(view, arm, left);
+    arrangementClick(view, monitor, left);
+    arrangementClick(view, arm, right);
+    DAWLAB_CHECK(calls.size() == 4 && view.getSelectedTrack() == track);
+}
+
+void testArrangementClicks() {
+    testRecordButtonClicks();
+}
+
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     constexpr double sr = 48000.0;
     std::setvbuf(stdout, nullptr, _IONBF, 0); // unbuffered: a crash must not swallow what was printed
@@ -2125,6 +2171,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testBarGrid();
     testSlotButtons();
     testArrangementMouse();
+    testArrangementClicks();
     testOddInserts();
     testPluginInsert();
     testDeviceErrors();

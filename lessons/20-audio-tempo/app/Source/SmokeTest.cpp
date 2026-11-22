@@ -3790,6 +3790,149 @@ void testDialogs() {
 
 // ---- --smoke-test --------------------------------------------------------------------------------
 
+// ---- the arrangement's clicks on buttons and MIDI clips (batch 8) -------------------------------------
+// "R" arms a track, "I" turns its monitor, a right click on either asks for the record menu, and without a
+// callback a click does nothing. On an instrument track (chapter 18) a double click on nothing makes a MIDI clip of
+// one bar, from the bar the click is in, and opens it; a double click on a MIDI clip opens it, a right click
+// asks for its menu.
+juce::MouseEvent arrangementClickEvent(ArrangementView& view, juce::Point<int> at, juce::ModifierKeys mods, int clicks) {
+    const juce::Point<float> p = at.toFloat();
+    return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), p, mods, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &view, &view,
+                            juce::Time::getCurrentTime(), p, juce::Time::getCurrentTime(), clicks, false);
+}
+
+void arrangementClick(ArrangementView& view, juce::Point<int> at, juce::ModifierKeys mods, int clicks = 1) {
+    view.mouseDown(arrangementClickEvent(view, at, mods, clicks));
+    view.mouseUp(arrangementClickEvent(view, at, mods, clicks));
+}
+
+void testRecordButtonClicks() {
+    std::printf("the arrangement's R and I buttons\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    main.setSize(MainComponent::kDefaultWidth, MainComponent::kDefaultHeight);
+    DAWLAB_CHECK(main.loadDemoSongNow() == 0);
+    ArrangementView& view = main.getArrangement();
+    const TrackId track = main.getSession().getTrackId(1);
+    const juce::ModifierKeys left(juce::ModifierKeys::leftButtonModifier), right(juce::ModifierKeys::rightButtonModifier);
+    std::vector<std::pair<std::string, TrackId>> calls;
+    view.onArmClicked = [&calls](TrackId t) { calls.emplace_back("arm", t); };
+    view.onMonitorClicked = [&calls](TrackId t) { calls.emplace_back("monitor", t); };
+    view.onRecordMenu = [&calls](TrackId t) { calls.emplace_back("menu", t); };
+    const juce::Point<int> arm = view.getArmBounds(1).getCentre(), monitor = view.getMonitorBounds(1).getCentre();
+    arrangementClick(view, arm, left);
+    arrangementClick(view, monitor, left);
+    arrangementClick(view, arm, right);
+    arrangementClick(view, monitor, right);
+    std::printf("   R, I, right click on R and on I: %d calls\n", static_cast<int>(calls.size()));
+    const std::vector<std::pair<std::string, TrackId>> expected{{"arm", track}, {"monitor", track}, {"menu", track}, {"menu", track}};
+    DAWLAB_CHECK(calls == expected);
+    view.onArmClicked = view.onMonitorClicked = view.onRecordMenu = nullptr;
+    arrangementClick(view, arm, left);
+    arrangementClick(view, monitor, left);
+    arrangementClick(view, arm, right);
+    DAWLAB_CHECK(calls.size() == 4 && view.getSelectedTrack() == track);
+}
+
+void testMidiClipClicks() {
+    std::printf("the arrangement's clicks on an instrument track\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    main.setSize(MainComponent::kDefaultWidth, MainComponent::kDefaultHeight);
+    Session& session = main.getSession();
+    session.newProject();
+    ArrangementView& view = main.getArrangement();
+    const TrackId synth = main.addTrack(TrackFormat::Mono, true);
+    view.scrollToTrack(synth);
+    std::vector<std::pair<std::string, int>> calls;
+    view.onEditMidiClip = [&calls, synth](TrackId t, int clip) { calls.emplace_back(t == synth ? "edit" : "edit elsewhere", clip); };
+    view.onMidiClipMenu = [&calls, synth](TrackId t, int clip) { calls.emplace_back(t == synth ? "menu" : "menu elsewhere", clip); };
+    const juce::ModifierKeys left(juce::ModifierKeys::leftButtonModifier), right(juce::ModifierKeys::rightButtonModifier);
+    const Transport& transport = main.getEngine().getTransport();
+    const int64_t barTicks = static_cast<int64_t>(transport.getTimeSignature().numerator) * 960;
+    view.setView(0.0, 800.0);
+    const int y = view.getLaneBounds(session.indexOf(synth)).getCentreY();
+    const auto xOfBar = [&](double bar) { return juce::roundToInt(view.sampleToX(bar * transport.getSamplesPerBar())); };
+    arrangementClick(view, {xOfBar(2.5), y}, left);    // a click on nothing
+    arrangementClick(view, {xOfBar(2.5), y}, right, 2); // a right double click on nothing
+    DAWLAB_CHECK(session.getMidiClips(synth).empty() && calls.empty());
+    arrangementClick(view, {xOfBar(2.5), y}, left, 2); // a double click in bar 3: a clip of bar 3, opened
+    const auto& clips = session.getMidiClips(synth);
+    std::printf("   a double click in bar 3: %d clip(s), from tick %lld, %lld ticks long\n", static_cast<int>(clips.size()),
+                clips.empty() ? -1LL : static_cast<long long>(clips[0].start), clips.empty() ? -1LL : static_cast<long long>(clips[0].length));
+    DAWLAB_CHECK(clips.size() == 1 && clips[0].start == 2 * barTicks && clips[0].length == barTicks);
+    arrangementClick(view, {xOfBar(2.25), y}, right);  // its menu
+    arrangementClick(view, {xOfBar(2.75), y}, left, 2); // open it again
+    arrangementClick(view, {xOfBar(2.5), y}, left);     // a drag that goes nowhere
+    const std::vector<std::pair<std::string, int>> expected{{"edit", 0}, {"menu", 0}, {"edit", 0}};
+    DAWLAB_CHECK(calls == expected && session.getMidiClips(synth).size() == 1 && session.getMidiClips(synth)[0].start == 2 * barTicks);
+    view.onEditMidiClip = view.onMidiClipMenu = nullptr; // no callbacks: the clip is made all the same
+    arrangementClick(view, {xOfBar(5.5), y}, left, 2);
+    arrangementClick(view, {xOfBar(5.5), y}, right);
+    arrangementClick(view, {xOfBar(5.5), y}, left, 2);
+    DAWLAB_CHECK(calls.size() == 3 && session.getMidiClips(synth).size() == 2 && session.getMidiClips(synth)[1].start == 5 * barTicks);
+}
+
+// A clip that follows the tempo is drawn as one that does not, named with a word that says how
+// (chapter 20). At the tempo it was made at it sounds as it is, so the two pictures are the same.
+void testFollowingClipLabels() {
+    std::printf("the words on clips that follow the tempo\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    main.setSize(MainComponent::kDefaultWidth, MainComponent::kDefaultHeight);
+    Session& session = main.getSession();
+    Engine& engine = main.getEngine();
+    session.newProject();
+    ArrangementView& view = main.getArrangement();
+    const TrackId track = main.addTrack(TrackFormat::Mono, false);
+    const auto beat = static_cast<int>(std::llround(session.getClipSampleRate() * 0.5)); // at 120 BPM
+    auto audio = std::make_shared<AudioBuffer>(1, 8 * beat);
+    for (int i = 0; i < 8 * beat; ++i)
+        audio->setSample(0, i, 0.6f * std::sin(0.0007f * static_cast<float>(i)) * std::sin(0.03f * static_cast<float>(i)));
+    DAWLAB_CHECK(session.perform(edit::SetClips{track, {session.makeAudioClip(audio, "tape", 4 * beat)}}, "Add clip"));
+    engine.applyPendingCommandsOffline();
+    view.scrollToTrack(track);
+    view.setView(0.0, 300.0);
+    const auto picture = [&view] { return view.createComponentSnapshot(view.getLocalBounds(), true, 1.0f); };
+    const auto same = [](const juce::Image& a, const juce::Image& b) {
+        if (a.getWidth() != b.getWidth() || a.getHeight() != b.getHeight())
+            return false;
+        for (int y = 0; y < a.getHeight(); ++y)
+            for (int x = 0; x < a.getWidth(); ++x)
+                if (a.getPixelAt(x, y) != b.getPixelAt(x, y))
+                    return false;
+        return true;
+    };
+    const std::pair<FollowMode, const char*> modes[] = {
+        {FollowMode::Start, "  [start]"}, {FollowMode::Varispeed, "  [varispeed]"}, {FollowMode::Stretch, "  [stretch]"}};
+    for (const auto& [mode, word] : modes) {
+        DAWLAB_CHECK(session.setClipFollow(track, 0, mode));
+        session.finishRenders();
+        engine.applyPendingCommandsOffline();
+        const bool drawnAsPlayed = session.getPlayedClips(track).size() == 1;
+        const juce::Image following = picture();
+        DAWLAB_CHECK(session.setClipFollow(track, 0, FollowMode::Off));
+        Clip named = session.getClips(track)[0];
+        const std::string name = named.name;
+        named.name = name + word;
+        DAWLAB_CHECK(session.perform(edit::SetClips{track, {named}}, "Rename"));
+        engine.applyPendingCommandsOffline();
+        const juce::Image plain = picture();
+        named.name = name;
+        DAWLAB_CHECK(session.perform(edit::SetClips{track, {named}}, "Rename"));
+        engine.applyPendingCommandsOffline();
+        std::printf("   \"%s\": drawn as played %s, the same as a plain clip named so: %s\n", word, drawnAsPlayed ? "yes" : "no",
+                    same(following, plain) ? "yes" : "NO");
+        DAWLAB_CHECK(drawnAsPlayed && same(following, plain));
+    }
+}
+
+void testArrangementClicks() {
+    testRecordButtonClicks();
+    testMidiClipClicks();
+    testFollowingClipLabels();
+}
+
 void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     constexpr double sr = 48000.0;
     std::setvbuf(stdout, nullptr, _IONBF, 0); // unbuffered: a crash must not swallow what was printed
@@ -3797,6 +3940,7 @@ void runSmokeTest(std::function<void(int exitCode)> onFinished) {
     testBarGrid();
     testSlotButtons();
     testArrangementMouse();
+    testArrangementClicks();
     testPianoRollWheel();
     testSynthKnobs();
     testOddInserts();
