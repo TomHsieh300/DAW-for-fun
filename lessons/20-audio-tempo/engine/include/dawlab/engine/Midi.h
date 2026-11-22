@@ -677,21 +677,40 @@ private:
         for (Voice& v : voices_)
             v.setBend(bend_);
     }
+    // The voice for a new note, the first of: the one that sounds this pitch, a free one, the one released
+    // longest ago (and not held by its key), the one started longest ago.
     int allocate(int pitch) const noexcept {
+        const int same = voiceOfPitch(pitch);
+        if (same >= 0)
+            return same;
+        const int idle = freeVoice();
+        if (idle >= 0)
+            return idle;
+        const int released = oldestReleased();
+        return released >= 0 ? released : oldestStarted();
+    }
+    int voiceOfPitch(int pitch) const noexcept {
         for (size_t i = 0; i < voices_.size(); ++i)
             if (voices_[i].isActive() && voices_[i].pitch() == pitch)
                 return static_cast<int>(i);
+        return -1;
+    }
+    int freeVoice() const noexcept {
         for (size_t i = 0; i < voices_.size(); ++i)
             if (!voices_[i].isActive())
                 return static_cast<int>(i);
+        return -1;
+    }
+    int oldestReleased() const noexcept {
         int best = -1;
         for (size_t i = 0; i < voices_.size(); ++i)
             if (voices_[i].isReleasing() && !slots_[i].keyDown &&
                 (best < 0 || slots_[i].released < slots_[static_cast<size_t>(best)].released))
                 best = static_cast<int>(i);
-        if (best >= 0)
-            return best;
-        best = 0;
+        return best;
+    }
+    int oldestStarted() const noexcept {
+        int best = 0;
         for (size_t i = 1; i < voices_.size(); ++i)
             if (slots_[i].started < slots_[static_cast<size_t>(best)].started)
                 best = static_cast<int>(i);
