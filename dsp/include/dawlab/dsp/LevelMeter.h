@@ -101,16 +101,7 @@ public:
     // Audio thread: no allocation, no locks
     void process(const AudioBlock& block) noexcept {
         applyPendingRequests();
-        if (rmsWindowChanged_.exchange(false, std::memory_order_relaxed)) {
-            // The window length changed: clear the ring and re-accumulate (RMS reads low for a short while)
-            rmsSamples_ = pendingRmsSamples_.load(std::memory_order_relaxed);
-            for (ChannelState& c : channels_) {
-                std::fill(c.rmsRing.begin(), c.rmsRing.end(), 0.0f);
-                c.sumSquares = 0.0;
-                c.tripSum = 0.0;
-                c.ringPos = 0;
-            }
-        }
+        applyRmsWindowChange();
         const int nch = std::min(numChannels_, block.getNumChannels());
         const int n = block.getNumSamples();
         for (int ch = 0; ch < nch; ++ch) {
@@ -119,55 +110,10 @@ public:
             for (int i = 0; i < n; ++i) {
                 // A non-finite sample counts as 0: an +inf would otherwise stay in peak / hold for good
                 const float a = std::abs(finiteOrZero(x[i]));
-
-                // --- peak: instant attack, fixed dB/s release ---
-                if (a > c.peak)
-                    c.peak = a;
-                else
-                    c.peak *= decayPerSample_;
-
-                // --- peak hold ---
-                if (a >= c.hold) {
-                    c.hold = a;
-                    c.holdCounter = holdSamples_;
-                } else if (holdSamples_ < 0) {
-                    // infinite hold: do nothing
-                } else if (c.holdCounter > 0) {
-                    --c.holdCounter;
-                } else {
-                    c.hold = std::max(c.hold * decayPerSample_, c.peak);
-                }
-
-                // --- Sliding-window RMS: the ring buffer stores x^2 and we maintain the sum over the window ---
-                const float sq = a * a;
-                float& slot = c.rmsRing[static_cast<size_t>(c.ringPos)];
-                c.sumSquares += static_cast<double>(sq) - static_cast<double>(slot);
-                slot = sq;
-                // A second, exact sum: only the values written during this trip around the ring, added in slot
-                // order. When the ring wraps it holds exactly those W values, so tripSum is the exact sum of the
-                // window, and it replaces the running sum to remove its accumulated floating-point error. Re-summing
-                // the ring at the wrap gives the same double, but would make that one block pay for the whole
-                // window (O(W), 233 us for 3 s); this way every sample costs O(1).
-                c.tripSum += static_cast<double>(sq);
-                if (++c.ringPos >= rmsSamples_) {
-                    c.ringPos = 0;
-                    c.sumSquares = c.tripSum;
-                    c.tripSum = 0.0;
-                }
+                updatePeakAndHold(c, a);
+                pushRms(c, a);
             }
-            // Flush tiny values to 0 to avoid denormals and a reading that never reaches -inf
-            if (c.peak < 1e-10f)
-                c.peak = 0.0f;
-            if (c.hold < 1e-10f)
-                c.hold = 0.0f;
-            if (c.sumSquares < 0.0)
-                c.sumSquares = 0.0;
-
-            const double meanSquare = c.sumSquares / static_cast<double>(rmsSamples_);
-            peakDb_[static_cast<size_t>(ch)].store(gainToDb(c.peak), std::memory_order_relaxed);
-            holdDb_[static_cast<size_t>(ch)].store(gainToDb(c.hold), std::memory_order_relaxed);
-            rmsDb_[static_cast<size_t>(ch)].store(gainToDb(static_cast<float>(std::sqrt(meanSquare))),
-                                                  std::memory_order_relaxed);
+            publish(ch, c);
         }
     }
 
@@ -210,6 +156,74 @@ private:
                 c.hold = c.peak;
                 c.holdCounter = 0;
             }
+    }
+
+    // The window length changed: clear the ring and re-accumulate (RMS reads low for a short while)
+    void applyRmsWindowChange() noexcept {
+        if (!rmsWindowChanged_.exchange(false, std::memory_order_relaxed))
+            return;
+        rmsSamples_ = pendingRmsSamples_.load(std::memory_order_relaxed);
+        for (ChannelState& c : channels_) {
+            std::fill(c.rmsRing.begin(), c.rmsRing.end(), 0.0f);
+            c.sumSquares = 0.0;
+            c.tripSum = 0.0;
+            c.ringPos = 0;
+        }
+    }
+
+    // One sample |x| = a into the peak (instant attack, fixed dB/s release) and the peak hold
+    void updatePeakAndHold(ChannelState& c, float a) const noexcept {
+        if (a > c.peak)
+            c.peak = a;
+        else
+            c.peak *= decayPerSample_;
+
+        if (a >= c.hold) {
+            c.hold = a;
+            c.holdCounter = holdSamples_;
+        } else if (holdSamples_ < 0) {
+            // infinite hold: do nothing
+        } else if (c.holdCounter > 0) {
+            --c.holdCounter;
+        } else {
+            c.hold = std::max(c.hold * decayPerSample_, c.peak);
+        }
+    }
+
+    // Sliding-window RMS: the ring buffer stores x^2 and we maintain the sum over the window
+    void pushRms(ChannelState& c, float a) const noexcept {
+        const float sq = a * a;
+        float& slot = c.rmsRing[static_cast<size_t>(c.ringPos)];
+        c.sumSquares += static_cast<double>(sq) - static_cast<double>(slot);
+        slot = sq;
+        // A second, exact sum: only the values written during this trip around the ring, added in slot
+        // order. When the ring wraps it holds exactly those W values, so tripSum is the exact sum of the
+        // window, and it replaces the running sum to remove its accumulated floating-point error. Re-summing
+        // the ring at the wrap gives the same double, but would make that one block pay for the whole
+        // window (O(W), 233 us for 3 s); this way every sample costs O(1).
+        c.tripSum += static_cast<double>(sq);
+        if (++c.ringPos >= rmsSamples_) {
+            c.ringPos = 0;
+            c.sumSquares = c.tripSum;
+            c.tripSum = 0.0;
+        }
+    }
+
+    // End of a block: flush tiny values to 0 (to avoid denormals and a reading that never reaches -inf), then store
+    // the channel's three readings for the UI
+    void publish(int ch, ChannelState& c) noexcept {
+        if (c.peak < 1e-10f)
+            c.peak = 0.0f;
+        if (c.hold < 1e-10f)
+            c.hold = 0.0f;
+        if (c.sumSquares < 0.0)
+            c.sumSquares = 0.0;
+
+        const double meanSquare = c.sumSquares / static_cast<double>(rmsSamples_);
+        peakDb_[static_cast<size_t>(ch)].store(gainToDb(c.peak), std::memory_order_relaxed);
+        holdDb_[static_cast<size_t>(ch)].store(gainToDb(c.hold), std::memory_order_relaxed);
+        rmsDb_[static_cast<size_t>(ch)].store(gainToDb(static_cast<float>(std::sqrt(meanSquare))),
+                                              std::memory_order_relaxed);
     }
 
     void updateCoefficients() noexcept {
