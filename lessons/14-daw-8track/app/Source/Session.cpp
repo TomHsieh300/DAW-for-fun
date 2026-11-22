@@ -419,13 +419,41 @@ void Session::handleSampleRateChange(double oldRate, double newRate) {
     scaleTransportPositions(oldRate, newRate);
 }
 
+namespace {
+
+// A position or a length in samples at the new rate: `v` times `ratio`, to the nearest sample.
+int64_t scaled(int64_t v, double ratio) {
+    return static_cast<int64_t>(std::llround(static_cast<double>(v) * ratio));
+}
+
+// One clip at the new rate: its audio resampled, its positions scaled. A buffer is resampled once, the first time a
+// clip has it; the clips that share it then share the new one. A buffer already in `converted` is not resampled.
+void convertClip(Clip& c, ConvertedBuffers& converted, double oldRate, double newRate) {
+    const double ratio = newRate / oldRate;
+    if (c.source) {
+        auto it = converted.find(c.source);
+        if (it == converted.end())
+            it = converted
+                     .emplace(c.source,
+                              std::make_shared<const AudioBuffer>(resampleBuffer(*c.source, oldRate, newRate)))
+                     .first;
+        c.source = it->second;
+    }
+    c.start = scaled(c.start, ratio);
+    c.sourceOffset = scaled(c.sourceOffset, ratio);
+    c.length = scaled(c.length, ratio);
+    if (c.source)
+        c.length = std::min<int64_t>(c.length, c.source->getNumSamples() - c.sourceOffset);
+    c.fadeInSamples = static_cast<int>(scaled(c.fadeInSamples, ratio));
+    c.fadeOutSamples = static_cast<int>(scaled(c.fadeOutSamples, ratio));
+}
+
+} // namespace
+
 void Session::applySampleRateConversion(double newRate, const ConvertedBuffers& alreadyConverted) {
     const double oldRate = getClipSampleRate();
     if (oldRate <= 0.0 || newRate <= 0.0 || oldRate == newRate)
         return;
-    const double ratio = newRate / oldRate;
-    const auto scale = [ratio](int64_t v) { return static_cast<int64_t>(std::llround(static_cast<double>(v) * ratio)); };
-
     // Clips share buffers (the drum loop is one buffer used by four clips): resample each
     // buffer once and keep sharing it. Buffers the loader thread already converted are reused.
     ConvertedBuffers converted = alreadyConverted;
@@ -433,24 +461,8 @@ void Session::applySampleRateConversion(double newRate, const ConvertedBuffers& 
         auto& list = clips_[static_cast<size_t>(t)];
         if (list.empty())
             continue;
-        for (Clip& c : list) {
-            if (c.source) {
-                auto it = converted.find(c.source);
-                if (it == converted.end())
-                    it = converted
-                             .emplace(c.source,
-                                      std::make_shared<const AudioBuffer>(resampleBuffer(*c.source, oldRate, newRate)))
-                             .first;
-                c.source = it->second;
-            }
-            c.start = scale(c.start);
-            c.sourceOffset = scale(c.sourceOffset);
-            c.length = scale(c.length);
-            if (c.source)
-                c.length = std::min<int64_t>(c.length, c.source->getNumSamples() - c.sourceOffset);
-            c.fadeInSamples = static_cast<int>(scale(c.fadeInSamples));
-            c.fadeOutSamples = static_cast<int>(scale(c.fadeOutSamples));
-        }
+        for (Clip& c : list)
+            convertClip(c, converted, oldRate, newRate);
         pushClips(t);
     }
     clipSampleRate_ = newRate;
