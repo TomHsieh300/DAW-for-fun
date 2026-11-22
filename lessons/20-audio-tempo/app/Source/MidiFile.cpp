@@ -100,16 +100,8 @@ bool isNoteOff(const engine::MidiMessage& m) noexcept {
     return m.kind() == engine::MidiKind::NoteOff;
 }
 
-} // namespace
-
-std::vector<std::uint8_t> write(const Song& song) {
-    Bytes file, header;
-    put16(header, 1);
-    put16(header, static_cast<int>(song.tracks.size()) + 1);
-    put16(header, kTicks);
-    chunk(file, "MThd", header);
-
-    // The conductor: the time signature, then every tempo at its tick.
+// The conductor: the time signature, then every tempo at its tick.
+Bytes conductorTrack(const Song& song) {
     Bytes conductor;
     int log2 = 0;
     while ((1 << (log2 + 1)) <= song.denominator)
@@ -129,41 +121,59 @@ std::vector<std::uint8_t> write(const Song& song) {
         last = tick;
     }
     conductor.insert(conductor.end(), {0x00, 0xFF, 0x2F, 0x00});
-    chunk(file, "MTrk", conductor);
+    return conductor;
+}
 
-    for (const Track& track : song.tracks) {
-        Bytes data;
-        if (!track.name.empty()) {
-            data.insert(data.end(), {0x00, 0xFF, 0x03});
-            writeVlq(data, static_cast<std::uint32_t>(track.name.size()));
-            data.insert(data.end(), track.name.begin(), track.name.end());
-        }
-        std::vector<Event> events;
-        for (const Event& e : track.events)
-            if (e.tick >= 0)
-                events.push_back(e);
-        // Playing order: by tick, note offs first at one tick.
-        std::stable_sort(events.begin(), events.end(), [](const Event& a, const Event& b) {
-            if (a.tick != b.tick)
-                return a.tick < b.tick;
-            return isNoteOff(a.message) && !isNoteOff(b.message);
-        });
-        std::int64_t at = 0;
-        int running = 0;
-        for (const Event& e : events) {
-            putDelta(data, e.tick - at, running);
-            at = e.tick;
-            if (e.message.status != running) {
-                data.push_back(e.message.status);
-                running = e.message.status;
-            }
-            data.push_back(e.message.data1);
-            if (dataBytes(e.message.status) == 2)
-                data.push_back(e.message.data2);
-        }
-        data.insert(data.end(), {0x00, 0xFF, 0x2F, 0x00});
-        chunk(file, "MTrk", data);
+// A track's events at tick 0 or later, in playing order: by tick, note offs first at one tick.
+std::vector<Event> playingOrder(const Track& track) {
+    std::vector<Event> events;
+    for (const Event& e : track.events)
+        if (e.tick >= 0)
+            events.push_back(e);
+    std::stable_sort(events.begin(), events.end(), [](const Event& a, const Event& b) {
+        if (a.tick != b.tick)
+            return a.tick < b.tick;
+        return isNoteOff(a.message) && !isNoteOff(b.message);
+    });
+    return events;
+}
+
+// One track: its name, if it has one, then its events, with running status.
+Bytes trackData(const Track& track) {
+    Bytes data;
+    if (!track.name.empty()) {
+        data.insert(data.end(), {0x00, 0xFF, 0x03});
+        writeVlq(data, static_cast<std::uint32_t>(track.name.size()));
+        data.insert(data.end(), track.name.begin(), track.name.end());
     }
+    std::int64_t at = 0;
+    int running = 0;
+    for (const Event& e : playingOrder(track)) {
+        putDelta(data, e.tick - at, running);
+        at = e.tick;
+        if (e.message.status != running) {
+            data.push_back(e.message.status);
+            running = e.message.status;
+        }
+        data.push_back(e.message.data1);
+        if (dataBytes(e.message.status) == 2)
+            data.push_back(e.message.data2);
+    }
+    data.insert(data.end(), {0x00, 0xFF, 0x2F, 0x00});
+    return data;
+}
+
+} // namespace
+
+std::vector<std::uint8_t> write(const Song& song) {
+    Bytes file, header;
+    put16(header, 1);
+    put16(header, static_cast<int>(song.tracks.size()) + 1);
+    put16(header, kTicks);
+    chunk(file, "MThd", header);
+    chunk(file, "MTrk", conductorTrack(song));
+    for (const Track& track : song.tracks)
+        chunk(file, "MTrk", trackData(track));
     return file;
 }
 

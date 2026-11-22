@@ -17,6 +17,59 @@ engine::MidiMessage bytesOf(int status, int a, int b) {
     return {static_cast<std::uint8_t>(status), static_cast<std::uint8_t>(a & 0x7F), static_cast<std::uint8_t>(b & 0x7F)};
 }
 
+// A ramp from point i to the next, as steps of kRampStep ticks. The tempo of each is the one at which the step takes
+// exactly as long as the ramp does over it: every step's end is on time.
+void addRampSteps(const engine::TempoMap& map, int i, std::vector<midifile::Tempo>& tempos) {
+    const std::int64_t end = map.point(i + 1).tick;
+    for (std::int64_t t = map.point(i).tick; t < end; t += kRampStep) {
+        const std::int64_t step = std::min(kRampStep, end - t);
+        const double seconds = map.secondsAt(static_cast<double>(t + step)) - map.secondsAt(static_cast<double>(t));
+        tempos.push_back({t, static_cast<double>(step) * 60.0 / (960.0 * seconds)});
+    }
+}
+
+// Every tempo of the map at its tick; a ramp in steps.
+std::vector<midifile::Tempo> temposOf(const engine::TempoMap& map) {
+    std::vector<midifile::Tempo> tempos;
+    for (int i = 0; i < map.size(); ++i) {
+        const engine::TempoPoint& p = map.point(i);
+        if (!p.rampToNext || i + 1 == map.size())
+            tempos.push_back({p.tick, p.bpm});
+        else
+            addRampSteps(map, i, tempos);
+    }
+    return tempos;
+}
+
+// What a clip plays, at its place in the song: the notes that start inside it (cut at its end) and its
+// controller points. Returns the number of notes.
+int addClipEvents(const MidiClipModel& clip, midifile::Track& track) {
+    const std::int64_t from = clip.offset, to = clip.offset + clip.length;
+    auto place = [&clip](std::int64_t material) { return clip.start + material - clip.offset; };
+    int notes = 0;
+    for (const engine::Note& n : clip.notes()) { // what the engine plays: after quantize
+        if (n.start < from || n.start >= to)
+            continue;
+        track.events.push_back({place(n.start), bytesOf(0x90 | n.channel, n.pitch, n.velocity)});
+        track.events.push_back({place(std::min(n.start + n.length, to)), bytesOf(0x80 | n.channel, n.pitch, 0)});
+        ++notes;
+    }
+    for (const engine::ControllerPoint& c : clip.controllers)
+        if (c.tick >= from && c.tick < to)
+            track.events.push_back({place(c.tick), bytesOf(0xB0 | c.channel, c.number, c.value)});
+    return notes;
+}
+
+// An instrument track: its name and what its clips that are not muted play. `notes` counts the notes.
+midifile::Track trackOf(const Session& session, engine::TrackId id, int& notes) {
+    midifile::Track track;
+    track.name = session.getStripName(session.trackRef(id)).toStdString();
+    for (const MidiClipModel& clip : session.getMidiClips(id))
+        if (!clip.muted)
+            notes += addClipEvents(clip, track);
+    return track;
+}
+
 } // namespace
 
 MidiExport songOf(const Session& session) {
@@ -25,44 +78,12 @@ MidiExport songOf(const Session& session) {
     out.song.numerator = tr.getTimeSignature().numerator;
     out.song.denominator = tr.getTimeSignature().denominator;
 
-    const engine::TempoMap& map = session.getTempoMap();
-    for (int i = 0; i < map.size(); ++i) {
-        const engine::TempoPoint& p = map.point(i);
-        if (!p.rampToNext || i + 1 == map.size()) {
-            out.song.tempos.push_back({p.tick, p.bpm});
-            continue;
-        }
-        const std::int64_t end = map.point(i + 1).tick;
-        for (std::int64_t t = p.tick; t < end; t += kRampStep) {
-            const std::int64_t step = std::min(kRampStep, end - t);
-            // The tempo at which the step takes exactly as long as the ramp does over it: every step's end is on time.
-            const double seconds = map.secondsAt(static_cast<double>(t + step)) - map.secondsAt(static_cast<double>(t));
-            out.song.tempos.push_back({t, static_cast<double>(step) * 60.0 / (960.0 * seconds)});
-        }
-    }
-
+    out.song.tempos = temposOf(session.getTempoMap());
     for (int t = 0; t < session.getNumTracks(); ++t) {
         const engine::TrackId id = session.getTrackId(t);
         if (!session.isInstrument(id))
             continue;
-        midifile::Track track;
-        track.name = session.getStripName(session.trackRef(id)).toStdString();
-        for (const MidiClipModel& clip : session.getMidiClips(id)) {
-            if (clip.muted)
-                continue;
-            const std::int64_t from = clip.offset, to = clip.offset + clip.length;
-            auto place = [&clip](std::int64_t material) { return clip.start + material - clip.offset; };
-            for (const engine::Note& n : clip.notes()) { // what the engine plays: after quantize
-                if (n.start < from || n.start >= to)
-                    continue;
-                track.events.push_back({place(n.start), bytesOf(0x90 | n.channel, n.pitch, n.velocity)});
-                track.events.push_back({place(std::min(n.start + n.length, to)), bytesOf(0x80 | n.channel, n.pitch, 0)});
-                ++out.notes;
-            }
-            for (const engine::ControllerPoint& c : clip.controllers)
-                if (c.tick >= from && c.tick < to)
-                    track.events.push_back({place(c.tick), bytesOf(0xB0 | c.channel, c.number, c.value)});
-        }
+        midifile::Track track = trackOf(session, id, out.notes);
         if (!track.events.empty())
             out.song.tracks.push_back(std::move(track));
     }
