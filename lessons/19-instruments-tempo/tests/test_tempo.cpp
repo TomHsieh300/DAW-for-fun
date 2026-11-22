@@ -252,6 +252,32 @@ void testLoopInTicks() {
     DAWLAB_CHECK(!tr.isLoopInTicks() && tr.getLoopStart() == 1000);
 }
 
+// A loop set in samples: a segment that ends at the loop's end ends at the tick of that sample (only a loop in
+// ticks ends at its own tick), and the next pass begins at the tick of the loop's first sample.
+void testLoopInSamplesEndsOnItsTick() {
+    Transport t;
+    t.prepare(48000.0);
+    t.setTempo(120.0); // 24000 samples a beat: 25 samples a tick
+    t.setLoopRange(1000, 2000);
+    t.setLoopEnabled(true);
+    t.play();
+    TimelineSegment s[Transport::kMaxSegmentsPerBlock];
+    int covered = 0;
+    const int n = t.advance(2500, s, covered);
+    const TempoMap& map = t.getAudioTempoMap();
+    DAWLAB_CHECK(n == 2 && covered == 2500);
+    DAWLAB_CHECK(s[0].timelineStart == 0 && s[0].numSamples == 2000 && s[0].tickTo == map.firstTickAtOrAfter(2000, 48000.0));
+    DAWLAB_CHECK(s[0].tickTo == 80);
+    DAWLAB_CHECK(s[1].timelineStart == 1000 && s[1].numSamples == 500 && s[1].ticksJump && s[1].tickFrom == 40 && s[1].tickTo == 60);
+    std::printf("  a loop of samples 1000-2000: its passes end on tick %lld and begin on tick %lld\n", static_cast<long long>(s[0].tickTo),
+                static_cast<long long>(s[1].tickFrom));
+    // A seek while playing: the ticks jump to those of the new place, wherever the last block left them.
+    t.setLoopEnabled(false);
+    t.setPosition(24000);
+    DAWLAB_CHECK(t.advance(100, s, covered) == 1 && s[0].timelineStart == 24000 && s[0].ticksJump && s[0].tickFrom == 960);
+    DAWLAB_CHECK(t.advance(100, s, covered) == 1 && !s[0].ticksJump && s[0].tickFrom == 964);
+}
+
 void testNewMapWhileANoteSounds() {
     // A note of two bars from bar 1 at 120 BPM. At beat 3 the map becomes 60 BPM: the note keeps sounding and
     // ends at its tick under the new map.
@@ -667,6 +693,7 @@ int main() {
     std::printf("l19_test_tempo: a tempo map and instrument latency in the engine\n");
     testNotesFollowTheMap();
     testLoopInTicks();
+    testLoopInSamplesEndsOnItsTick();
     testMapsCompare();
     testMapRules();
     testTempoAlongTheMap();

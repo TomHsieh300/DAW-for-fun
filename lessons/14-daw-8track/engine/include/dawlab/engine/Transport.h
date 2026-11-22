@@ -178,31 +178,20 @@ public:
     // (== numSamples unless the loop is so short that the segment array filled up). When
     // stopped it returns 0 and sets samplesCovered = numSamples.
     int advance(int numSamples, TimelineSegment* segments, int& samplesCovered) noexcept {
-        loop_.take(); // a range the UI set since the last block, whole (also while stopped)
-        const int64_t seek = pendingSeek_.exchange(-1, std::memory_order_acq_rel);
-        if (seek >= 0)
-            position_.store(seek, std::memory_order_relaxed);
+        startBlock();
         samplesCovered = std::max(0, numSamples);
         if (!isPlaying() || numSamples <= 0)
             return 0;
 
         int64_t pos = position_.load(std::memory_order_relaxed);
-        const LoopRange& loop = loop_.front();
-        const int64_t loopStart = loop.start;
-        const int64_t loopEnd = loop.end;
-        const bool loopActive = isLoopEnabled() && loopEnd > loopStart;
-
+        const BlockLoop loop = blockLoop();
         int count = 0;
         int offset = 0;
         while (offset < numSamples && count < kMaxSegmentsPerBlock) {
-            int64_t n = numSamples - offset;
-            if (loopActive && pos < loopEnd)
-                n = std::min<int64_t>(n, loopEnd - pos); // stop exactly at the loop end
+            const int64_t n = loop.lengthFrom(pos, numSamples - offset);
             segments[count++] = {pos, offset, static_cast<int>(n)};
-            pos += n;
+            pos = loop.wrap(pos + n);
             offset += static_cast<int>(n);
-            if (loopActive && pos == loopEnd)
-                pos = loopStart; // wrap: the next segment continues at the loop start
         }
         samplesCovered = offset;
         position_.store(pos, std::memory_order_relaxed);
@@ -210,6 +199,32 @@ public:
     }
 
 private:
+    // The loop as one block plays it.
+    struct BlockLoop {
+        bool active = false;
+        int64_t start = 0, end = 0;
+
+        // How much of `n` samples from `pos` one segment takes: it stops exactly at the loop end.
+        int64_t lengthFrom(int64_t pos, int64_t n) const noexcept {
+            return active && pos < end ? std::min<int64_t>(n, end - pos) : n;
+        }
+        // Where the next segment starts: at the loop start once the loop end is reached.
+        int64_t wrap(int64_t pos) const noexcept { return active && pos == end ? start : pos; }
+    };
+
+    // Audio thread, at the start of every block (also while stopped): a range the UI set since the
+    // last block, whole, and a pending seek.
+    void startBlock() noexcept {
+        loop_.take();
+        const int64_t seek = pendingSeek_.exchange(-1, std::memory_order_acq_rel);
+        if (seek >= 0)
+            position_.store(seek, std::memory_order_relaxed);
+    }
+    BlockLoop blockLoop() const noexcept {
+        const LoopRange& loop = loop_.front();
+        return {isLoopEnabled() && loop.end > loop.start, loop.start, loop.end};
+    }
+
     double sampleRate_ = 48000.0;
     std::atomic<double> tempo_{120.0};
     std::atomic<int> numerator_{4};

@@ -110,16 +110,18 @@ The heart of `advance()`:
 
 ```cpp
 while (offset < numSamples && count < kMaxSegmentsPerBlock) {
-    int64_t n = numSamples - offset;
-    if (loopActive && pos < loopEnd)
-        n = std::min<int64_t>(n, loopEnd - pos);     // stop exactly at the loop end
+    const int64_t n = loop.lengthFrom(pos, numSamples - offset);
     segments[count++] = {pos, offset, static_cast<int>(n)};
-    pos += n;
+    pos = loop.wrap(pos + n);
     offset += static_cast<int>(n);
-    if (loopActive && pos == loopEnd)
-        pos = loopStart;                             // wrap
 }
 samplesCovered = offset;
+
+// BlockLoop, the loop as this block plays it:
+int64_t lengthFrom(int64_t pos, int64_t n) const noexcept {   // stop exactly at the loop end
+    return active && pos < end ? std::min<int64_t>(n, end - pos) : n;
+}
+int64_t wrap(int64_t pos) const noexcept { return active && pos == end ? start : pos; }
 ```
 
 The engine side (`Engine::processChunk`):

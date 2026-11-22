@@ -226,51 +226,25 @@ public:
     // (== numSamples unless the loop is so short that the segment array filled up). When stopped it returns
     // 0 and sets samplesCovered = numSamples.
     int advance(int numSamples, TimelineSegment* segments, int& samplesCovered) noexcept {
-        takeNewMap();
-        loop_.take(); // a range the UI set since the last block, whole (also while stopped)
-        const int64_t seek = pendingSeek_.exchange(-1, std::memory_order_acq_rel);
-        if (seek >= 0) {
-            position_.store(seek, std::memory_order_relaxed);
-            jumpTo(kFindTick);
-        }
+        startBlock();
         samplesCovered = std::max(0, numSamples);
         if (!isPlaying() || numSamples <= 0)
             return 0;
 
         int64_t pos = position_.load(std::memory_order_relaxed);
-        const LoopRange& loop = loop_.front();
-        const bool inTicks = loop.inTicks;
-        const int64_t loopStartRaw = loop.start;
-        const int64_t loopEndRaw = loop.end;
-        const int64_t loopStart = loopSample(loopStartRaw, getAudioTempoMap(), inTicks);
-        const int64_t loopEnd = loopSample(loopEndRaw, getAudioTempoMap(), inTicks);
-        const bool loopActive = isLoopEnabled() && loopEnd > loopStart;
-
+        const BlockLoop loop = blockLoop();
         int count = 0;
         int offset = 0;
         while (offset < numSamples && count < kMaxSegmentsPerBlock) {
-            int64_t n = numSamples - offset;
-            const bool toLoopEnd = loopActive && pos < loopEnd && pos + n >= loopEnd;
-            if (toLoopEnd)
-                n = loopEnd - pos; // stop exactly at the loop end
-            TimelineSegment& s = segments[count++];
-            s.timelineStart = pos;
-            s.blockOffset = offset;
-            s.numSamples = static_cast<int>(n);
-            s.ticksJump = jump_;
-            if (!jump_)
-                s.tickFrom = nextTick_;
-            else
-                s.tickFrom = jumpTick_ != kFindTick ? jumpTick_ : getAudioTempoMap().firstTickAtOrAfter(pos, sampleRate_);
-            // A segment that ends at a loop in ticks ends at its tick: rounding to samples must not move it.
-            s.tickTo = toLoopEnd && inTicks ? loopEndRaw : getAudioTempoMap().firstTickAtOrAfter(pos + n, sampleRate_);
+            const int64_t rest = numSamples - offset;
+            const bool toLoopEnd = loop.endsWithin(pos, rest);
+            const int64_t n = toLoopEnd ? loop.end - pos : rest; // stop exactly at the loop end
+            writeSegment(segments[count++], pos, offset, n, toLoopEnd, loop);
             pos += n;
             offset += static_cast<int>(n);
-            nextTick_ = s.tickTo;
-            jump_ = false;
             if (toLoopEnd) { // wrap: the next segment continues at the loop start, its ticks at the loop's first
-                pos = loopStart;
-                jumpTo(inTicks ? loopStartRaw : kFindTick);
+                pos = loop.start;
+                jumpTo(loop.inTicks ? loop.startRaw : kFindTick);
             }
         }
         samplesCovered = offset;
@@ -280,6 +254,58 @@ public:
 
 private:
     static constexpr int64_t kFindTick = INT64_MIN; // a jump to wherever the playhead's sample is
+
+    // The loop as one block plays it: its edges as they were set (raw: ticks when inTicks) and in samples.
+    struct BlockLoop {
+        bool active = false;
+        bool inTicks = false;
+        int64_t startRaw = 0, endRaw = 0;
+        int64_t start = 0, end = 0;
+
+        // True if `n` samples from `pos` reach the loop end.
+        bool endsWithin(int64_t pos, int64_t n) const noexcept { return active && pos < end && pos + n >= end; }
+    };
+
+    // Audio thread, at the start of every block (also while stopped): a new map (keeping the playhead's
+    // musical place), a range the UI set since the last block, whole, and a pending seek.
+    void startBlock() noexcept {
+        takeNewMap();
+        loop_.take();
+        const int64_t seek = pendingSeek_.exchange(-1, std::memory_order_acq_rel);
+        if (seek >= 0) {
+            position_.store(seek, std::memory_order_relaxed);
+            jumpTo(kFindTick);
+        }
+    }
+    BlockLoop blockLoop() const noexcept {
+        const LoopRange& loop = loop_.front();
+        BlockLoop b;
+        b.inTicks = loop.inTicks;
+        b.startRaw = loop.start;
+        b.endRaw = loop.end;
+        b.start = loopSample(loop.start, getAudioTempoMap(), loop.inTicks);
+        b.end = loopSample(loop.end, getAudioTempoMap(), loop.inTicks);
+        b.active = isLoopEnabled() && b.end > b.start;
+        return b;
+    }
+    // One segment of n samples from pos, at offset in the block, and its ticks. The ticks go on from the
+    // last segment's, unless there was a jump.
+    void writeSegment(TimelineSegment& s, int64_t pos, int offset, int64_t n, bool toLoopEnd, const BlockLoop& loop) noexcept {
+        s.timelineStart = pos;
+        s.blockOffset = offset;
+        s.numSamples = static_cast<int>(n);
+        s.ticksJump = jump_;
+        s.tickFrom = segmentTickFrom(pos);
+        // A segment that ends at a loop in ticks ends at its tick: rounding to samples must not move it.
+        s.tickTo = toLoopEnd && loop.inTicks ? loop.endRaw : getAudioTempoMap().firstTickAtOrAfter(pos + n, sampleRate_);
+        nextTick_ = s.tickTo;
+        jump_ = false;
+    }
+    int64_t segmentTickFrom(int64_t pos) const noexcept {
+        if (!jump_)
+            return nextTick_;
+        return jumpTick_ != kFindTick ? jumpTick_ : getAudioTempoMap().firstTickAtOrAfter(pos, sampleRate_);
+    }
 
     void jumpTo(int64_t tick) noexcept {
         jump_ = true;

@@ -325,6 +325,20 @@ void testLoopPlayback() {
     }
 }
 
+// A loop range that is switched off is not a loop: a block that ends exactly on its end does not wrap.
+void testDisabledLoopPlaysOn() {
+    Transport t;
+    t.prepare(kSampleRate);
+    t.setLoopRange(0, 1000);
+    t.setLoopEnabled(false);
+    t.setPosition(0);
+    t.play();
+    TimelineSegment s[Transport::kMaxSegmentsPerBlock];
+    int covered = 0;
+    DAWLAB_CHECK(t.advance(1000, s, covered) == 1 && s[0].timelineStart == 0 && s[0].numSamples == 1000);
+    DAWLAB_CHECK(t.advance(500, s, covered) == 1 && s[0].timelineStart == 1000 && t.getPosition() == 1500);
+}
+
 void testSeekAndStop() {
     Engine e;
     addTestTracks(e);
@@ -410,6 +424,7 @@ int main() {
     testClipPastItsSource();
     testBounceLengths();
     testLoopPlayback();
+    testDisabledLoopPlaysOn();
     testSeekAndStop();
     testLoopChangeArrivesWhole();
     return dawlab::test::summary("l15_test_timeline");
