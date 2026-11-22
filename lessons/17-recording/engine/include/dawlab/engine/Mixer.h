@@ -232,31 +232,17 @@ public:
     // First lets every insert apply pending parameter changes, so a latency that depends on a
     // parameter (limiter lookahead) is current before we compensate for it.
     void updateLatencies() noexcept {
-        for (auto& t : tracks_)
-            t.getInserts().applyPendingParameters();
-        for (auto& b : buses_)
-            b.getInserts().applyPendingParameters();
-        master_.getInserts().applyPendingParameters();
-
+        applyPendingParameters();
         const bool enabled = pdcEnabled_.load(std::memory_order_relaxed);
-        int maxTrack = 0;
-        for (const auto& t : tracks_)
-            maxTrack = std::max(maxTrack, t.getInsertLatencySamples());
-        int maxBus = 0;
-        for (const auto& b : buses_)
-            maxBus = std::max(maxBus, b.getInsertLatencySamples());
+        const int maxTrack = slowestTrack();
+        const int maxBus = slowestBus();
         // A compensator cannot delay by more than C samples: align on min(max, C) and remember
         // that some path could not be aligned (header comment, "The PDC limit").
         const int limit = getMaxPdcSamples();
         const int targetTrack = std::min(maxTrack, limit);
         const int targetBus = std::min(maxBus, limit);
         pdcOverflow_.store(enabled && (maxTrack > targetTrack || maxBus > targetBus), std::memory_order_relaxed);
-        // setDelaySamples() clamps a negative amount (a path slower than the target) to 0.
-        for (auto& t : tracks_)
-            t.getCompensator().setDelaySamples(enabled ? targetTrack - t.getInsertLatencySamples() : 0);
-        for (auto& b : buses_)
-            b.getCompensator().setDelaySamples(enabled ? targetBus - b.getInsertLatencySamples() : 0);
-        trackSumCompensator_.setDelaySamples(enabled ? targetBus : 0);
+        setCompensatorDelays(enabled, targetTrack, targetBus);
         maxTrackLatency_.store(targetTrack, std::memory_order_relaxed);
         maxBusLatency_.store(targetBus, std::memory_order_relaxed);
         // With PDC off the paths have different delays and there is no single "mix latency";
@@ -305,6 +291,38 @@ public:
     }
 
 private:
+    // ---- updateLatencies(), step by step ----
+    // Every insert applies its pending parameter changes first.
+    void applyPendingParameters() noexcept {
+        for (auto& t : tracks_)
+            t.getInserts().applyPendingParameters();
+        for (auto& b : buses_)
+            b.getInserts().applyPendingParameters();
+        master_.getInserts().applyPendingParameters();
+    }
+    // The largest insert latency of the tracks, and of the buses.
+    int slowestTrack() const noexcept {
+        int maxTrack = 0;
+        for (const auto& t : tracks_)
+            maxTrack = std::max(maxTrack, t.getInsertLatencySamples());
+        return maxTrack;
+    }
+    int slowestBus() const noexcept {
+        int maxBus = 0;
+        for (const auto& b : buses_)
+            maxBus = std::max(maxBus, b.getInsertLatencySamples());
+        return maxBus;
+    }
+    // Every path waits for the slowest of its kind (0 with PDC off).
+    // setDelaySamples() clamps a negative amount (a path slower than the target) to 0.
+    void setCompensatorDelays(bool enabled, int targetTrack, int targetBus) noexcept {
+        for (auto& t : tracks_)
+            t.getCompensator().setDelaySamples(enabled ? targetTrack - t.getInsertLatencySamples() : 0);
+        for (auto& b : buses_)
+            b.getCompensator().setDelaySamples(enabled ? targetBus - b.getInsertLatencySamples() : 0);
+        trackSumCompensator_.setDelaySamples(enabled ? targetBus : 0);
+    }
+
     // What every strip of one block works with: process() sets it up once, at the start of the block.
     struct BlockContext {
         int n = 0;
