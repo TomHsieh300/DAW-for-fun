@@ -186,6 +186,29 @@ inline std::vector<AutomationPoint> thin(const std::vector<AutomationPoint>& poi
     return kept;
 }
 
+namespace detail {
+// punch(), one part at a time.
+// The curve's value where a pass starts: a point exactly there wins over the line that arrives at it.
+inline float valueWherePassStarts(const AutomationCurve& curve, int64_t from) noexcept {
+    const auto& points = curve.points();
+    const auto atFrom = std::lower_bound(points.begin(), points.end(), from,
+                                         [](const AutomationPoint& a, int64_t p) { return a.position < p; });
+    return atFrom != points.end() && atFrom->position == from ? atFrom->value : curve.valueAt(from);
+}
+// The shape of the curve's segment at `position` (Linear before the first point).
+inline Shape shapeAt(const AutomationCurve& curve, int64_t position) noexcept {
+    const int segment = curve.segmentAt(position);
+    return segment >= 0 ? curve.points()[static_cast<size_t>(segment)].shape : Shape::Linear;
+}
+// The curve's points that `keep` says yes to, in order.
+template <class Keep>
+inline void addPointsWhere(AutomationCurve& result, const AutomationCurve& curve, Keep keep) {
+    for (const AutomationPoint& p : curve.points())
+        if (keep(p))
+            result.add(p);
+}
+} // namespace detail
+
 // `old` with `pass` (at least two points) in place of everything from the pass's first position to
 // its last, with a jump at both ends if needed. Outside that range the curve does not change.
 inline AutomationCurve punch(const AutomationCurve& old, const std::vector<AutomationPoint>& pass) {
@@ -193,25 +216,13 @@ inline AutomationCurve punch(const AutomationCurve& old, const std::vector<Autom
         return old;
     const int64_t from = pass.front().position;
     const int64_t to = pass.back().position;
-    const auto& points = old.points();
-    const auto atFrom = std::lower_bound(points.begin(), points.end(), from,
-                                         [](const AutomationPoint& a, int64_t p) { return a.position < p; });
-    const float before = atFrom != points.end() && atFrom->position == from ? atFrom->value : old.valueAt(from);
-    const int segment = old.segmentAt(to);
-    const Shape shapeAfter = segment >= 0 ? points[static_cast<size_t>(segment)].shape : Shape::Linear;
-    const float after = old.valueAt(to);
-
     AutomationCurve result(old.defaultValue());
-    for (const AutomationPoint& p : points)
-        if (p.position < from)
-            result.add(p);
-    result.add({from, before, Shape::Linear});
+    detail::addPointsWhere(result, old, [from](const AutomationPoint& p) { return p.position < from; });
+    result.add({from, detail::valueWherePassStarts(old, from), Shape::Linear});
     for (const AutomationPoint& p : pass)
         result.add(p);
-    result.add({to, after, shapeAfter});
-    for (const AutomationPoint& p : points)
-        if (p.position > to)
-            result.add(p);
+    result.add({to, old.valueAt(to), detail::shapeAt(old, to)});
+    detail::addPointsWhere(result, old, [to](const AutomationPoint& p) { return p.position > to; });
     return result;
 }
 
@@ -312,21 +323,11 @@ public:
         const float knob = getKnobValue();
         const AutomationCurve* curve = getCurve();
         const bool hand = user || curve == nullptr;
-        if (hand) {
+        if (hand)
             std::fill_n(out, n, knob);
-        } else if (!playing) {
-            std::fill_n(out, n, curve->valueAt(block.playhead));
-        } else {
-            for (int s = 0; s < block.numSegments; ++s) {
-                const TimelineSegment& segment = block.segments[s];
-                curve->render(segment.timelineStart - block.shift, out + segment.blockOffset, segment.numSamples, cursor_);
-            }
-        }
-        const bool capture = user && playing;
-        sendEndMarkerIfOwed(capture, block, target, knob);
-        if (capture && block.capture != nullptr)
-            for (int s = 0; s < block.numSegments; ++s)
-                sendEvent(block, target, block.segments[s].timelineStart - block.shift, block.segments[s].numSamples, knob);
+        else
+            renderCurve(*curve, block, out, n);
+        captureHand(user && playing, block, target, knob);
         limit(out, n, hand ? handStep_ : curveStep_);
         shown_.store(last_, std::memory_order_relaxed);
     }
@@ -348,6 +349,26 @@ private:
         return sampleRate > 0.0 ? std::min(1.0f, static_cast<float>(1.0 / (sampleRate * seconds))) : 1.0f;
     }
 
+    // ---- render(), one part at a time ----
+    // The curve's values: where the playhead is while stopped, else along the block's segments.
+    void renderCurve(const AutomationCurve& curve, const LaneBlock& block, float* out, int n) noexcept {
+        if (block.numSegments <= 0) {
+            std::fill_n(out, n, curve.valueAt(block.playhead));
+            return;
+        }
+        for (int s = 0; s < block.numSegments; ++s) {
+            const TimelineSegment& segment = block.segments[s];
+            curve.render(segment.timelineStart - block.shift, out + segment.blockOffset, segment.numSamples, cursor_);
+        }
+    }
+    // While the hand wins and the transport plays, its value goes to the recorder, segment by segment.
+    void captureHand(bool capturing, const LaneBlock& block, const LaneTarget& target, float knob) noexcept {
+        sendEndMarkerIfOwed(capturing, block, target, knob);
+        if (capturing && block.capture != nullptr)
+            for (int s = 0; s < block.numSegments; ++s)
+                sendEvent(block, target, block.segments[s].timelineStart - block.shift, block.segments[s].numSamples, knob);
+    }
+
     bool userWins(bool playing) noexcept {
         const bool touching = touching_.load(std::memory_order_relaxed);
         const unsigned touches = touchCount_.load(std::memory_order_relaxed);
@@ -358,6 +379,10 @@ private:
             latched_ = false;
         if (!playing)
             return touching;
+        return modeWins(mode, touching, touchedSinceLastBlock);
+    }
+    // While playing: does the hand win in this mode?
+    bool modeWins(AutomationMode mode, bool touching, bool touchedSinceLastBlock) noexcept {
         switch (mode) {
         case AutomationMode::Read: return false;
         case AutomationMode::Touch: return touching;
