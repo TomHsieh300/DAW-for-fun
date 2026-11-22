@@ -1561,6 +1561,13 @@ void testAudioFileBoundary() {
     std::printf("   an AIFF at 768 kHz that declares %lld frames: %s\n", static_cast<long long>(MediaLimits::kMaxFrames + 1),
                 tooMany.audio != nullptr ? "read" : tooMany.error.toRawUTF8());
     DAWLAB_CHECK(tooMany.audio == nullptr && tooMany.error.contains("20 minutes"));
+    // Longer than 20 minutes at its own rate (20 minutes and a frame at 8 kHz), and a file of no frames.
+    const LoadedMedia tooLong = MediaLoader::readAudioFile(writeAiff(dir.getChildFile("long.aiff"), 8000.0, 9600001u), 48000.0);
+    const LoadedMedia empty = MediaLoader::readAudioFile(writeRawWav(dir.getChildFile("empty.wav"), 48000, 0), 48000.0);
+    std::printf("   an AIFF that declares 20 minutes and a frame at 8 kHz: %s; a WAV of no frames: %s\n",
+                tooLong.audio != nullptr ? "read" : tooLong.error.toRawUTF8(), empty.audio != nullptr ? "read" : empty.error.toRawUTF8());
+    DAWLAB_CHECK(tooLong.audio == nullptr && tooLong.error.contains("longer than 20 minutes"));
+    DAWLAB_CHECK(empty.audio == nullptr && empty.error.isNotEmpty());
 
     // A file cut off in the middle. An uncompressed one (WAV, AIFF) must hold what its header declares, so the cut
     // shows; JUCE's AIFF reader would read zeros for the missing part. A compressed one cannot be told from silence:

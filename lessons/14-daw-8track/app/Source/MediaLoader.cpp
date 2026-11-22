@@ -129,45 +129,76 @@ juce::String MediaLoader::describeNonFinite(int count) {
     return juce::String(count) + (count == 1 ? " sample was" : " samples were") + " NaN or Inf, set to 0";
 }
 
-bool MediaLoader::readChecked(juce::AudioFormatReader& reader, bool stereo, AudioBuffer& out, juce::String& error,
-                              int& nonFiniteSamples) {
-    nonFiniteSamples = 0;
+namespace {
+
+// What the header declares, before it is believed: a sample rate audio has, frames and channels, at most 20
+// minutes and at most kMaxFrames. Empty when all is well.
+juce::String sizeProblem(const juce::AudioFormatReader& reader) {
     const double rate = reader.sampleRate;
     if (!(rate >= MediaLimits::kMinSampleRate && rate <= MediaLimits::kMaxSampleRate)) {
         char text[96];
         std::snprintf(text, sizeof(text), "The file's sample rate (%.0f Hz) is not supported (%.0f to %.0f Hz)", rate,
                       MediaLimits::kMinSampleRate, MediaLimits::kMaxSampleRate);
-        error = text;
-        return false;
+        return text;
     }
     const juce::int64 length = reader.lengthInSamples;
-    if (length <= 0 || reader.numChannels == 0) {
-        error = "The file is empty";
-        return false;
-    }
-    if (static_cast<double>(length) > MediaLimits::kMaxSeconds * rate) {
-        error = "The file is longer than 20 minutes";
-        return false;
-    }
-    if (length > MediaLimits::kMaxFrames) { // within 20 minutes only at a rate far above 192 kHz
-        error = "The file holds more frames than 20 minutes at 192 kHz";
-        return false;
-    }
-    // An uncompressed file holds exactly the samples it declares; when they are not all there, it was cut off (the
-    // reader would return zeros for the rest). A cut-off compressed file cannot be told from a silent one: its
-    // decoder returns zeros too, without an error, so it loads with silence for the missing part.
+    if (length <= 0 || reader.numChannels == 0)
+        return "The file is empty";
+    if (static_cast<double>(length) > MediaLimits::kMaxSeconds * rate)
+        return "The file is longer than 20 minutes";
+    if (length > MediaLimits::kMaxFrames) // within 20 minutes only at a rate far above 192 kHz
+        return "The file holds more frames than 20 minutes at 192 kHz";
+    return {};
+}
+
+// An uncompressed file holds exactly the samples it declares; when they are not all there, it was cut off (the
+// reader would return zeros for the rest). A cut-off compressed file cannot be told from a silent one: its
+// decoder returns zeros too, without an error, so it loads with silence for the missing part.
+juce::String cutOffProblem(const juce::AudioFormatReader& reader) {
     const juce::String format = reader.getFormatName();
-    if (format == juce::WavAudioFormat().getFormatName() || format == juce::AiffAudioFormat().getFormatName()) {
-        const juce::int64 declaredBytes = length * reader.numChannels * ((reader.bitsPerSample + 7) / 8);
-        const juce::int64 fileBytes = reader.input != nullptr ? reader.input->getTotalLength() : -1;
-        if (declaredBytes > fileBytes) {
-            error = "The file is cut off: it declares " + juce::String(length) + " frames, more than its " +
-                    juce::String(fileBytes) + " bytes hold";
-            return false;
+    if (format != juce::WavAudioFormat().getFormatName() && format != juce::AiffAudioFormat().getFormatName())
+        return {};
+    const juce::int64 length = reader.lengthInSamples;
+    const juce::int64 declaredBytes = length * reader.numChannels * ((reader.bitsPerSample + 7) / 8);
+    const juce::int64 fileBytes = reader.input != nullptr ? reader.input->getTotalLength() : -1;
+    if (declaredBytes > fileBytes)
+        return "The file is cut off: it declares " + juce::String(length) + " frames, more than its " + juce::String(fileBytes) +
+               " bytes hold";
+    return {};
+}
+
+juce::String declarationProblem(const juce::AudioFormatReader& reader) {
+    const juce::String problem = sizeProblem(reader);
+    return problem.isNotEmpty() ? problem : cutOffProblem(reader);
+}
+
+// Sets every NaN and Inf sample of the first `channels` channels to 0, and counts them.
+int zeroNonFinite(AudioBuffer& out, int channels) {
+    int count = 0;
+    for (int ch = 0; ch < channels; ++ch) {
+        float* const x = out.getWritePointer(ch);
+        for (int i = 0; i < out.getNumSamples(); ++i) {
+            if (!std::isfinite(x[i])) {
+                x[i] = 0.0f;
+                ++count;
+            }
         }
     }
+    return count;
+}
+
+} // namespace
+
+bool MediaLoader::readChecked(juce::AudioFormatReader& reader, bool stereo, AudioBuffer& out, juce::String& error,
+                              int& nonFiniteSamples) {
+    nonFiniteSamples = 0;
+    const juce::String problem = declarationProblem(reader);
+    if (problem.isNotEmpty()) {
+        error = problem;
+        return false;
+    }
     // Straight into the result: no buffer of the file's full width in between.
-    const int n = static_cast<int>(length); // <= kMaxFrames, far below INT_MAX
+    const int n = static_cast<int>(reader.lengthInSamples); // <= kMaxFrames, far below INT_MAX
     const int fileChannels = static_cast<int>(std::min(2u, reader.numChannels));
     out.setSize(stereo ? 2 : fileChannels, n);
     float* const channels[2] = {out.getWritePointer(0), out.getNumChannels() > 1 ? out.getWritePointer(1) : nullptr};
@@ -178,15 +209,7 @@ bool MediaLoader::readChecked(juce::AudioFormatReader& reader, bool stereo, Audi
     }
     // A sample that is not a number (NaN, Inf) becomes 0 here, before the resampler would spread it over a
     // kernel width and before the engine plays it. It is counted, so the caller can say so.
-    for (int ch = 0; ch < fileChannels; ++ch) {
-        float* const x = out.getWritePointer(ch);
-        for (int i = 0; i < n; ++i) {
-            if (!std::isfinite(x[i])) {
-                x[i] = 0.0f;
-                ++nonFiniteSamples;
-            }
-        }
-    }
+    nonFiniteSamples = zeroNonFinite(out, fileChannels);
     if (out.getNumChannels() > fileChannels)
         std::copy_n(out.getReadPointer(0), n, out.getWritePointer(1));
     return true;
