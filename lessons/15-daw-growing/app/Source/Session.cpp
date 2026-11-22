@@ -717,33 +717,39 @@ std::optional<Edit> Session::apply(const edit::RemoveTrack& e) {
     return inverse;
 }
 
+namespace {
+
+// The value of the field a SetValue edit sets (on / off: 1 / 0).
+float fieldValue(const ChannelStrip& cs, const edit::SetValue& e) {
+    switch (e.field) {
+    case edit::Field::Gain: return cs.getGainDb();
+    case edit::Field::Pan: return cs.getPan();
+    case edit::Field::Mute: return cs.isMuted() ? 1.0f : 0.0f;
+    case edit::Field::Solo: return cs.isSoloed() ? 1.0f : 0.0f;
+    case edit::Field::SendLevel: break;
+    }
+    return cs.getSendLevelDb(e.bus);
+}
+
+void setField(ChannelStrip& cs, const edit::SetValue& e) {
+    switch (e.field) {
+    case edit::Field::Gain: cs.setGainDb(e.value); return;
+    case edit::Field::Pan: cs.setPan(e.value); return;
+    case edit::Field::Mute: cs.setMute(e.value >= 0.5f); return;
+    case edit::Field::Solo: cs.setSolo(e.value >= 0.5f); return;
+    case edit::Field::SendLevel: cs.setSendLevelDb(e.bus, e.value); return;
+    }
+}
+
+} // namespace
+
 std::optional<Edit> Session::apply(const edit::SetValue& e) {
     ChannelStrip* cs = engine_.getStrip(refOf(e.strip));
     if (cs == nullptr || (e.field == edit::Field::SendLevel && (e.bus < 0 || e.bus >= kNumBuses)))
         return std::nullopt;
     edit::SetValue inverse = e;
-    switch (e.field) {
-    case edit::Field::Gain:
-        inverse.value = cs->getGainDb();
-        cs->setGainDb(e.value);
-        break;
-    case edit::Field::Pan:
-        inverse.value = cs->getPan();
-        cs->setPan(e.value);
-        break;
-    case edit::Field::Mute:
-        inverse.value = cs->isMuted() ? 1.0f : 0.0f;
-        cs->setMute(e.value >= 0.5f);
-        break;
-    case edit::Field::Solo:
-        inverse.value = cs->isSoloed() ? 1.0f : 0.0f;
-        cs->setSolo(e.value >= 0.5f);
-        break;
-    case edit::Field::SendLevel:
-        inverse.value = cs->getSendLevelDb(e.bus);
-        cs->setSendLevelDb(e.bus, e.value);
-        break;
-    }
+    inverse.value = fieldValue(*cs, e);
+    setField(*cs, e);
     sendChangeMessage(); // the arrangement shows M / S; the strips follow the atomics by themselves
     return inverse;
 }
