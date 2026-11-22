@@ -3486,6 +3486,32 @@ void testInstrumentSoundRefusals() {
     DAWLAB_CHECK(session.getPluginInstrument(synth) == nullptr && session.getInstrumentSound(synth).pluginFile.isEmpty());
 }
 
+// What the track commands need of the selected track: Synth settings an instrument track, Use the built-in synth a
+// plugin instrument on it, Delete selected track a track at all.
+void testTrackCommandNeeds() {
+    std::printf("the app's logic: what the track commands need\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    Session& session = main.getSession();
+    session.newProject();
+    main.getEngine().applyPendingCommandsOffline();
+    const auto enabled = [&main](juce::CommandID id) {
+        juce::ApplicationCommandInfo info(id);
+        main.getCommandInfo(id, info);
+        return (info.flags & juce::ApplicationCommandInfo::isDisabled) == 0;
+    };
+    const TrackId audio = main.addTrack(TrackFormat::Mono);
+    const TrackId synth = main.addTrack(TrackFormat::Mono, true);
+    main.getEngine().applyPendingCommandsOffline();
+    main.getArrangement().setSelectedTrack(audio);
+    DAWLAB_CHECK(!enabled(CommandIDs::showSynthPanel) && !enabled(CommandIDs::useBuiltinSynth) && enabled(CommandIDs::deleteSelectedTrack));
+    main.getArrangement().setSelectedTrack(synth);
+    DAWLAB_CHECK(enabled(CommandIDs::showSynthPanel) && !enabled(CommandIDs::useBuiltinSynth) && enabled(CommandIDs::deleteSelectedTrack));
+    while (session.getNumTracks() > 0 && main.deleteSelectedTrack())
+        main.getEngine().applyPendingCommandsOffline();
+    DAWLAB_CHECK(!enabled(CommandIDs::showSynthPanel) && !enabled(CommandIDs::deleteSelectedTrack));
+}
+
 void testAppLogic() {
     testMidiClipEquality();
     testDemoSongCounts();
@@ -3493,6 +3519,7 @@ void testAppLogic() {
     testSoloCommand();
     testMidiReplaceCommand();
     testInstrumentSoundRefusals();
+    testTrackCommandNeeds();
 }
 
 // ---- --smoke-test --------------------------------------------------------------------------------

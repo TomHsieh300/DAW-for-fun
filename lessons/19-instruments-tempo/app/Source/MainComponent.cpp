@@ -1708,14 +1708,21 @@ bool MainComponent::isPossible(Needs needs) {
     case Needs::nothing: return true;
     case Needs::canUndo: return session_.getHistory().canUndo();
     case Needs::canRedo: return session_.getHistory().canRedo();
-    case Needs::selectedTrack: return session_.hasTrack(arrangement_.getSelectedTrack());
     case Needs::roomForTrack: return session_.getNumTracks() < engine::kMaxTracks;
     case Needs::recorderIdle: return !takeRecorder_.isBusy();
     case Needs::midiNotRecording: return !midiRecording_.isRecording();
-    case Needs::instrumentTrack: return session_.isInstrument(arrangement_.getSelectedTrack());
-    case Needs::pluginInstrument: return session_.getPluginInstrument(arrangement_.getSelectedTrack()) != nullptr;
+    default: return selectedTrackHas(needs);
     }
-    return false;
+}
+
+// The needs of the selected track: that there is one, an instrument track, a plugin instrument on it.
+bool MainComponent::selectedTrackHas(Needs needs) {
+    const engine::TrackId selected = arrangement_.getSelectedTrack();
+    if (needs == Needs::instrumentTrack)
+        return session_.isInstrument(selected);
+    if (needs == Needs::pluginInstrument)
+        return session_.getPluginInstrument(selected) != nullptr;
+    return session_.hasTrack(selected); // Needs::selectedTrack
 }
 
 // What a command's tick mark in the menu shows now.

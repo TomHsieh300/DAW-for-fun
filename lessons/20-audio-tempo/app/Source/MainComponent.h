@@ -328,6 +328,7 @@ private:
     static const Command* findCommand(juce::CommandID id);
     juce::String commandName(const Command& command) const;
     bool isPossible(Needs needs);
+    bool selectedTrackHas(Needs needs);
     bool isTicked(Shows shows);
     // What the commands do that have no function of their own elsewhere.
     void togglePunch();
