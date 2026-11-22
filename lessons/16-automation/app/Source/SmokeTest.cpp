@@ -1452,9 +1452,40 @@ void testMissingSources() {
     DAWLAB_CHECK(MainComponent::missingSources({}, converted).empty());
 }
 
+// Track > Solo selected track: one undo step each way; nothing without a selected track.
+void testSoloCommand() {
+    std::printf("the app's logic: Solo selected track\n");
+    auto mainPtr = std::make_unique<MainComponent>(MainComponent::Mode::Offline);
+    MainComponent& main = *mainPtr;
+    Session& session = main.getSession();
+    Engine& engine = main.getEngine();
+    auto& cm = main.getCommandManager();
+    session.newProject();
+    engine.applyPendingCommandsOffline();
+    cm.invokeDirectly(CommandIDs::addMonoTrack, false);
+    engine.applyPendingCommandsOffline();
+    const TrackId track = main.getArrangement().getSelectedTrack();
+    DAWLAB_CHECK(session.hasTrack(track) && engine.getTrack(track) != nullptr);
+    if (engine.getTrack(track) == nullptr)
+        return;
+    const std::size_t steps = session.getHistory().undoCount();
+    cm.invokeDirectly(CommandIDs::toggleSoloSelected, false);
+    DAWLAB_CHECK(engine.getTrack(track)->isSoloed() && session.getHistory().undoCount() == steps + 1);
+    DAWLAB_CHECK(session.getHistory().getUndoName().startsWith("Solo "));
+    cm.invokeDirectly(CommandIDs::toggleSoloSelected, false);
+    DAWLAB_CHECK(!engine.getTrack(track)->isSoloed() && session.getHistory().undoCount() == steps + 2);
+    while (session.getNumTracks() > 0 && main.deleteSelectedTrack())
+        engine.applyPendingCommandsOffline();
+    const std::size_t stepsWithout = session.getHistory().undoCount();
+    DAWLAB_CHECK(session.getNumTracks() == 0);
+    cm.invokeDirectly(CommandIDs::toggleSoloSelected, false);
+    DAWLAB_CHECK(session.getHistory().undoCount() == stepsWithout);
+}
+
 void testAppLogic() {
     testDemoSongCounts();
     testMissingSources();
+    testSoloCommand();
 }
 
 // ---- --smoke-test --------------------------------------------------------------------------------
