@@ -24,16 +24,35 @@ public:
     }
 
     void paintButton(juce::Graphics& g, bool highlighted, bool down) override {
-        auto r = getLocalBounds().toFloat().reduced(1.0f);
+        const auto r = getLocalBounds().toFloat().reduced(1.0f);
         const bool on = getToggleState();
-        g.setColour(on ? DawColours::accentWarm().withAlpha(0.25f)
-                       : (down ? DawColours::outline() : (highlighted ? DawColours::panelLight().brighter(0.08f) : DawColours::panelLight())));
+        g.setColour(faceColour(on, highlighted, down, DawColours::accentWarm().withAlpha(0.25f)));
         g.fillRoundedRectangle(r, 4.0f);
         g.setColour(on ? DawColours::accentWarm() : DawColours::outline());
         g.drawRoundedRectangle(r, 4.0f, 1.0f);
+        paintIcon(g, r.getCentre(), std::min(r.getWidth(), r.getHeight()) * 0.28f);
+    }
 
-        const auto c = r.getCentre();
-        const float s = std::min(r.getWidth(), r.getHeight()) * 0.28f;
+private:
+    // The face: `onColour` when on, else darker while held and lighter under the mouse.
+    static juce::Colour faceColour(bool on, bool highlighted, bool down, juce::Colour onColour) {
+        return on ? onColour : (down ? DawColours::outline() : (highlighted ? DawColours::panelLight().brighter(0.08f) : DawColours::panelLight()));
+    }
+
+    // The icon around centre c, s its half size. The loop's arc is stroked, the rest filled.
+    void paintIcon(juce::Graphics& g, juce::Point<float> c, float s) {
+        const juce::Colour loopColour = getToggleState() ? DawColours::accentWarm() : DawColours::text();
+        if (icon_ == Icon::Loop) {
+            juce::Path arc;
+            arc.addCentredArc(c.x, c.y, s, s * 0.75f, 0.0f, 0.4f, juce::MathConstants<float>::twoPi - 0.4f, true);
+            g.setColour(loopColour);
+            g.strokePath(arc, juce::PathStrokeType(2.0f));
+        }
+        g.setColour(icon_ == Icon::Loop ? loopColour : (icon_ == Icon::Stop ? DawColours::accent() : DawColours::text()));
+        g.fillPath(iconPath(c, s));
+    }
+
+    juce::Path iconPath(juce::Point<float> c, float s) const {
         juce::Path p;
         switch (icon_) {
         case Icon::Play: p.addTriangle(c.x - s * 0.8f, c.y - s, c.x - s * 0.8f, c.y + s, c.x + s, c.y); break;
@@ -42,22 +61,14 @@ public:
             p.addRectangle(c.x - s, c.y - s, s * 0.3f, 2.0f * s);
             p.addTriangle(c.x + s, c.y - s, c.x + s, c.y + s, c.x - s * 0.6f, c.y);
             break;
-        case Icon::Loop: {
-            juce::Path arc;
-            arc.addCentredArc(c.x, c.y, s, s * 0.75f, 0.0f, 0.4f, juce::MathConstants<float>::twoPi - 0.4f, true);
-            g.setColour(on ? DawColours::accentWarm() : DawColours::text());
-            g.strokePath(arc, juce::PathStrokeType(2.0f));
+        case Icon::Loop: // the arrow head
             p.addTriangle(c.x + s * 0.15f, c.y - s * 0.75f - 4.0f, c.x + s * 0.15f, c.y - s * 0.75f + 4.0f,
                           c.x + s * 0.65f, c.y - s * 0.75f);
             break;
         }
-        }
-        g.setColour(icon_ == Icon::Loop ? (on ? DawColours::accentWarm() : DawColours::text())
-                                        : (icon_ == Icon::Stop ? DawColours::accent() : DawColours::text()));
-        g.fillPath(p);
+        return p;
     }
 
-private:
     Icon icon_;
 };
 
