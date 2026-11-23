@@ -616,6 +616,10 @@ inline bool sourcePositions(const FollowClip& clip, const TempoMap& map, double 
 // Stretch: the source along the positions, at its own pitch. False if cancelled.
 inline bool renderStretched(const AudioBuffer& source, std::vector<double>& positions, std::int64_t length, double sampleRate,
                             const std::atomic<bool>* cancel, AudioBuffer& rendered) {
+    if (length <= 0) { // no song sample: nothing to stretch, and no first or last position to read
+        rendered.setSize(source.getNumChannels(), 0);
+        return true;
+    }
     positions.pop_back();
     const std::int64_t usedFrom = static_cast<std::int64_t>(std::floor(positions.front())), usedTo = static_cast<std::int64_t>(std::ceil(positions.back())) + 1;
     rendered = stretchAlong(source, positions, stretchSettingsFor(source, usedFrom, usedTo, sampleRate), cancel);

@@ -1014,6 +1014,13 @@ void testEdges() {
         r.waitUntilIdle();
         DAWLAB_CHECK(r.collect().empty() && track.getNumClips() == 0);
     }
+    // A warped clip that covers no song sample (length 0) renders as an empty clip, in both modes
+    for (const FollowMode mode : {FollowMode::Varispeed, FollowMode::Stretch}) {
+        FollowClip none = loopClip(std::make_shared<AudioBuffer>(1, 48000), mode, 0.0);
+        none.clip.length = 0;
+        Clip out;
+        DAWLAB_CHECK(renderFollowClip(none, TempoMap{}, kSampleRate, out) && out.length == 0);
+    }
     std::printf("  the edges: many markers, the two counts of a ramp, a clip's first and last sample, a piece that slides back, speed 1, keys\n");
 }
 
