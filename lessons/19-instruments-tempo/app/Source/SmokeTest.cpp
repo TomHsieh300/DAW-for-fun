@@ -3223,6 +3223,18 @@ void testInsertEditors() {
     panel.onBypassChange(true);
     main->getEngine().applyPendingCommandsOffline();
     DAWLAB_CHECK(s.getHistory().undoCount() == steps + 3 && comp->isBypassed());
+    // Drags on the knob itself: a drag's start and end make one gesture, so two drags are two undo steps
+    juce::Slider* knob = panel.getSlider(0);
+    DAWLAB_CHECK(knob != nullptr);
+    if (knob != nullptr) {
+        for (const double to : {knob->getMinimum(), knob->getMaximum()}) {
+            knob->onDragStart();
+            knob->setValue(to, juce::sendNotificationSync);
+            knob->onDragEnd();
+        }
+        main->getEngine().applyPendingCommandsOffline();
+        DAWLAB_CHECK(s.getHistory().undoCount() == steps + 5);
+    }
     window->onClose(); // the window goes later, on the message loop; by then this window is gone
     // A VST3 plugin chosen for an empty slot (the smoke test's own plugin: no plugin is installed here).
     const ChannelRef last = s.trackRef(s.getTrackId(7));
