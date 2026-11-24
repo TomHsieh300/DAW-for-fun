@@ -470,6 +470,14 @@ int main() {
     // leave sample 6 alone
     AudioBlock(a).getSubBlock(2, 4).addFrom(AudioBlock(b));
     DAWLAB_CHECK(a.getSample(1, 5) == 3.0f && a.getSample(1, 6) == 1.0f);
+    // AudioBuffer::addFrom reads the source from sourceStart on, in the source channel asked for
+    AudioBuffer from(2, 8), into(1, 4);
+    for (int i = 0; i < 8; ++i) {
+        from.setSample(0, i, static_cast<float>(10 + i));
+        from.setSample(1, i, static_cast<float>(20 + i));
+    }
+    into.addFrom(0, 1, from, 1, 2, 3, 0.5f);
+    DAWLAB_CHECK(into.getSample(0, 0) == 0.0f && into.getSample(0, 1) == 11.0f && into.getSample(0, 3) == 12.0f);
 
     // Test signals must contain no NaN and must not clip
     AudioBuffer drums = makeDrumLoop(sr);
