@@ -1399,7 +1399,7 @@ void testClipPlayerEvents() {
 // More live events than an instrument track has room for in one block (4096), handed to the mixer itself (the
 // engine takes 1024 at most): its instrument hears the first 4096. A key pressed past them is not held, so
 // letting it go after the track is disarmed sends nothing.
-void testTooMuchLiveMidi() {
+void testMixerTakesAtMost4096LiveEvents() {
     EventLog log;
     auto e = loggingEngine(log);
     log.reserve(8192);
@@ -1416,6 +1416,149 @@ void testTooMuchLiveMidi() {
     e->getMixer().process(out.toBlock(), nullptr, 0, 120.0, 0, {}, MidiBlock{&letGo, 1});
     std::printf("  4097 live events in one block: the instrument hears %zu\n", log.size());
     DAWLAB_CHECK(log.size() == 4096);
+}
+
+// ---- the engine's own loops, case by case ---------------------------------------------------------------------
+
+// One processBlock() of 1024 frames on an engine prepared for 512, under a loop of 40 samples: two chunks, each in
+// two passes of advance() (8 rounds of the loop, then the rest). Every pass hands on its own part of the input and
+// of the live MIDI: the armed audio track's ring holds the input frame by frame, and the instrument gets each live
+// event once, at its sample - also one on the first sample of a pass.
+void testChunksAndPasses() {
+    Engine e;
+    setUp(e);
+    std::vector<std::pair<int64_t, MidiMessage>> log;
+    log.reserve(64);
+    e.setTrackInstrument(testId(0), std::make_unique<Recorder>(log));
+    e.applyPendingCommandsOffline();
+    e.getMixer().getTrack(0).setArmed(true);
+    Track& audio = e.getMixer().getTrack(1);
+    audio.setArmed(true);
+    Transport& tr = e.getTransport();
+    tr.setLoopRange(0, 40);
+    tr.setLoopEnabled(true);
+    tr.setPosition(0);
+    tr.play();
+    DAWLAB_CHECK(e.startRecording(Latencies{}, RecordRange{0, 40}) == 1);
+
+    constexpr int kFrames = 1024;
+    std::vector<float> in(kFrames);
+    for (int i = 0; i < kFrames; ++i)
+        in[static_cast<size_t>(i)] = static_cast<float>(i + 1);
+    const float* inputs[] = {in.data()};
+    // 320: the first sample of the first chunk's second pass; 912: inside the second chunk's second pass.
+    const BlockEvent live[] = {{320, MidiMessage::noteOn(0, 60, 100)}, {912, MidiMessage::noteOn(0, 62, 100)}};
+    AudioBuffer out(kNumChannels, kFrames);
+    e.processBlock(out.toBlock(), InputBlock{inputs, 1}, MidiBlock{live, 2});
+
+    std::vector<float> got(kFrames, 0.0f);
+    float* dest[] = {got.data()};
+    DAWLAB_CHECK(audio.getRecorder().ring().pop(dest, kFrames) == kFrames && got == in);
+    DAWLAB_CHECK(log.size() == 2 && log[0].first == 320 && log[0].second.note() == 60 && log[1].first == 912 &&
+                 log[1].second.note() == 62);
+    std::printf("  two chunks in two passes each: %d input frames in the ring in order, %zu live events at their samples\n",
+                kFrames, log.size());
+}
+
+// The ring holds what startRecording() asks for: `ringSeconds` of audio (rounded up to a power of two), and at least
+// two blocks. Nobody empties it here, so a block that does not fit is dropped.
+void testRingSize() {
+    const auto droppedAfter = [](double ringSeconds, int blocks) {
+        Engine e;
+        setUp(e);
+        Track& audio = e.getMixer().getTrack(1);
+        audio.setArmed(true);
+        e.getTransport().play();
+        e.startRecording(Latencies{}, {}, ringSeconds);
+        const std::vector<float> in(kBlockSize, 0.5f);
+        const float* inputs[] = {in.data()};
+        AudioBuffer out(kNumChannels, kBlockSize);
+        for (int b = 0; b < blocks; ++b)
+            e.processBlock(out.toBlock(), InputBlock{inputs, 1});
+        return audio.getRecorder().ring().droppedFrames();
+    };
+    // Half a second is 24000 frames, a ring of 32768: 64 blocks of 512 fit, the 65th does not.
+    DAWLAB_CHECK(droppedAfter(0.5, 64) == 0 && droppedAfter(0.5, 65) == kBlockSize);
+    // No time at all still holds two blocks.
+    DAWLAB_CHECK(droppedAfter(0.0, 2) == 0 && droppedAfter(0.0, 3) == kBlockSize);
+}
+
+// stopRecording(), isRecordingOver() and finishRecordingsWithoutAudio() reach the tracks; a track whose removal is
+// still queued does not start, also when other tracks have inserts.
+void testRecordingStateOfTheTracks() {
+    {
+        Engine e;
+        setUp(e);
+        e.getMixer().getTrack(1).setArmed(true);
+        e.getTransport().play();
+        AudioBuffer out(kNumChannels, kBlockSize);
+        DAWLAB_CHECK(e.startRecording(Latencies{}) == 1 && !e.isRecordingOver());
+        e.processBlock(out.toBlock());
+        e.stopRecording();
+        DAWLAB_CHECK(!e.isRecordingOver()); // until the audio thread confirms it
+        e.processBlock(out.toBlock());
+        DAWLAB_CHECK(e.isRecordingOver());
+        // No audio thread left to confirm a stop: the UI says it is over.
+        DAWLAB_CHECK(e.startRecording(Latencies{}) == 1);
+        e.processBlock(out.toBlock());
+        e.stopRecording();
+        e.finishRecordingsWithoutAudio();
+        DAWLAB_CHECK(e.isRecordingOver());
+    }
+    {
+        Engine e;
+        e.prepare(kSampleRate, kBlockSize);
+        for (int t = 0; t < kMaxTracks; ++t) {
+            e.addTrack(testId(t));
+            e.applyPendingCommandsOffline();
+        }
+        DAWLAB_CHECK(e.addInsert(testTrack(0), -1, createEffect(EffectType::Gain)) != nullptr);
+        Track& last = e.getMixer().getTrack(kMaxTracks - 1);
+        last.setArmed(true);
+        DAWLAB_CHECK(e.removeTrack(testId(kMaxTracks - 1)));
+        DAWLAB_CHECK(e.startRecording(Latencies{}) == 0 && last.getRecorder().isIdle());
+    }
+}
+
+// More live events in one block than kMaxLiveMidiEvents: the rest are ignored, and nothing is allocated.
+void testTooMuchLiveMidi() {
+    Engine e;
+    setUp(e);
+    std::vector<std::pair<int64_t, MidiMessage>> log;
+    log.reserve(2 * kMaxLiveMidiEvents);
+    e.setTrackInstrument(testId(0), std::make_unique<Recorder>(log));
+    e.applyPendingCommandsOffline();
+    e.getMixer().getTrack(0).setArmed(true);
+    std::vector<std::pair<int64_t, MidiMessage>> live;
+    for (int i = 0; i < kMaxLiveMidiEvents + 100; ++i)
+        live.push_back({i / 4, MidiMessage::controller(0, 1, i % 128)});
+    long allocs = 0;
+    play(e, 512, 512, &allocs, nullptr, &live);
+    DAWLAB_CHECK(log.size() == static_cast<size_t>(kMaxLiveMidiEvents) && allocs == 0);
+}
+
+// A curve on an effect's parameter (chapter 16) reaches the effect by its id; when it goes, the parameter returns to
+// where the knob was when the curve came - turned after the effect was added.
+void testEffectLane() {
+    Engine e;
+    setUp(e);
+    InsertEffect* fx = e.addInsert(testTrack(1), -1, createEffect(EffectType::Gain));
+    e.getTransport().play();
+    AudioBuffer out(kNumChannels, kBlockSize);
+    e.processBlock(out.toBlock());
+    fx->setParameter(0, -12.0f); // the user turns the knob
+    const LaneTarget gain{testTrack(1), fx->getEffectId(), 0};
+    AutomationCurve held;
+    held.add({0, 0.5f, Shape::Hold});
+    DAWLAB_CHECK(e.setLaneCurve(gain, held));
+    e.processBlock(out.toBlock());
+    const float whileCurve = fx->getParameter(0);
+    e.clearLaneCurve(gain);
+    e.processBlock(out.toBlock());
+    e.collectGarbage();
+    DAWLAB_CHECK_NEAR(whileCurve, fx->getParameterInfo(0).fromNormalized(0.5f), 1e-4);
+    DAWLAB_CHECK_NEAR(fx->getParameter(0), -12.0f, 1e-4);
+    DAWLAB_CHECK(e.getLanesNotFound() == 0);
 }
 
 } // namespace
@@ -1442,7 +1585,12 @@ int main() {
     testFifoAndDrain();
     testRawMidiCommands();
     testClipPlayerEvents();
+    testMixerTakesAtMost4096LiveEvents();
+    testChunksAndPasses();
+    testRingSize();
+    testRecordingStateOfTheTracks();
     testTooMuchLiveMidi();
+    testEffectLane();
     testNoAllocation();
     testThreads();
     return dawlab::test::summary("l18_test_midi");
