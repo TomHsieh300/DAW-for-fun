@@ -4201,6 +4201,104 @@ void checkAmpChainOutputRamp() {
 
 } // namespace b9amp
 
+// ---- batch 9: dsp-b ----
+namespace b9b {
+
+// K-weighting stage 2 (the high-pass) at 48 kHz is the standard's Table 2; silence is exactly the floor
+void checkLoudnessStage2AndSilence() {
+    const BiquadCoefficients c = LoudnessMeter::makeKWeightingStage2(48000.0);
+    const double* t = LoudnessMeter::kStage2Table48k;
+    DAWLAB_CHECK(c.b0 == t[0] && c.b1 == t[1] && c.b2 == t[2]);
+    DAWLAB_CHECK(std::abs(c.a1 - t[3]) < 1e-9 && std::abs(c.a2 - t[4]) < 1e-9);
+    DAWLAB_CHECK(LoudnessMeter::powerToLufs(1e-15) == kMinusInfinityDb);
+    DAWLAB_CHECK(LoudnessMeter::powerToLufs(0.0) == kMinusInfinityDb);
+}
+
+// `steps` 100 ms steps of a 1 kHz sine of `amplitude` (48 kHz) on every channel of `m`
+void loudnessSteps(LoudnessMeter& m, int channels, int steps, float amplitude) {
+    AudioBuffer step(channels, 4800);
+    for (int ch = 0; ch < channels; ++ch)
+        for (int i = 0; i < 4800; ++i)
+            step.setSample(ch, i, amplitude * static_cast<float>(std::sin(kTwoPi * (i % 48) / 48.0)));
+    for (int s = 0; s < steps; ++s)
+        m.process(step.toBlock());
+}
+
+// A channel beyond kMaxChannels weighs nothing, also while a step is being summed; eight channels of one tone read
+// exactly 10 log10(8) above one channel of it, whichever ring slot the newest step went into
+void checkLoudnessChannelLimits() {
+    const auto m = std::make_unique<LoudnessMeter>();
+    m->prepare(kSampleRate, 1);
+    AudioBuffer part(1, 100);
+    for (int i = 0; i < 100; ++i)
+        part.setSample(0, i, 0.5f * std::sin(0.3f * static_cast<float>(i)));
+    m->process(part.toBlock());
+    DAWLAB_CHECK(m->getChannelWeight(LoudnessMeter::kMaxChannels) == 0.0f);
+
+    const auto mono = std::make_unique<LoudnessMeter>();
+    const auto eight = std::make_unique<LoudnessMeter>();
+    mono->prepare(kSampleRate, 1);
+    eight->prepare(kSampleRate, LoudnessMeter::kMaxChannels);
+    for (int s = 0; s < 33; ++s) {
+        loudnessSteps(*mono, 1, 1, 0.5f);
+        loudnessSteps(*eight, LoudnessMeter::kMaxChannels, 1, 0.5f);
+        DAWLAB_CHECK_NEAR(eight->getMomentaryLufs() - mono->getMomentaryLufs(), 10.0 * std::log10(8.0), 1e-3);
+        DAWLAB_CHECK_NEAR(eight->getShortTermLufs() - mono->getShortTermLufs(), 10.0 * std::log10(8.0), 1e-3);
+    }
+}
+
+// The maxima start with the first full window: max momentary at exactly 400 ms, also when the steps before were
+// silent; max short-term at 3 s, also when all 3 s were silent
+void checkLoudnessMaximaStartWithFullWindows() {
+    const auto first = std::make_unique<LoudnessMeter>();
+    first->prepare(kSampleRate, 1);
+    loudnessSteps(*first, 1, 4, 0.5f);
+    DAWLAB_CHECK(first->getMomentaryLufs() > -10.0f && first->getMaxMomentaryLufs() == first->getMomentaryLufs());
+
+    const auto late = std::make_unique<LoudnessMeter>();
+    late->prepare(kSampleRate, 1);
+    loudnessSteps(*late, 1, 3, 0.0f);
+    loudnessSteps(*late, 1, 4, 0.5f);
+    DAWLAB_CHECK(late->getMomentaryLufs() > -10.0f && late->getMaxMomentaryLufs() == late->getMomentaryLufs());
+
+    const auto shortTerm = std::make_unique<LoudnessMeter>();
+    shortTerm->prepare(kSampleRate, 1);
+    loudnessSteps(*shortTerm, 1, 30, 0.0f);
+    DAWLAB_CHECK(shortTerm->getMaxShortTermLufs() == kMinusInfinityDb);
+    loudnessSteps(*shortTerm, 1, 1, 0.5f);
+    DAWLAB_CHECK(shortTerm->getShortTermLufs() > -30.0f &&
+                 shortTerm->getMaxShortTermLufs() == shortTerm->getShortTermLufs());
+}
+
+// The absolute gate is strict: a 400 ms block that reads exactly -70 LUFS is not a gating block. The channel weight
+// that lands the reading on -70 is found by bisection (the reading grows with the weight), so the test does not
+// depend on how the platform rounds the filters
+float momentaryWithWeight(float weight, float& integrated) {
+    const auto m = std::make_unique<LoudnessMeter>();
+    m->prepare(kSampleRate, 1);
+    m->setChannelWeight(0, weight);
+    loudnessSteps(*m, 1, 4, 0.5f);
+    integrated = m->getIntegratedLufs();
+    return m->getMomentaryLufs();
+}
+
+void checkLoudnessAbsoluteGateIsStrict() {
+    float lo = 1.0e-7f, hi = 1.0e-5f, integrated = 0.0f; // about -79 and -59 LUFS
+    DAWLAB_CHECK(momentaryWithWeight(lo, integrated) < -70.0f && momentaryWithWeight(hi, integrated) >= -70.0f);
+    while (std::nextafter(lo, hi) != hi) {
+        const float mid = lo + 0.5f * (hi - lo);
+        if (mid == lo || mid == hi)
+            break;
+        (momentaryWithWeight(mid, integrated) >= -70.0f ? hi : lo) = mid;
+    }
+    const float atGate = momentaryWithWeight(hi, integrated);
+    std::printf("LoudnessMeter at the absolute gate: weight %.9g reads %.9g LUFS, integrated %.9g\n",
+                static_cast<double>(hi), static_cast<double>(atGate), static_cast<double>(integrated));
+    DAWLAB_CHECK(atGate == -70.0f && integrated == kMinusInfinityDb);
+}
+
+} // namespace b9b
+
 int main() {
     checkUnpreparedBlock<Chorus>("Chorus");
     checkUnpreparedBlock<Flanger>("Flanger");
@@ -4319,6 +4417,12 @@ int main() {
 
     // ---- batch 9: AmpChain output ramp ----
     b9amp::checkAmpChainOutputRamp();
+
+    // ---- batch 9: dsp-b ----
+    b9b::checkLoudnessStage2AndSilence();
+    b9b::checkLoudnessChannelLimits();
+    b9b::checkLoudnessMaximaStartWithFullWindows();
+    b9b::checkLoudnessAbsoluteGateIsStrict();
 
     return dawlab::test::summary("dsp");
 }
