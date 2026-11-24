@@ -785,6 +785,25 @@ void checkLive() {
 // MSVC Debug gives every local in a function its own place on the stack.
 float steady(std::int64_t) { return 0.5f; }
 
+// A take's trail has room for three hours at any sample rate. A low rate makes a long take quick to record:
+// at 256 Hz, 21 minutes are 1260 peaks of 256 frames.
+void checkTrailRoom() {
+    TempFolder folder;
+    Engine e;
+    const TrackId id{1};
+    e.addTrack(id);
+    e.prepare(256.0, kMaxBlock);
+    e.applyPendingCommandsOffline();
+    e.getTrack(id)->setArmed(true);
+    RecordingSession session;
+    DAWLAB_CHECK(session.begin(e, folder.path(), "long", Latencies{}) == 1);
+    e.getTransport().play();
+    play(e, &session, 1260 * PeakTrail::kFramesPerPeak, 256, steady);
+    LiveTake live;
+    DAWLAB_CHECK(session.getLive(id, live) && live.trail->size() == 1260);
+    DAWLAB_CHECK(finish(e, session));
+}
+
 // Nothing armed: nothing starts, and no file.
 void endNothingArmed() {
     TempFolder folder;
@@ -853,6 +872,8 @@ void endTransportAndSeek() {
         DAWLAB_CHECK(session.results()[0].take.ok);
         DAWLAB_CHECK(session.results()[0].take.path != first);
         DAWLAB_CHECK(fs::exists(first));
+        // track 1's takes are numbered up from 1
+        DAWLAB_CHECK(first.filename() == "take-1-001.wav" && session.results()[0].take.path.filename() == "take-1-002.wav");
     }
 }
 
@@ -1546,6 +1567,7 @@ int main() {
     monitorFollowsTheSession();
     checkFeedback();
     checkLive();
+    checkTrailRoom();
     checkEnds();
     checkPieces();
     return dawlab::test::summary("l17_test_recording");
