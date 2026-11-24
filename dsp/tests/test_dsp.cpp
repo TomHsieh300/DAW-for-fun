@@ -4297,6 +4297,28 @@ void checkLoudnessAbsoluteGateIsStrict() {
     DAWLAB_CHECK(atGate == -70.0f && integrated == kMinusInfinityDb);
 }
 
+// The safety clamp counts only an output beyond ceiling * (1 + 1e-6): one exactly on that bound is clamped but not
+// counted, the next float up is counted. The loud sample is in the lookahead when the ceiling drops and everything
+// after it is silent, so its gain stays exactly 1 and it reaches the clamp unchanged
+void checkLimiterClampBoundIsInclusive() {
+    const float c = dbToGain(-6.0f);
+    const float bound = c * (1.0f + 1.0e-6f);
+    for (const float x : {bound, std::nextafter(bound, 1.0f)}) {
+        Limiter l;
+        l.prepare(kSampleRate, 64, 1);
+        l.setLookaheadMs(1.0f); // 48 samples
+        l.setCeilingDb(0.0f);
+        AudioBuffer one(1, 1);
+        one.setSample(0, 0, x);
+        l.process(one);
+        l.setCeilingDb(-6.0f);
+        AudioBuffer rest(1, 64);
+        l.process(rest);
+        DAWLAB_CHECK(rest.getReadPointer(0)[47] == c);
+        DAWLAB_CHECK(l.getSafetyClipCount() == (x == bound ? 0u : 1u));
+    }
+}
+
 } // namespace b9b
 
 int main() {
@@ -4423,6 +4445,7 @@ int main() {
     b9b::checkLoudnessChannelLimits();
     b9b::checkLoudnessMaximaStartWithFullWindows();
     b9b::checkLoudnessAbsoluteGateIsStrict();
+    b9b::checkLimiterClampBoundIsInclusive();
 
     return dawlab::test::summary("dsp");
 }
