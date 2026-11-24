@@ -1346,6 +1346,27 @@ void testClipPlayerEvents() {
         DAWLAB_CHECK(allocs == 0);
     }
     {
+        // The same, the track armed and a key pressed late in the block: its instrument is handed the 4096
+        // events there is room for, all of them the clip's; the key, past them, is not one of them.
+        EventLog log;
+        auto e = loggingEngine(log);
+        log.reserve(8192);
+        MidiClip c = clipOf(1, 0, kBar, {});
+        for (int ch = 0; ch < 16; ++ch)
+            for (int number = 0; number < 128; ++number)
+                c.controllers.push_back({0, number, 1, ch});
+        e->setTrackMidiClips(testId(0), {c});
+        e->getMixer().getTrack(0).setArmed(true);
+        Transport& tr = e->getTransport();
+        tr.setLoopRange(100, 200);
+        tr.setLoopEnabled(true);
+        tr.setPosition(100);
+        tr.play();
+        const std::vector<std::pair<int64_t, MidiMessage>> key{{500, on(60)}};
+        play(*e, 512, 512, nullptr, nullptr, &key);
+        DAWLAB_CHECK(log.size() == 4096 && countOf(log, on(60)) == 0);
+    }
+    {
         // More notes on one tick than voices to remember (one is dropped), then a segment with more controller
         // points than its room: those past it are dropped, so that every note off still fits (no allocation).
         EventLog log;
@@ -1375,6 +1396,28 @@ void testClipPlayerEvents() {
     }
 }
 
+// More live events than an instrument track has room for in one block (4096), handed to the mixer itself (the
+// engine takes 1024 at most): its instrument hears the first 4096. A key pressed past them is not held, so
+// letting it go after the track is disarmed sends nothing.
+void testTooMuchLiveMidi() {
+    EventLog log;
+    auto e = loggingEngine(log);
+    log.reserve(8192);
+    e->applyPendingCommandsOffline();
+    Track& inst = e->getMixer().getTrack(0);
+    inst.setArmed(true);
+    std::vector<BlockEvent> many(4096, BlockEvent{0, MidiMessage::controller(0, 1, 0)});
+    many.push_back({0, MidiMessage::noteOn(0, 60, 100)});
+    AudioBuffer out(kNumChannels, kBlockSize);
+    e->getMixer().process(out.toBlock(), nullptr, 0, 120.0, 0, {}, MidiBlock{many.data(), static_cast<int>(many.size())});
+    DAWLAB_CHECK(log.size() == 4096 && countOf(log, MidiMessage::noteOn(0, 60, 100)) == 0);
+    inst.setArmed(false);
+    const BlockEvent letGo{0, MidiMessage::noteOff(0, 60)};
+    e->getMixer().process(out.toBlock(), nullptr, 0, 120.0, 0, {}, MidiBlock{&letGo, 1});
+    std::printf("  4097 live events in one block: the instrument hears %zu\n", log.size());
+    DAWLAB_CHECK(log.size() == 4096);
+}
+
 } // namespace
 
 int main() {
@@ -1399,6 +1442,7 @@ int main() {
     testFifoAndDrain();
     testRawMidiCommands();
     testClipPlayerEvents();
+    testTooMuchLiveMidi();
     testNoAllocation();
     testThreads();
     return dawlab::test::summary("l18_test_midi");
