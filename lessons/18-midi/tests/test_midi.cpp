@@ -952,6 +952,17 @@ void testSynthParts() {
     for (const float want : {0.0f, -0.5f, 0.0f, 0.5f, 0.0f, -0.5f, 0.0f, 0.5f})
         sawOk = sawOk && saw.next() == want;
     DAWLAB_CHECK(sawOk);
+    // At a third of the sample rate the phase reaches 1 exactly and wraps to 0 there, so the saw repeats
+    // every three samples, value for value.
+    Saw third;
+    third.setFrequency(16000.0, 48000.0);
+    std::vector<float> thirds;
+    for (int i = 0; i < 12; ++i)
+        thirds.push_back(third.next());
+    bool repeats = true;
+    for (size_t i = 3; i < thirds.size(); ++i)
+        repeats = repeats && thirds[i] == thirds[i - 3];
+    DAWLAB_CHECK(repeats);
 
     // An envelope at 1024 Hz: attack 4 samples, decay 4 to a sustain of 0.5, release 8.
     Adsr env;
@@ -1010,6 +1021,27 @@ void testVoiceChoice() {
     s->handle(MidiMessage::noteOn(0, 41, 100));
     s->handle(MidiMessage::noteOn(0, 41, 100));
     DAWLAB_CHECK(s->activeVoices() == 2);
+    s->handle(MidiMessage::noteOn(0, 40, 100)); // the first voice's pitch too
+    DAWLAB_CHECK(s->activeVoices() == 2);
+    // A free first voice comes before a released one: 40 has ended, 41 still rings out.
+    s->reset();
+    s->handle(MidiMessage::noteOn(0, 40, 100));
+    s->handle(MidiMessage::noteOn(0, 41, 100));
+    s->handle(MidiMessage::noteOff(0, 40));
+    DAWLAB_CHECK(activeAfter(*s, static_cast<int>(kSampleRate)) == 1);
+    s->handle(MidiMessage::noteOff(0, 41));
+    DAWLAB_CHECK(stolenBy({60}) == 0 && s->activeVoices() == 2);
+    // Pitches 0 and 1, which no key held before, after eight held notes: each gets a voice of its own, and a
+    // note off for a pitch that does not sound changes nothing.
+    s->reset();
+    for (int pitch = 60; pitch < 68; ++pitch)
+        s->handle(MidiMessage::noteOn(0, pitch, 100));
+    s->handle(MidiMessage::noteOff(0, 1));
+    s->handle(MidiMessage::noteOff(0, 0));
+    DAWLAB_CHECK(stolenBy({1, 0}) == 0 && s->activeVoices() == 10);
+    for (int pitch = 60; pitch < 68; ++pitch)
+        s->handle(MidiMessage::noteOff(0, pitch));
+    DAWLAB_CHECK(activeAfter(*s, static_cast<int>(kSampleRate)) == 2);
     // A free voice comes before any steal, also when it is not the first.
     allSixteen();
     s->handle(MidiMessage::noteOff(0, 45));
@@ -1049,6 +1081,18 @@ void testVoiceChoice() {
     allSixteen();
     s->handle(MidiMessage::noteOff(0, 40));
     s->handle(MidiMessage::controller(0, Synth::kAllNotesOff, 0));
+    DAWLAB_CHECK(stolenBy({60, 40}) == 2);
+    // After three hundred messages, a pedal lifted with nothing under it changes nothing: the oldest held
+    // note is still the one stolen.
+    s->reset();
+    for (int i = 0; i < 150; ++i) {
+        s->handle(MidiMessage::noteOn(0, 30, 100));
+        s->handle(MidiMessage::noteOff(0, 30));
+    }
+    for (int pitch = 40; pitch < 40 + Synth::kNumVoices; ++pitch) // the last one steals 30, released
+        s->handle(MidiMessage::noteOn(0, pitch, 100));
+    s->handle(MidiMessage::controller(0, Synth::kSustainPedal, 127));
+    s->handle(MidiMessage::controller(0, Synth::kSustainPedal, 0));
     DAWLAB_CHECK(stolenBy({60, 40}) == 2);
     std::printf("  voice choice: same pitch, free voice, released first, oldest held - %ld stolen in all\n", s->stolen());
 }
@@ -1265,6 +1309,20 @@ void testClipPlayerEvents() {
         tr.play();
         play(*e, 4096, 512); // the wrap: 2000 samples in, inside the fourth block
         DAWLAB_CHECK(indexOf(log, 2000 + 25, on(60)) >= 0);
+    }
+    {
+        // A loop of 10 samples: a block needs more segments than one advance() has room for (8). The note at
+        // the loop's start plays on each of the 52 wraps of 512 samples, and nothing else does.
+        EventLog log;
+        auto e = loggingEngine(log);
+        e->setTrackMidiClips(testId(0), {clipOf(1, 0, kBar, {{0, 1, 60, 100, 0}})});
+        Transport& tr = e->getTransport();
+        tr.setLoopRange(0, 10);
+        tr.setLoopEnabled(true);
+        tr.setPosition(0);
+        tr.play();
+        play(*e, 512, 512);
+        DAWLAB_CHECK(countOf(log, on(60)) == 52 && countOf(log, off(60)) == 51 && log.size() == 103);
     }
     {
         // A short loop over many chased controllers: every wrap chases all 2048, more than a block has room for.
