@@ -4357,6 +4357,20 @@ void checkReverbSizeSameValue() {
 
 } // namespace b9b
 
+// ---- batch 9: dsp-a ----
+namespace b9a {
+
+// A cookbook lowpass at its own cutoff has gain Q and phase -90 degrees (only true at z = e^{-jw}, z^2 = e^{-2jw})
+void checkBiquadResponseAtCutoff() {
+    const auto lp = BiquadCoefficients::makeLowpass(kSampleRate, 1000.0, 2.0);
+    std::printf("Biquad lowpass 1 kHz Q 2 at 1 kHz: %.4f dB, phase %.4f rad\n", lp.magnitudeDb(1000.0, kSampleRate),
+                lp.phase(1000.0, kSampleRate));
+    DAWLAB_CHECK_NEAR(lp.magnitudeDb(1000.0, kSampleRate), 20.0 * std::log10(2.0), 1e-6);
+    DAWLAB_CHECK_NEAR(lp.phase(1000.0, kSampleRate), -kPi / 2.0, 1e-6);
+}
+
+} // namespace b9a
+
 int main() {
     checkUnpreparedBlock<Chorus>("Chorus");
     checkUnpreparedBlock<Flanger>("Flanger");
@@ -4484,6 +4498,9 @@ int main() {
     b9b::checkLimiterClampBoundIsInclusive();
     b9b::checkReverbFrozenModulationIsOff();
     b9b::checkReverbSizeSameValue();
+
+    // ---- batch 9: dsp-a ----
+    b9a::checkBiquadResponseAtCutoff();
 
     return dawlab::test::summary("dsp");
 }
