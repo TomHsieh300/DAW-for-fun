@@ -61,6 +61,11 @@ void testSpscBasics() {
         DAWLAB_CHECK(q.push(i));
         DAWLAB_CHECK(q.pop(v) && v == i);
     }
+    // Head and tail are at slot 4 of 5 now: four more items wrap around the end of the storage.
+    for (int i = 0; i < 4; ++i)
+        DAWLAB_CHECK(q.push(i));
+    DAWLAB_CHECK(q.size() == 4);
+    DAWLAB_CHECK(q.pop(v) && q.size() == 3);
 }
 
 void testSpscThreads() {
