@@ -1170,6 +1170,27 @@ void testALaneReadsOnlyTheBlocksSegments() {
     DAWLAB_CHECK(out[0] == c.valueAt(100) && out[3] == c.valueAt(103));
 }
 
+// A mono block under an active fader lane gets the lane's gain on its one channel and nothing past it:
+// here the block is the left half of a stereo buffer, whose right channel must stay as it was.
+void testAMonoBlockUnderALane() {
+    auto strip = std::make_unique<ChannelStrip>();
+    strip->prepare(kSampleRate, kBlockSize);
+    strip->setPanMode(PanMode::Balance);
+    strip->setGainDb(-6.0206f);
+    strip->getOwnLane(kLaneGain)->setMode(AutomationMode::Touch); // active: one gain per sample, the knob's
+    strip->beginBlock(true);
+    AudioBuffer b(2, kBlockSize);
+    for (int i = 0; i < kBlockSize; ++i) {
+        b.setSample(0, i, 1.0f);
+        b.setSample(1, i, 1.0f);
+    }
+    std::vector<float> gains(kBlockSize), pans(kBlockSize);
+    strip->applyFaderAndPan(b.toBlock().getChannelSubset(0, 1), LaneBlock{}, ChannelRef::track(0, kTrack), gains.data(),
+                            pans.data());
+    DAWLAB_CHECK_NEAR(b.getSample(0, 0), 0.5, 1e-4);
+    DAWLAB_CHECK(b.getSample(1, 0) == 1.0f && b.getSample(1, kBlockSize - 1) == 1.0f);
+}
+
 } // namespace
 
 int main() {
@@ -1209,5 +1230,6 @@ int main() {
     testTheLimitLandsExactlyOneStepAway();
     testALaneRendersNothingForNoSamples();
     testALaneReadsOnlyTheBlocksSegments();
+    testAMonoBlockUnderALane();
     return dawlab::test::summary("l16_test_automation");
 }
