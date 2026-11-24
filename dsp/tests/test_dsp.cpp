@@ -4369,6 +4369,23 @@ void checkBiquadResponseAtCutoff() {
     DAWLAB_CHECK_NEAR(lp.phase(1000.0, kSampleRate), -kPi / 2.0, 1e-6);
 }
 
+// A sidechain with no channels leaves the block alone, even with makeup gain
+void checkCompressorEmptySidechain() {
+    Compressor comp;
+    comp.prepare(kSampleRate, 64, 2);
+    comp.setMakeupGainDb(6.0f);
+    AudioBuffer b(2, 64), sidechain(0, 64);
+    for (int ch = 0; ch < 2; ++ch)
+        for (int i = 0; i < 64; ++i)
+            b.getWritePointer(ch)[i] = 0.5f;
+    comp.process(b.toBlock(), sidechain.toBlock());
+    bool same = true;
+    for (int ch = 0; ch < 2; ++ch)
+        for (int i = 0; i < 64; ++i)
+            same = same && b.getSample(ch, i) == 0.5f;
+    DAWLAB_CHECK(same);
+}
+
 } // namespace b9a
 
 int main() {
@@ -4501,6 +4518,7 @@ int main() {
 
     // ---- batch 9: dsp-a ----
     b9a::checkBiquadResponseAtCutoff();
+    b9a::checkCompressorEmptySidechain();
 
     return dawlab::test::summary("dsp");
 }
