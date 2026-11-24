@@ -4405,6 +4405,44 @@ void checkDistortionDcBlockerTail() {
     DAWLAB_CHECK(last != 0.0f && std::abs(last) < 1e-8f);
 }
 
+// naiveDft of one cosine cycle over 8 points: n/2 at bins 1 and 7, 0 elsewhere, and nothing written past n
+void checkNaiveDftOfCosine() {
+    const int n = 8;
+    std::vector<std::complex<float>> x(static_cast<size_t>(n)), out(static_cast<size_t>(n) + 1, {123.0f, 0.0f});
+    for (int i = 0; i < n; ++i)
+        x[static_cast<size_t>(i)] = static_cast<float>(std::cos(kTwoPi * i / n));
+    naiveDft(x.data(), out.data(), n);
+    bool right = true;
+    for (int k = 0; k < n; ++k) {
+        const float expected = (k == 1 || k == n - 1) ? 4.0f : 0.0f;
+        right = right && std::abs(out[static_cast<size_t>(k)] - std::complex<float>(expected, 0.0f)) < 1e-5f;
+    }
+    DAWLAB_CHECK(right && out[static_cast<size_t>(n)] == std::complex<float>(123.0f, 0.0f));
+}
+
+// Fft::inverse() scales exactly getSize() values and writes nothing past them
+void checkFftInverseStaysInside() {
+    const Fft fft(3);
+    std::vector<std::complex<float>> data(9, {2.0f, 0.0f});
+    fft.inverse(data.data());
+    // the inverse of a flat spectrum of 2 is an impulse of 2 at sample 0
+    DAWLAB_CHECK(std::abs(data[0] - std::complex<float>(2.0f, 0.0f)) < 1e-6f && std::abs(data[1]) < 1e-6f);
+    DAWLAB_CHECK(data[8] == std::complex<float>(2.0f, 0.0f));
+}
+
+// A short Hann window: 1 point is {1}, 5 points are 0, 0.5, 1, 0.5, 0 (zero at both ends)
+void checkShortHannWindows() {
+    std::vector<float> w;
+    Fft::makeWindow(w, 1, WindowType::Hann);
+    DAWLAB_CHECK(w.size() == 1 && w[0] == 1.0f);
+    Fft::makeWindow(w, 5, WindowType::Hann);
+    const float expected[] = {0.0f, 0.5f, 1.0f, 0.5f, 0.0f};
+    bool right = w.size() == 5;
+    for (size_t i = 0; right && i < 5; ++i)
+        right = std::abs(w[i] - expected[i]) < 1e-6f;
+    DAWLAB_CHECK(right);
+}
+
 } // namespace b9a
 
 int main() {
@@ -4539,6 +4577,9 @@ int main() {
     b9a::checkBiquadResponseAtCutoff();
     b9a::checkCompressorEmptySidechain();
     b9a::checkDistortionDcBlockerTail();
+    b9a::checkNaiveDftOfCosine();
+    b9a::checkFftInverseStaysInside();
+    b9a::checkShortHannWindows();
 
     return dawlab::test::summary("dsp");
 }
