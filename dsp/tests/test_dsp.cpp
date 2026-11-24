@@ -4149,6 +4149,58 @@ void checkBufferSize() {
 
 } // namespace b7fdl
 
+// ---- batch 9: AmpChain output ramp ----
+namespace b9amp {
+
+// A prepared mono AmpChain at its defaults that has run one block of silence
+std::unique_ptr<AmpChain> warmAmp() {
+    auto amp = std::make_unique<AmpChain>();
+    amp->prepare(48000.0, 512, 1);
+    AudioBuffer silence(1, 64);
+    amp->process(silence.toBlock());
+    return amp;
+}
+
+// The same 64-sample tone block through `amp`
+std::vector<float> toneThrough(AmpChain& amp) {
+    AudioBuffer b(1, 64);
+    for (int i = 0; i < 64; ++i)
+        b.getWritePointer(0)[i] = 0.3f * std::sin(0.13f * static_cast<float>(i));
+    amp.process(b.toBlock());
+    return std::vector<float>(b.getReadPointer(0), b.getReadPointer(0) + 64);
+}
+
+// A new output gain moves linearly across the next block (from the old gain at sample 0 towards the new one), and a
+// block with no samples or no channels leaves that ramp where it was
+void checkAmpChainOutputRamp() {
+    const float g1 = dbToGain(-12.0f);
+    auto steady = warmAmp();
+    steady->setOutputGainDb(-12.0f);
+    toneThrough(*steady); // the gain has arrived; its filters have run the same as the others'
+    auto moving = warmAmp();
+    toneThrough(*moving);
+    moving->setOutputGainDb(-12.0f);
+    const std::vector<float> s = toneThrough(*steady), m = toneThrough(*moving);
+    double worst = 0.0;
+    for (int i = 0; i < 64; ++i) {
+        const double ramp = 1.0 + (static_cast<double>(g1) - 1.0) * i / 64.0; // the gain at sample i
+        worst = std::max(worst, std::abs(static_cast<double>(m[static_cast<size_t>(i)]) * g1 - s[static_cast<size_t>(i)] * ramp));
+    }
+    std::printf("AmpChain output gain ramp: worst error %.3g\n", worst);
+    DAWLAB_CHECK(worst < 1e-6);
+
+    for (const int channels : {1, 0}) {
+        auto paused = warmAmp();
+        toneThrough(*paused);
+        paused->setOutputGainDb(-12.0f);
+        AudioBuffer empty(channels, channels == 1 ? 0 : 64);
+        paused->process(empty.toBlock());
+        DAWLAB_CHECK(toneThrough(*paused) == m);
+    }
+}
+
+} // namespace b9amp
+
 int main() {
     checkUnpreparedBlock<Chorus>("Chorus");
     checkUnpreparedBlock<Flanger>("Flanger");
@@ -4264,6 +4316,9 @@ int main() {
     b7fdl::checkInterpolationReproducesPolynomials();
     b7fdl::checkSplitReadEdges();
     b7fdl::checkBufferSize();
+
+    // ---- batch 9: AmpChain output ramp ----
+    b9amp::checkAmpChainOutputRamp();
 
     return dawlab::test::summary("dsp");
 }
