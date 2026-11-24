@@ -4386,6 +4386,25 @@ void checkCompressorEmptySidechain() {
     DAWLAB_CHECK(same);
 }
 
+// Fuzz on a steady input: once the fuzz has settled, the DC blocker's output is the block's output, however small
+// (it is not mixed back into the large shaped value it came from)
+void checkDistortionDcBlockerTail() {
+    const auto d = std::make_unique<Distortion>();
+    d->setOversamplingFactorLog2(0);
+    d->setType(DistortionType::Fuzz);
+    d->setToneHz(Distortion::kToneBypassHz);
+    d->prepare(kSampleRate, 512, 1);
+    AudioBuffer b(1, 512);
+    for (int block = 0; block < 32; ++block) {
+        for (int i = 0; i < 512; ++i)
+            b.getWritePointer(0)[i] = 0.5f;
+        d->process(b.toBlock());
+    }
+    const float last = b.getSample(0, 511);
+    std::printf("Distortion Fuzz, steady 0.5, after 16384 samples: %.3g\n", static_cast<double>(last));
+    DAWLAB_CHECK(last != 0.0f && std::abs(last) < 1e-8f);
+}
+
 } // namespace b9a
 
 int main() {
@@ -4519,6 +4538,7 @@ int main() {
     // ---- batch 9: dsp-a ----
     b9a::checkBiquadResponseAtCutoff();
     b9a::checkCompressorEmptySidechain();
+    b9a::checkDistortionDcBlockerTail();
 
     return dawlab::test::summary("dsp");
 }
