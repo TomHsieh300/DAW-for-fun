@@ -4319,6 +4319,42 @@ void checkLimiterClampBoundIsInclusive() {
     }
 }
 
+// Once a freeze has faded the modulation out, the modulation depth no longer matters: a copy of the frozen reverb
+// with depth 0 gives exactly the same output, and the frozen tail still rings (it has not collapsed to a constant)
+void checkReverbFrozenModulationIsOff() {
+    auto modulated = std::make_unique<Reverb>();
+    modulated->setModulationDepthMs(1.0f);
+    modulated->setModulationRateHz(5.0f);
+    modulated->prepare(kSampleRate, 512, 2);
+    float wl = 0.0f, wr = 0.0f;
+    for (int i = 0; i < 4800; ++i)
+        modulated->processSampleStereo(i == 0 ? 1.0f : 0.0f, 0.0f, wl, wr);
+    modulated->setFreeze(true);
+    for (int i = 0; i < 24000; ++i) // 500 ms: the modulation fades out in about 280 ms
+        modulated->processSampleStereo(0.0f, 0.0f, wl, wr);
+    auto still = std::make_unique<Reverb>(*modulated);
+    still->setModulationDepthMs(0.0f);
+    int differing = 0, moving = 0;
+    float previous = wl;
+    for (int i = 0; i < 4800; ++i) {
+        float ml = 0.0f, mr = 0.0f, sl = 0.0f, sr = 0.0f;
+        modulated->processSampleStereo(0.0f, 0.0f, ml, mr);
+        still->processSampleStereo(0.0f, 0.0f, sl, sr);
+        differing += (ml != sl || mr != sr) ? 1 : 0;
+        moving += ml != previous ? 1 : 0;
+        previous = ml;
+    }
+    std::printf("Reverb   frozen 100 ms after the fade: %d samples differ from depth 0, %d of 4800 move\n", differing,
+                moving);
+    DAWLAB_CHECK(differing == 0 && moving > 4000);
+}
+
+// A new size glides every line toward its new length; setting the same size again before every block leaves that
+// glide alone (the same-value rule, as checkSameValueRule())
+void checkReverbSizeSameValue() {
+    sameValue<Reverb>("Reverb::setSize", [](Reverb& r, float v) { r.setSize(v); }, 0.9f);
+}
+
 } // namespace b9b
 
 int main() {
@@ -4446,6 +4482,8 @@ int main() {
     b9b::checkLoudnessMaximaStartWithFullWindows();
     b9b::checkLoudnessAbsoluteGateIsStrict();
     b9b::checkLimiterClampBoundIsInclusive();
+    b9b::checkReverbFrozenModulationIsOff();
+    b9b::checkReverbSizeSameValue();
 
     return dawlab::test::summary("dsp");
 }
