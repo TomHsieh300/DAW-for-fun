@@ -4443,6 +4443,23 @@ void checkShortHannWindows() {
     DAWLAB_CHECK(right);
 }
 
+// Gain::processSample() on channel 0 alone moves along the ramp; channel 1 then reuses channel 0's value
+void checkGainProcessSampleRamp() {
+    Gain g;
+    g.prepare(kSampleRate, 64, 2);
+    g.setRampSeconds(8.0 / kSampleRate);
+    g.setGainDb(-6.0f);
+    const float first = g.processSample(0, 1.0f);
+    float last = first;
+    for (int i = 1; i < 8; ++i)
+        last = g.processSample(0, 1.0f);
+    std::printf("Gain processSample ramp: first %.6f, after 8 samples %.6f\n", static_cast<double>(first),
+                static_cast<double>(last));
+    DAWLAB_CHECK(first < 1.0f && first > dbToGain(-6.0f));
+    DAWLAB_CHECK_NEAR(last, dbToGain(-6.0f), 1e-6);
+    DAWLAB_CHECK(g.processSample(1, 1.0f) == last);
+}
+
 } // namespace b9a
 
 int main() {
@@ -4580,6 +4597,7 @@ int main() {
     b9a::checkNaiveDftOfCosine();
     b9a::checkFftInverseStaysInside();
     b9a::checkShortHannWindows();
+    b9a::checkGainProcessSampleRamp();
 
     return dawlab::test::summary("dsp");
 }
