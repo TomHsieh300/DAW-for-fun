@@ -51,6 +51,21 @@ double rmsOf(const AudioBuffer& b, int from, int to) {
     return std::sqrt(sum / (to - from));
 }
 
+// The mean period of channel 0 in samples [from, to): between its first and last upward zero crossings.
+double meanPeriod(const AudioBuffer& b, int from, int to) {
+    double first = -1.0, last = -1.0;
+    int periods = -1;
+    for (int i = from + 1; i < to; ++i) {
+        const float x = b.getSample(0, i - 1), y = b.getSample(0, i);
+        if (x < 0.0f && y >= 0.0f) {
+            last = i - 1 + static_cast<double>(x / (x - y));
+            first = first < 0.0 ? last : first;
+            ++periods;
+        }
+    }
+    return periods > 0 ? (last - first) / periods : 0.0;
+}
+
 bool sameAudio(const AudioBuffer& a, const AudioBuffer& b) {
     return a.getNumChannels() == b.getNumChannels() && a.getNumSamples() == b.getNumSamples() && maxAbsDiff(a, b) == 0.0f;
 }
@@ -89,6 +104,11 @@ void testGenerators() {
     std::printf("  generators: lead %.1f Hz, periods %.3f %% apart\n", hz, (longest / shortest - 1.0) * 100.0);
     DAWLAB_CHECK(std::abs(hz - 440.0) < 3.0 && longest / shortest - 1.0 > 0.008 && longest / shortest - 1.0 < 0.016);
     DAWLAB_CHECK(peakOf(lead, 0, 72000 - 120, 72000) < 0.05f * peakOf(lead, 0, 47000, 48000));
+    // The vibrato (5.5 Hz) goes up first: the pitch is highest at its first crest at full depth (0.227 s), lowest
+    // at the trough after it (0.318 s), +-0.6 % times about 0.95 over 2000 samples around each.
+    const double crest = meanPeriod(lead, 9909, 11909), trough = meanPeriod(lead, 14273, 16273);
+    std::printf("  generators: lead period %.3f at the vibrato's crest, %.3f at its trough\n", crest, trough);
+    DAWLAB_CHECK(crest > 0.0 && crest / trough > 0.985 && crest / trough < 0.995);
 
     // A noise burst decays by decayPerSecond: 30 per second over 0.12 s leaves e^-1.8 of the first
     // half's level in the second. The highpassed one is a first difference: neighbours anti-correlated.
@@ -131,6 +151,26 @@ void testLayout(const DemoSong& song) {
     DAWLAB_CHECK(hits.size() == 4 && hits[0].start == 0 && hits[1].start == 192000 && hits[3].start == 576000);
 }
 
+// Parts of the song on their own, where makeDemoSong() never takes them.
+void testParts() {
+    // The shaker's accents fall on the third 16th of every beat, also when a 16th is not a whole number of
+    // samples: at 100 Hz it is 12 (12.5 cut), and bar 3 starts at sample 400, not on a multiple of 12.
+    DemoSong slow;
+    slow.sampleRate = 100.0;
+    demo::addDemoShaker(slow, demo::SongGrid(slow));
+    const std::vector<Clip>& shaker = slow.clips[6];
+    bool accentsOk = shaker.size() == 100 && shaker[2].source != shaker[0].source;
+    for (size_t k = 0; accentsOk && k < shaker.size(); ++k)
+        accentsOk = shaker[k].start == 400 + static_cast<int64_t>(k) * 12 && (shaker[k].source == shaker[2].source) == (k % 4 == 2);
+    DAWLAB_CHECK(accentsOk);
+
+    // A song of 7 bars has its hits on bars 1, 3, 5 and 7: the last bar counts.
+    DemoSong seven;
+    seven.bars = 7;
+    demo::addDemoHits(seven, demo::SongGrid(seven));
+    DAWLAB_CHECK(seven.clips[7].size() == 4 && seven.clips[7][3].start == 576000);
+}
+
 // An insert's parameter names the effect does not know are counted, and the engine gets
 // exactly the song's 8 tracks, its bus names and its bus faders.
 void testApplied(Engine& engine, const DemoSong& song) {
@@ -158,6 +198,7 @@ void testApplied(Engine& engine, const DemoSong& song) {
 
 int main() {
     testGenerators();
+    testParts();
     const DemoSong song = makeDemoSong(kSampleRate);
     testLayout(song);
 
