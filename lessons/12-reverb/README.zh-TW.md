@@ -628,9 +628,9 @@ out = dryDelayed * (1 - mix) + wet * mix;       // 兩個成分都晚 P → 整�
 // overlap-save：frame = [上一塊 P 個 | 這一塊 P 個]
 std::copy(frame.begin() + P, frame.end(), frame.begin());
 std::copy(inputFifo.begin(), inputFifo.end(), frame.begin() + P);
-fdlPos = (fdlPos + 1) % K;                     // FDL 是 ring buffer：新的頻譜覆蓋最舊的
+fdlPos = (fdlPos + K - 1) % K;                 // FDL 是 ring buffer：新的頻譜覆蓋最舊的
 fft.forwardReal(frame, fdl[fdlPos]);           // X_j
-Y = Σ_k H_k · fdl[fdlPos − k]                  // 逐 bin complex 乘加
+Y = Σ_k H_k · fdl[(fdlPos + k) % K]            // 逐 bin complex 乘加
 fft.inverseReal(Y, ifftOut);
 copy(ifftOut 的後半 P 個 → outputFifo)         // 前半是 circular wrap，丟掉
 ```

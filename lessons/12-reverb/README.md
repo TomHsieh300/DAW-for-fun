@@ -628,9 +628,9 @@ What `processPartition()` does:
 // overlap-save: frame = [previous P | this P]
 std::copy(frame.begin() + P, frame.end(), frame.begin());
 std::copy(inputFifo.begin(), inputFifo.end(), frame.begin() + P);
-fdlPos = (fdlPos + 1) % K;                     // the FDL is a ring buffer: the new spectrum overwrites the oldest
+fdlPos = (fdlPos + K - 1) % K;                 // the FDL is a ring buffer: the new spectrum overwrites the oldest
 fft.forwardReal(frame, fdl[fdlPos]);           // X_j
-Y = Σ_k H_k · fdl[fdlPos − k]                  // complex multiply-accumulate bin by bin
+Y = Σ_k H_k · fdl[(fdlPos + k) % K]            // complex multiply-accumulate bin by bin
 fft.inverseReal(Y, ifftOut);
 copy(second half (P samples) of ifftOut → outputFifo)   // the first half is circular wrap, discard it
 ```
