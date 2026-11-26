@@ -71,8 +71,7 @@ public:
             std::fill(c.inputFifo.begin(), c.inputFifo.end(), 0.0f);
             std::fill(c.outputFifo.begin(), c.outputFifo.end(), 0.0f);
             std::fill(c.frame.begin(), c.frame.end(), 0.0f);
-            for (auto& spectrum : c.fdl)
-                std::fill(spectrum.begin(), spectrum.end(), std::complex<float>{0.0f, 0.0f});
+            std::fill(c.fdl.begin(), c.fdl.end(), std::complex<float>{0.0f, 0.0f});
             c.fifoPos = 0;
             c.fdlPos = 0;
         }
@@ -107,12 +106,11 @@ public:
 
     // Estimated memory use (bytes): the IR spectra + the FDL of every channel
     size_t getSpectraMemoryBytes() const noexcept {
-        const size_t perSpectrum = static_cast<size_t>(numBins_) * sizeof(std::complex<float>);
         size_t total = 0;
-        for (const auto& chSpectra : irSpectra_)
-            total += chSpectra.size() * perSpectrum;
+        for (const Spectra& chSpectra : irSpectra_)
+            total += chSpectra.size() * sizeof(std::complex<float>);
         for (const ChannelState& c : channels_)
-            total += c.fdl.size() * perSpectrum;
+            total += c.fdl.size() * sizeof(std::complex<float>);
         return total;
     }
 
@@ -122,7 +120,7 @@ public:
         const int n = block.getNumSamples();
         for (int ch = 0; ch < nch; ++ch) {
             ChannelState& c = channels_[static_cast<size_t>(ch)];
-            const std::vector<std::vector<std::complex<float>>>* spectra = irSpectraFor(ch);
+            const Spectra* spectra = irSpectraFor(ch);
             float* data = block.getChannelPointer(ch);
             float mix = ch == 0 ? currentMix_ : mixAtBlockStart_; // every channel is smoothed from the same starting point
             if (ch == 0)
@@ -184,18 +182,30 @@ public:
     }
 
 private:
+    // K spectra of N/2 + 1 bins each, one after another in one block of memory: the sum in processPartition()
+    // then reads two plain forward streams, which an in-order core's prefetcher follows best
+    using Spectra = std::vector<std::complex<float>>;
+
     struct ChannelState {
         std::vector<float> inputFifo;  // once P samples have accumulated, one frame is processed
         std::vector<float> outputFifo; // the P outputs computed from the previous frame
         std::vector<float> frame;      // [previous block | this block], length N = 2P
         std::vector<float> ifftOut;    // IFFT result, length N
-        std::vector<std::vector<std::complex<float>>> fdl; // frequency-delay line: K spectra
+        Spectra fdl; // frequency-delay line: K spectra
         std::vector<std::complex<float>> accumulator;      // Y = Σ H_k · X_{j-k}
         int fifoPos = 0;
         int fdlPos = 0; // the newest spectrum is stored in fdl[fdlPos], the one before it in fdl[fdlPos + 1]
     };
 
-    const std::vector<std::vector<std::complex<float>>>* irSpectraFor(int ch) const noexcept {
+    // Spectrum k of a Spectra (k < numPartitions_)
+    std::complex<float>* spectrum(Spectra& spectra, int k) const noexcept {
+        return spectra.data() + static_cast<size_t>(k) * static_cast<size_t>(numBins_);
+    }
+    const std::complex<float>* spectrum(const Spectra& spectra, int k) const noexcept {
+        return spectra.data() + static_cast<size_t>(k) * static_cast<size_t>(numBins_);
+    }
+
+    const Spectra* irSpectraFor(int ch) const noexcept {
         if (irSpectra_.empty())
             return nullptr;
         const size_t idx = static_cast<size_t>(ch) < irSpectra_.size() ? static_cast<size_t>(ch) : 0;
@@ -219,7 +229,7 @@ private:
     }
 
     // One frame: FFT this block, update the FDL, multiply-accumulate in the frequency domain, IFFT, take the second half
-    void processPartition(ChannelState& c, const std::vector<std::vector<std::complex<float>>>* spectra) noexcept {
+    void processPartition(ChannelState& c, const Spectra* spectra) noexcept {
         const size_t P = static_cast<size_t>(partitionSize_);
         // overlap-save: the first half of the frame = the previous block, the second half = this block
         std::copy(c.frame.begin() + static_cast<std::ptrdiff_t>(P), c.frame.end(), c.frame.begin());
@@ -234,7 +244,7 @@ private:
         // X_{j-k} is k slots after it and the sum below reads the FDL forwards, as it reads the IR spectra: on an
         // in-order core such as the Cortex-A55 the prefetcher only keeps up with forward reads (1.3x faster there)
         c.fdlPos = (c.fdlPos + numPartitions_ - 1) % numPartitions_;
-        fft_->forwardReal(c.frame.data(), c.fdl[static_cast<size_t>(c.fdlPos)].data());
+        fft_->forwardReal(c.frame.data(), spectrum(c.fdl, c.fdlPos));
 
         // Y = Σ_k H_k · X_{j-k}
         std::fill(c.accumulator.begin(), c.accumulator.end(), std::complex<float>{0.0f, 0.0f});
@@ -242,8 +252,7 @@ private:
             int idx = c.fdlPos + k;
             if (idx >= numPartitions_)
                 idx -= numPartitions_;
-            multiplyAccumulate(c.accumulator.data(), (*spectra)[static_cast<size_t>(k)].data(),
-                               c.fdl[static_cast<size_t>(idx)].data(), numBins_);
+            multiplyAccumulate(c.accumulator.data(), spectrum(*spectra, k), spectrum(c.fdl, idx), numBins_);
         }
 
         fft_->inverseReal(c.accumulator.data(), c.ifftOut.data());
@@ -259,23 +268,21 @@ private:
             return;
         numPartitions_ = (ir_.getNumSamples() + partitionSize_ - 1) / partitionSize_;
         std::vector<float> padded(static_cast<size_t>(fftSize_));
-        irSpectra_.resize(static_cast<size_t>(ir_.getNumChannels()));
+        const size_t spectraSize = static_cast<size_t>(numPartitions_) * static_cast<size_t>(numBins_);
+        irSpectra_.assign(static_cast<size_t>(ir_.getNumChannels()), Spectra(spectraSize));
         for (int ch = 0; ch < ir_.getNumChannels(); ++ch) {
-            auto& chSpectra = irSpectra_[static_cast<size_t>(ch)];
-            chSpectra.assign(static_cast<size_t>(numPartitions_),
-                             std::vector<std::complex<float>>(static_cast<size_t>(numBins_)));
+            Spectra& chSpectra = irSpectra_[static_cast<size_t>(ch)];
             const float* h = ir_.getReadPointer(ch);
             for (int k = 0; k < numPartitions_; ++k) {
                 std::fill(padded.begin(), padded.end(), 0.0f);
                 const int start = k * partitionSize_;
                 const int len = std::min(partitionSize_, ir_.getNumSamples() - start);
                 std::copy(h + start, h + start + len, padded.begin()); // first half = IR segment, second half = 0
-                fft_->forwardReal(padded.data(), chSpectra[static_cast<size_t>(k)].data());
+                fft_->forwardReal(padded.data(), spectrum(chSpectra, k));
             }
         }
         for (ChannelState& c : channels_) {
-            c.fdl.assign(static_cast<size_t>(numPartitions_),
-                         std::vector<std::complex<float>>(static_cast<size_t>(numBins_), {0.0f, 0.0f}));
+            c.fdl.assign(spectraSize, {0.0f, 0.0f});
             c.fdlPos = 0;
         }
     }
@@ -289,7 +296,7 @@ private:
     int numPartitions_ = 0;
     std::unique_ptr<Fft> fft_;
     AudioBuffer ir_;
-    std::vector<std::vector<std::vector<std::complex<float>>>> irSpectra_; // [irChannel][partition][bin]
+    std::vector<Spectra> irSpectra_; // [irChannel], each [partition][bin]
     std::vector<ChannelState> channels_;
     float mix_ = 1.0f;
     float currentMix_ = 1.0f;
