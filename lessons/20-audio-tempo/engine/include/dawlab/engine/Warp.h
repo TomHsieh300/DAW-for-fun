@@ -49,13 +49,17 @@ struct WarpMarker {
     friend bool operator!=(const WarpMarker& a, const WarpMarker& b) noexcept { return !(a == b); }
 };
 
+// The rules for one marker, shared with the project file's reader (which names the line that breaks them):
+// a marker is finite, and one comes after another when it is later both in the source and in ticks.
+inline bool isFiniteMarker(const WarpMarker& m) noexcept { return std::isfinite(m.source) && std::isfinite(m.tick); }
+inline bool comesAfter(const WarpMarker& m, const WarpMarker& before) noexcept { return m.source > before.source && m.tick > before.tick; }
+
 // True for a list a warp map can be made of: at least two markers, finite, sources and ticks strictly increasing.
 inline bool areWarpMarkers(const std::vector<WarpMarker>& markers) noexcept {
     if (markers.size() < 2)
         return false;
     for (size_t i = 0; i < markers.size(); ++i)
-        if (!std::isfinite(markers[i].source) || !std::isfinite(markers[i].tick) ||
-            (i > 0 && (markers[i].source <= markers[i - 1].source || markers[i].tick <= markers[i - 1].tick)))
+        if (!isFiniteMarker(markers[i]) || (i > 0 && !comesAfter(markers[i], markers[i - 1])))
             return false;
     return true;
 }
@@ -171,6 +175,9 @@ inline std::vector<WarpMarker> markersForTake(const TempoMap& map, double sample
 
 enum class FollowMode : std::uint8_t { Off, Start, Varispeed, Stretch };
 
+// Varispeed and stretch place the clip by its markers; Off and Start by one position.
+constexpr bool followsByMarkers(FollowMode mode) noexcept { return mode == FollowMode::Varispeed || mode == FollowMode::Stretch; }
+
 struct FollowClip {
     Clip clip;                       // as chapter 14's: what plays when it does not follow
     FollowMode mode = FollowMode::Off;
@@ -179,7 +186,7 @@ struct FollowClip {
     double headCut = 0.0, tailCut = 0.0; // Varispeed, Stretch: ClipFollow's
 
     // True if the clip is played from a buffer that renderFollowClip() has to make.
-    bool isWarped() const noexcept { return (mode == FollowMode::Varispeed || mode == FollowMode::Stretch) && areWarpMarkers(markers); }
+    bool isWarped() const noexcept { return followsByMarkers(mode) && areWarpMarkers(markers); }
     // A warped clip's range of the source, to the fraction of a sample: [sourceFrom(), sourceTo()).
     double sourceFrom() const noexcept { return static_cast<double>(clip.sourceOffset) + headCut; }
     double sourceTo() const noexcept { return static_cast<double>(clip.sourceOffset + clip.length) - tailCut; }

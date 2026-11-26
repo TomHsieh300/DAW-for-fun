@@ -216,7 +216,7 @@ public:
     // to where it starts now); if its markers and the map are the same too, nothing is rendered again - a new
     // gain or fade, or another clip dragged in front of it, costs nothing.
     void update(std::vector<FollowClip> clips, const TempoMap& map, double sampleRate) {
-        const bool mapIsTheSame = hasMap_ && sampleRate == sampleRate_ && sameMap(map, map_);
+        const bool mapIsTheSame = hasMap_ && sampleRate == sampleRate_ && map == map_;
         std::vector<Entry> next;
         next.reserve(clips.size());
         for (FollowClip& clip : clips) {
@@ -307,14 +307,6 @@ private:
             if (entries_[j].key != 0 && sameAudio(entries_[j].clip, clip, markersToo))
                 return static_cast<int>(j);
         return -1;
-    }
-    static bool sameMap(const TempoMap& a, const TempoMap& b) noexcept {
-        if (a.size() != b.size())
-            return false;
-        for (int i = 0; i < a.size(); ++i)
-            if (a.point(i).tick != b.point(i).tick || a.point(i).bpm != b.point(i).bpm || a.point(i).rampToNext != b.point(i).rampToNext)
-                return false;
-        return true;
     }
     // What does not need a new render: gain, fades, mute and name are the clip's of now.
     static void carryOver(const Clip& from, Clip& to) {

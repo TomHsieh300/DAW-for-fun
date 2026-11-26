@@ -571,7 +571,7 @@ std::shared_ptr<engine::ClipFollow> followOf(const ClipState& cs, std::int64_t a
     follow->markers = cs.markers;
     follow->headCut = cs.headCut;
     follow->tailCut = cs.sourceLength > available ? 0.0 : cs.tailCut; // shortened: it ends with the audio
-    if (cs.follow != engine::FollowMode::Start && cs.sourceLength > available)
+    if (engine::followsByMarkers(cs.follow) && cs.sourceLength > available)
         warnings.add("clip \"" + juce::String(cs.name) + "\" was longer than " + juce::String(cs.file) + ": shortened");
     return follow;
 }
@@ -596,7 +596,7 @@ bool clipOf(const ClipState& cs, const std::shared_ptr<const AudioBuffer>& sourc
     }
     if (cs.follow != engine::FollowMode::Off)
         c.follow = followOf(cs, available, warnings);
-    if (c.length > available && (cs.follow == engine::FollowMode::Off || cs.follow == engine::FollowMode::Start)) {
+    if (c.length > available && !engine::followsByMarkers(cs.follow)) {
         warnings.add("clip \"" + juce::String(cs.name) + "\" was longer than " + juce::String(cs.file) + ": shortened");
         c.length = available;
     }

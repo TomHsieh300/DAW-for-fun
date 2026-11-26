@@ -284,9 +284,7 @@ std::string warpedClipProblem(const ClipState& c) {
 }
 
 std::string followProblem(const ClipState& c) {
-    if (c.follow == engine::FollowMode::Off || c.follow == engine::FollowMode::Start)
-        return startClipProblem(c);
-    return warpedClipProblem(c);
+    return engine::followsByMarkers(c.follow) ? warpedClipProblem(c) : startClipProblem(c);
 }
 
 // ---- writing --------------------------------------------------------------------------------------
@@ -936,8 +934,7 @@ private:
         const std::string problem = checkClipAbove();
         if (!problem.empty())
             return problem;
-        const engine::FollowMode follow = p_.clips.back().follow;
-        if (follow != engine::FollowMode::Varispeed && follow != engine::FollowMode::Stretch)
+        if (!engine::followsByMarkers(p_.clips.back().follow))
             return std::string("a ") + line + " needs a clip above it that follows by varispeed or stretch";
         return "";
     }
@@ -981,7 +978,7 @@ private:
         engine::WarpMarker m;
         if (!parseMarker(m))
             return "marker needs a position in the source and a tick";
-        if (!c.markers.empty() && (m.source <= c.markers.back().source || m.tick <= c.markers.back().tick))
+        if (!c.markers.empty() && !engine::comesAfter(m, c.markers.back()))
             return "a marker must be after the one before it, in the source and in ticks";
         c.markers.push_back(m);
         return "";
@@ -989,8 +986,7 @@ private:
 
     // A marker line's position in the source and tick, both finite.
     bool parseMarker(engine::WarpMarker& m) const {
-        return tok_.size() == 3 && parseNumber(tok_[1], m.source) && parseNumber(tok_[2], m.tick) && std::isfinite(m.source) &&
-               std::isfinite(m.tick);
+        return tok_.size() == 3 && parseNumber(tok_[1], m.source) && parseNumber(tok_[2], m.tick) && engine::isFiniteMarker(m);
     }
 
     // Format 9: what a cut left of a warped clip's first and last sample of the source.
