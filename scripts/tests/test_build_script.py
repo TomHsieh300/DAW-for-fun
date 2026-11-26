@@ -20,9 +20,10 @@ BUILD_SH = ROOT / "scripts" / "build.sh"
 BUILD_PS1 = ROOT / "scripts" / "build.ps1"
 
 FAKE_TOOL = """#!/bin/sh
-echo "$(basename "$0") $* [UBSAN_OPTIONS=${UBSAN_OPTIONS-}]" >> "$FAKE_LOG"
+echo "$(basename "$0") $* [UBSAN_OPTIONS=${UBSAN_OPTIONS-}] [LSAN_OPTIONS=${LSAN_OPTIONS-}]" >> "$FAKE_LOG"
 """
 SUPPRESSIONS = ROOT / "scripts" / "ubsan_suppressions.txt"
+LSAN_SUPPRESSIONS = ROOT / "scripts" / "lsan_suppressions.txt"
 
 
 @unittest.skipUnless(shutil.which("bash"), "needs bash")
@@ -60,7 +61,7 @@ class BuildShTest(unittest.TestCase):
     def ctest_ubsan_options(self, calls):
         ctest = [call for call in calls if call.startswith("ctest ")]
         self.assertEqual(len(ctest), 1, calls)
-        return ctest[0].rsplit("[UBSAN_OPTIONS=", 1)[1].rstrip("]")
+        return ctest[0].split("[UBSAN_OPTIONS=", 1)[1].split("] [LSAN_OPTIONS=", 1)[0]
 
     def test_undefined_sanitizer_runs_the_tests_with_the_suppressions(self):
         code, out, calls = self.run_build("--only", "02-filter", "--sanitize", "address,undefined",
@@ -86,6 +87,40 @@ class BuildShTest(unittest.TestCase):
             kind, _, where = rule.partition(":")
             self.assertIn(kind, ("shift-base", "bounds"), rule)
             self.assertIn("/juce_audio_formats/codecs/", where, rule)
+
+    # ---- LSan: the leaks of libX11 under JUCE's window titles are not ours ----
+
+    def ctest_lsan_options(self, calls):
+        ctest = [call for call in calls if call.startswith("ctest ")]
+        self.assertEqual(len(ctest), 1, calls)
+        return ctest[0].rsplit("[LSAN_OPTIONS=", 1)[1].rstrip("]")
+
+    def test_address_sanitizer_runs_the_tests_with_the_leak_suppressions(self):
+        for sanitize in ("address", "address,undefined,float-cast-overflow"):
+            with self.subTest(sanitize=sanitize):
+                self.log.unlink(missing_ok=True)
+                code, out, calls = self.run_build("--only", "02-filter", "--sanitize", sanitize, LSAN_OPTIONS="x=1")
+                self.assertEqual(code, 0, out)
+                options = self.ctest_lsan_options(calls)
+                self.assertIn("x=1", options)  # the caller's options stay
+                self.assertIn("suppressions=" + str(LSAN_SUPPRESSIONS), options)
+
+    def test_other_sanitizers_leave_lsan_options_alone(self):
+        for sanitize in ("thread", "undefined", ""):
+            with self.subTest(sanitize=sanitize):
+                self.log.unlink(missing_ok=True)
+                code, out, calls = self.run_build("--only", "02-filter", "--sanitize", sanitize, LSAN_OPTIONS="x=1")
+                self.assertEqual(code, 0, out)
+                self.assertEqual(self.ctest_lsan_options(calls), "x=1")
+
+    def test_the_leak_suppressions_name_only_juce_window_code(self):
+        rules = [line for line in LSAN_SUPPRESSIONS.read_text(encoding="utf-8").splitlines()
+                 if line.strip() and not line.startswith("#")]
+        self.assertTrue(rules)
+        for rule in rules:
+            kind, _, where = rule.partition(":")
+            self.assertEqual(kind, "leak", rule)
+            self.assertTrue(where.startswith("juce::XWindowSystem::"), rule)
 
     # ---- S10: an option that needs a value says so ----
 

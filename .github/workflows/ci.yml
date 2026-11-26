@@ -12,6 +12,13 @@
 #         leaves out
 #   juce  chapters 13-20 with JUCE, including the smoke tests and snapshots of DawLab 8 and 15 to
 #         20, on Windows, Linux (x64 and ARM64) and macOS
+#   juce-asan  the same JUCE chapters as the juce job, as a Debug build under the asan job's
+#         sanitizers: the apps' smoke tests walk the GUI code (menus, dialogs, views) that no other
+#         job runs under a sanitizer
+#
+# Every ASan build also defines _GLIBCXX_ASSERTIONS (CMakeLists.txt): libstdc++ then checks
+# operator[], front() and back() of its containers, which catches a read one past the end that
+# stays inside the object and that ASan alone cannot see.
 #
 # Linux ARM64 (ubuntu-24.04-arm) stands in for embedded aarch64 boards with NXP's i.MX 95. Like macOS
 # it was allowed to fail at first; every job of every platform must pass since it passed for weeks.
@@ -171,3 +178,40 @@ jobs:
             build/dawlab_output/l19_app_snapshot*.png
             build/dawlab_output/l20_app_snapshot*.png
           if-no-files-found: ignore
+
+  juce-asan:
+    name: juce asan + ubsan (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Cache JUCE
+        id: juce-cache
+        uses: actions/cache@v6
+        with:
+          path: third_party/JUCE
+          key: juce-${{ env.JUCE_TAG }}
+
+      - name: Clone JUCE
+        if: steps.juce-cache.outputs.cache-hit != 'true'
+        run: git clone --depth 1 --branch ${{ env.JUCE_TAG }} https://github.com/juce-framework/JUCE.git third_party/JUCE
+
+      - name: Install JUCE dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build xvfb \
+            libasound2-dev libjack-jackd2-dev ladspa-sdk libfreetype-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev \
+            libxrender-dev libglu1-mesa-dev mesa-common-dev libcurl4-openssl-dev libwebkit2gtk-4.1-dev
+
+      # The same ASLR limit as for the asan job
+      - name: Lower the ASLR entropy for ASan
+        run: sudo sysctl vm.mmap_rnd_bits=28
+
+      # build.sh adds scripts/ubsan_suppressions.txt (JUCE's bundled codecs) and scripts/lsan_suppressions.txt
+      # (libX11's leaks under JUCE's window titles); every other leak fails the test
+      - name: Build and test the JUCE chapters under AddressSanitizer and UndefinedBehaviorSanitizer
+        env:
+          UBSAN_OPTIONS: halt_on_error=1 print_stacktrace=1
+        run: xvfb-run -a ./scripts/build.sh --only juce --juce --config Debug --sanitize address,undefined,float-cast-overflow --build-dir build-juce-asan

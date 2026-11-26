@@ -1,0 +1,9 @@
+# LeakSanitizer suppressions for code that is not ours (scripts/build.sh --sanitize address... passes this
+# file to every test through LSAN_OPTIONS).
+#
+# Every window JUCE opens on Linux gets its title through XWindowSystem::setTitle(), which calls into libX11
+# (loaded with dlopen, so its frames show as "<unknown module>"). libX11 keeps the locale and text-conversion
+# data it builds there until the process ends: under the apps' smoke tests that is 27302 bytes in 387
+# allocations, the same for DawLab 8 and 15 to 20. Only that JUCE function is named here, so a leak of
+# anything else, our code included, still fails the test.
+leak:juce::XWindowSystem::setTitle

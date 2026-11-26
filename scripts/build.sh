@@ -99,5 +99,9 @@ if [[ $run_tests -eq 1 ]]; then
     if [[ $sanitize == *undefined* ]]; then
         export UBSAN_OPTIONS="${UBSAN_OPTIONS:+$UBSAN_OPTIONS:}suppressions=$root/scripts/ubsan_suppressions.txt"
     fi
+    # LSan (part of ASan): libX11's leaks under JUCE's window titles are not ours (scripts/lsan_suppressions.txt)
+    if [[ $sanitize == *address* ]]; then
+        export LSAN_OPTIONS="${LSAN_OPTIONS:+$LSAN_OPTIONS:}suppressions=$root/scripts/lsan_suppressions.txt"
+    fi
     ctest "${test_args[@]}"
 fi
