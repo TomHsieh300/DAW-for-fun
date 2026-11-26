@@ -202,6 +202,22 @@ private:
         return &irSpectra_[idx];
     }
 
+    // Y[b] += H[b] · X[b] for every bin: where almost all of the time goes (K · (N/2 + 1) per frame).
+    // Written out instead of `Y[b] += H[b] * X[b]`: std::complex's operator* has to give C's answer for an
+    // infinite operand, so GCC checks every product for NaN and calls __mulsc3, and the loop stays one bin at
+    // a time; this way it is 4 bins per instruction (NEON, SSE). std::complex<float> is laid out as float[2].
+    static void multiplyAccumulate(std::complex<float>* Y, const std::complex<float>* H,
+                                   const std::complex<float>* X, int numBins) noexcept {
+        float* y = reinterpret_cast<float*>(Y);
+        const float* h = reinterpret_cast<const float*>(H);
+        const float* x = reinterpret_cast<const float*>(X);
+        for (int b = 0; b < numBins; ++b) {
+            const float hr = h[2 * b], hi = h[2 * b + 1], xr = x[2 * b], xi = x[2 * b + 1];
+            y[2 * b] += hr * xr - hi * xi;
+            y[2 * b + 1] += hr * xi + hi * xr;
+        }
+    }
+
     // One frame: FFT this block, update the FDL, multiply-accumulate in the frequency domain, IFFT, take the second half
     void processPartition(ChannelState& c, const std::vector<std::vector<std::complex<float>>>* spectra) noexcept {
         const size_t P = static_cast<size_t>(partitionSize_);
@@ -224,11 +240,8 @@ private:
             int idx = c.fdlPos - k;
             if (idx < 0)
                 idx += numPartitions_;
-            const std::complex<float>* X = c.fdl[static_cast<size_t>(idx)].data();
-            const std::complex<float>* H = (*spectra)[static_cast<size_t>(k)].data();
-            std::complex<float>* Y = c.accumulator.data();
-            for (int b = 0; b < numBins_; ++b)
-                Y[b] += H[b] * X[b];
+            multiplyAccumulate(c.accumulator.data(), (*spectra)[static_cast<size_t>(k)].data(),
+                               c.fdl[static_cast<size_t>(idx)].data(), numBins_);
         }
 
         fft_->inverseReal(c.accumulator.data(), c.ifftOut.data());
