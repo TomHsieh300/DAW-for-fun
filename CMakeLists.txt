@@ -36,6 +36,12 @@ if(DAWLAB_SANITIZE)
     endif()
     add_compile_options(-fsanitize=${DAWLAB_SANITIZE} -fno-omit-frame-pointer -g)
     add_link_options(-fsanitize=${DAWLAB_SANITIZE})
+    # ASan cannot see a read one past the end of a std::array or std::vector that stays inside the
+    # object or the allocation (voices_[kNumVoices] lands in the member after it); libstdc++'s own
+    # checks of operator[], front(), back() and friends can. libc++ ignores the define.
+    if(DAWLAB_SANITIZE MATCHES "address")
+        add_compile_definitions(_GLIBCXX_ASSERTIONS)
+    endif()
 endif()
 
 enable_testing()
